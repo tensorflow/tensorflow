@@ -36,7 +36,33 @@ Install TensorFlow (only CPU binary version is currently available).
 $ sudo pip install https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
 ```
 
-### Try your first TensorFlow program
+## Docker-based installation
+
+We also support running TensorFlow via [Docker](http://docker.com/), which lets
+you avoid worrying about setting up dependencies.
+
+First, [install Docker](http://docs.docker.com/engine/installation/). Once
+Docker is up and running, you can start a container with one command:
+
+```sh
+$ docker run -it b.gcr.io/tensorflow/tensorflow
+```
+
+This will start a container with TensorFlow and all its dependencies already
+installed.
+
+### Additional images
+
+The default Docker image above contains just a minimal set of libraries for
+getting up and running with TensorFlow. We also have several other containers,
+which you can use in the `docker run` command above:
+
+* `b.gcr.io/tensorflow/tensorflow-full`: Contains a complete TensorFlow source
+  installation, including all utilities needed to build and run TensorFlow. This
+  makes it easy to experiment directly with the source, without needing to
+  install any of the dependencies described above.
+
+## Try your first TensorFlow program
 
 ```sh
 $ python
@@ -133,6 +159,13 @@ $ sudo apt-get install python-numpy swig python-dev
 In order to build TensorFlow with GPU support, both Cuda Toolkit 7.0 and CUDNN
 6.5 V2 from NVIDIA need to be installed.
 
+TensorFlow GPU support requires having a GPU card with NVidia Compute Capability >= 3.5.  Supported cards include but are not limited to:
+
+* NVidia Titan
+* NVidia Titan X
+* NVidia K20
+* NVidia K40
+
 ##### Download and install Cuda Toolkit 7.0
 
 https://developer.nvidia.com/cuda-toolkit-70
@@ -227,7 +260,7 @@ Notes : You need to install
 Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/install.html).
 
 
-### Create the pip package and install
+### Create the pip package and install {#create-pip}
 
 ```sh
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
@@ -238,7 +271,7 @@ $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 $ pip install /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 ```
 
-### Train your first TensorFlow neural net model
+## Train your first TensorFlow neural net model
 
 From the root of your source tree, run:
 

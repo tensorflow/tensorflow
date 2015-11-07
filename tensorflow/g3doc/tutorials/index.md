@@ -1,7 +1,7 @@
 # Overview
 
 
-## ML for Beginners
+## MNIST For ML Beginners
 
 If you're new to machine learning, we recommend starting here.  You'll learn
 about a classic problem, handwritten digit classification (MNIST), and get a
@@ -10,7 +10,7 @@ gentle introduction to multiclass classification.
 [View Tutorial](mnist/beginners/index.md)
 
 
-## MNIST for Pros
+## Deep MNIST for Experts
 
 If you're already familiar with other deep learning software packages, and are
 already familiar with MNIST, this tutorial with give you a very brief primer on

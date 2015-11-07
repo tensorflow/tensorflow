@@ -101,7 +101,7 @@ w_twice = tf.Variable(weights.initialized_value() * 0.2, name="w_twice")
 The convenience function `tf.initialize_all_variables()` adds an Op to
 initialize *all variables* in the model.  You can also pass it an explicit list
 of variables to initialize.  See the
-[Variables Documentation](../../api_docs/python/state_op.md) for more options,
+[Variables Documentation](../../api_docs/python/state_ops.md) for more options,
 including checking if variables are initialized.
 
 ## Saving and Restoring

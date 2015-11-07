@@ -1,4 +1,4 @@
-# Sequence-to-Sequence Models: Learning to Translate
+# Sequence-to-Sequence Models
 
 Recurrent neural networks can learn to model language, as already discussed
 in the [RNN Tutorial](../recurrent/index.md)

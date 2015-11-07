@@ -66,3 +66,7 @@ RUN bazel clean && \
     bazel build -c opt tensorflow/tools/docker:simple_console
 
 ENV PYTHONPATH=/tensorflow/bazel-bin/tensorflow/tools/docker/simple_console.runfiles/:$PYTHONPATH
+
+# We want to start Jupyter in the directory with our getting started
+# tutorials.
+WORKDIR /notebooks

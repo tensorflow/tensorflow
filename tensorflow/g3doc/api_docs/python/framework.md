@@ -27,7 +27,7 @@
   * [class tf.RegisterShape](#RegisterShape)
   * [class tf.TensorShape](#TensorShape)
   * [class tf.Dimension](#Dimension)
-  * [tf.op_scope(*args, **kwds)](#op_scope)
+  * [tf.op_scope(values, name, default_name)](#op_scope)
   * [tf.get_seed(op_seed)](#get_seed)
 
 
@@ -235,7 +235,7 @@ def my_func(pred, tensor):
 
 - - -
 
-#### tf.Graph.device(*args, **kwds) {#Graph.device}
+#### tf.Graph.device(device_name_or_function) {#Graph.device}
 
 Returns a context manager that specifies the default device to use.
 
@@ -287,7 +287,7 @@ with g.device(matmul_on_gpu):
 
 - - -
 
-#### tf.Graph.name_scope(*args, **kwds) {#Graph.name_scope}
+#### tf.Graph.name_scope(name) {#Graph.name_scope}
 
 Returns a context manager that creates hierarchical names for operations.
 
@@ -611,7 +611,7 @@ the default graph.
 
 - - -
 
-#### tf.Graph.gradient_override_map(*args, **kwds) {#Graph.gradient_override_map}
+#### tf.Graph.gradient_override_map(op_type_map) {#Graph.gradient_override_map}
 
 EXPERIMENTAL: A context manager for overriding gradient functions.
 
@@ -2023,7 +2023,7 @@ The value of this dimension, or None if it is unknown.
 
 - - -
 
-### tf.op_scope(*args, **kwds) <div class="md-anchor" id="op_scope">{#op_scope}</div>
+### tf.op_scope(values, name, default_name) <div class="md-anchor" id="op_scope">{#op_scope}</div>
 
 Returns a context manager for use when defining a Python op.
 

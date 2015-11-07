@@ -267,7 +267,6 @@
   * [`depthwise_conv2d`](nn.md#depthwise_conv2d)
   * [`dropout`](nn.md#dropout)
   * [`embedding_lookup`](nn.md#embedding_lookup)
-  * [`embedding_lookup_sparse`](nn.md#embedding_lookup_sparse)
   * [`fixed_unigram_candidate_sampler`](nn.md#fixed_unigram_candidate_sampler)
   * [`in_top_k`](nn.md#in_top_k)
   * [`l2_loss`](nn.md#l2_loss)

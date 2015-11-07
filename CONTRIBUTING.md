@@ -15,3 +15,14 @@ Follow either of the two links above to access the appropriate CLA and instructi
 
 ***NOTE***: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
 
+## Contributing code
+
+We currently use Gerrit to host and handle code changes to TensorFlow.  The main
+site is
+[https://tensorflow-review.googlesource.com/](https://tensorflow-review.googlesource.com/).
+See Gerrit [docs](https://gerrit-review.googlesource.com/Documentation/) for
+information on how Gerrit's code review system works.
+
+We are currently working on improving our external acceptance process, so
+please be patient with us as we work out the details.
+

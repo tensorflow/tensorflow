@@ -1,4 +1,4 @@
-# Convolutional Neural Networks for Object Recognition
+# Convolutional Neural Networks
 
 **NOTE:** This tutorial is intended for *advanced* users of TensorFlow
 and assumes expertise and experience in machine learning.
@@ -264,7 +264,7 @@ in `cifar10.py`.
 
 `cifar10_train.py` periodically [saves](../../api_docs/python/state_ops.md#Saver)
 all model parameters in
-[checkpoint files](../../how_tos/variables.md#saving-and-restoring)
+[checkpoint files](../../how_tos/variables/index.md#saving-and-restoring)
 but it does *not* evaluate the model. The checkpoint file
 will be used by `cifar10_eval.py` to measure the predictive
 performance (see [Evaluating a Model](#evaluating-a-model) below).

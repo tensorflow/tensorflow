@@ -1,4 +1,4 @@
-# Downloading MNIST
+# MNIST Data Download
 
 Code: [tensorflow/g3doc/tutorials/mnist/](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/)
 
