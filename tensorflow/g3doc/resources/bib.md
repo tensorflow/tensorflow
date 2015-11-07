@@ -2,16 +2,16 @@
 ```
 @misc{tensorflow2015-whitepaper,
 title={{TensorFlow}: Large-Scale Machine Learning on Heterogeneous Systems},
-url={http://www.tensorflow.org/extras/tensorflow-whitepaper2015.pdf},
-note={Software available from www.tensorflow.org},
+url={http://tensorflow.org/},
+note={Software available from tensorflow.org},
 author={
-    Martin~Abadi and
+    Mart\'{\i}n~Abadi and
     Ashish~Agarwal and
     Paul~Barham and
     Eugene~Brevdo and
     Zhifeng~Chen and
     Craig~Citro and
-    Greg~S-Corrado and
+    Greg~S~Corrado and
     Andy~Davis and
     Jeffrey~Dean and
     Matthieu~Devin and
