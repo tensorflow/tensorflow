@@ -1,0 +1,48 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+
+<!-- tf-tooltip-coordinator is a plumbing component that provides a TooltipUpdater,
+which is a function that allows modification of the values within the tooltip-coordinator
+from javascript logic elsewhere. It then propagates the values to other Polymer components.
+
+Thus, the tooltip-coordinator allows many JS pieces of the application to modify a single
+piece of shared state.
+ -->
+<dom-module id="tf-tooltip-coordinator">
+  <script>
+    Polymer({
+      is: "tf-tooltip-coordinator",
+      properties: {
+        outTooltipUpdater: {
+          type: Function,
+          value: function() {
+            return (function(tooltipMap, xValue, closestRun) {
+              this._setOutTooltipMap(tooltipMap);
+              this._setOutXValue(xValue);
+              this._setOutClosestRun(closestRun);
+            }).bind(this);
+          },
+          notify: true,
+          readOnly: true,
+        },
+        outTooltipMap: {
+          // a {runName: tooltipValue} map, where runName and tooltipValue are strings.
+          type: Object,
+          notify: true,
+          readOnly: true,
+        },
+        outXValue: {
+          // a string representation of the closest x value for the tooltips
+          type: Number,
+          notify: true,
+          readOnly: true,
+        },
+        outClosestRun: {
+          // the name of the run that is closest to the user cursor (if any)
+          type: String,
+          notify: true,
+          readOnly: true,
+        },
+      },
+    });
+  </script>
+</dom-module>

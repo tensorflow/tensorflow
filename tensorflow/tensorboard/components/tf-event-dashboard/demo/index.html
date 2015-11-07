@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="../../../bower_components/webcomponentsjs/webcomponents-lite.min.js"></script>
+    <link rel="import" href="../tf-event-dashboard.html">
+    <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
+    <title>Event Dashboard Demo Demo</title>
+  </head>
+  <body>
+    <script>
+      TF.Urls.runsUrl = function() {return "data/runs.json"};
+      TF.Urls.scalarsUrl = function(tag, run) {return "data/" + run + "/" + tag + ".json";};
+    </script>
+
+    <tf-event-dashboard id="demo"></tf-event-dashboard>
+  </body>
+</html>

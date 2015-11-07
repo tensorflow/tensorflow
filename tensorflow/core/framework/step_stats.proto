@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/tensor_description.proto";
+
+// TODO(tucker): The next 4 message defs are very similar to
+// the *LogEntry messages in profile.proto.  They should be
+// unified in one place.
+
+message AllocatorMemoryUsed {
+  string allocator_name = 1;
+  int64 total_bytes = 2;
+  int64 peak_bytes = 3;
+}
+
+enum AllocationType {
+  AT_NOTUSED = 0;    // tensor was not filled in
+  AT_ALLOCATED = 1;  // tensor was allocated by the Op
+  AT_EXISTING = 2;   // tensor was set to share the value of an existing tensor
+  AT_REF = 3;        // tensor was set to be a reference to an existing tensor
+}
+
+// Output sizes recorded for a single execution of a graph node.
+message NodeOutput {
+  int32 slot = 1;
+  // Was the tensor allocated by this Op or a previous computation
+  AllocationType allocation_type = 2;
+  TensorDescription tensor_description = 3;
+};
+
+// Time/size stats recorded for a single execution of a graph node.
+message NodeExecStats {
+  // TODO(tucker): Use some more compact form of node identity than
+  // the full string name.  Either all processes should agree on a
+  // global id (cost_id?) for each node, or we should use a hash of
+  // the name.
+  string node_name = 1;
+  int64 all_start_micros = 2;
+  int64 op_start_rel_micros = 3;
+  int64 op_end_rel_micros = 4;
+  int64 all_end_rel_micros = 5;
+  repeated AllocatorMemoryUsed memory = 6;
+  repeated NodeOutput output = 7;
+  string timeline_label = 8;
+  int64 scheduled_micros = 9;
+  uint32 thread_id = 10;
+};
+
+message DeviceStepStats {
+  string device = 1;
+  repeated NodeExecStats node_stats = 2;
+}
+
+message StepStats {
+  repeated DeviceStepStats dev_stats = 1;
+};

@@ -1,0 +1,113 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<!--
+Module for adjusting render graph building parameter.
+-->
+<dom-module id="tf-graph-params">
+</dom-module>
+<script>
+  Polymer({
+
+    is: 'tf-graph-params',
+
+    properties: {
+      // PARAMETERS
+
+      enableExtraction: {
+        type: Boolean,
+        value: true
+      },
+
+      /** Maximum in-degree that a node can have without being considered as
+       *  high in-degree node. */
+      maxInDegree: {
+        type: Number,
+        value: 4
+      },
+      /** Maximum out-degree that a node can have without being considered as
+       *  high out-degree node. */
+      maxOutDegree: {
+        type: Number,
+        value: 4
+      },
+      /** Maximum number of control edges a node can have before they aren't
+       *  displayed. */
+      maxControlDegree: {
+        type: Number,
+        value: 4
+      },
+
+      /**
+       * Types patterns for predefined out-extract nodes, which are
+       * sink-like nodes that will be extracted from the main graph.
+       */
+      outExtractTypes: {
+        type: Array,
+        value: function() {
+          return [
+            'NoOp' // for "sgd", "momentum" group
+          ];
+        }
+      },
+
+      /**
+       * Types patterns for predefined in-extract nodes, which are
+       * source-like nodes that will be extracted from the main graph.
+       */
+      inExtractTypes: {
+        type: Array,
+        value: function() {
+          return ['Variable'];
+        }
+      },
+
+      /**
+       * When removing edges from a high degree node, remove all of its edges if
+       * detachAllEdgesForHighDegree is true.  Otherwise remove all in-edges if
+       * the node has high in-degree, or all out-edges if the node has high
+       * out-degree.
+       */
+      detachAllEdgesForHighDegree: {
+        type: Boolean,
+        value: false
+      },
+
+      /**
+       * After extracting high in/out degree nodes and predefined
+       * source-like/sink-like, extract isolated nodes to the side
+       * if this extractIsolatedNodesWithAnnotationsOnOneSide is true.
+       */
+      extractIsolatedNodesWithAnnotationsOnOneSide: {
+        type: Boolean,
+        value: true
+      },
+
+      /**
+       * Whether to draw bridge paths inside of expanded group nodes.
+       */
+      enableBridgegraph: {
+        type: Boolean,
+        value: true
+      },
+
+      /**
+       * Colors for the minimum and maximum values whenever we have a gradient
+       * scale.
+       */
+      minMaxColors: {
+        type: Array,
+        value: function() {
+          return ["#fff5f0", "#fb6a4a"];
+        }
+      },
+
+      /**
+       * Maximum number of annotations to be displayed on a node before an
+       * ellipsis is used.
+       */
+      maxAnnotations: {
+        type: Number,
+        value: 5
+      }
+    }
+  });
+</script>

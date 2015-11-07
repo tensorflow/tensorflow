@@ -1,0 +1,82 @@
+#!/bin/bash
+
+## Set up Cuda-related environment settings
+
+while [ "$TF_NEED_CUDA" == "" ]; do
+  read -p "Do you wish to bulid TensorFlow with GPU support? [y/n] " INPUT
+  case $INPUT in
+    [Yy]* ) echo -e "GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=1;;
+    [Nn]* ) echo -e "No GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_NEED_CUDA" == "0" ]; then
+  echo "Configuration finished"
+  exit
+fi
+
+# Find out where the CUDA toolkit is installed
+while true; do
+  fromuser=""
+  if [ -z "$CUDA_TOOLKIT_PATH" ]; then
+    default_cuda_path=/usr/local/cuda
+    read -p "Please specify the location where CUDA 7.0 toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
+    fromuser="1"
+    if [ -z "$CUDA_TOOLKIT_PATH" ]; then
+      CUDA_TOOLKIT_PATH=$default_cuda_path
+    fi
+  fi
+  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.7.0" ]; then
+    break
+  fi
+  echo "Invalid path to CUDA 7.0 toolkit. ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0 cannot be found"
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  CUDA_TOOLKIT_PATH=""
+  # Retry
+done
+
+# Find out where the CUDNN library is installed
+while true; do
+  fromuser=""
+  if [ -z "$CUDNN_INSTALL_PATH" ]; then
+    default_cudnn_path=${CUDA_TOOLKIT_PATH}
+    read -p "Please specify the location where CUDNN 6.5 V2 library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
+    fromuser="1"
+    if [ -z "$CUDNN_INSTALL_PATH" ]; then
+      CUDNN_INSTALL_PATH=$default_cudnn_path
+    fi
+    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Going through one more level of expansion to handle that.
+    CUDNN_INSTALL_PATH=$(bash -c "readlink -f $CUDNN_INSTALL_PATH")
+  fi
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.6.5" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5" ]; then
+    break
+  fi
+  echo "Invalid path to CUDNN 6.5 V2 toolkit. Neither of the following two files can be found:"
+  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5"
+  echo "$CUDNN_INSTALL_PATH/libcudnn.so.6.5"
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  CUDNN_INSTALL_PATH=""
+  # Retry
+done
+
+cat > third_party/gpus/cuda/cuda.config <<EOF
+# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requries Cuda 7.0
+# at the moment.
+CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
+
+# CUDNN_INSTALL_PATH refers to the CUDNN toolkit. The cudnn header and library
+# files can be either in this directory, or under include/ and lib64/
+# directories separately.
+CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
+EOF
+
+# Invoke the cuda_config.sh and set up the TensorFlow's canonical view of the Cuda libraries
+(cd third_party/gpus/cuda; ./cuda_config.sh;) || exit -1
+
+echo "Configuration finished"

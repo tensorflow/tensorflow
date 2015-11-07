@@ -1,0 +1,203 @@
+#if GOOGLE_CUDA
+
+#include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
+
+#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/stream_executor/platform.h"
+#include <gtest/gtest.h>
+
+namespace gpu = ::perftools::gputools;
+
+namespace tensorflow {
+namespace {
+
+TEST(PoolAllocatorTest, ZeroSizeBuffers) {
+  gpu::Platform* platform =
+      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  PoolAllocator pool(
+      2 /*pool_size_limit*/, false /*auto_resize*/,
+      new CUDAHostAllocator(
+          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+              .ValueOrDie()),
+      new NoopRounder, "pool");
+
+  EXPECT_EQ(nullptr, pool.AllocateRaw(4 /*alignment*/, 0 /*num_bytes*/));
+  pool.DeallocateRaw(nullptr);  // Should not crash.
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(0, pool.put_count());
+  EXPECT_EQ(0, pool.allocated_count());
+  EXPECT_EQ(0, pool.evicted_count());
+}
+
+TEST(PoolAllocatorTest, ZeroSizePool) {
+  gpu::Platform* platform =
+      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  PoolAllocator pool(
+      0 /*pool_size_limit*/, false /*auto_resize*/,
+      new CUDAHostAllocator(
+          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+              .ValueOrDie()),
+      new NoopRounder, "pool");
+
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(0, pool.put_count());
+  EXPECT_EQ(0, pool.allocated_count());
+  EXPECT_EQ(0, pool.evicted_count());
+
+  // All allocations should bypass the pool and return valid pointers.
+  for (int i = 0; i < 3; ++i) {
+    void* p0 = pool.AllocateRaw(4, 0);
+    void* p4 = pool.AllocateRaw(4, 4);
+    void* p12 = pool.AllocateRaw(4, 12);
+    EXPECT_EQ(nullptr, p0);
+    EXPECT_NE(nullptr, p4);
+    EXPECT_NE(nullptr, p12);
+    pool.DeallocateRaw(p0);
+    pool.DeallocateRaw(p4);
+    pool.DeallocateRaw(p12);
+  }
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(0, pool.put_count());
+  EXPECT_EQ(0, pool.allocated_count());
+  EXPECT_EQ(0, pool.evicted_count());
+}
+
+TEST(PoolAllocatorTest, Alignment) {
+  gpu::Platform* platform =
+      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  PoolAllocator pool(
+      0 /*pool_size_limit*/, false /*auto_resize*/,
+      new CUDAHostAllocator(
+          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+              .ValueOrDie()),
+      new NoopRounder, "pool");
+  for (int i = 0; i < 16; ++i) {
+    size_t alignment = 1 << i;
+    void* p = pool.AllocateRaw(alignment, 111);
+    EXPECT_TRUE(p != nullptr);
+    EXPECT_EQ(0, reinterpret_cast<int64>(p) & (alignment - 1))
+        << "ptr: " << p << " alignment " << alignment;
+    // Intentionally don't deallocate, to test that destruction of
+    // the PoolAllocator frees all pending memory.
+  }
+}
+
+TEST(PoolAllocatorTest, AutoResize) {
+  PoolAllocator pool(2 /*pool_size_limit*/, true /*auto_resize*/,
+                     new BasicCPUAllocator, new NoopRounder, "pool");
+
+  // Alloc/dealloc 10 sizes just a few times, confirming pool size
+  // stays at 2.
+  for (int i = 0; i < 10; ++i) {
+    void* p = pool.AllocateRaw(4, 64 << i);
+    pool.DeallocateRaw(p);
+  }
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(10, pool.allocated_count());
+  EXPECT_EQ(10, pool.put_count());
+  EXPECT_EQ(8, pool.evicted_count());
+  EXPECT_EQ(2, pool.size_limit());
+
+  // Then repeat 1200 times.  Pool size limit should jump to 100.
+  for (int j = 0; j < 120; ++j) {
+    for (int i = 0; i < 10; ++i) {
+      void* p = pool.AllocateRaw(4, 64 << i);
+      pool.DeallocateRaw(p);
+    }
+  }
+  EXPECT_EQ(100, pool.size_limit());
+}
+
+TEST(PoolAllocatorTest, CudaHostAllocator) {
+  gpu::Platform* platform =
+      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  PoolAllocator pool(
+      2 /*pool_size_limit*/, false /*auto_resize*/,
+      new CUDAHostAllocator(
+          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+              .ValueOrDie()),
+      new NoopRounder, "pool");
+
+  // Repeatedly Get a 16-byte value, confirming that there's only
+  // one real allocation.
+  void* p1_16 = pool.AllocateRaw(4, 16);
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(1, pool.allocated_count());
+  EXPECT_NE(nullptr, p1_16);
+  pool.DeallocateRaw(p1_16);
+  // Pool contents {16}
+  EXPECT_EQ(1, pool.put_count());
+  void* p2_16 = pool.AllocateRaw(4, 16);  // Get it again.
+  EXPECT_EQ(1, pool.get_from_pool_count());
+  EXPECT_EQ(1, pool.allocated_count());
+  EXPECT_EQ(p1_16, p2_16);    // Same pointer value
+  pool.DeallocateRaw(p2_16);  // Put it back.
+  // Pool contents {16}
+  EXPECT_EQ(2, pool.put_count());
+
+  // Get two more values of different sizes.
+  void* p3_4 = pool.AllocateRaw(4, 4);
+  EXPECT_EQ(2, pool.allocated_count());
+  EXPECT_NE(p1_16, p3_4);  // Different pointer value
+  EXPECT_NE(nullptr, p3_4);
+  pool.DeallocateRaw(p3_4);  // Put it back. Pool is now full.
+  // Pool contents {4, 16}
+  EXPECT_EQ(3, pool.put_count());
+  void* p4_2 = pool.AllocateRaw(4, 2);  // Get a third size buffer.
+  EXPECT_NE(nullptr, p4_2);
+  EXPECT_EQ(0, pool.evicted_count());
+
+  // The pool is full: when we put back p4_2, the 16-byte buffer
+  // should be evicted since it was least recently inserted.
+  pool.DeallocateRaw(p4_2);
+  // Pool contents {2, 4}
+  EXPECT_EQ(4, pool.put_count());
+  EXPECT_EQ(1, pool.evicted_count());
+
+  // Re-getting and putting size 2 or 4 should not alter pool size or
+  // num-evicted.
+  void* p5_4 = pool.AllocateRaw(4, 4);
+  EXPECT_NE(nullptr, p5_4);
+  pool.DeallocateRaw(p5_4);
+  void* p6_2 = pool.AllocateRaw(4, 2);
+  EXPECT_NE(nullptr, p6_2);
+  pool.DeallocateRaw(p6_2);
+  EXPECT_EQ(3, pool.get_from_pool_count());
+  EXPECT_EQ(6, pool.put_count());
+  EXPECT_EQ(3, pool.allocated_count());
+  EXPECT_EQ(1, pool.evicted_count());
+
+  pool.Clear();
+  EXPECT_EQ(0, pool.get_from_pool_count());
+  EXPECT_EQ(0, pool.put_count());
+  EXPECT_EQ(0, pool.allocated_count());
+  EXPECT_EQ(0, pool.evicted_count());
+}
+
+TEST(PoolAllocatorTest, Pow2Rounder) {
+  Pow2Rounder rounder;
+  EXPECT_EQ(1, rounder.RoundUp(1));
+  EXPECT_EQ(2, rounder.RoundUp(2));
+  EXPECT_EQ(16, rounder.RoundUp(9));
+  EXPECT_EQ(16, rounder.RoundUp(16));
+  EXPECT_EQ(65536, rounder.RoundUp(41234));
+  EXPECT_EQ(65536, rounder.RoundUp(65535));
+  EXPECT_EQ(65536, rounder.RoundUp(65536));
+}
+
+TEST(PoolAllocatorTest, Name) {
+  gpu::Platform* platform =
+      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  PoolAllocator pool(
+      2 /*pool_size_limit*/, false /*auto_resize*/,
+      new CUDAHostAllocator(
+          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+              .ValueOrDie()),
+      new NoopRounder, "pool");
+  EXPECT_EQ("pool", pool.Name());
+}
+
+}  // namespace
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA

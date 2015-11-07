@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Mocha</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="node_modules/mocha/mocha.css" />
+    </head>
+    <body>
+        <div id="mocha"></div>
+        <script src="node_modules/chai/chai.js"></script>
+        <script src="node_modules/mocha/mocha.js"></script>
+        <script>mocha.setup('bdd')</script>
+        <script>Polymer = function() {}
+        // hack hack - can't get polymer to run in phantomjs, so mock it out
+        </script>
+      <script src="bower_components/d3/d3.js"></script>
+      <script src="bower_components/svg-typewriter/svgtypewriter.js"></script>
+      <script src="bower_components/plottable/plottable.js"></script>
+        <script src="build/components.js"></script>
+        <script src="build/test.js"></script>
+        <script>
+            if (window.mochaPhantomJS) {
+                mochaPhantomJS.run();
+            } else {
+                mocha.run();
+            }
+        </script>
+    </body>
+</html>
+

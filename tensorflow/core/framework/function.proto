@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/op_def.proto";
+
+// A library is a set of named functions.
+message FunctionDefLibrary {
+  repeated FunctionDef function = 1;
+}
+
+// A function can be instantiated when the runtime can bind every attr
+// with a value. When a GraphDef has a call to a function, it must
+// have binding for every attr defined in the signature.
+//
+// TODO(zhifengc):
+//   * device spec, etc.
+message FunctionDef {
+  // The definition of the function's name, arguments, return values,
+  // attrs etc.
+  OpDef signature = 1;
+
+  // The body of the function.
+  repeated Node node = 2;  // function.node.ret[*] are unique.
+
+  // A node is a multi-value assignment:
+  //   (ret[0], ret[1], ...) = func(arg[0], arg[1], ...)
+  //
+  // By convention, "func" is resolved by consulting with a user-defined
+  // library first. If not resolved, "func" is assumed to be a builtin op.
+  message Node {
+    // This node produces multiple outputs. They are named ret[0],
+    // ret[1], ..., etc.
+    //
+    // REQUIRES: function.node.ret[*] are unique across all nodes.
+    // REQUIRES: ret.size == func/op def's number of output args.
+    repeated string ret = 1;
+
+    // The op/function name.
+    string op = 2;
+
+    // Arguments passed to this func/op.
+    //
+    // arg[i] must be either one of
+    // function.signature.input_args[*].name or one of
+    // function.node[*].ret[*].
+    //
+    // REQUIRES: arg.size == func/op def's number of input args.
+    repeated string arg = 3;
+
+    // Control dependencies.
+    //
+    // dep[i] must be one of function.node[*].ret[*] or one of
+    // function.signature.input_args[*].name.
+    repeated string dep = 4;
+
+    // Attrs.
+    //
+    // 'attr' maps names defined by 'func's attr defs to attr values.
+    // attr values may have placeholders which are substituted
+    // recursively by concrete values when this node is instantiated.
+    // These placeholdes must name an attr listed in the FunctionDef's
+    // signature.
+    map<string, AttrValue> attr = 5;
+  }
+}

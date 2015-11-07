@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+message GPUOptions {
+  // A value between 0 and 1 that indicates what fraction of the
+  // available GPU memory to pre-allocate for each process.  1 means
+  // to pre-allocate all of the GPU memory, 0.5 means the process
+  // allocates ~50% of the available GPU memory.
+  double per_process_gpu_memory_fraction = 1;
+};
+
+// Session configuration parameters.
+// The system picks an appropriate values for fields that are not set.
+message ConfigProto {
+  // Map from device type name (e.g., "CPU" or "GPU" ) to maximum
+  // number of devices of that type to use.  If a particular device
+  // type is not found in the map, the system picks an appropriate
+  // number.
+  map<string, int32> device_count = 1;
+
+  // The execution of an individual op (for some op types) can be
+  // parallelized on a pool of intra_op_parallelism_threads.
+  // 0 means the system picks an appropriate number.
+  int32 intra_op_parallelism_threads = 2;
+
+  // Nodes that perform blocking operations are enqueued on a pool of
+  // inter_op_parallelism_threads available in each process.
+  //
+  // 0 means the system picks an appropriate number.
+  //
+  // Note that the first Session created in the process sets the
+  // number of threads for all future sessions.
+  int32 inter_op_parallelism_threads = 5;
+
+  // Assignment of Nodes to Devices is recomputed every placement_period
+  // steps until the system warms up (at which point the recomputation
+  // typically slows down automatically).
+  int32 placement_period = 3;
+
+  // When any filters are present sessions will ignore all devices which do not
+  // match the filters. Each filter can be partially specified, e.g. "/job:ps"
+  // "/job:worker/replica:3", etc.
+  repeated string device_filters = 4;
+
+  // Options that apply to all GPUs.
+  GPUOptions gpu_options = 6;
+
+  // Whether soft placement is allowed. If allow_soft_placement is true,
+  // an op will be placed on CPU if
+  //   1. there's no GPU implementation for the OP
+  // or
+  //   2. no GPU devices are known or registered
+  // or
+  //   3. need to co-locate with reftype input(s) which are from CPU.
+  bool allow_soft_placement = 7;
+
+  // Whether device placements should be logged.
+  bool log_device_placement = 8;
+};

@@ -1,0 +1,208 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="tf-data-coordinator.html">
+<link rel="import" href="tf-tooltip-coordinator.html">
+<link rel="import" href="tf-run-selector.html">
+<link rel="import" href="tf-x-type-selector.html">
+<link rel="import" href="../tf-dashboard-common/tf-run-generator.html">
+<link rel="import" href="tf-color-scale.html">
+<link rel="import" href="../tf-dashboard-common/tf-url-generator.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard-layout.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-dashboard-common/dashboard-style.html">
+<link rel="import" href="../tf-dashboard-common/tf-downloader.html">
+<link rel="import" href="../tf-categorizer/tf-categorizer.html">
+<link rel="import" href="tf-chart.html">
+<link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
+<link rel="import" href="../../bower_components/iron-collapse/iron-collapse.html">
+<link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../imports/lodash.html">
+<link rel="import" href="../tf-dashboard-common/warning-style.html">
+
+<!--
+tf-event-dashboard is a complete frontend that loads runs from a backend,
+and creates chart panes that display data for those runs.
+
+It provides a categorizer, run selector, and x type selector, by which the user
+can customize how data is organized and displayed.
+
+Each chart has a button that can toggle whether it is "selected"; selectedRuns
+charts are larger.
+
+Organizationally, the #plumbing div contains components that have no concrete
+manifestation and just effect data bindings or data loading. The #sidebar contains
+shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
+The #center div contains tf-charts embedded inside tf-collapsable-panes.
+-->
+<dom-module id="tf-event-dashboard">
+  <template>
+    <div id="plumbing">
+      <tf-url-generator
+        out-runs-url="{{runsUrl}}"
+        out-scalars-url-generator="{{scalarsUrlGen}}"
+        id="urlGenerator"
+      ></tf-url-generator>
+
+      <tf-data-coordinator
+        id="dataCoordinator"
+        url-generator="[[scalarsUrlGen]]"
+        run-to-tag="[[runToScalars]]"
+        color-scale="[[colorScale]]"
+        out-data-coordinator="{{dataCoordinator}}"
+      /></tf-data-coordinator>
+
+      <tf-run-generator
+        id="runGenerator"
+        url="[[runsUrl]]"
+        out-run-to-scalars="{{runToScalars}}"
+      /></tf-run-generator>
+
+      <tf-color-scale
+        id="colorScale"
+        runs="[[_runs]]"
+        out-color-scale="{{colorScale}}"
+        out-class-scale="{{classScale}}"
+      ></tf-color-scale>
+
+      <tf-tooltip-coordinator
+        id="tooltipCoordinator"
+        out-tooltip-updater="{{tooltipUpdater}}"
+        out-tooltip-map="{{tooltipMap}}"
+        out-x-value="{{tooltipXValue}}"
+        out-closest-run="{{closestRun}}"
+      ></tf-tooltip-coordinator>
+
+    </div>
+
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <tf-categorizer
+          id="categorizer"
+          tags="[[_visibleTags]]"
+          categories="{{categories}}"
+        ></tf-categorizer>
+        <span id="download-option">
+          Show Data Download Links:
+          <paper-toggle-button checked="{{_show_download_links}}"></paper-toggle-button>
+        </span>
+
+        <tf-x-type-selector
+          id="xTypeSelector"
+          out-x-type="{{xType}}"
+        ></tf-x-type-selector>
+
+        <tf-run-selector
+          id="runSelector"
+          runs="[[_runs]]"
+          class-scale="[[classScale]]"
+          out-selected="{{selectedRuns}}"
+          tooltips="[[tooltipMap]]"
+          closest-run="[[closestRun]]"
+          x-value="[[tooltipXValue]]"
+          x-type="[[xType]]"
+        ></tf-run-selector>
+
+      </div>
+      <div class="center">
+        <template is="dom-if" if="[[!categories.length]]">
+          <div class="warning">
+            <p>
+              No scalar summary tags were found.
+            </p>
+            <p>
+              Maybe data hasn't loaded yet, or maybe you need
+              to add some <code>tf.scalar_summary</code> ops to your graph, and
+              serialize them using the <code>tf.training.summary_io.SummaryWriter</code>.
+            </p>
+          </div>
+        </template>
+        <template is="dom-repeat" items="[[categories]]">
+          <tf-collapsable-pane name="[[item.name]]" count="[[item.tags.length]]">
+            <div class="layout horizontal wrap">
+              <template is="dom-repeat" items="[[item.tags]]" as="tag">
+                <div class="card">
+                  <span class="card-title">[[tag]]</span>
+                  <div class="card-content">
+                    <tf-chart
+                      tag="[[tag]]"
+                      type="scalar"
+                      id="chart"
+                      selected-runs="[[selectedRuns]]"
+                      x-type="[[xType]]"
+                      data-coordinator="[[dataCoordinator]]"
+                      color-scale="[[colorScale]]"
+                      on-keyup="toggleSelected"
+                      tabindex="2"
+                      tooltip-updater="[[tooltipUpdater]]"
+                    ></tf-chart>
+                    <paper-icon-button
+                      class="expand-button"
+                      shift$="[[_show_download_links]]"
+                      icon="fullscreen"
+                      on-tap="toggleSelected"
+                    ></paper-icon-button>
+                  </div>
+                  <template is="dom-if" if="[[_show_download_links]]">
+                    <div class="card-bottom-row">
+                      <tf-downloader
+                        selected-runs="[[selectedRuns]]"
+                        tag="[[tag]]"
+                        url-fn="[[scalarsUrlGen]]"
+                        run-to-tag="[[runToScalars]]"
+                      >
+                      </tf-downloader>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </tf-collapsable-pane>
+        </template>
+      </div>
+    </tf-dashboard-layout>
+
+    <style include="dashboard-style"></style>
+    <style include="warning-style"></style>
+
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-event-dashboard",
+      properties: {
+        _runs: {
+          type: Array,
+          computed: "_getRuns(runToScalars)",
+        },
+        _visibleTags: {
+          type: Array,
+          computed: "_getVisibleTags(selectedRuns.*, runToScalars.*)"
+        },
+        _show_download_links: Boolean,
+      },
+      observers: ['redraw(_show_download_links)'],
+      redraw: function(_show_download_links) {
+        var els = this.getElementsByTagName("tf-chart");
+        for (var i=0; i<els.length; i++) {
+          els[i].redraw();
+        }
+      },
+      _getRuns: function(runToScalars) {
+        return _.keys(runToScalars);
+      },
+      _getVisibleTags: function(selectedRunsChange, runsToScalarsChange) {
+        var keys = selectedRunsChange.base;
+        var dict = runsToScalarsChange.base;
+        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
+      },
+      toggleSelected: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var parentDiv = currentTarget.parentNode.parentNode;
+        parentDiv.classList.toggle("selected");
+        var chart = currentTarget.previousElementSibling;
+        if (chart) {
+          chart.redraw();
+        }
+      },
+    });
+  </script>
+</dom-module>

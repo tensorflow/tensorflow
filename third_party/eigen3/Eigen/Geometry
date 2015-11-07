@@ -1,0 +1,65 @@
+#ifndef EIGEN_GEOMETRY_MODULE_H
+#define EIGEN_GEOMETRY_MODULE_H
+
+#include "Core"
+
+#include "src/Core/util/DisableStupidWarnings.h"
+
+#include "SVD"
+#include "LU"
+#include <limits>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+/** \defgroup Geometry_Module Geometry module
+  *
+  *
+  *
+  * This module provides support for:
+  *  - fixed-size homogeneous transformations
+  *  - translation, scaling, 2D and 3D rotations
+  *  - quaternions
+  *  - \ref MatrixBase::cross() "cross product"
+  *  - \ref MatrixBase::unitOrthogonal() "orthognal vector generation"
+  *  - some linear components: parametrized-lines and hyperplanes
+  *
+  * \code
+  * #include <Eigen/Geometry>
+  * \endcode
+  */
+
+#include "src/Geometry/OrthoMethods.h"
+#include "src/Geometry/EulerAngles.h"
+
+#if EIGEN2_SUPPORT_STAGE > STAGE20_RESOLVE_API_CONFLICTS
+  #include "src/Geometry/Homogeneous.h"
+  #include "src/Geometry/RotationBase.h"
+  #include "src/Geometry/Rotation2D.h"
+  #include "src/Geometry/Quaternion.h"
+  #include "src/Geometry/AngleAxis.h"
+  #include "src/Geometry/Transform.h"
+  #include "src/Geometry/Translation.h"
+  #include "src/Geometry/Scaling.h"
+  #include "src/Geometry/Hyperplane.h"
+  #include "src/Geometry/ParametrizedLine.h"
+  #include "src/Geometry/AlignedBox.h"
+  #include "src/Geometry/Umeyama.h"
+
+  // Use the SSE optimized version whenever possible. At the moment the
+  // SSE version doesn't compile when AVX is enabled
+  #if defined EIGEN_VECTORIZE_SSE && !defined EIGEN_VECTORIZE_AVX
+    #include "src/Geometry/arch/Geometry_SSE.h"
+  #endif
+#endif
+
+#ifdef EIGEN2_SUPPORT
+#include "src/Eigen2Support/Geometry/All.h"
+#endif
+
+#include "src/Core/util/ReenableStupidWarnings.h"
+
+#endif // EIGEN_GEOMETRY_MODULE_H
+/* vim: set filetype=cpp et sw=2 ts=2 ai: */
+

@@ -1,0 +1,52 @@
+#Class tensorflow::WritableFile
+
+A file abstraction for sequential writing.
+
+The implementation must provide buffering since callers may append small fragments at a time to the file.
+
+##Member Summary
+
+* [tensorflow::WritableFile::WritableFile](#tensorflow_WritableFile_WritableFile)
+* [virtual tensorflow::WritableFile::~WritableFile](#virtual_tensorflow_WritableFile_WritableFile)
+* [virtual Status tensorflow::WritableFile::Append](#virtual_Status_tensorflow_WritableFile_Append)
+* [virtual Status tensorflow::WritableFile::Close](#virtual_Status_tensorflow_WritableFile_Close)
+* [virtual Status tensorflow::WritableFile::Flush](#virtual_Status_tensorflow_WritableFile_Flush)
+* [virtual Status tensorflow::WritableFile::Sync](#virtual_Status_tensorflow_WritableFile_Sync)
+
+##Member Details
+
+#### tensorflow::WritableFile::WritableFile() {#tensorflow_WritableFile_WritableFile}
+
+
+
+
+
+#### virtual tensorflow::WritableFile::~WritableFile() {#virtual_tensorflow_WritableFile_WritableFile}
+
+
+
+
+
+#### virtual Status tensorflow::WritableFile::Append(const StringPiece &amp;data)=0 {#virtual_Status_tensorflow_WritableFile_Append}
+
+
+
+
+
+#### virtual Status tensorflow::WritableFile::Close()=0 {#virtual_Status_tensorflow_WritableFile_Close}
+
+
+
+
+
+#### virtual Status tensorflow::WritableFile::Flush()=0 {#virtual_Status_tensorflow_WritableFile_Flush}
+
+
+
+
+
+#### virtual Status tensorflow::WritableFile::Sync()=0 {#virtual_Status_tensorflow_WritableFile_Sync}
+
+
+
+

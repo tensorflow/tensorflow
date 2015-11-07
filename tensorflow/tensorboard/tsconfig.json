@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "noEmitOnError": true,
+    "compileOnSave": false,
+    "target": "ES5"
+  }
+}

@@ -1,0 +1,82 @@
+// Protocol messages for describing features for machine learning model
+// training or inference.
+//
+// There are three base Feature types:
+//   - bytes
+//   - float
+//   - int64
+//
+// Base features are contained in Lists which may hold zero or more values.
+//
+// Features are organized into categories by name.  The Features message
+// contains the mapping from name to Feature.
+//
+// Example Features for a movie recommendation application:
+//   feature {
+//     key: "age"
+//     float_list {
+//       value: 29.0
+//     }
+//   }
+//   feature {
+//     key: "movie"
+//     bytes_list {
+//       value: "The Shawshank Redemption"
+//       value: "Fight Club"
+//     }
+//   }
+//   feature {
+//     key: "movie_ratings"
+//     float_list {
+//       value: 9.0
+//       value: 9.7
+//     }
+//   }
+//   feature {
+//     key: "suggestion"
+//     bytes_list {
+//       value: "Inception"
+//     }
+//   }
+//   feature {
+//     key: "suggestion_purchased"
+//     int64_list {
+//       value: 1
+//     }
+//   }
+//   feature {
+//     key: "purchase_price"
+//     float_list {
+//       value: 9.99
+//     }
+//   }
+
+syntax = "proto3";
+// option cc_enable_arenas = true;
+
+package tensorflow;
+
+message Feature {
+  // Each feature can be exactly one kind.
+  oneof kind {
+    BytesList bytes_list = 1;
+    FloatList float_list = 2;
+    Int64List int64_list = 3;
+  }
+};
+
+message Features {
+  // Map from feature name to feature.
+  map<string, Feature> feature = 1;
+};
+
+// Containers to hold repeated fundamental features.
+message BytesList {
+  repeated bytes value = 1;
+}
+message FloatList {
+  repeated float value = 1 [packed=true];
+}
+message Int64List {
+  repeated int64 value = 1 [packed=true];
+}

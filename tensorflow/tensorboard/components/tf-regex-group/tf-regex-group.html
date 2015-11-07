@@ -1,0 +1,151 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../../bower_components/iron-icons/iron-icons.html">
+<link rel="import" href="../../bower_components/paper-toggle-button/paper-toggle-button.html">
+<link rel="import" href="../../bower_components/paper-input/paper-input.html">
+
+<!--
+`tf-regex-group` provides an input component for a group of regular expressions.
+
+Example:
+  <tf-regex-group regexes="{{regexes}}"></tf-regex-group>
+
+It contains a series of regular expression input fields. From this, it computes
+`regexes', an array in which every element is either a string representing an
+active, valid, nonempty regular expression, or the value `null`
+
+Public Properties:
+`regexes` a readonly, notifying array of strings, where each string is an
+  active, valid, nonempty regex
+
+It maintains an invariant that the final regex should always be an empty string,
+so the user can easily add more regular expressions. It does this by adding
+a new empty regex when the final one is nonempty.
+
+Pressing "enter" moves focus to the next regex (or just blurs if there are no
+more regexes).
+-->
+<dom-module id="tf-regex-group">
+  <template>
+    <div class="regex-list">
+      <template is="dom-repeat" items="{{rawRegexes}}">
+        <div class="regex-line">
+          <paper-input
+            id="text-input"
+            class="regex-input"
+            label="input new regex"
+            no-label-float
+            bind-value="{{item.regex}}"
+            invalid="[[!item.valid]]"
+            on-keyup="moveFocus"
+          ></paper-input>
+          <paper-toggle-button
+            class="active-button"
+            checked="{{item.active}}"
+            disabled="[[!item.valid]]"
+          ></paper-toggle-button>
+
+          <paper-icon-button
+            icon="delete"
+            class="delete-button"
+            aria-label="Delete Regex"
+            tabindex="0"
+            on-tap="deleteRegex"
+          ></paper-icon-button>
+        </div>
+        <style>
+          .regex-input {
+            width: 210px;
+            display: inline-block;
+            padding-left: 8px;
+            padding-right: 5px;
+          }
+
+          .active-button {
+            --paper-toggle-button-checked-button-color: var(--tb-orange-strong);
+            --paper-toggle-button-checked-bar-color: var(--tb-orange-weak);
+            border: none;
+          }
+
+          .delete-button {
+            color: var(--paper-pink-900);
+            width: 24px;
+            height: 24px;
+          }
+          .regex-list {
+            margin-bottom: 10px;
+          }
+          paper-input {
+            --paper-input-container-focus-color: var(--tb-orange-strong);
+          }
+        </style>
+      </template>
+    </div>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-regex-group",
+      properties: {
+        rawRegexes: {
+          type: Array,
+          value: function() {
+            return [{regex: "", active: true, valid: true}];
+          }
+        },
+        regexes: {type: Array, computed: "usableRegexes(rawRegexes.*)", notify: true},
+      },
+      observers: [
+        "addNewRegexIfNeeded(rawRegexes.*)",
+        "checkValidity(rawRegexes.*)",
+      ],
+      checkValidity: function(x) {
+        var match = x.path.match(/rawRegexes\.(\d+)\.regex/);
+        if (match) {
+          var idx = match[1];
+          this.set("rawRegexes." + idx + ".valid", this.isValid(x.value));
+        }
+      },
+      isValid: function(s) {
+        try {
+          new RegExp(s);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      },
+      usableRegexes: function(regexes) {
+        var isValid = this.isValid;
+        return regexes.base.filter(function (r) {
+          // Checking validity here (rather than using the data property)
+          // is necessary because otherwise we might send invalid regexes due
+          // to the fact that this function can call before the observer does
+          return r.regex !== "" && r.active && isValid(r.regex);
+        }).map(function(r) {
+          return r.regex;
+        });
+      },
+      addNewRegexIfNeeded: function() {
+        var last = this.rawRegexes[this.rawRegexes.length - 1];
+        if (last.regex !== "") {
+          this.push("rawRegexes", {regex: "", active: true, valid: true});
+        }
+      },
+      deleteRegex: function(e) {
+        if (this.rawRegexes.length > 1) {
+          this.splice("rawRegexes", e.model.index, 1);
+        }
+      },
+      moveFocus: function(e) {
+        if (e.keyCode === 13) {
+          var idx = e.model.index;
+          var inputs = Polymer.dom(this.root).querySelectorAll(".regex-input");
+          if (idx < this.rawRegexes.length - 1) {
+            inputs[idx+1].$.input.focus();
+          } else {
+            document.activeElement.blur();
+          }
+        }
+      }
+    });
+  </script>
+</dom-module>

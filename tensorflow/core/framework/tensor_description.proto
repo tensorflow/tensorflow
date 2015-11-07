@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/allocation_description.proto";
+
+message TensorDescription {
+  // Data type of tensor elements
+  DataType dtype = 1;
+
+  // Shape of the tensor.
+  TensorShapeProto shape = 2;
+
+  // Information about the size and allocator used for the data
+  AllocationDescription allocation_description = 4;
+};

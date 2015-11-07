@@ -1,0 +1,64 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../imports/lodash.html">
+
+<!--
+tf-image-loader loads an individual image from the TensorBoard backend.
+
+Right now it always loads the most recent image. We should add support in the
+future for loading older images.
+-->
+<dom-module id="tf-image-loader">
+  <style>
+  :host {
+    display: block;
+  }
+  img {
+    width: 100%;
+    height: 100%;
+  }
+  </style>
+  <template>
+    <iron-ajax
+      id="ajax"
+      auto
+      url="[[metadataUrl]]"
+      handle-as="json"
+      debounce="50"
+      last-response="{{imageMetadata}}"
+      verbose="true"
+    ></iron-ajax>
+    <template is="dom-if" if="[[imageUrl]]">
+      <img src="[[imageUrl]]"></img>
+    </template is="dom-if">
+  </template>
+  <script>
+    Polymer({
+      is: "tf-image-loader",
+      properties: {
+        run: String,
+        tag: String,
+        imagesGenerator: Function,
+        individualImageGenerator: Function,
+        imageMetadata: Array,
+        metadataUrl: {
+          type: String,
+          computed: "apply(imagesGenerator, tag, run)",
+        },
+        imageUrl: {
+          type: String,
+          computed: "getLastImage(imageMetadata, individualImageGenerator)",
+        },
+      },
+      apply: function(imagesGenerator, run, tag) {
+        return imagesGenerator(run, tag);
+      },
+      getLastImage: function(imageMetadata, individualImageGenerator) {
+        if (imageMetadata == null) {
+          return null;
+        }
+        var query = _.last(imageMetadata).query;
+        return individualImageGenerator(query);
+      },
+    });
+  </script>
+</dom-module>

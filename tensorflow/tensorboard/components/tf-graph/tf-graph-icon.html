@@ -1,0 +1,164 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+
+<dom-module id="tf-graph-icon">
+  <template>
+    <template is="dom-if" if="[[_isType(node, type, 'OP')]]">
+      <template is="dom-if" if="[[_isConst(node, const)]]">
+        <svg height$="[[height]]"
+            preserveAspectRatio="xMinYMid meet" viewBox="0 0 10 10">
+          <circle fill="white" stroke="#848484" cx="5" cy="5" r="3" />
+        </svg>
+      </template>
+      <template is="dom-if" if="[[_isSummary(node, summary)]]">
+        <img height$="[[height]]"
+            src="[[resolveUrl('../../lib/svg/summary-icon.svg')]]" />
+      </template>
+      <template is="dom-if" if="[[_isRegularOp(node, const, summary)]]">
+        <svg height$="[[height]]"
+            preserveAspectRatio="xMinYMid meet" viewBox="0 0 16 8">
+          <use xmlns:xlink="http://www.w3.org/1999/xlink"
+              xlink:href="#op-node-stamp"
+              fill="white"
+              stroke="#ccc"
+              x="8" y="4" />
+        </svg>
+      </template>
+    </template>
+    <template is="dom-if" if="[[_isType(node, type, 'META')]]">
+      <svg height$="[[height]]"
+            preserveAspectRatio="xMinYMid meet" viewBox="0 0 37 16">
+        <rect x="1" y="1"
+            fill="#d9d9d9" stroke="#ccc" stroke-width="2px"
+            height="14" width="35"
+            rx="5" ry="5" />
+      </svg>
+    </template>
+    <template is="dom-if" if="[[_isType(node, type, 'SERIES')]]">
+      <template is="dom-if" if="[[_isVertical(node, vertical)]]">
+        <svg height$="[[height]]"
+            preserveAspectRatio="xMinYMid meet" viewBox="0 0 16 15">
+          <use xmlns:xlink="http://www.w3.org/1999/xlink"
+              xlink:href="#op-series-vertical-stamp"
+              fill="white"
+              stroke="#ccc"
+              x="0" y="2" />
+        </svg>
+      </template>
+      <template is="dom-if" if="[[!_isVertical(node, vertical)]]">
+        <svg height$="[[height]]"
+            preserveAspectRatio="xMinYMid meet" viewBox="0 0 24 10">
+          <use xmlns:xlink="http://www.w3.org/1999/xlink"
+              xlink:href="#op-series-horizontal-stamp"
+              fill="white"
+              stroke="#ccc"
+              x="0" y="1" />
+        </svg>
+      </template>
+    </template>
+  </template>
+
+  <script>
+    (function() {
+      Polymer({
+        is: 'tf-graph-icon',
+
+        properties: {
+          /**
+           * Node to represent with an icon. Optional, but if specified, its
+           * properties override those defined in the type, vertical, const and
+           * summary properties.
+           * @type {tf.graph.Node}
+           */
+          node: {
+            type: Object,
+            value: null
+          },
+
+          /** Type of node to draw. */
+          type: {
+            type: String,
+            value: null
+          },
+
+          /** Direction for series (ignored for other types). */
+          vertical: {
+            type: Boolean,
+            value: false
+          },
+
+          /** Whether the op is Const (ignored for non-ops). */
+          const: {
+            type: Boolean,
+            value: false
+          },
+
+          /** Whether the op is a Summary (ignored for non-ops). */
+          summary: {
+            type: Boolean,
+            value: false
+          },
+
+          /** Height of the SVG element in pixels, used for scaling. */
+          height: {
+            type: Number,
+            value: 20
+          }
+        },
+
+        /**
+         * Test whether the specified node's type, or the literal type string,
+         * match a particular other type.
+         */
+        _isType: function(inputNode, inputType, targetType) {
+          if (inputNode) {
+            return tf.graph.NodeType[inputNode.type] === targetType;
+          }
+          return inputType === targetType;
+        },
+
+        /**
+         * Test whether the specified node should be represented as a vertical
+         * series. Defaults to the value of the vertical property if node is
+         * not specified.
+         */
+        _isVertical: function(inputNode, inputVertical) {
+          if (inputNode) {
+            return inputNode.hasNonControlEdges;
+          }
+          return !!inputVertical;
+        },
+
+        /**
+         * Test whether the specified node is a constant. Defaults to the value
+         * of the const property if node is not specified.
+         */
+        _isConst: function(inputNode, inputConst) {
+          if (inputNode) {
+            return inputNode.op === 'Const';
+          }
+          return !!inputConst;
+        },
+
+        /**
+         * Test whether the specified node is a summary. Defaults to the value
+         * of the summary property if node is not specified.
+         */
+        _isSummary: function(inputNode, inputSummary) {
+          if (inputNode) {
+            return this._isType(inputNode, null, 'OP') &&
+                inputNode.op.substr(-7) === 'Summary';
+          }
+          return !!inputSummary;
+        },
+
+        /**
+         * Test whether the op node is a regular non-summary non-const node.
+         */
+        _isRegularOp: function(inputNode, inputConst, inputSummary) {
+          return !this._isConst(inputNode, inputConst) &&
+              !this._isSummary(inputNode, inputSummary);
+        }
+      });
+    })();
+  </script>
+</dom-module>

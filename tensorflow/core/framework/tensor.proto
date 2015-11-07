@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+// Protocol buffer representing a tensor.
+message TensorProto {
+  DataType dtype = 1;
+
+  // Shape of the tensor.  TODO(mdevin): sort out the 0-rank issues.
+  TensorShapeProto tensor_shape = 2;
+
+  // Only one of the representations below is set, one of "tensor_contents" and
+  // the "xxx_val" attributes.  We are not using oneof because as oneofs cannot
+  // contain repeated fields it would require another extra set of messages.
+
+  // Version number.
+  //
+  // In version 0, if the "repeated xxx" representations contain only one
+  // element, that element is repeated to fill the shape.  This makes it easy
+  // to represent a constant Tensor with a single value.
+  int32 version_number = 3;
+
+  // Serialized content from TensorBase::Serialize() This representation can be
+  // used for all tensor types.
+  bytes tensor_content = 4;
+
+  // Type specific representations that make it easy to create tensor protos in
+  // all languages.  Only the representation corresponding to "dtype" can
+  // be set.  The values hold the flattened representation of the tensor in
+  // row major order.
+
+  // DT_FLOAT.
+  repeated float float_val = 5 [packed = true];
+
+  // DT_DOUBLE.
+  repeated double double_val = 6 [packed = true];
+
+  // DT_INT32, DT_INT16, DT_INT8, DT_UINT8.
+  repeated int32 int_val = 7 [packed = true];
+
+  // DT_STRING
+  repeated bytes string_val = 8;
+
+  // DT_COMPLEX64. scomplex_val(2*i) and scomplex_val(2*i+1) are real
+  // and imaginary parts of i-th single precision complex.
+  repeated float scomplex_val = 9 [packed = true];
+
+  // DT_INT64
+  repeated int64 int64_val = 10 [packed = true];
+
+  // DT_BOOL
+  repeated bool bool_val = 11 [packed = true];
+};

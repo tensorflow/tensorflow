@@ -1,0 +1,228 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../imports/lodash.html">
+<link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
+<link rel="import" href="../tf-dashboard-common/run-color-style.html">
+<!--
+tf-multi-checkbox creates a list of checkboxes that can be used to toggle on or off
+a large number of values. Each checkbox displays a name, and may also have an
+assosciated tooltip value. Checkboxes can be highlighted, hidden, and re-ordered.
+
+tf-multi-checkbox assumes that the names may be very long compared to the width
+of the checkbox, and the number of names may also be very large, and works to
+handle these situations gracefully.
+
+API:
+
+Properties in:
+names: The string names to associate with checkboxes.
+tooltips: An object mapping from name to tooltip value.
+tooltipOrderer: A function that is used to compute how to order the names based
+on tooltip values (when available). If tooltip values and a tooltip orderer are
+present, the tooltipOrderer computes a numeric value for each tooltip, tooltips
+with higher values are ordered first, tooltips with equal values are ordered
+lexicogrpahically, and tooltips without a value are placed last. If the
+tooltipOrderer is set to a falsey value (eg null), then the names are not
+re-ordered based on tooltip value.
+classScale: A function that maps from name to class name, which is applied as
+the special property color-class. This is intended to be used to color the names.
+hideMissingTooltips: If set, then when tooltips are present, any names that do
+not have an associate non-empty tooltip value will be hidden.
+
+Properties out:
+outSelected: An array of names that the user has checked.
+If the user does not interact, everything will be checked.
+
+-->
+
+<dom-module id="tf-multi-checkbox">
+  <style include="scrollbar-style"></style>
+  <style include="run-color-style"></style>
+
+  <template>
+    <div id="outer-container" class="scrollbar">
+      <template
+        is="dom-repeat"
+        items="[[names]]"
+        sort="[[_tooltipComparator(tooltips, tooltipOrderer)]]"
+      >
+        <div
+          class="run-row"
+          color-class$="[[_applyColorClass(item, classScale)]]"
+          null-tooltip$="[[_isNullTooltip(item, tooltips)]]"
+          highlight$="[[_isHighlighted(item, highlights.*)]]"
+        >
+          <div class="checkbox-container vertical-align-container">
+            <paper-checkbox
+              class="checkbox vertical-align-center"
+              name="[[item]]"
+              checked$="[[_isChecked(item,outSelected.*)]]"
+              on-change="_checkboxChange"
+            ></paper-checkbox>
+          </div>
+          <div class="item-label-container">
+            <span>[[item]]</span>
+          </div>
+          <div class="tooltip-value-container vertical-align-container">
+            <span class="vertical-align-top">[[_lookupTooltip(item,tooltips)]]</span>
+          </div>
+        </div>
+      </template>
+    </div>
+  <style>
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    #outer-container {
+      overflow-y: scroll;
+      overflow-x: hidden;
+      width: 100%;
+      flex-grow: 1;
+      flex-shrink: 1;
+      word-wrap: break-word;
+    }
+    .run-row {
+      padding-top: 5px;
+      padding-bottom: 5px;
+      display: flex;
+      flex-direction: row;
+      font-size: 13px;
+    }
+    .checkbox-container {
+      flex-grow: 0;
+      flex-shrink: 0;
+    }
+    .checkbox {
+      padding-left: 2px;
+      width: 32px;
+    }
+    .item-label-container {
+      flex-grow: 1;
+      flex-shrink: 1;
+      width: 0px; /* hack to get the flex-grow to work properly */
+    }
+    .tooltip-value-container {
+      display: flex;
+      justify-content: center;
+      flex-grow: 0;
+      flex-shrink: 0;
+      text-align:right;
+      padding-left: 2px;
+    }
+    .vertical-align-container {
+      display: flex;
+      justify-content: center;
+    }
+    .vertical-align-container .vertical-align-center {
+      align-self: center;
+    }
+    .vertical-align-container .vertical-align-top {
+      align-self: start;
+    }
+    [null-tooltip] {
+      display: none;
+    }
+    [highlight] {
+      font-weight: bold;
+    }
+  </style>
+  </template>
+
+  <script>
+  Polymer({
+    is: "tf-multi-checkbox",
+    properties: {
+      names: Array,
+      tooltipOrderer: {
+        /* Used to compute how to order the tooltips based on the tooltip value.
+         * By default, it parses the tooltip strings as numbers.
+         * If set to a falsey value, tooltips are always ordered lexicographically.
+         */
+        type: Function,
+        value: function() {
+          return function(x) {return +x;}
+        },
+      },
+      tooltips: Object,
+      highlights: Array,
+      outSelected: {
+        type: Array,
+        notify: true,
+        value: function() {
+          return [];
+        },
+      },
+      hideMissingTooltips: {
+        // If we have tooltips, but some names are missing, do we hide them?
+        type: Boolean,
+        value: true,
+      },
+      classScale: Function, // map from run name to css class
+    },
+    observers: [
+      "_initializeOutSelected(names.*)",
+    ],
+    _lookupTooltip: function(item, tooltips) {
+      return tooltips != null ? tooltips[item] : null;
+    },
+    _isNullTooltip: function(item, tooltips) {
+      if (!this.hideMissingTooltips) {
+        return true;
+      }
+      if (tooltips == null) {
+        return false;
+      }
+      return tooltips[item] == null;
+    },
+    _initializeOutSelected: function(change) {
+      this.outSelected = change.base.slice();
+    },
+    _tooltipComparator: function(tooltips, tooltipOrderer) {
+      return function(a, b) {
+        if (!tooltips || !tooltipOrderer) {
+          // if we're missing tooltips or orderer, do lexicogrpahic sort
+          return a.localeCompare(b);
+        }
+        function getValue(x) {
+          var value = tooltipOrderer(tooltips[x]);
+          return value == null || _.isNaN(value) ? -Infinity : value;
+        }
+        var aValue = getValue(a);
+        var bValue = getValue(b);
+        return aValue === bValue ? a.localeCompare(b) : bValue - aValue;
+      }
+    },
+    _checkboxChange: function(e) {
+      var name = e.srcElement.name;
+      var idx = this.outSelected.indexOf(name);
+      var checked = e.srcElement.checked;
+      if (checked && idx === -1) {
+          this.push("outSelected", name);
+      } else if (!checked && idx !== -1) {
+        this.splice("outSelected", idx, 1);
+      }
+    },
+    _isChecked: function(item, outSelectedChange) {
+      var outSelected = outSelectedChange.base;
+      return outSelected.indexOf(item) !== -1;
+    },
+    _initializeRuns: function(change) {
+      this.outSelected = change.base.slice();
+    },
+    _applyColorClass: function(item, classScale) {
+      // TODO: Update style just on the element that changes
+      // and apply at microtask timing
+      this.debounce("restyle", function (){
+        this.updateStyles();
+      }, 16);
+      return classScale(item);
+    },
+    _isHighlighted: function(item, highlights) {
+      return highlights.base.indexOf(item) !== -1;
+    },
+  });
+  </script>
+
+</dom-module>

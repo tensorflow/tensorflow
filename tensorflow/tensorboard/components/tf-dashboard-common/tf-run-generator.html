@@ -1,0 +1,97 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/iron-ajax/iron-ajax.html">
+<link rel="import" href="../imports/lodash.html">
+
+<!--
+tf-run-generator is a plumbing component that takes in a url to load runs from, and
+  produces the following upward-bindable properties:
+
+  outRunToScalars: Maps from run name (string) to an array of scalar tags (strings).
+  outRunToHistograms: Maps from run name (string) to an array of histogram tags (strings).
+  outRunToImages: Maps from run name (string) to an array of image tags (strings).
+-->
+<dom-module id="tf-run-generator">
+  <template>
+    <iron-ajax
+      id="ajax"
+      auto
+      url="[[url]]"
+      handle-as="json"
+      debounce="300"
+      on-response="_setResponse"
+      verbose=true
+    >
+    </iron-ajax>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-run-generator",
+      properties: {
+        url: String,
+        _runToTag: {
+          type: Object,
+          readOnly: true,
+        },
+        outRunToScalars: {
+          // {[runName: string]: string[]}
+          // the names of scalar tags.
+          type: Object,
+          computed: "_scalars(_runToTag.*)",
+          notify: true,
+        },
+        outRunToHistograms: {
+          // {[runName: string]: string[]}
+          // the names of histogram tags.
+          type: Object,
+          computed: "_histograms(_runToTag.*)",
+          notify: true,
+        },
+        outRunToCompressedHistograms: {
+          // {[runName: string]: string[]}
+          // the names of histogram tags.
+          type: Object,
+          computed: "_compressedHistograms(_runToTag.*)",
+          notify: true,
+        },
+        outRunToImages: {
+          // {[runName: string]: string[]}
+          // the names of image tags.
+          type: Object,
+          computed: "_images(_runToTag.*)",
+          notify: true,
+        },
+        outRunsWithGraph: {
+          // ["run1", "run2", ...]
+          // array of run names that have an associated graph definition.
+          type: Array,
+          computed: "_graphs(_runToTag.*)",
+          notify: true
+        }
+      },
+      _scalars: function(_runToTag) {
+        return _.mapValues(_runToTag.base, "scalars");
+      },
+      _histograms: function(_runToTag) {
+        return _.mapValues(_runToTag.base, "histograms");
+      },
+      _compressedHistograms: function(_runToTag) {
+        return _.mapValues(_runToTag.base, "compressedHistograms");
+      },
+      _images: function(_runToTag) {
+        return _.mapValues(_runToTag.base, "images");
+      },
+      _graphs: function(_runToTag) {
+        var runsWithGraph = [];
+        _.each(_runToTag.base, function(runInfo, runName) {
+          if (runInfo.graph === true) {
+            runsWithGraph.push(runName);
+          }
+        });
+        return runsWithGraph;
+      },
+      _setResponse: function(event) {
+        this._set_runToTag(event.detail.response);
+      }
+    });
+  </script>
+</dom-module>

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+// BusAdjacency identifies the ability of a device to participate in
+// maximally efficient DMA operations within the local context of a
+// process.
+//
+// This is currently ignored.
+enum BusAdjacency {
+  BUS_0 = 0;
+  BUS_1 = 1;
+  BUS_ANY = 2;
+  BUS_NUM_ADJACENCIES = 3;
+};
+
+message DeviceAttributes {
+  string name = 1;
+
+  // String representation of device_type.
+  string device_type = 2;
+
+  // Memory capacity of device in bytes.
+  int64 memory_limit = 4;
+
+  BusAdjacency bus_adjacency = 5;
+
+  // A device is assigned a global unique number each time it is
+  // initialized. "incarnation" should never be 0.
+  fixed64 incarnation = 6;
+
+  // String representation of the physical device that this device maps to.
+  string physical_device_desc = 7;
+}

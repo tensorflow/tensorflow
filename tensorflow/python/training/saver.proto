@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+// Protocol buffer representing the configuration of a SaveRestoreHelper.
+message SaverDef {
+  // The name of the tensor in which to specify the filename when saving or
+  // restoring a model checkpoint.
+  string filename_tensor_name = 1;
+
+  // The operation to run when saving a model checkpoint.
+  string save_tensor_name = 2;
+
+  // The operation to run when restoring a model checkpoint.
+  string restore_op_name = 3;
+
+  // Maximum number of checkpoints to keep.  If 0, no checkpoints are deleted.
+  int32 max_to_keep = 4;
+
+  // Shard the save files, one per device that has Parameters nodes.
+  bool sharded = 5;
+
+  // How often to keep an additional checkpoint. If not specified, only the last
+  // "max_to_keep" checkpoints are kept; if specified, in addition to keeping
+  // the
+  // last "max_to_keep" checkpoints, an additional checkpoint will be kept for
+  // every n hours of training.
+  float keep_checkpoint_every_n_hours = 6;
+}

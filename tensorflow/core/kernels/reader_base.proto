@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+// For serializing and restoring the state of ReaderBase, see
+// reader_base.h for details.
+message ReaderBaseState {
+  int64 work_started = 1;
+  int64 work_finished = 2;
+  int64 num_records_produced = 3;
+  bytes current_work = 4;
+};

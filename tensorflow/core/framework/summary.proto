@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+// Serialization format for histogram module in
+// core/lib/histogram/histogram.h
+message HistogramProto {
+  double min = 1;
+  double max = 2;
+  double num = 3;
+  double sum = 4;
+  double sum_squares = 5;
+
+  // Parallel arrays encoding the bucket boundaries and the bucket values.
+  // bucket(i) is the count for the bucket i.  The range for
+  // a bucket is:
+  //   i == 0:  -DBL_MAX .. bucket_limit(0)
+  //   i != 0:  bucket_limit(i-1) .. bucket_limit(i)
+  repeated double bucket_limit = 6 [packed = true];
+  repeated double bucket = 7 [packed = true];
+};
+
+// A Summary is a set of named values to be displayed by the
+// visualizer.
+//
+// Summaries are produced regularly during training, as controlled by
+// the "summary_interval_secs" attribute of the training operation.
+// Summaries are also produced at the end of an evaluation.
+message Summary {
+  message Image {
+    // Dimensions of the image.
+    int32 height = 1;
+    int32 width = 2;
+    // Valid colorspace values are
+    //   1 - grayscale
+    //   2 - grayscale + alpha
+    //   3 - RGB
+    //   4 - RGBA
+    //   5 - DIGITAL_YUV
+    //   6 - BGRA
+    int32 colorspace = 3;
+    // Image data in encoded format.  All image formats supported by
+    // image_codec::CoderUtil can be stored here.
+    bytes encoded_image_string = 4;
+  }
+
+  message Value {
+    // Tag name for the data.  Will be used as the title of the graph
+    // in the visualizer.
+    //
+    // Tag is usually "op_name:value_name", where "op_name" itself can have
+    // structure to indicate grouping.
+    string tag = 1;
+
+    // Value associated with the tag.
+    oneof value {
+      float simple_value = 2;
+      bytes obsolete_old_style_histogram = 3;
+      Image image = 4;
+      HistogramProto histo = 5;
+    }
+  }
+
+  // Set of values for the summary.
+  repeated Value value = 1;
+}

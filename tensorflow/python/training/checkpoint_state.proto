@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+// Protocol buffer representing the checkpoint state.
+//
+// TODO(mdevin): Add other attributes as needed.
+message CheckpointState {
+  // Path to the most-recent model checkpoint.
+  string model_checkpoint_path = 1;
+
+  // Paths to all not-yet-deleted model checkpoints, sorted from oldest to
+  // newest.
+  // Note that the value of model_checkpoint_path should be the last item in
+  // this list.
+  repeated string all_model_checkpoint_paths = 2;
+}
