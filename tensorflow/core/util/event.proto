@@ -12,7 +12,7 @@ message Event {
   // Timestamp of the event.
   double wall_time = 1;
 
-  // Globale step of the event.
+  // Global step of the event.
   int64 step = 2;
 
   oneof what {

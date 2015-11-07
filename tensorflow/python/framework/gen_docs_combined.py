@@ -18,6 +18,12 @@ tf.flags.DEFINE_boolean("print_hidden_regex", False,
 FLAGS = tf.flags.FLAGS
 
 
+PREFIX_TEXT = """
+Note: Functions taking `Tensor` arguments can also take anything
+accepted by [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
+"""
+
+
 def get_module_to_name():
   return {tf: 'tf',
           tf.errors: 'tf.errors',
@@ -42,20 +48,24 @@ def all_libraries(module_to_name, members, documented):
   return [
       # Splits of module 'tf'.
       library("framework", "Building Graphs", framework_lib),
-      library("constant_op", "Constants, Sequences, and Random Values"),
-      library("state_ops", "Variables"),
+      library("constant_op", "Constants, Sequences, and Random Values",
+              prefix=PREFIX_TEXT),
+      library("state_ops", "Variables", prefix=PREFIX_TEXT),
       library("array_ops", "Tensor Transformations",
-              exclude_symbols=["list_diff"]),
+              exclude_symbols=["list_diff"], prefix=PREFIX_TEXT),
       library("math_ops", "Math",
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
-                               "lin_space", "sparse_segment_mean_grad"]),
-      library("control_flow_ops", "Control Flow"),
-      library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"]),
-      library("sparse_ops", "Sparse Tensors"),
+                               "lin_space", "sparse_segment_mean_grad"],
+              prefix=PREFIX_TEXT),
+      library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
+      library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
+              prefix=PREFIX_TEXT),
+      library("sparse_ops", "Sparse Tensors", prefix=PREFIX_TEXT),
       library("io_ops", "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
                                "initialize_all_tables",
-                               "string_to_hash_bucket"]),
+                               "string_to_hash_bucket"],
+              prefix=PREFIX_TEXT),
       library("python_io", "Data IO (Python functions)", tf.python_io),
       library("nn", "Neural Network", tf.nn,
               exclude_symbols=["deconv2d", "conv2d_backprop_input",
@@ -66,7 +76,8 @@ def all_libraries(module_to_name, members, documented):
                                "xw_plus_b", "relu_layer", "lrn",
                                "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
-                               "all_candidate_sampler"]),
+                               "all_candidate_sampler"],
+              prefix=PREFIX_TEXT),
       library('client', "Running Graphs", client_lib,
               exclude_symbols=["InteractiveSession"]),
       library("train", "Training", tf.train,

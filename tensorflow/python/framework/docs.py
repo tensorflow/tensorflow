@@ -60,18 +60,18 @@ class Index(Document):
     print >>f, ""
     print >>f, "# TensorFlow Python reference documentation"
     print >>f, ""
+    fullname_f = lambda name: self._members[name][0]
+    anchor_f = lambda name: _get_anchor(self._module_to_name, fullname_f(name))
+
     for filename, library in self._filename_to_library_map:
-      per_symbol_links = []
-      for name in sorted(library.mentioned):
-        if name in self._members:
-          fullname, member = self._members[name]
-          anchor = _get_anchor(self._module_to_name, fullname)
-          prefix = "class " * inspect.isclass(member)
-          per_symbol_links.append("[%s%s](%s#%s)" %
-                                  (prefix, name, filename, anchor))
-      if per_symbol_links:
-        print >>f, "* <b>[%s](%s)</b>: %s" % (library.title, filename,
-                                              ",\n    ".join(per_symbol_links))
+      sorted_names = sorted(library.mentioned, key=str.lower)
+      member_names = [n for n in sorted_names if n in self._members]
+      links = ["[`%s`](%s#%s)" % (name, filename, anchor_f(name))
+               for name in member_names]
+      if links:
+        print >>f, "* **[%s](%s)**:" % (library.title, filename)
+        for link in links:
+          print >>f, "  * %s" % link
         print >>f, ""
 
     # actually include the files right here
@@ -146,7 +146,7 @@ class Library(Document):
                members,
                documented,
                exclude_symbols=(),
-               catch_all=False):
+               prefix=None):
     """Creates a new Library.
 
     Args:
@@ -157,6 +157,7 @@ class Library(Document):
       members: Dictionary mapping member name to (fullname, member).
       documented: Set of documented names to update.
       exclude_symbols: A list of specific symbols to exclude.
+      prefix: A string to include at the beginning of the page.
     """
     self._title = title
     self._module = module
@@ -166,6 +167,7 @@ class Library(Document):
     documented.update(exclude_symbols)
     self._documented = documented
     self._mentioned = set()
+    self._prefix = prefix or ""
 
   @property
   def title(self):
@@ -400,7 +402,7 @@ class Library(Document):
     # defined by the class itself (not inherited).  If NO methods were
     # described, describe all methods.
     #
-    # TODO(mdevin): when all methods have been categorized make it an error
+    # TODO(touts): when all methods have been categorized make it an error
     # if some methods are not categorized.
     any_method_called_out = (len(methods) != num_methods)
     if any_method_called_out:
@@ -429,9 +431,11 @@ class Library(Document):
     """
     print >>f, "<!-- This file is machine generated: DO NOT EDIT! -->"
     print >>f, ""
-    # TODO(mdevin): Do not insert these.  Let the doc writer put them in
+    # TODO(touts): Do not insert these.  Let the doc writer put them in
     # the module docstring explicitly.
     print >>f, "#", self._title
+    if self._prefix:
+      print >>f, self._prefix
     print >>f, "[TOC]"
     print >>f, ""
     if self._module is not None:

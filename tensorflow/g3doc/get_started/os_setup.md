@@ -4,10 +4,10 @@
 
 ### Ubuntu/Linux
 
-Make sure you have `pip` and `numpy` installed :
+Make sure you have [pip](https://pypi.python.org/pypi/pip) installed:
 
 ```sh
-$ sudo apt-get install python-pip python-numpy
+$ sudo apt-get install python-pip
 ```
 
 Install TensorFlow:
@@ -22,7 +22,7 @@ $ sudo pip install https://storage.googleapis.com/tensorflow/linux/gpu/tensorflo
 
 ### Mac OS X
 
-Make sure you have `pip` installed:
+Make sure you have [pip](https://pypi.python.org/pypi/pip) installed:
 
 If using `easy_install`:
 
@@ -90,16 +90,16 @@ Validation error: 84.6%
 
 ```
 
-## Source Installation {#source}
+## Installing from sources {#source}
 
 ### Clone the TensorFlow repository
 
-TODO(keveman): Supply clone command for external users.
-
 ```sh
-$ git clone --recurse-submodules https://YOUR_WHITELISTED_EMAIL_WITH_AT_REPLACED_BY_DOT@tensorflow.googlesource.com/tf3
+$ git clone --recurse-submodules https://tensorflow.googlesource.com/tensorflow
 ```
 
+`--recurse-submodules` is required to fetch the protobuf library that TensorFlow
+depends on.
 
 ### Installation for Linux
 
@@ -162,11 +162,9 @@ GPU support will be enabled for TensorFlow
 
 Please specify the location where CUDA 7.0 toolkit is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
-CUDA 7.0 toolkit found
 
 Please specify the location where CUDNN 6.5 V2 library is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
-CUDNN 6.5 V2 library found
 
 Setting up Cuda include
 Setting up Cuda lib64
@@ -191,9 +189,6 @@ $ bazel-bin/tensorflow/cc/tutorials_example_trainer --use_gpu
 000009/000005 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
 000006/000001 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
 000009/000009 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
-000006/000008 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
-000009/000003 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
-000006/000006 lambda = 2.000000 x = [0.894427 -0.447214] y = [1.788854 -0.894427]
 ```
 
 Note that "--config=cuda" is needed to enable the GPU support.
@@ -231,14 +226,24 @@ Notes : You need to install
 
 Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/install.html).
 
-### Build and train your first TensorFlow neural net model
+
+### Create the pip package and install
 
 ```sh
-$ cd tf3
+$ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
 
-$ bazel build tensorflow/models/image/mnist:convolutional
+$ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
-$ bazel-bin/tensorflow/models/image/mnist/convolutional
+# The name of the .whl file will depend on your platform.
+$ pip install /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+```
+
+### Train your first TensorFlow neural net model
+
+From the root of your source tree, run:
+
+```sh
+$ python tensorflow/models/image/mnist/convolutional.py
 Succesfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
 Succesfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
 Succesfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.

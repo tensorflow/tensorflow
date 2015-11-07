@@ -2,336 +2,349 @@
 
 # TensorFlow Python reference documentation
 
-* <b>[Building Graphs](framework.md)</b>: [class DType](framework.md#DType),
-    [class Dimension](framework.md#Dimension),
-    [class Graph](framework.md#Graph),
-    [class GraphKeys](framework.md#GraphKeys),
-    [NoGradient](framework.md#NoGradient),
-    [class Operation](framework.md#Operation),
-    [class RegisterGradient](framework.md#RegisterGradient),
-    [class RegisterShape](framework.md#RegisterShape),
-    [class Tensor](framework.md#Tensor),
-    [class TensorShape](framework.md#TensorShape),
-    [add_to_collection](framework.md#add_to_collection),
-    [as_dtype](framework.md#as_dtype),
-    [control_dependencies](framework.md#control_dependencies),
-    [convert_to_tensor](framework.md#convert_to_tensor),
-    [device](framework.md#device),
-    [get_collection](framework.md#get_collection),
-    [get_default_graph](framework.md#get_default_graph),
-    [get_seed](framework.md#get_seed),
-    [import_graph_def](framework.md#import_graph_def),
-    [name_scope](framework.md#name_scope),
-    [op_scope](framework.md#op_scope)
+* **[Building Graphs](framework.md)**:
+  * [`add_to_collection`](framework.md#add_to_collection)
+  * [`as_dtype`](framework.md#as_dtype)
+  * [`control_dependencies`](framework.md#control_dependencies)
+  * [`convert_to_tensor`](framework.md#convert_to_tensor)
+  * [`device`](framework.md#device)
+  * [`Dimension`](framework.md#Dimension)
+  * [`DType`](framework.md#DType)
+  * [`get_collection`](framework.md#get_collection)
+  * [`get_default_graph`](framework.md#get_default_graph)
+  * [`get_seed`](framework.md#get_seed)
+  * [`Graph`](framework.md#Graph)
+  * [`GraphKeys`](framework.md#GraphKeys)
+  * [`import_graph_def`](framework.md#import_graph_def)
+  * [`name_scope`](framework.md#name_scope)
+  * [`NoGradient`](framework.md#NoGradient)
+  * [`op_scope`](framework.md#op_scope)
+  * [`Operation`](framework.md#Operation)
+  * [`RegisterGradient`](framework.md#RegisterGradient)
+  * [`RegisterShape`](framework.md#RegisterShape)
+  * [`Tensor`](framework.md#Tensor)
+  * [`TensorShape`](framework.md#TensorShape)
 
-* <b>[Constants, Sequences, and Random Values](constant_op.md)</b>: [constant](constant_op.md#constant),
-    [fill](constant_op.md#fill),
-    [linspace](constant_op.md#linspace),
-    [ones](constant_op.md#ones),
-    [ones_like](constant_op.md#ones_like),
-    [random_normal](constant_op.md#random_normal),
-    [random_shuffle](constant_op.md#random_shuffle),
-    [random_uniform](constant_op.md#random_uniform),
-    [range](constant_op.md#range),
-    [set_random_seed](constant_op.md#set_random_seed),
-    [truncated_normal](constant_op.md#truncated_normal),
-    [zeros](constant_op.md#zeros),
-    [zeros_like](constant_op.md#zeros_like)
+* **[Constants, Sequences, and Random Values](constant_op.md)**:
+  * [`constant`](constant_op.md#constant)
+  * [`fill`](constant_op.md#fill)
+  * [`linspace`](constant_op.md#linspace)
+  * [`ones`](constant_op.md#ones)
+  * [`ones_like`](constant_op.md#ones_like)
+  * [`random_normal`](constant_op.md#random_normal)
+  * [`random_shuffle`](constant_op.md#random_shuffle)
+  * [`random_uniform`](constant_op.md#random_uniform)
+  * [`range`](constant_op.md#range)
+  * [`set_random_seed`](constant_op.md#set_random_seed)
+  * [`truncated_normal`](constant_op.md#truncated_normal)
+  * [`zeros`](constant_op.md#zeros)
+  * [`zeros_like`](constant_op.md#zeros_like)
 
-* <b>[Variables](state_ops.md)</b>: [class IndexedSlices](state_ops.md#IndexedSlices),
-    [class Saver](state_ops.md#Saver),
-    [class Variable](state_ops.md#Variable),
-    [all_variables](state_ops.md#all_variables),
-    [assert_variables_initialized](state_ops.md#assert_variables_initialized),
-    [assign](state_ops.md#assign),
-    [assign_add](state_ops.md#assign_add),
-    [assign_sub](state_ops.md#assign_sub),
-    [constant_initializer](state_ops.md#constant_initializer),
-    [count_up_to](state_ops.md#count_up_to),
-    [device](state_ops.md#device),
-    [get_checkpoint_state](state_ops.md#get_checkpoint_state),
-    [get_variable](state_ops.md#get_variable),
-    [get_variable_scope](state_ops.md#get_variable_scope),
-    [initialize_all_variables](state_ops.md#initialize_all_variables),
-    [initialize_variables](state_ops.md#initialize_variables),
-    [latest_checkpoint](state_ops.md#latest_checkpoint),
-    [random_normal_initializer](state_ops.md#random_normal_initializer),
-    [random_uniform_initializer](state_ops.md#random_uniform_initializer),
-    [scatter_add](state_ops.md#scatter_add),
-    [scatter_sub](state_ops.md#scatter_sub),
-    [scatter_update](state_ops.md#scatter_update),
-    [sparse_mask](state_ops.md#sparse_mask),
-    [trainable_variables](state_ops.md#trainable_variables),
-    [truncated_normal_initializer](state_ops.md#truncated_normal_initializer),
-    [uniform_unit_scaling_initializer](state_ops.md#uniform_unit_scaling_initializer),
-    [update_checkpoint_state](state_ops.md#update_checkpoint_state),
-    [variable_scope](state_ops.md#variable_scope),
-    [zeros_initializer](state_ops.md#zeros_initializer)
+* **[Variables](state_ops.md)**:
+  * [`all_variables`](state_ops.md#all_variables)
+  * [`assert_variables_initialized`](state_ops.md#assert_variables_initialized)
+  * [`assign`](state_ops.md#assign)
+  * [`assign_add`](state_ops.md#assign_add)
+  * [`assign_sub`](state_ops.md#assign_sub)
+  * [`constant_initializer`](state_ops.md#constant_initializer)
+  * [`count_up_to`](state_ops.md#count_up_to)
+  * [`device`](state_ops.md#device)
+  * [`get_checkpoint_state`](state_ops.md#get_checkpoint_state)
+  * [`get_variable`](state_ops.md#get_variable)
+  * [`get_variable_scope`](state_ops.md#get_variable_scope)
+  * [`IndexedSlices`](state_ops.md#IndexedSlices)
+  * [`initialize_all_variables`](state_ops.md#initialize_all_variables)
+  * [`initialize_variables`](state_ops.md#initialize_variables)
+  * [`latest_checkpoint`](state_ops.md#latest_checkpoint)
+  * [`random_normal_initializer`](state_ops.md#random_normal_initializer)
+  * [`random_uniform_initializer`](state_ops.md#random_uniform_initializer)
+  * [`Saver`](state_ops.md#Saver)
+  * [`scatter_add`](state_ops.md#scatter_add)
+  * [`scatter_sub`](state_ops.md#scatter_sub)
+  * [`scatter_update`](state_ops.md#scatter_update)
+  * [`sparse_mask`](state_ops.md#sparse_mask)
+  * [`trainable_variables`](state_ops.md#trainable_variables)
+  * [`truncated_normal_initializer`](state_ops.md#truncated_normal_initializer)
+  * [`uniform_unit_scaling_initializer`](state_ops.md#uniform_unit_scaling_initializer)
+  * [`update_checkpoint_state`](state_ops.md#update_checkpoint_state)
+  * [`Variable`](state_ops.md#Variable)
+  * [`variable_scope`](state_ops.md#variable_scope)
+  * [`zeros_initializer`](state_ops.md#zeros_initializer)
 
-* <b>[Tensor Transformations](array_ops.md)</b>: [cast](array_ops.md#cast),
-    [concat](array_ops.md#concat),
-    [dynamic_partition](array_ops.md#dynamic_partition),
-    [dynamic_stitch](array_ops.md#dynamic_stitch),
-    [expand_dims](array_ops.md#expand_dims),
-    [gather](array_ops.md#gather),
-    [pack](array_ops.md#pack),
-    [pad](array_ops.md#pad),
-    [rank](array_ops.md#rank),
-    [reshape](array_ops.md#reshape),
-    [reverse](array_ops.md#reverse),
-    [reverse_sequence](array_ops.md#reverse_sequence),
-    [shape](array_ops.md#shape),
-    [size](array_ops.md#size),
-    [slice](array_ops.md#slice),
-    [split](array_ops.md#split),
-    [squeeze](array_ops.md#squeeze),
-    [string_to_number](array_ops.md#string_to_number),
-    [tile](array_ops.md#tile),
-    [to_bfloat16](array_ops.md#to_bfloat16),
-    [to_double](array_ops.md#to_double),
-    [to_float](array_ops.md#to_float),
-    [to_int32](array_ops.md#to_int32),
-    [to_int64](array_ops.md#to_int64),
-    [transpose](array_ops.md#transpose),
-    [unpack](array_ops.md#unpack)
+* **[Tensor Transformations](array_ops.md)**:
+  * [`cast`](array_ops.md#cast)
+  * [`concat`](array_ops.md#concat)
+  * [`dynamic_partition`](array_ops.md#dynamic_partition)
+  * [`dynamic_stitch`](array_ops.md#dynamic_stitch)
+  * [`expand_dims`](array_ops.md#expand_dims)
+  * [`gather`](array_ops.md#gather)
+  * [`pack`](array_ops.md#pack)
+  * [`pad`](array_ops.md#pad)
+  * [`rank`](array_ops.md#rank)
+  * [`reshape`](array_ops.md#reshape)
+  * [`reverse`](array_ops.md#reverse)
+  * [`reverse_sequence`](array_ops.md#reverse_sequence)
+  * [`shape`](array_ops.md#shape)
+  * [`size`](array_ops.md#size)
+  * [`slice`](array_ops.md#slice)
+  * [`split`](array_ops.md#split)
+  * [`squeeze`](array_ops.md#squeeze)
+  * [`string_to_number`](array_ops.md#string_to_number)
+  * [`tile`](array_ops.md#tile)
+  * [`to_bfloat16`](array_ops.md#to_bfloat16)
+  * [`to_double`](array_ops.md#to_double)
+  * [`to_float`](array_ops.md#to_float)
+  * [`to_int32`](array_ops.md#to_int32)
+  * [`to_int64`](array_ops.md#to_int64)
+  * [`transpose`](array_ops.md#transpose)
+  * [`unpack`](array_ops.md#unpack)
 
-* <b>[Math](math_ops.md)</b>: [abs](math_ops.md#abs),
-    [accumulate_n](math_ops.md#accumulate_n),
-    [add](math_ops.md#add),
-    [add_n](math_ops.md#add_n),
-    [argmax](math_ops.md#argmax),
-    [argmin](math_ops.md#argmin),
-    [batch_cholesky](math_ops.md#batch_cholesky),
-    [batch_matmul](math_ops.md#batch_matmul),
-    [batch_matrix_determinant](math_ops.md#batch_matrix_determinant),
-    [batch_matrix_inverse](math_ops.md#batch_matrix_inverse),
-    [ceil](math_ops.md#ceil),
-    [cholesky](math_ops.md#cholesky),
-    [complex](math_ops.md#complex),
-    [complex_abs](math_ops.md#complex_abs),
-    [conj](math_ops.md#conj),
-    [cos](math_ops.md#cos),
-    [diag](math_ops.md#diag),
-    [div](math_ops.md#div),
-    [edit_distance](math_ops.md#edit_distance),
-    [exp](math_ops.md#exp),
-    [floor](math_ops.md#floor),
-    [imag](math_ops.md#imag),
-    [inv](math_ops.md#inv),
-    [invert_permutation](math_ops.md#invert_permutation),
-    [listdiff](math_ops.md#listdiff),
-    [log](math_ops.md#log),
-    [matmul](math_ops.md#matmul),
-    [matrix_determinant](math_ops.md#matrix_determinant),
-    [matrix_inverse](math_ops.md#matrix_inverse),
-    [maximum](math_ops.md#maximum),
-    [minimum](math_ops.md#minimum),
-    [mod](math_ops.md#mod),
-    [mul](math_ops.md#mul),
-    [neg](math_ops.md#neg),
-    [pow](math_ops.md#pow),
-    [real](math_ops.md#real),
-    [reduce_all](math_ops.md#reduce_all),
-    [reduce_any](math_ops.md#reduce_any),
-    [reduce_max](math_ops.md#reduce_max),
-    [reduce_mean](math_ops.md#reduce_mean),
-    [reduce_min](math_ops.md#reduce_min),
-    [reduce_prod](math_ops.md#reduce_prod),
-    [reduce_sum](math_ops.md#reduce_sum),
-    [round](math_ops.md#round),
-    [rsqrt](math_ops.md#rsqrt),
-    [segment_max](math_ops.md#segment_max),
-    [segment_mean](math_ops.md#segment_mean),
-    [segment_min](math_ops.md#segment_min),
-    [segment_prod](math_ops.md#segment_prod),
-    [segment_sum](math_ops.md#segment_sum),
-    [sign](math_ops.md#sign),
-    [sin](math_ops.md#sin),
-    [sparse_segment_mean](math_ops.md#sparse_segment_mean),
-    [sparse_segment_sum](math_ops.md#sparse_segment_sum),
-    [sqrt](math_ops.md#sqrt),
-    [square](math_ops.md#square),
-    [sub](math_ops.md#sub),
-    [transpose](math_ops.md#transpose),
-    [unique](math_ops.md#unique),
-    [unsorted_segment_sum](math_ops.md#unsorted_segment_sum),
-    [where](math_ops.md#where)
+* **[Math](math_ops.md)**:
+  * [`abs`](math_ops.md#abs)
+  * [`accumulate_n`](math_ops.md#accumulate_n)
+  * [`add`](math_ops.md#add)
+  * [`add_n`](math_ops.md#add_n)
+  * [`argmax`](math_ops.md#argmax)
+  * [`argmin`](math_ops.md#argmin)
+  * [`batch_cholesky`](math_ops.md#batch_cholesky)
+  * [`batch_matmul`](math_ops.md#batch_matmul)
+  * [`batch_matrix_determinant`](math_ops.md#batch_matrix_determinant)
+  * [`batch_matrix_inverse`](math_ops.md#batch_matrix_inverse)
+  * [`ceil`](math_ops.md#ceil)
+  * [`cholesky`](math_ops.md#cholesky)
+  * [`complex`](math_ops.md#complex)
+  * [`complex_abs`](math_ops.md#complex_abs)
+  * [`conj`](math_ops.md#conj)
+  * [`cos`](math_ops.md#cos)
+  * [`diag`](math_ops.md#diag)
+  * [`div`](math_ops.md#div)
+  * [`edit_distance`](math_ops.md#edit_distance)
+  * [`exp`](math_ops.md#exp)
+  * [`floor`](math_ops.md#floor)
+  * [`imag`](math_ops.md#imag)
+  * [`inv`](math_ops.md#inv)
+  * [`invert_permutation`](math_ops.md#invert_permutation)
+  * [`listdiff`](math_ops.md#listdiff)
+  * [`log`](math_ops.md#log)
+  * [`matmul`](math_ops.md#matmul)
+  * [`matrix_determinant`](math_ops.md#matrix_determinant)
+  * [`matrix_inverse`](math_ops.md#matrix_inverse)
+  * [`maximum`](math_ops.md#maximum)
+  * [`minimum`](math_ops.md#minimum)
+  * [`mod`](math_ops.md#mod)
+  * [`mul`](math_ops.md#mul)
+  * [`neg`](math_ops.md#neg)
+  * [`pow`](math_ops.md#pow)
+  * [`real`](math_ops.md#real)
+  * [`reduce_all`](math_ops.md#reduce_all)
+  * [`reduce_any`](math_ops.md#reduce_any)
+  * [`reduce_max`](math_ops.md#reduce_max)
+  * [`reduce_mean`](math_ops.md#reduce_mean)
+  * [`reduce_min`](math_ops.md#reduce_min)
+  * [`reduce_prod`](math_ops.md#reduce_prod)
+  * [`reduce_sum`](math_ops.md#reduce_sum)
+  * [`round`](math_ops.md#round)
+  * [`rsqrt`](math_ops.md#rsqrt)
+  * [`segment_max`](math_ops.md#segment_max)
+  * [`segment_mean`](math_ops.md#segment_mean)
+  * [`segment_min`](math_ops.md#segment_min)
+  * [`segment_prod`](math_ops.md#segment_prod)
+  * [`segment_sum`](math_ops.md#segment_sum)
+  * [`sign`](math_ops.md#sign)
+  * [`sin`](math_ops.md#sin)
+  * [`sparse_segment_mean`](math_ops.md#sparse_segment_mean)
+  * [`sparse_segment_sum`](math_ops.md#sparse_segment_sum)
+  * [`sqrt`](math_ops.md#sqrt)
+  * [`square`](math_ops.md#square)
+  * [`sub`](math_ops.md#sub)
+  * [`transpose`](math_ops.md#transpose)
+  * [`unique`](math_ops.md#unique)
+  * [`unsorted_segment_sum`](math_ops.md#unsorted_segment_sum)
+  * [`where`](math_ops.md#where)
 
-* <b>[Control Flow](control_flow_ops.md)</b>: [Assert](control_flow_ops.md#Assert),
-    [Print](control_flow_ops.md#Print),
-    [add_check_numerics_ops](control_flow_ops.md#add_check_numerics_ops),
-    [check_numerics](control_flow_ops.md#check_numerics),
-    [count_up_to](control_flow_ops.md#count_up_to),
-    [equal](control_flow_ops.md#equal),
-    [greater](control_flow_ops.md#greater),
-    [greater_equal](control_flow_ops.md#greater_equal),
-    [group](control_flow_ops.md#group),
-    [identity](control_flow_ops.md#identity),
-    [is_finite](control_flow_ops.md#is_finite),
-    [is_inf](control_flow_ops.md#is_inf),
-    [is_nan](control_flow_ops.md#is_nan),
-    [less](control_flow_ops.md#less),
-    [less_equal](control_flow_ops.md#less_equal),
-    [logical_and](control_flow_ops.md#logical_and),
-    [logical_not](control_flow_ops.md#logical_not),
-    [logical_or](control_flow_ops.md#logical_or),
-    [logical_xor](control_flow_ops.md#logical_xor),
-    [no_op](control_flow_ops.md#no_op),
-    [not_equal](control_flow_ops.md#not_equal),
-    [select](control_flow_ops.md#select),
-    [tuple](control_flow_ops.md#tuple),
-    [verify_tensor_all_finite](control_flow_ops.md#verify_tensor_all_finite),
-    [where](control_flow_ops.md#where)
+* **[Control Flow](control_flow_ops.md)**:
+  * [`add_check_numerics_ops`](control_flow_ops.md#add_check_numerics_ops)
+  * [`Assert`](control_flow_ops.md#Assert)
+  * [`check_numerics`](control_flow_ops.md#check_numerics)
+  * [`count_up_to`](control_flow_ops.md#count_up_to)
+  * [`equal`](control_flow_ops.md#equal)
+  * [`greater`](control_flow_ops.md#greater)
+  * [`greater_equal`](control_flow_ops.md#greater_equal)
+  * [`group`](control_flow_ops.md#group)
+  * [`identity`](control_flow_ops.md#identity)
+  * [`is_finite`](control_flow_ops.md#is_finite)
+  * [`is_inf`](control_flow_ops.md#is_inf)
+  * [`is_nan`](control_flow_ops.md#is_nan)
+  * [`less`](control_flow_ops.md#less)
+  * [`less_equal`](control_flow_ops.md#less_equal)
+  * [`logical_and`](control_flow_ops.md#logical_and)
+  * [`logical_not`](control_flow_ops.md#logical_not)
+  * [`logical_or`](control_flow_ops.md#logical_or)
+  * [`logical_xor`](control_flow_ops.md#logical_xor)
+  * [`no_op`](control_flow_ops.md#no_op)
+  * [`not_equal`](control_flow_ops.md#not_equal)
+  * [`Print`](control_flow_ops.md#Print)
+  * [`select`](control_flow_ops.md#select)
+  * [`tuple`](control_flow_ops.md#tuple)
+  * [`verify_tensor_all_finite`](control_flow_ops.md#verify_tensor_all_finite)
+  * [`where`](control_flow_ops.md#where)
 
-* <b>[Images](image.md)</b>: [adjust_brightness](image.md#adjust_brightness),
-    [adjust_contrast](image.md#adjust_contrast),
-    [crop_to_bounding_box](image.md#crop_to_bounding_box),
-    [decode_jpeg](image.md#decode_jpeg),
-    [decode_png](image.md#decode_png),
-    [encode_jpeg](image.md#encode_jpeg),
-    [encode_png](image.md#encode_png),
-    [extract_glimpse](image.md#extract_glimpse),
-    [flip_left_right](image.md#flip_left_right),
-    [flip_up_down](image.md#flip_up_down),
-    [pad_to_bounding_box](image.md#pad_to_bounding_box),
-    [per_image_whitening](image.md#per_image_whitening),
-    [random_brightness](image.md#random_brightness),
-    [random_contrast](image.md#random_contrast),
-    [random_crop](image.md#random_crop),
-    [random_flip_left_right](image.md#random_flip_left_right),
-    [random_flip_up_down](image.md#random_flip_up_down),
-    [resize_area](image.md#resize_area),
-    [resize_bicubic](image.md#resize_bicubic),
-    [resize_bilinear](image.md#resize_bilinear),
-    [resize_image_with_crop_or_pad](image.md#resize_image_with_crop_or_pad),
-    [resize_images](image.md#resize_images),
-    [resize_nearest_neighbor](image.md#resize_nearest_neighbor),
-    [transpose_image](image.md#transpose_image)
+* **[Images](image.md)**:
+  * [`adjust_brightness`](image.md#adjust_brightness)
+  * [`adjust_contrast`](image.md#adjust_contrast)
+  * [`crop_to_bounding_box`](image.md#crop_to_bounding_box)
+  * [`decode_jpeg`](image.md#decode_jpeg)
+  * [`decode_png`](image.md#decode_png)
+  * [`encode_jpeg`](image.md#encode_jpeg)
+  * [`encode_png`](image.md#encode_png)
+  * [`extract_glimpse`](image.md#extract_glimpse)
+  * [`flip_left_right`](image.md#flip_left_right)
+  * [`flip_up_down`](image.md#flip_up_down)
+  * [`pad_to_bounding_box`](image.md#pad_to_bounding_box)
+  * [`per_image_whitening`](image.md#per_image_whitening)
+  * [`random_brightness`](image.md#random_brightness)
+  * [`random_contrast`](image.md#random_contrast)
+  * [`random_crop`](image.md#random_crop)
+  * [`random_flip_left_right`](image.md#random_flip_left_right)
+  * [`random_flip_up_down`](image.md#random_flip_up_down)
+  * [`resize_area`](image.md#resize_area)
+  * [`resize_bicubic`](image.md#resize_bicubic)
+  * [`resize_bilinear`](image.md#resize_bilinear)
+  * [`resize_image_with_crop_or_pad`](image.md#resize_image_with_crop_or_pad)
+  * [`resize_images`](image.md#resize_images)
+  * [`resize_nearest_neighbor`](image.md#resize_nearest_neighbor)
+  * [`transpose_image`](image.md#transpose_image)
 
-* <b>[Sparse Tensors](sparse_ops.md)</b>: [class SparseTensor](sparse_ops.md#SparseTensor),
-    [class SparseTensorValue](sparse_ops.md#SparseTensorValue),
-    [shape](sparse_ops.md#shape),
-    [sparse_concat](sparse_ops.md#sparse_concat),
-    [sparse_fill_empty_rows](sparse_ops.md#sparse_fill_empty_rows),
-    [sparse_reorder](sparse_ops.md#sparse_reorder),
-    [sparse_retain](sparse_ops.md#sparse_retain),
-    [sparse_tensor_to_dense](sparse_ops.md#sparse_tensor_to_dense),
-    [sparse_to_dense](sparse_ops.md#sparse_to_dense),
-    [sparse_to_indicator](sparse_ops.md#sparse_to_indicator)
+* **[Sparse Tensors](sparse_ops.md)**:
+  * [`shape`](sparse_ops.md#shape)
+  * [`sparse_concat`](sparse_ops.md#sparse_concat)
+  * [`sparse_fill_empty_rows`](sparse_ops.md#sparse_fill_empty_rows)
+  * [`sparse_reorder`](sparse_ops.md#sparse_reorder)
+  * [`sparse_retain`](sparse_ops.md#sparse_retain)
+  * [`sparse_tensor_to_dense`](sparse_ops.md#sparse_tensor_to_dense)
+  * [`sparse_to_dense`](sparse_ops.md#sparse_to_dense)
+  * [`sparse_to_indicator`](sparse_ops.md#sparse_to_indicator)
+  * [`SparseTensor`](sparse_ops.md#SparseTensor)
+  * [`SparseTensorValue`](sparse_ops.md#SparseTensorValue)
 
-* <b>[Inputs and Readers](io_ops.md)</b>: [class FIFOQueue](io_ops.md#FIFOQueue),
-    [class FixedLengthRecordReader](io_ops.md#FixedLengthRecordReader),
-    [class IdentityReader](io_ops.md#IdentityReader),
-    [class QueueBase](io_ops.md#QueueBase),
-    [class RandomShuffleQueue](io_ops.md#RandomShuffleQueue),
-    [class ReaderBase](io_ops.md#ReaderBase),
-    [class TFRecordReader](io_ops.md#TFRecordReader),
-    [class TextLineReader](io_ops.md#TextLineReader),
-    [class WholeFileReader](io_ops.md#WholeFileReader),
-    [batch](io_ops.md#batch),
-    [batch_join](io_ops.md#batch_join),
-    [decode_csv](io_ops.md#decode_csv),
-    [decode_raw](io_ops.md#decode_raw),
-    [limit_epochs](io_ops.md#limit_epochs),
-    [match_filenames_once](io_ops.md#match_filenames_once),
-    [matching_files](io_ops.md#matching_files),
-    [parse_example](io_ops.md#parse_example),
-    [parse_single_example](io_ops.md#parse_single_example),
-    [placeholder](io_ops.md#placeholder),
-    [range_input_producer](io_ops.md#range_input_producer),
-    [read_file](io_ops.md#read_file),
-    [shuffle_batch](io_ops.md#shuffle_batch),
-    [shuffle_batch_join](io_ops.md#shuffle_batch_join),
-    [size](io_ops.md#size),
-    [slice_input_producer](io_ops.md#slice_input_producer),
-    [string_input_producer](io_ops.md#string_input_producer)
+* **[Inputs and Readers](io_ops.md)**:
+  * [`batch`](io_ops.md#batch)
+  * [`batch_join`](io_ops.md#batch_join)
+  * [`decode_csv`](io_ops.md#decode_csv)
+  * [`decode_raw`](io_ops.md#decode_raw)
+  * [`FIFOQueue`](io_ops.md#FIFOQueue)
+  * [`FixedLengthRecordReader`](io_ops.md#FixedLengthRecordReader)
+  * [`IdentityReader`](io_ops.md#IdentityReader)
+  * [`limit_epochs`](io_ops.md#limit_epochs)
+  * [`match_filenames_once`](io_ops.md#match_filenames_once)
+  * [`matching_files`](io_ops.md#matching_files)
+  * [`parse_example`](io_ops.md#parse_example)
+  * [`parse_single_example`](io_ops.md#parse_single_example)
+  * [`placeholder`](io_ops.md#placeholder)
+  * [`QueueBase`](io_ops.md#QueueBase)
+  * [`RandomShuffleQueue`](io_ops.md#RandomShuffleQueue)
+  * [`range_input_producer`](io_ops.md#range_input_producer)
+  * [`read_file`](io_ops.md#read_file)
+  * [`ReaderBase`](io_ops.md#ReaderBase)
+  * [`shuffle_batch`](io_ops.md#shuffle_batch)
+  * [`shuffle_batch_join`](io_ops.md#shuffle_batch_join)
+  * [`size`](io_ops.md#size)
+  * [`slice_input_producer`](io_ops.md#slice_input_producer)
+  * [`string_input_producer`](io_ops.md#string_input_producer)
+  * [`TextLineReader`](io_ops.md#TextLineReader)
+  * [`TFRecordReader`](io_ops.md#TFRecordReader)
+  * [`WholeFileReader`](io_ops.md#WholeFileReader)
 
-* <b>[Data IO (Python functions)](python_io.md)</b>: [class TFRecordWriter](python_io.md#TFRecordWriter),
-    [tf_record_iterator](python_io.md#tf_record_iterator)
+* **[Data IO (Python functions)](python_io.md)**:
+  * [`tf_record_iterator`](python_io.md#tf_record_iterator)
+  * [`TFRecordWriter`](python_io.md#TFRecordWriter)
 
-* <b>[Neural Network](nn.md)</b>: [avg_pool](nn.md#avg_pool),
-    [bias_add](nn.md#bias_add),
-    [compute_accidental_hits](nn.md#compute_accidental_hits),
-    [conv2d](nn.md#conv2d),
-    [depthwise_conv2d](nn.md#depthwise_conv2d),
-    [dropout](nn.md#dropout),
-    [embedding_lookup](nn.md#embedding_lookup),
-    [embedding_lookup_sparse](nn.md#embedding_lookup_sparse),
-    [fixed_unigram_candidate_sampler](nn.md#fixed_unigram_candidate_sampler),
-    [in_top_k](nn.md#in_top_k),
-    [l2_loss](nn.md#l2_loss),
-    [l2_normalize](nn.md#l2_normalize),
-    [learned_unigram_candidate_sampler](nn.md#learned_unigram_candidate_sampler),
-    [local_response_normalization](nn.md#local_response_normalization),
-    [log_uniform_candidate_sampler](nn.md#log_uniform_candidate_sampler),
-    [max_pool](nn.md#max_pool),
-    [max_pool_with_argmax](nn.md#max_pool_with_argmax),
-    [moments](nn.md#moments),
-    [nce_loss](nn.md#nce_loss),
-    [relu](nn.md#relu),
-    [relu6](nn.md#relu6),
-    [sampled_softmax_loss](nn.md#sampled_softmax_loss),
-    [separable_conv2d](nn.md#separable_conv2d),
-    [sigmoid](nn.md#sigmoid),
-    [sigmoid_cross_entropy_with_logits](nn.md#sigmoid_cross_entropy_with_logits),
-    [softmax](nn.md#softmax),
-    [softmax_cross_entropy_with_logits](nn.md#softmax_cross_entropy_with_logits),
-    [softplus](nn.md#softplus),
-    [tanh](nn.md#tanh),
-    [top_k](nn.md#top_k),
-    [uniform_candidate_sampler](nn.md#uniform_candidate_sampler)
+* **[Neural Network](nn.md)**:
+  * [`avg_pool`](nn.md#avg_pool)
+  * [`bias_add`](nn.md#bias_add)
+  * [`compute_accidental_hits`](nn.md#compute_accidental_hits)
+  * [`conv2d`](nn.md#conv2d)
+  * [`depthwise_conv2d`](nn.md#depthwise_conv2d)
+  * [`dropout`](nn.md#dropout)
+  * [`embedding_lookup`](nn.md#embedding_lookup)
+  * [`embedding_lookup_sparse`](nn.md#embedding_lookup_sparse)
+  * [`fixed_unigram_candidate_sampler`](nn.md#fixed_unigram_candidate_sampler)
+  * [`in_top_k`](nn.md#in_top_k)
+  * [`l2_loss`](nn.md#l2_loss)
+  * [`l2_normalize`](nn.md#l2_normalize)
+  * [`learned_unigram_candidate_sampler`](nn.md#learned_unigram_candidate_sampler)
+  * [`local_response_normalization`](nn.md#local_response_normalization)
+  * [`log_uniform_candidate_sampler`](nn.md#log_uniform_candidate_sampler)
+  * [`max_pool`](nn.md#max_pool)
+  * [`max_pool_with_argmax`](nn.md#max_pool_with_argmax)
+  * [`moments`](nn.md#moments)
+  * [`nce_loss`](nn.md#nce_loss)
+  * [`relu`](nn.md#relu)
+  * [`relu6`](nn.md#relu6)
+  * [`sampled_softmax_loss`](nn.md#sampled_softmax_loss)
+  * [`separable_conv2d`](nn.md#separable_conv2d)
+  * [`sigmoid`](nn.md#sigmoid)
+  * [`sigmoid_cross_entropy_with_logits`](nn.md#sigmoid_cross_entropy_with_logits)
+  * [`softmax`](nn.md#softmax)
+  * [`softmax_cross_entropy_with_logits`](nn.md#softmax_cross_entropy_with_logits)
+  * [`softplus`](nn.md#softplus)
+  * [`tanh`](nn.md#tanh)
+  * [`top_k`](nn.md#top_k)
+  * [`uniform_candidate_sampler`](nn.md#uniform_candidate_sampler)
 
-* <b>[Running Graphs](client.md)</b>: [class AbortedError](client.md#AbortedError),
-    [class AlreadyExistsError](client.md#AlreadyExistsError),
-    [class CancelledError](client.md#CancelledError),
-    [class DataLossError](client.md#DataLossError),
-    [class DeadlineExceededError](client.md#DeadlineExceededError),
-    [class FailedPreconditionError](client.md#FailedPreconditionError),
-    [class InternalError](client.md#InternalError),
-    [class InvalidArgumentError](client.md#InvalidArgumentError),
-    [class NotFoundError](client.md#NotFoundError),
-    [class OpError](client.md#OpError),
-    [class OutOfRangeError](client.md#OutOfRangeError),
-    [class PermissionDeniedError](client.md#PermissionDeniedError),
-    [class ResourceExhaustedError](client.md#ResourceExhaustedError),
-    [class Session](client.md#Session),
-    [class UnauthenticatedError](client.md#UnauthenticatedError),
-    [class UnavailableError](client.md#UnavailableError),
-    [class UnimplementedError](client.md#UnimplementedError),
-    [class UnknownError](client.md#UnknownError),
-    [get_default_session](client.md#get_default_session)
+* **[Running Graphs](client.md)**:
+  * [`AbortedError`](client.md#AbortedError)
+  * [`AlreadyExistsError`](client.md#AlreadyExistsError)
+  * [`CancelledError`](client.md#CancelledError)
+  * [`DataLossError`](client.md#DataLossError)
+  * [`DeadlineExceededError`](client.md#DeadlineExceededError)
+  * [`FailedPreconditionError`](client.md#FailedPreconditionError)
+  * [`get_default_session`](client.md#get_default_session)
+  * [`InternalError`](client.md#InternalError)
+  * [`InvalidArgumentError`](client.md#InvalidArgumentError)
+  * [`NotFoundError`](client.md#NotFoundError)
+  * [`OpError`](client.md#OpError)
+  * [`OutOfRangeError`](client.md#OutOfRangeError)
+  * [`PermissionDeniedError`](client.md#PermissionDeniedError)
+  * [`ResourceExhaustedError`](client.md#ResourceExhaustedError)
+  * [`Session`](client.md#Session)
+  * [`UnauthenticatedError`](client.md#UnauthenticatedError)
+  * [`UnavailableError`](client.md#UnavailableError)
+  * [`UnimplementedError`](client.md#UnimplementedError)
+  * [`UnknownError`](client.md#UnknownError)
 
-* <b>[Training](train.md)</b>: [class AdagradOptimizer](train.md#AdagradOptimizer),
-    [class AdamOptimizer](train.md#AdamOptimizer),
-    [class AggregationMethod](train.md#AggregationMethod),
-    [class Coordinator](train.md#Coordinator),
-    [class ExponentialMovingAverage](train.md#ExponentialMovingAverage),
-    [class FtrlOptimizer](train.md#FtrlOptimizer),
-    [class GradientDescentOptimizer](train.md#GradientDescentOptimizer),
-    [class MomentumOptimizer](train.md#MomentumOptimizer),
-    [class Optimizer](train.md#Optimizer),
-    [class QueueRunner](train.md#QueueRunner),
-    [class RMSPropOptimizer](train.md#RMSPropOptimizer),
-    [class SummaryWriter](train.md#SummaryWriter),
-    [add_queue_runner](train.md#add_queue_runner),
-    [clip_by_average_norm](train.md#clip_by_average_norm),
-    [clip_by_global_norm](train.md#clip_by_global_norm),
-    [clip_by_norm](train.md#clip_by_norm),
-    [clip_by_value](train.md#clip_by_value),
-    [exponential_decay](train.md#exponential_decay),
-    [global_norm](train.md#global_norm),
-    [global_step](train.md#global_step),
-    [gradients](train.md#gradients),
-    [histogram_summary](train.md#histogram_summary),
-    [image_summary](train.md#image_summary),
-    [merge_all_summaries](train.md#merge_all_summaries),
-    [merge_summary](train.md#merge_summary),
-    [scalar_summary](train.md#scalar_summary),
-    [start_queue_runners](train.md#start_queue_runners),
-    [stop_gradient](train.md#stop_gradient),
-    [summary_iterator](train.md#summary_iterator),
-    [write_graph](train.md#write_graph),
-    [zero_fraction](train.md#zero_fraction)
+* **[Training](train.md)**:
+  * [`AdagradOptimizer`](train.md#AdagradOptimizer)
+  * [`AdamOptimizer`](train.md#AdamOptimizer)
+  * [`add_queue_runner`](train.md#add_queue_runner)
+  * [`AggregationMethod`](train.md#AggregationMethod)
+  * [`clip_by_average_norm`](train.md#clip_by_average_norm)
+  * [`clip_by_global_norm`](train.md#clip_by_global_norm)
+  * [`clip_by_norm`](train.md#clip_by_norm)
+  * [`clip_by_value`](train.md#clip_by_value)
+  * [`Coordinator`](train.md#Coordinator)
+  * [`exponential_decay`](train.md#exponential_decay)
+  * [`ExponentialMovingAverage`](train.md#ExponentialMovingAverage)
+  * [`FtrlOptimizer`](train.md#FtrlOptimizer)
+  * [`global_norm`](train.md#global_norm)
+  * [`global_step`](train.md#global_step)
+  * [`GradientDescentOptimizer`](train.md#GradientDescentOptimizer)
+  * [`gradients`](train.md#gradients)
+  * [`histogram_summary`](train.md#histogram_summary)
+  * [`image_summary`](train.md#image_summary)
+  * [`merge_all_summaries`](train.md#merge_all_summaries)
+  * [`merge_summary`](train.md#merge_summary)
+  * [`MomentumOptimizer`](train.md#MomentumOptimizer)
+  * [`Optimizer`](train.md#Optimizer)
+  * [`QueueRunner`](train.md#QueueRunner)
+  * [`RMSPropOptimizer`](train.md#RMSPropOptimizer)
+  * [`scalar_summary`](train.md#scalar_summary)
+  * [`start_queue_runners`](train.md#start_queue_runners)
+  * [`stop_gradient`](train.md#stop_gradient)
+  * [`summary_iterator`](train.md#summary_iterator)
+  * [`SummaryWriter`](train.md#SummaryWriter)
+  * [`write_graph`](train.md#write_graph)
+  * [`zero_fraction`](train.md#zero_fraction)
 
 <div class="sections-order" style="display: none;">
 <!--

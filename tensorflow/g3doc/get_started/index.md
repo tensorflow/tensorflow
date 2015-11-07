@@ -52,17 +52,15 @@ other software packages, please take the red pill.  If you've never even heard
 of MNIST, definitely take the blue pill.  If you're somewhere in between, we
 suggest skimming blue, then red.
 
-TODO(danmane): Add in creative commons attribution for these images.
-Also, make sure the sizes are precisely the same.
-
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px; display: flex; flex-direction: row">
  <a href="../tutorials/mnist/beginners/index.md">
-   <img style="flex-grow:1; flex-shrink:1;border: 1px solid black;" src="./blue_pill.jpg">
+   <img style="flex-grow:1; flex-shrink:1;border: 1px solid black;" src="./blue_pill.png">
  </a>
  <a href="../tutorials/mnist/pros/index.md">
-   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="./red_pill.jpg">
+   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="./red_pill.png">
  </a>
 </div>
+<p style="font-size:10px;">Images licensed CC BY-SA 4.0; original by W. Carter</p>
 
 If you're already sure you want to learn and install TensorFlow you can skip
 these and charge ahead.  Don't worry, you'll still get to see MNIST -- we'll

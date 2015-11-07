@@ -28,96 +28,90 @@ def parse_example(serialized,
                   dense_defaults=None,
                   dense_shapes=None,
                   name="ParseExample"):
-  """Parse Example protos.
+  """Parses `Example` protos.
 
-  Args:
-    serialized: string vector, a batch of binary serialized Example protos.
-    names: A string vector, the names of the serialized protos.
-      "names" may contain, e.g., table key (descriptive) names for the
-      corresponding serialized protos.  These are purely useful for debugging
-      purposes, and the presence of values here has no effect on the output.
-      "names" may be an empty vector, if no names are available.
-      If non-empty, this vector must be the same length as "serialized".
-    sparse_keys: A string list of keys in the Examples' features.
-      These keys are associated with sparse values.
-    sparse_types: A list of DTypes.
-      This list's length must match that of sparse_keys.  Currently
-      parse_example supports tf.float32 (FloatList), tf.int64 (Int64List),
-      and tf.string (BytesList).
-    dense_keys: A string list of keys in the Examples' features.
-      These keys are associated with dense values.
-    dense_types: A list of DTypes.
-      This list's length must match that of dense_keys.  Currently
-      parse_example supports tf.float32 (FloatList), tf.int64 (Int64List),
-      and tf.string (BytesList).
-    dense_defaults: A dict of {key:Tensor} (some may be missing).
-      The keys of the dict must match the dense_keys of the feature.
-      If a key is not present in this dictionary, the corresponding dense
-      Feature is required in all elements of serialized.
-    dense_shapes: A list of tuples.
-      Entries provide the shape of data in each dense Feature in features.
-      The length of dense_shapes must be the same as the length of dense_keys.
-      The number of elements in the Feature corresponding to dense_key[j]
-      must always have np.prod(dense_shapes[j]) entries.
-      If dense_shapes[j] == (D0, D1, ..., DN) then the the shape of output
-      Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
-      The dense outputs are just the inputs row-stacked by batch.
-    name: (Optional) Name of Op in the graph.
+  Parses a number of serialized [`Example`]
+  (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
+  protos given in `serialized`.
 
-  Returns:
-    A dictionary mapping keys to Tensors and SparseTensors.
+  `names` may contain descriptive names for the corresponding serialized protos.
+  These may be useful for debugging purposes, but they have no effect on the
+  output. If not `None`, `names` must be the same length as `serialized`.
 
-    The key dense_keys[j] is mapped to a tensor of type dense_types[j] and
-    of shape (serialized.size(),) + dense_shapes[j] (i.e., the dense outputs are
-    inputs, reshaped in row-major format and then row-stacked by batch).
+  This op parses serialized examples into a dictionary mapping keys to `Tensor`
+  and `SparseTensor` objects respectively, depending on whether the keys appear
+  in `sparse_keys` or `dense_keys`.
 
-    The key sparse_keys[j] is mapped to a SparseTensor of type sparse_types[j].
-    The SparseTensor represents a ragged matrix.  Its indices are [batch, index]
-    where "batch" is is the batch entry the value is from, and "index" is the
-    value's index in the list of values associated with that feature
-    and example.  For example, if one expects a tf.float32 sparse feature "ft"
-    and three serialized examples are provided:
+  The key `dense_keys[j]` is mapped to a `Tensor` of type `dense_types[j]` and
+  of shape `(serialized.size(),) + dense_shapes[j]`.
 
-    serialized = [
-      features:
-        { feature: [ key: { "ft" value: float_list: { value: [1.0, 2.0] } } ] },
-      features:
-        { feature: [] },
-      features:
-        { feature: [ key: { "ft" value: float_list: { value: [3.0] } } ] }
-    ]
+  `dense_defaults` provides defaults for values referenced using `dense_keys`.
+  If a key is not present in this dictionary, the corresponding dense `Feature`
+  is required in all elements of `serialized`.
 
-    then the output will look like:
+  `dense_shapes[j]` provides the shape of each `Feature` entry referenced by
+  `dense_keys[j]`. The number of elements in the `Feature` corresponding to
+  `dense_key[j]` must always have `np.prod(dense_shapes[j])` entries. The
+  returned `Tensor` for `dense_key[j]` has shape `[N] + dense_shape[j]`, where
+  `N` is the number of `Example`s in `serialized`.
 
-      {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
-                          values=[1.0, 2.0, 3.0],
-                          shape=(3, 2)) }
+  The key `sparse_keys[j]` is mapped to a `SparseTensor` of type
+  `sparse_types[j]`. The `SparseTensor` represents a ragged matrix.
+  Its indices are `[batch, index]` where `batch` is the batch entry the value
+  is from, and `index` is the value's index in the list of values associated
+  with that feature and example.
 
-  Raises:
-    ValueError: If sparse and dense keys intersect, or input lengths do not
-      match up for sparse_* (similarly for dense_*).
-    TypeError: If an input is malformed.
+  Examples:
 
-  Example input, format, and output: Just Sparse Inputs
-  ================================================
+  For example, if one expects a `tf.float32` sparse feature `ft` and three
+  serialized `Example`s are provided:
 
-  Given two brain.Example input protos:
+  ```
+  serialized = [
+    features:
+      { feature: [ key: { "ft" value: float_list: { value: [1.0, 2.0] } } ] },
+    features:
+      { feature: [] },
+    features:
+      { feature: [ key: { "ft" value: float_list: { value: [3.0] } } ] }
+  ]
+  ```
 
-  serialized:  // serialized versions of the protos below
-    [features: {
+  then the output will look like:
+
+  ```
+  {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
+                      values=[1.0, 2.0, 3.0],
+                      shape=(3, 2)) }
+  ```
+
+  Given two `Example` input protos in `serialized`:
+
+  ```
+  [
+    features: {
       feature: { key: "kw" value: { bytes_list: { value: [ "knit", "big" ] } } }
       feature: { key: "gps" value: { float_list: { value: [] } } }
-     },
-     features: {
+    },
+    features: {
       feature: { key: "kw" value: { bytes_list: { value: [ "emmy" ] } } }
       feature: { key: "dank" value: { int64_list: { value: [ 42 ] } } }
       feature: { key: "gps" value: { } }
-    }]
-  names: ["input0", "input1"],
-  sparse_keys: ["kw", "dank", "gps"]
-  sparse_types: [DT_STRING, DT_INT64, DT_FLOAT]
+    }
+  ]
+  ```
 
-  Then the expected output is a dictionary:
+  And arguments
+
+  ```
+    names: ["input0", "input1"],
+    sparse_keys: ["kw", "dank", "gps"]
+    sparse_types: [DT_STRING, DT_INT64, DT_FLOAT]
+  ```
+
+  Then the output is a dictionary:
+
+  ```python
   {
     "kw": SparseTensor(
         indices=[[0, 0], [0, 1], [1, 0]],
@@ -132,63 +126,71 @@ def parse_example(serialized,
         values=[],
         shape=[2, 0]),
   }
+  ```
 
+  For dense results in two serialized `Example`s:
 
-  Example input, format, and output: Dense Inputs (without defaults)
-  ==================================================================
-
-  Given two brain.Example input protos:
-
-  serialized:  // serialized versions of the protos below
-    [features: {
+  ```
+  [
+    features: {
       feature: { key: "age" value: { int64_list: { value: [ 0 ] } } }
       feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
      },
      features: {
       feature: { key: "age" value: { int64_list: { value: [] } } }
       feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
-    }]
+    }
+  ]
+  ```
+
+  We can use arguments:
+
+  ```
   names: ["input0", "input1"],
-  dense_keys: np.array(["age", "gender"])
-  dense_types: [tf.int64, tf.string]
+  dense_keys: np.array(["age", "gender"]),
+  dense_types: [tf.int64, tf.string],
   dense_defaults: {
-    "age": -1  # defaults to -1 if missing
+    "age": -1  # "age" defaults to -1 if missing
                # "gender" has no specified default so it's required
   }
-  dense_shapes: [(1,), (1,)]  # age, gender, label, weight
+  dense_shapes: [(1,), (1,)],  # age, gender, label, weight
+  ```
 
-  Then the expected output is a dictionary:
+  And the expected output is:
+
+  ```python
   {
     "age": [[0], [-1]],
     "gender": [["f"], ["f"]],
   }
+  ```
 
+  Args:
+    serialized: A list of strings, a batch of binary serialized `Example`
+      protos.
+    names: A list of strings, the names of the serialized protos.
+    sparse_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `SparseTensor` objects.
+    sparse_types: A list of `DTypes` of the same length as `sparse_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `Tensor`s
+    dense_types: A list of DTypes of the same length as `dense_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_defaults: A dict mapping string keys to `Tensor`s.
+      The keys of the dict must match the dense_keys of the feature.
+    dense_shapes: A list of tuples with the same length as `dense_keys`.
+      The shape of the data for each dense feature referenced by `dense_keys`.
+    name: A name for this operation (optional).
 
-  Example input, format, and output: Dense Inputs (with defaults)
-  ===============================================================
+  Returns:
+    A `dict` mapping keys to `Tensor`s and `SparseTensor`s.
 
-  Given two brain.Example input protos:
-
-  serialized:  // serialized versions of the protos below
-    [features: {
-      feature: { key: "weight" value: { float_list: { value: [ 1.0 ] } } }
-     },
-     features: {
-      feature: { key: "label" value: { float_list: { value: [ -1.0, 0.0 ] } } }
-    }]
-  names: ["input0", "input1"],
-  dense_keys: np.array(["label", "weight"])
-  dense_defaults: {
-    "label": [1.0, 2.0],  # float (default: vector)
-    "weight": 5.0         # float (default: scalar, 5.0)
-  }
-  dense_shapes: [(2,), (1,)]  # age, gender, label, weight
-
-  Then the expected output is a dictionary:
-  {
-    "label": [[1.0, 2.0], [-1.0, 0.0]],
-    "weight": [[1.0], [5.0]],
-  }
+  Raises:
+    ValueError: If sparse and dense key sets intersect, or input lengths do not
+      match up.
   """
   names = [] if names is None else names
   dense_defaults = {} if dense_defaults is None else dense_defaults
@@ -262,7 +264,20 @@ def parse_single_example(serialized,  # pylint: disable=invalid-name
                          dense_defaults=None,
                          dense_shapes=None,
                          name="ParseSingleExample"):
-  """Identical to parse_example but for scalar serialized and names.
+  """Parses a single `Example` proto.
+
+  Similar to `parse_example`, except:
+
+  For dense tensors, the returned `Tensor` is identical to the output of
+  `parse_example`, except there is no batch dimension, the output shape is the
+  same as the shape given in `dense_shape`.
+
+  For `SparseTensor`s, the first (batch) column of the indices matrix is removed
+  (the indices matrix is a column vector), the values vector is unchanged, and
+  the first (batch_size) entry of the shape vector is removed (it is now a
+  single element vector).
+
+  See also `parse_example`.
 
   Args:
     serialized: A scalar string, a single serialized Example.
@@ -275,20 +290,10 @@ def parse_single_example(serialized,  # pylint: disable=invalid-name
     dense_types: See parse_example documentation for more details.
     dense_defaults: See parse_example documentation for more details.
     dense_shapes: See parse_example documentation for more details.
-    name: Optional op name.
+    name: A name for this operation (optional).
 
   Returns:
     A dictionary mapping keys to Tensors and SparseTensors.
-
-    For dense tensors, the Tensor is identical to the output of parse_example,
-    except it is one less dimension (the first, batch, dimension is removed).
-
-    For SparseTensors:
-      The first (batch) column of the indices matrix is removed
-        (it is now a column vector).
-      The values vector is unchanged.
-      The first (batch_size) entry of the shape vector is removed
-        (it is now a single element vector).
 
   Raises:
     ValueError: if "scalar" or "names" have known shapes, and are not scalars.

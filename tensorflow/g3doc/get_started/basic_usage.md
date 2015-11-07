@@ -77,7 +77,7 @@ The default graph now has three nodes: two `constant()` ops and one `matmul()`
 op. To actually multiply the matrices, and get the result of the multiplication,
 you must launch the graph in a session.
 
-## Launching the graph in a Session
+### Launching the graph in a session
 
 Launching follows construction.  To launch a graph, create a `Session` object.
 Without arguments the session constructor launches the default graph.
@@ -102,19 +102,15 @@ sess = tf.Session()
 # The output of the op is returned in 'result' as a numpy `ndarray` object.
 result = sess.run(product)
 print result
+# ==> [[ 12.]]
 
 # Close the Session when we're done.
 sess.close()
-
-
-# Stdout output ==> [[ 12.]]
 ```
 
 Sessions should be closed to release resources. You can also enter a `Session`
 with a "with" block. The `Session` closes automatically at the end of the
 `with` block.
-
-
 
 ```python
 with tf.Session() as sess:
@@ -150,6 +146,37 @@ Devices are specified with strings.  The currently supported devices are:
 See [Using GPUs](../how_tos/using_gpu/index.md) for more information about GPUs
 and TensorFlow.
 
+## Interactive Usage
+
+The Python examples in the documentation launch the graph with a
+[`Session`](../api_docs/python/client.md#Session) and use the
+[`Session.run()`](../api_docs/python/client.md#Session.run) method to execute
+operations.
+
+For ease of use in interactive Python environments, such as
+[IPython](http://ipython.org) you can instead use the
+[`InteractiveSession`](../api_docs/python/client.md#InteractiveSession) class,
+and the [`Tensor.eval()`](../api_docs/python/framework.md#Tensor.eval) and
+[`Operation.run()`](../api_docs/python/framework.md#Operation.run) methods.  This
+avoids having to keep a variable holding the session.
+
+```python
+# Enter an interactive TensorFlow Session.
+import tensorflow as tf
+sess = tf.InteractiveSession()
+
+x = tf.Variable([1.0, 2.0])
+a = tf.constant([3.0, 3.0])
+
+# Initialize 'x' using the run() method of its initializer op.
+x.initializer.run()
+
+# Add an op to subtact 'a' from 'x'.  Run it and print the result
+sub = tf.sub(x, a)
+print sub.eval()
+# ==> [-2. -1.]
+```
+
 ## Tensors
 
 TensorFlow programs use a tensor data structure to represent all data -- only
@@ -158,14 +185,6 @@ of a TensorFlow tensor as an n-dimensional array or list. A tensor has a
 static type a rank, and a shape.  To learn more about how TensorFlow handles
 these concepts, see the [Rank, Shape, and Type](../resources/dims_types.md)
 reference.
-
-
-# output:
-# [array([ 21.], dtype=float32), array([ 7.], dtype=float32)]
-
-
-
-
 
 ## Variables
 

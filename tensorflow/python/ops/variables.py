@@ -207,7 +207,7 @@ class Variable(object):
 
     This convenience method requires a session where the graph containing this
     variable has been launched. If no session is passed, the default session is
-    used.  See the [Session class](../client.md#Session) for more information on
+    used.  See the [Session class](client.md#Session) for more information on
     launching a graph and on sessions.
 
     ```python
@@ -543,7 +543,7 @@ def assert_variables_initialized(var_list=None):
   """
   if var_list is None:
     var_list = all_variables()
-  # Backwards compatibility for old-style variables. TODO(mdevin): remove.
+  # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []
     for op in ops.get_default_graph().get_operations():

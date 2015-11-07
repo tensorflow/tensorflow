@@ -63,7 +63,7 @@ class TensorShape {
 
   /// \brief Returns the number of elements in dimension "d".
   /// REQUIRES: "0 <= d < dims()"
-  // TODO(mdevin): Rename to dimension() to match Eigen::Tensor::dimension()?
+  // TODO(touts): Rename to dimension() to match Eigen::Tensor::dimension()?
   int64 dim_size(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());

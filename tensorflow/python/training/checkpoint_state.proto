@@ -5,7 +5,7 @@ package tensorflow;
 
 // Protocol buffer representing the checkpoint state.
 //
-// TODO(mdevin): Add other attributes as needed.
+// TODO(touts): Add other attributes as needed.
 message CheckpointState {
   // Path to the most-recent model checkpoint.
   string model_checkpoint_path = 1;

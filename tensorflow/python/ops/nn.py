@@ -143,7 +143,7 @@ only considering a small randomly-chosen subset of contrastive classes
 (called candidates) for each batch of training examples.
 
 See our [Candidate Sampling Algorithms Reference]
-(http://www.tensorflow.org/extras/candidate_sampling.pdf)
+(../../extras/candidate_sampling.pdf)
 
 ### Sampled Loss Functions
 

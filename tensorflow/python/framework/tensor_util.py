@@ -39,7 +39,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       fast_tensor_util.AppendUInt8ArrayToTensorProto,
       types.qint32.as_numpy_dtype:
       fast_tensor_util.AppendInt32ArrayToTensorProto,
-      # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
+      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 else:
 
@@ -81,7 +81,7 @@ else:
       types.qint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
       types.quint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
       types.qint32.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
-      # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
+      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 
 
@@ -472,7 +472,7 @@ def ConstantValue(tensor):
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  # TODO(mdevin): Support Variables?
+  # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
   if tensor.op.type == "Const":

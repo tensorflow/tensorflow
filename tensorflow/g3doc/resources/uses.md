@@ -36,7 +36,3 @@ Listed below are some of the many uses of TensorFlow.
   * **Description**: On-device computer vision model to do optical character recoignition to enable real-time translation.
   * **More info**: [Google Research blog post](http://googleresearch.blogspot.com/2015/07/how-google-translate-squeezes-deep.html)
 }
-
-* TODO(opensource): Add several other research projects
-* TODO(opensource): Pointer Sets?
-* TODO(opensource): Others

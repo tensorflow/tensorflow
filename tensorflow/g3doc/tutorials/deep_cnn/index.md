@@ -198,7 +198,8 @@ loss and all these weight decay terms, as returned by the `loss()` function.
 
 We visualize it in TensorBoard with a [scalar_summary](../../api_docs/python/train.md?#scalar_summary):
 
-[![CIFAR-10 Loss](./cifar_loss.png "CIFAR-10 Total Loss")](#TODO(migmigmig)#TODO(danmane))
+![CIFAR-10 Loss](./cifar_loss.png "CIFAR-10 Total Loss")
+###### [View this TensorBoard live! (Chrome/FF)](/tensorboard/cifar.html)
 
 We train the model using standard
 [gradient descent](https://en.wikipedia.org/wiki/Gradient_descent)
@@ -207,7 +208,8 @@ with a learning rate that
 [exponentially decays](../../api_docs/python/train.md#exponential_decay)
 over time.
 
-[![CIFAR-10 Learning Rate Decay](./cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")](#TODO(migmigmig)#TODO(danmane))
+![CIFAR-10 Learning Rate Decay](./cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
+###### [View this TensorBoard live! (Chrome/FF)](/tensorboard/cifar.html)
 
 The `train()` function adds the operations needed to minimize the objective by
 calculating the gradient and updating the learned variables (see

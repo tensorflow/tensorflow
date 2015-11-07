@@ -1,3 +1,5 @@
+# BibTex Citation
+```
 @misc{tensorflow2015-whitepaper,
 title={{TensorFlow}: Large-Scale Machine Learning on Heterogeneous Systems},
 url={http://www.tensorflow.org/extras/tensorflow-whitepaper2015.pdf},
@@ -9,7 +11,7 @@ author={
     Eugene~Brevdo and
     Zhifeng~Chen and
     Craig~Citro and
-    Greg~Corrado and
+    Greg~S-Corrado and
     Andy~Davis and
     Jeffrey~Dean and
     Matthieu~Devin and
@@ -43,3 +45,4 @@ author={
     Xiaoqiang~Zheng},
   year={2015},
 }
+```

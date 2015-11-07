@@ -194,7 +194,7 @@ Extract3DPatches(
       return Extract3DPatches(input, patchPlanes, patchRows, patchCols,
                               stridePlanes, strideRows, strideCols,
                               0, 0, 0, 0, 0, 0, padding_value);
-    case PADDING_SAME:
+    case PADDING_SAME: {
       // The side of the tensor before striding should be just the expected
       // output times the stride.
       const TensorIndex size_z = ceil(inputPlanes / static_cast<float>(stridePlanes)) * stridePlanes;
@@ -214,6 +214,13 @@ Extract3DPatches(
                               dy - dy / 2, dy / 2,
                               dx - dx / 2, dx / 2,
                               padding_value);
+    }
+    default:
+      eigen_assert(false && "unexpected padding");
+      // unreachable code to avoid missing return warning.
+      return Extract3DPatches(input, patchPlanes, patchRows, patchCols,
+                              stridePlanes, strideRows, strideCols,
+                              0, 0, 0, 0, 0, 0, padding_value);
   }
 }
 

@@ -43,7 +43,8 @@ class OpError(Exception):
     or `Recv` op, there will be no corresponding
     [`Operation`](framework.md#Operation) object.  In that case, this
     will return `None`, and you should instead use the
-    [`node_def`](OpError.node_def) to discover information about the op.
+    [`OpError.node_def`](#OpError.node_def) to discover information about the
+    op.
 
     Returns:
       The `Operation` that failed, or None.
@@ -293,7 +294,7 @@ class AbortedError(OpError):
 
   For example, running a [`queue.enqueue()`](io_ops.md#QueueBase.enqueue)
   operation may raise `AbortedError` if a
-  [`queue.close()`](io_ops.md@QueueBase.close) operation previously ran.
+  [`queue.close()`](io_ops.md#QueueBase.close) operation previously ran.
 
   @@__init__
   """

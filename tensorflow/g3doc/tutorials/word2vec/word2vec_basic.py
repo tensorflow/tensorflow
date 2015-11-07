@@ -1,3 +1,5 @@
+import tensorflow.python.platform
+
 import collections
 import math
 import numpy as np
@@ -216,4 +218,3 @@ try:
 
 except ImportError:
   print "Please install sklearn and matplotlib to visualize embeddings."
-

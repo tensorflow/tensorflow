@@ -9,7 +9,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 
 
-# TODO(mdevin): switch to variables.Variable.
+# TODO(touts): switch to variables.Variable.
 def assign_moving_average(variable, value, decay, name=None):
   """Compute the moving average of a variable.
 
@@ -182,7 +182,7 @@ class ExponentialMovingAverage(object):
       ValueError: If the moving average of one of the variables is already
         being computed.
     """
-    # TODO(mdevin): op_scope
+    # TODO(touts): op_scope
     if var_list is None:
       var_list = variables.trainable_variables()
     for var in var_list:

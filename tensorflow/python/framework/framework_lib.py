@@ -1,5 +1,5 @@
 # pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
-"""Import names from the framework library.
+"""Classes and functions for building TensorFlow graphs.
 
 ## Core graph data structures
 

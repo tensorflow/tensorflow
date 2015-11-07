@@ -1,5 +1,7 @@
 # Glossary
 
+TODO(someone): Fix several broken links in Glossary
+
 **Broadcasting operation**
 
 An operation that uses [numpy-style broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)

@@ -46,7 +46,7 @@ struct SoftmaxEigenImpl {
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
     one_by_class.set(1, num_classes);
 #endif
-    // NOTE(mdevin): If you modify this implementation please run
+    // NOTE(touts): If you modify this implementation please run
     // the ImageNetSoftmaxFwd benchmark in core_ops_test.cc.
     //
     // softmax = exp(logits - max(logits along classes));

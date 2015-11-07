@@ -32,18 +32,14 @@ testing sets as NumPy arrays.
 It also provides a function for iterating through data minibatches, which we
 will use below.
 
-### Start TensorFlow Session
+### Start TensorFlow InteractiveSession
 
 Tensorflow relies on a highly efficient C++ backend to do its computation. The
-connection to this backend is called a session. We will need to create a session
-before we can do any computation.
+connection to this backend is called a session.  The common usage for TensorFlow
+programs is to first create a graph and then launch it in a session.
 
-```python
-import tensorflow as tf
-sess = tf.InteractiveSession()
-```
-
-Using an `InteractiveSession` makes TensorFlow more flexible about how you
+Here we instead use the convenience `InteractiveSession` class, which
+makes TensorFlow more flexible about how you
 structure your code.
 It allows you to interleave operations which build a
 [computation graph](../../../get_started/basic_usage.md#the-computation-graph)
@@ -53,6 +49,11 @@ iPython.
 If you are not using an `InteractiveSession`, then you should build
 the entire computation graph before starting a session and [launching the
 graph](../../../get_started/basic_usage.md#launching-the-graph-in-a-session).
+
+```python
+import tensorflow as tf
+sess = tf.InteractiveSession()
+```
 
 #### Computation Graph
 
