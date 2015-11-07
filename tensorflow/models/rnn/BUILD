@@ -51,6 +51,18 @@ py_test(
 )
 
 py_library(
+    name = "package",
+    srcs = [
+        "__init__.py",
+    ],
+    deps = [
+        ":rnn",
+        ":rnn_cell",
+        ":seq2seq",
+    ],
+)
+
+py_library(
     name = "rnn",
     srcs = [
         "rnn.py",

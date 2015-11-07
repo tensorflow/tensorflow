@@ -22,6 +22,7 @@ sh_binary(
         "//tensorflow/models/image/cifar10:cifar10_train",
         "//tensorflow/models/image/cifar10:cifar10_multi_gpu_train",
         "//tensorflow/models/image/mnist:convolutional",
+        "//tensorflow/models/rnn:package",
         "//tensorflow/tensorboard",
     ],
 )

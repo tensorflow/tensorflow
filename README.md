@@ -19,8 +19,8 @@ changes to TensorFlow through
 
 **We use [github issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, but please see
-[Community](resources/index.md#community) for general questions and
-discussion.**
+[Community](tensorflow/g3doc/resources/index.md#community) for general questions
+and discussion.**
 
 # Download and Setup
 
