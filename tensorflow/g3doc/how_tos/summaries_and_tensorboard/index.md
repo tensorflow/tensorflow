@@ -1,4 +1,4 @@
-# TensorBoard: Visualizing Your Training
+# TensorBoard: Visualizing Learning
 
 The computations you'll use TensorBoard for - like training a massive
 deep neural network - can be complex and confusing. To make it easier to

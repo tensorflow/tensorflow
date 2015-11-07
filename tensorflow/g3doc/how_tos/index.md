@@ -18,7 +18,7 @@ example.
 [View Tutorial](../tutorials/mnist/tf/index.md)
 
 
-## TensorBoard: Visualizing Your Training
+## TensorBoard: Visualizing Learning
 
 TensorBoard is a useful tool for visualizing the training and evaluation of
 your model(s).  This tutorial describes how to build and run TensorBoard as well
@@ -28,7 +28,7 @@ TensorBoard uses for display.
 [View Tutorial](summaries_and_tensorboard/index.md)
 
 
-## TensorBoard: Visualizing Your Graph
+## TensorBoard: Graph Visualization
 
 This tutorial describes how to use the graph visualizer in TensorBoard to help
 you understand the dataflow graph and debug it.
@@ -60,7 +60,7 @@ compose in your graph, but here are the details of how to add you own custom Op.
 [View Tutorial](adding_an_op/index.md)
 
 
-## New Data Formats
+## Custom Data Readers
 
 If you have a sizable custom data set, you may want to consider extending
 TensorFlow to read your data directly in it's native format.  Here's how.
@@ -68,7 +68,7 @@ TensorFlow to read your data directly in it's native format.  Here's how.
 [View Tutorial](new_data_formats/index.md)
 
 
-## Using One or More GPUs
+## Using GPUs
 
 This tutorial describes how to construct and execute models on GPU(s).
 

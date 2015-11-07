@@ -524,19 +524,39 @@ class Session(BaseSession):
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 
-  In some cases, such as interactive shells and IPython notebooks, it is
-  useful to be able to define a `Session` without using a with block: this
-  style enables statements to be executed immediately, rather than at the
-  termination of the block. In that case, it must be closed using
-  `Session.close()`. For example:
+  The only difference with a regular `Session` is that an `InteractiveSession`
+  installs itself as the default session on construction.
+  The methods [`Tensor.eval()`](framework.md#Tensor.eval) and
+  [`Operation.run()`](framework.md#Operation.run) will use that session
+  to run ops.
+
+  This is convenient in interactive shells and [IPython
+  notebooks](http://ipython.org), as it avoids having to pass an explicit
+  `Session` object to run ops.
+
+  For example:
 
   ```python
-  sess = InteractiveSession()
+  sess = tf.InteractiveSession()
   a = tf.constant(5.0)
   b = tf.constant(6.0)
   c = a * b
-  print c.run()
+  # We can just use 'c.eval()' without passing 'sess'
+  print c.eval()
   sess.close()
+  ```
+
+  Note that a regular session installs itself as the default session when it
+  is created in a `with` statement.  The common usage in non-interactive
+  programs is to follow that pattern:
+
+  ```python
+  a = tf.constant(5.0)
+  b = tf.constant(6.0)
+  c = a * b
+  with tf.Session():
+    # We can also use 'c.eval()' here.
+    print c.eval()
   ```
 
   @@__init__
@@ -544,12 +564,21 @@ class InteractiveSession(BaseSession):
   """
 
   def __init__(self, target='', graph=None):
-    """Initializes an `InteractiveSession` object similar to `Session`.
+    """Creates a new interactive TensorFlow session.
+
+    If no `graph` argument is specified when constructing the session,
+    the default graph will be launched in the session. If you are
+    using more than one graph (created with `tf.Graph()` in the same
+    process, you will have to use different sessions for each graph,
+    but each graph can be used in multiple sessions. In this case, it
+    is often clearer to pass the graph to be launched explicitly to
+    the session constructor.
 
     Args:
-      target: Optional. The TensorFlow execution engine to connect to.
-      graph: Optional. The `Graph` object to be used. If this argument is None,
-        the default graph will be used.
+      target: (Optional.) The execution engine to connect to.
+        Defaults to using an in-process engine. At present, no value
+        other than the empty string is supported.
+      graph: (Optional.) The `Graph` to be launched (described above).
     """
     super(InteractiveSession, self).__init__(target, graph)
     self._default_session = self.as_default()

@@ -88,35 +88,8 @@ ImportError: libcudart.so.7.0: cannot open shared object file: No such file or d
 you most likely need to set your `LD_LIBRARY_PATH` to point to the location of
 your CUDA libraries.
 
-### Train the MNIST neural net model
-
-```sh
-$ python tensorflow/models/image/mnist/convolutional.py
-Succesfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
-Succesfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
-Succesfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.
-Succesfully downloaded t10k-labels-idx1-ubyte.gz 4542 bytes.
-Extracting data/train-images-idx3-ubyte.gz
-Extracting data/train-labels-idx1-ubyte.gz
-Extracting data/t10k-images-idx3-ubyte.gz
-Extracting data/t10k-labels-idx1-ubyte.gz
-can't determine number of CPU cores: assuming 4
-I tensorflow/core/common_runtime/local_device.cc:25] Local device intra op
-parallelism threads: 3
-can't determine number of CPU cores: assuming 4
-I tensorflow/core/common_runtime/local_session.cc:45] Local session inter op
-parallelism threads: 4
-Initialized!
-Epoch 0.00
-Minibatch loss: 12.054, learning rate: 0.010000
-Minibatch error: 90.6%
-Validation error: 84.6%
-...
-...
-
-```
-
-## Installing from sources {#source}
+<a name="source"></a>
+## Installing from sources
 
 ### Clone the TensorFlow repository
 
@@ -260,7 +233,8 @@ Notes : You need to install
 Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/install.html).
 
 
-### Create the pip package and install {#create-pip}
+<a name="create-pip"></a>
+### Create the pip package and install
 
 ```sh
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package

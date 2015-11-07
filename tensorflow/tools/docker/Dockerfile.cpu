@@ -56,17 +56,13 @@ RUN mkdir /bazel && \
 # Download and build TensorFlow.
 WORKDIR /tensorflow
 
-# We can't clone the TF git repo yet, because of permissions issues.
-# RUN git clone https://tensorflow.googlesource.com/
-# Instead, we manually copy it in:
+# Add in the source tree
 COPY tensorflow /tensorflow
 
 # Now we build
 RUN bazel clean && \
-    bazel build -c opt tensorflow/tools/docker:simple_console
+    bazel build -c opt tensorflow/tools/pip_package:build_pip_package && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
+    pip install /tmp/pip/tensorflow-*.whl
 
-ENV PYTHONPATH=/tensorflow/bazel-bin/tensorflow/tools/docker/simple_console.runfiles/:$PYTHONPATH
-
-# We want to start Jupyter in the directory with our getting started
-# tutorials.
-WORKDIR /notebooks
+WORKDIR /root

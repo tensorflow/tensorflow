@@ -11,8 +11,8 @@ implementation can be found in out white paper:
 ### Citation
 
 If you use TensorFlow in your research and would like to cite the TensorFlow
-system, we suggest you cite the paper above.  You can use this [BibTeX
-entry](bib.md).  As the project progresses, we
+system, we suggest you cite the paper above.
+You can use this [BibTeX entry](bib.md).  As the project progresses, we
 may update the suggested citation with new papers.
 
 

@@ -33,11 +33,11 @@ experiments.
 The CIFAR-10 tutorial demonstrates several important constructs for
 designing larger and more sophisticated models in TensorFlow:
 
-* Core mathematical components including
-[convolution](../../api_docs/python/nn.md#conv2d),
-[rectified linear activations](../../api_docs/python/nn.md#relu),
-[max pooling](../../api_docs/python/nn.md#max_pool) and
-[local response normalization](../../api_docs/python/nn.md#local_response_normalization).
+* Core mathematical components including[convolution](
+../../api_docs/python/nn.md#conv2d), [rectified linear activations](
+../../api_docs/python/nn.md#relu), [max pooling](
+../../api_docs/python/nn.md#max_pool) and [local response normalization](
+../../api_docs/python/nn.md#local_response_normalization).
 * [Visualization](../../how_tos/summaries_and_tensorboard/index.md)
 of network activity during training including input images,
 losses and distributions of activations and gradients.
@@ -341,8 +341,8 @@ all learned model parameters with the moving average version. This
 substitution boosts model performance at evaluation time.
 
 > **EXERCISE:** Employing averaged parameters may boost predictive performance
-by about 3% as measured by precision@1. Edit `cifar10_eval.py` to not employ the
-averaged parameters for the model and verify that the predictive performance
+by about 3% as measured by precision @ 1. Edit `cifar10_eval.py` to not employ
+the averaged parameters for the model and verify that the predictive performance
 drops.
 
 

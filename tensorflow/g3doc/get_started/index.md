@@ -54,10 +54,10 @@ suggest skimming blue, then red.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px; display: flex; flex-direction: row">
  <a href="../tutorials/mnist/beginners/index.md">
-   <img style="flex-grow:1; flex-shrink:1;border: 1px solid black;" src="./blue_pill.png">
+   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="blue_pill.png">
  </a>
  <a href="../tutorials/mnist/pros/index.md">
-   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="./red_pill.png">
+   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="red_pill.png">
  </a>
 </div>
 <p style="font-size:10px;">Images licensed CC BY-SA 4.0; original by W. Carter</p>
