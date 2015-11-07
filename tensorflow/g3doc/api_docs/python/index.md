@@ -299,6 +299,7 @@
   * [`DeadlineExceededError`](client.md#DeadlineExceededError)
   * [`FailedPreconditionError`](client.md#FailedPreconditionError)
   * [`get_default_session`](client.md#get_default_session)
+  * [`InteractiveSession`](client.md#InteractiveSession)
   * [`InternalError`](client.md#InternalError)
   * [`InvalidArgumentError`](client.md#InvalidArgumentError)
   * [`NotFoundError`](client.md#NotFoundError)

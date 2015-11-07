@@ -14,6 +14,7 @@ The key ops used are:
 * skipgram custom op that does input processing.
 """
 
+import os
 import sys
 import threading
 import time
@@ -357,7 +358,7 @@ class Word2Vec(object):
   def save_vocab(self):
     """Save the vocabulary to a file so the model can be reloaded."""
     opts = self._options
-    with open(opts.save_path + "/vocab.txt", "w") as f:
+    with open(os.path.join(opts.save_path, "vocab.txt"), "w") as f:
       for i in xrange(opts.vocab_size):
         f.write(opts.vocab_words[i] + " " + str(opts.vocab_counts[i]) + "\n")
 
@@ -493,7 +494,7 @@ def main(_):
       model.eval()  # Eval analogies.
     # Perform a final save.
     model.saver.save(session,
-                     opts.save_path + "model",
+                     os.path.join(opts.save_path, "model.ckpt"),
                      global_step=model.global_step)
     if FLAGS.interactive:
       # E.g.,

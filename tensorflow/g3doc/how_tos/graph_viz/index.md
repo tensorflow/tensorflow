@@ -1,4 +1,4 @@
-# TensorBoard: Visualizing Your Graph
+# TensorBoard: Graph Visualization
 
 TensorFlow computation graphs are powerful but complicated. The graph visualization can help you understand and debug them. Here's an example of the visualization at work.
 

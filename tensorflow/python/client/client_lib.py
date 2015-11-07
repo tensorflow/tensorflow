@@ -7,6 +7,7 @@ examples of how a graph is launched in a [`tf.Session`](#Session).
 ## Session management
 
 @@Session
+@@InteractiveSession
 
 @@get_default_session
 

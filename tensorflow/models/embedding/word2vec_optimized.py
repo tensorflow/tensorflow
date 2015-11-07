@@ -13,6 +13,7 @@ The key ops used are:
   true SGD.
 """
 
+import os
 import sys
 import threading
 import time
@@ -217,7 +218,7 @@ class Word2Vec(object):
   def save_vocab(self):
     """Save the vocabulary to a file so the model can be reloaded."""
     opts = self._options
-    with open(opts.save_path + "/vocab.txt", "w") as f:
+    with open(os.path.join(opts.save_path, "vocab.txt"), "w") as f:
       for i in xrange(opts.vocab_size):
         f.write(opts.vocab_words[i] + " " + str(opts.vocab_counts[i]) + "\n")
 
@@ -396,7 +397,8 @@ def main(_):
       model.train()  # Process one epoch
       model.eval()  # Eval analogies.
     # Perform a final save.
-    model.saver.save(session, opts.save_path + "model", global_step=model.step)
+    model.saver.save(session, os.path.join(opts.save_path, "model.ckpt"),
+                     global_step=model.step)
     if FLAGS.interactive:
       # E.g.,
       # [0]: model.Analogy('france', 'paris', 'russia')

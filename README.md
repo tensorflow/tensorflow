@@ -11,9 +11,21 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
+
+**Note: Currently we do not accept pull requests on github -- see
+[CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute code
+changes to TensorFlow through
+[tensorflow.googlesource.com](https://tensorflow.googlesource.com/tensorflow)**
+
+**We use [github issues](https://github.com/tensorflow/tensorflow/issues) for
+tracking requests and bugs, but please see
+[Community](resources/index.md#community) for general questions and
+discussion.**
+
 # Download and Setup
 
-For detailed installation instructions, see
+To install TensorFlow using a binary package, see the instructions below.  For
+more detailed installation instructions, including installing from source, see
 [here](tensorflow/g3doc/get_started/os_setup.md).
 
 ## Binary Installation
@@ -32,7 +44,8 @@ Install TensorFlow:
 # For CPU-only version
 $ sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 
-# For GPU-enabled version
+# For GPU-enabled version.  See detailed install instructions
+# for GPU configuration information.
 $ sudo pip install https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 ```
 

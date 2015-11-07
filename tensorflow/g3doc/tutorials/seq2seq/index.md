@@ -230,7 +230,8 @@ with encoder inputs representing `[PAD PAD "." "go" "I"]` and decoder
 inputs `[GO "Je" "vais" "." EOS PAD PAD PAD PAD PAD]`.
 
 
-## Let's Run It {#run_it}
+<a name="run_it"></a>
+## Let's Run It
 
 To train the model described above, we need to a large English-French corpus.
 We will use the *10^9-French-English corpus* from the
