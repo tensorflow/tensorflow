@@ -1,4 +1,4 @@
-# MNIST Deep Learning Example (For Experts)
+#  Deep MNIST for Experts
 
 TensorFlow is a powerful library for doing large-scale numerical computation.
 One of the tasks at which it excels is implementing and training deep neural

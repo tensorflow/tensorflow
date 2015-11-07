@@ -17,7 +17,7 @@ Listed below are some of the many uses of TensorFlow.
 
 * **Inception Image Classification Model**
   * **Organization**: Google
-  * **Description**: Baseline model and follow on research into highly accurate computer vision models, starting with the model that won the 2014 Imagenet iamge classification challenge
+  * **Description**: Baseline model and follow on research into highly accurate computer vision models, starting with the model that won the 2014 Imagenet image classification challenge
   * **More Info**: Baseline model described in [Arxiv paper](http://arxiv.org/abs/1409.4842)
 
 * **SmartReply**
@@ -33,6 +33,6 @@ Listed below are some of the many uses of TensorFlow.
 
 * **On-Device Computer Vision for OCR**
   * **Organization**: Google
-  * **Description**: On-device computer vision model to do optical character recoignition to enable real-time translation.
+  * **Description**: On-device computer vision model to do optical character recognition to enable real-time translation.
   * **More info**: [Google Research blog post](http://googleresearch.blogspot.com/2015/07/how-google-translate-squeezes-deep.html)
 }

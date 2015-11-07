@@ -1,4 +1,4 @@
-# MNIST Softmax Regression (For Beginners)
+# MNIST For ML Beginners
 
 *This tutorial is intended for readers who are new to both machine learning and
 TensorFlow. If you already

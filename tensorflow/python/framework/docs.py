@@ -233,6 +233,14 @@ class Library(Document):
         # signatures.
         continue
       args_list.append(arg)
+
+    # TODO(mrry): This is a workaround for documenting signature of
+    # functions that have the @contextlib.contextmanager decorator.
+    # We should do something better.
+    if argspec.varargs == "args" and argspec.keywords == "kwds":
+      original_func = func.func_closure[0].cell_contents
+      return self._generate_signature_for_function(original_func)
+
     if argspec.defaults:
       for arg, default in zip(
           argspec.args[first_arg_with_default:], argspec.defaults):

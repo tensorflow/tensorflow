@@ -14,7 +14,7 @@ variety of other domains, as well.
 # Download and Setup
 
 For detailed installation instructions, see
-[here](g3doc/get_started/os_setup.md).
+[here](tensorflow/g3doc/get_started/os_setup.md).
 
 ## Binary Installation
 

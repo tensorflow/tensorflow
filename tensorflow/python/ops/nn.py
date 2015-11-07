@@ -43,10 +43,10 @@ are as follows.  If the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then
 
-    output.shape = [batch,
-                    (in_height - filter_height + 1) / strides[1],
-                    (in_width - filter_width + 1) / strides[2],
-                    ...]
+    shape(output) = [batch,
+                     (in_height - filter_height + 1) / strides[1],
+                     (in_width - filter_width + 1) / strides[2],
+                     ...]
 
     output[b, i, j, :] =
         sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, ...] *
@@ -58,7 +58,7 @@ vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
 is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
 concatenated.
 
-In the formula for `output.shape`, the rounding direction depends on padding:
+In the formula for `shape(output)`, the rounding direction depends on padding:
 
 * `padding = 'SAME'`: Round down (only full size windows are considered).
 * `padding = 'VALID'`: Round up (partial windows are included).
@@ -81,7 +81,7 @@ In detail, the output is
 
 for each tuple of indices `i`.  The output shape is
 
-    output.shape = (value.shape - ksize + 1) / strides
+    shape(output) = (shape(value) - ksize + 1) / strides
 
 where the rounding direction depends on padding:
 
@@ -119,10 +119,10 @@ TensorFlow provides several operations that help you perform classification.
 
 ## Embeddings
 
-TensorFlow provides several operations that help you compute embeddings.
+TensorFlow provides library support for looking up values in embedding
+tensors.
 
 @@embedding_lookup
-@@embedding_lookup_sparse
 
 ## Evaluation
 
@@ -336,15 +336,16 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  to the shape of `x`, and only dimensions with `noise_shape[i] == x.shape[i]`
-  will make independent decisions.  For example, if `x.shape = [b, x, y, c]` and
-  `noise_shape = [b, 1, 1, c]`, each batch and channel component will be
+  to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
+  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
   kept independently and each row and column will be kept or not kept together.
 
   Args:
     x: A tensor.
-    keep_prob: Float probability that each element is kept.
-    noise_shape: Shape for randomly generated keep/drop flags.
+    keep_prob: A Python float. The probability that each element is kept.
+    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+      shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create a random seed.
       See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
     name: A name for this operation (optional).
