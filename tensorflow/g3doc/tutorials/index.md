@@ -90,15 +90,6 @@ stuff.
 [View Tutorial](mnist/download/index.md)
 
 
-## Sparse Linear Regression
-
-In many practical machine learning settings we have a large number input
-features, only very few of which are active for any given example.  TensorFlow
-has great tools for learning predictive models in these settings.
-
-COMING SOON
-
-
 ## Visual Object Recognition
 
 We will be releasing our state-of-the-art Inception object recognition model,
@@ -114,14 +105,6 @@ version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
 COMING SOON
-
-
-## Automated Image Captioning
-
-TODO(vinyals): Write me, three lines max.
-
-COMING SOON
-
 
 
 <div class='sections-order' style="display: none;">

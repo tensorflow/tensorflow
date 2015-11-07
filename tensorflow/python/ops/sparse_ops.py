@@ -1,4 +1,5 @@
-"""## Sparse Tensor Representation.
+# pylint: disable=g-short-docstring-punctuation
+"""## Sparse Tensor Representation
 
 Tensorflow supports a `SparseTensor` representation for data that is sparse
 in multiple dimensions. Contrast this representation with `IndexedSlices`,
@@ -8,13 +9,13 @@ dimension, and dense along all other dimensions.
 @@SparseTensor
 @@SparseTensorValue
 
-## Sparse to Dense Conversion.
+## Sparse to Dense Conversion
 
 @@sparse_to_dense
 @@sparse_tensor_to_dense
 @@sparse_to_indicator
 
-## Manipulation.
+## Manipulation
 
 @@sparse_concat
 @@sparse_reorder

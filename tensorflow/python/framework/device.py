@@ -90,7 +90,7 @@ class Device(object):
     for y in splits:
       ly = len(y)
       if y:
-        # NOTE(mdevin): we use the property getters here.
+        # NOTE(touts): we use the property getters here.
         if ly == 2 and y[0] == "job":
           self.job = y[1]
         elif ly == 2 and y[0] == "replica":

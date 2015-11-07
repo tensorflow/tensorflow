@@ -9,7 +9,7 @@ Over time, we hope that the TensorFlow community will develop front ends for
 languages like Go, Java, Javascript, Lua R, and perhaps others. With SWIG, it's
 relatively easy to contribute a TensorFlow interface to your favorite language.
 
-Note: Many practical aspects of ssage are covered in the Mechanics tab, and
+Note: Many practical aspects of usage are covered in the Mechanics tab, and
 some additional documentation not specific to any particular language API is
 available in the Resources tab.
 

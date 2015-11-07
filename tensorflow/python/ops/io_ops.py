@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long
 """## Placeholders
 
 TensorFlow provides a placeholder operation that must be fed with data
@@ -26,6 +27,18 @@ formats into tensors.
 
 @@decode_csv
 @@decode_raw
+
+- - -
+
+### Example protocol buffer
+
+TensorFlow's [recommended format for training
+examples](../../how_tos/reading_data/index.md#standard-tensorflow-format)
+is serialized `Example` protocol buffers, [described
+here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto).
+They contain `Features`, [described
+here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/feature.proto).
+
 @@parse_example
 @@parse_single_example
 
@@ -49,7 +62,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 ## Input pipeline
 
 TensorFlow functions for setting up an input-prefetching pipeline.
-Please see the [reading data how-to](../../how_tos/reading_data.md)
+Please see the [reading data how-to](../../how_tos/reading_data/index.md)
 for context.
 
 ### Beginning of an input pipeline

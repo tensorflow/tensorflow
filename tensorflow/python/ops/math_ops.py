@@ -289,7 +289,7 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, dtype, name=name)
       return ops.SparseTensor(x.indices, values_cast, x.shape)
     else:
-      # TODO(mdevin): Handle what Josh said.
+      # TODO(touts): Handle what Josh said.
       #
       # Could return ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g.  casting numbers to
@@ -801,7 +801,7 @@ def _as_indexed_slices(x):
   Raises:
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
-  # TODO(mdevin): op_scope
+  # TODO(touts): op_scope
   if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
     raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
   if isinstance(x, ops.IndexedSlices):

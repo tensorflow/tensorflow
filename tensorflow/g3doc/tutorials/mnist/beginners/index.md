@@ -212,18 +212,11 @@ from Python, TensorFlow lets us describe a graph of interacting operations that
 run entirely outside Python. (Approaches like this can be seen in a few
 machine learning libraries.)
 
-To run computations, TensorFlow needs to connect to its backend. This connection
-is called a `Session`. To use TensorFlow, we need to import it and create a
-session.
+To use TensorFlow, we need to import it.
 
 ```python
 import tensorflow as tf
-sess = tf.InteractiveSession()
 ```
-
-(Using an `InteractiveSession` makes TensorFlow a bit more flexible about how
-you structure your code. In particular, it's helpful for work in interactive
-contexts like iPython.)
 
 We describe these interacting operations by manipulating symbolic variables.
 Let's create one:
@@ -350,11 +343,19 @@ implement backpropagation and gradient descent. Then it gives you back a
 single operation which, when run, will do a step of gradient descent training,
 slightly tweaking your variables to reduce the cost.
 
-Now we have our model set up to train. But before we start, we need to
-initialize the variables we created:
+Now we have our model set up to train. One last thing before we launch it,
+we have to add an operation to initialize the variables we created:
 
 ```python
-tf.initialize_all_variables().run()
+init = tf.initialize_all_variables()
+```
+
+We can now launch the model in a `Session`, and run the operation that
+initializes the variables:
+
+```python
+sess = tf.Session()
+sess.run(init)
 ```
 
 Let's train -- we'll run the training step 1000 times!
@@ -362,7 +363,7 @@ Let's train -- we'll run the training step 1000 times!
 ```python
 for i in range(1000):
   batch_xs, batch_ys = mnist.train.next_batch(100)
-  train_step.run({x: batch_xs, y_: batch_ys})
+  sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```
 
 Each step of the loop, we get a "batch" of one hundred random data points from
@@ -403,7 +404,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 Finally, we ask for our accuracy on our test data.
 
 ```python
-print accuracy.eval({x: mnist.test.images, y_: mnist.test.labels})
+print sess.run(accuracy, feed_dict={x: mnist.test.images, y_: mnist.test.labels})
 ```
 
 This should be about 91%.

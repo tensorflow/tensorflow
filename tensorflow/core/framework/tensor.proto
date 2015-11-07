@@ -10,7 +10,7 @@ import "tensorflow/core/framework/types.proto";
 message TensorProto {
   DataType dtype = 1;
 
-  // Shape of the tensor.  TODO(mdevin): sort out the 0-rank issues.
+  // Shape of the tensor.  TODO(touts): sort out the 0-rank issues.
   TensorShapeProto tensor_shape = 2;
 
   // Only one of the representations below is set, one of "tensor_contents" and

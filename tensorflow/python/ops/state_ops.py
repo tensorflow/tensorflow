@@ -14,7 +14,7 @@ collected in the graph.
 @@initialize_variables
 @@assert_variables_initialized
 
-## Saving and Restoring Variables.
+## Saving and Restoring Variables
 
 @@Saver
 

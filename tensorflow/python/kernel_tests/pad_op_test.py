@@ -98,7 +98,7 @@ class PadOpTest(tf.test.TestCase):
             tf.constant([-1, 0], shape=[1, 2]))
 
   def testIntTypes(self):
-    # TODO(mdevin): Figure out why the padding tests do not work on GPU
+    # TODO(touts): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
     for t in [np.int32, np.int64]:
       self._testPad((np.random.rand(4, 3, 3) * 100).astype(t),

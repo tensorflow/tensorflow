@@ -8,8 +8,11 @@ your TensorFlow graph, quantitative metrics about the execution of your graph,
 and even additional data like images that pass through it. When TensorBoard is
 fully configured, it looks like this:
 
-TODO(danmane): Enable a live TensorBoard
-![MNIST TensorBoard](./mnist_tensorboard.png "MNIST TensorBoard")
+![MNIST TensorBoard](./mnist_tensorboard.png "MNIST TensorBoard") If you're on
+desktop Chrome or FF, try playing around with [this live
+TensorBoard](/tensorboard/cifar.html).
+
+
 
 ## Serializing the data
 

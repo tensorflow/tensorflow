@@ -1,7 +1,7 @@
 # pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
 """This library provides a set of classes and functions that helps train models.
 
-## Optimizers.
+## Optimizers
 
 The Optimizer base class provides methods to compute gradients for a loss and
 apply gradients to variables.  A collection of subclasses implement classic
@@ -19,7 +19,7 @@ of the subclasses.
 @@FtrlOptimizer
 @@RMSPropOptimizer
 
-## Gradient Computation.
+## Gradient Computation
 
 TensorFlow provides functions to compute the derivatives for a given
 TensorFlow computation graph, adding operations to the graph. The
@@ -46,10 +46,10 @@ gradients.
 @@clip_by_global_norm
 @@global_norm
 
-## Decaying the learning rate.
+## Decaying the learning rate
 @@exponential_decay
 
-## Moving Averages.
+## Moving Averages
 
 Some training algorithms, such as GradientDescent and Momentum often benefit
 from maintaining a moving average of variables during optimization.  Using the
@@ -57,7 +57,7 @@ moving averages for evaluations often improve results significantly.
 
 @@ExponentialMovingAverage
 
-## Coordinator and QueueRunner.
+## Coordinator and QueueRunner
 
 See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
 for how to use threads and queues.  For documentation on the Queue API,
@@ -68,17 +68,21 @@ see [Queues](../../api_docs/python/io_ops.md#queues).
 @@add_queue_runner
 @@start_queue_runners
 
-## Summary Operations.
+## Summary Operations
 
 The following ops output
 [`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
 protocol buffers as serialized string tensors.
 
-You can fetch the output of a summary op in a session, and pass it to a
-[SummaryWriter](train.md#SummaryWriter) to append it to an event file.  You can
-then use TensorBoard to visualize the contents of the event files.  See
-[TensorBoard and Summaries](../../how_tos/summaries_and_tensorboard/index.md)
-for more details.
+You can fetch the output of a summary op in a session, and pass it to
+a [SummaryWriter](train.md#SummaryWriter) to append it to an event
+file.  Event files contain
+[`Event`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+protos that can contain `Summary` protos along with the timestamp and
+step.  You can then use TensorBoard to visualize the contents of the
+event files.  See [TensorBoard and
+Summaries](../../how_tos/summaries_and_tensorboard/index.md) for more
+details.
 
 @@scalar_summary
 @@image_summary
@@ -88,7 +92,7 @@ for more details.
 @@merge_summary
 @@merge_all_summaries
 
-## Adding Summaries to Event Files.
+## Adding Summaries to Event Files
 
 See [Summaries and
 TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
@@ -97,10 +101,11 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@SummaryWriter
 @@summary_iterator
 
-## Training utilities.
+## Training utilities
 
 @@global_step
 @@write_graph
+
 """
 
 # Optimizers.
@@ -134,5 +139,5 @@ from tensorflow.python.training.training_util import global_step
 from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
 
-# Utility op.  Open Source. TODO(mdevin): move to nn?
+# Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import exponential_decay

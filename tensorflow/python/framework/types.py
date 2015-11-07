@@ -332,7 +332,7 @@ _NP_TO_TF = frozenset([
     (_np_qint8, qint8),
     (_np_quint8, quint8),
     (_np_qint32, qint32),
-    # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
+    # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
 ])
 _TF_TO_NP = {
     types_pb2.DT_FLOAT: np.float32,
@@ -341,7 +341,7 @@ _TF_TO_NP = {
     types_pb2.DT_UINT8: np.uint8,
     types_pb2.DT_INT16: np.int16,
     types_pb2.DT_INT8: np.int8,
-    # NOTE(mdevin): For strings we use np.object as it supports variable length
+    # NOTE(touts): For strings we use np.object as it supports variable length
     # strings.
     types_pb2.DT_STRING: np.object,
     types_pb2.DT_COMPLEX64: np.complex64,

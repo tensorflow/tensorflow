@@ -1192,7 +1192,7 @@ def _GroupControlDeps(dev, deps, name=None):
         return no_op(name=name)
 
 
-# TODO(mdevin): Accept "inputs" as a list.
+# TODO(touts): Accept "inputs" as a list.
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.
 
@@ -1217,7 +1217,7 @@ def group(*inputs, **kwargs):
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
   if not inputs:
-    # TODO(mdevin): Would make sense to return a NoOp.
+    # TODO(touts): Would make sense to return a NoOp.
     raise ValueError("No inputs provided")
   with ops.op_scope(inputs, name, "group_deps") as name:
     # Sorts *inputs according to their devices.

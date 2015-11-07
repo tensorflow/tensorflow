@@ -299,7 +299,8 @@ The operation that failed, if known.
 or `Recv` op, there will be no corresponding
 [`Operation`](framework.md#Operation) object.  In that case, this
 will return `None`, and you should instead use the
-[`node_def`](OpError.node_def) to discover information about the op.
+[`OpError.node_def`](#OpError.node_def) to discover information about the
+op.
 
 ##### Returns:
 
@@ -536,7 +537,7 @@ The operation was aborted, typically due to a concurrent action.
 
 For example, running a [`queue.enqueue()`](io_ops.md#QueueBase.enqueue)
 operation may raise `AbortedError` if a
-[`queue.close()`](io_ops.md@QueueBase.close) operation previously ran.
+[`queue.close()`](io_ops.md#QueueBase.close) operation previously ran.
 
 - - -
 

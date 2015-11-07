@@ -402,7 +402,7 @@ class Word2Vec(object):
       if now - last_checkpoint_time > opts.checkpoint_interval:
         self.saver.save(self._session,
                         opts.save_path + "model",
-                        global_step=step)
+                        global_step=step.astype(int))
         last_checkpoint_time = now
       if epoch != initial_epoch:
         break
@@ -482,6 +482,9 @@ def _start_shell(local_ns=None):
 
 def main(_):
   """Train a word2vec model."""
+  if not FLAGS.train_data or not FLAGS.eval_data or not FLAGS.save_path:
+    print "--train_data --eval_data and --save_path must be specified."
+    sys.exit(1)
   opts = Options()
   with tf.Graph().as_default(), tf.Session() as session:
     model = Word2Vec(opts, session)

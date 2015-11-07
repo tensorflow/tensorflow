@@ -1604,6 +1604,10 @@ class Graph(object):
   def as_graph_def(self, from_version=None):
     """Returns a serialized `GraphDef` representation of this graph.
 
+    The serialized `GraphDef` can be imported into another `Graph`
+    (using [`import_graph_def()`](#import_graph_def)) or used with the
+    [C++ Session API](../cc/index.md).
+
     This method is thread-safe.
 
     Args:
@@ -1612,8 +1616,7 @@ class Graph(object):
         its `version` property had the given value.
 
     Returns:
-      A
-      [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+      A [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
       protocol buffer.
     """
     graph = graph_pb2.GraphDef()
@@ -2116,7 +2119,7 @@ class Graph(object):
       self._names_in_use[name] = 1
     return name
 
-  # TODO(mdevin): remove
+  # TODO(touts): remove
   def _plain_name(self, name):
     """Return the fully scoped 'name'.
 

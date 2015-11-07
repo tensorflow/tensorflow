@@ -329,38 +329,42 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
                shapes=None, name=None):
   """Run a list of tensors to fill a queue to create batches of examples.
 
-  This version enqueues a different list of tensors in different threads.
-  Implemented using a queue -- a QueueRunner for the queue
-  is added to the current Graph's QUEUE_RUNNER collection.
+  Enqueues a different list of tensors in different threads.
+  Implemented using a queue -- a `QueueRunner` for the queue
+  is added to the current `Graph`'s `QUEUE_RUNNER` collection.
+
+  `len(tensor_list_list)` threads will be started, with thread `i` enqueuing
+  the tensors from tensor_list[i]. `tensor_list[i1][j]` must match
+  `tensor_list[i2][j]` in type and shape, except in the first dimension if
+  `enqueue_many` is true.
+
+  If `enqueue_many` is false, each `tensor_list_list[i]` is assumed to
+  represent a single example.  Otherwise, `tensor_list_list[i]` is assumed to
+  represent a batch of examples, where the first dimension is indexed by
+  example, and all members of `tensor_list_list[i]` should have the same size
+  in the first dimension.
+
+  If `enqueue_many` is false, then an input tensor `x` will be output as a
+  tensor with shape `[batch_size] + x.shape`. If `enqueue_many` is true, the
+  slices of any input tensor `x` are treated as examples, and the output tensors
+  will have shape `[batch_size] + x.shape[1:]`.
+
+  The `capacity` argument controls the how long the prefetching
+  is allowed to grow the queues.
 
   Args:
     tensor_list_list: A list of tuples of tensors to enqueue.
-      len(tensor_list_list) threads will be started, with the i-th
-      thread enqueuing the tensors from tensor_list[i].
-      tensor_list[i1][j] must match tensor_list[i2][j] in type and
-      shape (except in the first dimension if enqueue_many is true).
-    batch_size: The new batch size pulled from the queue.
-    capacity: Maximum number of elements in the queue, controls the
-      how far ahead the prefetching allowed is allowed to get and
-      memory usage.
-    enqueue_many: If False, each tensor_list_list[i] is assumed to
-      represent a single example.  If True, tensor_list_list[i] is
-      assumed to represent a batch of examples, where the first
-      dimension is indexed by example, and all members of
-      tensor_list_list[i] should have the same size in the first
-      dimension.
-    shapes: Optional. The shapes for each example.  Defaults to the
-      inferred shapes for tensor_list_list[i] (which must match, after
-      leaving off the first dimension if enqueue_many is True).
+    batch_size: An integer. The new batch size pulled from the queue.
+    capacity: An integer. The maximum number of elements in the queue.
+    enqueue_many: Whether each tensor in `tensor_list_list` is a single
+      example.
+    shapes: (Optional) The shapes for each example.  Defaults to the
+      inferred shapes for `tensor_list_list[i]`.
     name: A name for the operations (optional).
 
   Returns:
     A list of tensors with the same number and types as
-    tensor_list_list[i].  If enqueue_many is false, then an input
-    tensor with shape `[x, y, z]` will be output as a tensor with
-    shape `[batch_size, x, y, z]`.  If enqueue_many is True, and an
-    input tensor has shape `[*, x, y, z]`, the the output will have
-    shape `[batch_size, x, y, z]`.
+    `tensor_list_list[i]`.
   """
   with ops.op_scope(_flatten(tensor_list_list), name, "batch_join") as name:
     tensor_list_list = _validate_join(tensor_list_list)
@@ -462,15 +466,15 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
     min_after_dequeue: Minimum number elements in the queue after a
       dequeue, used to ensure a level of mixing of elements.
     seed: Seed for the random shuffling within the queue.
-    enqueue_many: If False, each tensor_list_list[i] is assumed to
-      represent a single example.  If True, tensor_list_list[i] is
+    enqueue_many: If `False`, each tensor_list_list[i] is assumed to
+      represent a single example.  If `True`, tensor_list_list[i] is
       assumed to represent a batch of examples, where the first
       dimension is indexed by example, and all members of
       tensor_list_list[i] should have the same size in the first
       dimension.
     shapes: Optional. The shapes for each example.  Defaults to the
-      inferred shapes for tensor_list_list[i] (which must match, after
-      leaving off the first dimension if enqueue_many is True).
+      inferred shapes for `tensor_list_list[i]` (which must match, after
+      leaving off the first dimension if enqueue_many is `True`).
     name: A name for the operations (optional).
 
   Returns:

@@ -1,4 +1,5 @@
-"""## Encoding and Decoding.
+# pylint: disable=g-short-docstring-punctuation
+"""## Encoding and Decoding
 
 TensorFlow provides Ops to decode and encode JPEG and PNG formats.  Encoded
 images are represented by scalar string Tensors, decoded images by 3-D uint8
@@ -17,7 +18,7 @@ presently only support RGB, HSV, and GrayScale.
 @@decode_png
 @@encode_png
 
-## Resizing.
+## Resizing
 
 The resizing Ops accept input images as tensors of several types.  They always
 output resized images as float32 tensors.
@@ -51,7 +52,7 @@ images from the Queue.</i>
 @@resize_nearest_neighbor
 
 
-## Cropping.
+## Cropping
 
 @@resize_image_with_crop_or_pad
 
@@ -60,7 +61,7 @@ images from the Queue.</i>
 @@random_crop
 @@extract_glimpse
 
-## Flipping and Transposing.
+## Flipping and Transposing
 
 @@flip_up_down
 @@random_flip_up_down
@@ -70,7 +71,7 @@ images from the Queue.</i>
 
 @@transpose_image
 
-## Image Adjustments.
+## Image Adjustments
 
 TensorFlow provides functions to adjust images in various ways: brightness,
 contrast, hue, and saturation.  Each adjustment can be done with predefined

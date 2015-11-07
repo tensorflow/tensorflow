@@ -37,7 +37,7 @@ def _OpsBetween(graph, to_ops, from_ops):
     The list of operations between "from_ops" and "to_ops", sorted by
     decreasing operation id. This list contains all elements of to_ops.
 
-    TODO(mdevin): Think about returning an empty list if from_ops are not
+    TODO(touts): Think about returning an empty list if from_ops are not
     reachable from to_ops.  Presently it returns to_ops in that case.
   """
   # List of booleans, indexed by operation id, indicating if

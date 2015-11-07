@@ -31,6 +31,26 @@ py_binary(
     ],
 )
 
+py_test(
+    name = "word2vec_test",
+    size = "small",
+    srcs = ["word2vec_test.py"],
+    deps = [
+        ":word2vec",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "word2vec_optimized_test",
+    size = "small",
+    srcs = ["word2vec_optimized_test.py"],
+    deps = [
+        ":word2vec_optimized",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 cc_library(
     name = "word2vec_ops",
     srcs = [
