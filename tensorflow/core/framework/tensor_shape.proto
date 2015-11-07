@@ -1,0 +1,29 @@
+// Protocol buffer representing the shape of tensors.
+
+syntax = "proto3";
+// option cc_enable_arenas = true;
+
+package tensorflow;
+
+// Dimensions of a tensor and the type of data it contains.
+message TensorShapeProto {
+  // One dimension of the tensor.
+  message Dim {
+    // Size of the tensor in that dimension.
+    int64 size = 1;
+
+    // Optional name of the tensor dimension.
+    string name = 2;
+  };
+
+  // Dimensions of the tensor, such as {"input", 30}, {"output", 40} for a 30 x
+  // 40 2D tensor.  The names are optional.
+  //
+  // The order of entries in "dim" matters: It indicates the layout of the
+  // values in the tensor in-memory representation.
+  //
+  // The first entry in "dim" is the outermost dimension used to layout the
+  // values, the last entry is the innermost dimension.  This matches the
+  // in-memory layout of RowMajor Eigen tensors.
+  repeated Dim dim = 2;
+};

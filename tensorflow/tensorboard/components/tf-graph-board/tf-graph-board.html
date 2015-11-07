@@ -1,0 +1,152 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../tf-graph/tf-graph.html">
+<link rel="import" href="../tf-graph-info/tf-graph-info.html">
+<link rel="import" href="../../bower_components/paper-progress/paper-progress.html">
+<!-- Element for putting tf-graph and tf-graph-info side by side.
+
+Example
+
+<tf-graph-board graph=[[graph]]></tf-graph-board>
+
+-->
+
+<dom-module id="tf-graph-board">
+<template>
+<style>
+::host {
+  display: block;
+}
+
+/deep/ .close {
+  position: absolute;
+  cursor: pointer;
+  left: 15px;
+  bottom: 15px;
+}
+
+.container {
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
+.container.loading {
+  cursor: progress;
+  opacity: 0.1;
+}
+
+.container.loading.error {
+  cursor: auto;
+}
+
+#info {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  padding: 0px;
+  max-width: 380px;
+  min-width: 320px;
+  background-color: rgba(255,255,255,0.9);
+  @apply(--shadow-elevation-2dp);
+}
+
+#main {
+  width: 100%;
+  height: 100%;
+}
+
+#progress-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: absolute;
+  top: 40px;
+  left: 0;
+  font-size: 13px;
+}
+
+#progress-msg {
+  width: 400px;
+  margin-bottom: 5px;
+}
+
+paper-progress {
+  width: 400px;
+  --paper-progress-height: 6px;
+  --paper-progress-active-color: #f3913e;
+}
+</style>
+<template is="dom-if" if="[[_isNotComplete(progress)]]">
+  <div id="progress-bar">
+    <div id="progress-msg">[[progress.msg]]</div>
+    <paper-progress value="[[progress.value]]"></paper-progress>
+  </div>
+</template>
+<div class$="[[_getContainerClass(progress)]]">
+  <div id="main">
+    <tf-graph id="graph"
+              graph-hierarchy="[[graphHierarchy]]"
+              selected-node="{{_selectedNode}}"
+              highlighted-node="{{_highlightedNode}}"
+              color-by="[[colorBy]]"
+              color-by-params="{{colorByParams}}"
+              graph-name="[[graphName]]"
+              progress="[[progress]]"
+    ></tf-graph>
+  </div>
+  <div id="info">
+    <tf-graph-info id="graph-info"
+                    title="selected"
+                    graph-hierarchy="[[graphHierarchy]]"
+                    graph="[[graph]]"
+                    selected-node="{{_selectedNode}}"
+                    highlighted-node="{{_highlightedNode}}"
+    ></tf-graph-info>
+  </div>
+</div>
+</template>
+</dom-module>
+
+<script>
+Polymer({
+  is: 'tf-graph-board',
+  properties: {
+    // Public API.
+    graphHierarchy: Object,
+    graph: Object,
+    graphName: String,
+    // True if the graph data has also run-time stats.
+    hasStats: Boolean,
+    /**
+     * @type {value: number, msg: string}
+     *
+     * A number between 0 and 100 denoting the % of progress
+     * for the progress bar and the displayed message.
+     */
+    progress: Object,
+    colorByParams: {
+      type: Object,
+      notify: true,
+    },
+    // Private API: Data routing between child components.
+    _selectedNode: String,
+    _highlightedNode: String,
+  },
+  /** True if the progress is not complete yet (< 100 %). */
+  _isNotComplete: function(progress) {
+    return progress.value < 100;
+  },
+  _getContainerClass: function(progress) {
+    var result = 'container';
+    if (progress.error) {
+      result += ' error';
+    }
+    if (this._isNotComplete(progress)) {
+      result += ' loading';
+    }
+    return result;
+  }
+});
+</script>

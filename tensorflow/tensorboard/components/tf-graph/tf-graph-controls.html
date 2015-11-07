@@ -1,0 +1,487 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-menu/paper-menu.html">
+<link rel="import" href="../../bower_components/paper-dropdown-menu/paper-dropdown-menu.html">
+
+<dom-module id="tf-graph-controls">
+<template>
+<style>
+:host {
+  font-size: 12px;
+  color: gray;
+  --paper-font-subhead: {
+    font-size: 14px;
+    color: gray;
+  };
+  --paper-dropdown-menu-icon: {
+    width: 15px;
+    height: 15px;
+  };
+  --paper-dropdown-menu-button: {
+    padding: 0;
+  };
+  --paper-dropdown-menu-input: {
+    padding: 0;
+  };
+  --paper-item-min-height: 30px;
+}
+
+paper-button[raised].keyboard-focus {
+  font-weight: normal;
+}
+
+.run-dropdown {
+  --paper-input-container: {
+    padding: 9px 0 0 25px;
+  };
+}
+
+.color-dropdown {
+  --paper-input-container: {
+    padding: 9px 0 0 13px;
+  };
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+table td {
+  padding: 0;
+  margin: 0;
+}
+
+.allcontrols {
+  padding: 10px;
+}
+
+.legend-holder {
+  position: absolute;
+  bottom: 0;
+  padding-bottom: 10px;
+}
+
+#fit {
+  color: var(--paper-orange-500);
+}
+
+paper-radio-button {
+  padding: 5px;
+}
+svg.icon {
+  width: 60px;
+  height: 18px;
+}
+.icon ellipse {
+  rx: 10px;
+  ry: 5px;
+  stroke: #CCC;
+  stroke-width: 1px;
+  fill: #FFFFFF;
+  cy: 10px;
+}
+.icon rect {
+  height: 14px;
+  width: 35px;
+  rx: 5px;
+  ry: 5px;
+  stroke: #CCC;
+  stroke-width: 2px;
+  fill: #D9D9D9;
+}
+.domainValues {
+  width: 165px;
+}
+.domainStart {
+  float: left;
+}
+.domainEnd {
+  float: right;
+}
+.colorBox {
+  width: 20px;
+}
+
+.image-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.gray {
+  color: #666;
+}
+
+.title {
+  font-size: 16px;
+  margin: 8px 5px 8px 0;
+  color: black;
+}
+.title small {
+  font-weight: normal;
+}
+.deviceList {
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+#file {
+  padding: 8px 0;
+}
+
+.color-text {
+  padding: 0 0 0 55px;
+}
+
+.fit-button-text {
+  text-transform: none;
+  padding: 8px 18px 0 18px;
+  font-size: 14px
+}
+
+.upload-button {
+  width: 165px;
+  height: 25px;
+  text-transform: none;
+  margin-top: 4px;
+}
+
+.fit-button {
+  padding: 2px;
+  width: 30px;
+  height: 30px;
+}
+
+.hidden-input {
+  height: 0px;
+  width: 0px;
+  overflow:hidden;
+}
+
+.allcontrols .control-holder {
+  display: flex;
+  clear: both;
+}
+</style>
+<div class="allcontrols">
+  <div class="control-holder">
+    <paper-icon-button id="fit" icon="aspect-ratio" class="fit-button" on-click="fit" alt="Fit to screen">
+    </paper-icon-button>
+    <paper-button class="fit-button-text" on-click="fit">Fit to screen
+    </paper-button>
+  </div>
+  <div class="control-holder">
+    <div class="title">Run</div>
+    <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+      <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
+        <template is="dom-repeat" items="[[datasets]]">
+          <paper-item>[[item.name]]</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+  </div>
+  <div class="control-holder">
+    <div class="title">Upload</div>
+    <paper-button raised class="text-button upload-button"
+        on-click="_getFile">Choose File</paper-button>
+    <div class="hidden-input">
+      <input type="file" id="file" name="file" on-change="_updateFileInput" />
+    </div>
+  </div>
+  <div class="control-holder">
+    <div class="title">Color</div>
+    <paper-dropdown-menu no-label-float no-animations noink class="color-dropdown">
+      <paper-menu class="dropdown-content" selected="{{_colorByIndex}}">
+        <paper-item>Structure</paper-item>
+        <paper-item>Device</paper-item>
+        <template is="dom-if" if="[[hasStats]]">
+          <paper-item>Compute time</paper-item>
+          <paper-item>Memory</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+  </div>
+  <div>
+    <template is="dom-if" if="[[_isGradientColoring(colorBy)]]">
+      <svg width="160" height="20" style="margin: 0 5px" class="color-text">
+        <defs>
+          <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop class="start" offset="0%"
+                stop-color$="[[_currentGradientParams.startColor]]"/>
+            <stop class="end" offset="100%"
+                stop-color$="[[_currentGradientParams.endColor]]"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="160" height="20" fill="url(#linearGradient)"
+            stroke="black" />
+      </svg>
+      <div class="domainValues color-text">
+        <div class="domainStart">[[_currentGradientParams.minValue]]</div>
+        <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
+      <div class="color-text">
+        color: same substructure<br/>
+        gray: unique substructure
+      </div>
+    </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'device')]]">
+      <div class="color-text">
+        <div class="deviceList">
+          <table>
+          <template is="dom-repeat" items="[[colorByParams.device]]">
+            <tr>
+              <td style$="[[_getBackgroundColor(item.color)]]">
+                <div class="colorBox"></div>
+              </td>
+              <td>
+                <div>[[item.device]]</div>
+              </td>
+            </tr>
+          </template>
+          </table>
+        </div>
+        <br/>
+        gray: unknown device
+      </div>
+    </template>
+  </div>
+  <div class="legend-holder">
+    <table>
+      <tr>
+        <td><div class="title">Graph</div></td>
+        <td>(* = expandable)</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon">
+            <rect transform="translate(3, 1)" height="14" width="35"
+                rx="5" ry="5"/>
+          </svg>
+        </td>
+        <td>Namespace<span class="gray">*</span></td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" preserveAspectRatio="xMinYMid meet"
+              viewBox="0 0 10 10">
+            <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5"
+               y="6" />
+          </svg>
+        </td>
+        <td>OpNode</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet"
+              viewBox="0 0 12 12">
+            <use xlink:href="#op-series-horizontal-stamp" fill="white"
+                stroke="#ccc" x="2" y="2"/>
+          </svg>
+        </td>
+        <td>Unconnected series<span class="gray">*</span></td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" height="15px"
+              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+            <use xlink:href="#op-series-vertical-stamp"
+                fill="white" stroke="#ccc" x="2" y="2"/>
+          </svg>
+        </td>
+        <td>Connected series<span class="gray">*</span></td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon">
+            <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"/>
+          </svg>
+        </td>
+        <td>Constant</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="image-icon">
+            <image id="summary-icon" width="24" height="24" x="0" y="0"
+                class="image-icon"/>
+          </svg>
+        </td>
+        <td>Summary</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" height="15px"
+              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+            <defs>
+              <marker id="arrowhead-legend" fill="#bbb" markerWidth="10"
+                  markerHeight="10" refX="9" refY="5" orient="auto">
+                <path d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+              </marker>
+              <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10"
+                  markerHeight="10" refX="1" refY="5" orient="auto">
+                <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+              </marker>
+            </defs>
+            <path marker-end="url(#arrowhead-legend)" stroke="#bbb"
+                d="M2 9 l 23 0" stroke-linecap="round" />
+          </svg>
+        </td>
+        <td>Dataflow edge</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" height="15px"
+              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+            <path marker-end="url(#arrowhead-legend)" stroke="#bbb"
+               d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2" />
+          </svg>
+        </td>
+        <td>Control dependency edge</td>
+      </tr>
+      <tr>
+        <td>
+          <svg class="icon" height="15px"
+              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+            <path marker-start="url(#ref-arrowhead-legend)"
+              marker-end="url(#arrowhead-legend)" stroke="#bbb" d="M2 9 l 23 0"
+              stroke-linecap="round" />
+          </svg>
+        </td>
+        <td>Reference edge</td>
+      </tr>
+    </table>
+  </div>
+  </div>
+</template>
+<script>
+(function() { // Private scope.
+Polymer({
+  is: 'tf-graph-controls',
+  ready: function() {
+    // Set the url to download the summary icon.
+    d3.select(this.$['summary-icon'])
+      .attr('xlink:href', this.resolveUrl('../../lib/svg/summary-icon.svg'));
+  },
+  properties: {
+    // Public API.
+    hasStats: {
+      type: Boolean
+    },
+    colorBy: {
+      type: String,
+      notify: true,
+      computed: '_getColorBy(_colorByIndex)'
+    },
+    colorByParams: Object,
+    datasets: {
+      type: Array,
+      observer: '_datasetsChanged'
+    },
+    selectedDataset: {
+      type: Number,
+      notify: true,
+      value: 0,
+    },
+    selectedFile: {
+      type: Object,
+      notify: true
+    },
+    // Private API.
+    _colorByIndex: {
+      type: Number,
+      value: 0 // Defaults to 'structure'.
+    },
+    _currentGradientParams: {
+      type: Object,
+      computed: '_getCurrentGradientParams(colorByParams, colorBy)'
+    }
+  },
+  _getColorBy: function(colorByIndex) {
+    return ["structure", "device", "compute_time", "memory"][colorByIndex];
+  },
+  _getBackgroundColor: function(color) {
+    return 'background-color:' + color;
+  },
+  fit: function() {
+    document.querySelector('#scene').fit();
+  },
+  _isGradientColoring: function(colorBy) {
+    return ["compute_time", "memory"].indexOf(colorBy) !== -1;
+  },
+  _equals: function(a, b) {
+    return a === b;
+  },
+  _getCurrentGradientParams: function(colorByParams, colorBy) {
+    if (!this._isGradientColoring(colorBy)) {
+      return;
+    }
+    var params = colorByParams[colorBy];
+    var minValue = params.minValue;
+    var maxValue = params.maxValue;
+    if (colorBy === 'memory') {
+      minValue = convertToHumanReadable(minValue, MEMORY_UNITS);
+      maxValue = convertToHumanReadable(maxValue, MEMORY_UNITS);
+    } else if (colorBy === 'compute_time') {
+      minValue = convertToHumanReadable(minValue, TIME_UNITS);
+      maxValue = convertToHumanReadable(maxValue, TIME_UNITS);
+    }
+    return {
+      minValue: minValue,
+      maxValue: maxValue,
+      startColor: params.startColor,
+      endColor: params.endColor
+    };
+  },
+  _updateFileInput: function(e) {
+    this.set('selectedFile', e);
+  },
+  _datasetsChanged: function(newDatasets, oldDatasets) {
+    if (oldDatasets != null || this.selected == null) {
+      // Select the first dataset by default.
+      this.set('selectedDataset', 0);
+    }
+  },
+  _getFile: function() {
+    this.$.file.click();
+  }
+});
+
+// Private methods.
+var MEMORY_UNITS = [
+  // Atomic unit.
+  {symbol: 'B'},
+  // numUnits specifies how many previous units this unit contains.
+  {symbol: 'KB', numUnits: 1024},
+  {symbol: 'MB', numUnits: 1024},
+  {symbol: 'GB', numUnits: 1024},
+  {symbol: 'TB', numUnits: 1024},
+  {symbol: 'PB', numUnits: 1024}
+];
+var TIME_UNITS = [
+  // Atomic unit. Finest granularity in TensorFlow stat collection.
+  {symbol: 'µs'},
+  // numUnits specifies how many previous units this unit contains.
+  {symbol: 'ms', numUnits: 1000},
+  {symbol: 's', numUnits: 1000},
+  {symbol: 'min', numUnits: 60},
+  {symbol: 'hr', numUnits: 60},
+  {symbol: 'days', numUnits: 24}
+];
+
+/**
+  * Returns the human readable version of the unit.
+  * (e.g. 1.35 GB, 23 MB, 34 ms, 6.53 min etc).
+  */
+function convertToHumanReadable(value, units, unitIndex) {
+  unitIndex = unitIndex == null ? 0 : unitIndex;
+  if (unitIndex + 1 < units.length && value >= units[unitIndex + 1].numUnits) {
+    return convertToHumanReadable(value / units[unitIndex + 1].numUnits,
+        units, unitIndex + 1);
+  }
+  // toPrecision() has the tendency to return a number in scientific
+  // notation and (number - 0) brings it back to normal notation.
+  return (value.toPrecision(3) - 0) + ' ' + units[unitIndex].symbol;
+}
+})(); // Closing private scope.
+</script>
+</dom-module>

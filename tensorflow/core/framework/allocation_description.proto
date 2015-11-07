@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+message AllocationDescription {
+  // Total number of bytes requested
+  int64 requested_bytes = 1;
+
+  // Total number of bytes allocated if known
+  int64 allocated_bytes = 2;
+
+  // Name of the allocator used
+  string allocator_name = 3;
+};

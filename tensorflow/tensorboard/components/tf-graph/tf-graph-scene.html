@@ -1,0 +1,475 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="tf-graph-style.html">
+<link rel="import" href="tf-graph-minimap.html">
+<script src="../tf-graph-common/lib/layout.js"></script>
+<script src="../../bower_components/dagre/dist/dagre.core.js"></script>
+<!--
+  A module that takes graph-hierarchy as input and produce
+  a svg dom using dagre and d3.
+-->
+<dom-module id="tf-graph-scene">
+<template>
+<style include="tf-graph-style">
+  :host {
+    font-size: 20px;
+  }
+  .titleContainer {
+    position: relative;
+  }
+  .title {
+    position: absolute;
+  }
+  .auxTitle {
+    position: absolute;
+  }
+  #minimap {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+  }
+</style>
+<div class="titleContainer">
+  <div id="title" class="title">Main Graph</div>
+  <div id="auxTitle" class="auxTitle">Auxiliary nodes</div>
+</div>
+<svg id="svg">
+  <defs>
+    <!-- Arrow head for edge paths. -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="10"
+      refX="9" refY="5" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+    </marker>
+    <marker id="ref-arrowhead" markerWidth="10" markerHeight="10"
+      refX="1" refY="5" orient="auto">
+      <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+    </marker>
+    <!-- Arrow head for annotation edge paths. -->
+    <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5"
+      refX="5" refY="2.5" orient="auto">
+      <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"/>
+    </marker>
+    <marker id="ref-annotation-arrowhead" markerWidth="5" markerHeight="5"
+      refX="0" refY="2.5" orient="auto">
+      <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"/>
+    </marker>
+    <!-- Template for an Op node ellipse. -->
+    <ellipse id="op-node-stamp"
+        rx="7.5" ry="3" stroke="inherit" fill="inherit" />
+    <!-- Template for an Op node annotation ellipse (smaller). -->
+    <ellipse id="op-node-annotation-stamp"
+        rx="5" ry="2" stroke="inherit" fill="inherit" />
+    <!-- Vertically stacked series of Op nodes when unexpanded. -->
+    <g id="op-series-vertical-stamp">
+      <use xlink:href="#op-node-stamp" x="8" y="9" />
+      <use xlink:href="#op-node-stamp" x="8" y="6" />
+      <use xlink:href="#op-node-stamp" x="8" y="3" />
+    </g>
+    <!-- Horizontally stacked series of Op nodes when unexpanded. -->
+    <g id="op-series-horizontal-stamp">
+      <use xlink:href="#op-node-stamp" x="16" y="4" />
+      <use xlink:href="#op-node-stamp" x="12" y="4" />
+      <use xlink:href="#op-node-stamp" x="8" y="4" />
+    </g>
+    <!-- Horizontally stacked series of Op nodes for annotation. -->
+    <g id="op-series-annotation-stamp">
+      <use xlink:href="#op-node-annotation-stamp" x="9" y="2" />
+      <use xlink:href="#op-node-annotation-stamp" x="7" y="2" />
+      <use xlink:href="#op-node-annotation-stamp" x="5" y="2" />
+    </g>
+    <!--
+      Where the linearGradient for each node is stored. Used when coloring
+      by proportions of devices.
+    -->
+    <g id="linearGradients"></g>
+  </defs>
+  <!-- Make a large rectangle that fills the svg space so that
+  zoom events get captured on safari -->
+  <rect fill="white" width="10000" height="10000"></rect>
+  <g id="root"></g>
+</svg>
+<tf-graph-minimap id="minimap"></tf-graph-minimap>
+</template>
+</dom-module>
+<script>
+Polymer({
+  is: 'tf-graph-scene',
+  properties: {
+    graphHierarchy: Object,
+    name: String,
+    colorBy: {
+      type: String,
+      observer: '_colorByChanged'
+    },
+    /** @type {d3_zoom} d3 zoom object */
+    _zoom: Object,
+    highlightedNode: {
+      type: String,
+      observer: '_highlightedNodeChanged'
+    },
+    selectedNode: {
+      type: String,
+      observer: '_selectedNodeChanged'
+    },
+    /** Keeps track of if the graph has been zoomed/panned since loading */
+    _zoomed: {
+      type: Boolean,
+      observer: '_onZoomChanged',
+      value: false
+    },
+    /** Keeps track of the starting coordinates of a graph zoom/pan */
+    _zoomStartCoords: {
+      type: Array,
+      value: null
+    },
+    /** Keeps track of the current coordinates of a graph zoom/pan */
+    _zoomCoords: {
+      type: Array,
+      value: null
+    },
+    /** Maximum distance of a zoom event for it to be interpreted as a click */
+    _maxZoomDistanceForClick: {
+      type: Number,
+      value: 20
+    },
+    /**
+     * @type {d3.scale.ordinal}
+     * Scale mapping from template name to a number between 0 and N-1
+     * where N is the number of different template names.
+     */
+    templateIndex: Object,
+    /**
+     * @type {tf.scene.Minimap}
+     * A minimap object to notify for zoom events.
+     */
+    minimap: Object,
+    /*
+     * Dictionary for easily stylizing nodes when state changes.
+     * _nodeGroupIndex[nodeName] = d3_selection of the nodeGroup
+     */
+    _nodeGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /*
+     * Dictionary for easily stylizing annotation nodes when state changes.
+     * _annotationGroupIndex[nodeName][hostNodeName] =
+     *   d3_selection of the annotationGroup
+     */
+    _annotationGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /*
+     * Dictionary for easily stylizing edges when state changes.
+     * _edgeGroupIndex[edgeName] = d3_selection of the edgeGroup
+     */
+    _edgeGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /**
+     * Max font size for metanode label strings.
+     */
+    maxMetanodeLabelLengthFontSize: {
+      type: Number,
+      value: 9
+    },
+    /**
+     * Min font size for metanode label strings.
+     */
+    minMetanodeLabelLengthFontSize: {
+      type: Number,
+      value: 6
+    },
+    /**
+     * Metanode label strings longer than this are given smaller fonts.
+     */
+    maxMetanodeLabelLengthLargeFont: {
+      type: Number,
+      value: 11
+    },
+    /**
+     * Metanode label strings longer than this are truncated with ellipses.
+     */
+    maxMetanodeLabelLength: {
+      type: Number,
+      value: 18
+    },
+    progress: Object
+  },
+  observers: [
+    '_buildAndFit(graphHierarchy)'
+  ],
+  getNode: function(nodeName) {
+    return this.graphHierarchy.getRenderNodeByName(nodeName);
+  },
+  isNodeExpanded: function(node) {
+    return node.expanded;
+  },
+  setNodeExpanded: function(renderNode) {
+    this._build(this.graphHierarchy);
+  },
+  /**
+   * Resets the state of the component. Called whenever the whole graph
+   * (dataset) changes.
+   */
+  _resetState: function() {
+    // Reset the state of the component.
+    this._nodeGroupIndex = {};
+    this._annotationGroupIndex = {};
+    this._edgeGroupIndex = {};
+    this._updateLabels(false);
+    // Remove all svg elements under the 'root' svg group.
+    d3.select(this.$.svg).select('#root').selectAll('*').remove();
+    // And the defs.
+    d3.select(this.$.svg).select('defs #linearGradients')
+        .selectAll('*').remove();
+  },
+  /** Main method for building the scene */
+  _build: function(graphHierarchy) {
+    if (!graphHierarchy) { return; } //handle untruthy input
+    var templateNames = d3.keys(graphHierarchy.hierarchy.templates);
+
+    this.templateIndex = d3.scale.ordinal()
+                                 .domain(templateNames)
+                                 .range(d3.range(0, templateNames.length));
+    tf.time('tf-graph-scene (layout):', function() {
+      // layout the scene for this meta / series node
+      tf.graph.layout.scene(graphHierarchy.root, this);
+    }.bind(this));
+
+    tf.time('tf-graph-scene (build scene):', function() {
+      tf.graph.scene.buildGroup(d3.select(this.$.root), graphHierarchy.root, this);
+      tf.graph.scene.addGraphClickListener(this.$.svg, this);
+    }.bind(this));
+    // Update the minimap again when the graph is done animating.
+    setTimeout(function() {
+      this.minimap.update();
+    }.bind(this), tf.graph.layout.PARAMS.animation.duration);
+  },
+  ready: function() {
+    this._zoom = d3.behavior.zoom()
+      .on('zoomend', function() {
+        if (this._zoomStartCoords) {
+          // Calculate the total distance dragged during the zoom event.
+          // If it is sufficiently small, then fire an event indicating
+          // that zooming has ended. Otherwise wait to fire the zoom end
+          // event, so that a mouse click registered as part of this zooming
+          // is ignored (as this mouse click was part of a zooming, and should
+          // not be used to indicate an actual click on the graph).
+          var dragDistance = Math.sqrt(
+            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
+            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+          if (dragDistance < this._maxZoomDistanceForClick) {
+            this._fireEnableClick();
+          } else {
+            setTimeout(this._fireEnableClick.bind(this), 50);
+          }
+        }
+        this._zoomStartCoords = null;
+      }.bind(this))
+      .on('zoom', function() {
+        // Store the coordinates of the zoom event
+        this._zoomCoords = d3.event.translate;
+
+        // If this is the first zoom event after a zoom-end, then
+        // store the coordinates as the start coordinates as well,
+        // and fire an event to indicate that zooming has started.
+        // This doesn't use the zoomstart event, as d3 sends this
+        // event on mouse-down, even if there has been no dragging
+        // done to translate the graph around.
+        if (!this._zoomStartCoords) {
+          this._zoomStartCoords = this._zoomCoords.slice();
+          this.fire('disable-click');
+        }
+        this._zoomed = true;
+        d3.select(this.$.root).attr('transform',
+                    'translate(' + d3.event.translate + ')' +
+                    'scale(' + d3.event.scale + ')');
+        // Notify the minimap.
+        this.minimap.zoom(d3.event.translate, d3.event.scale);
+      }.bind(this));
+    d3.select(this.$.svg).call(this._zoom)
+      .on('dblclick.zoom', null);
+    d3.select(window).on('resize', function() {
+      // Notify the minimap that the user's window was resized.
+      // The minimap will figure out the new dimensions of the main svg
+      // and will use the existing translate and scale params.
+      this.minimap.zoom();
+    }.bind(this));
+    // Initialize the minimap.
+    this.minimap = this.$.minimap.init(this.$.svg, this.$.root, this._zoom,
+        tf.graph.layout.PARAMS.minimap.size,
+        tf.graph.layout.PARAMS.subscene.meta.labelHeight);
+  },
+  _buildAndFit: function(graphHierarchy) {
+    this._resetState();
+    this._build(graphHierarchy);
+    // Fit to screen after the graph is done animating.
+    setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
+  },
+  _updateLabels: function(showLabels) {
+    var titleStyle = this.getElementsByClassName('title')[0].style;
+    var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
+    var core = this.getElementsByClassName(tf.graph.scene.Class.Scene.CORE)[0];
+    // Only show labels if the graph is fully loaded.
+    if (showLabels && core && this.progress && this.progress.value === 100) {
+      var aux =
+        this.getElementsByClassName(tf.graph.scene.Class.Scene.INEXTRACT)[0] ||
+        this.getElementsByClassName(tf.graph.scene.Class.Scene.OUTEXTRACT)[0];
+      var coreX = core.getCTM().e;
+      var auxX = aux ? aux.getCTM().e : null;
+      titleStyle.display = 'inline';
+      titleStyle.left = coreX + 'px';
+      if (auxX !== null && auxX !== coreX) {
+        auxTitleStyle.display = 'inline';
+        auxTitleStyle.left = auxX + 'px';
+      } else {
+        auxTitleStyle.display = 'none';
+      }
+    } else {
+      titleStyle.display='none';
+      auxTitleStyle.display = 'none';
+    }
+  },
+
+
+
+
+  /**
+    * Called whenever the user changed the 'color by' option in the
+    * UI controls.
+    */
+  _colorByChanged: function() {
+    // We iterate through each svg node and update its state.
+    _.each(this._nodeGroupIndex, function(nodeGroup, nodeName) {
+      this._updateNodeState(nodeName);
+    }, this);
+    // Notify also the minimap.
+    this.minimap.update();
+  },
+  fit: function() {
+    tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {
+      this._zoomed = false;
+    }.bind(this));
+  },
+  isNodeSelected: function(n) {
+    return n === this.selectedNode;
+  },
+  isNodeHighlighted: function(n) {
+    return n === this.highlightedNode;
+  },
+  addAnnotationGroup: function(a, d, selection) {
+    var an = a.node.name;
+    this._annotationGroupIndex[an] = this._annotationGroupIndex[an] || {};
+    this._annotationGroupIndex[an][d.node.name] = selection;
+  },
+  getAnnotationGroupsIndex: function(a) {
+    return this._annotationGroupIndex[a];
+  },
+  removeAnnotationGroup: function(a, d) {
+    delete this._annotationGroupIndex[a.node.name][d.node.name];
+  },
+  addNodeGroup: function(n, selection) {
+    this._nodeGroupIndex[n] = selection;
+  },
+  getNodeGroup: function(n) {
+    return this._nodeGroupIndex[n];
+  },
+  removeNodeGroup: function(n) {
+    delete this._nodeGroupIndex[n];
+  },
+  addEdgeGroup: function(n, selection) {
+    this._edgeGroupIndex[e] = selection;
+  },
+  getEdgeGroup: function(e) {
+    return this._edgeGroupIndex[e];
+  },
+  /**
+   * Update node and annotation node of the given name.
+   * @param  {String} n node name
+   */
+  _updateNodeState: function(n) {
+    var node = this.getNode(n);
+    var nodeGroup = this.getNodeGroup(n);
+
+    if (nodeGroup) {
+      tf.graph.scene.node.stylize(nodeGroup, node, this);
+    }
+
+    var annotationGroupIndex = this.getAnnotationGroupsIndex(n);
+    _.each(annotationGroupIndex, function(aGroup, hostName) {
+      tf.graph.scene.node.stylize(aGroup, node, this,
+          tf.graph.scene.Class.Annotation.NODE);
+    }, this);
+  },
+
+  _selectedNodeChanged: function(selectedNode, oldSelectedNode) {
+    if (selectedNode === oldSelectedNode) {
+      return;
+    }
+
+    if (selectedNode) {
+      this._updateNodeState(selectedNode);
+    }
+    if (oldSelectedNode) {
+      this._updateNodeState(oldSelectedNode);
+    }
+
+    if (!selectedNode) {
+      return;
+    }
+    // Update the minimap to reflect the highlighted (selected) node.
+    this.minimap.update();
+    var node = this.graphHierarchy.hierarchy.node(selectedNode);
+    var nodeParents = [];
+    // Create list of all metanode parents of the selected node.
+    while (node.parentNode != null
+        && node.parentNode.name != tf.graph.ROOT_NAME) {
+      node = node.parentNode;
+      nodeParents.push(node.name);
+    }
+    // Ensure each parent metanode is built and expanded.
+    var topParentNodeToBeExpanded;
+    _.forEachRight(nodeParents, function(parentName) {
+      this.graphHierarchy.buildSubhierarchy(parentName);
+      var renderNode = this.graphHierarchy.getRenderNodeByName(parentName);
+      if (renderNode.node.isGroupNode && !renderNode.expanded) {
+        renderNode.expanded = true;
+        if (!topParentNodeToBeExpanded) {
+          topParentNodeToBeExpanded = renderNode;
+        }
+      }
+    }, this);
+    // If any expansion was needed to display this selected node, then
+    // inform the scene of the top-most expansion.
+    if (topParentNodeToBeExpanded) {
+      this.setNodeExpanded(topParentNodeToBeExpanded);
+      this._zoomed = true;
+    }
+
+    if (tf.graph.scene.panToNode(selectedNode, this.$.svg, this.$.root,
+        this._zoom)) {
+      this._zoomed = true;
+    }
+  },
+  _highlightedNodeChanged: function(highlightedNode, oldHighlightedNode) {
+    if (highlightedNode === oldHighlightedNode) {
+      return;
+    }
+
+    if (highlightedNode) {
+      this._updateNodeState(highlightedNode);
+    }
+    if (oldHighlightedNode) {
+      this._updateNodeState(oldHighlightedNode);
+    }
+  },
+  _onZoomChanged: function() {
+    this._updateLabels(!this._zoomed);
+  },
+  _fireEnableClick: function() {
+    this.fire('enable-click');
+  },
+});
+</script>

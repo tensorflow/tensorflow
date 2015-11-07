@@ -1,0 +1,107 @@
+// Common DSO loading functionality: exposes callables that dlopen DSOs
+// in either the runfiles directories
+
+#ifndef TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
+#define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
+
+#include "tensorflow/stream_executor/platform/port.h"
+#include <vector>
+
+#include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/stream_executor/lib/stringpiece.h"
+#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/platform/mutex.h"
+#include "tensorflow/stream_executor/platform/port.h"
+
+namespace perftools {
+namespace gputools {
+namespace internal {
+
+// Permits StreamExecutor code to dynamically load a pre-determined set of
+// relevant DSOs via dlopen.
+//
+// Thread-safe.
+class DsoLoader {
+ public:
+  // The following methods either load the DSO of interest and return a dlopen
+  // handle or error status in the canonical namespace.
+
+  static port::Status GetCublasDsoHandle(void** dso_handle);
+  static port::Status GetCudnnDsoHandle(void** dso_handle);
+  static port::Status GetCufftDsoHandle(void** dso_handle);
+  static port::Status GetCurandDsoHandle(void** dso_handle);
+  static port::Status GetLibcudaDsoHandle(void** dso_handle);
+  static port::Status GetLibcuptiDsoHandle(void** dso_handle);
+
+  // Registers a new binary-relative path to use as a dlopen search path.
+  static void RegisterRpath(port::StringPiece path);
+
+ private:
+  // Registered rpaths (singleton vector) and a mutex that guards it.
+  static std::vector<string>* GetRpaths();
+  static mutex rpath_mutex_;
+
+  // Descriptive boolean wrapper to indicate whether symbols are made available
+  // to resolve in later-loaded libraries.
+  enum class LoadKind { kLocal, kGlobal };
+
+  // Loads a DSO from the given "path" (which can technically be any dlopen-able
+  // name). If the load kind is global, the symbols in the loaded DSO are
+  // visible to subsequent DSO loading operations.
+  static port::Status GetDsoHandle(port::StringPiece path, void** dso_handle,
+                                   LoadKind load_kind = LoadKind::kLocal);
+
+
+  // Returns the binary directory (or binary path) associated with the currently
+  // executing program. If strip_executable_name is true, the executable file is
+  // stripped off of the path.
+  static string GetBinaryDirectory(bool strip_executable_name);
+
+  // Returns the location of the runfiles directory.
+  // * Manual invocation gets the runfiles as a relative path to the current
+  //   executable.
+  static string GetRunfilesDirectory();
+
+  // Invokes realpath on the original path; updates candidate and returns true
+  // if it succeeds (i.e. a file exists at the path); otherwise, returns false.
+  static bool TrySymbolicDereference(string* candidate);
+
+  // Attempts to find a path to the DSO of interest, otherwise returns the
+  // bare library name:
+  // Arguments:
+  //   library_name: the filename in tree; e.g. libOpenCL.so.1.0.0
+  //   runfiles_relpath: where to look for the library relative to the runfiles
+  //      root; e.g. third_party/gpus/cuda/lib64
+  static string FindDsoPath(port::StringPiece library_name,
+                            port::StringPiece runfiles_relpath);
+
+  SE_DISALLOW_COPY_AND_ASSIGN(DsoLoader);
+};
+
+// Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
+// more than once.
+class CachedDsoLoader {
+ public:
+  // Cached versions of the corresponding DsoLoader methods above.
+  static port::StatusOr<void*> GetCublasDsoHandle();
+  static port::StatusOr<void*> GetCudnnDsoHandle();
+  static port::StatusOr<void*> GetCufftDsoHandle();
+  static port::StatusOr<void*> GetCurandDsoHandle();
+  static port::StatusOr<void*> GetLibcudaDsoHandle();
+  static port::StatusOr<void*> GetLibcuptiDsoHandle();
+
+ private:
+  // Fetches a DSO handle via "load_dso" and returns the StatusOr form of the
+  // result.
+  static port::StatusOr<void*> FetchHandleResult(
+      std::function<port::Status(void**)> load_dso);
+
+  SE_DISALLOW_COPY_AND_ASSIGN(CachedDsoLoader);
+};
+
+}  // namespace internal
+}  // namespace gputools
+}  // namespace perftools
+
+#endif  // TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_

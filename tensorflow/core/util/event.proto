@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/summary.proto";
+
+// Protocol buffer representing an event that happened during
+// the execution of a Brain model.
+message Event {
+  // Timestamp of the event.
+  double wall_time = 1;
+
+  // Globale step of the event.
+  int64 step = 2;
+
+  oneof what {
+    // An event file was started, with the specified version.
+    // This is use to identify the contents of the record IO files
+    // easily.  Current version is "tensorflow.Event:1".  All versions
+    // start with "tensorflow.Event:".
+    string file_version = 3;
+    // A model was constructed.
+    GraphDef graph_def = 4;
+    // A summary was generated.
+    Summary summary = 5;
+  }
+}

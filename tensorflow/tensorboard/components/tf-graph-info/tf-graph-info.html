@@ -1,0 +1,65 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="tf-node-info.html">
+<dom-module id="tf-graph-info">
+<template>
+<style>
+:host {
+  font-size: 12px;
+  margin: 0;
+  padding: 0;
+  display: block;
+}
+
+h2 {
+  padding: 0;
+  text-align: center;
+  margin: 0;
+}
+</style>
+<template is="dom-if" if="{{selectedNode}}">
+  <paper-material elevation="1" class="card">
+    <tf-node-info graph-hierarchy='[[graphHierarchy]]'
+                  flat-graph="[[graph]]"
+                  node-name='[[selectedNode]]'
+                  highlighted-node='{{highlightedNode}}'>
+    </tf-node-info>
+  </paper-material>
+</template>
+</template>
+<script>
+(function() {
+  Polymer({
+    is: 'tf-graph-info',
+
+    properties: {
+      title: String,
+      graphHierarchy: Object,
+      graph: Object,
+      // Two-ways
+      selectedNode: {
+        type: String,
+        notify: true
+      },
+      highlightedNode: {
+        type: String,
+        notify: true
+      }
+    },
+    listeners: {
+      'node-list-item-click': '_nodeListItemClicked',
+      'node-list-item-mouseover': '_nodeListItemMouseover',
+      'node-list-item-mouseout': '_nodeListItemMouseout'
+    },
+    _nodeListItemClicked: function(event) {
+      this.selectedNode = event.detail.nodeName;
+    },
+    _nodeListItemMouseover: function(event) {
+      this.highlightedNode = event.detail.nodeName;
+    },
+    _nodeListItemMouseout: function() {
+      this.highlightedNode = null;
+    }
+  });
+})();
+</script>
+</dom-module>

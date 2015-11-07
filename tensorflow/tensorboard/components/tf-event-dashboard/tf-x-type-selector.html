@@ -1,0 +1,75 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-button/paper-button.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+
+<!--
+tf-x-type-selector is a simple component that creates buttons labeled "step" and "wall",
+  and provides (as upward bindable) an outXType property that is either "step" or "wall_time".
+-->
+<dom-module id="tf-x-type-selector">
+  <template>
+    <div id="buttons">
+      <p>X Type: </p>
+      <paper-button
+        class="x-button selected"
+        id="step"
+        on-tap="_select"
+        raised
+      >
+      step
+      </paper-button>
+      <paper-button
+        class="x-button"
+        id="relative"
+        on-tap="_select"
+      >
+      relative
+      </paper-button>
+      <paper-button
+        class="x-button"
+        id="wall_time"
+        on-tap="_select"
+      >
+      wall
+      </paper-button>
+    </div>
+    <style>
+      .x-button {
+        width: 29%;
+        font-size: 14px;
+        background-color: var(--paper-grey-500);
+        margin-top: 5px;
+        color: white;
+      }
+
+      .x-button.selected {
+        font-weight: bold;
+        background-color: var(--tb-orange-strong) !important;
+      }
+
+      #buttons p {
+        text-align: center;
+        font-size: 12px;
+        margin: 0;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-x-type-selector",
+      properties: {
+        outXType: {type: String, notify: true, readOnly: true, value: "step"},
+      },
+      _select: function(e) {
+        var _this = this;
+        ["step", "wall_time", "relative"].forEach(function(id) {
+          _this.$[id].raised = false;
+          _this.$[id].classList.remove("selected");
+        });
+        e.currentTarget.raised = true;
+        this._setOutXType(e.currentTarget.id);
+        e.currentTarget.classList.add("selected");
+      },
+    });
+  </script>
+</dom-module>

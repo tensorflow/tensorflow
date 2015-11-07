@@ -1,0 +1,34 @@
+// Protocol buffer representing slices of a tensor
+
+syntax = "proto3";
+// option cc_enable_arenas = true;
+
+package tensorflow;
+
+// Can only be interpreted if you know the corresponding TensorShape.
+message TensorSliceProto {
+  // Extent of the slice in one dimension.
+  message Extent {
+    // Either both or no attributes must be set.  When no attribute is set
+    // means: All data in that dimension.
+
+    // Start index of the slice, starting at 0.
+    int64 start = 1;
+
+    // Length of the slice: if the length is missing or -1 we will
+    // interpret this as "everything in this dimension".  We use
+    // "oneof" to preserve information about whether the length is
+    // present without changing the serialization format from the
+    // prior proto2 version of this proto.
+    oneof has_length {
+      int64 length = 2;
+    }
+  };
+
+  // Extent of the slice in all tensor dimensions.
+  //
+  // Must have one entry for each of the dimension of the tensor that this
+  // slice belongs to.  The order of sizes is the same as the order of
+  // dimensions in the TensorShape.
+  repeated Extent extent = 1;
+};

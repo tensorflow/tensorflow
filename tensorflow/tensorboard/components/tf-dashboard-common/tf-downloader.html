@@ -1,0 +1,85 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../../bower_components/paper-menu/paper-menu.html">
+<link rel="import" href="../../bower_components/paper-item/paper-item.html">
+
+<dom-module id="tf-downloader">
+  <template>
+    <paper-dropdown-menu
+      no-label-float="true"
+      label="run to download"
+      selected-item-label="{{_run}}"
+    >
+      <paper-menu class="dropdown-content">
+        <template is="dom-repeat" items="[[_runs]]">
+          <paper-item no-label-float=true>[[item]]</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+    <a
+      download="[[_csvName(_run)]]"
+      href="[[_csvUrl(_run, urlFn)]]"
+    >CSV</a>
+    <a
+      download="[[_jsonName(_run)]]"
+      href="[[_jsonUrl(_run, urlFn)]]"
+    >JSON</a>
+    <style>
+      :host {
+        display: block;
+      }
+      paper-dropdown-menu {
+        width: 220px;
+        --paper-input-container-label: {
+          font-size: 10px;
+        }
+        --paper-input-container-input: {
+          font-size: 10px;
+        }
+      }
+      a {
+        font-size: 10px;
+        border-radius: 3px;
+        border: 1px solid #EEE;
+      }
+      paper-input {
+        font-size: 22px;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-downloader",
+      properties: {
+        _run: String,
+        _runs: {
+          type: Array,
+          computed: "_computeRuns(runToTag.*, selectedRuns.*)",
+        },
+        selectedRuns: Array,
+        runToTag: Object,
+        tag: String,
+        urlFn: Function,
+      },
+      _computeRuns: function(runToTagChange, selectedRunsChange) {
+        var runToTag = this.runToTag;
+        var tag = this.tag;
+        return this.selectedRuns.filter(function(x) {
+          return runToTag[x].indexOf(tag) !== -1;
+        })
+      },
+      _csvUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run) + "&format=csv";
+      },
+      _jsonUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run);
+      },
+      _csvName: function(_run) {
+        return "run_" + _run + ",tag_" + this.tag + ".csv";
+      },
+      _jsonName: function(_run) {
+        return "run-" + _run + "-tag-" + this.tag + ".json";
+      },
+    });
+  </script>
+</dom-module>

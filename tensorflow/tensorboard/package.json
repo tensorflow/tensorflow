@@ -1,0 +1,34 @@
+{
+  "name": "tensorflow-vis",
+  "version": "0.0.0",
+  "description": "Visualizers for TensorFlow",
+  "scripts": {
+    "test": "gulp test"
+  },
+  "keywords": [
+    "tensorflow"
+  ],
+  "author": "Google",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "gulp": "~3.9.0",
+    "gulp-typescript": "~2.8.0",
+    "tsd": "~0.6.3",
+    "chai": "~3.2.0",
+    "typescript": "~1.5.3",
+    "gulp-cli": "~0.3.0",
+    "gulp-util": "~3.0.6",
+    "gulp-mocha-phantomjs": "~0.8.0",
+    "mocha": "~2.2.5",
+    "gulp-tslint": "~3.1.1-beta",
+    "gulp-server-livereload": "~1.4.0",
+    "gulp-concat": "~2.6.0",
+    "merge2": "~0.3.6",
+    "gulp-filter": "~3.0.0",
+    "gulp-rename": "~1.2.2",
+    "vulcanize": "~1.14.0",
+    "gulp-vulcanize": "~6.0.1",
+    "minimist": "~1.2.0",
+    "gulp-replace": "~0.5.4"
+  }
+}

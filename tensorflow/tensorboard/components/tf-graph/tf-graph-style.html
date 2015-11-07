@@ -1,0 +1,339 @@
+<dom-module id="tf-graph-style">
+<template>
+<style>
+:host {
+  display: flex;
+  width: 100%;
+}
+
+::content #svg {
+  overflow: hidden;
+  flex: 1;
+}
+
+::content #hidden {
+  position: fixed;
+  top: 0px;
+  visibility: hidden;
+}
+
+
+/* --- Node and annotation-node for Metanode --- */
+
+::content .meta > .nodeshape > rect,
+::content .meta > .annotation-node > rect {
+  cursor: pointer;
+  fill: hsl(0, 0%, 70%);
+}
+
+
+::content .node.meta.highlighted > .nodeshape > rect,
+::content .node.meta.highlighted > .annotation-node > rect {
+  stroke-width: 2;
+}
+
+::content .annotation.meta.highlighted > .nodeshape > rect,
+::content .annotation.meta.highlighted > .annotation-node > rect {
+  stroke-width: 1;
+}
+
+::content .meta.selected > .nodeshape > rect,
+::content .meta.selected > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .node.meta.selected.expanded > .nodeshape > rect,
+::content .node.meta.selected.expanded > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 3;
+}
+
+:content .annotation.meta.selected > .nodeshape > rect,
+:content .annotation.meta.selected > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .node.meta.selected.expanded.highlighted > .nodeshape > rect,
+::content .node.meta.selected.expanded.highlighted > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 4;
+}
+
+
+/* --- Op Node --- */
+
+::content .op > .nodeshape > ellipse,
+::content .op > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: #fff;
+  stroke: #ccc;
+}
+
+::content .op.selected > .nodeshape > ellipse,
+::content .op.selected > .annotation-node > ellipse {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .op.highlighted > .nodeshape > ellipse,
+::content .op.highlighted > .annotation-node > ellipse {
+  stroke-width: 2;
+}
+
+/* --- Series Node --- */
+
+/* By default, don't show the series background <rect>. */
+::content .series > .nodeshape > rect {
+  fill: hsl(0, 0%, 70%);
+  fill-opacity: 0;
+  stroke-dasharray: 5, 5;
+  stroke-opacity: 0;
+  cursor: pointer;
+}
+
+/* Once expanded, show the series background <rect> and hide the <use>. */
+::content .series.expanded > .nodeshape > rect {
+  fill-opacity: 0.15;
+  stroke: hsl(0, 0%, 70%);
+  stroke-opacity: 1;
+}
+::content .series.expanded > .nodeshape > use {
+  visibility: hidden;
+}
+
+/**
+ * TODO(jimbo): Simplify this by applying a stable class name to all <g>
+ * elements that currently have either the nodeshape or annotation-node classes.
+ */
+::content .series > .nodeshape > use ,
+::content .series > .annotation-node > use {
+  stroke: #ccc;
+}
+::content .series.highlighted > .nodeshape > use ,
+::content .series.highlighted > .annotation-node > use {
+  stroke-width: 2;
+}
+::content .series.selected > .nodeshape > use ,
+::content .series.selected > .annotation-node > use {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .series.selected > .nodeshape > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+:content .annotation.series.selected > .annotation-node > use {
+  stroke: red;
+  stroke-width: 2;
+}
+
+/* --- Bridge Node --- */
+::content .bridge > .nodeshape > rect {
+  stroke: #f0f;
+  opacity: 0.2;
+  display: none;
+}
+
+/* --- Structural Elements --- */
+::content .edge > path.edgeline.structural {
+  stroke: #f0f;
+  opacity: 0.2;
+  display: none;
+}
+
+/* --- Series Nodes --- */
+
+/* Hide the rect for a series' annotation. */
+::content .series > .annotation-node > rect {
+  display: none;
+}
+
+/* --- Node label --- */
+
+
+::content .node > text.nodelabel {
+  cursor: pointer;
+  fill: #444;
+}
+
+::content .meta.expanded > text.nodelabel {
+  font-size: 9px;
+}
+
+::content .series > text.nodelabel {
+  font-size: 8px;
+}
+
+::content .op > text.nodelabel {
+  font-size: 6px;
+}
+
+::content .bridge > text.nodelabel {
+  display: none;
+}
+
+::content .node.meta.expanded > text.nodelabel{
+  cursor: normal;
+}
+
+::content .annotation.meta.highlighted > text.annotation-label {
+  fill: #50A3F7;
+}
+
+::content .annotation.meta.selected > text.annotation-label {
+  fill: #4285F4;
+}
+
+/* --- Annotation --- */
+
+/* only applied for annotations that are not summary or constant.
+(.summary, .constant gets overriden below) */
+::content .annotation > .annotation-node > * {
+  stroke-width: 0.5;
+  stroke-dasharray: 1, 1;
+}
+
+::content .annotation.summary > .annotation-node > *,
+::content .annotation.constant > .annotation-node > * {
+  stroke-width: 1;
+  stroke-dasharray: none;
+}
+
+::content .annotation > .annotation-edge {
+  fill: none;
+  stroke: #aaa;
+  stroke-width: 0.5;
+  marker-end: url(#annotation-arrowhead);
+}
+
+::content .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead);
+}
+
+::content .annotation > .annotation-control-edge {
+  stroke-dasharray: 1, 1;
+}
+
+::content #annotation-arrowhead {
+  fill: #aaa;
+}
+
+::content #ref-annotation-arrowhead {
+  fill: #aaa;
+}
+
+::content .annotation > .annotation-label {
+  font-size: 5px;
+  cursor: pointer;
+}
+::content .annotation > .annotation-label.annotation-ellipsis {
+  cursor: default;
+}
+
+/* Hide annotations on expanded meta nodes since they're redundant. */
+::content .expanded > .in-annotations,
+::content .expanded > .out-annotations {
+  display: none;
+}
+
+/* --- Annotation: Constant --- */
+
+::content .constant > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: white;
+  stroke: #848484;
+}
+
+::content .constant.selected > .annotation-node > ellipse {
+  fill: white;
+  stroke: red;
+}
+
+::content .constant.highlighted > .annotation-node > ellipse {
+  stroke-width: 1.5;
+}
+
+/* --- Annotation: Summary --- */
+
+::content .summary > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: #DB4437;
+  stroke: #DB4437;
+}
+
+::content .summary.selected > .annotation-node > ellipse {
+  fill: #A52714;
+  stroke: #A52714;
+}
+
+::content .summary.highlighted > .annotation-node > ellipse {
+  stroke-width: 1.5;
+}
+
+/* --- Edge --- */
+
+::content .edge > path.edgeline {
+  fill: none;
+  marker-end: url(#arrowhead);
+  stroke: #bbb;
+  stroke-linecap: round;
+  stroke-width: 0.75;
+}
+
+::content .edge > path.edgeline.refline {
+  marker-start: url(#ref-arrowhead);
+}
+
+::content #arrowhead {
+  fill: #bbb;
+}
+
+::content #ref-arrowhead {
+  fill: #bbb;
+}
+
+::content .edge .control-dep {
+  stroke-dasharray: 2, 2;
+}
+
+/* --- Group node expand/collapse button --- */
+
+/* Hides expand/collapse buttons when a node isn't expanded or highlighted. Using
+   incredibly small opacity so that the bounding box of the <g> parent still takes
+   this container into account even when it isn't visible */
+::content .node:not(.highlighted):not(.expanded) > .nodeshape > .buttoncontainer {
+  opacity: 0.01;
+}
+::content .node.highlighted > .nodeshape > .buttoncontainer {
+  cursor: pointer;
+}
+::content .buttoncircle {
+  fill: #E7811D;
+}
+::content .buttoncircle:hover {
+  fill: #B96717;
+}
+::content .expandbutton,
+::content .collapsebutton {
+  stroke: white;
+}
+/* Do not let the path elements in the button take pointer focus */
+::content .node > .nodeshape > .buttoncontainer > .expandbutton,
+::content .node > .nodeshape > .buttoncontainer > .collapsebutton {
+  pointer-events: none;
+}
+/* Only show the expand button when a node is collapsed and only show the
+   collapse button when a node is expanded. */
+::content .node.expanded > .nodeshape > .buttoncontainer > .expandbutton {
+  display: none;
+}
+::content .node:not(.expanded) > .nodeshape > .buttoncontainer > .collapsebutton {
+  display: none;
+}
+</style>
+</template>
+</dom-module>

@@ -1,0 +1,145 @@
+// This file is part of Eigen, a lightweight C++ template library
+// for linear algebra.
+//
+// Copyright (C) 2013 Christian Seiler <christian@iwakd.de>
+//
+// This Source Code Form is subject to the terms of the Mozilla
+// Public License v. 2.0. If a copy of the MPL was not distributed
+// with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+#ifndef EIGEN_CXX11_TENSOR_MODULE
+#define EIGEN_CXX11_TENSOR_MODULE
+
+#include "Eigen/src/Core/util/StaticAssert.h"
+#include "unsupported/Eigen/CXX11/Core"
+
+#include "Eigen/src/Core/util/DisableStupidWarnings.h"
+
+/** \defgroup CXX11_Tensor_Module Tensor Module
+  *
+  * This module provides a Tensor class for storing arbitrarily indexed
+  * objects.
+  *
+  * \code
+  * #include <Eigen/CXX11/Tensor>
+  * \endcode
+  */
+
+#include <cstddef>
+#include <cstring>
+#include <stdint.h>
+
+#if __cplusplus > 199711
+#include <random>
+#endif
+
+#ifdef EIGEN_USE_THREADS
+#if defined(EIGEN_USE_CUSTOM_THREAD_POOL)
+// Use the Eigen implementation of the ThreadPool class. We only need to
+// include a few multithreading headers
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
+#else
+#include "tensorflow/core/platform/port.h"
+#endif  // EIGEN_USE_CUSTOM_THREAD_POOL
+
+#include <functional>
+
+#endif  // EIGEN_USE_THREADS
+
+#ifdef EIGEN_USE_GPU
+#include "tensorflow/core/platform/port.h"
+#if !defined(__GCUDACC__) && !defined(__GCUDACC_HOST__)
+#include <cuda.h>
+#include <cufft.h>
+#include <cuda_runtime.h>
+#ifdef __CUDACC__
+#include <curand_kernel.h>
+#endif  // defined(__CUDACC__)
+#else
+#include "perftools/gputools/executor/gcuda.h"
+#ifdef __CUDACC__
+#include "third_party/gpus/cuda/curand_device/curand_kernel.h"
+#endif  // defined(__CUDACC__)
+#endif  // __GCUDACC__
+#endif  // EIGEN_USE_GPU
+
+#ifdef _WIN32
+#include <winbase.h>
+#elif defined(__APPLE__)
+#include <mach/mach_time.h>
+#else
+#include <time.h>
+#endif
+
+#include "Eigen/Core"
+
+// Beware: the order of the include matters to some compilers. For example
+// TensorIndexList.h should be included before TensorDimensions.h in order to
+// use index lists to encode tensor dimensions when compiling with llvm.
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDeviceType.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensionList.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorInitializer.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorTraits.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorFunctors.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorIntDiv.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorBlock.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorBase.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorExpr.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorContractionMappers.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorContractionThreadPool.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorContractionCuda.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h"
+#include "unsupported/Eigen/CXX11/src/NeuralNetworks/TensorConvolutionByFFT.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorTrueIndices.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDevice.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorStorage.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/Tensor.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorFixedSize.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorVarDim.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMap.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorRef.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorReductionCuda.h"
+
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorIO.h"
+
+#include "Eigen/src/Core/util/ReenableStupidWarnings.h"
+
+#endif // EIGEN_CXX11_TENSOR_MODULE

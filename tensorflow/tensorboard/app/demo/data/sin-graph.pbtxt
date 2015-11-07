@@ -1,0 +1,14 @@
+node {
+  name: "Q"
+  op: "Input"
+}
+node {
+  name: "W"
+  op: "Input"
+}
+node {
+  name: "X"
+  op: "MatMul"
+  input: "Q"
+  input: "W"
+}

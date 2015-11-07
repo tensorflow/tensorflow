@@ -1,0 +1,492 @@
+"""Updates generated docs from Python doc comments.
+
+Both updates the files in the file-system and executes g4 commands to
+make sure any changes are ready to be submitted.
+"""
+
+import inspect
+import os
+import re
+import sys
+
+
+_arg_re = re.compile(" *([*]{0,2}[a-zA-Z][a-zA-Z0-9_]*):")
+_section_re = re.compile("([A-Z][a-zA-Z ]*):$")
+_always_drop_symbol_re = re.compile("_[_a-zA-Z0-9]")
+_anchor_re = re.compile(r"^[\w.]+$")
+_member_mark = "@@"
+
+
+class Document(object):
+  """Base class for an automatically generated document."""
+
+  def write_markdown_to_file(self, f):
+    """Writes a Markdown-formatted version of this document to file `f`.
+
+    Args:
+      f: The output file.
+    """
+    raise NotImplementedError("Document.WriteToFile")
+
+
+class Index(Document):
+  """An automatically generated index for a collection of documents."""
+
+  def __init__(self, module_to_name, members, filename_to_library_map):
+    """Creates a new Index.
+
+    Args:
+      module_to_name: Dictionary mapping modules to short names.
+      members: Dictionary mapping member name to (fullname, member).
+      filename_to_library_map: A list of (filename, Library) pairs. The order
+        corresponds to the order in which the libraries appear in the index.
+    """
+    self._module_to_name = module_to_name
+    self._members = members
+    self._filename_to_library_map = filename_to_library_map
+
+  def write_markdown_to_file(self, f):
+    """Writes this index to file `f`.
+
+    The output is formatted as an unordered list. Each list element
+    contains the title of the library, followed by a list of symbols
+    in that library hyperlinked to the corresponding anchor in that
+    library.
+
+    Args:
+      f: The output file.
+    """
+    print >>f, "<!-- This file is machine generated: DO NOT EDIT! -->"
+    print >>f, ""
+    print >>f, "# TensorFlow Python reference documentation"
+    print >>f, ""
+    for filename, library in self._filename_to_library_map:
+      per_symbol_links = []
+      for name in sorted(library.mentioned):
+        if name in self._members:
+          fullname, member = self._members[name]
+          anchor = _get_anchor(self._module_to_name, fullname)
+          prefix = "class " * inspect.isclass(member)
+          per_symbol_links.append("[%s%s](%s#%s)" %
+                                  (prefix, name, filename, anchor))
+      if per_symbol_links:
+        print >>f, "* <b>[%s](%s)</b>: %s" % (library.title, filename,
+                                              ",\n    ".join(per_symbol_links))
+        print >>f, ""
+
+    # actually include the files right here
+    print >>f, '<div class="sections-order" style="display: none;">\n<!--'
+    for filename, _ in self._filename_to_library_map:
+      print >>f, "<!-- %s -->" % filename
+    print >>f, "-->\n</div>"
+
+def collect_members(module_to_name):
+  """Collect all symbols from a list of modules.
+
+  Args:
+    module_to_name: Dictionary mapping modules to short names.
+
+  Returns:
+    Dictionary mapping name to (fullname, member) pairs.
+  """
+  members = {}
+  for module, module_name in module_to_name.iteritems():
+    for name, member in inspect.getmembers(module):
+      if ((inspect.isfunction(member) or inspect.isclass(member)) and
+          not _always_drop_symbol_re.match(name)):
+        fullname = '%s.%s' % (module_name, name)
+        if name in members:
+          other_fullname, other_member = members[name]
+          if member is not other_member:
+            raise RuntimeError("Short name collision between %s and %s" %
+                               (fullname, other_fullname))
+          if len(fullname) == len(other_fullname):
+            raise RuntimeError("Can't decide whether to use %s or %s for %s: "
+                               "both full names have length %d" %
+                               (fullname, other_fullname, len(fullname)))
+          if len(fullname) > len(other_fullname):
+            continue  # Use the shorter full name
+        members[name] = fullname, member
+  return members
+
+
+def _get_anchor(module_to_name, fullname):
+  """Turn a full member name into an anchor.
+
+  Args:
+    module_to_name: Dictionary mapping modules to short names.
+    fullname: Fully qualified name of symbol.
+
+  Returns:
+    HTML anchor string.  The longest module name prefix of fullname is
+    removed to make the anchor.
+
+  Raises:
+    ValueError: If fullname uses characters invalid in an anchor.
+  """
+  if not _anchor_re.match(fullname):
+    raise ValueError("'%s' is not a valid anchor" % fullname)
+  anchor = fullname
+  for module_name in module_to_name.itervalues():
+    if fullname.startswith(module_name + "."):
+      rest = fullname[len(module_name)+1:]
+      # Use this prefix iff it is longer than any found before
+      if len(anchor) > len(rest):
+        anchor = rest
+  return anchor
+
+
+class Library(Document):
+  """An automatically generated document for a set of functions and classes."""
+
+  def __init__(self,
+               title,
+               module,
+               module_to_name,
+               members,
+               documented,
+               exclude_symbols=(),
+               catch_all=False):
+    """Creates a new Library.
+
+    Args:
+      title: A human-readable title for the library.
+      module: Module to pull high level docstring from (for table of contents,
+        list of Ops to document, etc.).
+      module_to_name: Dictionary mapping modules to short names.
+      members: Dictionary mapping member name to (fullname, member).
+      documented: Set of documented names to update.
+      exclude_symbols: A list of specific symbols to exclude.
+    """
+    self._title = title
+    self._module = module
+    self._module_to_name = module_to_name
+    self._members = dict(members)  # Copy since we mutate it below
+    self._exclude_symbols = frozenset(exclude_symbols)
+    documented.update(exclude_symbols)
+    self._documented = documented
+    self._mentioned = set()
+
+  @property
+  def title(self):
+    """The human-readable title for this library."""
+    return self._title
+
+  @property
+  def mentioned(self):
+    """Set of names mentioned in this library."""
+    return self._mentioned
+
+  @property
+  def exclude_symbols(self):
+    """Set of excluded symbols."""
+    return self._exclude_symbols
+
+  def _should_include_member(self, name, member):
+    """Returns True if this member should be included in the document."""
+    # Always exclude symbols matching _always_drop_symbol_re.
+    if _always_drop_symbol_re.match(name):
+      return False
+    # Finally, exclude any specifically-excluded symbols.
+    if name in self._exclude_symbols:
+      return False
+    return True
+
+  def get_imported_modules(self, module):
+    """Returns the list of modules imported from `module`."""
+    for name, member in inspect.getmembers(module):
+      if inspect.ismodule(member):
+        yield name, member
+
+  def get_class_members(self, cls_name, cls):
+    """Returns the list of class members to document in `cls`.
+
+    This function filters the class member to ONLY return those
+    defined by the class.  It drops the inherited ones.
+
+    Args:
+      cls_name: Qualified name of `cls`.
+      cls: An inspect object of type 'class'.
+
+    Yields:
+      name, member tuples.
+    """
+    for name, member in inspect.getmembers(cls):
+      # Only show methods and properties presently.
+      if not (inspect.ismethod(member) or isinstance(member, property)):
+        continue
+      if ((inspect.ismethod(member) and member.__name__ == "__init__")
+          or self._should_include_member(name, member)):
+        yield name, ("%s.%s" % (cls_name, name), member)
+
+  def _generate_signature_for_function(self, func):
+    """Given a function, returns a string representing its args."""
+    args_list = []
+    argspec = inspect.getargspec(func)
+    first_arg_with_default = (
+        len(argspec.args or []) - len(argspec.defaults or []))
+    for arg in argspec.args[:first_arg_with_default]:
+      if arg == "self":
+        # Python documentation typically skips `self` when printing method
+        # signatures.
+        continue
+      args_list.append(arg)
+    if argspec.defaults:
+      for arg, default in zip(
+          argspec.args[first_arg_with_default:], argspec.defaults):
+        args_list.append("%s=%r" % (arg, default))
+    if argspec.varargs:
+      args_list.append("*" + argspec.varargs)
+    if argspec.keywords:
+      args_list.append("**" + argspec.keywords)
+    return "(" + ", ".join(args_list) + ")"
+
+  def _remove_docstring_indent(self, docstring):
+    """Remove indenting.
+
+    We follow Python's convention and remove the minimum indent of the lines
+    after the first, see:
+    https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    preserving relative indentation.
+
+    Args:
+      docstring: A docstring.
+
+    Returns:
+      A list of strings, one per line, with the minimum indent stripped.
+    """
+    docstring = docstring or ""
+    lines = docstring.strip().split("\n")
+
+    min_indent = len(docstring)
+    for l in lines[1:]:
+      l = l.rstrip()
+      if l:
+        i = 0
+        while i < len(l) and l[i] == " ":
+          i += 1
+        if i < min_indent: min_indent = i
+    for i in range(1, len(lines)):
+      l = lines[i].rstrip()
+      if len(l) >= min_indent:
+        l = l[min_indent:]
+      lines[i] = l
+    return lines
+
+  def _print_formatted_docstring(self, docstring, f):
+    """Formats the given `docstring` as Markdown and prints it to `f`."""
+    lines = self._remove_docstring_indent(docstring)
+
+    # Output the lines, identifying "Args" and other section blocks.
+    i = 0
+
+    def _at_start_of_section():
+      """Returns the header if lines[i] is at start of a docstring section."""
+      l = lines[i]
+      match = _section_re.match(l)
+      if match and i + 1 < len(
+          lines) and lines[i + 1].startswith(" "):
+        return match.group(1)
+      else:
+        return None
+
+    while i < len(lines):
+      l = lines[i]
+
+      section_header = _at_start_of_section()
+      if section_header:
+        if i == 0 or lines[i-1]:
+          print >>f, ""
+        # Use at least H4 to keep these out of the TOC.
+        print >>f, "##### " + section_header + ":"
+        print >>f, ""
+        i += 1
+        outputting_list = False
+        while i < len(lines):
+          l = lines[i]
+          # A new section header terminates the section.
+          if _at_start_of_section():
+            break
+          match = _arg_re.match(l)
+          if match:
+            if not outputting_list:
+              # We need to start a list. In Markdown, a blank line needs to
+              # precede a list.
+              print >>f, ""
+              outputting_list = True
+            suffix = l[len(match.group()):].lstrip()
+            print >>f, "*  <b>" + match.group(1) + "</b>: " + suffix
+          else:
+            # For lines that don't start with _arg_re, continue the list if it
+            # has enough indentation.
+            outputting_list &= l.startswith("   ")
+            print >>f, l
+          i += 1
+      else:
+        print >>f, l
+        i += 1
+
+  def _print_function(self, f, prefix, fullname, func):
+    """Prints the given function to `f`."""
+    heading = prefix + " " + fullname
+    if not isinstance(func, property):
+      heading += self._generate_signature_for_function(func)
+    heading += " {#%s}" % _get_anchor(self._module_to_name, fullname)
+    print >>f, heading
+    print >>f, ""
+    self._print_formatted_docstring(inspect.getdoc(func), f)
+    print >>f, ""
+
+  def _write_member_markdown_to_file(self, f, name, member):
+    """Print `member` to `f`."""
+    if inspect.isfunction(member):
+      print >>f, "- - -"
+      print >>f, ""
+      self._print_function(f, "###", name, member)
+      print >>f, ""
+    elif inspect.ismethod(member):
+      print >>f, "- - -"
+      print >>f, ""
+      self._print_function(f, "####", name, member)
+      print >>f, ""
+    elif isinstance(member, property):
+      print >>f, "- - -"
+      print >>f, ""
+      self._print_function(f, "####", name, member)
+    elif inspect.isclass(member):
+      print >>f, "- - -"
+      print >>f, ""
+      print >>f, "### class %s {#%s}" % (
+          name, _get_anchor(self._module_to_name, name))
+      print >>f, ""
+      self._write_class_markdown_to_file(f, name, member)
+      print >>f, ""
+    else:
+      raise RuntimeError("Member %s has unknown type %s" % (name, type(member)))
+
+  def _write_docstring_markdown_to_file(self, f, docstring, members, imports):
+    for l in self._remove_docstring_indent(docstring):
+      if l.startswith(_member_mark):
+        name = l[len(_member_mark):].strip(" \t")
+        if name in members:
+          self._documented.add(name)
+          self._mentioned.add(name)
+          self._write_member_markdown_to_file(f, *members[name])
+          del members[name]
+        elif name in imports:
+          self._write_module_markdown_to_file(f, imports[name])
+        else:
+          raise ValueError("%s: unknown member `%s`" % (self._title, name))
+      else:
+        print >>f, l
+
+  def _write_class_markdown_to_file(self, f, name, cls):
+    """Write the class doc to 'f'.
+
+    Args:
+      f: File to write to.
+      prefix: Prefix for names.
+      cls: class object.
+      name: name to use.
+    """
+    # Build the list of class methods to document.
+    methods = dict(self.get_class_members(name, cls))
+    # Used later to check if any methods were called out in the class
+    # docstring.
+    num_methods = len(methods)
+    self._write_docstring_markdown_to_file(f, inspect.getdoc(cls), methods, {})
+
+    # If some methods were not described, describe them now if they are
+    # defined by the class itself (not inherited).  If NO methods were
+    # described, describe all methods.
+    #
+    # TODO(mdevin): when all methods have been categorized make it an error
+    # if some methods are not categorized.
+    any_method_called_out = (len(methods) != num_methods)
+    if any_method_called_out:
+      other_methods = {n: m for n, m in methods.iteritems()
+                       if n in cls.__dict__}
+      if other_methods:
+        print >>f, "\n#### Other Methods"
+    else:
+      other_methods = methods
+    for name in sorted(other_methods):
+      self._write_member_markdown_to_file(f, *other_methods[name])
+
+  def _write_module_markdown_to_file(self, f, module):
+    imports = dict(self.get_imported_modules(module))
+    self._write_docstring_markdown_to_file(f, inspect.getdoc(module),
+                                           self._members, imports)
+
+  def write_markdown_to_file(self, f):
+    """Prints this library to file `f`.
+
+    Args:
+      f: File to write to.
+
+    Returns:
+      Dictionary of documented members.
+    """
+    print >>f, "<!-- This file is machine generated: DO NOT EDIT! -->"
+    print >>f, ""
+    # TODO(mdevin): Do not insert these.  Let the doc writer put them in
+    # the module docstring explicitly.
+    print >>f, "#", self._title
+    print >>f, "[TOC]"
+    print >>f, ""
+    if self._module is not None:
+      self._write_module_markdown_to_file(f, self._module)
+
+  def write_other_members(self, f, catch_all=False):
+    """Writes the leftover members to `f`.
+
+    Args:
+      f: File to write to.
+      catch_all: If true, document all missing symbols from any module.
+        Otherwise, document missing symbols from just this module.
+    """
+    if catch_all:
+      names = self._members.iteritems()
+    else:
+      names = inspect.getmembers(self._module)
+    leftovers = []
+    for name, _ in names:
+      if name in self._members and name not in self._documented:
+        leftovers.append(name)
+    if leftovers:
+      print "%s: undocumented members: %d" % (self._title, len(leftovers))
+      print >>f, "\n## Other Functions and Classes"
+      for name in sorted(leftovers):
+        print "  %s" % name
+        self._documented.add(name)
+        self._mentioned.add(name)
+        self._write_member_markdown_to_file(f, *self._members[name])
+
+  def assert_no_leftovers(self):
+    """Generate an error if there are leftover members."""
+    leftovers = []
+    for name in self._members.iterkeys():
+      if name in self._members and name not in self._documented:
+        leftovers.append(name)
+    if leftovers:
+      raise RuntimeError("%s: undocumented members: %s" %
+                         (self._title, ", ".join(leftovers)))
+
+
+def write_libraries(dir, libraries):
+  """Write a list of libraries to disk.
+
+  Args:
+    dir: Output directory.
+    libraries: List of (filename, library) pairs.
+  """
+  files = [open(os.path.join(dir, k), "w") for k, _ in libraries]
+  # Document mentioned symbols for all libraries
+  for f, (_, v) in zip(files, libraries):
+    v.write_markdown_to_file(f)
+  # Document symbols that no library mentioned.  We do this after writing
+  # out all libraries so that earlier libraries know what later libraries
+  # documented.
+  for f, (_, v) in zip(files, libraries):
+    v.write_other_members(f)
+    f.close()
