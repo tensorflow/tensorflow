@@ -66,10 +66,13 @@ class Index(Document):
     for filename, library in self._filename_to_library_map:
       sorted_names = sorted(library.mentioned, key=str.lower)
       member_names = [n for n in sorted_names if n in self._members]
-      links = ["[`%s`](%s#%s)" % (name, filename, anchor_f(name))
+      # TODO: This is a hack that should be removed as soon as the website code
+      # allows it.
+      full_filename = '../../api_docs/python/' + filename
+      links = ["[`%s`](%s#%s)" % (name, full_filename, anchor_f(name))
                for name in member_names]
       if links:
-        print >>f, "* **[%s](%s)**:" % (library.title, filename)
+        print >>f, "* **[%s](%s)**:" % (library.title, full_filename)
         for link in links:
           print >>f, "  * %s" % link
         print >>f, ""
