@@ -3,7 +3,7 @@
 *This tutorial is intended for readers who are new to both machine learning and
 TensorFlow. If you already
 know what MNIST is, and what softmax (multinomial logistic) regression is,
-you might prefer this [faster paced tutorial](../pros/index.md).*
+you might prefer this [faster paced tutorial](../../../tutorials/mnist/pros/index.md).*
 
 When one learns how to program, there's a tradition that the first thing you do
 is print "Hello World." Just like programming has Hello World, machine learning
@@ -417,6 +417,6 @@ a look at this
 [list of results](http://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results.html).)
 
 What matters is that we learned from this model. Still, if you're feeling a bit
-down about these results, check out [the next tutorial](../../index.md) where we
+down about these results, check out [the next tutorial](../../../tutorials/index.md) where we
 do a lot better, and learn how to build more sophisticated models using
 TensorFlow!
