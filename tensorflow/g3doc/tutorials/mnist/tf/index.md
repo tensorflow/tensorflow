@@ -18,8 +18,8 @@ This tutorial references the following files:
 
 File | Purpose
 --- | ---
-[`mnist.py`](../mnist.py) | The code to build a fully-connected MNIST model.
-[`fully_connected_feed.py`](../fully_connected_feed.py) | The main code, to train the built MNIST model against the downloaded dataset using a feed dictionary.
+[`mnist.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/mnist.py) | The code to build a fully-connected MNIST model.
+[`fully_connected_feed.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py) | The main code, to train the built MNIST model against the downloaded dataset using a feed dictionary.
 
 Simply run the `fully_connected_feed.py` file directly to start training:
 

@@ -17,12 +17,12 @@ represent words as vectors.
 * We also show a simple implementation of the model in TensorFlow.
 * Finally, we look at ways to make the naive version scale better.
 
-We walk through the code later during the tutorial, but if you'd prefer to
-dive straight in, feel free to look at the minimalistic implementation in
-[tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py](./word2vec_basic.py)
-This basic example contains the code needed to download some data, train on it
-a bit and visualize the result. Once you get
-comfortable with reading and running the basic version, you can graduate to
+We walk through the code later during the tutorial, but if you'd prefer to dive
+straight in, feel free to look at the minimalistic implementation in
+[tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py)
+This basic example contains the code needed to download some data, train on it a
+bit and visualize the result. Once you get comfortable with reading and running
+the basic version, you can graduate to
 [tensorflow/models/embedding/word2vec.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
@@ -269,8 +269,8 @@ nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 Now that we have the parameters in place, we can define our skip-gram model
 graph. For simplicity, let's suppose we've already integerized our text corpus
 with a vocabulary so that each word is represented as an integer (see
-[tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py](./word2vec_basic.py) for
-the details). The skip-gram model takes two inputs. One is a batch full of
+[tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/word2vec/word2vec_basic.py)
+for the details). The skip-gram model takes two inputs. One is a batch full of
 integers representing the source context words, the other is for the target
 words. Let's create placeholder nodes for these inputs, so that we can feed in
 data later.
