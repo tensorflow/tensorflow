@@ -33,6 +33,11 @@ class LoggingOpsTest(tf.test.TestCase):
 
 class PrintGradientTest(tf.test.TestCase):
 
+  def testPrintShape(self):
+    inp = tf.constant(2.0, shape=[100, 32])
+    inp_printed = tf.Print(inp, [inp])
+    self.assertEqual(inp.get_shape(), inp_printed.get_shape())
+
   def testPrintGradient(self):
     with self.test_session():
       inp = tf.constant(2.0, shape=[100, 32], name="in")

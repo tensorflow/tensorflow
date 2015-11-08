@@ -6,9 +6,8 @@ from setuptools.dist import Distribution
 _VERSION = '0.5.0'
 
 REQUIRED_PACKAGES = [
-    'numpy',
+    'numpy >= 1.10.1',
     'six >= 1.10.0',
-    'virtualenvwrapper',
 ]
 
 # pylint: disable=line-too-long

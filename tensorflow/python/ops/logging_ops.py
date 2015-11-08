@@ -52,7 +52,5 @@ def _PrintGrad(op, *grad):
   return list(grad) + [None] * (len(op.inputs) - 1)
 
 
-# NOTE(mrry): Assert and Print produce an empty output, which is
-# presumably never read.
-ops.RegisterShape("Assert")(common_shapes.unknown_shape)
-ops.RegisterShape("Print")(common_shapes.unknown_shape)
+ops.RegisterShape("Assert")(common_shapes.no_outputs)
+ops.RegisterShape("Print")(common_shapes.unchanged_shape)

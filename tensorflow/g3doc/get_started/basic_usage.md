@@ -286,7 +286,8 @@ with tf.Session() as sess:
 ```
 
 A `placeholder()` operation generates an error if you do not supply a feed for
-it. See the [MNIST fully-connected feed
-tutorial](../tutorials/mnist/fully_connected_feed.py) for a larger-scale
-example of feeds.
+it. See the
+[MNIST fully-connected feed tutorial](../tutorials/mnist/tf/index.md)
+([source code](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py))
+for a larger-scale example of feeds.
 

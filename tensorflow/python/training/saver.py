@@ -539,9 +539,9 @@ class Saver(object):
   `global_step` argument to `save()`:
 
   ```python
-  saver.save('my-model', global_step=0) ==> filename: 'my-model-0'
+  saver.save(sess, 'my-model', global_step=0) ==> filename: 'my-model-0'
   ...
-  saver.save('my-model', global_step=1000) ==> filename: 'my-model-1000'
+  saver.save(sess, 'my-model', global_step=1000) ==> filename: 'my-model-1000'
   ```
 
   Additionally, optional arguments to the `Saver()` constructor let you control
@@ -806,7 +806,7 @@ class Saver(object):
     path can be passed directly to a call to `restore()`.
 
     Args:
-      sess: A Session to use to save the variables..
+      sess: A Session to use to save the variables.
       save_path: string.  Path to the checkpoint filename.  If the saver is
         `sharded`, this is the prefix of the sharded checkpoint filename.
       global_step: If provided the global step number is appended to
