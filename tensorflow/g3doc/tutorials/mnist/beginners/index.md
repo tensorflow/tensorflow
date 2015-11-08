@@ -88,9 +88,9 @@ The corresponding labels in MNIST are numbers between 0 and 9, describing
 which digit a given image is of.
 For the purposes of this tutorial, we're going to want our labels as
 as "one-hot vectors". A one-hot vector is a vector which is 0 in most
-dimensions, and 1 in a single dimension. In this case, the \(n\)th digit will be
-represented as a vector which is 1 in the \(n\)th dimensions. For example, 0
-would be \([1,0,0,0,0,0,0,0,0,0,0]\).
+dimensions, and 1 in a single dimension. In this case, the \\(n\\)th digit will be
+represented as a vector which is 1 in the \\(n\\)th dimensions. For example, 0
+would be \\([1,0,0,0,0,0,0,0,0,0,0]\\).
 Consequently, `mnist.train.labels` is a
 `[60000, 10]` array of floats.
 
@@ -131,14 +131,14 @@ weights.
 
 We also add some extra evidence called a bias. Basically, we want to be able
 to say that some things are more likely independent of the input. The result is
-that the evidence for a class \(i\) given an input \(x\) is:
+that the evidence for a class \\(i\\) given an input \\(x\\) is:
 
 $$\text{evidence}_i = \sum_j W_{i,~ j} x_j + b_i$$
 
-where \(W_i\) is the weights and \(b_i\) is the bias for class \(i\), and \(j\)
-is an index for summing over the pixels in our input image \(x\). We then
+where \\(W_i\\) is the weights and \\(b_i\\) is the bias for class \\(i\\), and \\(j\\)
+is an index for summing over the pixels in our input image \\(x\\). We then
 convert the evidence tallies into our predicted probabilities
-\(y\) using the "softmax" function:
+\\(y\\) using the "softmax" function:
 
 $$y = \text{softmax}(\text{evidence})$$
 
@@ -168,8 +168,8 @@ on it in Michael Nieslen's book, complete with an interactive visualization.)
 
 
 You can picture our softmax regression as looking something like the following,
-although with a lot more \(x\)s. For each output, we compute a weighted sum of
-the \(x\)s, add a bias, and then apply softmax.
+although with a lot more \\(x\\)s. For each output, we compute a weighted sum of
+the \\(x\\)s, add a bias, and then apply softmax.
 
 <div style="width:55%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="img/softmax-regression-scalargraph.png">
@@ -261,7 +261,7 @@ y = tf.nn.softmax(tf.matmul(x,W) + b)
 ```
 
 First, we multiply `x` by `W` with the expression `tf.matmul(x,W)`. This is
-flipped from when we multiplied them in our equation, where we had \(Wx\), as a
+flipped from when we multiplied them in our equation, where we had \\(Wx\\), as a
 small trick
 to deal with `x` being a 2D tensor with multiple inputs. We then add `b`, and
 finally apply `tf.nn.softmax`.
@@ -288,7 +288,7 @@ from gambling to machine learning. It's defined:
 
 $$H_{y'}(y) = -\sum_i y'_i \log(y_i)$$
 
-Where \(y\) is our predicted probability distribution, and \(y'\) is the true
+Where \\(y\\) is our predicted probability distribution, and \\(y'\\) is the true
 distribution (the one-hot vector we'll input).  In some rough sense, the
 cross-entropy is measuring how inefficient our predictions are for describing
 the truth. Going into more detail about cross-entropy is beyond the scope of
@@ -302,7 +302,7 @@ the correct answers:
 y_ = tf.placeholder("float", [None,10])
 ```
 
-Then we can implement the cross-entropy, \(-\sum y'\log(y)\):
+Then we can implement the cross-entropy, \\(-\sum y'\log(y)\\):
 
 ```python
 cross_entropy = -tf.reduce_sum(y_*tf.log(y))
@@ -334,7 +334,7 @@ descent algorithm with a learning rate of 0.01. Gradient descent is a simple
 procedure, where TensorFlow simply shifts each variable a little bit in the
 direction that reduces the cost. But TensorFlow also provides
 [many other optimization algorithms]
-(../../../api_docs/python/train.md?#optimizers): using one is as simple as
+(../../../api_docs/python/train.md#optimizers): using one is as simple as
 tweaking one line.
 
 What TensorFlow actually does here, behind the scenes, is it adds new operations

@@ -3,6 +3,39 @@
 
 using namespace tensorflow;
 
+REGISTER_OP("ZeroOut")
+    .Attr("T: realnumbertype")
+    .Input("to_zero: T")
+    .Output("zeroed: T")
+    .Doc(R"doc(
+Zeros out all but the first value of a Tensor.
+
+zeroed: A Tensor whose first value is identical to `to_zero`, and 0
+  otherwise.
+)doc");
+
+REGISTER_OP("ZeroOut2")
+    .Attr("T: realnumbertype")
+    .Input("to_zero: T")
+    .Output("zeroed: T")
+    .Doc(R"doc(
+Zeros out all but the first value of a Tensor.
+
+zeroed: A Tensor whose first value is identical to `to_zero`, and 0
+  otherwise.
+)doc");
+
+REGISTER_OP("ZeroOut3")
+    .Attr("T: realnumbertype")
+    .Input("to_zero: T")
+    .Output("zeroed: T")
+    .Doc(R"doc(
+Zeros out all but the first value of a Tensor.
+
+zeroed: A Tensor whose first value is identical to `to_zero`, and 0
+  otherwise.
+)doc");
+
 template <typename T>
 class ZeroOutOp : public OpKernel {
  public:
@@ -45,7 +78,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut")
 
 #define REGISTER_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                          \
-      Name("ZeroOut").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      Name("ZeroOut2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       ZeroOutOp<type>)
 
 REGISTER_KERNEL(float);
@@ -56,7 +89,7 @@ REGISTER_KERNEL(int32);
 
 #define REGISTER_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                          \
-      Name("ZeroOut").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      Name("ZeroOut3").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       ZeroOutOp<type>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);

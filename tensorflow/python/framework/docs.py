@@ -338,10 +338,10 @@ class Library(Document):
 
   def _print_function(self, f, prefix, fullname, func):
     """Prints the given function to `f`."""
-    heading = prefix + " " + fullname
+    heading = prefix + " `" + fullname
     if not isinstance(func, property):
       heading += self._generate_signature_for_function(func)
-    heading += " {#%s}" % _get_anchor(self._module_to_name, fullname)
+    heading += "` {#%s}" % _get_anchor(self._module_to_name, fullname)
     print >>f, heading
     print >>f, ""
     self._print_formatted_docstring(inspect.getdoc(func), f)

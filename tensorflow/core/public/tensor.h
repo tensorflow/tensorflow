@@ -132,6 +132,9 @@ class Tensor {
   /// fails if either type or sizes mismatch.
   ///
   /// Example:
+  ///
+  /// ```c++
+  ///
   ///     typedef float T;
   ///     Tensor my_mat(...built with Shape{rows: 3, cols: 5}...);
   ///     auto mat = my_mat.matrix<T>();    // 2D Eigen::Tensor, 3 x 5.
@@ -139,6 +142,8 @@ class Tensor {
   ///     auto vec = my_mat.vec<T>();       // CHECK fails as my_mat is 2D.
   ///     auto vec = my_mat.tensor<T, 3>(); // CHECK fails as my_mat is 2D.
   ///     auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
+  ///
+  /// ```
   template <typename T>
   typename TTypes<T>::Vec vec() {
     return tensor<T, 1>();
@@ -162,6 +167,9 @@ class Tensor {
   /// Eigen::Tensor with the same number of elements as the Tensor.
   ///
   /// Example:
+  ///
+  /// ```c++
+  ///
   ///     typedef float T;
   ///     Tensor my_ten(...built with Shape{planes: 4, rows: 3, cols: 5}...);
   ///     // 1D Eigen::Tensor, size 60:
@@ -176,6 +184,8 @@ class Tensor {
   ///     auto weird = my_ten.shaped<T, 3>({6, 5, 2});
   ///     // CHECK fails, type mismatch:
   ///     auto bad   = my_ten.flat<int32>();
+  ///
+  /// ```
   template <typename T>
   typename TTypes<T>::Flat flat() {
     return shaped<T, 1>({NumElements()});
