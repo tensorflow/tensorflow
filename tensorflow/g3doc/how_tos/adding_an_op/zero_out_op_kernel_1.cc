@@ -11,7 +11,6 @@ Zeros out all but the first value of a Tensor.
 
 zeroed: A Tensor whose first value is identical to `to_zero`, and 0
   otherwise.
-
 )doc");
 
 class ZeroOutOp : public OpKernel {

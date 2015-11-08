@@ -25,8 +25,10 @@ namespace tensorflow {
 ///
 /// Example:
 ///
+/// ```c++
+///
 ///     tensorflow::GraphDef graph;
-///     // ... Create or load graph into 'graph'.
+///     // ... Create or load graph into "graph".
 ///
 ///     // This example uses the default options which connects
 ///     // to a local runtime.
@@ -53,6 +55,8 @@ namespace tensorflow {
 ///     // Close the session to release the resources associated with
 ///     // this session.
 ///     session->Close()
+///
+/// ```
 ///
 /// A Session allows concurrent calls to Run(), though a Session must
 /// be created / extended by a single thread.

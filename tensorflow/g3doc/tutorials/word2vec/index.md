@@ -94,8 +94,8 @@ datasets. We will focus on the skip-gram model in the rest of this tutorial.
 
 Neural probabilistic language models are traditionally trained using the
 [maximum likelihood](https://en.wikipedia.org/wiki/Maximum_likelihood) (ML)
-principle  to maximize the probability of the next word \(w_t\) (for 'target)
-given the previous words \(h\) (for 'history') in terms of a
+principle  to maximize the probability of the next word \\(w_t\\) (for 'target)
+given the previous words \\(h\\) (for 'history') in terms of a
 [*softmax* function](https://en.wikipedia.org/wiki/Softmax_function),
 
 $$
@@ -106,8 +106,8 @@ P(w_t | h) &= \text{softmax}(\exp \{ \text{score}(w_t, h) \}) \\
 \end{align}
 $$
 
-where \(\text{score}(w_t, h)\) computes the compatibility of word \(w_t\) with
-the context \(h\) (a dot product is commonly used). We train this model by
+where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\) with
+the context \\(h\\) (a dot product is commonly used). We train this model by
 maximizing its log-likelihood on the training set, i.e. by maximizing
 
 $$
@@ -120,8 +120,8 @@ $$
 
 This yields a properly normalized probabilistic model for language modeling.
 However this is very expensive, because we need to compute and normalize each
-probability using the score for all other \(V\) words \(w'\) in the current
-context \(h\), *at every training step*.
+probability using the score for all other \\(V\\) words \\(w'\\) in the current
+context \\(h\\), *at every training step*.
 
 <div style="width:60%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="img/softmax-nplm.png" alt>
@@ -130,7 +130,7 @@ context \(h\), *at every training step*.
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
 binary classification objective (logistic regression) to discriminate the real
-target words \(w_t\) from \(k\) imaginary (noise) words \(\tilde w\), in the
+target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
@@ -144,10 +144,10 @@ $$J_\text{NEG} = \log Q_\theta(D=1 |w_t, h) +
   k \mathop{\mathbb{E}}_{\tilde w \sim P_\text{noise}}
      \left[ \log Q_\theta(D = 0 |\tilde w, h) \right]$$,
 
-where \(Q_\theta(D=1 | w, h)\) is the binary logistic regression probability
-under the model of seeing the word \(w\) in the context \(h\) in the dataset
-\(D\), calculated in terms of the learned embedding vectors \(\theta\). In
-practice we approximate the expectation by drawing \(k\) constrastive words
+where \\(Q_\theta(D=1 | w, h)\\) is the binary logistic regression probability
+under the model of seeing the word \\(w\\) in the context \\(h\\) in the dataset
+\\(D\\), calculated in terms of the learned embedding vectors \\(\theta\\). In
+practice we approximate the expectation by drawing \\(k\\) constrastive words
 from the noise distribution (i.e. we compute a
 [Monte Carlo average](https://en.wikipedia.org/wiki/Monte_Carlo_integration)).
 
@@ -159,7 +159,7 @@ and there is good mathematical motivation for using this loss function:
 The updates it proposes approximate the updates of the softmax function in the
 limit. But computationally it is especially appealing because computing the
 loss function now scales only with the number of *noise words* that we
-select (\(k\)), and not *all words* in the vocabulary (\(V\)). This makes it
+select (\\(k\\)), and not *all words* in the vocabulary (\\(V\\)). This makes it
 much faster to train. We will actually make use of the very similar
 [noise-contrastive estimation (NCE)](http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf)
 loss, for which TensorFlow has a handy helper function `tf.nn.nce_loss()`.
@@ -198,21 +198,21 @@ dataset, but we typically optimize this with
 where typically `16 <= batch_size <= 512`). So let's look at one step of
 this process.
 
-Let's imagine at training step \(t\) we observe the first training case above,
+Let's imagine at training step \\(t\\) we observe the first training case above,
 where the goal is to predict `the` from `quick`. We select `num_noise` number
 of noisy (contrastive) examples by drawing from some noise distribution,
-typically the unigram distribution, \(P(w)\). For simplicity let's say
+typically the unigram distribution, \\(P(w)\\). For simplicity let's say
 `num_noise=1` and we select `sheep` as a noisy example. Next we compute the
 loss for this pair of observed and noisy examples, i.e. the objective at time
-step \(t\) becomes
+step \\(t\\) becomes
 
 $$J^{(t)}_\text{NEG} = \log Q_\theta(D=1 | \text{the, quick}) +
   \log(Q_\theta(D=0 | \text{sheep, quick}))$$.
 
-The goal is to make an update to the embedding parameters \(\theta\) to improve
+The goal is to make an update to the embedding parameters \\(\theta\\) to improve
 (in this case, maximize) this objective function.  We do this by deriving the
-gradient of the loss with respect to the embedding parameters \(\theta\), i.e.
-\(\frac{\partial}{\partial \theta} J_\text{NEG}\) (luckily TensorFlow provides
+gradient of the loss with respect to the embedding parameters \\(\theta\\), i.e.
+\\(\frac{\partial}{\partial \theta} J_\text{NEG}\\) (luckily TensorFlow provides
 easy helper functions for doing this!). We then perform an update to the
 embeddings by taking a small step in the direction of the gradient. When this
 process is repeated over the entire training set, this has the effect of
