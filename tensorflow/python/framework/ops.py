@@ -79,7 +79,7 @@ class Tensor(object):
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
-  TensorFlow [`Session`](client.md#Session).
+  TensorFlow [`Session`](../../api_docs/python/client.md#Session).
 
   This class has two primary purposes:
 
@@ -90,7 +90,7 @@ class Tensor(object):
 
   2. After the graph has been launched in a session, the value of the
      `Tensor` can be computed by passing it to
-     [`Session.run()`](client.md#Session.run).
+     [`Session.run()`](../../api_docs/python/client.md#Session.run).
      `t.eval()` is a shortcut for calling
      `tf.get_default_session().run(t)`.
 
@@ -204,8 +204,8 @@ class Tensor(object):
 
     The shape is computed using shape inference functions that are
     registered for each `Operation` type using `tf.RegisterShape`.
-    See [`TensorShape`](framework.md#TensorShape) for more details of what a shape
-    represents.
+    See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
+    details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
     information without having to launch the graph in a session. This
@@ -393,8 +393,8 @@ class Tensor(object):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](client.md#Session.run) for a description of
-        the valid feed values.
+        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+        description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
         none, the default session will be used.
 
@@ -614,10 +614,10 @@ class IndexedSlices(object):
 
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
-  (e.g. [`tf.gather`](array_ops.md#gather)).
+  (e.g. [`tf.gather`](../../api_docs/python/array_ops.md#gather)).
 
   Contrast this representation with
-  [`SparseTensor`](sparse_ops.md#SparseTensor),
+  [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
   which uses multi-dimensional indices and scalar values.
 
   @@__init__
@@ -869,15 +869,17 @@ class Operation(object):
   An `Operation` is a node in a TensorFlow `Graph` that takes zero or
   more `Tensor` objects as input, and produces zero or more `Tensor`
   objects as output. Objects of type `Operation` are created by
-  calling a Python op constructor (such as [`tf.matmul()`](math_ops.md#matmul))
-  or [`Graph.create_op()`](framework.md#Graph.create_op).
+  calling a Python op constructor (such as
+  [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul))
+  or [`Graph.create_op()`](../../api_docs/python/framework.md#Graph.create_op).
 
   For example `c = tf.matmul(a, b)` creates an `Operation` of type
   "MatMul" that takes tensors `a` and `b` as input, and produces `c`
   as output.
 
   After the graph has been launched in a session, an `Operation` can
-  be executed by passing it to [`Session.run()`](client.md#Session.run).
+  be executed by passing it to
+  [`Session.run()`](../../api_docs/python/client.md#Session.run).
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
 
   @@name
@@ -1257,8 +1259,8 @@ class Operation(object):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](client.md#Session.run) for a description of the
-        valid feed values.
+        See [`Session.run()`](../../api_docs/python/client.md#Session.run)
+        for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to run to this operation. If
         none, the default session will be used.
     """
@@ -1424,14 +1426,16 @@ def set_shapes_for_outputs(op):
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
-  A `Graph` contains a set of [`Operation`](framework.md#Operation) objects,
-  which represent units of computation; and [`Tensor`](framework.md#Tensor)
-  objects, which represent the units of data that flow between operations.
+  A `Graph` contains a set of
+  [`Operation`](../../api_docs/python/framework.md#Operation) objects,
+  which represent units of computation; and
+  [`Tensor`](../../api_docs/python/framework.md#Tensor) objects, which represent
+  the units of data that flow between operations.
 
   A default `Graph` is always registered, and accessible by calling
-  [`tf.get_default_graph()`](framework.md#get_default_graph). To add an
-  operation to the default graph, simply call one of the functions that defines
-  a new `Operation`:
+  [`tf.get_default_graph()`](../../api_docs/python/framework.md#get_default_graph).
+  To add an operation to the default graph, simply call one of the functions
+  that defines a new `Operation`:
 
   ```
   c = tf.constant(4.0)
@@ -1439,7 +1443,7 @@ class Graph(object):
   ```
 
   Another typical usage involves the
-  [`Graph.as_default()`](framework.md#Graph.as_default)
+  [`Graph.as_default()`](../../api_docs/python/framework.md#Graph.as_default)
   context manager, which overrides the current default graph for the
   lifetime of the context:
 
@@ -1470,9 +1474,9 @@ class Graph(object):
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  [`tf.GraphKeys.VARIABLES`](framework.md#GraphKeys)) for all variables that are
-  created during the construction of a graph. The caller may define
-  additional collections by specifying a new name.
+  [`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+  all variables that are created during the construction of a graph. The caller
+  may define additional collections by specifying a new name.
 
   @@add_to_collection
   @@get_collection
@@ -1581,7 +1585,7 @@ class Graph(object):
     After calling `g.finalize()`, no new operations can be added to
     `g`.  This method is used to ensure that no operations are added
     to a graph when it is shared between multiple threads, for example
-    when using a [`QueueRunner`](train.md#QueueRunner).
+    when using a [`QueueRunner`](../../api_docs/python/train.md#QueueRunner).
     """
     self._finalized = True
 
@@ -1606,7 +1610,7 @@ class Graph(object):
 
     The serialized `GraphDef` can be imported into another `Graph`
     (using [`import_graph_def()`](#import_graph_def)) or used with the
-    [C++ Session API](../cc/index.md).
+    [C++ Session API](../../api_docs/cc/index.md).
 
     This method is thread-safe.
 
@@ -2532,7 +2536,9 @@ class Graph(object):
 def device(dev):
   """Wrapper for `Graph.device()` using the default graph.
 
-  See [`Graph.name_scope()`](framework.md#Graph.name_scope) for more details.
+  See
+  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  for more details.
 
   Args:
     device_name_or_function: The device name or function to use in
@@ -2548,7 +2554,9 @@ def device(dev):
 def name_scope(name):
   """Wrapper for `Graph.name_scope()` using the default graph.
 
-  See [`Graph.name_scope()`](framework.md#Graph.name_scope) for more details.
+  See
+  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  for more details.
 
   Args:
     name: A name for the scope.
@@ -2563,7 +2571,7 @@ def name_scope(name):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See [`Graph.control_dependencies()`](framework.md#Graph.control_dependencies)
+  See [`Graph.control_dependencies()`](../../api_docs/python/framework.md#Graph.control_dependencies)
   for more details.
 
   Args:
@@ -2890,17 +2898,20 @@ class GraphKeys(object):
 
   * `VARIABLES`: the `Variable` objects that comprise a model, and
     must be saved and restored together. See
-    [`tf.all_variables()`](state_ops.md#all_variables) for more details.
+    [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+    for more details.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
-    [`tf.trainable_variables()`](state_ops.md#trainable_variables)
+    [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
     for more details.
-  * `SUMMARIES`: the summary `Tensor` objects that have been created
-    in the graph. See [`tf.merge_all_summaries()`](train.md#merge_all_summaries)
+  * `SUMMARIES`: the summary `Tensor` objects that have been created in the
+    graph. See
+    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
-    [`tf.start_queue_runners()`](train.md#start_queue_runners) for more details.
+    [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
+    for more details.
   """
 
   # Key to collect variables.Variable objects that must be saved and restored
@@ -2920,7 +2931,7 @@ class GraphKeys(object):
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
-  See [`Graph.add_to_collection()`](framework.md#Graph.add_to_collection)
+  See [`Graph.add_to_collection()`](../../api_docs/python/framework.md#Graph.add_to_collection)
   for more details.
 
   Args:
@@ -2934,7 +2945,7 @@ def add_to_collection(name, value):
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
-  See [`Graph.get_collection()`](framework.md#Graph.get_collection)
+  See [`Graph.get_collection()`](../../api_docs/python/framework.md#Graph.get_collection)
   for more details.
 
   Args:

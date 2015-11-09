@@ -32,8 +32,9 @@ def random_uniform_initializer(minval=0.0, maxval=1.0, seed=None):
       of random values to generate.
     maxval: a python scalar or a scalar tensor. upper bound of the range
       of random values to generate.
-    seed: A Python integer. Used to create random seeds.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     An initializer that generates Tensors with a uniform distribution.
@@ -50,8 +51,9 @@ def random_normal_initializer(mean=0.0, stddev=1.0, seed=None):
       to generate.
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
-    seed: A Python integer. Used to create random seeds.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     An initializer that generates Tensors with a normal distribution.
@@ -73,8 +75,9 @@ def truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None):
       to generate.
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
-    seed: A Python integer. Used to create random seeds.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     An initializer that generates Tensors with a truncated normal
@@ -104,8 +107,9 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None):
 
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
-    seed: A Python integer. Used to create random seeds.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     An initializer that generates tensors with unit variance.
@@ -132,8 +136,9 @@ def _random_walk(shape, nonlinearity, dtype=types.float32, seed=None,
     nonlinearity: the brain python function for implementing the
       nonlinearity in tensor flow.
     dtype: The type of the output.
-    seed: A Python integer. Used to create random seeds.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: string.  Optional name for the op.
 
   Returns:
@@ -169,8 +174,9 @@ class _RandomWalkInitializer(object):
     Args:
       nonlinearity: the python tensorflow function that computes a nonlinearity
         in the graph, typically after a Wx+b type operation.
-      seed: A Python integer. Used to create random seeds.
-        See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     """
     self._nonlinearity = nonlinearity
     self._seed = seed

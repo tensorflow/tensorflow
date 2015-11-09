@@ -626,7 +626,7 @@ REGISTER_OP("SegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
+Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
 for an explanation of segments.
 
 Computes a tensor such that
@@ -653,8 +653,9 @@ REGISTER_OP("SegmentMean")
     .Doc(R"doc(
 Computes the mean along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Computes a tensor such that
 \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
@@ -681,8 +682,9 @@ REGISTER_OP("SegmentProd")
     .Doc(R"doc(
 Computes the product along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Computes a tensor such that
 \\(output_i = \prod_j data_j\\) where the product is over `j` such
@@ -708,8 +710,9 @@ REGISTER_OP("SegmentMin")
     .Doc(R"doc(
 Computes the minimum along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Computes a tensor such that
 \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
@@ -735,7 +738,7 @@ REGISTER_OP("SegmentMax")
     .Doc(R"doc(
 Computes the maximum along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
+Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
 for an explanation of segments.
 
 Computes a tensor such that
@@ -763,8 +766,9 @@ REGISTER_OP("UnsortedSegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Computes a tensor such that
 \\(output_i = \sum_j data_j\\) where sum is over `j` such
@@ -797,8 +801,9 @@ REGISTER_OP("SparseSegmentSum")
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension_0, specified by `indices`.
@@ -843,8 +848,9 @@ REGISTER_OP("SparseSegmentMean")
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
-Read [the section on Segmentation](../python/math_ops.md#segmentation)
-for an explanation of segments.
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
 
 Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension_0, specified by `indices`.

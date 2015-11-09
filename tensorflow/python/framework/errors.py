@@ -41,7 +41,7 @@ class OpError(Exception):
 
     *N.B.* If the failed op was synthesized at runtime, e.g. a `Send`
     or `Recv` op, there will be no corresponding
-    [`Operation`](framework.md#Operation) object.  In that case, this
+    [`Operation`](../../api_docs/python/framework.md#Operation) object.  In that case, this
     will return `None`, and you should instead use the
     [`OpError.node_def`](#OpError.node_def) to discover information about the
     op.
@@ -129,11 +129,12 @@ class CancelledError(OpError):
   """Raised when an operation or step is cancelled.
 
   For example, a long-running operation (e.g.
-  [`queue.enqueue()`](io_ops.md#QueueBase.enqueue) may be cancelled by
-  running another operation (e.g.
-  [`queue.close(cancel_pending_enqueues=True)`](io_ops.md#QueueBase.close),
-  or by [closing the session](client.md#Session.close). A step that is
-  running such a long-running operation will fail by raising `CancelledError`.
+  [`queue.enqueue()`](../../api_docs/python/io_ops.md#QueueBase.enqueue) may be
+  cancelled by running another operation (e.g.
+  [`queue.close(cancel_pending_enqueues=True)`](../../api_docs/python/io_ops.md#QueueBase.close),
+  or by [closing the session](../../api_docs/python/client.md#Session.close).
+  A step that is running such a long-running operation will fail by raising
+  `CancelledError`.
 
   @@__init__
   """
@@ -165,10 +166,10 @@ class InvalidArgumentError(OpError):
 
   This may occur, for example, if an operation is receives an input
   tensor that has an invalid value or shape. For example, the
-  [`tf.matmul()`](math_ops.md#matmul) op will raise this error if it
-  receives an input that is not a matrix, and the
-  [`tf.reshape()`](array_ops.md#reshape) op will raise this error if
-  the new shape does not match the number of elements in the input
+  [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul) op will raise this
+  error if it receives an input that is not a matrix, and the
+  [`tf.reshape()`](../../api_docs/python/array_ops.md#reshape) op will raise
+  this error if the new shape does not match the number of elements in the input
   tensor.
 
   @@__init__
@@ -198,8 +199,8 @@ class NotFoundError(OpError):
   """Raised when a requested entity (e.g., a file or directory) was not found.
 
   For example, running the
-  [`tf.WholeFileReader.read()`](io_ops.md#WholeFileReader) operation
-  could raise `NotFoundError` if it receives the name of a file that
+  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  operation could raise `NotFoundError` if it receives the name of a file that
   does not exist.
 
   @@__init__
@@ -214,8 +215,8 @@ class AlreadyExistsError(OpError):
   """Raised when an entity that we attempted to create already exists.
 
   For example, running an operation that saves a file
-  (e.g. [`tf.train.Saver.save()`](train.md#Saver.save)) could
-  potentially raise this exception if an explicit filename for an
+  (e.g. [`tf.train.Saver.save()`](../../api_docs/python/train.md#Saver.save))
+  could potentially raise this exception if an explicit filename for an
   existing file was passed.
 
   @@__init__
@@ -231,8 +232,8 @@ class PermissionDeniedError(OpError):
   """Raised when the caller does not have permission to run an operation.
 
   For example, running the
-  [`tf.WholeFileReader.read()`](io_ops.md#WholeFileReader) operation
-  could raise `PermissionDeniedError` if it receives the name of a
+  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  operation could raise `PermissionDeniedError` if it receives the name of a
   file for which the user does not have the read file permission.
 
   @@__init__
@@ -277,8 +278,8 @@ class FailedPreconditionError(OpError):
   """Operation was rejected because the system is not in a state to execute it.
 
   This exception is most commonly raised when running an operation
-  that reads a [`tf.Variable`](state_ops.md#Variable) before it has
-  been initialized.
+  that reads a [`tf.Variable`](../../api_docs/python/state_ops.md#Variable)
+  before it has been initialized.
 
   @@__init__
   """
@@ -292,9 +293,11 @@ class FailedPreconditionError(OpError):
 class AbortedError(OpError):
   """The operation was aborted, typically due to a concurrent action.
 
-  For example, running a [`queue.enqueue()`](io_ops.md#QueueBase.enqueue)
+  For example, running a
+  [`queue.enqueue()`](../../api_docs/python/io_ops.md#QueueBase.enqueue)
   operation may raise `AbortedError` if a
-  [`queue.close()`](io_ops.md#QueueBase.close) operation previously ran.
+  [`queue.close()`](../../api_docs/python/io_ops.md#QueueBase.close) operation
+  previously ran.
 
   @@__init__
   """
@@ -308,9 +311,10 @@ class OutOfRangeError(OpError):
   """Raised when an operation executed past the valid range.
 
   This exception is raised in "end-of-file" conditions, such as when a
-  [`queue.dequeue()`](io_ops.md#QueueBase.dequeue) operation is
-  blocked on an empty queue, and a
-  [`queue.close()`](io_ops.md#QueueBase.close) operation executes.
+  [`queue.dequeue()`](../../api_docs/python/io_ops.md#QueueBase.dequeue)
+  operation is blocked on an empty queue, and a
+  [`queue.close()`](../../api_docs/python/io_ops.md#QueueBase.close)
+  operation executes.
 
   @@__init__
   """
@@ -326,9 +330,9 @@ class UnimplementedError(OpError):
 
   Some operations may raise this error when passed otherwise-valid
   arguments that it does not currently support. For example, running
-  the [`tf.nn.max_pool()`](nn.md#max_pool) operation would raise this
-  error if pooling was requested on the batch dimension, because this
-  is not yet supported.
+  the [`tf.nn.max_pool()`](../../api_docs/python/nn.md#max_pool) operation
+  would raise this error if pooling was requested on the batch dimension,
+  because this is not yet supported.
 
   @@__init__
   """
@@ -371,8 +375,8 @@ class DataLossError(OpError):
   """Raised when unrecoverable data loss or corruption is encountered.
 
   For example, this may be raised by running a
-  [`tf.WholeFileReader.read()`](io_ops.md#WholeFileReader) operation,
-  if the file is truncated while it is being read.
+  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  operation, if the file is truncated while it is being read.
 
   @@__init__
   """

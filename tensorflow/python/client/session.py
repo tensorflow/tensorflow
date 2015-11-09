@@ -132,9 +132,9 @@ class BaseSession(SessionInterface):
     """Returns a context manager that makes this object the default session.
 
     Use with the `with` keyword to specify that calls to
-    [`Operation.run()`](framework.md#Operation.run) or
-    [`Tensor.run()`](framework.md#Tensor.run) should be executed in
-    this session.
+    [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
+    [`Tensor.run()`](../../api_docs/python/framework.md#Tensor.run) should be
+    executed in this session.
 
     ```python
     c = tf.constant(..)
@@ -219,30 +219,31 @@ class BaseSession(SessionInterface):
     method. A graph element can be one of the following types:
 
     * If the *i*th element of `fetches` is an
-      [`Operation`](framework.md#Operation), the *i*th return value
-      will be `None`.
+      [`Operation`](../../api_docs/python/framework.md#Operation), the *i*th
+      return value will be `None`.
     * If the *i*th element of `fetches` is a
-      [`Tensor`](framework.md#Tensor), the *i*th return value will
-      be a numpy ndarray containing the value of that tensor.
+      [`Tensor`](../../api_docs/python/framework.md#Tensor), the *i*th return
+      value will be a numpy ndarray containing the value of that tensor.
     * If the *i*th element of `fetches` is a
-      [`SparseTensor`](sparse_ops.md#SparseTensor), the *i*th
-      return value will be a
-      [`SparseTensorValue`](sparse_ops.md#SparseTensorValue)
+      [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
+      the *i*th return value will be a
+      [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
       containing the value of that sparse tensor.
 
     The optional `feed_dict` argument allows the caller to override
     the value of tensors in the graph. Each key in `feed_dict` can be
     one of the following types:
 
-    * If the key is a [`Tensor`](framework.md#Tensor), the
+    * If the key is a [`Tensor`](../../api_docs/python/framework.md#Tensor), the
       value may be a Python scalar, string, list, or numpy ndarray
       that can be converted to the same `dtype` as that
       tensor. Additionally, if the key is a
-      [placeholder](io_ops.md#placeholder), the shape of the value
-      will be checked for compatibility with the placeholder.
-    * If the key is a [`SparseTensor`](sparse_ops.md#SparseTensor),
+      [placeholder](../../api_docs/python/io_ops.md#placeholder), the shape of
+      the value will be checked for compatibility with the placeholder.
+    * If the key is a
+      [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
       the value should be a
-      [`SparseTensorValue`](sparse_ops.md#SparseTensorValue).
+      [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
     Args:
       fetches: A single graph element, or a list of graph elements
@@ -441,8 +442,8 @@ class Session(BaseSession):
   ```
 
   A session may own resources, such as
-  [variables](state_ops.md#Variable), [queues](io_ops.md#QueueBase),
-  and [readers](io_ops.md#ReaderBase). It is important to release
+  [variables](../../api_docs/python/state_ops.md#Variable), [queues](../../api_docs/python/io_ops.md#QueueBase),
+  and [readers](../../api_docs/python/io_ops.md#ReaderBase). It is important to release
   these resources when they are no longer required. To do this, either
   invoke the [`close()`](#Session.close) method on the session, or use
   the session as a context manager. The following two examples are
@@ -526,9 +527,9 @@ class InteractiveSession(BaseSession):
 
   The only difference with a regular `Session` is that an `InteractiveSession`
   installs itself as the default session on construction.
-  The methods [`Tensor.eval()`](framework.md#Tensor.eval) and
-  [`Operation.run()`](framework.md#Operation.run) will use that session
-  to run ops.
+  The methods [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval)
+  and [`Operation.run()`](../../api_docs/python/framework.md#Operation.run)
+  will use that session to run ops.
 
   This is convenient in interactive shells and [IPython
   notebooks](http://ipython.org), as it avoids having to pass an explicit
