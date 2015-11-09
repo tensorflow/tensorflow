@@ -207,7 +207,7 @@ class Variable(object):
 
     This convenience method requires a session where the graph containing this
     variable has been launched. If no session is passed, the default session is
-    used.  See the [Session class](client.md#Session) for more information on
+    used.  See the [Session class](../../api_docs/python/client.md#Session) for more information on
     launching a graph and on sessions.
 
     ```python

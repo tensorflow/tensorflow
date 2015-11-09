@@ -12,8 +12,8 @@ def embedding_lookup(params, ids, name=None):
 
   This function is used to perform parallel lookups on the list of
   tensors in `params`.  It is a generalization of
-  [`tf.gather()`](array_ops.md#gather), where `params` is interpreted
-  as a partition of a larger embedding tensor.
+  [`tf.gather()`](../../api_docs/python/array_ops.md#gather), where `params` is
+  interpreted as a partition of a larger embedding tensor.
 
   If `len(params) > 1`, each element `id` of `ids` is partitioned between
   the elements of `params` by computing `p = id % len(params)`, and is

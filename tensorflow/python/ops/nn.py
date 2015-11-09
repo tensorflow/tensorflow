@@ -346,8 +346,9 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
     keep_prob: A Python float. The probability that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for this operation (optional).
 
   Returns:

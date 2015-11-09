@@ -6,7 +6,7 @@ from setuptools.dist import Distribution
 _VERSION = '0.5.0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.10.1',
+    'numpy >= 1.9.2',
     'six >= 1.10.0',
 ]
 

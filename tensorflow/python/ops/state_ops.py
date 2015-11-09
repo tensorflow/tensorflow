@@ -47,7 +47,8 @@ useful for training embedding models and similar lookup-based networks, since
 only a small subset of embedding vectors change in any given step.
 
 Since a sparse update of a large tensor may be generated automatically during
-gradient computation (as in the gradient of [`tf.gather`](array_ops.md#gather)),
+gradient computation (as in the gradient of
+[`tf.gather`](../../api_docs/python/array_ops.md#gather)),
 an [`IndexedSlices`](#IndexedSlices) class is provided that encapsulates a set
 of sparse indices and values.  `IndexedSlices` objects are detected and handled
 automatically by the optimizers in most cases.

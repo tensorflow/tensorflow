@@ -950,8 +950,8 @@ There are two ways to use the moving averages for evaluations:
    for a given variable.
 *  Build a model normally but load the checkpoint files to evaluate by using
    the shadow variable names.  For this use the `average_name()` method.  See
-   the [Saver class](train.md#Saver) for more information on restoring saved
-   variables.
+   the [Saver class](../../api_docs/python/train.md#Saver) for more
+   information on restoring saved variables.
 
 Example of restoring the shadow variable values:
 
@@ -1407,8 +1407,8 @@ The following ops output
 protocol buffers as serialized string tensors.
 
 You can fetch the output of a summary op in a session, and pass it to
-a [SummaryWriter](train.md#SummaryWriter) to append it to an event
-file.  Event files contain
+a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
+to an event file.  Event files contain
 [`Event`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
 protos that can contain `Summary` protos along with the timestamp and
 step.  You can then use TensorBoard to visualize the contents of the

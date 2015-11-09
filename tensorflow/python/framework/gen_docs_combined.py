@@ -18,9 +18,11 @@ tf.flags.DEFINE_boolean("print_hidden_regex", False,
 FLAGS = tf.flags.FLAGS
 
 
+# TODO(josh11b,wicke): Remove the ../../api_docs/python/ once the
+# website can handle it.
 PREFIX_TEXT = """
-Note: Functions taking `Tensor` arguments can also take anything
-accepted by [`tf.convert_to_tensor`](framework.md#convert_to_tensor).
+Note: Functions taking `Tensor` arguments can also take anything accepted by
+[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
 """
 
 

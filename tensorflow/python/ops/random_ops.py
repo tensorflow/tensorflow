@@ -34,7 +34,9 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
       of the normal distribution.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for the operation (optional).
 
   Returns:
@@ -74,7 +76,9 @@ def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
       of the truncated normal distribution.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for the operation (optional).
 
   Returns:
@@ -115,7 +119,9 @@ def random_uniform(shape, minval=0.0, maxval=1.0,
       the range of random values to generate.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for the operation (optional).
 
   Returns:
@@ -151,7 +157,9 @@ def random_shuffle(value, seed=None, name=None):
   Args:
     value: A Tensor to be shuffled.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for the operation (optional).
 
   Returns:

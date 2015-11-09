@@ -172,8 +172,9 @@ def random_flip_up_down(image, seed=None):
 
   Args:
     image: A 3-D tensor of shape `[height, width, channels].`
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     A 3-D tensor of the same type and shape as `image`.
@@ -195,8 +196,9 @@ def random_flip_left_right(image, seed=None):
 
   Args:
     image: A 3-D tensor of shape `[height, width, channels].`
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     A 3-D tensor of the same type and shape as `image`.
@@ -563,8 +565,9 @@ def random_brightness(image, max_delta, seed=None):
   Args:
     image: 3-D tensor of shape `[height, width, channels]`.
     max_delta: float, must be non-negative.
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     3-D tensor of images of shape `[height, width, channels]`
@@ -591,8 +594,9 @@ def random_contrast(image, lower, upper, seed=None):
     image: 3-D tensor of shape `[height, width, channels]`.
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
 
   Returns:
     3-D tensor of shape `[height, width, channels]`.
@@ -775,8 +779,9 @@ def random_crop(image, size, seed=None, name=None):
   Args:
     image: 3-D tensor of shape `[height, width, channels]`
     size: 1-D tensor with two elements, specifying target `[height, width]`
-    seed: A Python integer. Used to create a random seed.
-      See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
     name: A name for this operation (optional).
 
   Returns:

@@ -337,8 +337,9 @@ class RandomShuffleQueue(QueueBase):
         the number of tensors in each queue element.
       shapes: (Optional.) A list of fully-defined `TensorShape` objects,
         with the same length as `dtypes` or `None`.
-      seed: A Python integer. Used to create a random seed.
-        See [`set_random_seed`](constant_op.md#set_random_seed) for behavior.
+      seed: A Python integer. Used to create a random seed. See
+        [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+        for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
       name: Optional name for the queue operation.

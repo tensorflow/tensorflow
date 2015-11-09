@@ -26,11 +26,13 @@ time they are evaluated.
 
 The `seed` keyword argument in these functions acts in conjunction with
 the graph-level random seed. Changing either the graph-level seed using
-[`set_random_seed`](constant_op.md#set_random_seed) or the op-level seed
-will change the underlying seed of these operations. Setting neither graph-level
-nor op-level seed, results in a random seed for all operations.
-See [`set_random_seed`](constant_op.md#set_random_seed) for details on the
-interaction between operation-level and graph-level random seeds.
+[`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed) or the
+op-level seed will change the underlying seed of these operations. Setting
+neither graph-level nor op-level seed, results in a random seed for all
+operations.
+See [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+for details on the interaction between operation-level and graph-level random
+seeds.
 
 ### Examples:
 

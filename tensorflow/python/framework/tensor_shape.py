@@ -334,10 +334,10 @@ class TensorShape(object):
 
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
-  `"Foo"`. See [`tf.RegisterShape()`](framework.md#RegisterShape)
+  `"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
   for details of shape
   functions and how to register them. Alternatively, the shape may be set
-  explicitly using [`Tensor.set_shape()`](framework.md#Tensor.set_shape).
+  explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
   @@merge_with
   @@concatenate
