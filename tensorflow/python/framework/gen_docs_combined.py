@@ -1,4 +1,5 @@
 """Updates generated docs from Python doc comments."""
+from __future__ import print_function
 
 import os.path
 
@@ -109,7 +110,7 @@ def main(unused_argv):
     hidden = set(_hidden_symbols)
     for _, lib in libraries:
       hidden.update(lib.exclude_symbols)
-    print r"hidden symbols regex = r'\b(%s)\b'" % "|".join(sorted(hidden))
+    print(r"hidden symbols regex = r'\b(%s)\b'" % "|".join(sorted(hidden)))
 
   # Verify that all symbols are mentioned in some library doc.
   catch_all = docs.Library(title="Catch All", module=None,

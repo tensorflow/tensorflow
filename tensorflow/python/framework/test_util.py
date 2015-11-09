@@ -1,5 +1,6 @@
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
+from __future__ import print_function
 import contextlib
 import math
 import re
@@ -337,14 +338,14 @@ class TensorFlowTestCase(googletest.TestCase):
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
-        print "not close where = ", np.where(cond)
+        print("not close where = ", np.where(cond))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print "not close lhs = ", x
-      print "not close rhs = ", y
-      print "not close dif = ", np.abs(x - y)
-      print "not close tol = ", atol + rtol * np.abs(y)
+      print("not close lhs = ", x)
+      print("not close rhs = ", y)
+      print("not close dif = ", np.abs(x - y))
+      print("not close tol = ", atol + rtol * np.abs(y))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
   def assertAllEqual(self, a, b):
@@ -369,12 +370,12 @@ class TensorFlowTestCase(googletest.TestCase):
       if a.ndim:
         x = a[np.where(diff)]
         y = b[np.where(diff)]
-        print "not equal where = ", np.where(diff)
+        print("not equal where = ", np.where(diff))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print "not equal lhs = ", x
-      print "not equal rhs = ", y
+      print("not equal lhs = ", x)
+      print("not equal rhs = ", y)
       np.testing.assert_array_equal(a, b)
 
   # pylint: disable=g-doc-return-or-yield

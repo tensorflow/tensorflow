@@ -14,6 +14,7 @@ Forward-backward pass:
 Run on Tesla K40c: 480 +/- 48 ms / batch
 Run on Titan X:    244 +/- 30 ms / batch
 """
+from __future__ import print_function
 from datetime import datetime
 import math
 import time
@@ -31,7 +32,7 @@ tf.app.flags.DEFINE_integer('num_batches', 100,
 
 
 def print_activations(t):
-  print t.op.name, ' ', t.get_shape().as_list()
+  print(t.op.name, ' ', t.get_shape().as_list())
 
 
 def inference(images):

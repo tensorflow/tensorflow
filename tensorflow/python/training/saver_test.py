@@ -319,7 +319,7 @@ class MaxToKeepTest(tf.test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "max_to_keep_non_sharded")
     try:
       gfile.DeleteRecursively(save_dir)
-    except gfile.GOSError, _:
+    except gfile.GOSError as _:
       pass                      # Ignore
     gfile.MakeDirs(save_dir)
 
@@ -408,7 +408,7 @@ class MaxToKeepTest(tf.test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "max_to_keep_sharded")
     try:
       gfile.DeleteRecursively(save_dir)
-    except gfile.GOSError, _:
+    except gfile.GOSError as _:
       pass                      # Ignore
     gfile.MakeDirs(save_dir)
 
@@ -446,7 +446,7 @@ class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
                             "keep_checkpoint_every_n_hours")
     try:
       gfile.DeleteRecursively(save_dir)
-    except gfile.GOSError, _:
+    except gfile.GOSError as _:
       pass                      # Ignore
     gfile.MakeDirs(save_dir)
 

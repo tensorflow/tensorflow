@@ -194,9 +194,9 @@ shows a variable serving as a simple counter.  See
 
 ```python
 # Create a Variable, that will be initialized to the scalar value 0.
-var = tf.Variable(0, name="counter")
+state = tf.Variable(0, name="counter")
 
-# Create an Op to add one to `var`.
+# Create an Op to add one to `state`.
 
 one = tf.constant(1)
 new_value = tf.add(state, one)
@@ -209,14 +209,14 @@ init_op = tf.initialize_all_variables()
 
 # Launch the graph and run the ops.
 with tf.Session() as sess:
-    # Run the 'init' op
-    sess.run(init_op)
-    # Print the initial value of 'var'
-    print sess.run(var)
-    # Run the op that updates 'var' and print 'var'.
-    for _ in range(3):
-        sess.run(update)
-        print sess.run(var)
+  # Run the 'init' op
+  sess.run(init_op)
+  # Print the initial value of 'state'
+  print sess.run(state)
+  # Run the op that updates 'state' and print 'state'.
+  for _ in range(3):
+    sess.run(update)
+    print sess.run(state)
 
 # output:
 

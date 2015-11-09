@@ -12,6 +12,7 @@ Press "a" in command mode to insert cell above or "b" to insert cell below.
 
 Your root notebooks directory is FLAGS.notebook_dir
 """
+from __future__ import print_function
 
 
 import os
@@ -70,7 +71,7 @@ def main(unused_argv):
       proto = "https" if notebookapp.certfile else "http"
       url = "%s://%s:%d%s" % (proto, socket.gethostname(), notebookapp.port,
                               notebookapp.base_project_url)
-      print "\nNotebook server will be publicly available at: %s\n" % url
+      print("\nNotebook server will be publicly available at: %s\n" % url)
 
     notebookapp.start()
     return

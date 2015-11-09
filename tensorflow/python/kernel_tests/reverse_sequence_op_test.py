@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.reverse_sequence_op."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -86,7 +87,7 @@ class ReverseSequenceTest(tf.test.TestCase):
                                     reverse_sequence_out,
                                     x.shape,
                                     x_init_value=x)
-    print "ReverseSequence gradient error = %g" % err
+    print("ReverseSequence gradient error = %g" % err)
     self.assertLess(err, 1e-8)
 
   def testShapeFunctionEdgeCases(self):

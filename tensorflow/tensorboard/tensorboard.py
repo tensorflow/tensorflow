@@ -3,6 +3,7 @@
 This is a simple web server to proxy data from the event_loader to the web, and
 serve static web files.
 """
+from __future__ import print_function
 
 import BaseHTTPServer
 import functools
@@ -111,7 +112,7 @@ def main(unused_argv=None):
     return -1
 
   if FLAGS.debug:
-    logging.info('Starting TensorBoard in directory %s' % os.getcwd())
+    logging.info('Starting TensorBoard in directory %s', os.getcwd())
 
   path_to_run = ParseEventFilesFlag(FLAGS.logdir)
   multiplexer = event_multiplexer.AutoloadingMultiplexer(
@@ -125,13 +126,13 @@ def main(unused_argv=None):
   try:
     server = ThreadedHTTPServer((FLAGS.host, FLAGS.port), factory)
   except socket.error:
-    logging.error('Tried to connect to port %d, but that address is in use.' %
+    logging.error('Tried to connect to port %d, but that address is in use.',
                   FLAGS.port)
     return -2
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard', FLAGS.port)
-  print 'Starting TensorBoard on port %d' % FLAGS.port
-  print '(You can navigate to http://localhost:%d)' % FLAGS.port
+  print('Starting TensorBoard on port %d' % FLAGS.port)
+  print('(You can navigate to http://localhost:%d)' % FLAGS.port)
   server.serve_forever()
 
 

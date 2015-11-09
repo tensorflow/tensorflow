@@ -1,5 +1,6 @@
 """Setup system-specific platform environment for TensorFlow."""
-import control_imports
+from __future__ import absolute_import
+from . import control_imports
 if control_imports.USE_OSS:
   from tensorflow.python.platform.default._init import *
 else:

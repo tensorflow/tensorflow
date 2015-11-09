@@ -99,11 +99,11 @@ class QueueRunner(object):
             if self._runs == 0:
               try:
                 sess.run(self._close_op)
-              except Exception, e:
+              except Exception as e:
                 # Intentionally ignore errors from close_op.
                 logging.vlog(1, "Ignored exception: %s", str(e))
             return
-    except Exception, e:
+    except Exception as e:
       # This catches all other exceptions.
       if coord:
         coord.request_stop(e)
@@ -129,7 +129,7 @@ class QueueRunner(object):
     coord.wait_for_stop()
     try:
       sess.run(cancel_op)
-    except Exception, e:
+    except Exception as e:
       # Intentionally ignore errors from cancel_op.
       logging.vlog(1, "Ignored exception: %s", str(e))
   # pylint: enable=broad-except

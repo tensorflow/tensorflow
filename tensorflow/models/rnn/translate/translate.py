@@ -12,6 +12,7 @@ See the following papers for more information on neural translation models.
  * http://arxiv.org/abs/1409.0473
  * http://arxiv.org/pdf/1412.2007v2.pdf
 """
+from __future__ import print_function
 
 import math
 import os
@@ -83,7 +84,7 @@ def read_data(source_path, target_path, max_size=None):
       while source and target and (not max_size or counter < max_size):
         counter += 1
         if counter % 100000 == 0:
-          print "  reading data line %d" % counter
+          print("  reading data line %d" % counter)
           sys.stdout.flush()
         source_ids = [int(x) for x in source.split()]
         target_ids = [int(x) for x in target.split()]
@@ -105,10 +106,10 @@ def create_model(session, forward_only):
       forward_only=forward_only)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
-    print "Reading model parameters from %s" % ckpt.model_checkpoint_path
+    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
-    print "Created model with fresh parameters."
+    print("Created model with fresh parameters.")
     session.run(tf.variables.initialize_all_variables())
   return model
 
@@ -116,13 +117,13 @@ def create_model(session, forward_only):
 def train():
   """Train a en->fr translation model using WMT data."""
   # Prepare WMT data.
-  print "Preparing WMT data in %s" % FLAGS.data_dir
+  print("Preparing WMT data in %s" % FLAGS.data_dir)
   en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
       FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
 
   with tf.Session() as sess:
     # Create model.
-    print "Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size)
+    print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
     model = create_model(sess, False)
 
     # Read data into buckets and compute their sizes.
@@ -182,7 +183,7 @@ def train():
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-          print "  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx)
+          print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
 
 
@@ -222,8 +223,8 @@ def decode():
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
       # Print out French sentence corresponding to outputs.
-      print " ".join([rev_fr_vocab[output] for output in outputs])
-      print "> ",
+      print(" ".join([rev_fr_vocab[output] for output in outputs]))
+      print("> ", end="")
       sys.stdout.flush()
       sentence = sys.stdin.readline()
 
@@ -231,7 +232,7 @@ def decode():
 def self_test():
   """Test the translation model."""
   with tf.Session() as sess:
-    print "Self-test for neural translation model."
+    print("Self-test for neural translation model.")
     # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
     model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
                                        5.0, 32, 0.3, 0.99, num_samples=8)

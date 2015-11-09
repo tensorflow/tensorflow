@@ -1,4 +1,5 @@
 """Tests for functional style sequence-to-sequence models."""
+from __future__ import print_function
 import math
 import random
 
@@ -377,7 +378,7 @@ class Seq2SeqTest(tf.test.TestCase):
           res = sess.run([updates[bucket], losses[bucket]], feed)
           log_perp += float(res[1])
         perp = math.exp(log_perp / 100)
-        print "step %d avg. perp %f" % ((ep + 1)*50, perp)
+        print("step %d avg. perp %f" % ((ep + 1) * 50, perp))
       self.assertLess(perp, 2.5)
 
 if __name__ == "__main__":

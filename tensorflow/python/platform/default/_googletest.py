@@ -42,7 +42,7 @@ def main(*args, **kwargs):
   def getShardedTestCaseNames(testCaseClass):
     filtered_names = []
     for testcase in sorted(delegate_get_names(testCaseClass)):
-      bucket = bucket_iterator.next()
+      bucket = next(bucket_iterator)
       if bucket == shard_index:
         filtered_names.append(testcase)
     return filtered_names
@@ -60,7 +60,7 @@ def GetTempDir():
       tempfile.gettempdir(), os.path.basename(inspect.getfile(first_frame)))
   temp_dir = temp_dir.rstrip('.py')
   if not os.path.isdir(temp_dir):
-    os.mkdir(temp_dir, 0755)
+    os.mkdir(temp_dir, 0o755)
   return temp_dir
 
 

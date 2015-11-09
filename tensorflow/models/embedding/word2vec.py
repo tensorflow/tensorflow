@@ -13,6 +13,7 @@ The key ops used are:
 * GradientDescentOptimizer for optimizing the loss.
 * skipgram custom op that does input processing.
 """
+from __future__ import print_function
 
 import os
 import sys
@@ -168,9 +169,9 @@ class Word2Vec(object):
           questions_skipped += 1
         else:
           questions.append(np.array(ids))
-    print "Eval analogy file: ", self._options.eval_data
-    print "Questions: ", len(questions)
-    print "Skipped: ", questions_skipped
+    print("Eval analogy file: ", self._options.eval_data)
+    print("Questions: ", len(questions))
+    print("Skipped: ", questions_skipped)
     self._analogy_questions = np.array(questions, dtype=np.int32)
 
   def forward(self, examples, labels):
@@ -336,9 +337,9 @@ class Word2Vec(object):
     (opts.vocab_words, opts.vocab_counts,
      opts.words_per_epoch) = self._session.run([words, counts, words_per_epoch])
     opts.vocab_size = len(opts.vocab_words)
-    print "Data file: ", opts.train_data
-    print "Vocab size: ", opts.vocab_size - 1, " + UNK"
-    print "Words per epoch: ", opts.words_per_epoch
+    print("Data file: ", opts.train_data)
+    print("Vocab size: ", opts.vocab_size - 1, " + UNK")
+    print("Words per epoch: ", opts.words_per_epoch)
     self._examples = examples
     self._labels = labels
     self._id2word = opts.vocab_words
@@ -394,7 +395,7 @@ class Word2Vec(object):
       last_words, last_time, rate = words, now, (words - last_words) / (
           now - last_time)
       print("Epoch %4d Step %8d: lr = %5.3f loss = %6.2f words/sec = %8.0f\r" %
-            (epoch, step, lr, loss, rate)),
+            (epoch, step, lr, loss, rate), end="")
       sys.stdout.flush()
       if now - last_summary_time > opts.summary_interval:
         summary_str = self._session.run(summary_op)
@@ -447,9 +448,9 @@ class Word2Vec(object):
           else:
             # The correct label is not the precision@1
             break
-    print
-    print "Eval %4d/%d accuracy = %4.1f%%" % (correct, total,
-                                              correct * 100.0 / total)
+    print()
+    print("Eval %4d/%d accuracy = %4.1f%%" % (correct, total,
+                                              correct * 100.0 / total))
 
   def analogy(self, w0, w1, w2):
     """Predict word w3 as in w0:w1 vs w2:w3."""
@@ -466,9 +467,9 @@ class Word2Vec(object):
     vals, idx = self._session.run(
         [self._nearby_val, self._nearby_idx], {self._nearby_word: ids})
     for i in xrange(len(words)):
-      print "\n%s\n=====================================" % (words[i])
+      print("\n%s\n=====================================" % (words[i]))
       for (neighbor, distance) in zip(idx[i, :num], vals[i, :num]):
-        print "%-20s %6.4f" % (self._id2word[neighbor], distance)
+        print("%-20s %6.4f" % (self._id2word[neighbor], distance))
 
 
 def _start_shell(local_ns=None):
@@ -484,7 +485,7 @@ def _start_shell(local_ns=None):
 def main(_):
   """Train a word2vec model."""
   if not FLAGS.train_data or not FLAGS.eval_data or not FLAGS.save_path:
-    print "--train_data --eval_data and --save_path must be specified."
+    print("--train_data --eval_data and --save_path must be specified.")
     sys.exit(1)
   opts = Options()
   with tf.Graph().as_default(), tf.Session() as session:

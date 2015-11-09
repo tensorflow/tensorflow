@@ -1,4 +1,5 @@
 """Tests for SoftmaxCrossEntropyWithLogits op."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -102,7 +103,7 @@ class XentTest(tf.test.TestCase):
                       dtype=tf.float64, name="f")
       x = tf.nn.softmax_cross_entropy_with_logits(f, l, name="xent")
       err = gc.ComputeGradientError(f, [3, 4], x, [3])
-    print "cross entropy gradient err = ", err
+    print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
 

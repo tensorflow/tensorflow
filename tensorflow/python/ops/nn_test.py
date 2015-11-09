@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.nn."""
+from __future__ import print_function
 import math
 
 import tensorflow.python.platform
@@ -71,7 +72,7 @@ class SigmoidCrossEntropyWithLogitsTest(test_util.TensorFlowTestCase):
       logits, targets, _ = self._Inputs(sizes=sizes)
       loss = nn.sigmoid_cross_entropy_with_logits(logits, targets)
       err = gc.ComputeGradientError(logits, sizes, loss, sizes)
-    print "logistic loss gradient err = ", err
+    print("logistic loss gradient err = ", err)
     self.assertLess(err, 1e-7)
 
 
@@ -264,7 +265,7 @@ class DeConv2DTest(test_util.TensorFlowTestCase):
       f = constant_op.constant(f_val, name="f", dtype=types.float32)
       output = nn.deconv2d(x, f, y_shape, strides=strides, padding="SAME")
       err = gc.ComputeGradientError([x, f], [x_shape, f_shape], output, y_shape)
-    print "DeConv gradient err = %g " % err
+    print("DeConv gradient err = %g " % err)
     err_tolerance = 0.0005
     self.assertLess(err, err_tolerance)
 
@@ -286,7 +287,7 @@ class L2LossTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_val, name="x")
       output = nn.l2_loss(x)
       err = gc.ComputeGradientError(x, x_shape, output, [1])
-    print "L2Loss gradient err = %g " % err
+    print("L2Loss gradient err = %g " % err)
     err_tolerance = 1e-11
     self.assertLess(err, err_tolerance)
 
@@ -317,7 +318,7 @@ class L2NormalizeTest(test_util.TensorFlowTestCase):
         x_tf = constant_op.constant(x_np, name="x")
         y_tf = nn.l2_normalize(x_tf, dim)
         err = gc.ComputeGradientError(x_tf, x_shape, y_tf, x_shape)
-      print "L2Normalize gradient err = %g " % err
+      print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
 
 
@@ -348,7 +349,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
       # Check that we are in the 15% error range
       expected_count = x_dim * y_dim * keep_prob * num_iter
       rel_error = math.fabs(final_count - expected_count) / expected_count
-      print rel_error
+      print(rel_error)
       self.assertTrue(rel_error < 0.15)
 
   def testShapedDropout(self):
@@ -377,7 +378,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
       # Check that we are in the 15% error range
       expected_count = x_dim * y_dim * keep_prob * num_iter
       rel_error = math.fabs(final_count - expected_count) / expected_count
-      print rel_error
+      print(rel_error)
       self.assertTrue(rel_error < 0.15)
 
   def testShapedDropoutCorrelation(self):
@@ -494,9 +495,8 @@ class BatchNormWithGlobalNormalizationTest(test_util.TensorFlowTestCase):
       all_shapes = [x_shape, param_shape, param_shape, param_shape, param_shape]
       err = gc.ComputeGradientError(all_params[param_index],
                                     all_shapes[param_index], output, x_shape)
-    print "Batch normalization %s gradient %s scale err = " % (
-        tag, "with" if scale_after_normalization else "without"
-    ), err
+    print("Batch normalization %s gradient %s scale err = " %
+          (tag, "with" if scale_after_normalization else "without"), err)
     self.assertLess(err, err_tolerance)
 
   def testBatchNormInputGradient(self):
@@ -554,7 +554,7 @@ class BatchNormWithGlobalNormalizationTest(test_util.TensorFlowTestCase):
             all_grads = sess.run([dx, dm, dv, db, odx, odm, odv, odb])
             to_check = ["dx", "dm", "dv", "db"]
           for i, n in enumerate(to_check):
-            print n
+            print(n)
             self.assertAllClose(
                 all_grads[i + len(to_check)], all_grads[i], atol=0.000001)
 
@@ -606,7 +606,7 @@ class MomentsTest(test_util.TensorFlowTestCase):
       elif from_y == "var":
         y = out_var
       err = gc.ComputeGradientError(x, x_shape, y, y_shape)
-      print "Moments %s gradient err = %g" % (from_y, err)
+      print("Moments %s gradient err = %g" % (from_y, err))
       self.assertLess(err, 1e-11)
 
   def testMeanGlobalGradient(self):
