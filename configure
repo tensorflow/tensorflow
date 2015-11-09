@@ -3,7 +3,7 @@
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
-  read -p "Do you wish to bulid TensorFlow with GPU support? [y/n] " INPUT
+  read -p "Do you wish to build TensorFlow with GPU support? [y/n] " INPUT
   case $INPUT in
     [Yy]* ) echo -e "GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=1;;
     [Nn]* ) echo -e "No GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=0;;

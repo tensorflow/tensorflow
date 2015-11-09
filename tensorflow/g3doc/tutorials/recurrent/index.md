@@ -179,14 +179,13 @@ bazel build -c opt tensorflow/models/rnn/ptb:ptb_word_lm
 And if you have a fast GPU, run the following:
 
 ```
-bazel build -c opt tensorflow --config=cuda \
-  tensorflow/models/rnn/ptb:ptb_word_lm
+bazel build -c opt --config=cuda tensorflow/models/rnn/ptb:ptb_word_lm
 ```
 
 Now we can run the model:
 
 ```
-bazel-bin/.../ptb_word_lm \
+bazel-bin/tensorflow/models/rnn/ptb/ptb_word_lm \
   --data_path=/tmp/simple-examples/data/ --alsologtostderr --model small
 ```
 
