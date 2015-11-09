@@ -24,45 +24,34 @@ and discussion.**
 
 # Download and Setup
 
-To install TensorFlow using a binary package, see the instructions below.  For
-more detailed installation instructions, including installing from source, see
+To install the CPU version of TensorFlow using a binary package, see the
+instructions below.  For more detailed installation instructions, including
+installing from source, GPU-enabled support, etc., see
 [here](tensorflow/g3doc/get_started/os_setup.md).
 
 ## Binary Installation
 
+The TensorFlow Python API requires Python 2.7.
+
+The simplest way to install TensorFlow is using
+[pip](https://pypi.python.org/pypi/pip) for both Linux and Mac.
+
+For the GPU-enabled version, or if you encounter installation errors, or for
+more detailed installation instructions, see
+[here](tensorflow/g3doc/get_started/os_setup.md#detailed_install).
+
 ### Ubuntu/Linux
 
-Make sure you have [pip](https://pypi.python.org/pypi/pip) installed:
-
-```sh
-$ sudo apt-get install python-pip
-```
-
-Install TensorFlow:
-
-```sh
+```bash
 # For CPU-only version
-$ sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-
-# For GPU-enabled version.  See detailed install instructions
-# for GPU configuration information.
-$ sudo pip install https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+$ pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 ```
 
 ### Mac OS X
 
-Make sure you have [pip](https://pypi.python.org/pypi/pip) installed:
-
-If using `easy_install`:
-
-```sh
-$ sudo easy_install pip
-```
-
-Install TensorFlow (only CPU binary version is currently available).
-
-```sh
-$ sudo pip install https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
+```bash
+# Only CPU-version is available at the moment.
+$ pip install https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
 ```
 
 ### Try your first TensorFlow program
@@ -82,7 +71,6 @@ Hello, TensorFlow!
 >>>
 
 ```
-
 
 ##For more information
 
