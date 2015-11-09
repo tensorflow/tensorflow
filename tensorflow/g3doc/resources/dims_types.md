@@ -15,7 +15,7 @@ Python list) has a rank of 2:
 
     t = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 
-A rank two tensor is what we typically think of as a matrix, a rank on tensor
+A rank two tensor is what we typically think of as a matrix, a rank one tensor
 is a vector. For a rank two tensor you can acccess any element with the syntax
 `t[i, j]`.  For a rank three tensor you would need to address an element with
 't[i, j, k]'.
@@ -65,4 +65,3 @@ Data type | Python type | Description
 `DT_QINT32` | `tf.qint32` | 32 bits signed integer used in quantized Ops.
 `DT_QINT8` | `tf.qint8` | 8 bits signed integer used in quantized Ops.
 `DT_QUINT8` | `tf.quint8` | 8 bits unsigned integer used in quantized Ops.
-
