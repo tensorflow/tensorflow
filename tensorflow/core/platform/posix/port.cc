@@ -9,6 +9,9 @@
 #ifdef SNAPPY
 #include <snappy.h>
 #endif
+#if defined(__APPLE__) && defined(__MACH__)
+#include <thread>
+#endif
 
 namespace tensorflow {
 namespace port {
@@ -29,6 +32,9 @@ int NumSchedulableCPUs() {
     return CPU_COUNT(&cpuset);
   }
   perror("sched_getaffinity");
+#endif
+#if defined(__APPLE__) && defined(__MACH__)
+  return std::thread::hardware_concurrency();
 #endif
   const int kDefaultCores = 4;  // Semi-conservative guess
   fprintf(stderr, "can't determine number of CPU cores: assuming %d\n",
