@@ -35,14 +35,14 @@ A `Reader` is something that reads records from a file.  There are some examples
 of Reader Ops already built into TensorFlow:
 
 *   [`tf.TFRecordReader`](../../api_docs/python/io_ops.md#TFRecordReader)
-    ([source in kernels/tf_record_reader_op.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/tf_record_reader_op.cc))
+    ([source in `kernels/tf_record_reader_op.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/tf_record_reader_op.cc))
 *   [`tf.FixedLengthRecordReader`](../../api_docs/python/io_ops.md#FixedLengthRecordReader)
-    ([source in kernels/fixed_length_record_reader_op.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/fixed_length_record_reader_op.cc))
+    ([source in `kernels/fixed_length_record_reader_op.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/fixed_length_record_reader_op.cc))
 *   [`tf.TextLineReader`](../../api_docs/python/io_ops.md#TextLineReader)
-    ([source in kernels/text_line_reader_op.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/text_line_reader_op.cc))
+    ([source in `kernels/text_line_reader_op.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/text_line_reader_op.cc))
 
 You can see these all expose the same interface, the only differences
-are in their constructors.  The most important method is `read()`.
+are in their constructors.  The most important method is `read`.
 It takes a queue argument, which is where it gets filenames to
 read from whenever it needs one (e.g. when the `read` op first runs, or
 the previous `read` reads the last record from a file).  It produces
@@ -59,7 +59,7 @@ To create a new reader called `SomeReader`, you will need to:
 You can put all the C++ code in a file in
 `tensorflow/core/user_ops/some_reader_op.cc`.  The code to read a file will live
 in a descendant of the C++ `ReaderBase` class, which is defined in
-[tensorflow/core/kernels/reader_base.h](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/reader_base.h).
+[`tensorflow/core/kernels/reader_base.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/reader_base.h).
 You will need to implement the following methods:
 
 *   `OnWorkStartedLocked`: open the next file
@@ -73,13 +73,13 @@ have to worry about thread safety (though that only protects the members of the
 class, not global state).
 
 For `OnWorkStartedLocked`, the name of the file to open is the value returned by
-the `current_work()` method.  `ReadLocked()` has this signature:
+the `current_work()` method.  `ReadLocked` has this signature:
 
 ```c++
 Status ReadLocked(string* key, string* value, bool* produced, bool* at_end)
 ```
 
-If `ReadLocked()` successfully reads a record from the file, it should fill in:
+If `ReadLocked` successfully reads a record from the file, it should fill in:
 
 *   `*key`: with an identifier for the record, that a human could use to find
     this record again.  You can include the filename from `current_work()`,
@@ -90,7 +90,7 @@ If `ReadLocked()` successfully reads a record from the file, it should fill in:
 If you hit the end of a file (EOF), set `*at_end` to `true`.  In either case,
 return `Status::OK()`.  If there is an error, simply return it using one of the
 helper functions from
-[tensorflow/core/lib/core/errors.h](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/lib/core/errors.h)
+[`tensorflow/core/lib/core/errors.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/lib/core/errors.h)
 without modifying any arguments.
 
 Next you will create the actual Reader op.  It will help if you are familiar
@@ -100,13 +100,13 @@ are:
 *   Registering the op.
 *   Define and register an `OpKernel`.
 
-To register the op, you will use a `REGISTER_OP()` call defined in
-[tensorflow/core/framework/op.h](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op.h).
+To register the op, you will use a `REGISTER_OP` call defined in
+[`tensorflow/core/framework/op.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op.h).
 Reader ops never take any input and always have a single output with type
 `Ref(string)`.  They should always call `SetIsStateful()`, and have a string
 `container` and `shared_name` attrs.  You may optionally define additional attrs
-for configuration or include documentation in a `Doc()`.  For examples, see
-[tensorflow/core/ops/io_ops.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ops/io_ops.cc),
+for configuration or include documentation in a `Doc`.  For examples, see
+[`tensorflow/core/ops/io_ops.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ops/io_ops.cc),
 e.g.:
 
 ```c++
@@ -125,8 +125,8 @@ A Reader that outputs the lines of a file delimited by '\n'.
 
 To define an `OpKernel`, Readers can use the shortcut of descending from
 `ReaderOpKernel`, defined in
-[tensorflow/core/framework/reader_op_kernel.h](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/reader_op_kernel.h),
-and implement a constructor that calls `SetReaderFactory()`.  After defining
+[`tensorflow/core/framework/reader_op_kernel.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/reader_op_kernel.h),
+and implement a constructor that calls `SetReaderFactory`.  After defining
 your class, you will need to register it using `REGISTER_KERNEL_BUILDER(...)`.
 An example with no attrs:
 
@@ -174,7 +174,7 @@ REGISTER_KERNEL_BUILDER(Name("TextLineReader").Device(DEVICE_CPU),
 
 The last step is to add the Python wrapper.  You will import
 `tensorflow.python.ops.io_ops` in
-[tensorflow/python/user_ops/user_ops.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py)
+[`tensorflow/python/user_ops/user_ops.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py)
 and add a descendant of [`io_ops.ReaderBase`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/ops/io_ops.py).
 
 ```python
@@ -214,7 +214,7 @@ Examples of Ops useful for decoding records:
 
 Note that it can be useful to use multiple Ops to decode a particular record
 format.  For example, you may have an image saved as a string in
-[a tf.train.Example protocol buffer](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto).
+[a `tf.train.Example` protocol buffer](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto).
 Depending on the format of that image, you might take the corresponding output
 from a
 [`tf.parse_single_example`](../../api_docs/python/io_ops.md#parse_single_example)
