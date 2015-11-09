@@ -369,7 +369,7 @@ class Library(Document):
     elif inspect.isclass(member):
       print >>f, "- - -"
       print >>f, ""
-      print >>f, "### class %s {#%s}" % (
+      print >>f, "### `class %s` {#%s}" % (
           name, _get_anchor(self._module_to_name, name))
       print >>f, ""
       self._write_class_markdown_to_file(f, name, member)

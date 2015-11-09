@@ -365,15 +365,24 @@ If you encounter:
 ImportError: No module named copyreg
 ```
 
-Solution: TensorFlow depends on protobuf which require six-1.10.0. Apple's
-default python environment has six-1.4.1 and may be difficult to upgrade.
-So we recommend either installing a separate copy of python via homebrew:
+Solution: TensorFlow depends on protobuf, which requires `six-1.10.0`. Apple's
+default python environment has `six-1.4.1` and may be difficult to upgrade.
+There are several ways to fix this:
 
-```bash
-brew install python
-```
+1. Upgrade the system-wide copy of `six`:
 
-or building / using TensorFlow within `virtualenv` as described above.
+    ```bash
+    sudo easy_install -U six
+    ```
+
+2. Install a separate copy of python via homebrew:
+
+    ```bash
+    brew install python
+    ```
+
+3. Build or use TensorFlow
+   [within `virtualenv`](#virtualenv_install).
 
 
 
