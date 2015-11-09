@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.random_ops."""
+from __future__ import print_function
 
 import tensorflow.python.platform
 
@@ -31,9 +32,9 @@ class RandomNormalTest(tf.test.TestCase):
         # Number of different samples.
         count = (x == y).sum()
         if count >= 10:
-          print "x = ", x
-          print "y = ", y
-          print "count = ", count
+          print("x = ", x)
+          print("y = ", y)
+          print("count = ", count)
         self.assertTrue(count < 10)
 
   # Checks that the CPU and GPU implementation returns the same results,
@@ -89,9 +90,9 @@ class TruncatedNormalTest(tf.test.TestCase):
         # Number of different samples.
         count = (x == y).sum()
         if count >= 10:
-          print "x = ", x
-          print "y = ", y
-          print "count = ", count
+          print("x = ", x)
+          print("y = ", y)
+          print("count = ", count)
         self.assertTrue(count < 10)
 
   # Checks that the CPU and GPU implementation returns the same results,
@@ -122,7 +123,7 @@ class TruncatedNormalTest(tf.test.TestCase):
         stddev = 3.0
         sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=use_gpu)
         x = sampler()
-        print "std(x)", np.std(x), abs(np.std(x) / stddev - 0.85)
+        print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
         self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
 
   def testNoCSE(self):
@@ -167,9 +168,9 @@ class RandomUniformTest(tf.test.TestCase):
         y = sampler()
         count = (x == y).sum()
         if count >= 10:
-          print "x = ", x
-          print "y = ", y
-          print "count = ", count
+          print("x = ", x)
+          print("y = ", y)
+          print("count = ", count)
         self.assertTrue(count < 10)
 
   # Checks that the CPU and GPU implementation returns the same results,

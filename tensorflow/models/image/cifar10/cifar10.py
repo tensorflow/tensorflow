@@ -15,6 +15,7 @@ Summary of available functions:
  # Create a graph to run one step of training with respect to the loss.
  train_op = train(loss, global_step)
 """
+from __future__ import print_function
 # pylint: disable=missing-docstring
 import gzip
 import os
@@ -474,7 +475,7 @@ def maybe_download_and_extract():
           float(count * block_size) / float(total_size) * 100.0))
       sys.stdout.flush()
     filepath, _ = urllib.urlretrieve(DATA_URL, filepath, reporthook=_progress)
-    print
+    print()
     statinfo = os.stat(filepath)
-    print 'Succesfully downloaded', filename, statinfo.st_size, 'bytes.'
+    print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)

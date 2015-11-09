@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.test_util."""
+from __future__ import print_function
 import threading
 
 import tensorflow.python.platform
@@ -20,9 +21,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     # The test doesn't assert anything. It ensures the py wrapper
     # function is generated correctly.
     if test_util.IsGoogleCudaEnabled():
-      print "GoogleCuda is enabled"
+      print("GoogleCuda is enabled")
     else:
-      print "GoogleCuda is disabled"
+      print("GoogleCuda is disabled")
 
   def testAssertProtoEqualsStr(self):
 

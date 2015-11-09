@@ -15,6 +15,7 @@ data set, compile the program and train the model.
 
 http://tensorflow.org/tutorials/deep_cnn/
 """
+from __future__ import print_function
 from datetime import datetime
 import math
 import time
@@ -61,7 +62,7 @@ def eval_once(saver, summary_writer, top_k_op, summary_op):
       # extract global_step from it.
       global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
     else:
-      print 'No checkpoint file found'
+      print('No checkpoint file found')
       return
 
     # Start the queue runners.
@@ -83,13 +84,13 @@ def eval_once(saver, summary_writer, top_k_op, summary_op):
 
       # Compute precision @ 1.
       precision = float(true_count) / float(total_sample_count)
-      print '%s: precision @ 1 = %.3f' % (datetime.now(), precision)
+      print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
 
       summary = tf.Summary()
       summary.ParseFromString(sess.run(summary_op))
       summary.value.add(tag='Precision @ 1', simple_value=precision)
       summary_writer.add_summary(summary, global_step)
-    except Exception, e:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
       coord.request_stop(e)
 
     coord.request_stop()

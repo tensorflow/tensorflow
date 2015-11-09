@@ -2,7 +2,7 @@
 
 Let's get you up and running with TensorFlow!
 
-But before we even get started, let's give you a sneak peak at what TensorFlow
+But before we even get started, let's give you a sneak peek at what TensorFlow
 code looks like in the Python API, just so you have a sense of where we're
 headed.
 

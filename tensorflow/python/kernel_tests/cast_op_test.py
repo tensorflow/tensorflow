@@ -149,16 +149,16 @@ class CastOpTest(tf.test.TestCase):
 class SparseTensorCastTest(tf.test.TestCase):
 
   def testCast(self):
-    indices = tf.constant([[0L], [1L], [2L]])
+    indices = tf.constant([[0], [1], [2]])
     values = tf.constant(np.array([1, 2, 3], np.int64))
-    shape = tf.constant([3L])
+    shape = tf.constant([3])
     st = tf.SparseTensor(indices, values, shape)
     st_cast = tf.cast(st, tf.float32)
     with self.test_session():
-      self.assertAllEqual(st_cast.indices.eval(), [[0L], [1L], [2L]])
+      self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
       self.assertAllEqual(st_cast.values.eval(),
                           np.array([1, 2, 3], np.float32))
-      self.assertAllEqual(st_cast.shape.eval(), [3L])
+      self.assertAllEqual(st_cast.shape.eval(), [3])
 
 
 if __name__ == "__main__":

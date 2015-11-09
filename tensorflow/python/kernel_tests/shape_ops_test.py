@@ -1,4 +1,5 @@
 """Tests for various tensorflow.ops.tf."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -351,7 +352,7 @@ class TileTest(tf.test.TestCase):
       grad_shape = list(np.array(multiples) * np.array(inp.shape))
       err = gc.ComputeGradientError(a, list(input_shape), tiled, grad_shape,
                                     x_init_value=inp)
-    print "tile(float) error = ", err
+    print("tile(float) error = ", err)
     self.assertLess(err, 1e-3)
 
   def testGradientRandom(self):

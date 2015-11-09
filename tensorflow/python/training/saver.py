@@ -505,7 +505,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   except gfile.FileError:
     # It's ok if the file cannot be read
     return None
-  except text_format.ParseError, e:
+  except text_format.ParseError as e:
     logging.warning(str(e))
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
@@ -754,7 +754,7 @@ class Saver(object):
       for f in gfile.Glob(self._CheckpointFilename(p)):
         try:
           gfile.Remove(f)
-        except gfile.GOSError, e:
+        except gfile.GOSError as e:
           logging.warning("Ignoring: %s", str(e))
 
   def as_saver_def(self):

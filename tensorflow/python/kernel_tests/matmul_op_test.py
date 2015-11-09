@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.math_ops.matmul."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -111,25 +112,25 @@ class MatMulTest(tf.test.TestCase):
       self._testCpuMatmul(x, y, True, True)
 
   def testMatMul_OutEmpty_A(self):
-      n, k, m = 0, 8, 3
-      x = self._randMatrix(n, k, np.float32)
-      y = self._randMatrix(k, m, np.float32)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
+    n, k, m = 0, 8, 3
+    x = self._randMatrix(n, k, np.float32)
+    y = self._randMatrix(k, m, np.float32)
+    self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testMatMul_OutEmpty_B(self):
-      n, k, m = 3, 8, 0
-      x = self._randMatrix(n, k, np.float32)
-      y = self._randMatrix(k, m, np.float32)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
+    n, k, m = 3, 8, 0
+    x = self._randMatrix(n, k, np.float32)
+    y = self._randMatrix(k, m, np.float32)
+    self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testMatMul_Inputs_Empty(self):
-      n, k, m = 3, 0, 4
-      x = self._randMatrix(n, k, np.float32)
-      y = self._randMatrix(k, m, np.float32)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
+    n, k, m = 3, 0, 4
+    x = self._randMatrix(n, k, np.float32)
+    y = self._randMatrix(k, m, np.float32)
+    self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
 
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.
@@ -143,7 +144,7 @@ class MatMulGradientTest(tf.test.TestCase):
                    shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
       err = gc.ComputeGradientError(x, [3, 2], m, [3, 4])
-    print "matmul input0 gradient err = ", err
+    print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientInput1(self):
@@ -154,7 +155,7 @@ class MatMulGradientTest(tf.test.TestCase):
                    shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
       err = gc.ComputeGradientError(y, [2, 4], m, [3, 4])
-    print "matmul input1 gradient err = ", err
+    print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def _VerifyInput0(self, transpose_a, transpose_b):
@@ -171,7 +172,7 @@ class MatMulGradientTest(tf.test.TestCase):
                    shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
       err = gc.ComputeGradientError(x, shape_x, m, [3, 4])
-    print "matmul input0 gradient err = ", err
+    print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientInput0WithTranspose(self):
@@ -193,7 +194,7 @@ class MatMulGradientTest(tf.test.TestCase):
                    shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
       err = gc.ComputeGradientError(y, shape_y, m, [3, 4])
-    print "matmul input1 gradient err = ", err
+    print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientInput1WithTranspose(self):

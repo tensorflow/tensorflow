@@ -1,4 +1,5 @@
 """Functionality for loading events from a record file."""
+from __future__ import print_function
 
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -38,11 +39,11 @@ class EventFileLoader(object):
 
 def main(argv):
   if len(argv) != 2:
-    print 'Usage: event_file_loader <path-to-the-recordio-file>'
+    print('Usage: event_file_loader <path-to-the-recordio-file>')
     return 1
   loader = EventFileLoader(argv[1])
   for event in loader.Load():
-    print event
+    print(event)
 
 
 if __name__ == '__main__':

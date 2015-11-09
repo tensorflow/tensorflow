@@ -3,6 +3,7 @@
 Both updates the files in the file-system and executes g4 commands to
 make sure any changes are ready to be submitted.
 """
+from __future__ import print_function
 
 import inspect
 import os
@@ -56,10 +57,10 @@ class Index(Document):
     Args:
       f: The output file.
     """
-    print >>f, "<!-- This file is machine generated: DO NOT EDIT! -->"
-    print >>f, ""
-    print >>f, "# TensorFlow Python reference documentation"
-    print >>f, ""
+    print("<!-- This file is machine generated: DO NOT EDIT! -->", file=f)
+    print("", file=f)
+    print("# TensorFlow Python reference documentation", file=f)
+    print("", file=f)
     fullname_f = lambda name: self._members[name][0]
     anchor_f = lambda name: _get_anchor(self._module_to_name, fullname_f(name))
 
@@ -72,16 +73,16 @@ class Index(Document):
       links = ["[`%s`](%s#%s)" % (name, full_filename, anchor_f(name))
                for name in member_names]
       if links:
-        print >>f, "* **[%s](%s)**:" % (library.title, full_filename)
+        print("* **[%s](%s)**:" % (library.title, full_filename), file=f)
         for link in links:
-          print >>f, "  * %s" % link
-        print >>f, ""
+          print("  * %s" % link, file=f)
+        print("", file=f)
 
     # actually include the files right here
-    print >>f, '<div class="sections-order" style="display: none;">\n<!--'
+    print('<div class="sections-order" style="display: none;">\n<!--', file=f)
     for filename, _ in self._filename_to_library_map:
-      print >>f, "<!-- %s -->" % filename
-    print >>f, "-->\n</div>"
+      print("<!-- %s -->" % filename, file=f)
+    print("-->\n</div>", file=f)
 
 def collect_members(module_to_name):
   """Collect all symbols from a list of modules.
@@ -241,7 +242,7 @@ class Library(Document):
     # functions that have the @contextlib.contextmanager decorator.
     # We should do something better.
     if argspec.varargs == "args" and argspec.keywords == "kwds":
-      original_func = func.func_closure[0].cell_contents
+      original_func = func.__closure__[0].cell_contents
       return self._generate_signature_for_function(original_func)
 
     if argspec.defaults:
@@ -309,10 +310,10 @@ class Library(Document):
       section_header = _at_start_of_section()
       if section_header:
         if i == 0 or lines[i-1]:
-          print >>f, ""
+          print("", file=f)
         # Use at least H4 to keep these out of the TOC.
-        print >>f, "##### " + section_header + ":"
-        print >>f, ""
+        print("##### " + section_header + ":", file=f)
+        print("", file=f)
         i += 1
         outputting_list = False
         while i < len(lines):
@@ -325,18 +326,18 @@ class Library(Document):
             if not outputting_list:
               # We need to start a list. In Markdown, a blank line needs to
               # precede a list.
-              print >>f, ""
+              print("", file=f)
               outputting_list = True
             suffix = l[len(match.group()):].lstrip()
-            print >>f, "*  <b>`" + match.group(1) + "`</b>: " + suffix
+            print("*  <b>`" + match.group(1) + "`</b>: " + suffix, file=f)
           else:
             # For lines that don't start with _arg_re, continue the list if it
             # has enough indentation.
             outputting_list &= l.startswith("   ")
-            print >>f, l
+            print(l, file=f)
           i += 1
       else:
-        print >>f, l
+        print(l, file=f)
         i += 1
 
   def _print_function(self, f, prefix, fullname, func):
@@ -345,35 +346,36 @@ class Library(Document):
     if not isinstance(func, property):
       heading += self._generate_signature_for_function(func)
     heading += "` {#%s}" % _get_anchor(self._module_to_name, fullname)
-    print >>f, heading
-    print >>f, ""
+    print(heading, file=f)
+    print("", file=f)
     self._print_formatted_docstring(inspect.getdoc(func), f)
-    print >>f, ""
+    print("", file=f)
 
   def _write_member_markdown_to_file(self, f, name, member):
     """Print `member` to `f`."""
     if inspect.isfunction(member):
-      print >>f, "- - -"
-      print >>f, ""
+      print("- - -", file=f)
+      print("", file=f)
       self._print_function(f, "###", name, member)
-      print >>f, ""
+      print("", file=f)
     elif inspect.ismethod(member):
-      print >>f, "- - -"
-      print >>f, ""
+      print("- - -", file=f)
+      print("", file=f)
       self._print_function(f, "####", name, member)
-      print >>f, ""
+      print("", file=f)
     elif isinstance(member, property):
-      print >>f, "- - -"
-      print >>f, ""
+      print("- - -", file=f)
+      print("", file=f)
       self._print_function(f, "####", name, member)
     elif inspect.isclass(member):
-      print >>f, "- - -"
-      print >>f, ""
-      print >>f, "### `class %s` {#%s}" % (
-          name, _get_anchor(self._module_to_name, name))
-      print >>f, ""
+      print("- - -", file=f)
+      print("", file=f)
+      print("### `class %s` {#%s}" % (name,
+                                      _get_anchor(self._module_to_name, name)),
+            file=f)
+      print("", file=f)
       self._write_class_markdown_to_file(f, name, member)
-      print >>f, ""
+      print("", file=f)
     else:
       raise RuntimeError("Member %s has unknown type %s" % (name, type(member)))
 
@@ -391,7 +393,7 @@ class Library(Document):
         else:
           raise ValueError("%s: unknown member `%s`" % (self._title, name))
       else:
-        print >>f, l
+        print(l, file=f)
 
   def _write_class_markdown_to_file(self, f, name, cls):
     """Write the class doc to 'f'.
@@ -420,7 +422,7 @@ class Library(Document):
       other_methods = {n: m for n, m in methods.iteritems()
                        if n in cls.__dict__}
       if other_methods:
-        print >>f, "\n#### Other Methods"
+        print("\n#### Other Methods", file=f)
     else:
       other_methods = methods
     for name in sorted(other_methods):
@@ -440,15 +442,15 @@ class Library(Document):
     Returns:
       Dictionary of documented members.
     """
-    print >>f, "<!-- This file is machine generated: DO NOT EDIT! -->"
-    print >>f, ""
+    print("<!-- This file is machine generated: DO NOT EDIT! -->", file=f)
+    print("", file=f)
     # TODO(touts): Do not insert these.  Let the doc writer put them in
     # the module docstring explicitly.
-    print >>f, "#", self._title
+    print("#", self._title, file=f)
     if self._prefix:
-      print >>f, self._prefix
-    print >>f, "[TOC]"
-    print >>f, ""
+      print(self._prefix, file=f)
+    print("[TOC]", file=f)
+    print("", file=f)
     if self._module is not None:
       self._write_module_markdown_to_file(f, self._module)
 
@@ -469,10 +471,10 @@ class Library(Document):
       if name in self._members and name not in self._documented:
         leftovers.append(name)
     if leftovers:
-      print "%s: undocumented members: %d" % (self._title, len(leftovers))
-      print >>f, "\n## Other Functions and Classes"
+      print("%s: undocumented members: %d" % (self._title, len(leftovers)))
+      print("\n## Other Functions and Classes", file=f)
       for name in sorted(leftovers):
-        print "  %s" % name
+        print("  %s" % name)
         self._documented.add(name)
         self._mentioned.add(name)
         self._write_member_markdown_to_file(f, *self._members[name])

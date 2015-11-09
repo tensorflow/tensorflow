@@ -39,7 +39,7 @@ _level_names = {
 
 # Mask to convert integer thread ids to unsigned quantities for logging
 # purposes
-_THREAD_ID_MASK = 2 * sys.maxint + 1
+_THREAD_ID_MASK = 2 * sys.maxsize + 1
 
 _log_prefix = None  # later set to google2_log_prefix
 

@@ -1,4 +1,5 @@
 """Tests for local response normalization."""
+from __future__ import print_function
 import copy
 
 import tensorflow.python.platform
@@ -89,7 +90,7 @@ class LRNOpTest(tf.test.TestCase):
           inp, name="lrn", depth_radius=lrn_depth_radius, bias=bias,
           alpha=alpha, beta=beta)
       err = ComputeGradientError(inp, shape, lrn_op, shape)
-    print "LRN Gradient error ", err
+    print("LRN Gradient error ", err)
     self.assertLess(err, 1e-4)
 
   def testGradients(self):

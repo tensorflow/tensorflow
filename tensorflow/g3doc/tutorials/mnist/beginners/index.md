@@ -87,7 +87,7 @@ pixel intensity between 0 and 1, for a particular pixel in a particular image.
 
 The corresponding labels in MNIST are numbers between 0 and 9, describing
 which digit a given image is of.
-For the purposes of this tutorial, we're going to want our labels as
+For the purposes of this tutorial, we're going to want our labels
 as "one-hot vectors". A one-hot vector is a vector which is 0 in most
 dimensions, and 1 in a single dimension. In this case, the \\(n\\)th digit will be
 represented as a vector which is 1 in the \\(n\\)th dimensions. For example, 0
@@ -319,7 +319,7 @@ data point.)
 
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.
-Because TensorFlow know the entire graph of your computations, it
+Because TensorFlow knows the entire graph of your computations, it
 can automatically use the [backpropagation
 algorithm](http://colah.github.io/posts/2015-08-Backprop/)
 to efficiently determine how your variables affect the cost you ask it minimize.

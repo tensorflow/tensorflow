@@ -1,4 +1,5 @@
 """Functional tests for BiasAdd."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -11,8 +12,8 @@ class BiasAddTest(tf.test.TestCase):
 
   def _npBias(self, inputs, bias):
     assert len(bias.shape) == 1
-    print inputs.shape
-    print bias.shape
+    print(inputs.shape)
+    print(bias.shape)
     assert inputs.shape[-1] == bias.shape[0]
     return inputs + bias.reshape(([1] * (len(inputs.shape) - 1))
                                  + [bias.shape[0]])
@@ -64,7 +65,7 @@ class BiasAddTest(tf.test.TestCase):
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
       err = gradient_checker.ComputeGradientError(t, [3, 2], bo, [3, 2])
-    print "bias add tensor gradient err = ", err
+    print("bias add tensor gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientBias(self):
@@ -74,7 +75,7 @@ class BiasAddTest(tf.test.TestCase):
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
       err = gradient_checker.ComputeGradientError(b, [2], bo, [3, 2])
-    print "bias add bias gradient err = ", err
+    print("bias add bias gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientTensor4D(self):
@@ -85,7 +86,7 @@ class BiasAddTest(tf.test.TestCase):
       b = tf.constant([1.3, 2.4], dtype=tf.float32)
       bo = tf.nn.bias_add(t, b)
       err = gradient_checker.ComputeGradientError(t, s, bo, s, x_init_value=x)
-    print "bias add tensor gradient err = ", err
+    print("bias add tensor gradient err = ", err)
     self.assertLess(err, 1e-3)
 
 

@@ -1,4 +1,5 @@
 """Functional tests for ops used with embeddings."""
+from __future__ import print_function
 import itertools
 
 import tensorflow.python.platform
@@ -160,7 +161,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       id_vals = np.array([0, 0])
       ids = tf.constant(list(id_vals), dtype=tf.int32)
-      print "Construct ids", ids.get_shape()
+      print("Construct ids", ids.get_shape())
       embedding = tf.nn.embedding_lookup(p, ids)
 
       tf_result = embedding.eval(feed_dict=feed_dict)

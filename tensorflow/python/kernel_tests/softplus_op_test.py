@@ -1,4 +1,5 @@
 """Tests for Softplus and SoftplusGrad."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -39,7 +40,7 @@ class SoftplusTest(tf.test.TestCase):
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32, order="F")
       err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
-    print "softplus (float) gradient err = ", err
+    print("softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
 

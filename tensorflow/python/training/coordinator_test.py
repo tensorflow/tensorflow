@@ -17,7 +17,7 @@ def RaiseInN(coord, n_secs, ex, report_exception):
   try:
     time.sleep(n_secs)
     raise ex
-  except RuntimeError, e:
+  except RuntimeError as e:
     if report_exception:
       coord.request_stop(e)
     else:

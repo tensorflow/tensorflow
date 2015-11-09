@@ -41,6 +41,7 @@ To run:
     --data_path=/tmp/simple-examples/data/ --alsologtostderr
 
 """
+from __future__ import print_function
 
 import time
 

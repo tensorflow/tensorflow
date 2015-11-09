@@ -1,3 +1,4 @@
+from __future__ import print_function
 import tensorflow.python.platform
 
 import collections
@@ -18,14 +19,15 @@ def maybe_download(filename, expected_bytes):
     filename, _ = urllib.urlretrieve(url + filename, filename)
   statinfo = os.stat(filename)
   if statinfo.st_size == expected_bytes:
-    print 'Found and verified', filename
+    print('Found and verified', filename)
   else:
-    print statinfo.st_size
+    print(statinfo.st_size)
     raise Exception(
         'Failed to verify ' + filename + '. Can you get to it with a browser?')
   return filename
 
 filename = maybe_download('text8.zip', 31344016)
+
 
 # Read the data into a string.
 def read_data(filename):
@@ -35,7 +37,7 @@ def read_data(filename):
   f.close()
 
 words = read_data(filename)
-print 'Data size', len(words)
+print('Data size', len(words))
 
 # Step 2: Build the dictionary and replace rare words with UNK token.
 vocabulary_size = 50000
@@ -61,10 +63,11 @@ def build_dataset(words):
 
 data, count, dictionary, reverse_dictionary = build_dataset(words)
 del words  # Hint to reduce memory.
-print 'Most common words (+UNK)', count[:5]
-print 'Sample data', data[:10]
+print('Most common words (+UNK)', count[:5])
+print('Sample data', data[:10])
 
 data_index = 0
+
 
 # Step 4: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
@@ -93,8 +96,8 @@ def generate_batch(batch_size, num_skips, skip_window):
 
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
 for i in range(8):
-  print batch[i], '->', labels[i, 0]
-  print reverse_dictionary[batch[i]], '->', reverse_dictionary[labels[i, 0]]
+  print(batch[i], '->', labels[i, 0])
+  print(reverse_dictionary[batch[i]], '->', reverse_dictionary[labels[i, 0]])
 
 # Step 5: Build and train a skip-gram model.
 
@@ -155,7 +158,7 @@ num_steps = 100001
 with tf.Session(graph=graph) as session:
   # We must initialize all variables before we use them.
   tf.initialize_all_variables().run()
-  print "Initialized"
+  print("Initialized")
 
   average_loss = 0
   for step in xrange(num_steps):
@@ -172,7 +175,7 @@ with tf.Session(graph=graph) as session:
       if step > 0:
         average_loss = average_loss / 2000
       # The average loss is an estimate of the loss over the last 2000 batches.
-      print "Average loss at step ", step, ": ", average_loss
+      print("Average loss at step ", step, ": ", average_loss)
       average_loss = 0
 
     # note that this is expensive (~20% slowdown if computed every 500 steps)
@@ -186,7 +189,7 @@ with tf.Session(graph=graph) as session:
         for k in xrange(top_k):
           close_word = reverse_dictionary[nearest[k]]
           log_str = "%s %s," % (log_str, close_word)
-        print log_str
+        print(log_str)
   final_embeddings = normalized_embeddings.eval()
 
 # Step 7: Visualize the embeddings.
@@ -217,4 +220,4 @@ try:
   plot_with_labels(low_dim_embs, labels)
 
 except ImportError:
-  print "Please install sklearn and matplotlib to visualize embeddings."
+  print("Please install sklearn and matplotlib to visualize embeddings.")

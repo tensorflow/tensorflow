@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.tf.matmul."""
+from __future__ import print_function
 
 import tensorflow.python.platform
 
@@ -67,7 +68,7 @@ class MatMulGradientTest(tf.test.TestCase):
                            b_is_sparse=sp_b)
       err = (gc.ComputeGradientError(a, [2, 3] if tr_a else [3, 2], m, [3, 4]) +
              gc.ComputeGradientError(b, [4, 2] if tr_b else [2, 4], m, [3, 4]))
-    print "sparse_matmul gradient err = ", err
+    print("sparse_matmul gradient err = ", err)
     self.assertLess(err, 1e-3)
 
   def testGradientInput(self):

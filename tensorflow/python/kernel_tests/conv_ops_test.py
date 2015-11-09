@@ -1,4 +1,5 @@
 """Functional tests for convolutional operations."""
+from __future__ import print_function
 import math
 
 import tensorflow.python.platform
@@ -167,8 +168,8 @@ class Conv2DTest(tf.test.TestCase):
       for i in range(len(tensors)):
         conv = tensors[i]
         value = values[i]
-        print "expected = ", expected
-        print "actual = ", value
+        print("expected = ", expected)
+        print("actual = ", value)
         self.assertArrayNear(expected, np.ravel(value), 1e-5)
         self.assertShapeEqual(value, conv)
 
@@ -235,8 +236,8 @@ class Conv2DTest(tf.test.TestCase):
       # "values" consists of two tensors for two backprops
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
-    print "expected = ", expected
-    print "actual = ", value
+    print("expected = ", expected)
+    print("actual = ", value)
     self.assertArrayNear(expected, value.flatten(), 1e-5)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
@@ -311,8 +312,8 @@ class Conv2DTest(tf.test.TestCase):
                                          padding=padding)
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
-    print "expected = ", expected
-    print "actual = ", value
+    print("expected = ", expected)
+    print("actual = ", value)
     self.assertArrayNear(expected, value.flatten(), 1e-5)
 
   def _CompareBackFilter(self, input_sizes, filter_sizes, output_sizes,
@@ -410,7 +411,7 @@ class Conv2DTest(tf.test.TestCase):
       else:
         err = gc.ComputeGradientError(filter_tensor, filter_shape,
                                       conv, output_shape)
-      print "conv_2d gradient error = ", err
+      print("conv_2d gradient error = ", err)
       self.assertLess(err, tolerance)
 
   def testInputGradientValidPaddingStrideOne(self):
@@ -838,7 +839,7 @@ class DepthwiseConv2DTest(tf.test.TestCase):
       conv = tf.nn.depthwise_conv2d(t1, t2, strides=[1, stride, stride, 1],
                                     padding=padding)
       value = sess.run(conv)
-    print "value = ", value
+    print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
@@ -935,7 +936,7 @@ class SeparableConv2DTest(tf.test.TestCase):
       conv = tf.nn.separable_conv2d(t1, f1, f2, strides=[1, stride, stride, 1],
                                     padding=padding)
       value = sess.run(conv)
-    print "value = ", value
+    print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 

@@ -17,6 +17,7 @@ data set, compile the program and train the model.
 
 http://tensorflow.org/tutorials/deep_cnn/
 """
+from __future__ import print_function
 from datetime import datetime
 import os.path
 import time

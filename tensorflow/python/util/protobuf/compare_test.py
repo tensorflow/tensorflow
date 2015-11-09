@@ -284,17 +284,17 @@ class NormalizeNumbersTest(googletest.TestCase):
     compare.NormalizeNumberFields(pb)
     self.assertTrue(isinstance(pb.int64_, long))
 
-    pb.int64_ = 4L
+    pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
     self.assertTrue(isinstance(pb.int64_, long))
 
-    pb.int64_ = 9999999999999999L
+    pb.int64_ = 9999999999999999
     compare.NormalizeNumberFields(pb)
     self.assertTrue(isinstance(pb.int64_, long))
 
   def testNormalizesRepeatedInts(self):
     pb = compare_test_pb2.Large()
-    pb.int64s.extend([1L, 400, 999999999999999L])
+    pb.int64s.extend([1, 400, 999999999999999])
     compare.NormalizeNumberFields(pb)
     self.assertTrue(isinstance(pb.int64s[0], long))
     self.assertTrue(isinstance(pb.int64s[1], long))
@@ -472,20 +472,20 @@ class AssertTest(googletest.TestCase):
     pb1 = compare_test_pb2.Large()
     pb1.int64_ = 4
     pb2 = compare_test_pb2.Large()
-    pb2.int64_ = 4L
+    pb2.int64_ = 4
     compare.assertProto2Equal(self, pb1, pb2)
 
   def testNormalizesFloat(self):
     pb1 = compare_test_pb2.Large()
     pb1.double_ = 4.0
     pb2 = compare_test_pb2.Large()
-    pb2.double_ = 4L
+    pb2.double_ = 4
     compare.assertProto2Equal(self, pb1, pb2, normalize_numbers=True)
 
     pb1 = compare_test_pb2.Medium()
     pb1.floats.extend([4.0, 6.0])
     pb2 = compare_test_pb2.Medium()
-    pb2.floats.extend([6L, 4L])
+    pb2.floats.extend([6, 4])
     compare.assertProto2SameElements(self, pb1, pb2, normalize_numbers=True)
 
   def testPrimitives(self):

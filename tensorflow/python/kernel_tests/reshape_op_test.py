@@ -1,4 +1,5 @@
 """Tests for tensorflow.ops.reshape_op."""
+from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -64,7 +65,7 @@ class ReshapeTest(tf.test.TestCase):
       reshape_out = tf.reshape(input_tensor, [1, 8, 3])
       err = gc.ComputeGradientError(input_tensor, s,
                                     reshape_out, s, x_init_value=x)
-    print "Reshape gradient error = " % err
+    print("Reshape gradient error = " % err)
     self.assertLess(err, 1e-3)
 
   def testFloatEmpty(self):
