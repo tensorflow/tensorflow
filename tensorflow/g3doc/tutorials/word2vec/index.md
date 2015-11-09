@@ -94,8 +94,8 @@ datasets. We will focus on the skip-gram model in the rest of this tutorial.
 
 Neural probabilistic language models are traditionally trained using the
 [maximum likelihood](https://en.wikipedia.org/wiki/Maximum_likelihood) (ML)
-principle  to maximize the probability of the next word \\(w_t\\) (for 'target)
-given the previous words \\(h\\) (for 'history') in terms of a
+principle  to maximize the probability of the next word \\(w_t\\) (for "target")
+given the previous words \\(h\\) (for "history") in terms of a
 [*softmax* function](https://en.wikipedia.org/wiki/Softmax_function),
 
 $$
@@ -106,9 +106,9 @@ P(w_t | h) &= \text{softmax}(\exp \{ \text{score}(w_t, h) \}) \\
 \end{align}
 $$
 
-where \\( \text{score}(w_t, h) \\) computes the compatibility of word \\(w_t\\) with
-the context \\(h\\) (a dot product is commonly used). We train this model by
-maximizing its log-likelihood on the training set, i.e. by maximizing
+where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
+with the context \\(h\\) (a dot product is commonly used). We train this model
+by maximizing its log-likelihood on the training set, i.e. by maximizing
 
 $$
 \begin{align}

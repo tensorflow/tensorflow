@@ -328,7 +328,7 @@ class Library(Document):
               print >>f, ""
               outputting_list = True
             suffix = l[len(match.group()):].lstrip()
-            print >>f, "*  <b>" + match.group(1) + "</b>: " + suffix
+            print >>f, "*  <b>`" + match.group(1) + "`</b>: " + suffix
           else:
             # For lines that don't start with _arg_re, continue the list if it
             # has enough indentation.
