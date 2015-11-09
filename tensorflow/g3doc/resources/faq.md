@@ -71,8 +71,9 @@ numpy arrays (and some other types), which will be used as the values of those
 tensors in the execution of a step.
 
 Often, you have certain tensors, such as inputs, that will always be fed. The
-[`tf.placeholder()`] op allows you to define tensors that *must* be fed, and
-optionally allows you to constrain their shape as well. See the
+[`tf.placeholder()`](../api_docs/python/io_ops.md#placeholder) op allows you
+to define tensors that *must* be fed, and optionally allows you to constrain
+their shape as well. See the
 [beginners' MNIST tutorial](../tutorials/mnist/beginners/index.md) for an
 example of how placeholders and feeding can be used to provide the training data
 for a neural network.
