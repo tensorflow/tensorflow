@@ -39,19 +39,19 @@ class Status {
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;
 
-  /// \brief If "ok()", stores "new_status" into *this.  If "!ok()", preserves
-  /// the current status, but may augment with additional information
-  /// about "new_status".
+  /// \brief If `ok()`, stores `new_status` into `*this`.  If `!ok()`,
+  /// preserves the current status, but may augment with additional
+  /// information about `new_status`.
   ///
   /// Convenient way of keeping track of the first error encountered.
   /// Instead of:
-  ///   if (overall_status.ok()) overall_status = new_status
+  ///   `if (overall_status.ok()) overall_status = new_status`
   /// Use:
-  ///   overall_status.Update(new_status);
+  ///   `overall_status.Update(new_status);`
   void Update(const Status& new_status);
 
   /// \brief Return a string representation of this status suitable for
-  /// printing. Returns the string "OK" for success.
+  /// printing. Returns the string `"OK"` for success.
   string ToString() const;
 
  private:
@@ -60,8 +60,8 @@ class Status {
     tensorflow::error::Code code;
     string msg;
   };
-  /// OK status has a NULL state_.  Otherwise, state_ points to
-  /// a State structure containing the error code and message(s)
+  // OK status has a `NULL` state_.  Otherwise, `state_` points to
+  // a `State` structure containing the error code and message(s)
   State* state_;
 
   void SlowCopyFrom(const State* src);
@@ -71,8 +71,8 @@ inline Status::Status(const Status& s)
     : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
 
 inline void Status::operator=(const Status& s) {
-  /// The following condition catches both aliasing (when this == &s),
-  /// and the common case where both s and *this are ok.
+  // The following condition catches both aliasing (when this == &s),
+  // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
     SlowCopyFrom(s.state_);
   }

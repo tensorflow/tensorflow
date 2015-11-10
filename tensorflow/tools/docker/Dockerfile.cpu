@@ -1,4 +1,4 @@
-FROM b.gcr.io/tensorflow-testing/tensorflow
+FROM b.gcr.io/tensorflow/tensorflow
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
@@ -63,6 +63,6 @@ COPY tensorflow /tensorflow
 RUN bazel clean && \
     bazel build -c opt tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-    pip install /tmp/pip/tensorflow-*.whl
+    pip install --upgrade /tmp/pip/tensorflow-*.whl
 
 WORKDIR /root

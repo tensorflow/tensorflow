@@ -48,7 +48,7 @@ Only one thread must call Close() , and Close() must only be called after all ot
 * [`virtual Status tensorflow::Session::Extend(const GraphDef &graph)=0`](#virtual_Status_tensorflow_Session_Extend)
   * Adds operations to the graph that is already registered with the Session .
 * [`virtual Status tensorflow::Session::Run(const std::vector< std::pair< string, Tensor > > &inputs, const std::vector< string > &output_tensor_names, const std::vector< string > &target_node_names, std::vector< Tensor > *outputs)=0`](#virtual_Status_tensorflow_Session_Run)
-  * Runs the graph with the provided input tensors and fills &apos;outputs&apos; for the endpoints specified in &apos;output_tensor_names&apos;. Runs to but does not return Tensors for the nodes in &apos;target_node_names&apos;.
+  * Runs the graph with the provided input tensors and fills `outputs` for the endpoints specified in `output_tensor_names`. Runs to but does not return Tensors for the nodes in `target_node_names`.
 * [`virtual Status tensorflow::Session::Close()=0`](#virtual_Status_tensorflow_Session_Close)
   * Closes this session.
 * [`virtual tensorflow::Session::~Session()`](#virtual_tensorflow_Session_Session)
@@ -69,21 +69,21 @@ The names of new operations in "graph" must not exist in the graph that is alrea
 
 #### `virtual Status tensorflow::Session::Run(const std::vector< std::pair< string, Tensor > > &inputs, const std::vector< string > &output_tensor_names, const std::vector< string > &target_node_names, std::vector< Tensor > *outputs)=0` <a class="md-anchor" id="virtual_Status_tensorflow_Session_Run"></a>
 
-Runs the graph with the provided input tensors and fills &apos;outputs&apos; for the endpoints specified in &apos;output_tensor_names&apos;. Runs to but does not return Tensors for the nodes in &apos;target_node_names&apos;.
+Runs the graph with the provided input tensors and fills `outputs` for the endpoints specified in `output_tensor_names`. Runs to but does not return Tensors for the nodes in `target_node_names`.
 
-The order of tensors in &apos;outputs&apos; will match the order provided by &apos;output_tensor_names&apos;.
+The order of tensors in `outputs` will match the order provided by `output_tensor_names`.
 
-If Run returns OK(), then outputs->size() will be equal to output_tensor_names.size(). If Run does not return OK(), the state of outputs is undefined.
+If `Run` returns `OK()`, then `outputs->size()` will be equal to `output_tensor_names.size()`. If `Run` does not return `OK()`, the state of `outputs` is undefined.
 
-REQUIRES: The name of each Tensor of the input or output must match a "Tensor endpoint" in the GraphDef passed to Create() .
+REQUIRES: The name of each Tensor of the input or output must match a "Tensor endpoint" in the `GraphDef` passed to ` Create() `.
 
-REQUIRES: outputs is not nullptr if output_tensor_names is non-empty.
+REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
 
 #### `virtual Status tensorflow::Session::Close()=0` <a class="md-anchor" id="virtual_Status_tensorflow_Session_Close"></a>
 
 Closes this session.
 
-Closing a session releases the resources used by this session on the TensorFlow runtime (specified during session creation by the &apos; SessionOptions::target &apos; field).
+Closing a session releases the resources used by this session on the TensorFlow runtime (specified during session creation by the ` SessionOptions::target ` field).
 
 #### `virtual tensorflow::Session::~Session()` <a class="md-anchor" id="virtual_tensorflow_Session_Session"></a>
 

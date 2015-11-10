@@ -323,6 +323,34 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op.run()
       self.assertAllEqual(dequeued_t.eval(), elems)
 
+  def testEnqueueWrongShape(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, (tf.int32, tf.int32), ((2, 2), (3, 3)))
+      elems_ok = np.array([1] * 4).reshape((2, 2)).astype(np.int32)
+      elems_bad = tf.placeholder(tf.int32)
+      enqueue_op = q.enqueue((elems_ok, elems_bad))
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError, r"Expected \[3,3\], got \[3,4\]"):
+        sess.run([enqueue_op],
+                 feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
+        sess.run([enqueue_op],
+                 feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
+
+  def testEnqueueDequeueManyWrongShape(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, (tf.int32, tf.int32), ((2, 2), (3, 3)))
+      elems_ok = np.array([1] * 8).reshape((2, 2, 2)).astype(np.int32)
+      elems_bad = tf.placeholder(tf.int32)
+      enqueue_op = q.enqueue_many((elems_ok, elems_bad))
+      dequeued_t = q.dequeue_many(2)
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          "Shape mismatch in tuple component 1. "
+          r"Expected \[2,3,3\], got \[2,3,4\]"):
+        sess.run([enqueue_op],
+                 feed_dict={elems_bad: np.array([1] * 24).reshape((2, 3, 4))})
+        dequeued_t.eval()
+
   def testParallelEnqueueMany(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(1000, tf.float32, shapes=())

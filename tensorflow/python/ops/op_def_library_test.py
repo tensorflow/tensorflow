@@ -201,7 +201,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", a=[self.Tensor(types.int32)])
-    self.assertStartsWith(cm.exception.message, "Expected int32, got")
+    self.assertStartsWith(
+        cm.exception.message,
+        "Expected int32, got list containing Tensors instead.")
 
   def testReservedInput(self):
     self._add_op("name: 'ReservedInput' "

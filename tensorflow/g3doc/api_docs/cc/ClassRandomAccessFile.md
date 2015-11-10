@@ -33,6 +33,6 @@ Reads up to "n" bytes from the file starting at "offset".
 
 On OK returned status: "n" bytes have been stored in "*result". On non-OK returned status: [0..n] bytes have been stored in "*result".
 
-Returns OUT_OF_RANGE if fewer than n bytes were stored in "*result" because of EOF.
+Returns `OUT_OF_RANGE` if fewer than n bytes were stored in "*result" because of EOF.
 
 Safe for concurrent use by multiple threads.

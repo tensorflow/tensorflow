@@ -87,10 +87,12 @@ class SummaryWriter(object):
     This method wraps the provided summary in an `Event` procotol buffer
     and adds it to the event file.
 
-    You can pass the output of any summary op, as-is, to this function. You
-    can also pass a `Summary` procotol buffer that you manufacture with your
-    own data. This is commonly done to report evaluation results in event
-    files.
+    You can pass the result of evaluating any summary op, using
+    [`Session.run()`](client.md#Session.run] or
+    [`Tensor.eval()`](framework.md#Tensor.eval), to this
+    function. Alternatively, you can pass a `tf.Summary` protocol
+    buffer that you populate with your own data. The latter is
+    commonly done to report evaluation results in event files.
 
     Args:
       summary: A `Summary` protocol buffer, optionally serialized as a string.

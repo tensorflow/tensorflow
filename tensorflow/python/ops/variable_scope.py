@@ -185,10 +185,10 @@ def get_variable(name, shape=None, dtype=types.float32, initializer=None,
 
   ```python
   with tf.variable_scope("foo"):
-      v = get_variable("v", [1])  # v.name == "foo/v:0"
-      w = get_variable("w", [1])  # w.name == "foo/w:0"
+      v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
+      w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
   with tf.variable_scope("foo", reuse=True)
-      v1 = get_variable("v")  # The same as v above.
+      v1 = tf.get_variable("v")  # The same as v above.
   ```
 
   If initializer is `None` (the default), the default initializer passed in
@@ -240,7 +240,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
 
   ```python
   with tf.variable_scope("foo"):
-      v = get_variable("v", [1])
+      v = tf.get_variable("v", [1])
   with tf.variable_scope("foo", reuse=True):
       v1 = tf.get_variable("v", [1])
   assert v1 == v
@@ -250,7 +250,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
 
   ```python
   with tf.variable_scope("foo") as scope.
-      v = get_variable("v", [1])
+      v = tf.get_variable("v", [1])
       scope.reuse_variables()
       v1 = tf.get_variable("v", [1])
   assert v1 == v
@@ -261,7 +261,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
 
   ```python
   with tf.variable_scope("foo") as scope.
-      v = get_variable("v", [1])
+      v = tf.get_variable("v", [1])
       v1 = tf.get_variable("v", [1])
       #  Raises ValueError("... v already exists ...").
   ```
@@ -271,7 +271,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
 
   ```python
   with tf.variable_scope("foo", reuse=True):
-      v = get_variable("v", [1])
+      v = tf.get_variable("v", [1])
       #  Raises ValueError("... v does not exists ...").
   ```
 

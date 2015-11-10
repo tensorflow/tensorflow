@@ -27,15 +27,15 @@ class Tensor {
   /// Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
   Tensor();
 
-  /// \brief Creates a Tensor of the given datatype and shape.
+  /// \brief Creates a Tensor of the given `type` and `shape`.
   ///
-  /// The underlying buffer is allocated using a CPUAllocator.
+  /// The underlying buffer is allocated using a `CPUAllocator`.
   Tensor(DataType type, const TensorShape& shape);
 
-  /// \brief Creates a tensor with the input datatype and shape, using the
-  /// allocator 'a' to allocate the underlying buffer.
+  /// \brief Creates a tensor with the input `type` and `shape`, using the
+  /// allocator `a` to allocate the underlying buffer.
   ///
-  /// 'a' must outlive the lifetime of this Tensor.
+  /// `a` must outlive the lifetime of this Tensor.
   Tensor(Allocator* a, DataType type, const TensorShape& shape);
 
   /// Creates an uninitialized Tensor of the given data type.
@@ -54,7 +54,7 @@ class Tensor {
   /// \brief Convenience accessor for the tensor shape.
   ///
   /// For all shape accessors, see comments for relevant methods of
-  /// TensorShape in tensor_shape.h.
+  /// `TensorShape` in `tensor_shape.h`.
   int dims() const { return shape().dims(); }
 
   /// Convenience accessor for the tensor shape.
@@ -81,9 +81,9 @@ class Tensor {
 
   /// \brief Copy the other tensor into this tensor and reshape it.
   ///
-  /// This tensor shares other's underlying storage. Returns
-  /// true iff other.shape() has the same number of elements of the
-  /// given "shape".
+  /// This tensor shares other's underlying storage. Returns `true`
+  /// iff `other.shape()` has the same number of elements of the given
+  /// `shape`.
   bool CopyFrom(const Tensor& other,
                 const TensorShape& shape) TF_MUST_USE_RESULT {
     if (other.NumElements() != shape.num_elements()) return false;
@@ -93,42 +93,41 @@ class Tensor {
 
   /// \brief Slice this tensor along the 1st dimension.
 
-  /// I.e., the returned
-  /// tensor satisifies returned[i, ...] == this[dim0_start + i, ...].
+  /// I.e., the returned tensor satisifies
+  ///     returned[i, ...] == this[dim0_start + i, ...].
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.
   ///
   /// NOTE: The returned tensor may not satisfies the same alignment
   /// requirement as this tensor depending on the shape. The caller
   /// must check the returned tensor's alignment before calling certain
-  /// methods that have alignment requirement (e.g., flat(), tensor()).
+  /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
-  /// REQUIRES: dims() >= 1
-  /// REQUIRES: 0 <= dim0_start <= dim0_limit <= dim_size(0)
+  /// REQUIRES: `dims()` >= 1
+  /// REQUIRES: `0 <= dim0_start <= dim0_limit <= dim_size(0)`
   Tensor Slice(int64 dim0_start, int64 dim0_limit) const;
 
-  /// \brief Parse "other' and construct the tensor. 
+  /// \brief Parse `other` and construct the tensor.
 
-  /// Returns true iff the
-  /// parsing succeeds. If the parsing fails, the state of "*this" is
-  /// unchanged.
+  /// Returns `true` iff the parsing succeeds. If the parsing fails,
+  /// the state of `*this` is unchanged.
   bool FromProto(const TensorProto& other) TF_MUST_USE_RESULT;
   bool FromProto(Allocator* a, const TensorProto& other) TF_MUST_USE_RESULT;
 
-  /// \brief Fills in "proto" with "*this" tensor's content.
+  /// \brief Fills in `proto` with `*this` tensor's content.
   ///
-  /// AsProtoField() fills in the repeated field for proto.dtype(), while
-  /// AsProtoTensorContent() encodes the content in proto.tensor_content() in a
-  /// compact form.
+  /// `AsProtoField()` fills in the repeated field for `proto.dtype()`, while
+  /// `AsProtoTensorContent()` encodes the content in `proto.tensor_content()`
+  /// in a compact form.
   void AsProtoField(TensorProto* proto) const;
   void AsProtoTensorContent(TensorProto* proto) const;
 
-  /// \brief Return the Tensor data as an Eigen::Tensor with the type and
-  /// sizes of this Tensor.
+  /// \brief Return the tensor data as an `Eigen::Tensor` with the type and
+  /// sizes of this `Tensor`.
   ///
   /// Use these methods when you know the data type and the number of
-  /// dimensions of the Tensor and you want an Eigen::Tensor
-  /// automatically sized to the Tensor sizes. The implementation check
+  /// dimensions of the Tensor and you want an `Eigen::Tensor`
+  /// automatically sized to the `Tensor` sizes. The implementation check
   /// fails if either type or sizes mismatch.
   ///
   /// Example:
@@ -157,14 +156,14 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor tensor();
 
-  /// \brief Return the Tensor data as an Eigen::Tensor of the data type and a
+  /// \brief Return the tensor data as an `Eigen::Tensor` of the data type and a
   /// specified shape.
   ///
   /// These methods allow you to access the data with the dimensions
   /// and sizes of your choice.  You do not need to know the number of
-  /// dimensions of the Tensor to call them.  However, they CHECK that
+  /// dimensions of the Tensor to call them.  However, they `CHECK` that
   /// the type matches and the dimensions requested creates an
-  /// Eigen::Tensor with the same number of elements as the Tensor.
+  /// `Eigen::Tensor` with the same number of elements as the tensor.
   ///
   /// Example:
   ///
@@ -231,11 +230,11 @@ class Tensor {
   typename TTypes<T, NDIMS>::UnalignedTensor unaligned_shaped(
       gtl::ArraySlice<int64> new_sizes);
 
-  /// \brief Return the Tensor data as a Tensor Map of fixed size 1:
-  /// TensorMap<TensorFixedSize<T, 1>>.
+  /// \brief Return the Tensor data as a `TensorMap` of fixed size 1:
+  /// `TensorMap<TensorFixedSize<T, 1>>`.
 
-  /// Using scalar() allows the compiler to
-  /// perform optimizations as the size of the tensor is known at compile time.
+  /// Using `scalar()` allows the compiler to perform optimizations as
+  /// the size of the tensor is known at compile time.
   template <typename T>
   typename TTypes<T>::Scalar scalar();
 
@@ -297,27 +296,27 @@ class Tensor {
   template <typename T>
   typename TTypes<T>::ConstScalar scalar() const;
 
-  /// Render the first max_entries values in *this into a string.
+  /// Render the first `max_entries` values in `*this` into a string.
   string SummarizeValue(int64 max_entries) const;
 
-  /// A human-readable summary of the Tensor suitable for debugging.
+  /// A human-readable summary of the tensor suitable for debugging.
   string DebugString() const;
 
-  /// Fill in the TensorDescription proto with metadata about the
-  /// Tensor that is useful for monitoring and debugging.
+  /// Fill in the `TensorDescription` proto with metadata about the
+  /// tensor that is useful for monitoring and debugging.
   void FillDescription(TensorDescription* description) const;
 
-  /// \brief Returns a StringPiece mapping the current tensor's buffer.
+  /// \brief Returns a `StringPiece` mapping the current tensor's buffer.
   ///
-  /// The returned StringPiece may point to memory location on devices
+  /// The returned `StringPiece` may point to memory location on devices
   /// that the CPU cannot address directly.
   ///
-  /// NOTE: The underlying Tensor buffer is refcounted, so the lifetime
-  /// of the contents mapped by the StringPiece matches the lifetime of
+  /// NOTE: The underlying tensor buffer is refcounted, so the lifetime
+  /// of the contents mapped by the `StringPiece` matches the lifetime of
   /// the buffer; callers should arrange to make sure the buffer does
-  /// not get destroyed while the StringPiece is still used.
+  /// not get destroyed while the `StringPiece` is still used.
   ///
-  /// REQUIRES: DataTypeCanUseMemcpy(dtype()).
+  /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
 
  private:

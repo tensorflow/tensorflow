@@ -142,7 +142,7 @@ class RandomAccessFile {
   /// On OK returned status: "n" bytes have been stored in "*result".
   /// On non-OK returned status: [0..n] bytes have been stored in "*result".
   ///
-  /// Returns OUT_OF_RANGE if fewer than n bytes were stored in "*result"
+  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in "*result"
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
@@ -155,7 +155,7 @@ class RandomAccessFile {
   void operator=(const RandomAccessFile&);
 };
 
-/// \brief A file abstraction for sequential writing. 
+/// \brief A file abstraction for sequential writing.
 ///
 /// The implementation must provide buffering since callers may append
 /// small fragments at a time to the file.

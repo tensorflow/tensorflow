@@ -11,7 +11,7 @@ function main() {
   DEST=$1
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
-  echo `date` : "=== Using tmpdir: ${TMPDIR}"
+  echo $(date) : "=== Using tmpdir: ${TMPDIR}"
 
   if [ ! -d bazel-bin/tensorflow ]; then
     echo "Could not find bazel-bin.  Did you run from the root of the build tree?"
@@ -26,13 +26,13 @@ function main() {
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
   pushd ${TMPDIR}
   rm -f MANIFEST
-  echo `date` : "=== Building wheel"
-  python setup.py sdist bdist_wheel >/dev/null
+  echo $(date) : "=== Building wheel"
+  python setup.py bdist_wheel >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd
   rm -rf ${TMPDIR}
-  echo `date` : "=== Output wheel file is in: ${DEST}"
+  echo $(date) : "=== Output wheel file is in: ${DEST}"
 }
 
 main "$@"
