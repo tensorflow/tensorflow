@@ -31,9 +31,6 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
 RUN pip --no-cache-dir install ipykernel && \
     python -m ipykernel.kernelspec
 
-# Add any notebooks in this directory.
-COPY notebooks/*.ipynb /notebooks/
-
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
 
@@ -42,15 +39,9 @@ COPY jupyter_notebook_config.py /root/.jupyter/
 # We just add a little wrapper script.
 COPY run_jupyter.sh /
 
-# Set the workdir so we see notebooks on the IPython landing page.
-WORKDIR /notebooks
-
-# These are temporary while we sort out the GPU dependency.
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-
 # TensorBoard
 EXPOSE 6006
 # IPython
 EXPOSE 8888
 
-CMD ["/run_jupyter.sh"]
+CMD ["/bin/bash"]

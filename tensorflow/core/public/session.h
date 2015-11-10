@@ -80,21 +80,21 @@ class Session {
   virtual Status Extend(const GraphDef& graph) = 0;
 
   /// \brief Runs the graph with the provided input tensors and fills
-  /// 'outputs' for the endpoints specified in 'output_tensor_names'.
+  /// `outputs` for the endpoints specified in `output_tensor_names`.
   /// Runs to but does not return Tensors for the nodes in
-  /// 'target_node_names'.
+  /// `target_node_names`.
   ///
-  /// The order of tensors in 'outputs' will match the order provided
-  /// by 'output_tensor_names'.
+  /// The order of tensors in `outputs` will match the order provided
+  /// by `output_tensor_names`.
   ///
-  /// If Run returns OK(), then outputs->size() will be equal to
-  /// output_tensor_names.size().  If Run does not return OK(), the
-  /// state of outputs is undefined.
+  /// If `Run` returns `OK()`, then `outputs->size()` will be equal to
+  /// `output_tensor_names.size()`.  If `Run` does not return `OK()`, the
+  /// state of `outputs` is undefined.
   ///
   /// REQUIRES: The name of each Tensor of the input or output must
-  /// match a "Tensor endpoint" in the GraphDef passed to Create().
+  /// match a "Tensor endpoint" in the `GraphDef` passed to `Create()`.
   ///
-  /// REQUIRES: outputs is not nullptr if output_tensor_names is non-empty.
+  /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
   virtual Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
@@ -104,7 +104,7 @@ class Session {
   ///
   /// Closing a session releases the resources used by this session
   /// on the TensorFlow runtime (specified during session creation by
-  /// the 'SessionOptions::target' field).
+  /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
 
   virtual ~Session() {}
@@ -112,15 +112,15 @@ class Session {
 
 /// \brief Create a new session with the given options.
 ///
-/// If a new session object could not be created, this function will
+/// If a new `Session` object could not be created, this function will
 /// return nullptr.
 Session* NewSession(const SessionOptions& options);
 
 /// \brief Create a new session with the given options.
 ///
-/// If session creation succeeds, the new Session will be stored in
-/// *out_session, the caller will take ownership of the returned
-/// *out_session, and this function will return OK(). Otherwise, this
+/// If session creation succeeds, the new `Session` will be stored in
+/// `*out_session`, the caller will take ownership of the returned
+/// `*out_session`, and this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status NewSession(const SessionOptions& options, Session** out_session);
 

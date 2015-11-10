@@ -21,14 +21,12 @@ RUN ./configure
 
 # Now we build
 RUN bazel clean && \
-    bazel build -c opt --config=cuda tensorflow/tools/pip_package:build_pip_package 2>&1 | tee -a /tmp/bazel.log && \
-    rm -rf /tmp/pip && \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-    pip install /tmp/pip/tensorflow-*.whl && \
-    bazel clean
+    bazel build -c opt --config=cuda tensorflow/tools/pip_package:build_pip_package
 
-RUN rm -rf /usr/local/cuda && \
-    rm -rf /usr/share/nvidia && \
-    rm -rf /root/.cache/
+RUN rm -rf /tmp/pip && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
+    pip install --upgrade /tmp/pip/tensorflow-*.whl
+
+RUN rm -rf /usr/local/cuda
 
 RUN ["/bin/bash"]

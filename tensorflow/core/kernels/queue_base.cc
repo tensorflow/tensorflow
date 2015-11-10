@@ -9,17 +9,39 @@ namespace tensorflow {
 namespace {
 
 template <DataType DT>
-void HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
+Status HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
   typedef typename EnumToDataType<DT>::Type T;
+  DCHECK_NE(parent.dim_size(0), 0);
+  if (element->NumElements() != (parent.NumElements() / parent.dim_size(0))) {
+    TensorShape chip_shape = parent.shape();
+    chip_shape.RemoveDim(0);
+    return errors::Internal(
+        "Cannot copy slice: number of elements does not match.  Shapes are: "
+        "[element]: ",
+        element->shape().DebugString(), ", [parent slice]: ",
+        chip_shape.DebugString());
+  }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
+  return Status::OK();
 }
 
 template <DataType DT>
-void HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
+Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
   typedef typename EnumToDataType<DT>::Type T;
+  DCHECK_NE(parent->dim_size(0), 0);
+  if (element.NumElements() != (parent->NumElements() / parent->dim_size(0))) {
+    TensorShape chip_shape = parent->shape();
+    chip_shape.RemoveDim(0);
+    return errors::Internal(
+        "Cannot copy slice: number of elements does not match.  Shapes are: "
+        "[element]: ",
+        element.shape().DebugString(), ", [parent slice]: ",
+        chip_shape.DebugString());
+  }
   auto parent_as_matrix = parent->flat_outer_dims<T>();
   parent_as_matrix.chip(index, 0) = element.flat<T>();
+  return Status::OK();
 }
 
 }  // namespace
@@ -27,10 +49,10 @@ void HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
 // static
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int index) {
-#define HANDLE_TYPE(DT)                               \
-  if (parent.dtype() == DT) {                         \
-    HandleSliceToElement<DT>(parent, element, index); \
-    return Status::OK();                              \
+#define HANDLE_TYPE(DT)                                                   \
+  if (parent.dtype() == DT) {                                             \
+    TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
+    return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
   HANDLE_TYPE(DT_DOUBLE);
@@ -47,10 +69,10 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
 // static
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
                                      int index) {
-#define HANDLE_TYPE(DT)                               \
-  if (element.dtype() == DT) {                        \
-    HandleElementToSlice<DT>(element, parent, index); \
-    return Status::OK();                              \
+#define HANDLE_TYPE(DT)                                                   \
+  if (element.dtype() == DT) {                                            \
+    TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \
+    return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
   HANDLE_TYPE(DT_DOUBLE);

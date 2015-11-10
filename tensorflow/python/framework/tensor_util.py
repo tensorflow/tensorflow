@@ -156,47 +156,66 @@ _TENSOR_CONTENT_TYPES = frozenset([
 ])
 
 
+class _Message(object):
+
+  def __init__(self, message):
+    self._message = message
+
+  def __repr__(self):
+    return self._message
+
+
 def _FirstNotNone(l):
   for x in l:
     if x is not None:
-      return x
+      if isinstance(x, ops.Tensor):
+        return _Message("list containing Tensors")
+      else:
+        return x
   return None
+
+
+def _NotNone(v):
+  if v is None:
+    return _Message("None")
+  else:
+    return v
 
 
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, numbers.Integral) else repr(v)
+  return None if isinstance(v, numbers.Integral) else _NotNone(v)
 
 
 def _FilterFloat(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterFloat(x) for x in v])
-  return None if isinstance(v, numbers.Real) else repr(v)
+  return None if isinstance(v, numbers.Real) else _NotNone(v)
 
 
 def _FilterComplex(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterComplex(x) for x in v])
-  return None if isinstance(v, numbers.Complex) else repr(v)
+  return None if isinstance(v, numbers.Complex) else _NotNone(v)
 
 
 def _FilterStr(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterStr(x) for x in v])
-  return None if isinstance(v, basestring) else repr(v)
+  return None if isinstance(v, basestring) else _NotNone(v)
 
 
 def _FilterBool(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterBool(x) for x in v])
-  return None if isinstance(v, bool) else repr(v)
+  return None if isinstance(v, bool) else _NotNone(v)
 
 
 def _FilterNotTensor(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterNotTensor(x) for x in v])
-  return repr(v) if isinstance(v, ops.Tensor) else None
+  return str(v) if isinstance(v, ops.Tensor) else None
 
 
 _TF_TO_IS_OK = {
@@ -224,7 +243,7 @@ def _AssertCompatible(values, dtype):
       raise TypeError("List of Tensors when single Tensor expected")
     else:
       raise TypeError("Expected %s, got %s instead." %
-                      (dtype.name, mismatch))
+                      (dtype.name, repr(mismatch)))
 
 
 def make_tensor_proto(values, dtype=None, shape=None):
