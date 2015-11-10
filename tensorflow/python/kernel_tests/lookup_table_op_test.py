@@ -26,6 +26,25 @@ class HashTableOpTest(tf.test.TestCase):
       result = output.eval()
       self.assertAllEqual([0, 1, -1], result)
 
+  def testHashTableFindHighRank(self):
+    with self.test_session():
+      shared_name = ''
+      default_val = -1
+      table = tf.HashTable(tf.string, tf.int64, default_val, shared_name)
+
+      # Initialize with keys and values tensors.
+      keys = tf.constant(['brain', 'salad', 'surgery'])
+      values = tf.constant([0, 1, 2], tf.int64)
+      init = table.initialize_from(keys, values)
+      init.run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant([['brain', 'salad'], ['tank', 'tarkus']])
+      output = table.lookup(input_string)
+
+      result = output.eval()
+      self.assertAllEqual([[0, 1], [-1, -1]], result)
+
   def testHashTableInitWithPythonArrays(self):
     with self.test_session():
       shared_name = ''

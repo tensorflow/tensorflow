@@ -284,29 +284,28 @@ handle: The handle to a queue.
 size: The number of elements in the given queue.
 )doc");
 
-
 // --------------------------------------------------------------------------
 
 REGISTER_OP("LookupTableFind")
     .Input("table_handle: Ref(string)")
-    .Input("input_values: Tin")
+    .Input("keys: Tin")
     .Input("default_value: Tout")
-    .Output("output_values: Tout")
+    .Output("values: Tout")
     .Attr("Tin: type")
     .Attr("Tout: type")
     .Doc(R"doc(
-Maps elements of a tensor into associated values given a lookup table.
+Looks up keys in a table, outputs the corresponding values.
 
-If an element of the input_values is not present in the table, the
-specified default_value is used.
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
 
-The table needs to be initialized and the input and output types correspond
-to the table key and value types.
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
 
-table_handle: A handle for a lookup table.
-input_values: A vector of key values.
-default_value: A scalar to return if the input is not found in the table.
-output_values: A vector of values associated to the inputs.
+table_handle: Handle to the table.
+keys:  Any shape.  Keys to look up.
+values: Same shape as `keys`.  Values found in the table, or `default_values`
+   for missing keys.
 )doc");
 
 REGISTER_OP("LookupTableSize")
@@ -315,8 +314,8 @@ REGISTER_OP("LookupTableSize")
     .Doc(R"doc(
 Computes the number of elements in the given table.
 
-table_handle: The handle to a lookup table.
-size: The number of elements in the given table.
+table_handle: Handle to the table.
+size: Scalar that contains number of elements in the table.
 )doc");
 
 REGISTER_OP("HashTable")
@@ -326,18 +325,19 @@ REGISTER_OP("HashTable")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .Doc(R"doc(
-Creates and holds an immutable hash table.
+Creates a non-initialized hash table.
 
-The key and value types can be specified. After initialization, the table
-becomes immutable.
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
 
-table_handle: a handle of a the lookup table.
-container: If non-empty, this hash table is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this hash table is shared under the given name across
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
   multiple sessions.
-key_dtype: the type of the table key.
-value_dtype: the type of the table value.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
 )doc");
 
 REGISTER_OP("InitializeTable")
@@ -349,9 +349,9 @@ REGISTER_OP("InitializeTable")
     .Doc(R"doc(
 Table initializer that takes two tensors for keys and values respectively.
 
-table_handle: a handle of the lookup table to be initialized.
-keys: a vector of keys of type Tkey.
-values: a vector of values of type Tval.
+table_handle: Handle to a table which will be initialized.
+keys: Keys of type Tkey.
+values: Values of type Tval. Same shape as `keys`.
 )doc");
 
 }  // namespace tensorflow
