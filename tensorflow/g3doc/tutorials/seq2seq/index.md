@@ -200,7 +200,7 @@ sentence with a special PAD symbol. Then we'd need only one seq2seq model,
 for the padded lengths. But on shorter sentence our model would be inefficient,
 encoding and decoding many PAD symbols that are useless.
 
-As a compromise between contructing a graph for every pair of lengths and
+As a compromise between constructing a graph for every pair of lengths and
 padding to a single length, we use a number of *buckets* and pad each sentence
 to the length of the bucket above it. In `translate.py` we use the following
 default buckets.
@@ -311,7 +311,7 @@ translator, end-to-end. Run it and see how the model performs for yourself.
 While it has reasonable quality, the default parameters will not give you
 the best translation model. Here are a few things you can improve.
 
-First of all, we use a very promitive tokenizer, the `basic_tokenizer` function
+First of all, we use a very primitive tokenizer, the `basic_tokenizer` function
 in `data_utils`. A better tokenizer can be found on the
 [WMT'15 Website](http://www.statmt.org/wmt15/translation-task.html).
 Using that tokenizer, and a larger vocabulary, should improve your translations.

@@ -345,7 +345,7 @@ print sess.run(norm)
 print sess.run(norm)
 ```
 
-Another common use of random values is the intialization of variables. Also see
+Another common use of random values is the initialization of variables. Also see
 the [Variables How To](../../how_tos/variables/index.md).
 
 ```python
@@ -576,5 +576,3 @@ with tf.Session() as sess2:
 
 
 *  <b>`seed`</b>: integer.
-
-

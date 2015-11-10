@@ -40,7 +40,7 @@ def maybe_download(directory, filename, url):
     print("Downloading %s to %s" % (url, filepath))
     filepath, _ = urllib.urlretrieve(url, filepath)
     statinfo = os.stat(filepath)
-    print("Succesfully downloaded", filename, statinfo.st_size, "bytes")
+    print("Successfully downloaded", filename, statinfo.st_size, "bytes")
   return filepath
 
 

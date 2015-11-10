@@ -703,7 +703,7 @@ struct TensorEvaluator<const TensorReductionOp<Op, Dims, ArgType>, Device>
     } else if (PreservingInnerMostDims) {
       const Index firstIndex = firstInput(index);
       const int innermost_dim = (static_cast<int>(Layout) == static_cast<int>(ColMajor)) ? 0 : NumOutputDims - 1;
-      // TBD: extend this the the n innermost dimensions that we preserve.
+      // TBD: extend this to the n innermost dimensions that we preserve.
       if (((firstIndex % m_dimensions[innermost_dim]) + packetSize - 1) < m_dimensions[innermost_dim]) {
         Op reducer(m_reducer);
         typename Self::PacketReturnType accum = reducer.template initializePacket<typename Self::PacketReturnType>();

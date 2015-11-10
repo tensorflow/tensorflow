@@ -39,7 +39,7 @@ def maybe_download(filename):
   if not os.path.exists(filepath):
     filepath, _ = urllib.urlretrieve(SOURCE_URL + filename, filepath)
     statinfo = os.stat(filepath)
-    print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
+    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
   return filepath
 
 

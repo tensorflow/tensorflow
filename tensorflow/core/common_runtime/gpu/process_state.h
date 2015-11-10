@@ -77,7 +77,7 @@ class ProcessState {
   // interface to be used for network device memory registration.
   // "bus_id" is platform-specific.  On many platforms it
   // should be 0.  On machines with multiple PCIe buses, it should be
-  // the index of one of the PCIe buses.  If the the bus_id is invalid,
+  // the index of one of the PCIe buses.  If the bus_id is invalid,
   // results are undefined.
   typedef std::function<void(void*, size_t)> AllocVisitor;
   void AddGPUAllocVisitor(int bus_id, AllocVisitor visitor);

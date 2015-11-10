@@ -1069,7 +1069,7 @@ class SymbolicGradientHelper {
 
   // 'ready' keeps track of nodes that have been completely
   // backpropped. Initially, for every output y of the function f, we
-  // add dy as an input of the the gradient function.
+  // add dy as an input of the gradient function.
   std::deque<Node*> ready_;
 
   // Makes a copy of fbody_ in gbody_.

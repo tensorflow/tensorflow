@@ -60,7 +60,7 @@ dense[tuple(indices[i])] = values[i]
 ```
 
 By convention, `indices` should be sorted in row-major order (or equivalently
-lexigraphic order on the tuples `indices[i]`).  This is not enforced when
+lexicographic order on the tuples `indices[i]`).  This is not enforced when
 `SparseTensor` objects are constructed, but most Ops assume correct ordering.
 If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
 misordered `SparseTensor`.
@@ -503,5 +503,3 @@ This op also returns an indicator vector such that
 
 
 *  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
-
-
