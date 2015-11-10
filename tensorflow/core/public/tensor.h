@@ -93,7 +93,7 @@ class Tensor {
 
   /// \brief Slice this tensor along the 1st dimension.
 
-  /// I.e., the returned tensor satisifies
+  /// I.e., the returned tensor satisfies
   ///     returned[i, ...] == this[dim0_start + i, ...].
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.

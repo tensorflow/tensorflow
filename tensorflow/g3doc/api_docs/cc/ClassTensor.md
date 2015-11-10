@@ -178,7 +178,7 @@ This tensor shares other&apos;s underlying storage. Returns `true` iff `other.sh
 
 Slice this tensor along the 1st dimension.
 
-I.e., the returned tensor satisifies returned[i, ...] == this[dim0_start + i, ...]. The returned tensor shares the underlying tensor buffer with this tensor.
+I.e., the returned tensor satisfies returned[i, ...] == this[dim0_start + i, ...]. The returned tensor shares the underlying tensor buffer with this tensor.
 
 NOTE: The returned tensor may not satisfies the same alignment requirement as this tensor depending on the shape. The caller must check the returned tensor&apos;s alignment before calling certain methods that have alignment requirement (e.g., ` flat() `, `tensor()`).
 

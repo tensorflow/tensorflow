@@ -109,9 +109,6 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& input = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input.shape()),
-                errors::InvalidArgument("Input must be a vector, not ",
-                                        input.shape().DebugString()));
 
     const Tensor& default_value = ctx->input(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(default_value.shape()),
@@ -119,8 +116,7 @@ class LookupTableFindOp : public OpKernel {
                                         default_value.shape().DebugString()));
 
     Tensor* out;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output("output_values", input.shape(), &out));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("values", input.shape(), &out));
 
     OP_REQUIRES_OK(ctx, table->Find(input, out, default_value));
   }

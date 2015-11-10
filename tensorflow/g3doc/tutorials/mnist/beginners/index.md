@@ -310,7 +310,7 @@ cross_entropy = -tf.reduce_sum(y_*tf.log(y))
 ```
 
 First, `tf.log` computes the logarithm of each element of `y`. Next, we multiply
-each element of `y_` with the corresponding element of `tf.log(y_)`. Finally,
+each element of `y_` with the corresponding element of `tf.log(y)`. Finally,
 `tf.reduce_sum` adds all the elements of the tensor. (Note that this isn't
 just the cross-entropy of the truth with a single prediction, but the sum of the
 cross-entropies for all 100 images we looked at. How well we are doing on 100

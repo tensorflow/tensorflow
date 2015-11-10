@@ -25,7 +25,7 @@ bool EventsWriter::Init() {
     if (FileHasDisappeared()) {
       // Warn user of data loss and let .reset() below do basic cleanup.
       if (num_outstanding_events_ > 0) {
-        LOG(WARNING) << "Re-intialization, attempting to open a new file, "
+        LOG(WARNING) << "Re-initialization, attempting to open a new file, "
                      << num_outstanding_events_ << " events will be lost.";
       }
     } else {

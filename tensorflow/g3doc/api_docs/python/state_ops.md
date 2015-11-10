@@ -854,10 +854,10 @@ for an extensive description of how reusing works. Here is a basic example:
 
 ```python
 with tf.variable_scope("foo"):
-    v = get_variable("v", [1])  # v.name == "foo/v:0"
-    w = get_variable("w", [1])  # w.name == "foo/w:0"
+    v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
+    w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
 with tf.variable_scope("foo", reuse=True)
-    v1 = get_variable("v")  # The same as v above.
+    v1 = tf.get_variable("v")  # The same as v above.
 ```
 
 If initializer is `None` (the default), the default initializer passed in
@@ -919,7 +919,7 @@ Basic example of sharing a variable:
 
 ```python
 with tf.variable_scope("foo"):
-    v = get_variable("v", [1])
+    v = tf.get_variable("v", [1])
 with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v", [1])
 assert v1 == v
@@ -929,7 +929,7 @@ Sharing a variable by capturing a scope and setting reuse:
 
 ```python
 with tf.variable_scope("foo") as scope.
-    v = get_variable("v", [1])
+    v = tf.get_variable("v", [1])
     scope.reuse_variables()
     v1 = tf.get_variable("v", [1])
 assert v1 == v
@@ -940,7 +940,7 @@ getting an existing variable in a non-reusing scope.
 
 ```python
 with tf.variable_scope("foo") as scope.
-    v = get_variable("v", [1])
+    v = tf.get_variable("v", [1])
     v1 = tf.get_variable("v", [1])
     #  Raises ValueError("... v already exists ...").
 ```
@@ -950,7 +950,7 @@ does not exist in reuse mode.
 
 ```python
 with tf.variable_scope("foo", reuse=True):
-    v = get_variable("v", [1])
+    v = tf.get_variable("v", [1])
     #  Raises ValueError("... v does not exists ...").
 ```
 

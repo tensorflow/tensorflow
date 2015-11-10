@@ -254,7 +254,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   fr_train_ids_path = train_path + (".ids%d.fr" % fr_vocabulary_size)
   en_train_ids_path = train_path + (".ids%d.en" % en_vocabulary_size)
   data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path)
-  data_to_token_ids(train_path + ".en", fr_train_ids_path, fr_vocab_path)
+  data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path)
 
   # Create token ids for the development data.
   fr_dev_ids_path = dev_path + (".ids%d.fr" % fr_vocabulary_size)

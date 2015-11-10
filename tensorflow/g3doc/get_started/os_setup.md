@@ -222,7 +222,7 @@ From the root of your source tree, run:
 
 ``` bash
 $ ./configure
-Do you wish to bulid TensorFlow with GPU support? [y/n] y
+Do you wish to build TensorFlow with GPU support? [y/n] y
 GPU support will be enabled for TensorFlow
 
 Please specify the location where CUDA 7.0 toolkit is installed. Refer to

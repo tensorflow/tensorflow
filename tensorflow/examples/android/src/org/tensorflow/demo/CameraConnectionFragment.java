@@ -63,6 +63,12 @@ import java.util.concurrent.TimeUnit;
 public class CameraConnectionFragment extends Fragment {
   private static final Logger LOGGER = new Logger();
 
+  /**
+   * The camera preview size will be chosen to be the smallest frame by pixel size capable of
+   * containing a DESIRED_SIZE x DESIRED_SIZE square.
+   */
+  private static final int MINIMUM_PREVIEW_SIZE = 320;
+
   private RecognitionScoreView scoreView;
 
   /**
@@ -227,8 +233,7 @@ public class CameraConnectionFragment extends Fragment {
     // Collect the supported resolutions that are at least as big as the preview Surface
     final List<Size> bigEnough = new ArrayList<>();
     for (final Size option : choices) {
-      // TODO(andrewharp): Choose size intelligently.
-      if (option.getHeight() == 320 && option.getWidth() == 480) {
+      if (option.getHeight() >= MINIMUM_PREVIEW_SIZE && option.getWidth() >= MINIMUM_PREVIEW_SIZE) {
         LOGGER.i("Adding size: " + option.getWidth() + "x" + option.getHeight());
         bigEnough.add(option);
       } else {
