@@ -52,6 +52,9 @@ $ pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5
 ```bash
 # Only CPU-version is available at the moment.
 $ pip install https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
+
+# For El Capital
+$ pip install --ignore-installed six  https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
 ```
 
 ### Try your first TensorFlow program
