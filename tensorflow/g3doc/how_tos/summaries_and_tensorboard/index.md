@@ -36,7 +36,7 @@ this data by attaching
 [`histogram_summary`](../../api_docs/python/train.md#histogram_summary) ops to
 the gradient outputs and to the variable that holds your weights, respectively.
 
-For details on all of the summary operations avaiable, check out the docs on
+For details on all of the summary operations available, check out the docs on
 [summary operations]
 (../../api_docs/python/train.md#summary-operations).
 
@@ -59,7 +59,7 @@ Also, the `SummaryWriter` can optionally take a `GraphDef` in its constructor.
 If it receives one, then TensorBoard will visualize your graph as well.
 
 Now that you've modified your graph and have a `SummaryWriter`, you're ready to
-start runing your network! If you want, you could run the merged summary op
+start running your network! If you want, you could run the merged summary op
 every single step, and record a ton of training data. That's likely to be more
 data than you need, though. Instead, consider running the merged summary op
 every hundred steps or so, as in the following code example.

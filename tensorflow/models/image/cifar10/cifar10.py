@@ -477,5 +477,5 @@ def maybe_download_and_extract():
     filepath, _ = urllib.urlretrieve(DATA_URL, filepath, reporthook=_progress)
     print()
     statinfo = os.stat(filepath)
-    print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
+    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)

@@ -279,7 +279,7 @@ will start threads that run the input pipeline, filling the example queue so
 that the dequeue to get the examples will succeed.  This is best combined with a
 [`tf.train.Coordinator`](../../api_docs/python/train.md#Coordinator) to cleanly
 shut down these threads when there are errors. If you set a limit on the number
-of epochs, that will use an epoch counter that will need to be intialized.  The
+of epochs, that will use an epoch counter that will need to be initialized.  The
 recommended code pattern combining these is:
 
 ```python
@@ -349,7 +349,7 @@ limit has been reached and no more examples are available.
 
 The last ingredient is the
 [`Coordinator`](../../api_docs/python/train.md#Coordinator). This is responsible
-for letting all the threads know if anything has signalled a shut down. Most
+for letting all the threads know if anything has signaled a shut down. Most
 commonly this would be because an exception was raised, for example one of the
 threads got an error when running some operation (or an ordinary Python
 exception).

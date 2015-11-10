@@ -901,7 +901,7 @@ c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
 d = tf.constant([[1.0, 1.0], [0.0, 1.0]])
 e = tf.matmul(c, d)
 
-# Construct a `Session` to execut the graph.
+# Construct a `Session` to execute the graph.
 sess = tf.Session()
 
 # Execute the graph and store the value that `e` represents in `result`.
@@ -2090,5 +2090,3 @@ For details on how the graph-level seed interacts with op seeds, see
 
   A tuple of two integers that should be used for the local seed of this
   operation.
-
-

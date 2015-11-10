@@ -453,7 +453,7 @@ function layoutSeriesNode(node: render.RenderGroupNodeInformation): void {
 
 /**
  * Calculate layout for annotations of a given node.
- * This will modify positions of the the given node and its annotations.
+ * This will modify positions of the given node and its annotations.
  *
  * @see tf.graph.render.Node and tf.graph.render.Annotation
  * for description of each property of each render node.

@@ -343,7 +343,7 @@ with tf.variable_scope("foo"):
 assert x.op.name == "foo/add"
 ```
 
-Name scopes can be openend in addition to a variable scope, and then
+Name scopes can be opened in addition to a variable scope, and then
 they will only affect the names of the ops, but not of variables.
 
 ```python

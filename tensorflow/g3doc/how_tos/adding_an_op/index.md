@@ -860,7 +860,7 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized GraphDefs constructed
-from older specfications.
+from older specifications.
 
 There are several ways to preserve backwards-compatibility.
 

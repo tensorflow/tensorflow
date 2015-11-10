@@ -936,7 +936,7 @@ ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 maintain_averages_op = ema.apply([var0, var1])
 
 # Create an op that will update the moving averages after each training
-# step.  This is what we will use in place of the usuall trainig op.
+# step.  This is what we will use in place of the usual training op.
 with tf.control_dependencies([opt_op]):
     training_op = tf.group(maintain_averages_op)
 
@@ -1661,11 +1661,11 @@ the event file:
 
 Adds a `Summary` protocol buffer to the event file.
 
-This method wraps the provided summary in an `Event` procotol buffer
+This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the output of any summary op, as-is, to this function. You
-can also pass a `Summary` procotol buffer that you manufacture with your
+can also pass a `Summary` protocol buffer that you manufacture with your
 own data. This is commonly done to report evaluation results in event
 files.
 
@@ -1826,5 +1826,3 @@ tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
 *  <b>`logdir`</b>: Directory where to write the graph.
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
-
-

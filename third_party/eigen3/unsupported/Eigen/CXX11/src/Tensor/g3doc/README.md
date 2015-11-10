@@ -24,7 +24,7 @@ different size to a Tensor, that tensor is resized to match its new value.
 #### Constructor Tensor&lt;data_type, rank&gt;(size0, size1, ...)
 
 Constructor for a Tensor.  The constructor must be passed ```rank``` integers
-indicating the sizes of the instance along each of the the ```rank```
+indicating the sizes of the instance along each of the ```rank```
 dimensions.
 
     // Create a tensor of rank 3 of sizes 2, 3, 4.  This tensor owns

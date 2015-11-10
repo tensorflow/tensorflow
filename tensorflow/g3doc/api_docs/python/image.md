@@ -807,7 +807,7 @@ cast back to its original type after clipping.
 
 ### `tf.image.random_contrast(image, lower, upper, seed=None)` <a class="md-anchor" id="random_contrast"></a>
 
-Adjust the contrase of an image by a random factor.
+Adjust the contrast of an image by a random factor.
 
 Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
 picked in the interval `[lower, upper]`.
@@ -863,5 +863,3 @@ Note that this implementation is limited:
 
 
 *  <b>`ValueError`</b>: if the shape of 'image' is incompatible with this function.
-
-

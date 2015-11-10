@@ -4415,7 +4415,7 @@ var tf;
             }
             /**
              * Calculate layout for annotations of a given node.
-             * This will modify positions of the the given node and its annotations.
+             * This will modify positions of the given node and its annotations.
              *
              * @see tf.graph.render.Node and tf.graph.render.Annotation
              * for description of each property of each render node.
@@ -5340,7 +5340,7 @@ var tf;
             }
             /**
              * Calculate layout for annotations of a given node.
-             * This will modify positions of the the given node and its annotations.
+             * This will modify positions of the given node and its annotations.
              *
              * @see tf.graph.render.Node and tf.graph.render.Annotation
              * for description of each property of each render node.
@@ -8383,46 +8383,46 @@ Polymer({
 </div>
 <svg id="svg">
   <defs>
-    
+
     <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
       <path d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"></path>
     </marker>
     <marker id="ref-arrowhead" markerWidth="10" markerHeight="10" refX="1" refY="5" orient="auto">
       <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
     </marker>
-    
+
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
     </marker>
     <marker id="ref-annotation-arrowhead" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
     </marker>
-    
+
     <ellipse id="op-node-stamp" rx="7.5" ry="3" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <ellipse id="op-node-annotation-stamp" rx="5" ry="2" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <g id="op-series-vertical-stamp">
       <use xlink:href="#op-node-stamp" x="8" y="9"></use>
       <use xlink:href="#op-node-stamp" x="8" y="6"></use>
       <use xlink:href="#op-node-stamp" x="8" y="3"></use>
     </g>
-    
+
     <g id="op-series-horizontal-stamp">
       <use xlink:href="#op-node-stamp" x="16" y="4"></use>
       <use xlink:href="#op-node-stamp" x="12" y="4"></use>
       <use xlink:href="#op-node-stamp" x="8" y="4"></use>
     </g>
-    
+
     <g id="op-series-annotation-stamp">
       <use xlink:href="#op-node-annotation-stamp" x="9" y="2"></use>
       <use xlink:href="#op-node-annotation-stamp" x="7" y="2"></use>
       <use xlink:href="#op-node-annotation-stamp" x="5" y="2"></use>
     </g>
-    
+
     <g id="linearGradients"></g>
   </defs>
-  
+
   <rect fill="white" width="10000" height="10000"></rect>
   <g id="root"></g>
 </svg>
