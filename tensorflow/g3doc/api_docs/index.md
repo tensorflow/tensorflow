@@ -6,7 +6,7 @@ and the easiest to use, but the C++ API may offer some performance advantages
 in graph execution, and supports deployment to small devices such as Android.
 
 Over time, we hope that the TensorFlow community will develop front ends for
-languages like Go, Java, Javascript, Lua R, and perhaps others. With SWIG, it's
+languages like Go, Java, JavaScript, Lua R, and perhaps others. With SWIG, it's
 relatively easy to contribute a TensorFlow interface to your favorite language.
 
 Note: Many practical aspects of usage are covered in the Mechanics tab, and
