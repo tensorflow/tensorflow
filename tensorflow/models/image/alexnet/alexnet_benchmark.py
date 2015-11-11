@@ -265,8 +265,9 @@ def run_benchmark():
           logits, labels))
     # Compute the gradient with respect to all the parameters.
     grad = tf.gradients(objective, parameters)
+    sink = tf.group(*grad)
     # Run the backward benchmark.
-    time_tensorflow_run(sess, grad, "Forward-backward")
+    time_tensorflow_run(sess, sink, "Forward-backward")
 
 
 def main(_):
