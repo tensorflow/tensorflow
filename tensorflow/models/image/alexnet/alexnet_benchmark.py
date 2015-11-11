@@ -13,10 +13,14 @@ Run on Titan X:     70 +/- 0.1 ms / batch
 Forward-backward pass:
 Run on Tesla K40c: 480 +/- 48 ms / batch
 Run on Titan X:    244 +/- 30 ms / batch
+
+Note that this benchmark does not include the local response normalization
+(LRN) layers of AlexNet.
 """
 from __future__ import print_function
 from datetime import datetime
 import math
+import numpy as np
 import time
 
 import tensorflow.python.platform
@@ -29,13 +33,16 @@ tf.app.flags.DEFINE_integer('batch_size', 128,
                             """Batch size.""")
 tf.app.flags.DEFINE_integer('num_batches', 100,
                             """Number of batches to run.""")
+tf.app.flags.DEFINE_boolean('l2_loss', False,
+                            """Use L2 loss, rather than softmax.""")
 
+NUM_LABELS = 1000
 
 def print_activations(t):
   print(t.op.name, ' ', t.get_shape().as_list())
 
 
-def inference(images):
+def inference(images, train=True):
   """Build the AlexNet model.
 
   Args:
@@ -137,7 +144,53 @@ def inference(images):
                          name='pool5')
   print_activations(pool5)
 
-  return pool5, parameters
+  pool5_shape = pool5.get_shape().as_list()
+  pool5_dim = np.prod(pool5_shape[1:])
+  reshape = tf.reshape(pool5, [pool5_shape[0], pool5_dim])
+
+  # fc6
+  with tf.name_scope('fc6') as scope:
+    weights = tf.Variable(tf.truncated_normal([pool5_dim, 4096],
+                                              dtype=tf.float32,
+                                              stddev=1e-1), name='weights')
+    acts = tf.matmul(reshape, weights)
+    biases = tf.Variable(tf.constant(0.0, shape=[4096], dtype=tf.float32),
+                         trainable=True, name='biases')
+    bias = tf.nn.bias_add(acts, biases)
+    fc6 = tf.nn.relu(bias, name=scope)
+    if train:
+      fc6 = tf.nn.dropout(fc6, 0.5, name=scope)
+    parameters += [weights, biases]
+    print_activations(fc6)
+
+  # fc7
+  with tf.name_scope('fc7') as scope:
+    weights = tf.Variable(tf.truncated_normal([4096, 4096],
+                                              dtype=tf.float32,
+                                              stddev=1e-1), name='weights')
+    acts = tf.matmul(fc6, weights)
+    biases = tf.Variable(tf.constant(0.0, shape=[4096], dtype=tf.float32),
+                         trainable=True, name='biases')
+    bias = tf.nn.bias_add(acts, biases)
+    fc7 = tf.nn.relu(bias, name=scope)
+    if train:
+      fc7 = tf.nn.dropout(fc7, 0.5, name=scope)
+    parameters += [weights, biases]
+    print_activations(fc7)
+
+  # fc8
+  with tf.name_scope('fc8') as scope:
+    weights = tf.Variable(tf.truncated_normal([4096, NUM_LABELS],
+                                              dtype=tf.float32,
+                                              stddev=1e-1), name='weights')
+    acts = tf.matmul(fc7, weights)
+    biases = tf.Variable(tf.constant(0.0, shape=[NUM_LABELS], dtype=tf.float32),
+                         trainable=True, name='biases')
+    fc8 = tf.nn.bias_add(acts, biases, name=scope)
+    parameters += [weights, biases]
+    print_activations(fc8)
+
+  return fc8, parameters
 
 
 def time_tensorflow_run(session, target, info_string):
@@ -185,10 +238,14 @@ def run_benchmark():
                                            image_size + 3, 3],
                                           dtype=tf.float32,
                                           stddev=1e-1))
+    label_indices = np.random.randint(0, NUM_LABELS, FLAGS.batch_size)
+    one_hot_labels = np.zeros((FLAGS.batch_size, NUM_LABELS), dtype=np.float32)
+    one_hot_labels[np.arange(FLAGS.batch_size), label_indices] = 1
+    labels = tf.Variable(one_hot_labels)
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    pool5, parameters = inference(images)
+    logits, parameters = inference(images)
 
     # Build an initialization operation.
     init = tf.initialize_all_variables()
@@ -198,14 +255,19 @@ def run_benchmark():
     sess.run(init)
 
     # Run the forward benchmark.
-    time_tensorflow_run(sess, pool5, "Forward")
+    time_tensorflow_run(sess, logits, "Forward")
 
-    # Add a simple objective so we can calculate the backward pass.
-    objective = tf.nn.l2_loss(pool5)
+    # Add the objective so we can calculate the backward pass.
+    if FLAGS.l2_loss:
+      objective = tf.nn.l2_loss(logits)
+    else:
+      objective = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+          logits, labels))
     # Compute the gradient with respect to all the parameters.
     grad = tf.gradients(objective, parameters)
+    sink = tf.group(*grad)
     # Run the backward benchmark.
-    time_tensorflow_run(sess, grad, "Forward-backward")
+    time_tensorflow_run(sess, sink, "Forward-backward")
 
 
 def main(_):
