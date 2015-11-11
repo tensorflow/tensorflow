@@ -103,7 +103,11 @@ LocalSession::LocalSession(const SessionOptions& options,
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
-    printf("Device mapping:\n%s", mapping_str.c_str());
+    if (mapping_str.empty()) {
+      printf("Device mapping: no known devices.\n");
+    } else {
+      printf("Device mapping:\n%s", mapping_str.c_str());
+    }
     LOG(INFO) << "Device mapping:\n" << mapping_str;
   }
   for (auto d : device_mgr_->ListDevices()) {

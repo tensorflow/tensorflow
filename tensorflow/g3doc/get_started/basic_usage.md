@@ -239,7 +239,7 @@ training graph repeatedly.
 
 To fetch the outputs of operations, execute the graph with a `run()` call on
 the `Session` object and pass in the tensors to retrieve. In the previous
-example we fetched the single node `var`, but you can also fetch multiple
+example we fetched the single node `state`, but you can also fetch multiple
 tensors:
 
 ```python
@@ -249,7 +249,7 @@ input3 = tf.constant(5.0)
 intermed = tf.add(input2, input3)
 mul = tf.mul(input1, intermed)
 
-with tf.Session():
+with tf.Session() as sess:
   result = sess.run([mul, intermed])
   print result
 
