@@ -12,8 +12,8 @@ template <typename Device, typename T>
 struct Split {
   void operator()(const Device& d, typename TTypes<T, 3>::Tensor output,
                   typename TTypes<T, 3>::ConstTensor input,
-                  const Eigen::DSizes<ptrdiff_t, 3>& slice_indices,
-                  const Eigen::DSizes<ptrdiff_t, 3>& slice_sizes);
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
 };
 
 template <typename T>
@@ -21,8 +21,8 @@ struct Split<Eigen::ThreadPoolDevice, T> {
   void operator()(const Eigen::ThreadPoolDevice& d,
                   typename TTypes<T, 3>::Tensor output,
                   typename TTypes<T, 3>::ConstTensor input,
-                  const Eigen::DSizes<ptrdiff_t, 3>& slice_indices,
-                  const Eigen::DSizes<ptrdiff_t, 3>& slice_sizes);
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
 };
 
 }  // namespace functor

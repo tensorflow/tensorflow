@@ -232,9 +232,14 @@ def InvokeNvcc(argv, log=False):
   srcs = ' '.join(src_files)
   out = ' -o ' + out_file[0]
 
-  nvccopts = ' '.join([
-      r'-gencode=arch=compute_35,\"code=sm_35,compute_35\"',
-      r'-gencode=arch=compute_52,\"code=sm_52,compute_52\"',])
+  # "configure" uses the specific format to substitute the following string.
+  # If you change it, make sure you modify "configure" as well.
+  supported_cuda_compute_capabilities = [ "3.5", "5.2" ]
+  nvccopts = ''
+  for capability in supported_cuda_compute_capabilities:
+    capability = capability.replace('.', '')
+    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
+        capability, capability, capability)
   nvccopts += ' ' + nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
@@ -260,8 +265,8 @@ def InvokeNvcc(argv, log=False):
          ' -I .' +
          ' -x cu ' + opt + includes + ' -c ' + srcs + out)
 
-  # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'. 
-  # Need to investigate and fix. 
+  # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'.
+  # Need to investigate and fix.
   cmd = 'PATH=' + PREFIX_DIR + ' ' + cmd
   if log: Log(cmd)
   return os.system(cmd)

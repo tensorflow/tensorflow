@@ -27,6 +27,7 @@ numpy_macosx_include_dir = select({
 py_library(
     name = "python",
     srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__pkg__"],
     deps = [
         ":client",
@@ -43,6 +44,7 @@ py_library(
 py_library(
     name = "platform",
     srcs = glob(["platform/**/*.py"]),
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -51,6 +53,7 @@ py_library(
         "platform/default/_googletest.py",
         "platform/googletest.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [":platform"],
 )
 
@@ -94,6 +97,7 @@ py_test(
     name = "pywrap_status_test",
     size = "small",
     srcs = ["lib/core/pywrap_status_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -133,6 +137,7 @@ py_library(
         "framework/tensor_util.py",
         "ops/common_shapes.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":platform",
         "//tensorflow/core:protos_all_py",
@@ -143,6 +148,7 @@ py_library(
 
 py_library(
     name = "extra_py_tests_deps",
+    srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -151,6 +157,7 @@ py_library(
     srcs = [
         "framework/test_util.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework",
         ":platform_test",
@@ -165,6 +172,7 @@ py_library(
     srcs = [
         "platform/test.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -175,6 +183,7 @@ py_test(
     name = "framework_errors_test",
     srcs = ["framework/errors_test.py"],
     main = "framework/errors_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -187,6 +196,7 @@ py_test(
     name = "framework_importer_test",
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":ops",
@@ -213,6 +223,7 @@ py_test(
     name = "framework_ops_test",
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":ops",
@@ -226,6 +237,19 @@ py_test(
     name = "framework_tensor_shape_test",
     srcs = ["framework/tensor_shape_test.py"],
     main = "framework/tensor_shape_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_tensor_shape_div_test",
+    srcs = ["framework/tensor_shape_div_test.py"],
+    main = "framework/tensor_shape_div_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -237,6 +261,7 @@ py_test(
     name = "framework_tensor_util_test",
     srcs = ["framework/tensor_util_test.py"],
     main = "framework/tensor_util_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":ops",
@@ -248,6 +273,7 @@ py_test(
     name = "framework_test_util_test",
     srcs = ["framework/test_util_test.py"],
     main = "framework/test_util_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":ops",
@@ -259,6 +285,7 @@ py_test(
     name = "framework_types_test",
     srcs = ["framework/types_test.py"],
     main = "framework/types_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -271,6 +298,7 @@ py_test(
     name = "op_def_library_test",
     srcs = ["ops/op_def_library_test.py"],
     main = "ops/op_def_library_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":ops",
@@ -565,6 +593,7 @@ py_library(
         "ops/variables.py",
         "user_ops/user_ops.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":candidate_sampling_ops",
@@ -591,6 +620,7 @@ py_library(
         ["training/**/*.py"],
         exclude = ["**/*test*"],
     ),
+    srcs_version = "PY2AND3",
     deps = [
         ":client",
         ":framework",
@@ -609,6 +639,7 @@ py_library(
         ["client/**/*.py"],
         exclude = ["**/*test*"],
     ),
+    srcs_version = "PY2AND3",
     deps = [
         ":framework",
         ":ops",
@@ -620,6 +651,7 @@ py_library(
 py_library(
     name = "util",
     srcs = glob(["util/**/*.py"]),
+    srcs_version = "PY2AND3",
     deps = ["//google/protobuf:protobuf_python"],
 )
 
@@ -641,6 +673,7 @@ py_test(
     name = "protobuf_compare_test",
     srcs = ["util/protobuf/compare_test.py"],
     main = "util/protobuf/compare_test.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":compare_test_proto_py",
         ":platform_test",
@@ -654,6 +687,7 @@ py_test(
     srcs = [
         "client/events_writer_test.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
         ":lib",
@@ -719,6 +753,7 @@ tf_py_wrap_cc(
 py_library(
     name = "lib",
     srcs = glob(["lib/**/*.py"]),
+    srcs_version = "PY2AND3",
     deps = [
         ":pywrap_tensorflow",
     ],
@@ -727,6 +762,7 @@ py_library(
 py_library(
     name = "session",
     srcs = ["client/session.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework",
         ":ops",
@@ -750,6 +786,7 @@ tf_cuda_library(
 py_test(
     name = "session_test",
     srcs = ["client/session_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -760,6 +797,7 @@ py_test(
 py_test(
     name = "graph_util_test",
     srcs = ["client/graph_util_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -770,6 +808,7 @@ py_test(
 py_library(
     name = "kernel_tests/gradient_checker",
     srcs = ["kernel_tests/gradient_checker.py"],
+    srcs_version = "PY2AND3",
 )
 
 cpu_only_kernel_test_list = glob([
@@ -899,6 +938,7 @@ py_library(
         ["summary/**/*.py"],
         exclude = ["**/*test*"],
     ),
+    srcs_version = "PY2AND3",
     deps = [
         ":client",
         ":framework",
@@ -921,6 +961,7 @@ py_library(
     srcs = [
         "framework/docs.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":platform",
     ],
@@ -932,6 +973,7 @@ py_binary(
         "framework/gen_docs_combined.py",
     ],
     main = "framework/gen_docs_combined.py",
+    srcs_version = "PY2AND3",
     deps = [
         ":docs",
         ":platform",

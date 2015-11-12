@@ -76,6 +76,70 @@ CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 EOF
 
+function UnofficialSetting() {
+  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n"
+
+  # Configure the compute capabilities that TensorFlow builds for.
+  # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
+  while true; do
+    fromuser=""
+    if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+cat << EOF
+Please specify a list of comma-separated Cuda compute capabilities you want to build with.
+You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
+Please note that each additional compute capability significantly increases your build time and binary size.
+EOF
+      read -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+      fromuser=1
+    fi
+    # Check whether all capabilities from the input is valid
+    COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES//,/ }
+    ALL_VALID=1
+    for CAPABILITY in $COMPUTE_CAPABILITIES; do
+      if [[ ! "$CAPABILITY" =~ [0-9]+.[0-9]+ ]]; then
+        echo "Invalid compute capability: " $CAPABILITY
+        ALL_VALID=0
+        break
+      fi
+    done
+    if [ "$ALL_VALID" == "0" ]; then
+      if [ -z "$fromuser" ]; then
+        exit 1
+      fi
+    else
+      break
+    fi
+    TF_CUDA_COMPUTE_CAPABILITIES=""
+  done
+
+  if [ ! -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+    export WARNING="Unofficial setting. DO NOT"" SUBMIT!!!"
+    function CudaGenCodeOpts() {
+      OUTPUT=""
+      for CAPABILITY in $@; do
+        OUTPUT=${OUTPUT}"   \"${CAPABILITY}\",     "
+      done
+      echo $OUTPUT
+    }
+    export CUDA_GEN_CODES_OPTS=$(CudaGenCodeOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
+    perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\[).*?(\]),\n\1# $ENV{WARNING}\n\1\2$ENV{CUDA_GEN_CODES_OPTS}\3,s' third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+    function CudaVersionOpts() {
+      OUTPUT=""
+      for CAPABILITY in $@; do
+        OUTPUT=$OUTPUT"CudaVersion(\"${CAPABILITY}\"), "
+      done
+      echo $OUTPUT
+    }
+    export CUDA_VERSION_OPTS=$(CudaVersionOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
+    perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\{).*?(\}),\n\1// $ENV{WARNING}\n\1\2$ENV{CUDA_VERSION_OPTS}\3,s' tensorflow/core/common_runtime/gpu/gpu_device.cc
+  fi
+}
+
+# Only run the unofficial settings when users explicitly choose to.
+if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
+  UnofficialSetting
+fi
+
 # Invoke the cuda_config.sh and set up the TensorFlow's canonical view of the Cuda libraries
 (cd third_party/gpus/cuda; ./cuda_config.sh;) || exit -1
 

@@ -10,6 +10,7 @@ py_binary(
     srcs = [
         "alexnet_benchmark.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

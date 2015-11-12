@@ -23,8 +23,8 @@ static void GetBandMatrix(int depth, int64 depth_radius,
   for (int row = 0; row < depth; ++row) {
     const int begin = std::max<int>(0, row - depth_radius);
     const int end = std::min<int64>(depth, row + depth_radius + 1);
-    Eigen::DSizes<ptrdiff_t, 2> start(row, begin);
-    Eigen::DSizes<ptrdiff_t, 2> sizes(1, end - begin);
+    Eigen::DSizes<Eigen::DenseIndex, 2> start(row, begin);
+    Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, end - begin);
     result->slice(start, sizes).setConstant(1.0f);
   }
 }

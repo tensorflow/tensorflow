@@ -7,6 +7,7 @@ py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
     deps = ["//tensorflow:tensorflow_py"],
+    srcs_version = "PY2AND3",
 )
 
 sh_binary(

@@ -188,9 +188,9 @@ class LocalRendezvousImpl : public Rendezvous {
     // message arrives.
     Item* item = new Item;
     item->waiter = done;
+    item->recv_alloc_attrs = recv_args.alloc_attrs;
     if (recv_args.device_context) {
       item->recv_dev_context = recv_args.device_context;
-      item->recv_alloc_attrs = recv_args.alloc_attrs;
       item->recv_dev_context->Ref();
     }
     CHECK(table_.insert({key, item}).second);

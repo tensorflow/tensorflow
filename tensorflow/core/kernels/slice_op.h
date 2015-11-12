@@ -13,8 +13,8 @@ template <typename Device, typename T, int NDIMS>
 struct Slice {
   void operator()(const Device& d, typename TTypes<T, NDIMS>::Tensor output,
                   typename TTypes<T, NDIMS>::ConstTensor input,
-                  const Eigen::DSizes<ptrdiff_t, NDIMS>& slice_indices,
-                  const Eigen::DSizes<ptrdiff_t, NDIMS>& slice_sizes) {
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_sizes) {
     output.device(d) = input.slice(slice_indices, slice_sizes);
   }
 };

@@ -18,9 +18,9 @@ void ConcatGPU(const GPUDevice& d,
                const std::vector<
                    std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
                typename TTypes<T, 2>::Matrix* output) {
-  Eigen::array<ptrdiff_t, 2> offset(0, 0);
+  Eigen::array<Eigen::DenseIndex, 2> offset(0, 0);
   for (int i = 0; i < inputs.size(); ++i) {
-    Eigen::array<ptrdiff_t, 2> size = inputs[i]->dimensions();
+    Eigen::array<Eigen::DenseIndex, 2> size = inputs[i]->dimensions();
     output->slice(offset, size).device(d) = *inputs[i];
     offset[1] += size[1];
   }

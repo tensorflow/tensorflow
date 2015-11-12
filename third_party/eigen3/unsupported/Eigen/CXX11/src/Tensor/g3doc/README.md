@@ -1195,7 +1195,7 @@ for the last dimension).
     input.setRandom();
     kernel.setRandom();
 
-    Eigen::array<ptrdiff_t, 2> dims({1, 2});  // Specify second and third dimension for convolution.
+    Eigen::array<Eigen::DenseIndex, 2> dims({1, 2});  // Specify second and third dimension for convolution.
     output = input.convolve(kernel, dims);
 
     for (int i = 0; i < 3; ++i) {
@@ -1577,7 +1577,7 @@ For example, given the following input tensor:
 Six 2x2 patches can be extracted and indexed using the following code:
 
     Eigen::Tensor<float, 3, DataLayout> patch;
-    Eigen::array<ptrdiff_t, 2> patch_dims;
+    Eigen::array<Eigen::DenseIndex, 2> patch_dims;
     patch_dims[0] = 2;
     patch_dims[1] = 2;
     patch = tensor.extract_patches(patch_dims);

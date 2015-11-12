@@ -273,8 +273,8 @@ class TileGradientOp : public OpKernel {
 #undef HANDLE_DIM
     }
 
-    Eigen::DSizes<ptrdiff_t, NDIM> indices;
-    Eigen::DSizes<ptrdiff_t, NDIM> sizes;
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> indices;
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes;
 
     // Accumulate slices along the dimensions into the output. The number of
     // slices along dimension 'i' is simply the multiple along dimension 'i'
@@ -309,8 +309,8 @@ class TileGradientOp : public OpKernel {
   void HandleReduce(OpKernelContext* context,
                     const std::vector<int32>& reduce_dim_in, Tensor* result) {
     static_assert(NDIM >= REDUCENDIM, "Too many reduced dimensions");
-    Eigen::DSizes<ptrdiff_t, REDUCENDIM> reduce_dim;
-    Eigen::DSizes<ptrdiff_t, NDIM> reshape_dim;
+    Eigen::DSizes<Eigen::DenseIndex, REDUCENDIM> reduce_dim;
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> reshape_dim;
 
     for (int i = 0; i < REDUCENDIM; ++i) {
       reduce_dim[i] = reduce_dim_in[i];
@@ -392,26 +392,26 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
   DEFINE_GPU_DIM(T, 4)     \
   DEFINE_GPU_DIM(T, 5)
 
-#define DEFINE_GPU_DIM(T, NDIM)                                       \
-  template <>                                                         \
-  void Tile<GPUDevice, T, NDIM>::operator()(                          \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,       \
-      typename TTypes<T, NDIM>::ConstTensor in,                       \
-      const Eigen::array<int32, NDIM>& broadcast_array) const;        \
-  extern template struct Tile<GPUDevice, T, NDIM>;                    \
-  template <>                                                         \
-  void TileGrad<GPUDevice, T, NDIM>::operator()(                      \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,       \
-      typename TTypes<T, NDIM>::ConstTensor in,                       \
-      const Eigen::DSizes<ptrdiff_t, NDIM>& indices,                  \
-      const Eigen::DSizes<ptrdiff_t, NDIM>& sizes, bool first) const; \
-  extern template struct TileGrad<GPUDevice, T, NDIM>;                \
-  template <>                                                         \
-  void ReduceAndReshape<GPUDevice, T, NDIM, 1>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,       \
-      typename TTypes<T, NDIM>::ConstTensor in,                       \
-      const Eigen::DSizes<ptrdiff_t, 1>& reduce_dim,                  \
-      const Eigen::DSizes<ptrdiff_t, NDIM>& reshape_dim) const;       \
+#define DEFINE_GPU_DIM(T, NDIM)                                               \
+  template <>                                                                 \
+  void Tile<GPUDevice, T, NDIM>::operator()(                                  \
+      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
+      typename TTypes<T, NDIM>::ConstTensor in,                               \
+      const Eigen::array<int32, NDIM>& broadcast_array) const;                \
+  extern template struct Tile<GPUDevice, T, NDIM>;                            \
+  template <>                                                                 \
+  void TileGrad<GPUDevice, T, NDIM>::operator()(                              \
+      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
+      typename TTypes<T, NDIM>::ConstTensor in,                               \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,                  \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes, bool first) const; \
+  extern template struct TileGrad<GPUDevice, T, NDIM>;                        \
+  template <>                                                                 \
+  void ReduceAndReshape<GPUDevice, T, NDIM, 1>::operator()(                   \
+      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
+      typename TTypes<T, NDIM>::ConstTensor in,                               \
+      const Eigen::DSizes<Eigen::DenseIndex, 1>& reduce_dim,                  \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& reshape_dim) const;       \
   extern template struct ReduceAndReshape<GPUDevice, T, NDIM, 1>;
 
 namespace functor {

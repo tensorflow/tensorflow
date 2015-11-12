@@ -13,8 +13,8 @@ template <typename T>
 void Split<Eigen::ThreadPoolDevice, T>::operator()(
     const Eigen::ThreadPoolDevice& d, typename TTypes<T, 3>::Tensor output,
     typename TTypes<T, 3>::ConstTensor input,
-    const Eigen::DSizes<ptrdiff_t, 3>& slice_indices,
-    const Eigen::DSizes<ptrdiff_t, 3>& slice_sizes) {
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
   if (output.size() < 131072) {
     output = input.slice(slice_indices, slice_sizes);
   } else {

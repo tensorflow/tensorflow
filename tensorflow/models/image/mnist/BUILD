@@ -10,6 +10,7 @@ py_binary(
     srcs = [
         "convolutional.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -24,6 +25,7 @@ py_test(
         "--self_test=True",
     ],
     main = "convolutional.py",
+    srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

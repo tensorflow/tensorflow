@@ -8,6 +8,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "cifar10_input",
     srcs = ["cifar10_input.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -16,6 +17,7 @@ py_library(
 py_test(
     name = "cifar10_input_test",
     srcs = ["cifar10_input_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":cifar10_input",
         "//tensorflow:tensorflow_py",
@@ -27,6 +29,7 @@ py_test(
 py_library(
     name = "cifar10",
     srcs = ["cifar10.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":cifar10_input",
         "//tensorflow:tensorflow_py",
@@ -38,6 +41,7 @@ py_binary(
     srcs = [
         "cifar10_eval.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":cifar10",
@@ -49,6 +53,7 @@ py_binary(
     srcs = [
         "cifar10_train.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":cifar10",
@@ -60,6 +65,7 @@ py_binary(
     srcs = [
         "cifar10_multi_gpu_train.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":cifar10",

@@ -332,7 +332,8 @@ def py_tests(name,
                    deps=[
                        "//tensorflow/python:extra_py_tests_deps",
                        "//tensorflow/python:kernel_tests/gradient_checker",
-                   ] + additional_deps)
+                   ] + additional_deps,
+                   srcs_version="PY2AND3")
 
 
 def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
