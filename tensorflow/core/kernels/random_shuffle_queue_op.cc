@@ -6,7 +6,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/queue_base.h"
+#include "tensorflow/core/kernels/typed_queue.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -19,18 +19,16 @@
 
 namespace tensorflow {
 
-class RandomShuffleQueue : public QueueBase {
+class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
  public:
   RandomShuffleQueue(int32 capacity, int32 min_after_dequeue, int64 seed,
                      int64 seed2, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
                      const string& name);
-  Status Initialize();  // Must be called before any other method.
+
+  Status Initialize() override;  // Must be called before any other method.
 
   // Implementations of QueueInterface methods --------------------------------
-
-  Status ValidateTuple(const Tuple& tuple) override;
-  Status ValidateManyTuple(const Tuple& tuple) override;
   void TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
                   DoneCallback callback) override;
   void TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
@@ -38,8 +36,6 @@ class RandomShuffleQueue : public QueueBase {
   void TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) override;
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       CallbackWithTuple callback) override;
-  void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
-             DoneCallback callback) override;
   Status MatchesNodeDef(const NodeDef& node_def) override;
 
   int32 size() override {
@@ -48,95 +44,30 @@ class RandomShuffleQueue : public QueueBase {
   }
 
  private:
-  enum Action { kEnqueue, kDequeue };
-
   ~RandomShuffleQueue() override {}
-
-  TensorShape ManyOutShape(int i, int batch_size) {
-    TensorShape shape({batch_size});
-    shape.AppendShape(component_shapes_[i]);
-    return shape;
-  }
 
   // Helper for dequeuing a single random element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  void Cancel(Action action, CancellationToken token);
-
-  // Helper for cancelling all pending Enqueue(Many) operations when
-  // Close is called with cancel_pending_enqueues.
-  void CloseAndCancel();
-
-  // Tries to enqueue/dequeue (or close) based on whatever is at the
-  // front of enqueue_attempts_/dequeue_attempts_.  Appends to
-  // *finished the callback for any finished attempt (so it may be
-  // called once mu_ is released).  Returns true if any progress was
-  // made.
-  struct CleanUp {
-    CleanUp(DoneCallback&& f, CancellationToken ct, CancellationManager* cm)
-        : finished(f), to_deregister(ct), cm(cm) {}
-    DoneCallback finished;
-    CancellationToken to_deregister;
-    CancellationManager* cm;
-  };
-  bool TryAttemptLocked(Action action, std::vector<CleanUp>* clean_up)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Tries to make progress on the enqueues or dequeues at the front
-  // of the *_attempts_ queues.
-  void FlushUnlocked();
-
-  const int32 capacity_;
   const int32 min_after_dequeue_;
   const int64 original_seed_;
   const int64 original_seed2_;
 
-  mutex mu_;
-  typedef std::vector<PersistentTensor> SubQueue;
-  std::vector<SubQueue> queues_ GUARDED_BY(mu_);
-  bool closed_ GUARDED_BY(mu_);
   random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
   random::SingleSampleAdapter<random::PhiloxRandom> generator_ GUARDED_BY(mu_);
-
-  enum RunResult { kNoProgress, kProgress, kComplete };
-  struct Attempt;
-  typedef std::function<RunResult(Attempt*)> RunCallback;
-  struct Attempt {
-    int32 elements_requested;
-    DoneCallback done_callback;  // must be run outside mu_
-    OpKernelContext* context;
-    CancellationToken cancellation_token;
-    RunCallback run_callback;  // must be run while holding mu_
-    bool is_cancelled;
-    Tuple tuple;
-
-    Attempt(int32 elements_requested, DoneCallback done_callback,
-            OpKernelContext* context, CancellationToken cancellation_token,
-            RunCallback run_callback)
-        : elements_requested(elements_requested),
-          done_callback(done_callback),
-          context(context),
-          cancellation_token(cancellation_token),
-          run_callback(run_callback),
-          is_cancelled(false) {}
-  };
-  std::deque<Attempt> enqueue_attempts_ GUARDED_BY(mu_);
-  std::deque<Attempt> dequeue_attempts_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueue);
 };
 
 RandomShuffleQueue::RandomShuffleQueue(
-    int capacity, int min_after_dequeue, int64 seed, int64 seed2,
+    int32 capacity, int32 min_after_dequeue, int64 seed, int64 seed2,
     const DataTypeVector& component_dtypes,
     const std::vector<TensorShape>& component_shapes, const string& name)
-    : QueueBase(component_dtypes, component_shapes, name),
-      capacity_(capacity),
+    : TypedQueue(capacity, component_dtypes, component_shapes, name),
       min_after_dequeue_(min_after_dequeue),
       original_seed_(seed),
       original_seed2_(seed2),
-      closed_(false),
       generator_(&parent_generator_) {
   if (seed == 0 && seed2 == 0) {
     // If both seeds are unspecified, use completely random seeds.
@@ -147,67 +78,12 @@ RandomShuffleQueue::RandomShuffleQueue(
 }
 
 Status RandomShuffleQueue::Initialize() {
-  if (component_dtypes_.empty()) {
-    return errors::InvalidArgument("Empty component types for queue ", name_);
-  }
-  if (!component_shapes_.empty() &&
-      component_dtypes_.size() != component_shapes_.size()) {
-    return errors::InvalidArgument("Different number of component types (",
-                                   component_dtypes_.size(), ") vs. shapes (",
-                                   component_shapes_.size(), ").");
-  }
+  Status s = TypedQueue::Initialize();
+  if (!s.ok()) return s;
 
   mutex_lock lock(mu_);
-  queues_.reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
-    queues_.push_back(SubQueue());
     queues_.back().reserve(min_after_dequeue_);
-  }
-  return Status::OK();
-}
-
-// TODO(mrry): If these checks become a bottleneck, find a way to
-//   reduce the number of times that they are called.
-Status RandomShuffleQueue::ValidateTuple(const Tuple& tuple) {
-  TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
-  if (specified_shapes()) {
-    for (size_t i = 0; i < tuple.size(); ++i) {
-      if (!tuple[i].shape().IsSameSize(component_shapes_[i])) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            component_shapes_[i].ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
-      }
-    }
-  }
-  return Status::OK();
-}
-
-// TODO(mrry): If these checks become a bottleneck, find a way to
-//   reduce the number of times that they are called.
-Status RandomShuffleQueue::ValidateManyTuple(const Tuple& tuple) {
-  TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
-  const int64 batch_size = tuple[0].dim_size(0);
-  if (specified_shapes()) {
-    for (size_t i = 0; i < tuple.size(); ++i) {
-      // Expected shape is [batch_size] + component_shapes_[i]
-      const TensorShape expected_shape = ManyOutShape(i, batch_size);
-      if (!tuple[i].shape().IsSameSize(expected_shape)) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            expected_shape.ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
-      }
-    }
-  } else {
-    for (size_t i = 1; i < tuple.size(); ++i) {
-      if (tuple[i].dim_size(0) != batch_size) {
-        return errors::InvalidArgument(
-            "All input tensors must have the same size in the 0th ",
-            "dimension. Component ", i, " has ", tuple[i].dim_size(0),
-            ", and should have ", batch_size);
-      }
-    }
   }
   return Status::OK();
 }
@@ -220,113 +96,6 @@ void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
     (*tuple).push_back(*queues_[i][index].AccessTensor(ctx));
     queues_[i][index] = queues_[i].back();
     queues_[i].pop_back();
-  }
-}
-
-void RandomShuffleQueue::Cancel(Action action, CancellationToken token) {
-  DoneCallback callback = nullptr;
-  {
-    mutex_lock lock(mu_);
-    std::deque<Attempt>* attempts =
-        action == kEnqueue ? &enqueue_attempts_ : &dequeue_attempts_;
-
-    for (Attempt& attempt : *attempts) {
-      if (attempt.cancellation_token == token) {
-        attempt.is_cancelled = true;
-        if (action == kEnqueue) {
-          attempt.context->SetStatus(
-              errors::Cancelled("Enqueue operation was cancelled"));
-        } else {
-          attempt.context->SetStatus(
-              errors::Cancelled("Dequeue operation was cancelled"));
-        }
-        std::swap(callback, attempt.done_callback);
-        break;
-      }
-    }
-  }
-  if (callback) {
-    callback();
-    FlushUnlocked();
-  }
-}
-
-void RandomShuffleQueue::CloseAndCancel() {
-  std::vector<DoneCallback> callbacks;
-  {
-    mutex_lock lock(mu_);
-    closed_ = true;
-    for (Attempt& attempt : enqueue_attempts_) {
-      attempt.is_cancelled = true;
-      attempt.context->SetStatus(
-          errors::Cancelled("Enqueue operation was cancelled"));
-      callbacks.emplace_back(std::move(attempt.done_callback));
-    }
-  }
-  for (const DoneCallback& callback : callbacks) {
-    callback();
-  }
-  FlushUnlocked();
-}
-
-bool RandomShuffleQueue::TryAttemptLocked(
-    Action action, std::vector<CleanUp>* clean_up) {
-  std::deque<Attempt>* attempts =
-      action == kEnqueue ? &enqueue_attempts_ : &dequeue_attempts_;
-
-  bool progress = false;
-  bool done = false;
-  while (!done && !attempts->empty()) {
-    if (attempts->front().is_cancelled) {
-      if (action == kEnqueue) {
-        LOG(INFO) << "Skipping cancelled enqueue attempt";
-      } else {
-        LOG(INFO) << "Skipping cancelled dequeue attempt";
-      }
-      attempts->pop_front();
-    } else {
-      Attempt* cur_attempt = &attempts->front();
-      switch (cur_attempt->run_callback(cur_attempt)) {
-        case kNoProgress:
-          done = true;
-          break;
-        case kProgress:
-          done = true;
-          progress = true;
-          break;
-        case kComplete:
-          progress = true;
-          clean_up->emplace_back(std::move(cur_attempt->done_callback),
-                                 cur_attempt->cancellation_token,
-                                 cur_attempt->context->cancellation_manager());
-          attempts->pop_front();
-          break;
-      }
-    }
-  }
-  return progress;
-}
-
-void RandomShuffleQueue::FlushUnlocked() {
-  std::vector<CleanUp> clean_up;
-  Ref();
-  {
-    mutex_lock lock(mu_);
-    bool changed;
-    do {
-      changed = TryAttemptLocked(kEnqueue, &clean_up);
-      changed = TryAttemptLocked(kDequeue, &clean_up) || changed;
-    } while (changed);
-  }
-  Unref();
-  for (const auto& to_clean : clean_up) {
-    if (to_clean.to_deregister != CancellationManager::kInvalidToken) {
-      // NOTE(mrry): We can safely ignore the return value of
-      // DeregisterCallback because the mutex mu_ ensures that the
-      // cleanup action only executes once.
-      to_clean.cm->DeregisterCallback(to_clean.to_deregister);
-    }
-    to_clean.finished();
   }
 }
 
@@ -583,31 +352,6 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   }
 }
 
-void RandomShuffleQueue::Close(OpKernelContext* ctx,
-                               bool cancel_pending_enqueues,
-                               DoneCallback callback) {
-  if (cancel_pending_enqueues) {
-    CloseAndCancel();
-    callback();
-  } else {
-    {
-      mutex_lock lock(mu_);
-      enqueue_attempts_.emplace_back(
-          0, callback, ctx, CancellationManager::kInvalidToken,
-          [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            if (closed_) {
-              attempt->context->SetStatus(errors::Aborted(
-                  "RandomShuffleQueue '", name_, "' is already closed."));
-            } else {
-              closed_ = true;
-            }
-            return kComplete;
-          });
-    }
-    FlushUnlocked();
-  }
-}
-
 Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "RandomShuffleQueue"));
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
@@ -639,8 +383,6 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
 
   return Status::OK();
 }
-
-typedef std::shared_ptr<QueueInterface> QueueInterfacePtr;
 
 // Defines a RandomShuffleQueueOp, which produces a Queue (specifically, one
 // backed by RandomShuffleQueue) that persists across different graph

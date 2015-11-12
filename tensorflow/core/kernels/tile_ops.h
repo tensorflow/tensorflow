@@ -31,8 +31,8 @@ template <typename Device, typename T, int NDIM>
 struct TileGrad {
   void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
                   typename TTypes<T, NDIM>::ConstTensor in,
-                  const Eigen::DSizes<ptrdiff_t, NDIM>& indices,
-                  const Eigen::DSizes<ptrdiff_t, NDIM>& sizes,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes,
                   bool first) const {
     if (first) {
       out.device(d) = in.slice(indices, sizes);
@@ -58,10 +58,11 @@ struct TileGrad<Device, T, 0> {
 
 template <typename Device, typename T, int NDIM, int REDUCEDNDIM>
 struct ReduceAndReshape {
-  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
-                  typename TTypes<T, NDIM>::ConstTensor in,
-                  const Eigen::DSizes<ptrdiff_t, REDUCEDNDIM>& reduce_dim,
-                  const Eigen::DSizes<ptrdiff_t, NDIM>& reshape_dim) const {
+  void operator()(
+      const Device& d, typename TTypes<T, NDIM>::Tensor out,
+      typename TTypes<T, NDIM>::ConstTensor in,
+      const Eigen::DSizes<Eigen::DenseIndex, REDUCEDNDIM>& reduce_dim,
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& reshape_dim) const {
     out.device(d) = in.sum(reduce_dim).reshape(reshape_dim);
   }
 };

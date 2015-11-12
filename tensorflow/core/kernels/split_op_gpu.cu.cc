@@ -16,8 +16,8 @@ template <typename Device, typename T>
 void Split<Device, T>::operator()(
     const Device& d, typename TTypes<T, 3>::Tensor output,
     typename TTypes<T, 3>::ConstTensor input,
-    const Eigen::DSizes<ptrdiff_t, 3>& slice_indices,
-    const Eigen::DSizes<ptrdiff_t, 3>& slice_sizes) {
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
   output.device(d) = input.slice(slice_indices, slice_sizes);
 }
 

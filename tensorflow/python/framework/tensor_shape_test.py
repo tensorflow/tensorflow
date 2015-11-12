@@ -233,6 +233,12 @@ class ShapeTest(test_util.TensorFlowTestCase):
     tensor_shape.TensorShape(
         [94, 43]).assert_is_compatible_with(tensor_shape.matrix(94, 43))
 
+  def testTruedivFails(self):
+    unknown = tensor_shape.Dimension(None)
+    self.assertEqual((unknown // unknown).value, None)
+    with self.assertRaisesRegexp(TypeError, r"unsupported operand type"):
+      unknown / unknown  # pylint: disable=pointless-statement
+
 
 if __name__ == "__main__":
   googletest.main()

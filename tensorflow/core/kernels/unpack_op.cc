@@ -63,8 +63,8 @@ class UnpackOp : public OpKernel {
                      context->allocate_output(i, output_shape, &output));
       auto output_shaped = output->shaped<T, 3>({1, 1, output_size});
 
-      Eigen::DSizes<ptrdiff_t, 3> indices{0, i, 0};
-      Eigen::DSizes<ptrdiff_t, 3> sizes{1, 1, output_size};
+      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, i, 0};
+      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1, output_size};
       functor::Split<Device, T>()(context->eigen_device<Device>(),
                                   output_shaped, input_reshaped, indices,
                                   sizes);

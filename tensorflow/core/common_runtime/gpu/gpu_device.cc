@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 
 //#include "base/commandlineflags.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -590,10 +591,50 @@ static int GetMinGPUMultiprocessorCount() {
   return kDefaultMinGPUMultiprocessorCount;
 }
 
+namespace {
+
+struct CudaVersion {
+  // Initialize from version_name in the form of "3.5"
+  explicit CudaVersion(const std::string& version_name) {
+    size_t dot_pos = version_name.find('.');
+    CHECK(dot_pos != string::npos);
+    string major_str = version_name.substr(0, dot_pos);
+    CHECK(strings::safe_strto32(major_str.c_str(), &major_part));
+    string minor_str = version_name.substr(dot_pos + 1);
+    CHECK(strings::safe_strto32(minor_str.c_str(), &minor_part));
+  }
+  CudaVersion() {}
+  bool operator<(const CudaVersion& other) const {
+    if (this->major_part != other.major_part) {
+      return this->major_part < other.major_part;
+    }
+    return this->minor_part < other.minor_part;
+  }
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const CudaVersion& version) {
+    os << version.major_part << "." << version.minor_part;
+    return os;
+  }
+  int major_part = -1;
+  int minor_part = -1;
+};
+
+// "configure" uses the specific name to substitute the following string.
+// If you change it, make sure you modify "configure" as well.
+std::vector<CudaVersion> supported_cuda_compute_capabilities = {
+    CudaVersion("3.5"), CudaVersion("5.2")};
+
+}  // namespace
+
 void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
   auto gpu_manager = GPUMachineManager();
   int min_gpu_core_count = GetMinGPUMultiprocessorCount();
   if (gpu_manager) {
+    CHECK(!supported_cuda_compute_capabilities.empty());
+    CudaVersion min_supported_capability =
+        *std::min_element(supported_cuda_compute_capabilities.begin(),
+                          supported_cuda_compute_capabilities.end());
+
     auto visible_device_count = gpu_manager->VisibleDeviceCount();
     for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
       auto exec_status = gpu_manager->ExecutorForDevice(i);
@@ -602,17 +643,19 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
       }
       gpu::StreamExecutor* se = exec_status.ValueOrDie();
       const gpu::DeviceDescription& desc = se->GetDeviceDescription();
-      int major, minor;
-      if (!desc.cuda_compute_capability(&major, &minor)) {
+      CudaVersion device_capability;
+      if (!desc.cuda_compute_capability(&device_capability.major_part,
+                                        &device_capability.minor_part)) {
         continue;
       }
-      // Only consider GPUs with compute capability >= 3.5 (Kepler or
-      // higher)
-      if (major < 3 || (major == 3 && minor < 5)) {
+      // Only GPUs with no less than the minimum supported compute capability is
+      // accepted.
+      if (device_capability < min_supported_capability) {
         LOG(INFO) << "Ignoring gpu device "
                   << "(" << GetShortDeviceDescription(i, desc) << ") "
-                  << "with Cuda compute capability " << major << "." << minor
-                  << ". The minimum required Cuda capability is 3.5.";
+                  << "with Cuda compute capability " << device_capability
+                  << ". The minimum required Cuda capability is "
+                  << min_supported_capability << ".";
         continue;
       }
 

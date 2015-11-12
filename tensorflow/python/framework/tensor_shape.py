@@ -170,24 +170,40 @@ class Dimension(object):
   def __floordiv__(self, other):
     """Returns the quotient of `self` and `other` rounded down.
 
-    Dimensions are summed as follows:
+    Dimensions are divided as follows:
 
-      Dimension(m)    / Dimension(n)    == Dimension(m / n)
-      Dimension(m)    / Dimension(None) == Dimension(None)
-      Dimension(None) / Dimension(n)    == Dimension(None)
-      Dimension(None) / Dimension(None) == Dimension(None)
+      Dimension(m)    // Dimension(n)    == Dimension(m // n)
+      Dimension(m)    // Dimension(None) == Dimension(None)
+      Dimension(None) // Dimension(n)    == Dimension(None)
+      Dimension(None) // Dimension(None) == Dimension(None)
 
     Args:
-      other: Another Dimension.
+      other: Another `Dimension`.
 
     Returns:
-      A Dimension whose value is the sum of `self` and `other`.
+      A `Dimension` whose value is the integer quotient of `self` and `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
       return Dimension(self._value // other.value)
+
+  def __div__(self, other):
+    """DEPRECATED: Use `__floordiv__` via `x // y` instead.
+
+    This function exists only for backwards compatibility purposes; new code
+    should use `__floordiv__` via the syntax `x // y`.  Using `x // y`
+    communicates clearly that the result rounds down, and is forward compatible
+    to Python 3.
+
+    Args:
+      other: Another `Dimension`.
+
+    Returns:
+      A `Dimension` whose value is the integer quotient of `self` and `other`.
+    """
+    return self // other
 
   def __mod__(self, other):
     """Returns `self` modulo `other.

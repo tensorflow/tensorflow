@@ -294,6 +294,31 @@ Status ExecutorImpl::InferAllocAttr(
     const DeviceNameUtils::ParsedName& local_dev_name,
     AllocatorAttributes* attr) {
   Status s;
+  // Note that it's possible for *n to be a Recv and *dst to be a Send,
+  // so these two cases are not mutually exclusive.
+  if (IsRecv(n)) {
+    string src_name;
+    s = GetNodeAttr(n->def(), "send_device", &src_name);
+    if (!s.ok()) return s;
+    DeviceNameUtils::ParsedName parsed_src_name;
+    if (!DeviceNameUtils::ParseFullName(src_name, &parsed_src_name)) {
+      s = errors::Internal("Bad send_device attr '", src_name, "' in node ",
+                           n->name());
+      return s;
+    }
+    if (!DeviceNameUtils::IsSameAddressSpace(parsed_src_name, local_dev_name)) {
+      // Value is going to be the sink of an RPC.
+      attr->set_nic_compatible(true);
+      VLOG(2) << "node " << n->name() << " is the sink of an RPC in";
+    } else if (local_dev_name.type == "CPU" && parsed_src_name.type == "GPU") {
+      // Value is going to be the sink of a local DMA from GPU to CPU.
+      attr->set_gpu_compatible(true);
+      VLOG(2) << "node " << n->name() << " is the sink of a gpu->cpu copy";
+    } else {
+      VLOG(2) << "default alloc case local type " << local_dev_name.type
+              << " remote type " << parsed_src_name.type;
+    }
+  }
   if (IsSend(dst)) {
     string dst_name;
     s = GetNodeAttr(dst->def(), "recv_device", &dst_name);

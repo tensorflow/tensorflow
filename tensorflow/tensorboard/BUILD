@@ -20,11 +20,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
     name = "float_wrapper",
     srcs = ["float_wrapper.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -35,6 +37,7 @@ py_test(
         ":float_wrapper",
         "//tensorflow/python:platform_test",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_binary(
@@ -46,4 +49,5 @@ py_binary(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
+    srcs_version = "PY2AND3",
 )
