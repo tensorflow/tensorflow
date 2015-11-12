@@ -1,5 +1,9 @@
 """Class to hold a library of OpDefs and use it to create Brain operations."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numbers
 
 from tensorflow.core.framework import attr_value_pb2
@@ -138,6 +142,7 @@ def _MakeStr(v, arg_name):
   if not isinstance(v, basestring):
     raise TypeError("Expected string for argument '%s' not %s." %
                     (arg_name, repr(v)))
+  # TODO(irving): Figure out what to do here from Python 3
   return str(v)  # Convert unicode strings to bytes.
 
 

@@ -11,9 +11,7 @@ py_binary(
         "convolutional.py",
     ],
     visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -26,9 +24,7 @@ py_test(
         "--self_test=True",
     ],
     main = "convolutional.py",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 filegroup(

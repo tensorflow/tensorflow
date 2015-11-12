@@ -1,5 +1,10 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.platform import googletest
 from tensorflow.python.summary.impl import reservoir
 
@@ -84,7 +89,7 @@ class ReservoirBucketTest(googletest.TestCase):
     b = reservoir._ReservoirBucket(100)
     for i in xrange(100):
       b.AddItem(i)
-    self.assertEqual(b.Items(), range(100))
+    self.assertEqual(b.Items(), list(xrange(100)))
 
   def testDoesntOverfill(self):
     b = reservoir._ReservoirBucket(10)
@@ -119,7 +124,7 @@ class ReservoirBucketTest(googletest.TestCase):
     b = reservoir._ReservoirBucket(0)
     for i in xrange(20):
       b.AddItem(i)
-      self.assertEqual(b.Items(), range(i+1))
+      self.assertEqual(b.Items(), list(range(i + 1)))
 
   def testSizeRequirement(self):
     with self.assertRaises(ValueError):
@@ -134,7 +139,7 @@ class ReservoirBucketStatisticalDistributionTest(googletest.TestCase):
     self.total = 1000000
     self.samples = 10000
     self.n_buckets = 100
-    self.total_per_bucket = self.total / self.n_buckets
+    self.total_per_bucket = self.total // self.n_buckets
     self.assertEqual(self.total % self.n_buckets, 0, 'total must be evenly '
                      'divisible by the number of buckets')
     self.assertTrue(self.total > self.samples, 'need to have more items '
@@ -164,7 +169,7 @@ class ReservoirBucketStatisticalDistributionTest(googletest.TestCase):
     modbins = [0] * self.n_buckets
     # Slice off the last item when we iterate.
     for item in b.Items()[0:-1]:
-      divbins[item / self.total_per_bucket] += 1
+      divbins[item // self.total_per_bucket] += 1
       modbins[item % self.n_buckets] += 1
 
     for bucket_index in xrange(self.n_buckets):

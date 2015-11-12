@@ -1,4 +1,8 @@
 """Functional tests for Split Op."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -79,7 +83,7 @@ class SplitOpTest(tf.test.TestCase):
       result = sess.run(tf.split(split_dim, num_split, inp))
     slices = [slice(0, x) for x in shape]
     offset = 0
-    length = shape[split_dim] / num_split
+    length = shape[split_dim] // num_split
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + length)
       offset += length

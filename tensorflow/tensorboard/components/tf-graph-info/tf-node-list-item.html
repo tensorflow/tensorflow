@@ -39,8 +39,10 @@
          on-mouseover="_nodeListener"
          on-mouseout="_nodeListener"
          on-click="_nodeListener">
-      <tf-graph-icon class="node-icon"
-          node="[[itemNode]]" height="12"></tf-graph-icon>
+      <tf-graph-icon class="node-icon" height="12"
+          color-by="[[colorBy]]" color-by-params="[[colorByParams]]"
+          node="[[itemNode]]" render-info="[[itemRenderInfo]]"
+          template-index="[[templateIndex]]"></tf-graph-icon>
       <span title$="[[name]]">[[name]]</span>
     </div>
   </template>
@@ -61,11 +63,19 @@
            * @type {tf.graph.Node}
            */
           itemNode: Object,
+          /**
+           * The render node information for the item node. Used by the graph
+           * icon in determining fill color.
+           */
+          itemRenderInfo: Object,
           name: String,
           itemType: {
             type: String,
             observer: '_itemTypeChanged'
-          }
+          },
+          colorBy: String,
+          colorByParams: Object,
+          templateIndex: Function,
         },
 
         _itemTypeChanged: function() {

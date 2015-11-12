@@ -18,10 +18,12 @@ h2 {
 </style>
 <template is="dom-if" if="{{selectedNode}}">
   <paper-material elevation="1" class="card">
-    <tf-node-info graph-hierarchy='[[graphHierarchy]]'
+    <tf-node-info graph-hierarchy="[[graphHierarchy]]"
+                  render-hierarchy="[[renderHierarchy]]"
                   flat-graph="[[graph]]"
-                  node-name='[[selectedNode]]'
-                  highlighted-node='{{highlightedNode}}'>
+                  node-name="[[selectedNode]]"
+                  highlighted-node="{{highlightedNode}}"
+                  color-by="[[colorBy]]">
     </tf-node-info>
   </paper-material>
 </template>
@@ -35,6 +37,8 @@ h2 {
       title: String,
       graphHierarchy: Object,
       graph: Object,
+      renderHierarchy: Object,
+      colorBy: String,
       // Two-ways
       selectedNode: {
         type: String,

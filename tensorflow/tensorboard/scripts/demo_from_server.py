@@ -1,10 +1,15 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import json
 import os
 import urllib2
 import requests
 import os.path
 import shutil
+import six
+
 
 class TensorBoardStaticSerializer(object):
   """Serialize all the routes from a TensorBoard server to static json."""
@@ -81,8 +86,8 @@ class TensorBoardStaticSerializer(object):
   def Run(self):
     """Main method that loads and serializes everything."""
     runs = self._RetrieveAndSave('runs')
-    for run, tag_type_to_tags in runs.iteritems():
-      for tag_type, tags in tag_type_to_tags.iteritems():
+    for run, tag_type_to_tags in six.iteritems(runs):
+      for tag_type, tags in six.iteritems(tag_type_to_tags):
         try:
           if tag_type == 'graph':
             if tags:

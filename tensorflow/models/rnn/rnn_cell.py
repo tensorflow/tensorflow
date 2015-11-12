@@ -1,7 +1,11 @@
 """Module for constructing RNN Cells."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import math
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.rnn import linear
@@ -270,16 +274,15 @@ class LSTMCell(RNNCell):
 
     dtype = input_.dtype
 
-    unit_shard_size = (4 * self._num_units) / self._num_unit_shards
+    unit_shard_size = (4 * self._num_units) // self._num_unit_shards
 
     with tf.variable_scope(scope or type(self).__name__):  # "LSTMCell"
       w = tf.concat(
-          1, [tf.get_variable("W_%d" % i,
-                              shape=[self.input_size + num_proj,
-                                     unit_shard_size],
-                              initializer=self._initializer,
-                              dtype=dtype)
-              for i in range(self._num_unit_shards)])
+          1,
+          [tf.get_variable("W_%d" % i,
+                           shape=[self.input_size + num_proj, unit_shard_size],
+                           initializer=self._initializer,
+                           dtype=dtype) for i in xrange(self._num_unit_shards)])
 
       b = tf.get_variable(
           "B", shape=[4 * self._num_units],
@@ -313,12 +316,14 @@ class LSTMCell(RNNCell):
         m = tf.sigmoid(o) * tf.tanh(c)
 
       if self._num_proj is not None:
-        proj_shard_size = self._num_proj / self._num_proj_shards
+        proj_shard_size = self._num_proj // self._num_proj_shards
         w_proj = tf.concat(
-            1, [tf.get_variable("W_P_%d" % i,
-                                shape=[self._num_units, proj_shard_size],
-                                initializer=self._initializer, dtype=dtype)
-                for i in range(self._num_proj_shards)])
+            1,
+            [tf.get_variable("W_P_%d" % i,
+                             shape=[self._num_units, proj_shard_size],
+                             initializer=self._initializer,
+                             dtype=dtype)
+             for i in xrange(self._num_proj_shards)])
         # TODO(ebrevdo), use matmulsum
         m = tf.matmul(m, w_proj)
 

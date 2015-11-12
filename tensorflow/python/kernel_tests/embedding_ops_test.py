@@ -1,10 +1,14 @@
 """Functional tests for ops used with embeddings."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import itertools
 
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.kernel_tests import gradient_checker as gc
@@ -12,7 +16,7 @@ from tensorflow.python.kernel_tests import gradient_checker as gc
 
 def _AsLong(array):
   """Casts arrays elements to long type. Used to convert from numpy tf."""
-  return [long(x) for x in array]
+  return [int(x) for x in array]
 
 
 class ScatterAddSubTest(tf.test.TestCase):
@@ -104,7 +108,7 @@ def _EmbeddingParams(num_shards, vocab_size,
   feed_dict = {}
   if not shape: shape = [10]
   assert not vocab_size % num_shards
-  shape = [vocab_size / num_shards] + shape
+  shape = [vocab_size // num_shards] + shape
   for i in range(num_shards):
     param_name = _PName(i)
     constant_t = tf.constant(1.0, shape=shape, dtype=dtype,
@@ -130,8 +134,8 @@ def _EmbeddingResult(params, id_vals, num_shards, weight_vals=None):
       ids = [ids]
       wts = [wts]
     for i, wt_val in zip(ids, wts):
-      val = np.copy(params[_PName(i % num_shards) + ":0"]
-                    [i / num_shards, :]) * wt_val
+      val = np.copy(params[_PName(i % num_shards) + ":0"][
+          i // num_shards, :]) * wt_val
       if val_aggr is None:
         assert wt_aggr is None
         val_aggr = val
@@ -258,7 +262,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
           self.assertAllEqual(simple, tf.gather(params, ids).eval())
           # Run a few random sharded versions
           for procs in 1, 2, 3:
-            stride = procs * tf.range(0, params.shape[0] / procs)
+            stride = procs * tf.range(0, params.shape[0] // procs)
             split_params = [tf.gather(params, stride + p)
                             for p in xrange(procs)]
             sharded = tf.nn.embedding_lookup(split_params, ids).eval()

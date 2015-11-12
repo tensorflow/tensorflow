@@ -88,6 +88,7 @@ paper-progress {
   <div id="main">
     <tf-graph id="graph"
               graph-hierarchy="[[graphHierarchy]]"
+              render-hierarchy="{{_renderHierarchy}}"
               selected-node="{{_selectedNode}}"
               highlighted-node="{{_highlightedNode}}"
               color-by="[[colorBy]]"
@@ -100,9 +101,12 @@ paper-progress {
     <tf-graph-info id="graph-info"
                     title="selected"
                     graph-hierarchy="[[graphHierarchy]]"
+                    render-hierarchy="[[_renderHierarchy]]"
                     graph="[[graph]]"
                     selected-node="{{_selectedNode}}"
                     highlighted-node="{{_highlightedNode}}"
+                    color-by="[[colorBy]]"
+                    color-by-params="[[colorByParams]]"
     ></tf-graph-info>
   </div>
 </div>
@@ -126,6 +130,7 @@ Polymer({
      * for the progress bar and the displayed message.
      */
     progress: Object,
+    colorBy: String,
     colorByParams: {
       type: Object,
       notify: true,
@@ -133,6 +138,7 @@ Polymer({
     // Private API: Data routing between child components.
     _selectedNode: String,
     _highlightedNode: String,
+    _renderHierarchy: Object,
   },
   /** True if the progress is not complete yet (< 100 %). */
   _isNotComplete: function(progress) {

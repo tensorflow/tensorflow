@@ -1,14 +1,19 @@
 """Tests for tensorflow.ops.nn."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import math
 
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import types
 from tensorflow.python.kernel_tests import gradient_checker as gc
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients
@@ -80,9 +85,9 @@ class ZeroFractionTest(test_util.TensorFlowTestCase):
 
   def _ZeroFraction(self, x):
     assert x.shape
-    total_elements = float(np.prod(x.shape))
-    nonzeros = float(np.count_nonzero(x.flatten()))
-    return 1.0 - (nonzeros / total_elements)
+    total_elements = np.prod(x.shape)
+    nonzeros = np.count_nonzero(x.flatten())
+    return 1.0 - nonzeros / total_elements
 
   def testZeroFraction(self):
     x_shape = [5, 17]
@@ -561,6 +566,30 @@ class BatchNormWithGlobalNormalizationTest(test_util.TensorFlowTestCase):
 
 class MomentsTest(test_util.TensorFlowTestCase):
 
+  def RunMomentTestWithDynamicShape(self, shape, global_norm):
+    with self.test_session():
+      # shape = [batch, width, height, depth]
+      assert len(shape) == 4
+
+      x_numpy = np.random.normal(size=shape).astype(np.float32)
+      x = array_ops.placeholder(types.float32, shape=[None] * len(shape))
+
+      axes = [0, 1, 2] if global_norm else [0]
+      mean, var = nn.moments(x, axes)
+
+      num_elements = np.prod([shape[i] for i in axes])
+
+      ax = (0, 1, 2) if global_norm else (0)
+      expected_mean = np.sum(x_numpy, axis=ax) / num_elements
+      expected_mean_squared = np.multiply(expected_mean, expected_mean)
+      expected_x_squared = np.sum(
+          np.multiply(x_numpy, x_numpy), axis=ax) / num_elements
+      expected_variance = expected_x_squared - expected_mean_squared
+
+      # Check that the moments are correct.
+      self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
+      self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
+
   def RunMomentTest(self, shape, global_norm):
     with self.test_session():
       # shape = [batch, width, height, depth]
@@ -568,7 +597,7 @@ class MomentsTest(test_util.TensorFlowTestCase):
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
       x = constant_op.constant(x_numpy)
-      x.set_shape(shape)
+
       axes = [0, 1, 2] if global_norm else [0]
       mean, var = nn.moments(x, axes)
 
@@ -587,9 +616,11 @@ class MomentsTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
     self.RunMomentTest(shape=[2, 3, 5, 4], global_norm=False)
+    self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4], global_norm=False)
 
   def testGlobalNormalization(self):
     self.RunMomentTest(shape=[2, 3, 5, 4], global_norm=True)
+    self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4], global_norm=True)
 
   def _testGlobalGradient(self, from_y="mean"):
     with self.test_session():

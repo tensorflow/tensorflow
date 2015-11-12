@@ -5,7 +5,10 @@ Command to run this py_binary target:
 bazel run -c opt \
     <...>/tensorflow/g3doc/how_tos/reading_data:fully_connected_preloaded
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import os.path
 import time
 

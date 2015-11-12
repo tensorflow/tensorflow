@@ -109,6 +109,10 @@ overview of summaries, event files, and visualization in TensorBoard.
 """
 
 # Optimizers.
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer

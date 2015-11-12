@@ -9,7 +9,7 @@ namespace tensorflow {
 
 namespace {
 Status GetFactory(const SessionOptions& options, SessionFactory** ret) {
-  string runtime_type = "LOCAL_SESSION";
+  string runtime_type = "DIRECT_SESSION";
   if (!options.target.empty()) {
     // Use the service based session.
     runtime_type = "REMOTE_SESSION";

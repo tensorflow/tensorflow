@@ -85,7 +85,7 @@ TEST(NodeDefUtilTest, In) {
   AddNodeAttr("T", 17, &bad);
   ExpectFailure(
       bad, op,
-      "AttrValue had value with type int when type expected\n\t for attr "
+      "AttrValue had value with type 'int' when 'type' expected\n\t for attr "
       "'T'\n\t; NodeDef: ");
 
   // Wrong number of inputs

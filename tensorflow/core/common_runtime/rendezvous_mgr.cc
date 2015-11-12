@@ -4,8 +4,7 @@
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#if (!defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)) && \
-    (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
+#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
 #include "tensorflow/core/framework/types.h"
@@ -39,8 +38,7 @@ void CopyTensorBetweenDevices(const string& id, DeviceContext* send_dev_context,
   done(Status::OK());
 }
 
-#if (!defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)) && \
-    (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
+#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
 constexpr auto CopyTensorBetweenDevicesFunc = &GPUUtil::CopyViaDMA;
 #else
 constexpr auto CopyTensorBetweenDevicesFunc = &CopyTensorBetweenDevices;

@@ -42,6 +42,10 @@ or join multiple tensors together.
 @@dynamic_partition
 @@dynamic_stitch
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import sys
 import tensorflow.python.platform
 import numpy as np
@@ -852,7 +856,7 @@ def _ReshapeShape(op):
     if num_elements % known_elements != 0:
       raise ValueError("input has %s elements, which isn't divisible by %d" %
                        (num_elements, known_elements))
-    new_shape[unknown_index] = num_elements / known_elements
+    new_shape[unknown_index] = num_elements // known_elements
     return [tensor_shape.TensorShape(new_shape)]
   else:
     # We don't know the input shape, but we know n-1 of the dimensions
@@ -1042,7 +1046,7 @@ def _SplitShape(op):
           "dimension but got split_dim %d (size = %d) and num_split %d" %
           (split_dim, input_shape[split_dim].value, num_split))
     prefix = input_shape[:split_dim]
-    size_in_split_dim = input_shape[split_dim] / num_split
+    size_in_split_dim = input_shape[split_dim] // num_split
     suffix = input_shape[split_dim + 1:]
     output_shape = prefix.concatenate(size_in_split_dim).concatenate(suffix)
     return [output_shape] * num_split
@@ -1091,7 +1095,7 @@ def _TileGradShape(op):
   else:
     output_dims = []
     for i, dim in enumerate(input_shape.dims):
-      output_dims.append(dim / multiples[i])
+      output_dims.append(dim // multiples[i])
     return [tensor_shape.TensorShape(output_dims)]
 
 

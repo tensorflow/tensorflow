@@ -1,4 +1,8 @@
 """Tests for tensorflow.python.client.graph_util."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 from tensorflow.python.client import graph_util

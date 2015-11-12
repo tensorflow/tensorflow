@@ -1,5 +1,9 @@
 """Tests for tensorflow.python.ops.op_def_library."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from google.protobuf import text_format
 
 from tensorflow.core.framework import op_def_pb2

@@ -86,6 +86,10 @@ adjustments are often useful to expand a training set and reduce overfitting.
 
 @@per_image_whitening
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import math
 
 import tensorflow.python.platform
@@ -407,16 +411,16 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   offset_crop_width = 0
   offset_pad_width = 0
   if target_width < original_width:
-    offset_crop_width = int((original_width - target_width) / 2)
+    offset_crop_width = (original_width - target_width) // 2
   elif target_width > original_width:
-    offset_pad_width = int((target_width - original_width) / 2)
+    offset_pad_width = (target_width - original_width) // 2
 
   offset_crop_height = 0
   offset_pad_height = 0
   if target_height < original_height:
-    offset_crop_height = int((original_height - target_height) / 2)
+    offset_crop_height = (original_height - target_height) // 2
   elif target_height > original_height:
-    offset_pad_height = int((target_height - original_height) / 2)
+    offset_pad_height = (target_height - original_height) // 2
 
   # Maybe crop if needed.
   cropped = crop_to_bounding_box(image, offset_crop_height, offset_crop_width,

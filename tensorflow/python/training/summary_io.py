@@ -1,5 +1,9 @@
 """Reads Summaries from and writes Summaries to event files."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os.path
 import Queue
 import threading
@@ -105,7 +109,7 @@ class SummaryWriter(object):
       summary = summ
     event = event_pb2.Event(wall_time=time.time(), summary=summary)
     if global_step is not None:
-      event.step = long(global_step)
+      event.step = int(global_step)
     self.add_event(event)
 
   def add_event(self, event):
@@ -129,7 +133,7 @@ class SummaryWriter(object):
     """
     event = event_pb2.Event(wall_time=time.time(), graph_def=graph_def)
     if global_step is not None:
-      event.step = long(global_step)
+      event.step = int(global_step)
     self._event_queue.put(event)
 
   def flush(self):

@@ -32,6 +32,10 @@ examples of how a graph is launched in a [`tf.Session`](#Session).
 @@DataLossError
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.client.session import InteractiveSession
 from tensorflow.python.client.session import Session
 

@@ -558,11 +558,12 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
           << " numa: " << desc.numa_node() << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
-  return CreateGPUDevice(
-      options, name, allocated_bytes, bus_adjacency, gpu_id,
-      GetShortDeviceDescription(gpu_id, desc),
-      process_state->GetGPUAllocator(gpu_id, allocated_memory),
-      process_state->GetCPUAllocator(desc.numa_node()));
+  return CreateGPUDevice(options, name, allocated_bytes, bus_adjacency, gpu_id,
+                         GetShortDeviceDescription(gpu_id, desc),
+                         process_state->GetGPUAllocator(
+                             gpu_id, allocated_memory,
+                             options.config.gpu_options().allocator_type()),
+                         process_state->GetCPUAllocator(desc.numa_node()));
 }
 
 static int GetMinGPUMultiprocessorCount() {

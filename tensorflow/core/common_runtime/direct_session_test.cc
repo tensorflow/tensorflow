@@ -1,4 +1,4 @@
-#include "tensorflow/core/common_runtime/local_session.h"
+#include "tensorflow/core/common_runtime/direct_session.h"
 
 #include <map>
 #include <string>
@@ -29,7 +29,7 @@ Session* CreateSession() {
   return NewSession(options);
 }
 
-class LocalSessionMinusAXTest : public ::testing::Test {
+class DirectSessionMinusAXTest : public ::testing::Test {
  public:
   void Initialize(std::initializer_list<float> a_values) {
     RequireDefaultOps();
@@ -64,7 +64,7 @@ class LocalSessionMinusAXTest : public ::testing::Test {
   GraphDef def_;
 };
 
-TEST_F(LocalSessionMinusAXTest, RunSimpleNetwork) {
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   Initialize({3, 2, -1, 0});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -86,7 +86,7 @@ TEST_F(LocalSessionMinusAXTest, RunSimpleNetwork) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 }
 
-TEST_F(LocalSessionMinusAXTest, TestFeed) {
+TEST_F(DirectSessionMinusAXTest, TestFeed) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -115,7 +115,7 @@ TEST_F(LocalSessionMinusAXTest, TestFeed) {
   EXPECT_FLOAT_EQ(39.0, mat(1, 0));
 }
 
-TEST_F(LocalSessionMinusAXTest, TestConcurrency) {
+TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -147,7 +147,7 @@ TEST_F(LocalSessionMinusAXTest, TestConcurrency) {
   delete tp;
 }
 
-TEST_F(LocalSessionMinusAXTest, TwoCreateCallsFails) {
+TEST_F(DirectSessionMinusAXTest, TwoCreateCallsFails) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -157,7 +157,7 @@ TEST_F(LocalSessionMinusAXTest, TwoCreateCallsFails) {
   ASSERT_FALSE(session->Create(def_).ok());
 }
 
-TEST_F(LocalSessionMinusAXTest, ForgetToCreate) {
+TEST_F(DirectSessionMinusAXTest, ForgetToCreate) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -166,7 +166,7 @@ TEST_F(LocalSessionMinusAXTest, ForgetToCreate) {
   ASSERT_FALSE(session->Run(inputs, {y_ + ":0"}, {y_neg_}, &outputs).ok());
 }
 
-TEST_F(LocalSessionMinusAXTest, InvalidDevice) {
+TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   GraphDef def;
   Graph graph(OpRegistry::Global());
 
@@ -203,7 +203,7 @@ TEST_F(LocalSessionMinusAXTest, InvalidDevice) {
   ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
 }
 
-TEST(LocalSessionTest, KeepsStateAcrossRunsOfSession) {
+TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   GraphDef def;
   Graph g(OpRegistry::Global());
   Node* var = test::graph::Var(&g, DT_FLOAT, TensorShape({10}));
@@ -242,7 +242,7 @@ TEST(LocalSessionTest, KeepsStateAcrossRunsOfSession) {
   EXPECT_EQ(20.0, outputs[0].flat<float>()(0));
 }
 
-TEST(LocalSessionTest, MultipleFeedTest) {
+TEST(DirectSessionTest, MultipleFeedTest) {
   GraphDef def;
   Graph g(OpRegistry::Global());
   Node* var = test::graph::Var(&g, DT_FLOAT, TensorShape({10}));

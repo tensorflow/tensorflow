@@ -1,5 +1,5 @@
-#ifndef TENSORFLOW_COMMON_RUNTIME_LOCAL_SESSION_H_
-#define TENSORFLOW_COMMON_RUNTIME_LOCAL_SESSION_H_
+#ifndef TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
+#define TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
 
 #include <memory>
 #include <string>
@@ -22,11 +22,11 @@ namespace tensorflow {
 
 class Device;
 
-class LocalSession : public Session {
+class DirectSession : public Session {
  public:
   // Takes ownership of 'device_mgr'.
-  LocalSession(const SessionOptions& options, const DeviceMgr* device_mgr);
-  ~LocalSession() override;
+  DirectSession(const SessionOptions& options, const DeviceMgr* device_mgr);
+  ~DirectSession() override;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
@@ -101,9 +101,9 @@ class LocalSession : public Session {
   // For generating unique names.
   int64 name_counter_ GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LocalSession);
+  TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_LOCAL_SESSION_H_
+#endif  // TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_

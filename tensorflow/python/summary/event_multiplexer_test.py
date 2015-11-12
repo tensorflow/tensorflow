@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 
 import tensorflow.python.platform
@@ -67,7 +71,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
 
   def testRunNamesRespected(self):
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
-    self.assertItemsEqual(x.Runs().keys(), ['run1', 'run2'])
+    self.assertItemsEqual(sorted(x.Runs().keys()), ['run1', 'run2'])
     self.assertEqual(x._GetAccumulator('run1')._path, 'path1')
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
@@ -127,14 +131,14 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     path1 = join(realdir, 'path1')
     gfile.MkDir(path1)
     x.AddRunsFromDirectory(realdir)
-    self.assertEqual(x.Runs().keys(), ['path1'], 'loaded run: path1')
+    self.assertEqual(sorted(x.Runs().keys()), ['path1'], 'loaded run: path1')
     loader1 = x._GetAccumulator('path1')
     self.assertEqual(loader1._path, path1, 'has the correct path')
 
     path2 = join(realdir, 'path2')
     gfile.MkDir(path2)
     x.AddRunsFromDirectory(realdir)
-    self.assertItemsEqual(x.Runs().keys(), ['path1', 'path2'])
+    self.assertItemsEqual(sorted(x.Runs().keys()), ['path1', 'path2'])
     self.assertEqual(x._GetAccumulator('path1'), loader1,
                      'loader1 not regenerated')
     loader2 = x._GetAccumulator('path2')
@@ -142,7 +146,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     path2_2 = join(path2, 'path2')
     gfile.MkDir(path2_2)
     x.AddRunsFromDirectory(path2)
-    self.assertItemsEqual(x.Runs().keys(), ['path1', 'path2'])
+    self.assertItemsEqual(sorted(x.Runs().keys()), ['path1', 'path2'])
     self.assertNotEqual(loader2, x._GetAccumulator('path2'),
                         'loader2 regenerated')
     self.assertEqual(x._GetAccumulator('path2')._path, path2_2,
@@ -207,7 +211,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x = event_multiplexer.EventMultiplexer()
     x.AddRun('run1_path', 'run1')
     run1 = x._GetAccumulator('run1')
-    self.assertEqual(x.Runs().keys(), ['run1'])
+    self.assertEqual(sorted(x.Runs().keys()), ['run1'])
     self.assertEqual(run1._path, 'run1_path')
 
     x.AddRun('run1_path', 'run1')
@@ -219,7 +223,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertNotEqual(run1, new_run1)
 
     x.AddRun('runName3')
-    self.assertItemsEqual(x.Runs().keys(), ['run1', 'runName3'])
+    self.assertItemsEqual(sorted(x.Runs().keys()), ['run1', 'runName3'])
     self.assertEqual(x._GetAccumulator('runName3')._path, 'runName3')
 
   def testAddRunMaintainsLoading(self):

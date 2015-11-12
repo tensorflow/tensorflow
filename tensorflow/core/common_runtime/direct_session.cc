@@ -1,4 +1,4 @@
-#include "tensorflow/core/common_runtime/local_session.h"
+#include "tensorflow/core/common_runtime/direct_session.h"
 
 #include <string>
 #include <vector>
@@ -42,7 +42,7 @@ static bool InitModule(const SessionOptions& options) {
     // Default to using the number of cores available in the process.
     inter_op_parallelism_threads = port::NumSchedulableCPUs();
   }
-  LOG(INFO) << "Local session inter op parallelism threads: "
+  LOG(INFO) << "Direct session inter op parallelism threads: "
             << inter_op_parallelism_threads;
   kernel_thread_pool_ = new thread::ThreadPool(options.env, "Compute",
                                                inter_op_parallelism_threads);
@@ -92,7 +92,7 @@ void SchedClosure(std::function<void()> c) {
 
 }  // namespace
 
-LocalSession::LocalSession(const SessionOptions& options,
+DirectSession::DirectSession(const SessionOptions& options,
                            const DeviceMgr* device_mgr)
     : options_(options),
       device_mgr_(device_mgr),
@@ -124,7 +124,7 @@ LocalSession::LocalSession(const SessionOptions& options,
   }
 }
 
-LocalSession::~LocalSession() {
+DirectSession::~DirectSession() {
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
   }
@@ -134,7 +134,7 @@ LocalSession::~LocalSession() {
   delete cancellation_manager_;
 }
 
-Status LocalSession::Create(const GraphDef& graph) {
+Status DirectSession::Create(const GraphDef& graph) {
   mutex_lock l(graph_def_lock_);
   if (graph_created_) {
     return errors::AlreadyExists(
@@ -143,18 +143,18 @@ Status LocalSession::Create(const GraphDef& graph) {
   return ExtendLocked(graph);
 }
 
-Status LocalSession::Extend(const GraphDef& graph) {
+Status DirectSession::Extend(const GraphDef& graph) {
   mutex_lock l(graph_def_lock_);
   return ExtendLocked(graph);
 }
 
-Status LocalSession::ExtendLocked(const GraphDef& graph) {
+Status DirectSession::ExtendLocked(const GraphDef& graph) {
   graph_created_ = true;  // In case this is first call
   graph_def_.MergeFrom(graph);
   return Status::OK();
 }
 
-Status LocalSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
+Status DirectSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
                          const std::vector<string>& output_names,
                          const std::vector<string>& target_nodes,
                          std::vector<Tensor>* outputs) {
@@ -250,7 +250,7 @@ Status LocalSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
   return s;
 }
 
-Status LocalSession::GetOrCreateExecutors(
+Status DirectSession::GetOrCreateExecutors(
     gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
     gtl::ArraySlice<string> target_nodes,
     ExecutorsAndKeys** executors_and_keys) {
@@ -358,7 +358,7 @@ Status LocalSession::GetOrCreateExecutors(
   return Status::OK();
 }
 
-void LocalSession::SaveStatefulNodes(Graph* graph) {
+void DirectSession::SaveStatefulNodes(Graph* graph) {
   for (Node* n : graph->nodes()) {
     if (n->op_def().is_stateful()) {
       VLOG(2) << "Saving " << n->DebugString();
@@ -367,7 +367,7 @@ void LocalSession::SaveStatefulNodes(Graph* graph) {
   }
 }
 
-void LocalSession::RestoreStatefulNodes(Graph* graph) {
+void DirectSession::RestoreStatefulNodes(Graph* graph) {
   for (Node* n : graph->nodes()) {
     if (n->op_def().is_stateful()) {
       auto iter = stateful_placements_.find(n->name());
@@ -379,7 +379,7 @@ void LocalSession::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
-Status LocalSession::CreateGraphs(gtl::ArraySlice<string> feeds,
+Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
                                   gtl::ArraySlice<string> fetches,
                                   gtl::ArraySlice<string> target_nodes,
                                   std::unordered_map<string, Graph*>* outputs) {
@@ -422,7 +422,7 @@ Status LocalSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     return strings::StrCat(prefix, "/_", name_counter_++);
   };
   popts.get_incarnation = [](const string& name) {
-    // The local session does not have changing incarnation numbers.
+    // The direct session does not have changing incarnation numbers.
     // Just return '1'.
     return 1;
   };
@@ -476,29 +476,29 @@ Status LocalSession::CreateGraphs(gtl::ArraySlice<string> feeds,
   return Status::OK();
 }
 
-::tensorflow::Status LocalSession::Close() {
+::tensorflow::Status DirectSession::Close() {
   cancellation_manager_->StartCancel();
   return ::tensorflow::Status::OK();
 }
 
-class LocalSessionFactory : public SessionFactory {
+class DirectSessionFactory : public SessionFactory {
  public:
-  LocalSessionFactory() {}
+  DirectSessionFactory() {}
 
   Session* NewSession(const SessionOptions& options) override {
     std::vector<Device*> devices;
     DeviceFactory::AddDevices(options, "/job:localhost/replica:0/task:0",
                               &devices);
-    return new LocalSession(options, new DeviceMgr(devices));
+    return new DirectSession(options, new DeviceMgr(devices));
   }
 };
 
-class LocalSessionRegistrar {
+class DirectSessionRegistrar {
  public:
-  LocalSessionRegistrar() {
-    SessionFactory::Register("LOCAL_SESSION", new LocalSessionFactory());
+  DirectSessionRegistrar() {
+    SessionFactory::Register("DIRECT_SESSION", new DirectSessionFactory());
   }
 };
-static LocalSessionRegistrar registrar;
+static DirectSessionRegistrar registrar;
 
 }  // namespace tensorflow

@@ -12,6 +12,8 @@ See the following papers for more information on neural translation models.
  * http://arxiv.org/abs/1409.0473
  * http://arxiv.org/pdf/1412.2007v2.pdf
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import math
@@ -23,6 +25,7 @@ import time
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.rnn.translate import data_utils

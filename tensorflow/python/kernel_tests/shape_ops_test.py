@@ -1,5 +1,8 @@
 """Tests for various tensorflow.ops.tf."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -229,7 +232,7 @@ class TileTest(tf.test.TestCase):
         "int64": (tf.int64, int),
         "string": (tf.string, str)
     }
-    for dtype_np, v in types_to_test.iteritems():
+    for dtype_np, v in types_to_test.items():
       with self.test_session():
         dtype_tf = v[0]
         cast = v[1]

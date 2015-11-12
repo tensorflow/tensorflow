@@ -620,9 +620,7 @@ py_library(
 py_library(
     name = "util",
     srcs = glob(["util/**/*.py"]),
-    deps = [
-        "//google/protobuf:protobuf_python",
-    ],
+    deps = ["//google/protobuf:protobuf_python"],
 )
 
 tf_proto_library_py(
@@ -672,9 +670,9 @@ tf_cuda_library(
         ":construction_fails_op",
         ":test_kernel_label_op_kernel",
         "//tensorflow/core",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:kernels",
         "//tensorflow/core:lib",
-        "//tensorflow/core:local",
         "//tensorflow/core:protos_cc",
     ],
 )

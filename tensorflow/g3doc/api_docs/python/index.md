@@ -121,6 +121,7 @@
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
   * [`exp`](../../api_docs/python/math_ops.md#exp)
   * [`floor`](../../api_docs/python/math_ops.md#floor)
+  * [`floordiv`](../../api_docs/python/math_ops.md#floordiv)
   * [`imag`](../../api_docs/python/math_ops.md#imag)
   * [`inv`](../../api_docs/python/math_ops.md#inv)
   * [`invert_permutation`](../../api_docs/python/math_ops.md#invert_permutation)
@@ -158,6 +159,7 @@
   * [`square`](../../api_docs/python/math_ops.md#square)
   * [`sub`](../../api_docs/python/math_ops.md#sub)
   * [`transpose`](../../api_docs/python/math_ops.md#transpose)
+  * [`truediv`](../../api_docs/python/math_ops.md#truediv)
   * [`unique`](../../api_docs/python/math_ops.md#unique)
   * [`unsorted_segment_sum`](../../api_docs/python/math_ops.md#unsorted_segment_sum)
   * [`where`](../../api_docs/python/math_ops.md#where)
@@ -188,6 +190,7 @@
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
+  * [`xrange`](../../api_docs/python/control_flow_ops.md#xrange)
 
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)

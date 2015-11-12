@@ -34,7 +34,7 @@ class AddNOp : public OpKernel {
 
 #define I(IDX) ctx->input(IDX).flat<T>()
 
-#if defined(PLATFORM_POSIX_ANDROID) || defined(PLATFORM_GOOGLE_ANDROID)
+#if defined(__ANDROID__)
     // On Android, we only support additions of two arguments, so we
     // can reduce the number of template instantiations.
     OP_REQUIRES(ctx, num == 2,
@@ -103,7 +103,7 @@ class AddNOp : public OpKernel {
       functor8p(ctx->template eigen_device<Device>(), To, I(r), I(r + 1),
                 I(r + 2), I(r + 3), I(r + 4), I(r + 5), I(r + 6), I(r + 7));
     }
-#endif  // defined(PLATFORM_POSIX_ANDROID) || defined(PLATFORM_GOOGLE_ANDROID)
+#endif  // defined(__ANDROID__)
 
 #undef I
   }

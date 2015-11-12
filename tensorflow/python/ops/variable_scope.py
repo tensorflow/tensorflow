@@ -1,5 +1,9 @@
 """A class to store named variables and a scope operator to manage sharing."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import contextlib
 
 from tensorflow.python.framework import ops
@@ -72,14 +76,14 @@ class _VariableStore(object):
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
         raise ValueError("Trying to share variable %s, but specified shape %s"
-                         " and found shape %s." % (name, str(shape),
-                                                   str(found_var.get_shape())))
+                         " and found shape %s." % (name, shape,
+                                                   found_var.get_shape()))
       if not dtype.is_compatible_with(found_var.dtype):
         dtype_str = dtype.name
         found_type_str = found_var.dtype.name
         raise ValueError("Trying to share variable %s, but specified dtype %s"
-                         " and found dtype %s." % (name, str(dtype_str),
-                                                   str(found_type_str)))
+                         " and found dtype %s." % (name, dtype_str,
+                                                   found_type_str))
       return found_var
 
     # The code below handles only the case of creating a new variable.
@@ -97,7 +101,7 @@ class _VariableStore(object):
                            collections=collections)
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
-                 format(shape), str(initializer))
+                 format(shape), initializer)
     return v
 
 

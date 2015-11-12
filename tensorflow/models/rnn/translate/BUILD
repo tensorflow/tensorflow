@@ -12,9 +12,7 @@ py_library(
     srcs = [
         "data_utils.py",
     ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(

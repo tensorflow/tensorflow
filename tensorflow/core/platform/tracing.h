@@ -196,7 +196,7 @@ class Tracing::TraceMe {
 }  // namespace port
 }  // namespace tensorflow
 
-#if defined(PLATFORM_GOOGLE) && !defined(ANDROID) && !defined(__ANDROID__)
+#if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/tracing_impl.h"
 #else
 #include "tensorflow/core/platform/default/tracing_impl.h"

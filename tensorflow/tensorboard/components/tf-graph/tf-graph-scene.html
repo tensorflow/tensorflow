@@ -4,8 +4,8 @@
 <script src="../tf-graph-common/lib/layout.js"></script>
 <script src="../../bower_components/dagre/dist/dagre.core.js"></script>
 <!--
-  A module that takes graph-hierarchy as input and produce
-  a svg dom using dagre and d3.
+  A module that takes a render hierarchy as input and produces an SVG DOM using
+  dagre and d3.
 -->
 <dom-module id="tf-graph-scene">
 <template>
@@ -94,7 +94,7 @@
 Polymer({
   is: 'tf-graph-scene',
   properties: {
-    graphHierarchy: Object,
+    renderHierarchy: Object,
     name: String,
     colorBy: {
       type: String,
@@ -134,9 +134,10 @@ Polymer({
     /**
      * @type {d3.scale.ordinal}
      * Scale mapping from template name to a number between 0 and N-1
-     * where N is the number of different template names.
+     * where N is the number of different template names. Used by
+     * tf.graph.scene.node when computing node color by structure.
      */
-    templateIndex: Object,
+    templateIndex: Function,
     /**
      * @type {tf.scene.Minimap}
      * A minimap object to notify for zoom events.
@@ -198,16 +199,17 @@ Polymer({
     progress: Object
   },
   observers: [
-    '_buildAndFit(graphHierarchy)'
+    '_buildAndFit(renderHierarchy)'
   ],
   getNode: function(nodeName) {
-    return this.graphHierarchy.getRenderNodeByName(nodeName);
+    return this.renderHierarchy.getRenderNodeByName(nodeName);
   },
   isNodeExpanded: function(node) {
     return node.expanded;
   },
   setNodeExpanded: function(renderNode) {
-    this._build(this.graphHierarchy);
+    this._build(this.renderHierarchy);
+    this._updateLabels(!this._zoomed);
   },
   /**
    * Resets the state of the component. Called whenever the whole graph
@@ -226,20 +228,15 @@ Polymer({
         .selectAll('*').remove();
   },
   /** Main method for building the scene */
-  _build: function(graphHierarchy) {
-    if (!graphHierarchy) { return; } //handle untruthy input
-    var templateNames = d3.keys(graphHierarchy.hierarchy.templates);
-
-    this.templateIndex = d3.scale.ordinal()
-                                 .domain(templateNames)
-                                 .range(d3.range(0, templateNames.length));
+  _build: function(renderHierarchy) {
+    this.templateIndex = renderHierarchy.hierarchy.getTemplateIndex();
     tf.time('tf-graph-scene (layout):', function() {
       // layout the scene for this meta / series node
-      tf.graph.layout.scene(graphHierarchy.root, this);
+      tf.graph.layout.scene(renderHierarchy.root, this);
     }.bind(this));
 
     tf.time('tf-graph-scene (build scene):', function() {
-      tf.graph.scene.buildGroup(d3.select(this.$.root), graphHierarchy.root, this);
+      tf.graph.scene.buildGroup(d3.select(this.$.root), renderHierarchy.root, this);
       tf.graph.scene.addGraphClickListener(this.$.svg, this);
     }.bind(this));
     // Update the minimap again when the graph is done animating.
@@ -302,21 +299,24 @@ Polymer({
         tf.graph.layout.PARAMS.minimap.size,
         tf.graph.layout.PARAMS.subscene.meta.labelHeight);
   },
-  _buildAndFit: function(graphHierarchy) {
+  _buildAndFit: function(renderHierarchy) {
     this._resetState();
-    this._build(graphHierarchy);
+    this._build(renderHierarchy);
     // Fit to screen after the graph is done animating.
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   _updateLabels: function(showLabels) {
     var titleStyle = this.getElementsByClassName('title')[0].style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
-    var core = this.getElementsByClassName(tf.graph.scene.Class.Scene.CORE)[0];
+    var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+      tf.graph.scene.Class.Scene.CORE)[0][0];
     // Only show labels if the graph is fully loaded.
     if (showLabels && core && this.progress && this.progress.value === 100) {
       var aux =
-        this.getElementsByClassName(tf.graph.scene.Class.Scene.INEXTRACT)[0] ||
-        this.getElementsByClassName(tf.graph.scene.Class.Scene.OUTEXTRACT)[0];
+        d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+          tf.graph.scene.Class.Scene.INEXTRACT)[0][0] ||
+        d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+          tf.graph.scene.Class.Scene.OUTEXTRACT)[0][0];
       var coreX = core.getCTM().e;
       var auxX = aux ? aux.getCTM().e : null;
       titleStyle.display = 'inline';
@@ -421,7 +421,7 @@ Polymer({
     }
     // Update the minimap to reflect the highlighted (selected) node.
     this.minimap.update();
-    var node = this.graphHierarchy.hierarchy.node(selectedNode);
+    var node = this.renderHierarchy.hierarchy.node(selectedNode);
     var nodeParents = [];
     // Create list of all metanode parents of the selected node.
     while (node.parentNode != null
@@ -432,8 +432,8 @@ Polymer({
     // Ensure each parent metanode is built and expanded.
     var topParentNodeToBeExpanded;
     _.forEachRight(nodeParents, function(parentName) {
-      this.graphHierarchy.buildSubhierarchy(parentName);
-      var renderNode = this.graphHierarchy.getRenderNodeByName(parentName);
+      this.renderHierarchy.buildSubhierarchy(parentName);
+      var renderNode = this.renderHierarchy.getRenderNodeByName(parentName);
       if (renderNode.node.isGroupNode && !renderNode.expanded) {
         renderNode.expanded = true;
         if (!topParentNodeToBeExpanded) {

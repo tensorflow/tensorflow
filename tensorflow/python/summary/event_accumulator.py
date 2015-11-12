@@ -1,4 +1,7 @@
 """Takes a generator of values, and accumulates them for a frontend."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import collections
 import threading
@@ -393,7 +396,7 @@ class EventAccumulator(object):
     bucket_limit = list(histo.bucket_limit)
 
     bucket_total = sum(bucket)
-    fraction_weights = [float(10000*x)/bucket_total for x in bucket]
+    fraction_weights = [10000 * x / bucket_total for x in bucket]
     cumsum_weights = _CumulativeSum(fraction_weights)
 
     percentiles = [

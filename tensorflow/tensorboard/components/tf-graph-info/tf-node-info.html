@@ -88,6 +88,10 @@
     max-width: 20px;
     padding: 0;
   }
+
+  .non-control-list-item {
+    padding-left: 10px;
+  }
   </style>
   <template>
     <paper-item>
@@ -101,7 +105,11 @@
           <div class="node-name">[[_getNodeName(nodeName)]]</div>
         </div>
         <div secondary>
-          <tf-graph-icon class="node-icon" node="[[_node]]"></tf-graph-icon>
+          <tf-graph-icon class="node-icon" node="[[_node]]"
+              render-info="[[_getRenderInfo(nodeName, renderHierarchy)]]"
+              color-by="[[colorBy]]"
+              template-index="[[_templateIndex]]"
+              ></tf-graph-icon>
           <template is="dom-if" if="{{_node.op}}">
             <div class="subtitle">
               Operation:
@@ -147,10 +155,15 @@
           <iron-list class="sub-list" id ="inputsList"
                     items="[[_predecessors.regular]]">
             <template>
-              <tf-node-list-item card-node="[[_node]]"
-                              item-node="[[_getNode(item, graphHierarchy)]]"
-                              name="[[item]]"
-                              item-type="predecessors">
+              <tf-node-list-item
+                  class="non-control-list-item"
+                  card-node="[[_node]]"
+                  item-node="[[_getNode(item, graphHierarchy)]]"
+                  item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
+                  name="[[item]]"
+                  item-type="predecessors"
+                  color-by="[[colorBy]]"
+                  template-index="[[_templateIndex]]">
               </tf-node-list-item>
             </template>
           </iron-list>
@@ -168,10 +181,15 @@
                 <template is="dom-if" if="{{_openedControlPred}}" restamp="true">
                   <iron-list class="sub-list" items="[[_predecessors.control]]">
                     <template>
-                      <tf-node-list-item card-node="[[_node]]"
-                                      item-node="[[_getNode(item, graphHierarchy)]]"
-                                      name="[[item]]"
-                                      item-type="predecessors">
+                      <tf-node-list-item
+                          card-node="[[_node]]"
+                          item-node="[[_getNode(item, graphHierarchy)]]"
+                          item-render-info=
+                              "[[_getRenderInfo(item, renderHierarchy)]]"
+                          name="[[item]]"
+                          item-type="predecessors"
+                          color-by="[[colorBy]]"
+                          template-index="[[_templateIndex]]">
                       </tf-node-list-item>
                     </template>
                   </iron-list>
@@ -187,10 +205,15 @@
           <iron-list class="sub-list" id ="outputsList"
                     items="[[_successors.regular]]">
             <template>
-              <tf-node-list-item card-node="[[_node]]"
-                              item-node="[[_getNode(item, graphHierarchy)]]"
-                              name="[[item]]"
-                              item-type="successor">
+              <tf-node-list-item
+                  class="non-control-list-item"
+                  card-node="[[_node]]"
+                  item-node="[[_getNode(item, graphHierarchy)]]"
+                  item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
+                  name="[[item]]"
+                  item-type="successor"
+                  color-by="[[colorBy]]"
+                  template-index="[[_templateIndex]]">
               </tf-node-list-item>
             </template>
           </iron-list>
@@ -208,10 +231,15 @@
                 <template is="dom-if" if="{{_openedControlSucc}}" restamp="true">
                   <iron-list class="sub-list" items="[[_successors.control]]">
                     <template>
-                      <tf-node-list-item card-node="[[_node]]"
-                                  item-node="[[_getNode(item, graphHierarchy)]]"
-                                  name="[[item]]"
-                                  item-type="successors">
+                      <tf-node-list-item
+                          card-node="[[_node]]"
+                          item-node="[[_getNode(item, graphHierarchy)]]"
+                          item-render-info=
+                              "[[_getRenderInfo(item, renderHierarchy)]]"
+                          name="[[item]]"
+                          item-type="successors"
+                          color-by="[[colorBy]]"
+                          template-index="[[_templateIndex]]">
                       </tf-node-list-item>
                     </template>
                   </iron-list>
@@ -233,6 +261,13 @@
         properties: {
           nodeName: String,
           graphHierarchy: Object,
+          renderHierarchy: Object,
+          /** What to color the nodes by (compute time, memory, device etc.) */
+          colorBy: String,
+          _templateIndex: {
+            type: Function,
+            computed: '_getTemplateIndex(graphHierarchy)'
+          },
           _node: {
             type: Object,
             computed: '_getNode(nodeName, graphHierarchy)',
@@ -282,13 +317,19 @@
         expandNode: function() {
           this.fire('_node.expand', this.node);
         },
-        _getNode: function(n, graphHierarchy) {
-          return graphHierarchy.node(n);
+        _getTemplateIndex: function(graphHierarchy) {
+          return graphHierarchy.getTemplateIndex();
+        },
+        _getNode: function(nodeName, graphHierarchy) {
+          return graphHierarchy.node(nodeName);
         },
         _getNodeName: function(nodeName) {
           // Insert a zero-width whitespace character before each slash so that
           // long node names wrap cleanly at path boundaries.
           return (nodeName || '').replace(/\//g, '\u200B/');
+        },
+        _getRenderInfo: function(nodeName, renderHierarchy) {
+          return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
         },
         _getAttributes: function(node) {
           this.async(this._resizeList.bind(this, "#attributesList"));

@@ -1,7 +1,12 @@
 """Tests for summary image op."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.ops import image_ops
@@ -32,7 +37,7 @@ class SummaryImageOpTest(tf.test.TestCase):
             scale = 127 / np.abs(const.reshape(4, -1)).max(axis=1)
             offset = 128
           adjusted = np.floor(scale[:, None, None, None] * const + offset)
-          const[0, 1, 2, depth / 2] = np.nan
+          const[0, 1, 2, depth // 2] = np.nan
 
           # Summarize
           summ = tf.image_summary("img", const)

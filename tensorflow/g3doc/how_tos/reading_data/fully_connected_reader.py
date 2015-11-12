@@ -8,6 +8,8 @@ for context.
 YOU MUST run convert_to_records before running this (but you only need to
 run it once).
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os.path

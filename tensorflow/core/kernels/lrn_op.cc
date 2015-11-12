@@ -9,7 +9,7 @@
 #include "tensorflow/core/public/tensor.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__)
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
@@ -51,7 +51,7 @@ class LRNOp : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
 
-#ifdef __ANDROID__
+#if !defined(__ANDROID__)
     MognetLRN(in, batch, rows, cols, depth, output);
 #else
     const int nodes = cols * rows;
@@ -123,7 +123,7 @@ class LRNOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LRN").Device(DEVICE_CPU), LRNOp);
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__)
 
 class LRNGradOp : public OpKernel {
  public:
@@ -223,6 +223,6 @@ class LRNGradOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LRNGrad").Device(DEVICE_CPU), LRNGradOp);
 
-#endif  // __ANDROID__
+#endif  // !defined(__ANDROID__)
 
 }  // namespace tensorflow

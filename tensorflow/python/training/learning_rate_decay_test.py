@@ -1,4 +1,8 @@
 """Functional test for learning rate decay."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 from tensorflow.python.framework import test_util
@@ -33,7 +37,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96 ** (100 / 3)
+      expected = .1 * 0.96**(100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
   def testVariables(self):
@@ -52,7 +56,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96 ** (100 / 3)
+      expected = .1 * 0.96**(100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
 

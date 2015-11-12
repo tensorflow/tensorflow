@@ -1,5 +1,9 @@
 """Gradients for operators defined in data_flow_ops.py."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
@@ -13,13 +17,13 @@ from tensorflow.python.ops import math_ops
 def _DynamicStitchGrads(op, grad):
   """Gradients for DynamicStitch."""
 
-  num_values = len(op.inputs) / 2
+  num_values = len(op.inputs) // 2
   indices_grad = [None] * num_values
 
   def AsInt32(x):
     return (x if op.inputs[0].dtype == types.int32 else
             math_ops.cast(x, types.int32))
-  inputs = [AsInt32(op.inputs[i]) for i in range(num_values)]
+  inputs = [AsInt32(op.inputs[i]) for i in xrange(num_values)]
   if isinstance(grad, ops.IndexedSlices):
     output_shape = array_ops.shape(op.outputs[0])
     output_rows = output_shape[0]

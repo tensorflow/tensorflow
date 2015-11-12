@@ -1,5 +1,9 @@
 """Tests for tensorflow.learning.training_ops."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import itertools
 
 import tensorflow.python.platform
@@ -94,12 +98,12 @@ class TrainingOpsTest(TensorFlowTestCase):
   def testSparseApplyAdagrad(self):
     for (dtype, index_type) in itertools.product(
         [np.float32, np.float64], [np.int32, np.int64]):
-      x_val = [range(10), range(10, 20), range(20, 30)]
-      y_val = [range(1, 11), range(11, 21), range(21, 31)]
+      x_val = [np.arange(10), np.arange(10, 20), np.arange(20, 30)]
+      y_val = [np.arange(1, 11), np.arange(11, 21), np.arange(21, 31)]
       x = np.array(x_val).astype(dtype)
       y = np.array(y_val).astype(dtype)
       lr = np.array(2.0).astype(dtype)
-      grad_val = [range(10), range(10)]
+      grad_val = [np.arange(10), np.arange(10)]
       grad = np.array(grad_val).astype(dtype)
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseAdagrad(x, y, lr, grad, indices)

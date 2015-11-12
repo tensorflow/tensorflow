@@ -1,4 +1,8 @@
 """Helper classes for tensor shape inference."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 
@@ -163,8 +167,8 @@ class Dimension(object):
     else:
       return Dimension(self._value * other.value)
 
-  def __div__(self, other):
-    """Returns the quotient of `self` and `other`.
+  def __floordiv__(self, other):
+    """Returns the quotient of `self` and `other` rounded down.
 
     Dimensions are summed as follows:
 
@@ -183,7 +187,7 @@ class Dimension(object):
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
-      return Dimension(self._value / other.value)
+      return Dimension(self._value // other.value)
 
   def __mod__(self, other):
     """Returns `self` modulo `other.
@@ -376,10 +380,10 @@ class TensorShape(object):
         self._dims = [as_dimension(dims)]
       else:
         # Got a list of dimensions
-        self._dims = map(as_dimension, dims_iter)
+        self._dims = [as_dimension(d) for d in dims_iter]
 
   def __repr__(self):
-    return "TensorShape(%s)" % str(self._dims)
+    return "TensorShape(%s)" % self._dims
 
   @property
   def dims(self):
@@ -400,9 +404,12 @@ class TensorShape(object):
       raise ValueError("Cannot take the length of Shape with unknown rank.")
     return len(self._dims)
 
-  def __nonzero__(self):
+  def __bool__(self):
     """Returns True if this shape contains non-zero information."""
     return self._dims is not None
+
+  # Python 3 wants __bool__, Python 2.7 wants __nonzero__
+  __nonzero__ = __bool__
 
   def __getitem__(self, key):
     """Returns the value of a dimension or a shape, depending on the key.
@@ -710,7 +717,7 @@ def unknown_shape(ndims=None):
   if ndims is None:
     return TensorShape(None)
   else:
-    return TensorShape([Dimension(None) for _ in range(ndims)])
+    return TensorShape([Dimension(None)] * ndims)
 
 
 def scalar():

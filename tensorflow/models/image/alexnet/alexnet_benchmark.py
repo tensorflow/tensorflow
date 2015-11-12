@@ -14,9 +14,13 @@ Forward-backward pass:
 Run on Tesla K40c: 480 +/- 48 ms / batch
 Run on Titan X:    244 +/- 30 ms / batch
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 from datetime import datetime
 import math
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import time
 
 import tensorflow.python.platform
@@ -194,7 +198,9 @@ def run_benchmark():
     init = tf.initialize_all_variables()
 
     # Start running operations on the Graph.
-    sess = tf.Session('')
+    config = tf.ConfigProto()
+    config.gpu_options.allocator_type = 'BFC'
+    sess = tf.Session(config=config)
     sess.run(init)
 
     # Run the forward benchmark.

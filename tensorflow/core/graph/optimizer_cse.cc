@@ -89,7 +89,7 @@ size_t OptimizerCSE::NodeHash(const Node* n) {
 
   size_t h = Hash64(str_to_hash);
 
-#if !defined(__ANDROID__) && !defined(ANDROID)
+#if !defined(__ANDROID__)
   // Hash the attrs.  For example, this makes sure different constants
   // end up in different hash buckets.
   string tmp;

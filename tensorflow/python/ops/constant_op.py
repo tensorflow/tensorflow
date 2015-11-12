@@ -79,10 +79,13 @@ print sess.run(var)
 @@set_random_seed
 
 """
-"""Constant Operation.
 
-Has to be separate from array_ops to avoid a cyclic dependency.
-"""
+# Must be separate from array_ops to avoid a cyclic dependency.
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 import numpy as np
 

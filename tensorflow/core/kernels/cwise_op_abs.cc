@@ -2,7 +2,7 @@
 
 namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Abs", functor::abs, float, double, int32, int64);
-#ifndef __ANDROID__
+#if !defined(__ANDROID__)
 REGISTER_KERNEL_BUILDER(Name("ComplexAbs").Device(DEVICE_CPU),
                         UnaryOp<CPUDevice, functor::abs<complex64>>);
 #endif

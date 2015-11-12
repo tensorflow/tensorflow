@@ -1,6 +1,10 @@
 # pylint: disable=unused-import,g-bad-import-order
 
 """Utilities for parsing PTB text files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import collections
 import os
 import sys
@@ -9,6 +13,7 @@ import time
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.platform import gfile
@@ -25,7 +30,7 @@ def _build_vocab(filename):
   counter = collections.Counter(data)
   count_pairs = sorted(counter.items(), key=lambda x: -x[1])
 
-  words, _ = zip(*count_pairs)
+  words, _ = list(zip(*count_pairs))
   word_to_id = dict(zip(words, range(len(words))))
 
   return word_to_id
@@ -89,12 +94,12 @@ def ptb_iterator(raw_data, batch_size, num_steps):
   raw_data = np.array(raw_data, dtype=np.int32)
 
   data_len = len(raw_data)
-  batch_len = data_len / batch_size
+  batch_len = data_len // batch_size
   data = np.zeros([batch_size, batch_len], dtype=np.int32)
   for i in range(batch_size):
     data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
 
-  epoch_size = (batch_len - 1) / num_steps
+  epoch_size = (batch_len - 1) // num_steps
 
   if epoch_size == 0:
     raise ValueError("epoch_size == 0, decrease batch_size or num_steps")

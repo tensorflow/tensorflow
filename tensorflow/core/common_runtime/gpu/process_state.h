@@ -63,9 +63,14 @@ class ProcessState {
   // a given gpu_id creates the allocator, so only the total_bytes
   // used on that first call is used.
   //
+  // "Allocator type" describes the type of algorithm to use for the
+  // underlying allocator.  REQURES: Must be a valid type (see
+  // config.proto for the list of supported strings.).
+  //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
   // current system environment.  Otherwise returns nullptr.
-  Allocator* GetGPUAllocator(int gpu_id, size_t total_bytes);
+  Allocator* GetGPUAllocator(int gpu_id, size_t total_bytes,
+                             const string& allocator_type);
 
   Allocator* GetCUDAHostAllocator(int numa_node);
 
