@@ -6,7 +6,7 @@ This is a simplified interface for TensorFlow, to get people started on predicti
 
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
-    pip install git+git://github.com/ilblackdragon/skflow.git
+    pip install git+git://github.com/google/skflow.git
 
 ## Usage
 
