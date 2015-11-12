@@ -355,7 +355,7 @@ struct SelectFunctor<CPUDevice, T> {
 // device type "D" (CPU or GPU) for operatin "N" (e.g., sqrt) using
 // the functor "F" (e.g., functor:sqrt).
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
 // On Android, only register the first type (float)
 #define REGISTER2(OP, D, N, F, T0, T1) REGISTER(OP, D, N, F, T0)
 #define REGISTER3(OP, D, N, F, T0, T1, T2) REGISTER(OP, D, N, F, T0)
@@ -364,7 +364,7 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER6(OP, D, N, F, T0, T1, T2, T3, T4, T5) REGISTER(OP, D, N, F, T0)
 #define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6) \
   REGISTER(OP, D, N, F, T0)
-#else  // !__ANDROID__
+#else  // !defined(__ANDROID__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
   REGISTER(OP, D, N, F, T1)
@@ -383,7 +383,7 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6) \
   REGISTER4(OP, D, N, F, T0, T1, T2, T3)                   \
   REGISTER3(OP, D, N, F, T4, T5, T6)
-#endif  // __ANDROID__
+#endif  // defined(__ANDROID__)
 
 }  // end namespace tensorflow
 

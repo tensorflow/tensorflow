@@ -1,5 +1,9 @@
 """A client interface for TensorFlow."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import re
 import sys
 import threading
@@ -321,7 +325,7 @@ class BaseSession(SessionInterface):
 
     # Validate and process feed_dict.
     if feed_dict:
-      for feed, feed_val in feed_dict.iteritems():
+      for feed, feed_val in feed_dict.items():
         for subfeed, subfeed_val in _feed_fn(feed, feed_val):
           try:
             subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,

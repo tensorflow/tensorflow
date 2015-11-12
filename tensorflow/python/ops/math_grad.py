@@ -1,4 +1,7 @@
 """Gradients for operators defined in math_ops.py."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types
@@ -29,7 +32,7 @@ def _ReductionGradAssist(op):
 def _SumGrad(op, grad):
   """Gradient for Sum."""
   _, new_output_shape, input_shape = _ReductionGradAssist(op)
-  tile_scaling = input_shape / new_output_shape
+  tile_scaling = input_shape // new_output_shape
   grad = array_ops.reshape(grad, new_output_shape)
   return [array_ops.tile(grad, tile_scaling), None]
 
@@ -61,7 +64,7 @@ def _MeanGrad(op, grad):
   sum_grad = _SumGrad(op, grad)[0]
   input_shape = array_ops.shape(op.inputs[0])
   output_shape = array_ops.shape(op.outputs[0])
-  factor = (math_ops.reduce_prod(input_shape) /
+  factor = (math_ops.reduce_prod(input_shape) //
             math_ops.reduce_prod(output_shape))
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
@@ -71,7 +74,7 @@ def _ProdGrad(op, grad):
   """Gradient for Prod."""
   # TODO(kearnes): this gives NaNs for 0s in the input tensor
   _, new_output_shape, input_shape = _ReductionGradAssist(op)
-  tile_scaling = input_shape / new_output_shape
+  tile_scaling = input_shape // new_output_shape
   grad = array_ops.reshape(grad * op.outputs[0], new_output_shape)
   grad = math_ops.div(array_ops.tile(grad, tile_scaling), op.inputs[0])
   return grad, None

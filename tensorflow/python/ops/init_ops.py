@@ -1,4 +1,7 @@
 """Operations often used for initializing tensors."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import math
 from tensorflow.python.framework import types
@@ -121,10 +124,11 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None):
     # is the right thing for matrix multiply and convolutions (see above).
     for dim in shape[:-1]:
       input_size *= float(dim)
-    max_val = math.sqrt(float(3) / float(input_size)) * factor
+    max_val = math.sqrt(3 / input_size) * factor
     return random_ops.random_uniform(shape, -max_val, max_val,
                                      dtype, seed=seed)
   return _initializer
+
 
 # TODO(vrv): Unhide when we are ready to expose this publicly.
 def _random_walk(shape, nonlinearity, dtype=types.float32, seed=None,
@@ -151,9 +155,9 @@ def _random_walk(shape, nonlinearity, dtype=types.float32, seed=None,
     # layer widths.
     rwg = 1.13
   elif nonlinearity == array_ops.identity:
-    rwg = math.exp(1.0 / float(2.0 * num_inputs))
+    rwg = math.exp(1.0 / (2.0 * num_inputs))
   elif nonlinearity == nn_ops.relu:
-    rwg = math.sqrt(2.0) * math.exp(1.2 / float(max(num_inputs, 6) - 2.4))
+    rwg = math.sqrt(2.0) * math.exp(1.2 / (max(num_inputs, 6) - 2.4))
   else:
     assert False, "Unsupported nonlinearity for Random Walk initialization."
 

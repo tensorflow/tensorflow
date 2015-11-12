@@ -12,9 +12,12 @@ The key ops used are:
 * neg_train custom op that efficiently calculates and applies the gradient using
   true SGD.
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import sys
 import threading
 import time

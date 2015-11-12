@@ -1,4 +1,8 @@
 """Library of dtypes (Tensor element types)."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -106,6 +110,11 @@ class DType(object):
     """Returns whether this is a (non-quantized) integer type."""
     return (not self.is_quantized and
             issubclass(self.as_numpy_dtype, np.integer))
+
+  @property
+  def is_floating(self):
+    """Returns whether this is a (real) floating point type."""
+    return issubclass(self.as_numpy_dtype, np.floating)
 
   @property
   def is_quantized(self):
@@ -299,7 +308,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
 }
 _STRING_TO_TF = {value: _INTERN_TABLE[key]
-                 for key, value in _TYPE_TO_STRING.iteritems()}
+                 for key, value in _TYPE_TO_STRING.items()}
 # Add non-canonical aliases.
 _STRING_TO_TF["float"] = float32
 _STRING_TO_TF["float_ref"] = float32_ref

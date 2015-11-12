@@ -6,7 +6,7 @@ You can install TensorFlow using our provided binary packages or from source.
 
 The TensorFlow Python API currently requires Python 2.7: we are
 [working](https://github.com/tensorflow/tensorflow/issues/1) on adding support
-for Python 3.0.
+for Python 3.
 
 The simplest way to install TensorFlow is using
 [pip](https://pypi.python.org/pypi/pip) for both Linux and Mac.
@@ -306,6 +306,9 @@ Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/ins
 
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+# To build with GPU support:
+$ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 

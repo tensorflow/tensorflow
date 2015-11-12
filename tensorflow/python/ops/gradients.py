@@ -1,11 +1,16 @@
 """Implements the graph generation for computation of gradients."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import collections
 import warnings
 
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -407,7 +412,7 @@ def gradients(ys, xs, grad_ys=None, name="gradients",
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):
-            # pylint: enable=protected-access
+              # pylint: enable=protected-access
               op_wrapper = op
               if has_control_flow:
                 op_wrapper = control_flow_ops.MakeWrapper(op)

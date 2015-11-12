@@ -167,7 +167,11 @@ classes when using one of the sampled loss functions above.
 @@compute_accidental_hits
 
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
@@ -526,15 +530,24 @@ def moments(x, axes, name=None):
     name: Name used to scope the operations that compute the moments.
 
   Returns:
-    Two `Tensors`: `mean` and `variance`.
+    Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes], name, "moments"):
     x = ops.convert_to_tensor(x, name="x")
-    divisor = 1.0
-    for d in xrange(len(x.get_shape())):
-      if d in axes:
+    x_shape = x.get_shape()
+    if all(x_shape[d].value is not None for d in axes):
+      # The shape is known in the relevant axes, so we can statically
+      # compute the divisor.
+      divisor = 1.0
+      for d in set(axes):
         divisor *= x.get_shape()[d].value
-    divisor = constant_op.constant(1.0 / divisor, x.dtype, name="divisor")
+      divisor = constant_op.constant(1.0 / divisor, x.dtype, name="divisor")
+    else:
+      divisor = constant_op.constant(1.0, dtype=x.dtype)
+      x_dynamic_shape = array_ops.shape(x)
+      for d in set(axes):
+        divisor *= math_ops.cast(x_dynamic_shape[d], x.dtype)
+      divisor = math_ops.inv(divisor, name="divisor")
     axes = constant_op.constant(axes, name="axes")
     # Note: We do not use Mean here because it is very slow on GPU.
     # Note 2: The expression below is potentially more stable.

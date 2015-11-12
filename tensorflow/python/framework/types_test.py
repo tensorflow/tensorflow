@@ -1,5 +1,8 @@
 """Tests for tensorflow.python.framework.importer."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -115,6 +118,18 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(types.as_dtype("string").is_integer, False)
     self.assertEqual(types.as_dtype("bool").is_integer, False)
 
+  def testIsFloating(self):
+    self.assertEqual(types.as_dtype("int8").is_floating, False)
+    self.assertEqual(types.as_dtype("int16").is_floating, False)
+    self.assertEqual(types.as_dtype("int32").is_floating, False)
+    self.assertEqual(types.as_dtype("int64").is_floating, False)
+    self.assertEqual(types.as_dtype("uint8").is_floating, False)
+    self.assertEqual(types.as_dtype("complex64").is_floating, False)
+    self.assertEqual(types.as_dtype("float32").is_floating, True)
+    self.assertEqual(types.as_dtype("float64").is_floating, True)
+    self.assertEqual(types.as_dtype("string").is_floating, False)
+    self.assertEqual(types.as_dtype("bool").is_floating, False)
+
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
     for datatype_enum in types_pb2.DataType.values():
@@ -163,7 +178,7 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.max, np.finfo(numpy_dtype).max)
 
   def testRepr(self):
-    for enum, name in types._TYPE_TO_STRING.iteritems():
+    for enum, name in types._TYPE_TO_STRING.items():
       dtype = types.DType(enum)
       self.assertEquals(repr(dtype), 'tf.' + name)
       dtype2 = eval(repr(dtype))

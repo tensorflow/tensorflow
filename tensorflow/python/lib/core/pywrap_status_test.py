@@ -1,5 +1,9 @@
 """Tests for SWIG wrapped brain::Status."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import googletest

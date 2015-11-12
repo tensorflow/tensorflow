@@ -27,7 +27,7 @@
    #undef REGISTER_PARTITION
 */
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__)
 
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
@@ -68,7 +68,7 @@
   m(float);                         \
   m(double)
 
-#else  // __ANDROID__
+#else  // defined(__ANDROID__)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   m(float);                          \
@@ -85,6 +85,6 @@
 // Maybe we could put an empty macro here for Android?
 #define TF_CALL_GPU_NUMBER_TYPES(m) m(float)
 
-#endif  // __ANDROID__
+#endif  // defined(__ANDROID__)
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_

@@ -1,4 +1,8 @@
 """A utility function for importing TensorFlow graphs."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import contextlib
 
 import tensorflow.python.platform
@@ -242,7 +246,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             operation_name, output_index = _ParseTensorName(input_name)
             try:
               source_op = name_to_op[operation_name]
-              source_tensor = source_op.values()[output_index]
+              source_tensor = list(source_op.values())[output_index]
             except (KeyError, IndexError):
               raise ValueError(
                   _InvalidNodeMessage(

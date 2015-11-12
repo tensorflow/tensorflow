@@ -1,4 +1,6 @@
 """Updates generated docs from Python doc comments."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os.path
@@ -121,7 +123,8 @@ def main(unused_argv):
 
   # Generate index
   with open(os.path.join(FLAGS.out_dir, "index.md"), "w") as f:
-    docs.Index(module_to_name, members, libraries).write_markdown_to_file(f)
+    docs.Index(module_to_name, members, libraries,
+               "../../api_docs/python/").write_markdown_to_file(f)
 
 
 if __name__ == "__main__":

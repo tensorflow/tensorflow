@@ -1,4 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import tensorflow.python.platform
 
 import collections
@@ -6,6 +9,7 @@ import math
 import numpy as np
 import os
 import random
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import urllib
 import zipfile
@@ -81,7 +85,7 @@ def generate_batch(batch_size, num_skips, skip_window):
   for _ in range(span):
     buffer.append(data[data_index])
     data_index = (data_index + 1) % len(data)
-  for i in range(batch_size / num_skips):
+  for i in range(batch_size // num_skips):
     target = skip_window  # target label at the center of the buffer
     targets_to_avoid = [ skip_window ]
     for j in range(num_skips):
@@ -111,7 +115,7 @@ num_skips = 2         # How many times to reuse an input to generate a label.
 # construction are also the most frequent.
 valid_size = 16     # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
-valid_examples = np.array(random.sample(xrange(valid_window), valid_size))
+valid_examples = np.array(random.sample(np.arange(valid_window), valid_size))
 num_sampled = 64    # Number of negative examples to sample.
 
 graph = tf.Graph()
@@ -216,7 +220,7 @@ try:
   tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
   plot_only = 500
   low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only,:])
-  labels = dictionary.keys()[:plot_only]
+  labels = list(dictionary.keys())[:plot_only]
   plot_with_labels(low_dim_embs, labels)
 
 except ImportError:

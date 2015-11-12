@@ -15,8 +15,11 @@ Summary of available functions:
  # Create a graph to run one step of training with respect to the loss.
  train_op = train(loss, global_step)
 """
-from __future__ import print_function
 # pylint: disable=missing-docstring
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gzip
 import os
 import re
@@ -25,6 +28,7 @@ import tarfile
 import urllib
 
 import tensorflow.python.platform
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.image.cifar10 import cifar10_input

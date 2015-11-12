@@ -15,7 +15,10 @@ data set, compile the program and train the model.
 
 http://tensorflow.org/tutorials/deep_cnn/
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 from datetime import datetime
 import math
 import time
@@ -83,7 +86,7 @@ def eval_once(saver, summary_writer, top_k_op, summary_op):
         step += 1
 
       # Compute precision @ 1.
-      precision = float(true_count) / float(total_sample_count)
+      precision = true_count / total_sample_count
       print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
 
       summary = tf.Summary()

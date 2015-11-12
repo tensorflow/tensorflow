@@ -137,6 +137,11 @@ Tensorflow system can reference and use the Op when requested.
 Python op wrappers are created automatically in
 `bazel-genfiles/tensorflow/python/ops/gen_user_ops.py` for all ops placed in the
 [`tensorflow/core/user_ops`][user_ops] directory when you build Tensorflow.
+
+> Note: The generated function will be given a snake_case name (to comply with
+> [PEP8](https://www.python.org/dev/peps/pep-0008/)).  So if your op is named
+> `ZeroOut` in the C++ files, the python function will be called `zero_out`.
+
 Those ops are imported into
 [`tensorflow/python/user_ops/user_ops.py`][python-user_ops] with the statement:
 
@@ -897,8 +902,10 @@ There are several ways to preserve backwards-compatibility.
    can't be done in a compatible way (for example, adding an input, or making a
    single input into a list).
 
-If you cannot make your change to an operation backwards compatible, then
-create a new operation with a new name with the new semantics.
+The full list of safe and unsafe changes can be found in
+[tensorflow/core/framework/op_compatibility_test.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
+If you cannot make your change to an operation backwards compatible, then create
+a new operation with a new name with the new semantics.
 
 ## GPU Support <a class="md-anchor" id="mult-archs"></a>
 

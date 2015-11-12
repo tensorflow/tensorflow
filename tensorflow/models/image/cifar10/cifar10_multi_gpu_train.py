@@ -20,7 +20,10 @@ data set, compile the program and train the model.
 
 http://tensorflow.org/tutorials/deep_cnn/
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 from datetime import datetime
 import os.path
 import re
@@ -30,6 +33,7 @@ import time
 import tensorflow.python.platform
 from tensorflow.python.platform import gfile
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.models.image.cifar10 import cifar10
 # pylint: disable=unused-import,g-bad-import-order
@@ -236,8 +240,8 @@ def train():
 
       if step % 10 == 0:
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
-        examples_per_sec = num_examples_per_step / float(duration)
-        sec_per_batch = float(duration) / FLAGS.num_gpus
+        examples_per_sec = num_examples_per_step / duration
+        sec_per_batch = duration / FLAGS.num_gpus
 
         format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
                       'sec/batch)')

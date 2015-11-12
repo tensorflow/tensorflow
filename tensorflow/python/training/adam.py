@@ -1,4 +1,8 @@
 """Adam for TensorFlow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops

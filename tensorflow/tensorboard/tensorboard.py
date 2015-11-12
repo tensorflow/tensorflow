@@ -3,6 +3,8 @@
 This is a simple web server to proxy data from the event_loader to the web, and
 serve static web files.
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import BaseHTTPServer

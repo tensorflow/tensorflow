@@ -7,8 +7,7 @@
 
 #include "tensorflow/core/platform/port.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+#if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
 // main() is supplied by gunit_main
 #else
 #include "gtest/gtest.h"

@@ -1,5 +1,9 @@
 """Functional tests for coefficient-wise operations.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -10,7 +14,8 @@ from tensorflow.python.kernel_tests import gradient_checker as gc
 _ADD = lambda x, y: x + y
 _SUB = lambda x, y: x - y
 _MUL = lambda x, y: x * y
-_DIV = lambda x, y: x / y
+_TRUEDIV = lambda x, y: x / y
+_FLOORDIV = lambda x, y: x // y
 _MOD = lambda x, y: x % y
 _NEG = lambda x: -x
 _ABS = abs
@@ -229,9 +234,10 @@ class BinaryOpTest(tf.test.TestCase):
 
   def _compareBoth(self, x, y, np_func, tf_func):
     self._compareCpu(x, y, np_func, tf_func)
-    if x.dtype == np.float32 or x.dtype == np.float64:
-      self._compareGradientX(x, y, np_func, tf_func)
-      self._compareGradientY(x, y, np_func, tf_func)
+    if x.dtype in (np.float32, np.float64):
+      if tf_func not in (_FLOORDIV, tf.floordiv):
+        self._compareGradientX(x, y, np_func, tf_func)
+        self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
 
   def testFloatBasic(self):
@@ -240,11 +246,13 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.add, tf.add)
     self._compareBoth(x, y, np.subtract, tf.sub)
     self._compareBoth(x, y, np.multiply, tf.mul)
-    self._compareBoth(x, y + 0.1, np.divide, tf.div)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y + 0.1, np.floor_divide, tf.floordiv)
     self._compareBoth(x, y, np.add, _ADD)
     self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
-    self._compareBoth(x, y + 0.1, np.divide, _DIV)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
 
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
@@ -267,11 +275,13 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.add, tf.add)
     self._compareBoth(x, y, np.subtract, tf.sub)
     self._compareBoth(x, y, np.multiply, tf.mul)
-    self._compareBoth(x, y + 0.1, np.divide, tf.div)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y + 0.1, np.floor_divide, tf.floordiv)
     self._compareBoth(x, y, np.add, _ADD)
     self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
-    self._compareBoth(x, y + 0.1, np.divide, _DIV)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
 
   def testInt8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int8)
@@ -291,14 +301,14 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.add, tf.add)
     self._compareBoth(x, y, np.subtract, tf.sub)
     self._compareBoth(x, y, np.multiply, tf.mul)
-    # NOTE: int32 division is ill-defined.
-    self._compareBoth(x, y, np.divide, tf.div)
+    self._compareBoth(x, y, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.floor_divide, tf.floordiv)
     self._compareBoth(x, y, np.mod, tf.mod)
     self._compareBoth(x, y, np.add, _ADD)
     self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
-    # NOTE: int32 division is ill-defined.
-    self._compareBoth(x, y, np.divide, _DIV)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
 
   def testInt64Basic(self):
@@ -306,13 +316,13 @@ class BinaryOpTest(tf.test.TestCase):
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int64)
     self._compareBoth(x, y, np.subtract, tf.sub)
     self._compareBoth(x, y, np.multiply, tf.mul)
-    # NOTE: int64 division is ill-defined.
-    self._compareBoth(x, y, np.divide, tf.div)
+    self._compareBoth(x, y, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.floor_divide, tf.floordiv)
     self._compareBoth(x, y, np.mod, tf.mod)
     self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
-    # NOTE: int64 division is ill-defined.
-    self._compareBoth(x, y, np.divide, _DIV)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
 
   def testComplex64Basic(self):
@@ -323,19 +333,20 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareCpu(x, y, np.add, tf.add)
     self._compareCpu(x, y, np.subtract, tf.sub)
     self._compareCpu(x, y, np.multiply, tf.mul)
-    self._compareCpu(x, y + 0.1, np.divide, tf.div)
+    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
     self._compareCpu(x, y, np.add, _ADD)
     self._compareCpu(x, y, np.subtract, _SUB)
     self._compareCpu(x, y, np.multiply, _MUL)
-    self._compareCpu(x, y + 0.1, np.divide, _DIV)
+    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def _compareBCast(self, xs, ys, dtype, np_func, tf_func):
     x = (1 + np.linspace(0, 5, np.prod(xs))).astype(dtype).reshape(xs)
     y = (1 + np.linspace(0, 5, np.prod(ys))).astype(dtype).reshape(ys)
     self._compareCpu(x, y, np_func, tf_func)
-    if x.dtype == np.float32 or x.dtype == np.float64:
-      self._compareGradientX(x, y, np_func, tf_func)
-      self._compareGradientY(x, y, np_func, tf_func)
+    if x.dtype in (np.float32, np.float64):
+      if tf_func not in (_FLOORDIV, tf.floordiv):
+        self._compareGradientX(x, y, np_func, tf_func)
+        self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
 
   # TODO(josh11b,vrv): Refactor this to use parameterized tests.
@@ -349,6 +360,8 @@ class BinaryOpTest(tf.test.TestCase):
     ]
     for dtype in dtypes:
       for (np_func, tf_func) in funcs:
+        if dtype == np.complex64 and tf_func in (_FLOORDIV, tf.floordiv):
+          continue  # floordiv makes no sense for complex numbers
         self._compareBCast(xs, ys, dtype, np_func, tf_func)
         self._compareBCast(ys, xs, dtype, np_func, tf_func)
 
@@ -376,8 +389,10 @@ class BinaryOpTest(tf.test.TestCase):
 
   def _testBCastD(self, xs, ys):
     funcs = [
-        (np.divide, tf.div),
-        (np.divide, _DIV)
+        (np.true_divide, tf.truediv),
+        (np.floor_divide, tf.floordiv),
+        (np.true_divide, _TRUEDIV),
+        (np.floor_divide, _FLOORDIV),
     ]
     self._testBCastByFunc(funcs, xs, ys)
 
@@ -574,8 +589,8 @@ class BinaryOpTest(tf.test.TestCase):
     self._testBCastD([10, 3, 1, 2], [3, 1, 2])
 
   def testMismatchedDimensions(self):
-    for func in [tf.add, tf.sub, tf.mul, tf.div,
-                 _ADD, _SUB, _MUL, _DIV]:
+    for func in [tf.add, tf.sub, tf.mul, tf.div, _ADD, _SUB, _MUL, _TRUEDIV,
+                 _FLOORDIV]:
       with self.assertRaisesWithPredicateMatch(
           ValueError, lambda e: "Incompatible shapes" in e.message):
         func(tf.convert_to_tensor([10.0, 20.0, 30.0]),
@@ -959,10 +974,13 @@ class MathOpsOverloadTest(tf.test.TestCase):
         (np.add, _ADD),
         (np.subtract, _SUB),
         (np.multiply, _MUL),
-        (np.divide, _DIV)
+        (np.true_divide, _TRUEDIV),
+        (np.floor_divide, _FLOORDIV),
     ]
     for dtype in dtypes:
       for np_func, tf_func in funcs:
+        if dtype == tf.complex64 and tf_func == _FLOORDIV:
+          continue  # floordiv makes no sense for complex
         self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
     for dtype in [tf.int32, tf.int64]:

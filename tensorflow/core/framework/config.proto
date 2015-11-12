@@ -9,6 +9,16 @@ message GPUOptions {
   // to pre-allocate all of the GPU memory, 0.5 means the process
   // allocates ~50% of the available GPU memory.
   double per_process_gpu_memory_fraction = 1;
+
+  // The type of GPU allocation strategy to use.
+  //
+  // Allowed values:
+  // "": The empty string (default) uses a system-chosen default
+  //     which may change over time.
+  //
+  // "BFC": A "Best-fit with coalescing" algorithm, simplified from a
+  //        version of dlmalloc.
+  string allocator_type = 2;
 };
 
 // Session configuration parameters.

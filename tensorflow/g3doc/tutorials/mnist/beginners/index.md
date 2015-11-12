@@ -90,8 +90,8 @@ which digit a given image is of.
 For the purposes of this tutorial, we're going to want our labels
 as "one-hot vectors". A one-hot vector is a vector which is 0 in most
 dimensions, and 1 in a single dimension. In this case, the \\(n\\)th digit will be
-represented as a vector which is 1 in the \\(n\\)th dimensions. For example, 0
-would be \\([1,0,0,0,0,0,0,0,0,0,0]\\).
+represented as a vector which is 1 in the \\(n\\)th dimensions. For example, 3
+would be \\([0,0,0,1,0,0,0,0,0,0]\\).
 Consequently, `mnist.train.labels` is a
 `[60000, 10]` array of floats.
 
@@ -157,9 +157,10 @@ If you expand that equation out, you get:
 $$\text{softmax}(x)_i = \frac{\exp(x_i)}{\sum_j \exp(x_j)}$$
 
 But it's often more helpful to think of softmax the first way:
-exponentiating its inputs and then normalizing them. The exponentiation
-means that one unit more evidence increases the weight given to any hypothesis
-multiplicatively. And conversely, having one less unit of evidence means that a
+exponentiating its inputs and then normalizing them.
+The exponentiation means that one more unit of evidence increases the weight
+given to any hypothesis multiplicatively.
+And conversely, having one less unit of evidence means that a
 hypothesis gets a fraction of its earlier weight. No hypothesis ever has zero
 or negative weight. Softmax then normalizes these weights, so that they add up
 to one, forming a valid probability distribution. (To get more intuition about

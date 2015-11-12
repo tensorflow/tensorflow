@@ -139,7 +139,7 @@ DataTypeVector AllTypes() {
           DT_QINT8, DT_QUINT8, DT_QINT32};
 }
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__)
 
 DataTypeVector RealNumberTypes() {
   return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64, DT_UINT8, DT_INT16, DT_INT8};
@@ -157,7 +157,7 @@ DataTypeVector NumberTypes() {
           DT_INT8,  DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32};
 }
 
-#else  // __ANDROID__
+#else  // defined(__ANDROID__)
 
 DataTypeVector RealNumberTypes() { return {DT_FLOAT, DT_INT32}; }
 
@@ -171,7 +171,7 @@ DataTypeVector RealAndQuantizedTypes() {
   return {DT_FLOAT, DT_INT32, DT_QINT8, DT_QUINT8, DT_QINT32};
 }
 
-#endif  // __ANDROID__
+#endif  // defined(__ANDROID__)
 
 // TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
 // is_simple<T> in tensor.cc (and possible choose a more general name?)

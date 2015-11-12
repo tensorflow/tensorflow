@@ -1,6 +1,10 @@
 """Tests for tensorflow.python.ops.io_ops."""
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tempfile
 
 import tensorflow.python.platform

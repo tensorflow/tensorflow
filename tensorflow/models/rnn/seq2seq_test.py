@@ -1,11 +1,15 @@
 """Tests for functional style sequence-to-sequence models."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import math
 import random
 
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.rnn import rnn
@@ -363,7 +367,7 @@ class Seq2SeqTest(tf.test.TestCase):
       for ep in xrange(3):
         log_perp = 0.0
         for _ in xrange(50):
-          bucket = random.choice(range(len(buckets)))
+          bucket = random.choice(np.arange(len(buckets)))
           length = buckets[bucket][0]
           i = [np.array([np.random.randint(9) + 1 for _ in xrange(batch_size)],
                         dtype=np.int32) for _ in xrange(length)]

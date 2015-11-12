@@ -1,5 +1,9 @@
 """Tests for tensorflow.ops.attention_ops."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import tensorflow as tf
@@ -80,8 +84,8 @@ class ExtractGlimpseTest(tf.test.TestCase):
     # Check entries.
     min_random_val = 0
     max_random_val = max(rows, cols)
-    for i in range(0, glimpse_sizes[0]):
-      for j in range(0, glimpse_sizes[1]):
+    for i in range(glimpse_sizes[0]):
+      for j in range(glimpse_sizes[1]):
         if expected_rows[i] is None or expected_cols[j] is None:
           self.assertGreaterEqual(value_rows[0][i][j][0], min_random_val)
           self.assertLessEqual(value_rows[0][i][j][0], max_random_val)
@@ -102,15 +106,15 @@ class ExtractGlimpseTest(tf.test.TestCase):
     self._VerifyValues(tensor_in_sizes=[41, 61],
                        glimpse_sizes=[41, 61],
                        offsets=[0.0, 0.0],
-                       expected_rows=range(1, 42),
-                       expected_cols=range(1, 62))
+                       expected_rows=list(range(1, 42)),
+                       expected_cols=list(range(1, 62)))
 
   def testTooLargeCenterGlimpse(self):
     self._VerifyValues(tensor_in_sizes=[41, 61],
                        glimpse_sizes=[43, 63],
                        offsets=[0.0, 0.0],
-                       expected_rows=[None] + range(1, 42) + [None],
-                       expected_cols=[None] + range(1, 62) + [None])
+                       expected_rows=[None] + list(range(1, 42)) + [None],
+                       expected_cols=[None] + list(range(1, 62)) + [None])
 
   def testGlimpseFullOverlap(self):
     self._VerifyValues(tensor_in_sizes=[41, 61],

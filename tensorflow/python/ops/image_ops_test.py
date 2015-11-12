@@ -1,9 +1,14 @@
 """Tests for tensorflow.ops.image_ops."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import math
 
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import constant_op
@@ -683,7 +688,7 @@ class JpegTest(test_util.TensorFlowTestCase):
   def averageError(self, image0, image1):
     self.assertEqual(image0.shape, image1.shape)
     image0 = image0.astype(int)  # Avoid overflow
-    return np.abs(image0 - image1).sum() / float(np.prod(image0.shape))
+    return np.abs(image0 - image1).sum() / np.prod(image0.shape)
 
   def testExisting(self):
     # Read a real jpeg and verify shape

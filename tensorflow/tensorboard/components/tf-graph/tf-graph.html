@@ -39,7 +39,7 @@ paper-button {
   <div class="vertical">
     <h2>[[title]]</h2>
     <tf-graph-scene id="scene" class="auto"
-          graph-hierarchy="[[_renderHierarchy]]"
+          render-hierarchy="[[renderHierarchy]]"
           highlighted-node="[[_getVisible(highlightedNode)]]"
           selected-node="[[selectedNode]]"
           color-by="[[colorBy]]"
@@ -78,6 +78,12 @@ Polymer({
       notify: true,
       readOnly: true, // Produces and doesn't consume.
     },
+    renderHierarchy: {
+      type: Object,
+      readOnly: true,
+      notify: true,
+      computed: '_buildRenderHierarchy(graphHierarchy, _graphParams)'
+    },
     // internal properties
     _graphParams: {
       type: Object,
@@ -88,12 +94,6 @@ Polymer({
     _renderDepth: {
       type: Number,
       value: 1
-    },
-    _renderHierarchy: {
-      type: Object,
-      readOnly: true,
-      notify: true,
-      computed: '_buildRenderHierarchy(graphHierarchy, _graphParams)'
     },
     _allowGraphSelect: {
       type: Boolean,
@@ -142,7 +142,7 @@ Polymer({
     if (!name) {
       return name;
     }
-    return this._renderHierarchy.getNearestVisibleAncestor(name);
+    return this.renderHierarchy.getNearestVisibleAncestor(name);
   },
   listeners: {
     'graph-select': '_graphSelected',
@@ -203,12 +203,12 @@ Polymer({
   },
   _nodeToggleExpand: function(event) {
     var nodeName = event.detail.name;
-    var renderNode = this._renderHierarchy.getRenderNodeByName(nodeName);
+    var renderNode = this.renderHierarchy.getRenderNodeByName(nodeName);
     // Op nodes are not expandable.
     if (renderNode.node.type === tf.graph.NodeType.OP) {
       return;
     }
-    this._renderHierarchy.buildSubhierarchy(nodeName);
+    this.renderHierarchy.buildSubhierarchy(nodeName);
     renderNode.expanded = !renderNode.expanded;
     this.querySelector('#scene').setNodeExpanded(renderNode);
     // Also select the expanded node.

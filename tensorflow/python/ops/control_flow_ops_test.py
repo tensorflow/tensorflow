@@ -1,4 +1,8 @@
 """Tests for control_flow_ops.py."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 from tensorflow.core.framework import graph_pb2

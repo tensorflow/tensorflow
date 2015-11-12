@@ -34,7 +34,8 @@ int NumSchedulableCPUs() {
   perror("sched_getaffinity");
 #endif
 #if defined(__APPLE__) && defined(__MACH__)
-  return std::thread::hardware_concurrency();
+  unsigned int count = std::thread::hardware_concurrency();
+  if (count > 0) return static_cast<int>(count);
 #endif
   const int kDefaultCores = 4;  // Semi-conservative guess
   fprintf(stderr, "can't determine number of CPU cores: assuming %d\n",
@@ -45,7 +46,7 @@ int NumSchedulableCPUs() {
 void* aligned_malloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
-#else  // !__ANDROID__
+#else  // !defined(__ANDROID__)
   void* ptr = NULL;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return

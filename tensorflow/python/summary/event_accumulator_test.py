@@ -1,7 +1,12 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 
 import tensorflow.python.platform
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.platform import gfile
@@ -189,8 +194,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     # Create the expected values after compressing hst2
     expected_vals2 = [
         ea.CompressedHistogramValue(bp, val)
-        for bp, val in [(0, -2), (2500, 2), (5000, 2 + float(1) / 3), (
-            7500, 2 + float(2) / 3), (10000, 3)]
+        for bp, val in [(0, -2), (2500, 2), (5000, 2 + 1 / 3), (7500, 2 + 2 / 3
+                                                               ), (10000, 3)]
     ]
     expected_cmphst2 = ea.CompressedHistogramEvent(
         wall_time=2,

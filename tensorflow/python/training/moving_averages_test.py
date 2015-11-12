@@ -1,6 +1,11 @@
 """Functional test for moving_averages.py."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import types
 from tensorflow.python.ops import constant_op

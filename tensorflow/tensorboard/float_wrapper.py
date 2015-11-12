@@ -8,6 +8,10 @@ JSONEncoder nor passing a function in the |default| keyword argument overrides
 this.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import math
 
 
@@ -20,7 +24,7 @@ def WrapSpecialFloats(obj):
   elif isinstance(obj, float) and math.isnan(obj):
     return 'NaN'
   elif isinstance(obj, list) or isinstance(obj, tuple):
-    return map(WrapSpecialFloats, obj)
+    return list(map(WrapSpecialFloats, obj))
   elif isinstance(obj, dict):
     return {
         WrapSpecialFloats(k): WrapSpecialFloats(v)

@@ -26,4 +26,8 @@ and the mask of a CRC is
     masked_crc = ((crc >> 15) | (crc << 17)) + 0xa282ead8ul
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.lib.io.tf_record import *

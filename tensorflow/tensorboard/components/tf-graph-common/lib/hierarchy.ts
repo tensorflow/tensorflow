@@ -28,6 +28,7 @@ export interface Hierarchy {
   getPredecessors(nodeName: string): Edges;
   getSuccessors(nodeName: string): Edges;
   getTopologicalOrdering(nodeName: string): { [childName: string]: number };
+  getTemplateIndex(): (string) => number;
 }
 
 /**
@@ -323,6 +324,17 @@ class HierarchyImpl implements Hierarchy {
     return ordering;
   }
 
+  /**
+   * Returns a d3 Ordinal function that can be used to look up the index of
+   * a node based on its template id.
+   */
+  getTemplateIndex(): (string) => number {
+    let templateNames = d3.keys(this.templates);
+    let templateIndex = d3.scale.ordinal()
+        .domain(templateNames)
+        .range(d3.range(0, templateNames.length));
+    return (templateId: string) => <number>templateIndex(templateId);
+  }
 }
 
 /**

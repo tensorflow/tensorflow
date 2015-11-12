@@ -4,7 +4,10 @@ This should achieve a test error of 0.8%. Please keep this model as simple and
 linear as possible, it is meant as a tutorial for simple convolutional models.
 Run with --self_test on the command line to exectute a short self-test.
 """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import gzip
 import os
 import sys
@@ -13,6 +16,7 @@ import urllib
 import tensorflow.python.platform
 
 import numpy
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
@@ -145,9 +149,10 @@ def main(argv=None):  # pylint: disable=unused-argument
                           seed=SEED))
   conv2_biases = tf.Variable(tf.constant(0.1, shape=[64]))
   fc1_weights = tf.Variable(  # fully connected, depth 512.
-      tf.truncated_normal([IMAGE_SIZE / 4 * IMAGE_SIZE / 4 * 64, 512],
-                          stddev=0.1,
-                          seed=SEED))
+      tf.truncated_normal(
+          [IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 64, 512],
+          stddev=0.1,
+          seed=SEED))
   fc1_biases = tf.Variable(tf.constant(0.1, shape=[512]))
   fc2_weights = tf.Variable(
       tf.truncated_normal([512, NUM_LABELS],
@@ -236,7 +241,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     tf.initialize_all_variables().run()
     print('Initialized!')
     # Loop through training steps.
-    for step in xrange(int(num_epochs * train_size / BATCH_SIZE)):
+    for step in xrange(num_epochs * train_size // BATCH_SIZE):
       # Compute the offset of the current minibatch in the data.
       # Note that we could use better randomization across epochs.
       offset = (step * BATCH_SIZE) % (train_size - BATCH_SIZE)

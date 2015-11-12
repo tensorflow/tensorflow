@@ -87,7 +87,8 @@ void ProcessState::SetGPUCount(int c) {
 
 int ProcessState::GPUCount() const { return gpu_count_; }
 
-Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes) {
+Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
+                                         const string& allocator_type) {
 #if GOOGLE_CUDA
   mutex_lock lock(mu_);
   gpu::Platform* gpu_platform = GPUMachineManager();
@@ -104,7 +105,13 @@ Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes) {
   if (gpu_allocators_[gpu_id] == nullptr) {
     VisitableAllocator* gpu_allocator;
 
-    if (FLAGS_brain_gpu_use_bfc_allocator) {
+    // Validate allocator types.
+    if (!allocator_type.empty() && allocator_type != "BFC") {
+      LOG(ERROR) << "Invalid allocator type: " << allocator_type;
+      return nullptr;
+    }
+
+    if (FLAGS_brain_gpu_use_bfc_allocator || allocator_type == "BFC") {
       gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes);
     } else {
       gpu_allocator = new GPURegionAllocator(gpu_id, total_bytes);

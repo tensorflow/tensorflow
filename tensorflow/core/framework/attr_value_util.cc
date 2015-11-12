@@ -110,25 +110,25 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
 Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   int num_set = 0;
 
-#define VALIDATE_FIELD(name, type_string, oneof_case)                      \
-  do {                                                                     \
-    if (attr_value.has_list()) {                                           \
-      if (attr_value.list().name##_size() > 0) {                           \
-        if (type != "list(" type_string ")") {                             \
-          return errors::InvalidArgument(                                  \
-              "AttrValue had value with type list(" type_string ") when ", \
-              type, " expected");                                          \
-        }                                                                  \
-        ++num_set;                                                         \
-      }                                                                    \
-    } else if (attr_value.value_case() == AttrValue::oneof_case) {         \
-      if (type != type_string) {                                           \
-        return errors::InvalidArgument(                                    \
-            "AttrValue had value with type " type_string " when ", type,   \
-            " expected");                                                  \
-      }                                                                    \
-      ++num_set;                                                           \
-    }                                                                      \
+#define VALIDATE_FIELD(name, type_string, oneof_case)                         \
+  do {                                                                        \
+    if (attr_value.has_list()) {                                              \
+      if (attr_value.list().name##_size() > 0) {                              \
+        if (type != "list(" type_string ")") {                                \
+          return errors::InvalidArgument(                                     \
+              "AttrValue had value with type 'list(" type_string ")' when '", \
+              type, "' expected");                                            \
+        }                                                                     \
+        ++num_set;                                                            \
+      }                                                                       \
+    } else if (attr_value.value_case() == AttrValue::oneof_case) {            \
+      if (type != type_string) {                                              \
+        return errors::InvalidArgument(                                       \
+            "AttrValue had value with type '" type_string "' when '", type,   \
+            "' expected");                                                    \
+      }                                                                       \
+      ++num_set;                                                              \
+    }                                                                         \
   } while (false)
 
   VALIDATE_FIELD(s, "string", kS);
@@ -144,7 +144,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   if (attr_value.value_case() == AttrValue::kFunc) {
     if (type != "func") {
       return errors::InvalidArgument(
-          "AttrValue had value with type 'func' when ", type, " expected");
+          "AttrValue had value with type 'func' when '", type, "' expected");
     }
     ++num_set;
   }
@@ -161,7 +161,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   if (StringPiece(type).starts_with("list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
-          "AttrValue missing value with expected type ", type);
+          "AttrValue missing value with expected type '", type, "'");
     } else {
       // Indicate that we have a list, but an empty one.
       ++num_set;
@@ -171,7 +171,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   // Okay to have an empty list, but not to be missing a non-list value.
   if (num_set == 0 && !StringPiece(type).starts_with("list(")) {
     return errors::InvalidArgument(
-        "AttrValue missing value with expected type ", type);
+        "AttrValue missing value with expected type '", type, "'");
   }
 
   // Ref types and DT_INVALID are illegal.

@@ -1,5 +1,9 @@
 """A key-value[] store that implements reservoir sampling on the values."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import collections
 import random
 import threading
@@ -64,7 +68,7 @@ class Reservoir(object):
       ['list', 'of', 'keys'] in the Reservoir.
     """
     with self._mutex:
-      return self._buckets.keys()
+      return list(self._buckets.keys())
 
   def Items(self, key):
     """Return items associated with given key.

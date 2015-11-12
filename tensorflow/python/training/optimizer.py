@@ -1,6 +1,10 @@
 """Base class for optimizers."""
 # pylint: disable=g-bad-name
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types as tf_types
 from tensorflow.python.ops import array_ops
@@ -204,7 +208,7 @@ class Optimizer(object):
         loss, var_list, gate_gradients=(gate_gradients == Optimizer.GATE_OP))
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
-    grads_and_vars = zip(grads, var_list)
+    grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes([v for g, v in grads_and_vars if g is not None])
     return grads_and_vars
 

@@ -70,8 +70,8 @@ tf_cuda_library(
             "common_runtime/gpu/*.cc",
             "common_runtime/copy_tensor.cc",
             "common_runtime/gpu_device_factory.cc",
-            "common_runtime/local_session.cc",
-            "common_runtime/local_session.h",
+            "common_runtime/direct_session.cc",
+            "common_runtime/direct_session.h",
         ],
     ),
     hdrs = glob(["public/**/*.h"]),
@@ -113,10 +113,10 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "local",
+    name = "direct_session",
     srcs = [
-        "common_runtime/local_session.cc",
-        "common_runtime/local_session.h",
+        "common_runtime/direct_session.cc",
+        "common_runtime/direct_session.h",
     ],
     copts = tf_copts(),
     cuda_deps = [
@@ -200,10 +200,10 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":core",
+        ":direct_session",
         ":gpu_runtime",
         ":kernels",
         ":lib",
-        ":local",
     ],
 )
 
@@ -300,7 +300,7 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    py_api_version = 2,
+    py_api_version = 2,  # TODO(irving): Handle 3
     visibility = ["//tensorflow:internal"],
 )
 
@@ -402,9 +402,9 @@ tf_cc_tests(
     ),
     deps = [
         ":core",
+        ":direct_session",
         ":kernels",
         ":lib",
-        ":local",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
@@ -423,8 +423,8 @@ tf_cc_tests(
         ],
     ),
     deps = [
+        ":direct_session",
         ":kernels",
-        ":local",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",

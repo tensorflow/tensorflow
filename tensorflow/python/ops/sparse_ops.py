@@ -22,9 +22,14 @@ dimension, and dense along all other dimensions.
 @@sparse_retain
 @@sparse_fill_empty_rows
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -136,7 +141,7 @@ def _SparseConcatShape(op):
   output_val_elems = tensor_shape.Dimension(0)
   output_shape_shape = tensor_shape.TensorShape(None)
 
-  for i in range(num_inputs):
+  for i in xrange(num_inputs):
     num_elems_i = ind_shapes[i][0].merge_with(val_shapes[i][0])
     output_ind_rows += num_elems_i
     output_ind_cols = output_ind_cols.merge_with(ind_shapes[i][1])

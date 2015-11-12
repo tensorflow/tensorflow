@@ -1,4 +1,8 @@
 """Functional tests for segment reduction ops."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -13,9 +17,8 @@ class SegmentReductionHelper(tf.test.TestCase):
     num_elem = 1
     for x in input_shape:
       num_elem *= x
-    values = range(1, num_elem + 1)
-    np_values = np.array(values).reshape(input_shape).astype(
-        dtype.as_numpy_dtype)
+    values = np.arange(1, num_elem + 1)
+    np_values = values.reshape(input_shape).astype(dtype.as_numpy_dtype)
     return tf.constant(values, shape=input_shape,
                                 dtype=dtype), np_values
 
@@ -68,7 +71,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
     n = 10
     shape = [n, 2]
-    indices = [int(i / 3) for i in range(n)]
+    indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)

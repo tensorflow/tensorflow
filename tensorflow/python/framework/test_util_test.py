@@ -1,9 +1,13 @@
 """Tests for tensorflow.ops.test_util."""
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
 import threading
 
 import tensorflow.python.platform
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from google.protobuf import text_format
 
@@ -58,7 +62,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def testCheckedThreadFails(self):
     def err_func():
-      return 1 / 0
+      return 1 // 0
 
     t = self.checkedThread(target=err_func)
     t.start()

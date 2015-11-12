@@ -1,5 +1,9 @@
 """Operations for generating random numbers."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -20,6 +24,7 @@ def _ShapeTensor(shape):
   else:
     dtype = None
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+
 
 # pylint: disable=protected-access
 def random_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
