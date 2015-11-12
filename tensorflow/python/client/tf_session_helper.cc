@@ -401,7 +401,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
         make_safe(reinterpret_cast<PyObject*>(name_and_array.second)));
   }
 
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (uint i = 0; i < inputs.size(); ++i) {
     input_names.push_back(inputs[i].first);
     PyArrayObject* array = inputs[i].second;
 
@@ -498,7 +498,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
   // 6. Convert the fetched tensors into numpy ndarrays. Store them in a safe
   // container so that we do not leak
   Safe_PyObjectVector py_outputs_safe;
-  for (int i = 0; i < output_names.size(); ++i) {
+  for (uint i = 0; i < output_names.size(); ++i) {
     PyObject* py_array;
     *out_status = TF_Tensor_to_PyObject(outputs[i], &py_array);
     if (!out_status->ok()) {
