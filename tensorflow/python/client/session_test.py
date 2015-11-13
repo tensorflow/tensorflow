@@ -9,6 +9,7 @@ import time
 import tensorflow.python.platform
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import config_pb2
@@ -551,9 +552,55 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(c_list[0], out[0])
       self.assertEqual(c_list[1], out[1])
 
+  def testStringFeedWithUnicode(self):
+    with session.Session():
+      c_list = [u'\n\x01\x00', u'\n\x00\x01']
+      feed_t = array_ops.placeholder(dtype=types.string, shape=[2])
+      c = array_ops.identity(feed_t)
+
+      out = c.eval(feed_dict={feed_t: c_list})
+      self.assertEqual(c_list[0], out[0].decode('utf-8'))
+      self.assertEqual(c_list[1], out[1].decode('utf-8'))
+
+      out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object)})
+      self.assertEqual(c_list[0], out[0].decode('utf-8'))
+      self.assertEqual(c_list[1], out[1].decode('utf-8'))
+
   def testInvalidTargetFails(self):
     with self.assertRaises(RuntimeError):
-      session.Session("INVALID_TARGET")
+      session.Session('INVALID_TARGET')
+
+  def testFetchByNameDifferentStringTypes(self):
+    with session.Session() as sess:
+      c = constant_op.constant(42.0, name='c')
+      d = constant_op.constant(43.0, name=u'd')
+      e = constant_op.constant(44.0, name=b'e')
+      f = constant_op.constant(45.0, name=r'f')
+
+      self.assertTrue(isinstance(c.name, six.text_type))
+      self.assertTrue(isinstance(d.name, six.text_type))
+      self.assertTrue(isinstance(e.name, six.text_type))
+      self.assertTrue(isinstance(f.name, six.text_type))
+
+      self.assertEqual(42.0, sess.run('c:0'))
+      self.assertEqual(42.0, sess.run(u'c:0'))
+      self.assertEqual(42.0, sess.run(b'c:0'))
+      self.assertEqual(42.0, sess.run(r'c:0'))
+
+      self.assertEqual(43.0, sess.run('d:0'))
+      self.assertEqual(43.0, sess.run(u'd:0'))
+      self.assertEqual(43.0, sess.run(b'd:0'))
+      self.assertEqual(43.0, sess.run(r'd:0'))
+
+      self.assertEqual(44.0, sess.run('e:0'))
+      self.assertEqual(44.0, sess.run(u'e:0'))
+      self.assertEqual(44.0, sess.run(b'e:0'))
+      self.assertEqual(44.0, sess.run(r'e:0'))
+
+      self.assertEqual(45.0, sess.run('f:0'))
+      self.assertEqual(45.0, sess.run(u'f:0'))
+      self.assertEqual(45.0, sess.run(b'f:0'))
+      self.assertEqual(45.0, sess.run(r'f:0'))
 
 
 if __name__ == '__main__':

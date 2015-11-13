@@ -342,12 +342,12 @@ class NormalizeNumbersTest(googletest.TestCase):
 class AssertTest(googletest.TestCase):
   """Tests both assertProto2Equal() and assertProto2SameElements()."""
   def assertProto2Equal(self, a, b, **kwargs):
-    if isinstance(a, basestring) and isinstance(b, basestring):
+    if isinstance(a, six.string_types) and isinstance(b, six.string_types):
       a, b = LargePbs(a, b)
     compare.assertProto2Equal(self, a, b, **kwargs)
 
   def assertProto2SameElements(self, a, b, **kwargs):
-    if isinstance(a, basestring) and isinstance(b, basestring):
+    if isinstance(a, six.string_types) and isinstance(b, six.string_types):
       a, b = LargePbs(a, b)
     compare.assertProto2SameElements(self, a, b, **kwargs)
 

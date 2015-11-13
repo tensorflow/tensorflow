@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numbers
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import op_def_pb2
@@ -128,7 +129,7 @@ def _MakeFloat(v, arg_name):
 
 
 def _MakeInt(v, arg_name):
-  if isinstance(v, basestring):
+  if isinstance(v, six.string_types):
     raise TypeError("Expected int for argument '%s' not %s." %
                     (arg_name, repr(v)))
   try:
@@ -139,7 +140,7 @@ def _MakeInt(v, arg_name):
 
 
 def _MakeStr(v, arg_name):
-  if not isinstance(v, basestring):
+  if not isinstance(v, six.string_types):
     raise TypeError("Expected string for argument '%s' not %s." %
                     (arg_name, repr(v)))
   # TODO(irving): Figure out what to do here from Python 3

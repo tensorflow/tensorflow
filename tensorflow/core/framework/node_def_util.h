@@ -111,8 +111,7 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    const NameAttrList** value);  // type: "func"
 
-// Computes the input and output types for a specific node, for
-// attr-style ops.
+// Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs);

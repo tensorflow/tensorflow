@@ -82,7 +82,7 @@ def assertProto2Equal(self, a, b, check_initialized=True,
       numbers before comparison.
     msg: if specified, is used as the error message on failure
   """
-  if isinstance(a, basestring):
+  if isinstance(a, six.string_types):
     a = text_format.Merge(a, b.__class__())
 
   for pb in a, b:
@@ -121,7 +121,7 @@ def assertProto2SameElements(self, a, b, number_matters=False,
       numbers before comparison.
     msg: if specified, is used as the error message on failure
   """
-  if isinstance(a, basestring):
+  if isinstance(a, six.string_types):
     a = text_format.Merge(a, b.__class__())
   else:
     a = copy.deepcopy(a)
@@ -152,7 +152,7 @@ def assertProto2Contains(self, a, b,  # pylint: disable=invalid-name
     check_initialized: boolean, whether to fail if b isn't initialized
     msg: if specified, is used as the error message on failure
   """
-  if isinstance(a, basestring):
+  if isinstance(a, six.string_types):
     a = text_format.Merge(a, b.__class__())
   else:
     a = copy.deepcopy(a)
@@ -299,7 +299,7 @@ def NormalizeNumberFields(pb):
 
 
 def _IsRepeatedContainer(value):
-  if isinstance(value, basestring):
+  if isinstance(value, six.string_types):
     return False
   try:
     iter(value)

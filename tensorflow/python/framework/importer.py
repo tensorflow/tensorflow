@@ -7,6 +7,8 @@ import contextlib
 
 import tensorflow.python.platform
 
+import six
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -170,12 +172,13 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     input_map = {}
   else:
     if not (isinstance(input_map, dict)
-            and all(isinstance(k, basestring) for k in input_map.keys())):
+            and all(isinstance(k, six.string_types) for k in input_map.keys())):
       raise TypeError('input_map must be a dictionary mapping strings to '
                       'Tensor objects.')
   if (return_elements is not None
       and not (isinstance(return_elements, (list, tuple))
-               and all(isinstance(x, basestring) for x in return_elements))):
+               and all(isinstance(x, six.string_types)
+                       for x in return_elements))):
     raise TypeError('return_elements must be a list of strings.')
 
   # Use a canonical representation for all tensor names.

@@ -39,7 +39,7 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
   PyObject* value;
   Py_ssize_t pos = 0;
   if (PyDict_Next(descr->fields, &pos, &key, &value)) {
-    const char* key_string = PyString_AsString(key);
+    const char* key_string = PyBytes_AsString(key);
     if (!key_string) {
       return errors::Internal("Corrupt numpy type descriptor");
     }
@@ -166,7 +166,7 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
 // Iterate over the string array 'array', extract the ptr and len of each string
 // element and call f(ptr, len).
 template <typename F>
-Status PyStringArrayMap(PyArrayObject* array, F f) {
+Status PyBytesArrayMap(PyArrayObject* array, F f) {
   Safe_PyObjectPtr iter = tensorflow::make_safe(
       PyArray_IterNew(reinterpret_cast<PyObject*>(array)));
   while (PyArray_ITER_NOTDONE(iter.get())) {
@@ -177,10 +177,23 @@ Status PyStringArrayMap(PyArrayObject* array, F f) {
     }
     char* ptr;
     Py_ssize_t len;
-    int success = PyString_AsStringAndSize(item.get(), &ptr, &len);
-    if (success != 0) {
-      return errors::Internal("Unable to get element from the feed.");
+
+#if PY_VERSION_HEX >= 0x03030000
+    // Accept unicode in Python 3, by converting to UTF-8 bytes.
+    if (PyUnicode_Check(item.get())) {
+      ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
+      if (!buf) {
+        return errors::Internal("Unable to get element from the feed.");
+      }
+    } else {
+#endif
+      int success = PyBytes_AsStringAndSize(item.get(), &ptr, &len);
+      if (success != 0) {
+        return errors::Internal("Unable to get element from the feed.");
+      }
+#if PY_VERSION_HEX >= 0x03030000
     }
+#endif
     f(ptr, len);
     PyArray_ITER_NEXT(iter.get());
   }
@@ -189,15 +202,14 @@ Status PyStringArrayMap(PyArrayObject* array, F f) {
 
 // Encode the strings in 'array' into a contiguous buffer and return the base of
 // the buffer. The caller takes ownership of the buffer.
-Status EncodePyStringArray(PyArrayObject* array, tensorflow::int64 nelems,
-                           size_t* size, void** buffer) {
+Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
+                          size_t* size, void** buffer) {
   // Compute bytes needed for encoding.
   *size = 0;
-  TF_RETURN_IF_ERROR(
-      PyStringArrayMap(array, [&size](char* ptr, Py_ssize_t len) {
-        *size += sizeof(tensorflow::uint64) +
-                 tensorflow::core::VarintLength(len) + len;
-      }));
+  TF_RETURN_IF_ERROR(PyBytesArrayMap(array, [&size](char* ptr, Py_ssize_t len) {
+    *size +=
+        sizeof(tensorflow::uint64) + tensorflow::core::VarintLength(len) + len;
+  }));
   // Encode all strings.
   std::unique_ptr<char[]> base_ptr(new char[*size]);
   char* base = base_ptr.get();
@@ -205,7 +217,7 @@ Status EncodePyStringArray(PyArrayObject* array, tensorflow::int64 nelems,
   char* dst = data_start;  // Where next string is encoded.
   tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
 
-  TF_RETURN_IF_ERROR(PyStringArrayMap(
+  TF_RETURN_IF_ERROR(PyBytesArrayMap(
       array, [&base, &data_start, &dst, &offsets](char* ptr, Py_ssize_t len) {
         *offsets = (dst - data_start);
         offsets++;
@@ -251,7 +263,7 @@ static Status CopyStringToPyArrayElement(PyArrayObject* pyarray, void* i_ptr,
   tensorflow::uint64 len;
   TF_RETURN_IF_ERROR(
       TF_StringTensor_GetPtrAndLen(tensor, num_elements, i, &ptr, &len));
-  auto py_string = tensorflow::make_safe(PyString_FromStringAndSize(ptr, len));
+  auto py_string = tensorflow::make_safe(PyBytes_FromStringAndSize(ptr, len));
   int success =
       PyArray_SETITEM(pyarray, PyArray_ITER_DATA(i_ptr), py_string.get());
   if (success != 0) {
@@ -446,7 +458,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
     } else {
       size_t size;
       void* encoded;
-      Status s = EncodePyStringArray(array, nelems, &size, &encoded);
+      Status s = EncodePyBytesArray(array, nelems, &size, &encoded);
       if (!s.ok()) {
         *out_status = s;
         return;
