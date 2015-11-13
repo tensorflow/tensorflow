@@ -18,7 +18,7 @@ class SkFlowTest(googletest.TestCase):
     boston = datasets.load_boston()
     regressor = skflow.TensorFlowRegressor(n_classes=0,
                                            batch_size=520,
-                                           steps=1000,
+                                           steps=500,
                                            learning_rate=0.001)
     regressor.fit(boston.data, boston.target)
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
