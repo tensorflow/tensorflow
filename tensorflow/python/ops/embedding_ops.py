@@ -51,7 +51,7 @@ def embedding_lookup(params, ids, name=None):
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
-      original_indices = math_ops.range(0, array_ops.size(flat_ids))
+      original_indices = math_ops.range(array_ops.size(flat_ids))
       # Compute flat_ids % partitions for each id
       ids_mod_p = flat_ids % np
       if ids_mod_p.dtype != types.int32:

@@ -495,6 +495,11 @@ static void SimplifyGraph(Graph* g) {
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
   DumpGraph("Initial", *g);
+
+  // Run SimplifyGraph at least once to rewrite away ops such as
+  // _ListToArray, _ArrayToList, etc.
+  SimplifyGraph(*g);
+
   const int kNumInlineRounds = 10;
   for (int i = 0; i < kNumInlineRounds; ++i) {
     if (!ExpandInlineFunctions(lib, *g)) break;

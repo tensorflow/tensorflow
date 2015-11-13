@@ -6,18 +6,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import sys
 import time
 import thread
-from logging import getLogger
-from logging import log
-from logging import debug
-from logging import error
-from logging import fatal
-from logging import info
-from logging import warn
-from logging import warning
 from logging import DEBUG
 from logging import ERROR
 from logging import FATAL
@@ -25,13 +18,25 @@ from logging import INFO
 from logging import WARN
 
 # Controls which methods from pyglib.logging are available within the project
-# Do not add methods here without also adding to platform/default/_logging.py
+# Do not add methods here without also adding to platform/google/_logging.py
 __all__ = ['log', 'debug', 'error', 'fatal', 'info', 'warn', 'warning',
            'DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN',
            'flush', 'log_every_n', 'log_first_n', 'vlog',
            'TaskLevelStatusMessage', 'get_verbosity', 'set_verbosity']
 
-warning = warn
+# Scope the tensorflow logger to not conflict with users' loggers
+_logger = logging.getLogger('tensorflow')
+_handler = logging.StreamHandler()
+_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+_logger.addHandler(_handler)
+
+log = _logger.log
+debug = _logger.debug
+error = _logger.error
+fatal = _logger.fatal
+info = _logger.info
+warn = _logger.warn
+warning = _logger.warn
 
 _level_names = {
     FATAL: 'FATAL',
@@ -61,7 +66,7 @@ def flush():
 
 # Code below is taken from pyglib/logging
 def vlog(level, msg, *args, **kwargs):
-  log(level, msg, *args, **kwargs)
+  _logger.log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -169,12 +174,12 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
 
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return getLogger().getEffectiveLevel()
+  return _logger.getEffectiveLevel()
 
 
 def set_verbosity(verbosity):
   """Sets the threshold for what messages will be logged."""
-  getLogger().setLevel(verbosity)
+  _logger.setLevel(verbosity)
 
 
 def _get_thread_id():

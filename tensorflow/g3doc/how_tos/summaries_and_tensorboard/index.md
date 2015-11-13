@@ -66,7 +66,7 @@ every hundred steps or so, as in the following code example.
 
 ```python
 merged_summary_op = tf.merge_all_summaries()
-summary_writer = tf.train.SummaryWriter('/tmp/mnist_logs', sess.graph)
+summary_writer = tf.train.SummaryWriter('/tmp/mnist_logs', sess.graph_def)
 total_step = 0
 while training:
   total_step += 1

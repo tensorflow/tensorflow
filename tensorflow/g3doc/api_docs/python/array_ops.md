@@ -529,7 +529,7 @@ tf.shape(split0) ==> [5, 10]
 
 *  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`.
-*  <b>`num_split`</b>: A 0-D `int32` `Tensor`. The number of ways to split.
+*  <b>`num_split`</b>: A Python integer. The number of ways to split.
 *  <b>`value`</b>: The `Tensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).
 

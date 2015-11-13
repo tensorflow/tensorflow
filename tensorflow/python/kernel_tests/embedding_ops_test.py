@@ -262,7 +262,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
           self.assertAllEqual(simple, tf.gather(params, ids).eval())
           # Run a few random sharded versions
           for procs in 1, 2, 3:
-            stride = procs * tf.range(0, params.shape[0] // procs)
+            stride = procs * tf.range(params.shape[0] // procs)
             split_params = [tf.gather(params, stride + p)
                             for p in xrange(procs)]
             sharded = tf.nn.embedding_lookup(split_params, ids).eval()

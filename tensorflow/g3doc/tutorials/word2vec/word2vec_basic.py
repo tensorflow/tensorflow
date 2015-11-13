@@ -9,9 +9,9 @@ import math
 import numpy as np
 import os
 import random
+from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import urllib
 import zipfile
 
 # Step 1: Download the data.
@@ -20,7 +20,7 @@ url = 'http://mattmahoney.net/dc/'
 def maybe_download(filename, expected_bytes):
   """Download a file if not present, and make sure it's the right size."""
   if not os.path.exists(filename):
-    filename, _ = urllib.urlretrieve(url + filename, filename)
+    filename, _ = urllib.request.urlretrieve(url + filename, filename)
   statinfo = os.stat(filename)
   if statinfo.st_size == expected_bytes:
     print('Found and verified', filename)

@@ -74,7 +74,7 @@ def clip_by_norm(t, clip_norm, name=None):
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2norm_inv = math_ops.rsqrt(
-        math_ops.reduce_sum(t * t, math_ops.range(0, array_ops.rank(t))))
+        math_ops.reduce_sum(t * t, math_ops.range(array_ops.rank(t))))
     tclip = array_ops.identity(t * clip_norm * math_ops.minimum(
         l2norm_inv, constant_op.constant(1.0 / clip_norm)), name=name)
 
@@ -228,7 +228,7 @@ def clip_by_average_norm(t, clip_norm, name=None):
     # L2-norm per element
     n_element = math_ops.cast(array_ops.size(t), types.float32)
     l2norm_inv = math_ops.rsqrt(
-        math_ops.reduce_sum(t * t, math_ops.range(0, array_ops.rank(t))))
+        math_ops.reduce_sum(t * t, math_ops.range(array_ops.rank(t))))
     tclip = array_ops.identity(
         t * clip_norm * math_ops.minimum(
             l2norm_inv * n_element, constant_op.constant(1.0 / clip_norm)),
