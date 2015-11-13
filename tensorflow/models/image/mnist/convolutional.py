@@ -133,7 +133,9 @@ def main(argv=None):  # pylint: disable=unused-argument
   # For the validation and test data, we'll just hold the entire dataset in
   # one constant node.
   validation_data_node = tf.constant(validation_data)
-  test_data_node = tf.constant(test_data)
+  test_data_node = tf.placeholder(
+      tf.float32,
+      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   # The variables below hold all the trainable weights. They are passed an
   # initial value which will be assigned when when we call:
@@ -204,7 +206,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     return tf.matmul(hidden, fc2_weights) + fc2_biases
 
   # Training computation: logits + cross-entropy loss.
-  logits = model(train_data_node, True)
+  logits = model(train_data_node, train=True)
   loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
       logits, train_labels_node))
 
@@ -262,8 +264,21 @@ def main(argv=None):  # pylint: disable=unused-argument
         print('Validation error: %.1f%%' %
               error_rate(validation_prediction.eval(), validation_labels))
         sys.stdout.flush()
+    # Run batched tests
+    # Do this to accomodate my "small-memory" (4GB) gpu.
+    test_size = 10000
+    correct = 0
+    for step in xrange(test_size / BATCH_SIZE):
+      offset = step * BATCH_SIZE
+      batch_data = test_data[offset:(offset + BATCH_SIZE), :, :, :]
+      batch_labels = test_labels[offset:(offset + BATCH_SIZE)]
+      feed_dict = { test_data_node: batch_data }
+      # s.run() always returns a tuple
+      (predictions,) = s.run([test_prediction],
+                             feed_dict=feed_dict)
+      correct += numpy.sum(numpy.argmax(predictions, 1) == numpy.argmax(batch_labels, 1))
+    test_error = 100.0 - (100.0 * (correct / float(test_size)))
     # Finally print the result!
-    test_error = error_rate(test_prediction.eval(), test_labels)
     print('Test error: %.1f%%' % test_error)
     if FLAGS.self_test:
       print('test_error', test_error)
