@@ -3,6 +3,8 @@ import random
 import numpy as np
 import tensorflow as tf
 
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+
 from skflow.trainer import TensorFlowTrainer
 from skflow.ops import mean_squared_error_regressor, softmax_classifier
 
@@ -34,26 +36,25 @@ class LogisticRegression(object):
             self.predictions, self.loss = softmax_classifier(
                 self.inp, self.out, self.weights, self.bias)
 
-
-class TensorFlowBase(object):
-  """Base class for TensorFlow models.
-
-  Warning: This class should not be used directly.
-  Use derivated classes instead.
+class TensorFlowEstimator(BaseEstimator):
+  """Base class for all TensorFlow estimators.
+  
+  Parameters:
+      tf_master: TensorFlow master. Empty string is default for local.
+      batch_size: Mini batch size.
+      steps: Number of steps to run over data.
+      optimizer: Optimizer name (or class), for example "SGD", "Adam",
+                 "Adagrad".
+      learning_rate: Learning rate for optimizer.
   """
 
-  def __init__(self,
-               n_classes,
-               tf_master="",
-               batch_size=32,
-               steps=50,
-               trainer="SGD",
+  def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                learning_rate=0.1):
     self.n_classes = n_classes
     self.tf_master = tf_master
     self.batch_size = batch_size
     self.steps = steps
-    self.trainer = trainer
+    self.optimizer = optimizer
     self.learning_rate = learning_rate
 
   def _get_feed_dict_fn(self, model, X, y):
@@ -81,7 +82,7 @@ class TensorFlowBase(object):
         self._model = LogisticRegression(self.n_classes, X.shape[1], graph)
       else:
         self._model = LinearRegression(X.shape[1], graph)
-      self._trainer = TensorFlowTrainer(self._model, self.trainer, self.learning_rate)
+      self._trainer = TensorFlowTrainer(self._model, self.optimizer, self.learning_rate)
       self._session = tf.Session(self.tf_master)
       self._trainer.initialize(self._session)
       self._trainer.train(self._session,
@@ -97,10 +98,10 @@ class TensorFlowBase(object):
     return pred.argmax(axis=1)
 
 
-class TensorFlowRegressor(TensorFlowBase):
+class TensorFlowRegressor(TensorFlowEstimator, RegressorMixin):
   pass
 
 
-class TensorFlowClassifier(TensorFlowBase):
+class TensorFlowClassifier(TensorFlowEstimator, ClassifierMixin):
   pass
 
