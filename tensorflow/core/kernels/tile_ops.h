@@ -46,8 +46,9 @@ template <typename Device, typename T>
 struct TileGrad<Device, T, 0> {
   void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
                   typename TTypes<T, 0>::ConstTensor in,
-                  const Eigen::DSizes<ptrdiff_t, 0>&,
-                  const Eigen::DSizes<ptrdiff_t, 0>&, bool first) const {
+                  const Eigen::DSizes<Eigen::DenseIndex, 0>&,
+                  const Eigen::DSizes<Eigen::DenseIndex, 0>&,
+                  bool first) const {
     if (first) {
       out.device(d) = in;
     } else {

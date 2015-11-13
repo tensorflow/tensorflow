@@ -190,6 +190,10 @@ class RangeTest(tf.test.TestCase):
         self._Range(100, 500, 100), np.array([100, 200, 300, 400])))
     self.assertEqual(tf.range(0, 5, 1).dtype, tf.int32)
 
+  def testLimitOnly(self):
+    with self.test_session():
+      self.assertAllEqual(np.arange(5), tf.range(5).eval())
+
   def testEmpty(self):
     for start in 0, 5:
       self.assertTrue(np.array_equal(self._Range(start, start, 1), []))

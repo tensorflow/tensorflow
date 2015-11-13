@@ -11,11 +11,11 @@ from __future__ import print_function
 import gzip
 import os
 import sys
-import urllib
 
 import tensorflow.python.platform
 
 import numpy
+from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -41,7 +41,7 @@ def maybe_download(filename):
     os.mkdir(WORK_DIRECTORY)
   filepath = os.path.join(WORK_DIRECTORY, filename)
   if not os.path.exists(filepath):
-    filepath, _ = urllib.urlretrieve(SOURCE_URL + filename, filepath)
+    filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
     statinfo = os.stat(filepath)
     print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
   return filepath

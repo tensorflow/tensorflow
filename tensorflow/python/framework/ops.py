@@ -1551,6 +1551,8 @@ class Graph(object):
     # True if the graph is considered "finalized".  In that case no
     # new operations can be added.
     self._finalized = False
+    # Functions defined in the graph
+    self._functions = []
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1655,7 +1657,29 @@ class Graph(object):
         bytesize += op.node_def.ByteSize()
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
+    if self._functions:
+      for f in self._functions:
+        bytesize += f.ByteSize()
+        if bytesize >= (1 << 31) or bytesize < 0:
+          raise ValueError("GraphDef cannot be larger than 2GB.")
+      graph.library.function.extend(self._functions)
     return graph
+
+  def _add_function(self, function_def):
+    """Adds a function to the graph.
+
+    The function is specified as a [`FunctionDef`]
+    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+    protocol buffer.
+
+    After the function has been added, you can call to the function by
+    passing the function name in place of an op name to
+    `Graph.create_op()`.
+
+    Args:
+      function_def: A `FunctionDef` protocol buffer.
+    """
+    self._functions.append(function_def)
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -1869,7 +1893,6 @@ class Graph(object):
       A list of Operations.
     """
     return list(self._nodes_by_id.values())
-
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.
 

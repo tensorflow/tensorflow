@@ -405,28 +405,82 @@ class DropoutTest(test_util.TensorFlowTestCase):
             sorted_value = np.unique(np.sort(value[i, :]))
             self.assertEqual(sorted_value.size, 1)
 
+  def testDropoutPlaceholderKeepProb(self):
+    # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
+    # that it is producing approximately the right number of ones over a large
+    # number of samples, based on the keep probability.
+    x_dim = 40
+    y_dim = 30
+    num_iter = 10
+    for keep_prob in [0.1, 0.5, 0.8]:
+      with self.test_session():
+        t = constant_op.constant(1.0,
+                                 shape=[x_dim, y_dim],
+                                 dtype=types.float32)
+        keep_prob_placeholder = array_ops.placeholder(types.float32)
+        dropout = nn.dropout(t, keep_prob_placeholder)
+        final_count = 0
+        self.assertEqual([x_dim, y_dim], dropout.get_shape())
+        for _ in xrange(0, num_iter):
+          value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
+          final_count += np.count_nonzero(value)
+          # Verifies that there are only two values: 0 and 1/keep_prob.
+          sorted_value = np.unique(np.sort(value))
+          self.assertEqual(0, sorted_value[0])
+          self.assertAllClose(1 / keep_prob, sorted_value[1])
+      # Check that we are in the 15% error range
+      expected_count = x_dim * y_dim * keep_prob * num_iter
+      rel_error = math.fabs(final_count - expected_count) / expected_count
+      print(rel_error)
+      self.assertTrue(rel_error < 0.15)
+
+  def testShapedDropoutUnknownShape(self):
+    x_dim = 40
+    y_dim = 30
+    keep_prob = 0.5
+    x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=types.float32)
+    dropout_x = nn.dropout(
+        x, keep_prob, noise_shape=array_ops.placeholder(types.int32))
+    self.assertEqual(x.get_shape(), dropout_x.get_shape())
+
+  def testInvalidKeepProb(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0,
+                             shape=[x_dim, y_dim],
+                             dtype=types.float32)
+    with self.assertRaises(ValueError):
+      nn.dropout(t, -1.0)
+    with self.assertRaises(ValueError):
+      nn.dropout(t, 1.1)
+    with self.assertRaises(ValueError):
+      nn.dropout(t, [0.0, 1.0])
+    with self.assertRaises(ValueError):
+      nn.dropout(t, array_ops.placeholder(types.float64))
+    with self.assertRaises(ValueError):
+      nn.dropout(t, array_ops.placeholder(types.float32, shape=[2]))
+
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
     x_dim = 40
     y_dim = 30
     keep_prob = 0.5
-    with self.test_session():
-      t = constant_op.constant(1.0,
-                               shape=[x_dim, y_dim],
-                               dtype=types.float32)
-      with self.assertRaises(ValueError):
-        _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
-      with self.assertRaises(ValueError):
-        _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim, 5])
-      with self.assertRaises(ValueError):
-        _ = nn.dropout(t, keep_prob, noise_shape=[x_dim + 3])
-      with self.assertRaises(ValueError):
-        _ = nn.dropout(t, keep_prob, noise_shape=[x_dim])
-      # test that broadcasting proceeds
-      _ = nn.dropout(t, keep_prob, noise_shape=[y_dim])
-      _ = nn.dropout(t, keep_prob, noise_shape=[1, y_dim])
-      _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
-      _ = nn.dropout(t, keep_prob, noise_shape=[1, 1])
+    t = constant_op.constant(1.0,
+                             shape=[x_dim, y_dim],
+                             dtype=types.float32)
+    with self.assertRaises(ValueError):
+      _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
+    with self.assertRaises(ValueError):
+      _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim, 5])
+    with self.assertRaises(ValueError):
+      _ = nn.dropout(t, keep_prob, noise_shape=[x_dim + 3])
+    with self.assertRaises(ValueError):
+      _ = nn.dropout(t, keep_prob, noise_shape=[x_dim])
+    # test that broadcasting proceeds
+    _ = nn.dropout(t, keep_prob, noise_shape=[y_dim])
+    _ = nn.dropout(t, keep_prob, noise_shape=[1, y_dim])
+    _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+    _ = nn.dropout(t, keep_prob, noise_shape=[1, 1])
 
 
 class BatchNormWithGlobalNormalizationTest(test_util.TensorFlowTestCase):

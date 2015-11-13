@@ -85,7 +85,7 @@ def _BiasAddGrad(unused_bias_op, received_grad):
     Two tensors, the first one for the "tensor" input of the BiasOp,
     the second one for the "bias" input of the BiasOp.
   """
-  reduction_dim_tensor = math_ops.range(0, array_ops.rank(received_grad) - 1)
+  reduction_dim_tensor = math_ops.range(array_ops.rank(received_grad) - 1)
   return (received_grad, math_ops.reduce_sum(received_grad, reduction_dim_tensor))
 
 

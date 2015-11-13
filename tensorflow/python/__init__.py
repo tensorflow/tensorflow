@@ -13,8 +13,16 @@ import tensorflow as tf
 
 """
 
-import tensorflow.python.platform
-from tensorflow.core.framework.graph_pb2 import *
+try:
+  import tensorflow.python.platform
+  from tensorflow.core.framework.graph_pb2 import *
+except ImportError as e:
+  msg = """Error importing tensorflow: you should not try to import
+  tensorflow from its source directory; please exit the tensorflow source tree,
+  and relaunch your python interpreter from there.
+  Original ImportError: %s""" % str(e)
+  raise ImportError(msg)
+
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *

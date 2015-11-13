@@ -102,28 +102,33 @@ class GPUBFCAllocator : public VisitableAllocator {
   Chunk* AllocateNewChunk(size_t num_bytes);
   void SplitChunk(Chunk* c, size_t num_bytes);
   void Merge(Chunk* c1, Chunk* c2);
-  void MaybeCoalesce(Chunk* c);
-
-  void ReassignChunkToBin(Chunk* c);
-  void RemoveChunkFromBin(Chunk* c);
+  void FreeAndMaybeCoalesce(Chunk* c);
+  void InsertFreeChunkIntoBin(Chunk* c);
+  void RemoveFreeChunkFromBin(Chunk* c);
+  void DeleteChunk(Chunk* c);
 
   void DumpMemoryLog(size_t num_bytes);
 
-  // A Bin is a collection of similar-sized Chunks.
+  // A Bin is a collection of similar-sized free chunks.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
     size_t bin_size = 0;
 
     struct ChunkComparator {
-      bool operator()(Chunk* a, Chunk* b) { return a->size < b->size; }
+      // Sort first by size and then use pointer address as a tie breaker.
+      bool operator()(const Chunk* a, const Chunk* b) const {
+        if (a->size != b->size) {
+          return a->size < b->size;
+        }
+        return a->ptr < b->ptr;
+      }
     };
 
-    // List of chunks within the bin, sorted by chunk size.
-    std::multiset<Chunk*, ChunkComparator> chunks;
+    // List of free chunks within the bin, sorted by chunk size.
+    // Chunk * not owned.
+    std::set<Chunk*, ChunkComparator> free_chunks;
 
     explicit Bin(size_t bs) : bin_size(bs) {}
-
-    ~Bin() { gtl::STLDeleteElements(&chunks); }
   };
 
   GPUAllocatorRetry retry_helper_;
@@ -142,7 +147,7 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   // Structures mutable after construction
   mutable mutex lock_;
-  // Not owned.
+  // Chunk * owned.
   std::unordered_map<void*, Chunk*> ptr_to_chunk_map_;
 
   // Called once on each region, ASAP.

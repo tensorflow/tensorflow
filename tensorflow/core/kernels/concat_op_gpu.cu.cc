@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
@@ -34,6 +35,7 @@ void ConcatGPU(const GPUDevice& d,
       typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 }  // end namespace tensorflow

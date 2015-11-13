@@ -163,7 +163,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
     is added to the current Graph's QUEUE_RUNNER collection.
   """
   with ops.op_scope([limit], name, "input_producer") as name:
-    range_tensor = math_ops.range(0, limit)
+    range_tensor = math_ops.range(limit)
     return _input_producer(
         range_tensor, types.int32, num_epochs, shuffle, seed, capacity, name,
         "fraction_of_%d_full" % capacity)

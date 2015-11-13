@@ -17,9 +17,9 @@ import json
 import mimetypes
 import os
 import StringIO
-import urllib
 import urlparse
 
+from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from google.protobuf import text_format
 import tensorflow.python.platform
@@ -289,7 +289,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       A string representation of a URL that will load the index-th
       sampled image in the given run with the given tag.
     """
-    query_string = urllib.urlencode({
+    query_string = urllib.parse.urlencode({
         'run': run,
         'tag': tag,
         'index': index

@@ -7,9 +7,9 @@ import gzip
 import os
 import re
 import tarfile
-import urllib
 
 from tensorflow.python.platform import gfile
+from six.moves import urllib
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = "_PAD"
@@ -40,7 +40,7 @@ def maybe_download(directory, filename, url):
   filepath = os.path.join(directory, filename)
   if not os.path.exists(filepath):
     print("Downloading %s to %s" % (url, filepath))
-    filepath, _ = urllib.urlretrieve(url, filepath)
+    filepath, _ = urllib.request.urlretrieve(url, filepath)
     statinfo = os.stat(filepath)
     print("Succesfully downloaded", filename, statinfo.st_size, "bytes")
   return filepath

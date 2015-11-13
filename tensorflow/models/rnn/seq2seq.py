@@ -636,7 +636,7 @@ def sequence_loss_by_example(logits, targets, weights, num_decoder_symbols,
         # SparseToDense does not accept batched inputs, we need to do this by
         # re-indexing and re-sizing. When TensorFlow adds SparseCrossEntropy,
         # rewrite this method.
-        indices = targets[i] + num_decoder_symbols * tf.range(0, batch_size)
+        indices = targets[i] + num_decoder_symbols * tf.range(batch_size)
         with tf.device("/cpu:0"):  # Sparse-to-dense must happen on CPU for now.
           dense = tf.sparse_to_dense(indices, tf.expand_dims(length, 0), 1.0,
                                      0.0)

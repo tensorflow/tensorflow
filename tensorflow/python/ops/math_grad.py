@@ -21,7 +21,7 @@ def _ReductionGradAssist(op):
   indices = op.inputs[1]                            # [1, 2]
   indices_shape = array_ops.shape(indices)          # [2]
   new_output_shape = data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
-      [math_ops.range(0, input_rank),               # [0, 1, 2, 3]
+      [math_ops.range(input_rank),                  # [0, 1, 2, 3]
        indices],                                    # [1, 2]
       [input_shape,                                 # [2, 3, 5, 7]
        array_ops.fill(indices_shape, 1)])           # [1, 1]
