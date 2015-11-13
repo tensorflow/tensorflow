@@ -100,7 +100,7 @@ given the previous words \\(h\\) (for "history") in terms of a
 
 $$
 \begin{align}
-P(w_t | h) &= \text{softmax}(\exp \{ \text{score}(w_t, h) \}) \\
+P(w_t | h) &= \text{softmax}(\text{score}(w_t, h)) \\
            &= \frac{\exp \{ \text{score}(w_t, h) \} }
              {\sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} }.
 \end{align}

@@ -176,6 +176,58 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[0], a.outputs[1])
       self.assertEqual(d.inputs[1], feed_b_1)
 
+  def testInputMapBytes(self):
+    with tf.Graph().as_default():
+      feed_a_0 = tf.constant(0, dtype=tf.int32)
+      feed_b_1 = tf.constant(1, dtype=tf.int32)
+
+      a, b, c, d = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Oii' }
+          node { name: 'B' op: 'Oii' }
+          node { name: 'C' op: 'In'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_INT32 } }
+                 input: 'A:0' input: 'B:0' }
+          node { name: 'D' op: 'In'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_INT32 } }
+                 input: 'A:1' input: 'B:1' }
+          """),
+          input_map={b'A:0': feed_a_0, b'B:1': feed_b_1},
+          return_elements=[b'A', b'B', b'C', b'D'])
+
+      self.assertEqual(c.inputs[0], feed_a_0)
+      self.assertEqual(c.inputs[1], b.outputs[0])
+      self.assertEqual(d.inputs[0], a.outputs[1])
+      self.assertEqual(d.inputs[1], feed_b_1)
+
+  def testInputMapUnicode(self):
+    with tf.Graph().as_default():
+      feed_a_0 = tf.constant(0, dtype=tf.int32)
+      feed_b_1 = tf.constant(1, dtype=tf.int32)
+
+      a, b, c, d = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Oii' }
+          node { name: 'B' op: 'Oii' }
+          node { name: 'C' op: 'In'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_INT32 } }
+                 input: 'A:0' input: 'B:0' }
+          node { name: 'D' op: 'In'
+                 attr { key: 'N' value { i: 2 } }
+                 attr { key: 'T' value { type: DT_INT32 } }
+                 input: 'A:1' input: 'B:1' }
+          """),
+          input_map={u'A:0': feed_a_0, u'B:1': feed_b_1},
+          return_elements=[u'A', u'B', u'C', u'D'])
+
+      self.assertEqual(c.inputs[0], feed_a_0)
+      self.assertEqual(c.inputs[1], b.outputs[0])
+      self.assertEqual(d.inputs[0], a.outputs[1])
+      self.assertEqual(d.inputs[1], feed_b_1)
+
   def testImplicitZerothOutput(self):
     with tf.Graph().as_default():
       a, b = tf.import_graph_def(

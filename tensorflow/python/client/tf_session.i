@@ -68,7 +68,7 @@ import_array();
   PyObject* value;
   Py_ssize_t pos = 0;
   while (PyDict_Next($input, &pos, &key, &value)) {
-    const char* key_string = PyString_AsString(key);
+    char* key_string = PyBytes_AsString(key);
     if (!key_string) {
       SWIG_fail;
     }
@@ -121,7 +121,7 @@ import_array();
     PyList_SET_ITEM(temp_string_list.get(), i, elem);
     Py_INCREF(elem);
 
-    const char* fetch_name = PyString_AsString(elem);
+    char* fetch_name = PyBytes_AsString(elem);
     if (!fetch_name) {
       PyErr_SetString(PyExc_TypeError,
                       "a fetch or target name was not a string");

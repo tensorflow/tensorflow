@@ -11,6 +11,7 @@ import threading
 import tensorflow.python.platform
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
@@ -34,6 +35,56 @@ class SessionInterface(object):
   def run(self, fetches, feed_dict=None):
     """Runs operations in the session. See `Session.run()` for details."""
     raise NotImplementedError('Run')
+
+
+def _as_bytes(bytes_or_unicode):
+  """Returns the given argument as a byte array.
+
+  NOTE(mrry): For Python 2 and 3 compatibility, we convert all string
+  arguments to SWIG methods into byte arrays. Unicode strings are
+  encoded as UTF-8; however the valid arguments for all of the
+  human-readable arguments must currently be a subset of ASCII.
+
+  Args:
+    bytes_or_unicode: A `unicode`, `string`, or `bytes` object.
+
+  Returns:
+    A `bytes` object.
+
+  Raises:
+    TypeError: If `bytes_or_unicode` is not a binary or unicode string.
+  """
+  if isinstance(bytes_or_unicode, six.text_type):
+    return bytes_or_unicode.encode('utf-8')
+  elif isinstance(bytes_or_unicode, six.binary_type):
+    return bytes_or_unicode
+  else:
+    raise TypeError('bytes_or_unicode must be a binary or unicode string.')
+
+
+def _as_text(bytes_or_unicode):
+  """Returns the given argument as a unicode string.
+
+  NOTE(mrry): For Python 2 and 3 compatibility, we interpret all
+  returned strings from SWIG methods as byte arrays. This function
+  converts those strings that are intended to be human-readable into
+  UTF-8 unicode strings.
+
+  Args:
+    bytes_or_unicode: A `unicode`, `string`, or `bytes` object.
+
+  Returns:
+    A `unicode` (Python 2) or `str` (Python 3) object.
+
+  Raises:
+    TypeError: If `bytes_or_unicode` is not a binary or unicode string.
+  """
+  if isinstance(bytes_or_unicode, six.text_type):
+    return bytes_or_unicode
+  elif isinstance(bytes_or_unicode, six.binary_type):
+    return bytes_or_unicode.decode('utf-8')
+  else:
+    raise TypeError('bytes_or_unicode must be a binary or unicode string.')
 
 
 class BaseSession(SessionInterface):
@@ -75,8 +126,7 @@ class BaseSession(SessionInterface):
       status = tf_session.TF_NewStatus()
       self._session = tf_session.TF_NewSession(opts, status)
       if tf_session.TF_GetCode(status) != 0:
-        message = tf_session.TF_Message(status)
-        raise RuntimeError(message)
+        raise RuntimeError(_as_text(tf_session.TF_Message(status)))
 
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
@@ -97,7 +147,7 @@ class BaseSession(SessionInterface):
           status = tf_session.TF_NewStatus()
           tf_session.TF_CloseSession(self._session, status)
           if tf_session.TF_GetCode(status) != 0:
-            raise RuntimeError(tf_session.TF_Message(status))
+            raise RuntimeError(_as_text(tf_session.TF_Message(status)))
         finally:
           tf_session.TF_DeleteStatus(status)
 
@@ -108,7 +158,7 @@ class BaseSession(SessionInterface):
       if self._session is not None:
         tf_session.TF_DeleteSession(self._session, status)
         if tf_session.TF_GetCode(status) != 0:
-          raise RuntimeError(tf_session.TF_Message(status))
+          raise RuntimeError(_as_text(tf_session.TF_Message(status)))
         self._session = None
     finally:
       tf_session.TF_DeleteStatus(status)
@@ -265,7 +315,6 @@ class BaseSession(SessionInterface):
       TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
         `Tensor` that doesn't exist.
-
     """
     def _fetch_fn(fetch):
       for tensor_type, fetch_fn, _ in BaseSession._REGISTERED_EXPANSIONS:
@@ -302,9 +351,9 @@ class BaseSession(SessionInterface):
           fetch_t = self.graph.as_graph_element(subfetch, allow_tensor=True,
                                                 allow_operation=True)
           if isinstance(fetch_t, ops.Operation):
-            target_list.append(fetch_t.name)
+            target_list.append(_as_bytes(fetch_t.name))
           else:
-            subfetch_names.append(fetch_t.name)
+            subfetch_names.append(_as_bytes(fetch_t.name))
         except TypeError as e:
           raise TypeError('Fetch argument %r of %r has invalid type %r, '
                           'must be a string or Tensor. (%s)'
@@ -343,7 +392,7 @@ class BaseSession(SessionInterface):
                   'which has shape %r'
                   % (np_val.shape, subfeed_t.name,
                      tuple(subfeed_t.get_shape().dims)))
-          feed_dict_string[str(subfeed_t.name)] = np_val
+          feed_dict_string[_as_bytes(subfeed_t.name)] = np_val
 
     # Run request and get response.
     results = self._do_run(target_list, unique_fetch_targets, feed_dict_string)
@@ -373,11 +422,12 @@ class BaseSession(SessionInterface):
     """Runs a step based on the given fetches and feeds.
 
     Args:
-      target_list: A list of strings corresponding to names of tensors
+      target_list: A list of byte arrays corresponding to names of tensors
         or operations to be run to, but not fetched.
-      fetch_list: A list of strings corresponding to names of tensors to be
-        fetched and operations to be run.
-      feed_dict: A dictionary that maps tensor names to numpy ndarrays.
+      fetch_list: A list of byte arrays corresponding to names of tensors to
+        be fetched and operations to be run.
+      feed_dict: A dictionary that maps tensor names (as byte arrays) to
+        numpy ndarrays.
 
     Returns:
       A list of numpy ndarrays, corresponding to the elements of
@@ -397,7 +447,7 @@ class BaseSession(SessionInterface):
             tf_session.TF_ExtendGraph(
                 self._session, graph_def.SerializeToString(), status)
             if tf_session.TF_GetCode(status) != 0:
-              raise RuntimeError(tf_session.TF_Message(status))
+              raise RuntimeError(_as_text(tf_session.TF_Message(status)))
             self._opened = True
           finally:
             tf_session.TF_DeleteStatus(status)
@@ -409,7 +459,8 @@ class BaseSession(SessionInterface):
 
     except tf_session.StatusNotOK as e:
       e_type, e_value, e_traceback = sys.exc_info()
-      m = BaseSession._NODEDEF_NAME_RE.search(e.error_message)
+      error_message = _as_text(e.error_message)
+      m = BaseSession._NODEDEF_NAME_RE.search(error_message)
       if m is not None:
         node_name = m.group(1)
         node_def = None
@@ -419,7 +470,7 @@ class BaseSession(SessionInterface):
         except KeyError:
           op = None
         # pylint: disable=protected-access
-        raise errors._make_specific_exception(node_def, op, e.error_message,
+        raise errors._make_specific_exception(node_def, op, error_message,
                                               e.code)
         # pylint: enable=protected-access
       raise e_type, e_value, e_traceback

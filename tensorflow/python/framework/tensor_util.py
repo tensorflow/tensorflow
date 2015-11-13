@@ -207,7 +207,10 @@ def _FilterComplex(v):
 def _FilterStr(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterStr(x) for x in v])
-  return None if isinstance(v, basestring) else _NotNone(v)
+  if isinstance(v, (six.string_types, six.binary_type)):
+    return None
+  else:
+    return _NotNone(v)
 
 
 def _FilterBool(v):

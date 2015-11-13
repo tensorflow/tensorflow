@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import six
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -296,14 +297,14 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if not isinstance(name_or_scope, (_VariableScope, basestring)):
+  if not isinstance(name_or_scope, (_VariableScope,) + six.string_types):
     raise TypeError("VariableScope: name_scope must be a string or "
                     "VariableScope.")
   if reuse not in [None, True]:
     raise ValueError("VariableScope reuse parameter must be True or None.")
   if not reuse and isinstance(name_or_scope, (_VariableScope)):
     logging.info("Passing VariableScope to a non-reusing scope, intended?")
-  if reuse and isinstance(name_or_scope, (basestring)):
+  if reuse and isinstance(name_or_scope, six.string_types):
     logging.info("Re-using string-named scope, consider capturing as object.")
   get_variable_scope()  # Ensure that a default exists, then get a pointer.
   default_varscope = ops.get_collection(_VARSCOPE_KEY)

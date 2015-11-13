@@ -1327,7 +1327,7 @@ class RegisterGradient(object):
       op_type: The string type of an operation. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
     """
-    if not isinstance(op_type, basestring):
+    if not isinstance(op_type, six.string_types):
       raise TypeError("op_type must be a string")
     self._op_type = op_type
 
@@ -1356,7 +1356,7 @@ def NoGradient(op_type):
     TypeError: If `op_type` is not a string.
 
   """
-  if not isinstance(op_type, basestring):
+  if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
   _gradient_registry.register(None, op_type)
 
@@ -1400,7 +1400,7 @@ class RegisterShape(object):
 
   def __init__(self, op_type):
     """Saves the "op_type" as the Operation type."""
-    if not isinstance(op_type, basestring):
+    if not isinstance(op_type, six.string_types):
       raise TypeError("op_type must be a string")
     self._op_type = op_type
 
@@ -1818,7 +1818,7 @@ class Graph(object):
       obj = conv_fn()
 
     # If obj appears to be a name...
-    if isinstance(obj, basestring):
+    if isinstance(obj, six.string_types):
       name = obj
 
       if ":" in name and allow_tensor:
@@ -1909,7 +1909,7 @@ class Graph(object):
       KeyError: If `name` does not correspond to an operation in this graph.
     """
 
-    if not isinstance(name, basestring):
+    if not isinstance(name, six.string_types):
       raise TypeError("Operation names are strings (or similar), not %s."
                       % type(name).__name__)
     return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
@@ -1930,7 +1930,7 @@ class Graph(object):
       KeyError: If `name` does not correspond to a tensor in this graph.
     """
     # Names should be strings.
-    if not isinstance(name, basestring):
+    if not isinstance(name, six.string_types):
       raise TypeError("Tensor names are strings (or similar), not %s."
                       % type(name).__name__)
     return self.as_graph_element(name, allow_tensor=True, allow_operation=False)
@@ -2495,8 +2495,8 @@ class Graph(object):
     saved_labels = {}
     # Install the given label
     for op_type, label in op_to_kernel_label_map.items():
-      if not (isinstance(op_type, basestring)
-              and isinstance(label, basestring)):
+      if not (isinstance(op_type, six.string_types)
+              and isinstance(label, six.string_types)):
         raise TypeError("op_to_kernel_label_map must be a dictionary mapping "
                         "strings to strings")
       try:
@@ -2558,8 +2558,8 @@ class Graph(object):
     saved_mappings = {}
     # Install the given label
     for op_type, mapped_op_type in op_type_map.items():
-      if not (isinstance(op_type, basestring)
-              and isinstance(mapped_op_type, basestring)):
+      if not (isinstance(op_type, six.string_types)
+              and isinstance(mapped_op_type, six.string_types)):
         raise TypeError("op_type_map must be a dictionary mapping "
                         "strings to strings")
       try:

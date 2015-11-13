@@ -16,9 +16,9 @@
   "private": true,
   "dependencies": {
     "d3": "3.5.6",
-    "dagre": "~0.7.4",
-    "es6-promise": "~3.0.2",
-    "graphlib": "~1.0.7",
+    "dagre": "0.7.4",
+    "es6-promise": "3.0.2",
+    "graphlib": "1.0.7",
     "iron-ajax": "PolymerElements/iron-ajax#1.0.7",
     "iron-collapse": "PolymerElements/iron-collapse#1.0.4",
     "iron-list": "PolymerElements/iron-list#1.1.5",
@@ -38,7 +38,7 @@
     "paper-styles": "PolymerElements/paper-styles#1.0.12",
     "paper-toggle-button": "PolymerElements/paper-toggle-button#1.0.11",
     "paper-toolbar": "PolymerElements/paper-toolbar#1.0.4",
-    "plottable": "~1.16.1",
+    "plottable": "1.16.2",
     "polymer": "1.1.5"
   },
   "devDependencies": {

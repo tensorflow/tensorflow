@@ -5,6 +5,8 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
@@ -102,7 +104,7 @@ def global_norm(t_list, name=None):
     TypeError: If `t_list` is not a sequence.
   """
   if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, basestring)):
+      or isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   with ops.op_scope(t_list, name, "global_norm") as name:
@@ -164,7 +166,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     TypeError: If `t_list` is not a sequence.
   """
   if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, basestring)):
+      or isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   if use_norm is None:

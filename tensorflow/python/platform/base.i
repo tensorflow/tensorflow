@@ -21,13 +21,7 @@
       bool _PyObjAs(PyObject *pystr, ::string* cstr) {
     char *buf;
     Py_ssize_t len;
-#if PY_VERSION_HEX >= 0x03030000
-    if (PyUnicode_Check(pystr)) {
-      buf = PyUnicode_AsUTF8AndSize(pystr, &len);
-      if (!buf) return false;
-    } else  // NOLINT
-#endif
-      if (PyBytes_AsStringAndSize(pystr, &buf, &len) == -1) return false;
+    if (PyBytes_AsStringAndSize(pystr, &buf, &len) == -1) return false;
     if (cstr) cstr->assign(buf, len);
     return true;
   }
@@ -36,29 +30,23 @@
       bool _PyObjAs(PyObject *pystr, std::string* cstr) {
     char *buf;
     Py_ssize_t len;
-#if PY_VERSION_HEX >= 0x03030000
-    if (PyUnicode_Check(pystr)) {
-      buf = PyUnicode_AsUTF8AndSize(pystr, &len);
-      if (!buf) return false;
-    } else  // NOLINT
-#endif
-      if (PyBytes_AsStringAndSize(pystr, &buf, &len) == -1) return false;
+    if (PyBytes_AsStringAndSize(pystr, &buf, &len) == -1) return false;
     if (cstr) cstr->assign(buf, len);
     return true;
   }
 #ifdef HAS_GLOBAL_STRING
   template<>
       PyObject* _PyObjFrom(const ::string& c) {
-    return PyString_FromStringAndSize(c.data(), c.size());
+    return PyBytes_FromStringAndSize(c.data(), c.size());
   }
 #endif
   template<>
       PyObject* _PyObjFrom(const std::string& c) {
-    return PyString_FromStringAndSize(c.data(), c.size());
+    return PyBytes_FromStringAndSize(c.data(), c.size());
   }
 
   PyObject* _SwigString_FromString(const string& s) {
-    return PyUnicode_FromStringAndSize(s.data(), s.size());
+    return PyBytes_FromStringAndSize(s.data(), s.size());
   }
 %}
 
@@ -72,11 +60,11 @@
 }
 
 %typemap(out) string {
-  $result = PyString_FromStringAndSize($1.data(), $1.size());
+  $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
 %typemap(out) const string& {
-  $result = PyString_FromStringAndSize($1->data(), $1->size());
+  $result = PyBytes_FromStringAndSize($1->data(), $1->size());
 }
 
 %typemap(in, numinputs = 0) string* OUTPUT (string temp) {
@@ -84,7 +72,7 @@
 }
 
 %typemap(argout) string * OUTPUT {
-  PyObject *str = PyString_FromStringAndSize($1->data(), $1->length());
+  PyObject *str = PyBytes_FromStringAndSize($1->data(), $1->length());
   if (!str) SWIG_fail;
   %append_output(str);
 }
@@ -92,7 +80,7 @@
 %typemap(argout) string* INOUT = string* OUTPUT;
 
 %typemap(varout) string {
-  $result = PyString_FromStringAndSize($1.data(), $1.size());
+  $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
 %define _LIST_OUTPUT_TYPEMAP(type, py_converter)
