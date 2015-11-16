@@ -12,7 +12,7 @@ This tutorial will show you how to build and train such a system end-to-end.
 You can start by running this binary.
 
 ```
-bazel run -c opt <...>/models/rnn/translate/translate.py
+bazel run -c opt <...>/models/rnn/translate:translate
   --data_dir [your_data_directory]
 ```
 

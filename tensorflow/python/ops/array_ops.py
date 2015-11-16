@@ -624,7 +624,7 @@ def placeholder(dtype, shape=None, name=None):
   For example:
 
   ```python
-  x = tf.placeholder(float, shape=(1024, 1024))
+  x = tf.placeholder(tf.float32, shape=(1024, 1024))
   y = tf.matmul(x, x)
 
   with tf.Session() as sess:

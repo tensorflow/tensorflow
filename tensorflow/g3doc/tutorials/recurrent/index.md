@@ -186,7 +186,7 @@ Now we can run the model:
 
 ```
 bazel-bin/tensorflow/models/rnn/ptb/ptb_word_lm \
-  --data_path=/tmp/simple-examples/data/ --alsologtostderr --model small
+  --data_path=/tmp/simple-examples/data/ --model small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",

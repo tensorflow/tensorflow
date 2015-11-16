@@ -3,6 +3,7 @@
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
+#include <cfloat>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"

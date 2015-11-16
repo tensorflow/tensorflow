@@ -9,9 +9,7 @@ namespace checkpoint {
 
 TensorSliceReaderCacheWrapper::TensorSliceReaderCacheWrapper() {}
 TensorSliceReaderCacheWrapper::~TensorSliceReaderCacheWrapper() {
-  if (cache_) {
-    delete cache_;
-  }
+  delete cache_;
   cache_ = nullptr;
 }
 
