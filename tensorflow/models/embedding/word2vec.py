@@ -18,12 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import sys
 import threading
 import time
 
 import tensorflow.python.platform
+
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
 import tensorflow as tf

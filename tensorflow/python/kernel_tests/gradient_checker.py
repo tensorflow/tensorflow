@@ -80,7 +80,7 @@ def _ComputeTheoricalJacobian(x, x_shape, x_data, dy, dy_shape, dx):
 def _ComputeNumericJacobian(x, x_shape, x_data, y, y_shape, delta):
   """Computes the numeric Jacobian for dy/dx.
 
-  Computes the numeric Japcobian by slightly perturbing the inputs and
+  Computes the numeric Jacobian by slightly perturbing the inputs and
   measuring the differences on the output.
 
   Args:

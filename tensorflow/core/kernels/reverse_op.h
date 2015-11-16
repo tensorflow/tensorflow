@@ -22,6 +22,16 @@ struct Reverse {
   }
 };
 
+template <typename Device, typename T>
+struct Reverse<Device, T, 0> {
+  void operator()(const Device& d, typename TTypes<T, 0>::ConstTensor input,
+                  typename TTypes<bool, 1>::ConstTensor,
+                  typename TTypes<T, 0>::Tensor output) {
+    // Reversing a scalar is copying it.
+    output.device(d) = input;
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

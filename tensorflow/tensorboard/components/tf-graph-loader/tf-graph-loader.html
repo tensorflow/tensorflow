@@ -126,7 +126,9 @@ Polymer({
       }
       var hierarchyParams = {
         verifyTemplate: true,
-        groupSeries: true,
+        // If a set of numbered op nodes has at least this number of nodes
+        // then group them into a series node.
+        seriesNodeMinSize: 5,
       };
       var hierarchyTracker = tf.getSubtaskTracker(tracker, 50,
           'Namespace hierarchy');

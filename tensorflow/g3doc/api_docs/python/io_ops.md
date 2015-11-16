@@ -65,7 +65,7 @@ be fed using the `feed_dict` optional argument to `Session.run()`,
 For example:
 
 ```python
-x = tf.placeholder(float, shape=(1024, 1024))
+x = tf.placeholder(tf.float32, shape=(1024, 1024))
 y = tf.matmul(x, x)
 
 with tf.Session() as sess:

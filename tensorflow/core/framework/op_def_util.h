@@ -27,6 +27,11 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
 // than a text-format proto.  Excludes descriptions.
 string SummarizeOpDef(const OpDef& op_def);
 
+// Returns an error if new_op is not backwards-compatible with (more
+// accepting than) old_op.
+// REQUIRES: old_op and new_op must pass validation.
+Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_

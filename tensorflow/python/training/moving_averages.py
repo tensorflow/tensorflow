@@ -45,7 +45,7 @@ def assign_moving_average(variable, value, decay, name=None):
 
 
 class ExponentialMovingAverage(object):
-  """Maintains moving averages of variables by employing and exponential decay.
+  """Maintains moving averages of variables by employing an exponential decay.
 
   When training a model, it is often beneficial to maintain moving averages of
   the trained parameters.  Evaluations that use averaged parameters sometimes

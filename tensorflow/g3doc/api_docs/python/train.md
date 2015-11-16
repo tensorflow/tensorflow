@@ -850,9 +850,9 @@ Example: decay every 100000 steps with a base of 0.96:
 ...
 global_step = tf.Variable(0, trainable=False)
 starter_learning_rate = 0.1
-learning_rate = tf.exponential_decay(starter_learning_rate, global_step,
-                                     100000, 0.96, staircase=True)
-optimizer = tf.GradientDescent(learning_rate)
+learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
+                                           100000, 0.96, staircase=True)
+optimizer = tf.GradientDescentOptimizer(learning_rate)
 # Passing global_step to minimize() will increment it at each step.
 optimizer.minimize(...my loss..., global_step=global_step)
 ```
@@ -888,7 +888,7 @@ moving averages for evaluations often improve results significantly.
 
 ### `class tf.train.ExponentialMovingAverage` <a class="md-anchor" id="ExponentialMovingAverage"></a>
 
-Maintains moving averages of variables by employing and exponential decay.
+Maintains moving averages of variables by employing an exponential decay.
 
 When training a model, it is often beneficial to maintain moving averages of
 the trained parameters.  Evaluations that use averaged parameters sometimes

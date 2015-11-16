@@ -269,6 +269,31 @@ class BatchTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testOneThreadEnqueueMany(self):
+    with self.test_session() as sess:
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      pre_batched = tf.train.batch([counter, "string"], batch_size=2)
+      batched = tf.train.batch(pre_batched, enqueue_many=True,
+                               batch_size=batch_size)
+      tf.initialize_all_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for i in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual(results[0], np.arange(i * batch_size,
+                                                  (i + 1) * batch_size))
+        self.assertAllEqual(results[1], ["string"] * batch_size)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
   def testManyThreads(self):
     with self.test_session() as sess:
       batch_size = 10

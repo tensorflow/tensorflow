@@ -418,6 +418,6 @@ a look at this
 [list of results](http://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results.html).)
 
 What matters is that we learned from this model. Still, if you're feeling a bit
-down about these results, check out [the next tutorial](../../../tutorials/index.md) where we
+down about these results, check out [the next tutorial](../../../tutorials/mnist/pros/index.md) where we
 do a lot better, and learn how to build more sophisticated models using
 TensorFlow!

@@ -68,8 +68,8 @@ class RNNCell(object):
       A 2D Tensor of shape [batch_size x state_size] filled with zeros.
     """
     zeros = tf.zeros(tf.pack([batch_size, self.state_size]), dtype=dtype)
-    # The reshape below is a no-op, but it allows shape inference of shape[1].
-    return tf.reshape(zeros, [-1, self.state_size])
+    zeros.set_shape([None, self.state_size])
+    return zeros
 
 
 class BasicRNNCell(RNNCell):

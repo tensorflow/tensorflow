@@ -139,7 +139,8 @@ kept independently and each row and column will be kept or not kept together.
 
 
 *  <b>`x`</b>: A tensor.
-*  <b>`keep_prob`</b>: A Python float. The probability that each element is kept.
+*  <b>`keep_prob`</b>: A scalar `Tensor` with the same type as x. The probability
+    that each element is kept.
 *  <b>`noise_shape`</b>: A 1-D `Tensor` of type `int32`, representing the
     shape for randomly generated keep/drop flags.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See

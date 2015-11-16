@@ -37,8 +37,7 @@ To compile on GPU:
   bazel build -c opt tensorflow --config=cuda \
     tensorflow/models/rnn/ptb:ptb_word_lm
 To run:
-  ./bazel-bin/.../ptb_word_lm \
-    --data_path=/tmp/simple-examples/data/ --alsologtostderr
+  ./bazel-bin/.../ptb_word_lm --data_path=/tmp/simple-examples/data/
 
 """
 from __future__ import absolute_import

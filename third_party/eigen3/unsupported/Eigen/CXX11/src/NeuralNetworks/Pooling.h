@@ -196,7 +196,7 @@ namespace internal {
 
 template <typename T> struct AvgPoolMeanReducer
 {
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64 || defined (EIGEN_USE_GPU) || defined(__CUDACC__) || defined(__CUDA_ARCH__))
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
   // We only support packet access for floats.
   static const bool PacketAccess = internal::is_same<T, float>::value;
 #else
@@ -216,8 +216,16 @@ template <typename T> struct AvgPoolMeanReducer
     }
   }
 
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T initialize() const {
+    return static_cast<T>(0);
+  }
 
-#if (!defined (EIGEN_USE_GPU) || !defined(__CUDACC__) || !defined(__CUDA_ARCH__))
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
+    eigen_assert(scalarCount_ > 0);
+    return accum / scalarCount_;
+  }
+
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
 #ifdef EIGEN_VECTORIZE_AVX
 #define pequal(a,b) _mm256_cmp_ps(a,b,_CMP_EQ_UQ)
 #define psel(a,b,false_mask) _mm256_blendv_ps(a,b,false_mask)
@@ -238,29 +246,11 @@ template <typename T> struct AvgPoolMeanReducer
     packetCount_ = padd<Packet>(packetCount_, psel(pset1<Packet>(1), pset1<Packet>(0), skip_mask));
   }
 
-#else
-#define pequal(a,b) make_float4(a.x == b.x ? 1.f : 0, a.y == b.y ? 1.f : 0, a.z == b.z ? 1.f : 0, a.w == b.w ? 1.f : 0)
-#define psel(a,b,c) make_float4(c.x ? b.x : a.x, c.y ? b.y : a.y, c.z ? b.z : a.z, c.w ? b.w : a.w)
-
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reducePacket(const float4& p, float4* accum) {
-    float4 skip_mask = pequal(p, pset1<float4>(-Eigen::NumTraits<float>::highest()));
-    (*accum) = padd<float4>(*accum, psel(p, pset1<float4>(0), skip_mask));
-    packetCount_ = padd<float4>(packetCount_, psel(pset1<float4>(1), pset1<float4>(0), skip_mask));
-  }
-
-#endif
-
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T initialize() const {
-    return static_cast<T>(0);
-  }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet initializePacket() const {
     return pset1<Packet>(0);
   }
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
-    eigen_assert(scalarCount_ > 0);
-    return accum / scalarCount_;
-  }
+
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet finalizePacket(const Packet& vaccum) const {
     return pdiv(vaccum, packetCount_);
@@ -269,6 +259,7 @@ template <typename T> struct AvgPoolMeanReducer
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalizeBoth(const T saccum, const Packet& vaccum) const {
     return (saccum + predux(vaccum)) / (scalarCount_ + predux(packetCount_));
   }
+#endif
 
  protected:
     typedef typename packet_traits<T>::type Packet;

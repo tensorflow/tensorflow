@@ -1552,7 +1552,7 @@ class Graph(object):
     # new operations can be added.
     self._finalized = False
     # Functions defined in the graph
-    self._functions = []
+    self._functions = collections.OrderedDict()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1647,6 +1647,9 @@ class Graph(object):
     Returns:
       A [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
       protocol buffer.
+
+    Raises:
+      ValueError: If the graph_def would be too large.
     """
     graph = graph_pb2.GraphDef()
     bytesize = 0
@@ -1658,18 +1661,18 @@ class Graph(object):
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
     if self._functions:
-      for f in self._functions:
+      for f in self._functions.values():
         bytesize += f.ByteSize()
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
-      graph.library.function.extend(self._functions)
+      graph.library.function.extend(self._functions.values())
     return graph
 
   def _add_function(self, function_def):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
-    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
     protocol buffer.
 
     After the function has been added, you can call to the function by
@@ -1679,7 +1682,14 @@ class Graph(object):
     Args:
       function_def: A `FunctionDef` protocol buffer.
     """
-    self._functions.append(function_def)
+    previous_def = self._functions.get(function_def.signature.name, None)
+    if previous_def:
+      if previous_def != function_def:
+        raise ValueError("Another function is already defined with that name")
+      else:
+        # No need to add again.
+        return
+    self._functions[function_def.signature.name] = function_def
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -1871,9 +1881,13 @@ class Graph(object):
 
     elif isinstance(obj, Tensor) and allow_tensor:
       # Actually obj is just the object it's referring to.
+      if obj.graph is not self:
+        raise ValueError("Tensor %s is not an element of this graph." % obj)
       return obj
     elif isinstance(obj, Operation) and allow_operation:
       # Actually obj is just the object it's referring to.
+      if obj.graph is not self:
+        raise ValueError("Operation %s is not an element of this graph." % obj)
       return obj
     else:
       # We give up!
