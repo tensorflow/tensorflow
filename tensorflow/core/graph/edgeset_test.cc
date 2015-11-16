@@ -1,7 +1,7 @@
 #include "tensorflow/core/graph/edgeset.h"
 
-#include "tensorflow/core/graph/graph.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 class EdgeSetTest : public ::testing::Test {

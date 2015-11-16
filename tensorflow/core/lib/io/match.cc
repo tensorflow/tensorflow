@@ -7,7 +7,7 @@ namespace tensorflow {
 namespace io {
 
 Status GetMatchingFiles(Env* env, const string& pattern,
-                             std::vector<string>* results) {
+                        std::vector<string>* results) {
   results->clear();
   std::vector<string> all_files;
   string dir = Dirname(pattern).ToString();

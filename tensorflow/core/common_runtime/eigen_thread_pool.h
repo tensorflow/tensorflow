@@ -1,8 +1,8 @@
 #ifndef TENSORFLOW_COMMON_RUNTIME_EIGEN_THREAD_POOL_H_
 #define TENSORFLOW_COMMON_RUNTIME_EIGEN_THREAD_POOL_H_
 
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 

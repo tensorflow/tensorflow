@@ -5,20 +5,20 @@
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/util/use_cudnn.h"
-#include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -271,17 +271,16 @@ class Conv2DFastBackpropInputOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES(context, strides_[1] == strides_[2],
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(context, (strides_[0] == 1 && strides_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (strides_[0] == 1 && strides_[3] == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -444,17 +443,16 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES(context, strides_[1] == strides_[2],
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(context, (strides_[0] == 1 && strides_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (strides_[0] == 1 && strides_[3] == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -668,17 +666,16 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES(context, strides_[1] == strides_[2],
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(context, (strides_[0] == 1 && strides_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (strides_[0] == 1 && strides_[3] == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
@@ -901,17 +898,16 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES(context, strides_[1] == strides_[2],
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(context, (strides_[0] == 1 && strides_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "strides in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (strides_[0] == 1 && strides_[3] == 1),
+        errors::InvalidArgument("Current implementation does not yet support "
+                                "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));

@@ -28,10 +28,10 @@
 
 #include "tensorflow/core/lib/io/block_builder.h"
 
-#include <algorithm>
 #include <assert.h>
-#include "tensorflow/core/lib/io/table_builder.h"
+#include <algorithm>
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/io/table_builder.h"
 
 namespace tensorflow {
 namespace table {

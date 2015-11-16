@@ -6,11 +6,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/philox_random_test_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace random {

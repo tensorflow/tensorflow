@@ -2,8 +2,8 @@
 #define TENSORFLOW_KERNELS_SOFTMAX_OP_H_
 // Functor definition for SoftmaxOp, must be compilable by nvcc.
 
-#include "tensorflow/core/framework/tensor_types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 namespace functor {
@@ -54,7 +54,8 @@ struct SoftmaxEigenImpl {
                          logits.maximum(along_class)
                              .eval()
                              .reshape(batch_by_one)
-                             .broadcast(one_by_class)).exp();
+                             .broadcast(one_by_class))
+                            .exp();
     // softmax = softmax / sum(softmax along classes);
     softmax.device(d) = (softmax /
                          softmax.sum(along_class)

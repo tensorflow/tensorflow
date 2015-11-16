@@ -1,8 +1,8 @@
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -191,7 +191,7 @@ int64 TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
 }
 
 Status TensorSlice::SliceTensorShape(const TensorShape& shape,
-                                          TensorShape* result_shape) const {
+                                     TensorShape* result_shape) const {
   result_shape->Clear();
   // Mismatching ranks: we can't apply the slice at all.
   if (shape.dims() != dims()) {

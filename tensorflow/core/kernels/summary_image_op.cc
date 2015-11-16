@@ -5,9 +5,9 @@
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/png/png_io.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 

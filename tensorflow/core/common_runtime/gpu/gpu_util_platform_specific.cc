@@ -1,9 +1,9 @@
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/stream_executor/stream.h"
 
 namespace tensorflow {
 

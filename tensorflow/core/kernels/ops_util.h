@@ -3,10 +3,10 @@
 
 // This file contains utilities for various operations.
 
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -85,9 +85,9 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
 // index and size for broadcast for that dimension are different from the
 // current index and kernel size.
 // This is mainly used by gradient algorithms for pooling operations.
-Status GetBroadcastSize(const int index, const int in_size,
-                             const int ksize, const int stride,
-                             const int pad_size, int* bindex, int* bsize);
+Status GetBroadcastSize(const int index, const int in_size, const int ksize,
+                        const int stride, const int pad_size, int* bindex,
+                        int* bsize);
 
 // Converts Brain's Padding to Eigen's PaddingType.
 Eigen::PaddingType BrainPadding2EigenPadding(Padding padding);

@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "external/png_archive/libpng-1.2.53/png.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace png {
@@ -29,13 +29,13 @@ namespace png {
 // Handy container for decoding informations and struct pointers
 struct DecodeContext {
   const uint8* data;
-  int         data_left;
+  int data_left;
   png_structp png_ptr;
-  png_infop   info_ptr;
+  png_infop info_ptr;
   png_uint_32 width, height;
-  int         num_passes;
-  int         color_type;
-  int         bit_depth;
+  int num_passes;
+  int color_type;
+  int bit_depth;
   int channels;
   bool need_to_synthesize_16;
   bool error_condition;

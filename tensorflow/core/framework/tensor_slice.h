@@ -2,13 +2,13 @@
 #define TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
 
 #include <string>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -121,7 +121,7 @@ class TensorSlice {
   // For example, given a tensor shape of {3, 4, 5}, and a slice of
   // 1,2:-:0,2, the result shape is {2, 4, 2}.
   Status SliceTensorShape(const TensorShape& shape,
-                               TensorShape* result_shape) const;
+                          TensorShape* result_shape) const;
 
   // Given slice "sub" where "sub" is fully contained in *this,
   // (meaning that the intersection of "sub" and *this equals "sub"), computes

@@ -1,8 +1,8 @@
 #include "tensorflow/core/lib/random/random.h"
 
 #include <set>
-#include "tensorflow/core/platform/port.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 namespace random {

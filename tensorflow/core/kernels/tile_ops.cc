@@ -10,9 +10,9 @@
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 

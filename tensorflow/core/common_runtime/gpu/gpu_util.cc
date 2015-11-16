@@ -1,7 +1,12 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
 //#include "base/commandlineflags.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -15,12 +20,7 @@
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/util/util.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 #include "tensorflow/core/platform/stream_executor_util.h"
 

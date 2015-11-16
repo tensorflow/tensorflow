@@ -3,12 +3,12 @@
 #include <unordered_map>
 #include <utility>
 
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 

@@ -30,7 +30,7 @@ string GetPaddingAttrString();
 
 // Specialization to parse an attribute directly into a Padding enum.
 Status GetNodeAttr(const NodeDef& node_def, const string& attr_name,
-                        Padding* value);
+                   Padding* value);
 
 }  // end namespace tensorflow
 

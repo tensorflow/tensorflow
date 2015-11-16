@@ -2,8 +2,10 @@
 
 #include "tensorflow/core/public/session_options.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -12,13 +14,11 @@
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 
 namespace tensorflow {
 

@@ -25,9 +25,9 @@
 #include <memory>
 #include <type_traits>
 
+#include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/lib/gtl/manual_constructor.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
 

@@ -3,17 +3,17 @@
 
 #include <limits>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace sparse {

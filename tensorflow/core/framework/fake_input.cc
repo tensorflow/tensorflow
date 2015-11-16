@@ -84,8 +84,7 @@ Status FakeInputImpl::AddInputToBuilder() {
   } else {
     if (!dt_specified_ && !arg_->type_list_attr().empty()) {
       DataTypeVector dts;
-      Status status =
-          GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
+      Status status = GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
       if (!status.ok()) {
         return errors::InvalidArgument(
             "Could not infer list of types for input '", arg_->name(), "': ",

@@ -5,12 +5,12 @@
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace gpu = ::perftools::gputools;
 

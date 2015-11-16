@@ -1,7 +1,7 @@
 #include "tensorflow/core/kernels/range_sampler.h"
 
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

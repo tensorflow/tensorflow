@@ -3,9 +3,9 @@
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/lib/gtl/int_type.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

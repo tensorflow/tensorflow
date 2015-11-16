@@ -6,17 +6,17 @@
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -70,7 +70,7 @@ class DirectSession : public Session {
 
   // Device structures.
   const std::unique_ptr<const DeviceMgr> device_mgr_;
-  std::vector<Device*> devices_;           // not owned
+  std::vector<Device*> devices_;  // not owned
   DeviceSet device_set_;
 
   string session_handle_;

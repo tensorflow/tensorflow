@@ -92,7 +92,7 @@ class EigenAllocator : public ::Eigen::Allocator {
   }
 
  private:
-  gpu::Stream* stream_;            // Not owned.
+  gpu::Stream* stream_;                 // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
   ::tensorflow::EventMgr* em_;          // Not owned.
 
@@ -144,8 +144,8 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
     delete data;
   }
 
-  const cudaStream_t* stream_;         // Not owned.
-  const cudaDeviceProp* device_prop_;  // Not owned.
+  const cudaStream_t* stream_;          // Not owned.
+  const cudaDeviceProp* device_prop_;   // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);

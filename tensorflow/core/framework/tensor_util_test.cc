@@ -1,8 +1,8 @@
 #include "tensorflow/core/framework/tensor_util.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace {

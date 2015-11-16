@@ -4,10 +4,10 @@
 #define TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
 #include <string>  // for string
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/public/status.h"  // for Status
 
 namespace tensorflow {

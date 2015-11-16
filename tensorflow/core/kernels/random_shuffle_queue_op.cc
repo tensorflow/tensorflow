@@ -361,9 +361,8 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
       GetNodeAttr(node_def, "min_after_dequeue", &min_after_dequeue));
   if (min_after_dequeue != min_after_dequeue_) {
     return errors::InvalidArgument(
-        "Shared queue '", name_, "' has min_after_dequeue ",
-        min_after_dequeue_, " but requested min_after_dequeue was ",
-        min_after_dequeue, ".");
+        "Shared queue '", name_, "' has min_after_dequeue ", min_after_dequeue_,
+        " but requested min_after_dequeue was ", min_after_dequeue, ".");
   }
 
   int64 seed = -1;

@@ -14,8 +14,8 @@
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

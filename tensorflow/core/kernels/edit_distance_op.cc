@@ -5,10 +5,10 @@
 #include <limits>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/edit_distance.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"

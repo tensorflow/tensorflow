@@ -6,8 +6,8 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 

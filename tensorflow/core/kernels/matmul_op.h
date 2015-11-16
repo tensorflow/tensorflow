@@ -1,8 +1,8 @@
 #ifndef TENSORFLOW_KERNELS_MATMUL_OP_H_
 #define TENSORFLOW_KERNELS_MATMUL_OP_H_
 
-#include "tensorflow/core/framework/tensor_types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 namespace functor {

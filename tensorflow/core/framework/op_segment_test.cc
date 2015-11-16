@@ -1,15 +1,15 @@
 #include "tensorflow/core/framework/op_segment.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 

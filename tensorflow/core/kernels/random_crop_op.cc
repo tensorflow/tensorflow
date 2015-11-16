@@ -53,12 +53,14 @@ class RandomCropOp : public OpKernel {
     // Edge case. The target dimensions are larger then the image, so
     // zero-pad the image. This guarantees that the image will *always*
     // be [target_height, target_width] in size.
-    OP_REQUIRES(context, width >= target_width, errors::FailedPrecondition(
-        "width must be >= target_width: width = ", width,
-        ", target_width = ", target_width));
-    OP_REQUIRES(context, height >= target_height, errors::FailedPrecondition(
-        "height must be >= target_height: height = ", height,
-        ", target_height = ", target_height));
+    OP_REQUIRES(
+        context, width >= target_width,
+        errors::FailedPrecondition("width must be >= target_width: width = ",
+                                   width, ", target_width = ", target_width));
+    OP_REQUIRES(context, height >= target_height,
+                errors::FailedPrecondition(
+                    "height must be >= target_height: height = ", height,
+                    ", target_height = ", target_height));
 
     int32 offset_height = 0;
     int32 offset_width = 0;
@@ -92,10 +94,10 @@ class RandomCropOp : public OpKernel {
   GuardedPhiloxRandom generator_;
 };
 
-#define REGISTER_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                           \
-    Name("RandomCrop").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-    RandomCropOp<type>)
+#define REGISTER_KERNELS(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("RandomCrop").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      RandomCropOp<type>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

@@ -1,9 +1,9 @@
 #include "tensorflow/core/util/tensor_slice_set.h"
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/tensor_slice_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/tensor_slice_util.h"
 
 namespace tensorflow {
 
@@ -14,8 +14,8 @@ TensorSliceSet::TensorSliceSet(const TensorShape& shape, DataType type)
 
 TensorSliceSet::~TensorSliceSet() {}
 
-Status TensorSliceSet::Register(const TensorSlice& slice,
-                                     const string& tag, const float* data) {
+Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
+                                const float* data) {
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
   string str = slice.DebugString();

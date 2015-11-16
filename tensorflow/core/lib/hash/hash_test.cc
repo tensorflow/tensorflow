@@ -1,9 +1,9 @@
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

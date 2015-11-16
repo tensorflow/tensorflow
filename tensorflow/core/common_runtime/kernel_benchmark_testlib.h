@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {

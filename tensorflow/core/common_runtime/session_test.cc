@@ -1,7 +1,7 @@
 #include "tensorflow/core/public/session.h"
 
-#include "tensorflow/core/public/session_options.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace {

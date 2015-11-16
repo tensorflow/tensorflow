@@ -1,8 +1,8 @@
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 
 #include <vector>
-#include "tensorflow/core/platform/port.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 namespace gtl {

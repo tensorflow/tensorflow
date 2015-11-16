@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-#include "tensorflow/core/platform/logging.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace {

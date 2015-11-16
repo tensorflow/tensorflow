@@ -6,8 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 namespace strings {

@@ -1,7 +1,7 @@
 #include "tensorflow/core/framework/allocator.h"
 #include <algorithm>
-#include "tensorflow/core/platform/logging.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
 TEST(CPUAllocatorTest, Simple) {

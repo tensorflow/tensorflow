@@ -4,11 +4,11 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
-#include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 
 namespace tensorflow {
 

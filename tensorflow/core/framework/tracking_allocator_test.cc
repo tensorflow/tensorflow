@@ -2,9 +2,9 @@
 
 #include <unordered_map>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/logging.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

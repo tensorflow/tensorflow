@@ -3,9 +3,9 @@
 
 #include <cmath>
 #include <functional>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // The following functors (sign, tanh, sigmoid, etc.) are not defined
 // by Eigen.  When their equivalent are added into the Eigen, we can
@@ -28,8 +28,8 @@ struct scalar_sign_op {
 // EIGEN host/device decoration. We duplicate code here for now.
 template <typename T, bool IsInteger>
 struct pow {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T
-  operator()(const T& x, const T& y) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
     return std::pow(x, y);
   }
 };
@@ -72,8 +72,8 @@ struct scalar_fmod2_op {
 template <typename T>
 struct scalar_mod2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_mod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
-  operator()(const T& a, const T& b) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
+                                                           const T& b) const {
     return a % b;
   }
 };
@@ -179,43 +179,55 @@ struct functor_traits<scalar_right<Tout, Tin, Binary> > {
 // similar to std::equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
 struct equal_to : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x == y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x == y;
+  }
 };
 
 // similar to std::not_equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
 struct not_equal_to : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x != y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x != y;
+  }
 };
 
 // similar to std::greater, but with the DEVICE_FUNC qualifier
 template <class T>
 struct greater : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x > y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x > y;
+  }
 };
 
 // similar to std::less, but with the DEVICE_FUNC qualifier
 template <class T>
 struct less : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x < y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x < y;
+  }
 };
 
 // similar to std::greater_equal, but with the DEVICE_FUNC qualifier
 template <class T>
 struct greater_equal : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x >= y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x >= y;
+  }
 };
 
 // similar to std::less_equal, but with the DEVICE_FUNC qualifier
 template <class T>
 struct less_equal : std::binary_function<T, T, bool> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  bool operator()(const T& x, const T& y) const { return x <= y; }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
+                                                        const T& y) const {
+    return x <= y;
+  }
 };
 
 }  // end namespace internal
@@ -523,8 +535,8 @@ struct logical_or : base<bool, Eigen::internal::scalar_boolean_or_op> {};
 template <typename T>
 struct make_complex_func {
   typedef std::complex<T> result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  result_type operator()(T real, T imag) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE result_type operator()(T real,
+                                                               T imag) const {
     return std::complex<T>(real, imag);
   }
 };

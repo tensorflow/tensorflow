@@ -2,8 +2,8 @@
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
-#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {

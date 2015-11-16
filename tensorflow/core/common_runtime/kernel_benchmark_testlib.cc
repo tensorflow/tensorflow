@@ -4,17 +4,17 @@
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/framework/op_segment.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 #if defined(PLATFORM_GOOGLE)
 DECLARE_bool(brain_gpu_use_bfc_allocator);
@@ -71,9 +71,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   TF_CHECK_OK(NewLocalExecutor(
       {
-          device_,
-          nullptr,
-          false,
+          device_, nullptr, false,
           [this](const NodeDef& ndef, OpKernel** kernel) {
             return CreateNonCachedKernel(device_, nullptr, ndef, kernel);
           },

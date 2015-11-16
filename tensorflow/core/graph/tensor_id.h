@@ -3,8 +3,8 @@
 
 #include <string>
 
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 

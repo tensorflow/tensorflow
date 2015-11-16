@@ -58,7 +58,7 @@ def inference(images):
     conv = tf.nn.conv2d(images, kernel, [1, 4, 4, 1], padding='VALID')
     biases = tf.Variable(tf.constant(0.0, shape=[64], dtype=tf.float32),
                          trainable=True, name='biases')
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+    bias = tf.nn.bias_add(conv, biases)
     conv1 = tf.nn.relu(bias, name=scope)
     print_activations(conv1)
     parameters += [kernel, biases]
@@ -81,7 +81,7 @@ def inference(images):
     conv = tf.nn.conv2d(pool1, kernel, [1, 1, 1, 1], padding='SAME')
     biases = tf.Variable(tf.constant(0.0, shape=[192], dtype=tf.float32),
                          trainable=True, name='biases')
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+    bias = tf.nn.bias_add(conv, biases)
     conv2 = tf.nn.relu(bias, name=scope)
     parameters += [kernel, biases]
   print_activations(conv2)
@@ -102,7 +102,7 @@ def inference(images):
     conv = tf.nn.conv2d(pool2, kernel, [1, 1, 1, 1], padding='SAME')
     biases = tf.Variable(tf.constant(0.0, shape=[384], dtype=tf.float32),
                          trainable=True, name='biases')
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+    bias = tf.nn.bias_add(conv, biases)
     conv3 = tf.nn.relu(bias, name=scope)
     parameters += [kernel, biases]
     print_activations(conv3)
@@ -115,7 +115,7 @@ def inference(images):
     conv = tf.nn.conv2d(conv3, kernel, [1, 1, 1, 1], padding='SAME')
     biases = tf.Variable(tf.constant(0.0, shape=[256], dtype=tf.float32),
                          trainable=True, name='biases')
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+    bias = tf.nn.bias_add(conv, biases)
     conv4 = tf.nn.relu(bias, name=scope)
     parameters += [kernel, biases]
     print_activations(conv4)
@@ -128,7 +128,7 @@ def inference(images):
     conv = tf.nn.conv2d(conv4, kernel, [1, 1, 1, 1], padding='SAME')
     biases = tf.Variable(tf.constant(0.0, shape=[256], dtype=tf.float32),
                          trainable=True, name='biases')
-    bias = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+    bias = tf.nn.bias_add(conv, biases)
     conv5 = tf.nn.relu(bias, name=scope)
     parameters += [kernel, biases]
     print_activations(conv5)

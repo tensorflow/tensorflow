@@ -2,9 +2,9 @@
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 

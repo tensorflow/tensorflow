@@ -1,8 +1,8 @@
 #include "tensorflow/core/lib/io/record_writer.h"
 
-#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace io {

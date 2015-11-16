@@ -6,8 +6,8 @@
 
 #include "tensorflow/core/graph/colors.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/util.h"
 

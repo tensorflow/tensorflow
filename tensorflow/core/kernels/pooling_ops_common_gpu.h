@@ -6,15 +6,15 @@
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
 
 #include "tensorflow/stream_executor/dnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/avgpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/public/tensor_shape.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 

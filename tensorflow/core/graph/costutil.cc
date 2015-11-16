@@ -1,8 +1,8 @@
 #include "tensorflow/core/graph/costutil.h"
 
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 

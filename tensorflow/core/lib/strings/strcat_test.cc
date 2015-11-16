@@ -2,9 +2,9 @@
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/port.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace strings {

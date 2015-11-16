@@ -841,7 +841,7 @@ class OpKernelContext {
   void NotifyUseOfPersistentTensor(const Tensor& tensor);
 
   Status status_;
-  Params params_;  // immutable after construction.
+  Params params_;                           // immutable after construction.
   const PerOpGpuDevice* eigen_gpu_device_;  // owned, with a per-op
                                             // wrapped allocator
   mutable mutex mu_;  // mutable so const accessors can acquire the lock

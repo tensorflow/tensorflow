@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -15,7 +16,6 @@
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/status.h"
-#include <gtest/gtest.h>
 
 // TODO(josh11b): Test setting the "device" field of a NodeDef.
 // TODO(josh11b): Test that feeding won't prune targets.
@@ -100,8 +100,8 @@ class SubgraphTest : public ::testing::Test {
     std::vector<string> targets =
         str_util::Split(targets_str, ',', str_util::SkipEmpty());
 
-    Status s = subgraph::RewriteGraphForExecution(subgraph, fed, fetch,
-                                                       targets, device_info_);
+    Status s = subgraph::RewriteGraphForExecution(subgraph, fed, fetch, targets,
+                                                  device_info_);
     if (!s.ok()) {
       delete subgraph;
       return s.ToString();

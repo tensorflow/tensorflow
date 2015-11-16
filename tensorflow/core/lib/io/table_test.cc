@@ -100,7 +100,7 @@ class StringSource : public RandomAccessFile {
   uint64 Size() const { return contents_.size(); }
 
   virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                           char* scratch) const {
+                      char* scratch) const {
     if (offset > contents_.size()) {
       return errors::InvalidArgument("invalid Read offset");
     }

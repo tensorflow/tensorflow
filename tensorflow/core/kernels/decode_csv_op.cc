@@ -198,10 +198,9 @@ class DecodeCSVOp : public OpKernel {
           }
 
           OP_REQUIRES(
-              ctx,
-              input[current_idx] == '"' &&
-                  (static_cast<size_t>(current_idx) == input.size() - 1 ||
-                   input[current_idx + 1] == delim_),
+              ctx, input[current_idx] == '"' &&
+                       (static_cast<size_t>(current_idx) == input.size() - 1 ||
+                        input[current_idx + 1] == delim_),
               errors::InvalidArgument("Quoted field has to end with quote "
                                       "followed by delim or end"));
 

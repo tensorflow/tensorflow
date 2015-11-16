@@ -3,11 +3,11 @@
 
 #include <string>
 
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {

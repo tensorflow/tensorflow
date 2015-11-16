@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -24,7 +25,6 @@
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

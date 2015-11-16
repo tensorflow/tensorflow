@@ -1,7 +1,7 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
-#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 

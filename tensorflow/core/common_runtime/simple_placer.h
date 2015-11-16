@@ -7,9 +7,9 @@
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 

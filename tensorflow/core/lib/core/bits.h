@@ -20,9 +20,7 @@ int Log2Ceiling64(uint64 n);
 #if defined(__GNUC__)
 
 // Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
-inline int Log2Floor(uint32 n) {
-  return n == 0 ? -1 : 31 ^ __builtin_clz(n);
-}
+inline int Log2Floor(uint32 n) { return n == 0 ? -1 : 31 ^ __builtin_clz(n); }
 
 // Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
 inline int Log2Floor64(uint64 n) {
@@ -33,8 +31,7 @@ inline int Log2Floor64(uint64 n) {
 
 // Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
 inline int Log2Floor(uint32 n) {
-  if (n == 0)
-    return -1;
+  if (n == 0) return -1;
   int log = 0;
   uint32 value = n;
   for (int i = 4; i >= 0; --i) {

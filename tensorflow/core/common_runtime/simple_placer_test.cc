@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -20,7 +21,6 @@
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

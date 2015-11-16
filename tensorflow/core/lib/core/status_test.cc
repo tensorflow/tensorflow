@@ -1,7 +1,7 @@
 #include "tensorflow/core/public/status.h"
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

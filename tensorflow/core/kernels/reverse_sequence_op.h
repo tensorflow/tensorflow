@@ -2,9 +2,9 @@
 #define TENSORFLOW_KERNELS_REVERSE_SEQUENCE_OP_H_
 // Generator definition for ReverseSequenceOp, must be compilable by nvcc.
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

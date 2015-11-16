@@ -6,11 +6,11 @@
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor.h"
 
 namespace Eigen {
 class ThreadPoolDevice;

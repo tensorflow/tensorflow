@@ -1,10 +1,10 @@
 #include "tensorflow/core/graph/equal_graph_def.h"
 
-#include "tensorflow/core/framework/op.h"
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace {

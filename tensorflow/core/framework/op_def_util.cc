@@ -62,7 +62,7 @@ Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
 
 // Requires: attr has already been validated.
 Status ValidateAttrValue(const AttrValue& attr_value,
-                              const OpDef::AttrDef& attr) {
+                         const OpDef::AttrDef& attr) {
   // Is it a valid value?
   TF_RETURN_WITH_CONTEXT_IF_ERROR(AttrValueHasType(attr_value, attr.type()),
                                   " for attr '", attr.name(), "'");
@@ -149,7 +149,7 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
-                               bool output, std::set<string>* names) {
+                          bool output, std::set<string>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(gtl::InsertIfNotPresent(names, arg.name()), "Duplicate name: ",

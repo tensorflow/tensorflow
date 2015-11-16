@@ -3,12 +3,12 @@
 #include <string.h>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/lib/random/simple_philox.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace random {

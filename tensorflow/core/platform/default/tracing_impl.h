@@ -3,10 +3,10 @@
 
 // Stub implementations of tracing functionality.
 
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace port {

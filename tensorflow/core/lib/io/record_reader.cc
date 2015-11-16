@@ -1,10 +1,10 @@
 #include "tensorflow/core/lib/io/record_reader.h"
 
 #include <limits.h>
-#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace io {
@@ -16,9 +16,8 @@ RecordReader::~RecordReader() {}
 // Read n+4 bytes from file, verify that checksum of first n bytes is
 // stored in the last 4 bytes and store the first n bytes in *result.
 // May use *storage as backing store.
-static Status ReadChecksummed(RandomAccessFile* file, uint64 offset,
-                                   size_t n, StringPiece* result,
-                                   string* storage) {
+static Status ReadChecksummed(RandomAccessFile* file, uint64 offset, size_t n,
+                              StringPiece* result, string* storage) {
   if (n >= SIZE_MAX - sizeof(uint32)) {
     return errors::DataLoss("record size too large");
   }

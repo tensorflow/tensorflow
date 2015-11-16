@@ -6,8 +6,8 @@
 #include <unordered_map>
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 

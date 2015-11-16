@@ -349,7 +349,7 @@ bool GraphConstructor::TypeValidateEdge(const Edge* edge) {
 // ----------------------------------------------------------------------------
 
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                   const GraphDef& gdef, Graph* g) {
+                              const GraphDef& gdef, Graph* g) {
   Status status;
   GraphConstructor constructor(opts, &gdef, g, &status);
   return status;

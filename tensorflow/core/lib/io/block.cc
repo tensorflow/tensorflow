@@ -6,12 +6,12 @@
 
 #include "tensorflow/core/lib/io/block.h"
 
-#include <vector>
 #include <algorithm>
-#include "tensorflow/core/lib/io/format.h"
+#include <vector>
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/format.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace table {

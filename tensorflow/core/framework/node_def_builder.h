@@ -8,15 +8,15 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
 class NodeDefBuilder;
 typedef std::function<Status(const OpDef&, int, const NodeDef&,
-                                  NodeDefBuilder*)> FakeInputFunctor;
+                             NodeDefBuilder*)> FakeInputFunctor;
 
 // This is a helper for creating a NodeDef.  Automatically sets attrs
 // that can be inferred from the inputs, and uses default values
