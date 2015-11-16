@@ -3,8 +3,8 @@
 
 #include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/env.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 class Env;
@@ -16,7 +16,7 @@ namespace io {
 // successful, return Status::OK and store the matching files in
 // "*results".  Otherwise, return a non-OK status.
 Status GetMatchingFiles(Env* env, const string& pattern,
-                             std::vector<string>* results);
+                        std::vector<string>* results);
 
 }  // namespace io
 }  // namespace tensorflow

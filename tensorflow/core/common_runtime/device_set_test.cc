@@ -1,7 +1,7 @@
 #include "tensorflow/core/common_runtime/device_set.h"
 
-#include "tensorflow/core/public/status.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace {

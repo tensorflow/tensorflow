@@ -2,10 +2,10 @@
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
 #include <string>
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/port.h"
 
 // Basic string utility routines
 namespace tensorflow {

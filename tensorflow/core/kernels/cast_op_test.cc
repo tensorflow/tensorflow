@@ -1,12 +1,12 @@
 #include "tensorflow/core/framework/fake_input.h"
+#include <gtest/gtest.h>
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

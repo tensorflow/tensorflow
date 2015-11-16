@@ -2,6 +2,7 @@
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -10,7 +11,6 @@
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -38,13 +38,15 @@ class ReverseOp : public OpKernel {
                   errors::InvalidArgument("'dims' must be 1-dimension, not ",
                                           dims.dims()));
 
-      OP_REQUIRES(context, input_dims == dims.dim_size(0),
-                  errors::InvalidArgument(
-          "'dims' must have the same number of values as 'input' has "
-          "dimensions. 'input' has ", input_dims, "'dims' has ",
-          dims.dim_size(0), " values"));
-      OP_REQUIRES(context, input_dims <= 8, errors::Unimplemented(
-                  "reverse is not implemented for tensors of rank > 8."));
+      OP_REQUIRES(
+          context, input_dims == dims.dim_size(0),
+          errors::InvalidArgument(
+              "'dims' must have the same number of values as 'input' has "
+              "dimensions. 'input' has ",
+              input_dims, "'dims' has ", dims.dim_size(0), " values"));
+      OP_REQUIRES(context, input_dims <= 8,
+                  errors::Unimplemented(
+                      "reverse is not implemented for tensors of rank > 8."));
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,

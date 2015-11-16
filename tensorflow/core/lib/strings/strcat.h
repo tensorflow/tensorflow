@@ -65,8 +65,7 @@ struct Hex {
   uint64 value;
   enum PadSpec spec;
   template <class Int>
-  explicit Hex(Int v, PadSpec s = NO_PAD)
-      : spec(s) {
+  explicit Hex(Int v, PadSpec s = NO_PAD) : spec(s) {
     // Prevent sign-extension by casting integers to
     // their unsigned counterparts.
     static_assert(

@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace strings {

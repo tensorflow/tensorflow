@@ -93,7 +93,7 @@ void SchedClosure(std::function<void()> c) {
 }  // namespace
 
 DirectSession::DirectSession(const SessionOptions& options,
-                           const DeviceMgr* device_mgr)
+                             const DeviceMgr* device_mgr)
     : options_(options),
       device_mgr_(device_mgr),
       cancellation_manager_(new CancellationManager()) {
@@ -155,9 +155,9 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
 }
 
 Status DirectSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
-                         const std::vector<string>& output_names,
-                         const std::vector<string>& target_nodes,
-                         std::vector<Tensor>* outputs) {
+                          const std::vector<string>& output_names,
+                          const std::vector<string>& target_nodes,
+                          std::vector<Tensor>* outputs) {
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {
@@ -379,10 +379,10 @@ void DirectSession::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
-Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
-                                  gtl::ArraySlice<string> fetches,
-                                  gtl::ArraySlice<string> target_nodes,
-                                  std::unordered_map<string, Graph*>* outputs) {
+Status DirectSession::CreateGraphs(
+    gtl::ArraySlice<string> feeds, gtl::ArraySlice<string> fetches,
+    gtl::ArraySlice<string> target_nodes,
+    std::unordered_map<string, Graph*>* outputs) {
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
 
@@ -462,8 +462,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     // allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    Status s =
-        ConvertGraphDefToGraph(device_opts, graph_def, device_graph);
+    Status s = ConvertGraphDefToGraph(device_opts, graph_def, device_graph);
     if (!s.ok()) {
       delete device_graph;
       // Also delete other graphs created during the loop.

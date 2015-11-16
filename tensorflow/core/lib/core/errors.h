@@ -2,8 +2,8 @@
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace errors {

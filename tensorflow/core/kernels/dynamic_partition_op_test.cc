@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -9,11 +10,10 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {

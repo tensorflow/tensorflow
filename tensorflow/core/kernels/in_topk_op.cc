@@ -3,9 +3,9 @@
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/public/tensor_shape.h"
-#include "tensorflow/core/public/tensor.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 

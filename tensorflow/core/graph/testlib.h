@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
 

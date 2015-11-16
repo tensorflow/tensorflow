@@ -5,10 +5,10 @@
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/port.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace gtl {

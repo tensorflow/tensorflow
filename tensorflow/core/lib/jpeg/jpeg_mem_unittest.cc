@@ -7,11 +7,11 @@
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/env.h"
-#include <gtest/gtest.h>
 
 #include "tensorflow/core/lib/core/casts.h"
 

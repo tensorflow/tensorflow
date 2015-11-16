@@ -10,9 +10,9 @@
 
 #include <thread>
 
-#include "tensorflow/core/public/env.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 
@@ -113,7 +113,7 @@ error::Code ErrnoToCode(int err_number) {
     case ENOLCK:        // No locks available
     case ENOLINK:       // Link has been severed
 #if !defined(__APPLE__)
-    case ENONET:        // Machine is not on the network
+    case ENONET:  // Machine is not on the network
 #endif
       code = error::UNAVAILABLE;
       break;

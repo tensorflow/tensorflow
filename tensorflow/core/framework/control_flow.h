@@ -1,9 +1,9 @@
 #ifndef TENSORFLOW_FRAMEWORK_CONTROL_FLOW_H_
 #define TENSORFLOW_FRAMEWORK_CONTROL_FLOW_H_
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

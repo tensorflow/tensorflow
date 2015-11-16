@@ -4,12 +4,12 @@
 #include "tensorflow/core/public/tensor.h"
 
 #if GOOGLE_CUDA
+#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
-#include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/stream.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

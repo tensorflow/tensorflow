@@ -15,8 +15,8 @@
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
@@ -41,8 +41,8 @@ typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
 // an appropriate error message (and *g is left in an indeterminate
 // state).
 static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
-                              const gtl::ArraySlice<string>& fed_outputs,
-                              NameIndex* name_index) {
+                         const gtl::ArraySlice<string>& fed_outputs,
+                         NameIndex* name_index) {
   for (const string& t : fed_outputs) {
     TensorId id(ParseTensorName(t));
 

@@ -3,13 +3,13 @@
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/platform/port.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 
 namespace tensorflow {
 

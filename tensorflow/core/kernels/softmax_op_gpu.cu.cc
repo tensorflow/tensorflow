@@ -4,8 +4,8 @@
 
 #include "tensorflow/core/kernels/softmax_op.h"
 
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

@@ -30,7 +30,7 @@ struct GraphConstructorOptions {
   std::function<bool(const Node*)> cse_consider_function = nullptr;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                          const GraphDef& gdef, Graph* g);
+                                     const GraphDef& gdef, Graph* g);
 
 // Make a copy of "src" into "*dest".
 //

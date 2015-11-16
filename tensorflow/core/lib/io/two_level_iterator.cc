@@ -4,10 +4,10 @@
 
 #include "tensorflow/core/lib/io/two_level_iterator.h"
 
-#include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/block.h"
 #include "tensorflow/core/lib/io/format.h"
 #include "tensorflow/core/lib/io/iterator.h"
+#include "tensorflow/core/lib/io/table.h"
 
 namespace tensorflow {
 namespace table {

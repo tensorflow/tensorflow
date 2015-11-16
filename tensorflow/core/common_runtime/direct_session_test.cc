@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -18,7 +19,6 @@
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace {

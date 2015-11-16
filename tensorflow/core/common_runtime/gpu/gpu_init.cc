@@ -2,13 +2,13 @@
 
 #include <string>
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace gpu = ::perftools::gputools;
 

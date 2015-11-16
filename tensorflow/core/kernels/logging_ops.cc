@@ -1,7 +1,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 

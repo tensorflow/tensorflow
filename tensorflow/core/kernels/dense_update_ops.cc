@@ -4,8 +4,8 @@
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/assign_op.h"
 #include "tensorflow/core/kernels/dense_update_ops.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

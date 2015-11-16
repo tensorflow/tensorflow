@@ -6,10 +6,10 @@
 
 #include <map>
 
+//#include "prodkernel/api/base/numa.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
-//#include "prodkernel/api/base/numa.h"
 
 namespace tensorflow {
 

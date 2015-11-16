@@ -3,9 +3,9 @@
 #include <set>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace random {

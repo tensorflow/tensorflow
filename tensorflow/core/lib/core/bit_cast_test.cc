@@ -1,8 +1,8 @@
 // Unit test for bit_cast template.
 
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/platform/logging.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 

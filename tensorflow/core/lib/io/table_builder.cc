@@ -5,13 +5,13 @@
 #include "tensorflow/core/lib/io/table_builder.h"
 
 #include <assert.h>
+#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/block_builder.h"
 #include "tensorflow/core/lib/io/format.h"
 #include "tensorflow/core/lib/io/table_options.h"
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/public/env.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace table {

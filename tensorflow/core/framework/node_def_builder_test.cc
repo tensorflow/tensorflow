@@ -1,13 +1,13 @@
 #include "tensorflow/core/framework/node_def_builder.h"
 
 #include <memory>
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace {

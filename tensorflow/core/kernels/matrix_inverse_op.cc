@@ -1,6 +1,7 @@
 // See docs in ../ops/linalg_ops.cc.
 #include <cmath>
 
+#include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
@@ -8,7 +9,6 @@
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor_shape.h"
-#include "third_party/eigen3/Eigen/LU"
 
 namespace tensorflow {
 

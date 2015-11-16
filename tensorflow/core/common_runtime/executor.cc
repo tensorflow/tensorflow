@@ -1,12 +1,12 @@
 #include "tensorflow/core/common_runtime/executor.h"
 
 #include <atomic>
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <deque>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"

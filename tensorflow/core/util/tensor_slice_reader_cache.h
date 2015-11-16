@@ -8,8 +8,8 @@
 #include <unordered_map>
 
 #include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/util/tensor_slice_reader.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
 

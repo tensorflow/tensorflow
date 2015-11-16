@@ -4,19 +4,19 @@
 
 #include "tensorflow/core/kernels/avgpooling_op.h"
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/pooling_ops_common.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/util/padding.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -34,14 +34,12 @@ class AvgPoolingOp : public UnaryOp<T> {
   explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window stride field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -56,9 +54,8 @@ class AvgPoolingOp : public UnaryOp<T> {
       return;
     }
     OP_REQUIRES(context, params.depth_window == 1,
-                errors::Unimplemented(
-                    "Non-spatial pooling is not "
-                    "yet supported. Volunteers? :)"));
+                errors::Unimplemented("Non-spatial pooling is not "
+                                      "yet supported. Volunteers? :)"));
 
     // For avgpooling, tensor_in should have 4 dimensions.
     OP_REQUIRES(context, tensor_in.dims() == 4,
@@ -123,14 +120,12 @@ class AvgPoolingGradOp : public OpKernel {
   explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -141,11 +136,11 @@ class AvgPoolingGradOp : public OpKernel {
     const Tensor& tensor_in_shape = context->input(0);
     const Tensor& out_backprop = context->input(1);
     // For avgpooling, tensor_in_shape should have 1 dimension, and 4 elements.
-    OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                             tensor_in_shape.NumElements() == 4,
-                errors::InvalidArgument(
-                    "out_backprop must be 1-dimensional and 4 "
-                    "elements"));
+    OP_REQUIRES(
+        context,
+        tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
+                                "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
@@ -178,9 +173,8 @@ class AvgPoolingGradOp : public OpKernel {
     //
     // Spatial pooling is when depth_window = 1
     OP_REQUIRES(context, depth_window == 1,
-                errors::Unimplemented(
-                    "Non-spatial pooling is not "
-                    "yet supported. Volunteers? :)"));
+                errors::Unimplemented("Non-spatial pooling is not "
+                                      "yet supported. Volunteers? :)"));
 
     int out_height, out_width, pad_rows, pad_cols;
     OP_REQUIRES_OK(

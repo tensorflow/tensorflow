@@ -6,7 +6,7 @@
 namespace tensorflow {
 
 Status GetNodeAttr(const NodeDef& node_def, const string& attr_name,
-                        Padding* value) {
+                   Padding* value) {
   string str_value;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attr_name, &str_value));
   if (str_value == "SAME") {

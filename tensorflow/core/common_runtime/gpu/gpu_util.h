@@ -1,11 +1,11 @@
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
+#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor.h"
 
 #include "tensorflow/stream_executor/stream.h"
 

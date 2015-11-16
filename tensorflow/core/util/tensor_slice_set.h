@@ -7,15 +7,15 @@
 #ifndef TENSORFLOW_UTIL_TENSOR_SLICE_SET_H_
 #define TENSORFLOW_UTIL_TENSOR_SLICE_SET_H_
 
-#include <string>                 // for string
+#include <string>  // for string
 #include <unordered_map>
 
-#include "tensorflow/core/platform/port.h"  // for int64
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"  // for StringPiece
+#include "tensorflow/core/platform/port.h"         // for int64
 #include "tensorflow/core/public/status.h"         // for Status
+#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ class TensorSliceSet {
   // the data is always available during the life time of the tensor slice set
   // if it is not nullptr.
   Status Register(const TensorSlice& slice, const string& tag,
-                       const float* data);
+                  const float* data);
 
   // Query about a new slice: checks if we have data for "slice" and if we have
   // the data and "data" is not nullptr, fill "data" with the slice data. The

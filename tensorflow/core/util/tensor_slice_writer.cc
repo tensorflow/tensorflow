@@ -1,10 +1,10 @@
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
@@ -48,8 +48,8 @@ class TableBuilder : public TensorSliceWriter::Builder {
 };
 }  // anonymous namespace
 
-Status CreateTableTensorSliceBuilder(
-    const string& name, TensorSliceWriter::Builder** builder) {
+Status CreateTableTensorSliceBuilder(const string& name,
+                                     TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
   WritableFile* f;
   Status s = Env::Default()->NewWritableFile(name, &f);

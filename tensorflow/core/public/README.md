@@ -10,16 +10,13 @@ The following is an example python code to do a simple matrix multiply
 of two constants and get the result from a locally-running TensorFlow
 process.
 
-First, bring in the following dependency:
+First, bring in tensorflow python dependency
 
-//third_party/tensorflow/core/public:tensorflow_py
+//third_party/tensorflow:tensorflow_py
 
-to get the python TensorFlow API. If you intend to run TensorFlow within
-the same process, link in the following to the same binary:
+to get the python TensorFlow API.
 
-//third_party/tensorflow/core/public:tensorflow_std_ops
-
-to get the standard set of op implementations.  Then:
+Then:
 
 ```python
 import tensorflow as tf
@@ -38,11 +35,11 @@ with tf.Session("local"):
 
 If you are running TensorFlow locally, link your binary with
 
-//third_party/tensorflow/core/public:tensorflow_local
+//third_party/tensorflow/core
 
 and link in the operation implementations you want to supported, e.g.,
 
-//third_party/tensorflow/core/public:tensorflow_std_ops
+//third_party/tensorflow/core:kernels
 
 An example program to take a GraphDef and run it using TensorFlow
 using the C++ Session API:

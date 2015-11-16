@@ -49,8 +49,7 @@ bool NodeDefBuilder::NextArgAvailable() {
 
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
-    Status status =
-        fake_input(*op_def_, inputs_specified_, node_def_, this);
+    Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
     if (!status.ok()) errors_.push_back(status.error_message());
   }
   return *this;

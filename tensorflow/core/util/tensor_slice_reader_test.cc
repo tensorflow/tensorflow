@@ -1,5 +1,6 @@
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -10,9 +11,8 @@
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
-#include "tensorflow/core/util/tensor_slice_writer.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
 

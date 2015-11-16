@@ -6,8 +6,8 @@
 #include <map>
 #include <memory>
 
-#include "tensorflow/core/platform/port.h"  // Must be first
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/port.h"  // Must be first
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {

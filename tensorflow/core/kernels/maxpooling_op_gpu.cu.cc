@@ -28,9 +28,9 @@ namespace {
 //         int form, keeping track of the flattened index of the input item that
 //         produces the max output. If a nullptr is passed in for mask, no mask
 //         will be produced.
-#define CUDA_1D_KERNEL_LOOP(i, n)                                              \
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x;                          \
-       i < (n); i += blockDim.x * gridDim.x)
+#define CUDA_1D_KERNEL_LOOP(i, n)                              \
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); \
+       i += blockDim.x * gridDim.x)
 
 // To call the forward and backward functions, use e.g.:
 // const int kThreadsPerBlock = 1024

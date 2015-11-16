@@ -1,13 +1,13 @@
 #ifndef TENSORFLOW_PUBLIC_ENV_H_
 #define TENSORFLOW_PUBLIC_ENV_H_
 
+#include <stdint.h>
 #include <string>
 #include <vector>
-#include <stdint.h>
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -19,7 +19,7 @@ class WritableFile;
 /// \brief An interface used by the tensorflow implementation to
 /// access operating system functionality like the filesystem etc.
 ///
-/// Callers may wish to provide a custom Env object to get fine grain   
+/// Callers may wish to provide a custom Env object to get fine grain
 /// control.
 ///
 /// All Env implementations are safe for concurrent access from
@@ -48,7 +48,7 @@ class Env {
   ///
   /// The returned file may be concurrently accessed by multiple threads.
   virtual Status NewRandomAccessFile(const string& fname,
-                                          RandomAccessFile** result) = 0;
+                                     RandomAccessFile** result) = 0;
 
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
@@ -60,7 +60,7 @@ class Env {
   ///
   /// The returned file will only be accessed by one thread at a time.
   virtual Status NewWritableFile(const string& fname,
-                                      WritableFile** result) = 0;
+                                 WritableFile** result) = 0;
 
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
@@ -71,7 +71,7 @@ class Env {
   ///
   /// The returned file will only be accessed by one thread at a time.
   virtual Status NewAppendableFile(const string& fname,
-                                        WritableFile** result) = 0;
+                                   WritableFile** result) = 0;
 
   /// Returns true iff the named file exists.
   virtual bool FileExists(const string& fname) = 0;
@@ -81,7 +81,7 @@ class Env {
   ///
   /// Original contents of *results are dropped.
   virtual Status GetChildren(const string& dir,
-                                  std::vector<string>* result) = 0;
+                             std::vector<string>* result) = 0;
 
   /// Deletes the named file.
   virtual Status DeleteFile(const string& fname) = 0;
@@ -147,7 +147,7 @@ class RandomAccessFile {
   ///
   /// Safe for concurrent use by multiple threads.
   virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                           char* scratch) const = 0;
+                      char* scratch) const = 0;
 
  private:
   /// No copying allowed
@@ -189,8 +189,7 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewRandomAccessFile(const string& f,
-                                  RandomAccessFile** r) override {
+  Status NewRandomAccessFile(const string& f, RandomAccessFile** r) override {
     return target_->NewRandomAccessFile(f, r);
   }
   Status NewWritableFile(const string& f, WritableFile** r) override {
@@ -203,15 +202,9 @@ class EnvWrapper : public Env {
   Status GetChildren(const string& dir, std::vector<string>* r) override {
     return target_->GetChildren(dir, r);
   }
-  Status DeleteFile(const string& f) override {
-    return target_->DeleteFile(f);
-  }
-  Status CreateDir(const string& d) override {
-    return target_->CreateDir(d);
-  }
-  Status DeleteDir(const string& d) override {
-    return target_->DeleteDir(d);
-  }
+  Status DeleteFile(const string& f) override { return target_->DeleteFile(f); }
+  Status CreateDir(const string& d) override { return target_->CreateDir(d); }
+  Status DeleteDir(const string& d) override { return target_->DeleteDir(d); }
   Status GetFileSize(const string& f, uint64* s) override {
     return target_->GetFileSize(f, s);
   }
@@ -261,7 +254,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 /// A utility routine: write contents of "data" to file named "fname"
 /// (overwriting existing contents, if any).
 Status WriteStringToFile(Env* env, const string& fname,
-                              const StringPiece& data);
+                         const StringPiece& data);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into *proto.

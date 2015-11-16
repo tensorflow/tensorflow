@@ -4,21 +4,21 @@
 
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/pooling_ops_common.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/util/use_cudnn.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/stream.h"
@@ -156,14 +156,12 @@ class MaxPoolingGradOp : public OpKernel {
   explicit MaxPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -274,14 +272,12 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   explicit MaxPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window strides field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -385,14 +381,12 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window stride field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
@@ -435,14 +429,12 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window ksize field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument(
-                    "Sliding window stride field must "
-                    "specify 4 dimensions"));
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(

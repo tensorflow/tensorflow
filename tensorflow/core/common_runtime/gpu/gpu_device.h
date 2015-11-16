@@ -5,7 +5,10 @@
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+#include "tensorflow/stream_executor/stream.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -15,9 +18,6 @@
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 

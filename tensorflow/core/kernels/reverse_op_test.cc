@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -17,7 +18,6 @@
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace {

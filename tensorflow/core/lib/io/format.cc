@@ -4,12 +4,12 @@
 
 #include "tensorflow/core/lib/io/format.h"
 
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/lib/io/block.h"
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/hash/crc32c.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/block.h"
+#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace table {
@@ -65,7 +65,7 @@ Status Footer::DecodeFrom(StringPiece* input) {
 }
 
 Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
-                      BlockContents* result) {
+                 BlockContents* result) {
   result->data = StringPiece();
   result->cachable = false;
   result->heap_allocated = false;
@@ -75,8 +75,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   size_t n = static_cast<size_t>(handle.size());
   char* buf = new char[n + kBlockTrailerSize];
   StringPiece contents;
-  Status s =
-      file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
+  Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
     return s;

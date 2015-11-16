@@ -34,7 +34,7 @@ class Table {
   // "*file", but the client must ensure that "file" remains live
   // for the duration of the returned table's lifetime.
   static Status Open(const Options& options, RandomAccessFile* file,
-                          uint64 file_size, Table** table);
+                     uint64 file_size, Table** table);
 
   ~Table();
 
@@ -62,8 +62,8 @@ class Table {
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
   Status InternalGet(const StringPiece& key, void* arg,
-                          void (*handle_result)(void* arg, const StringPiece& k,
-                                                const StringPiece& v));
+                     void (*handle_result)(void* arg, const StringPiece& k,
+                                           const StringPiece& v));
 
   // No copying allowed
   Table(const Table&);

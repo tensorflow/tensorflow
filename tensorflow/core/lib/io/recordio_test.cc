@@ -57,7 +57,7 @@ class RecordioTest : public testing::Test {
     StringSource() : force_error_(false), returned_partial_(false) {}
 
     Status Read(uint64 offset, size_t n, StringPiece* result,
-                     char* scratch) const override {
+                char* scratch) const override {
       EXPECT_FALSE(returned_partial_) << "must not Read() after eof/error";
 
       if (force_error_) {

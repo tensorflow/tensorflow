@@ -10,12 +10,12 @@
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
@@ -32,8 +32,7 @@ class TensorSliceWriter {
     virtual void Add(StringPiece key, StringPiece value) = 0;
     virtual Status Finish(int64* file_size) = 0;
   };
-  typedef std::function<Status(const string&, Builder**)>
-      CreateBuilderFunction;
+  typedef std::function<Status(const string&, Builder**)> CreateBuilderFunction;
 
   TensorSliceWriter(const string& filename,
                     CreateBuilderFunction create_builder);
@@ -42,7 +41,7 @@ class TensorSliceWriter {
   // TODO(yangke): add more supports
   template <typename T>
   Status Add(const string& name, const TensorShape& shape,
-                  const TensorSlice& slice, const T* data);
+             const TensorSlice& slice, const T* data);
   Status Finish();
 
  private:
@@ -68,7 +67,7 @@ class TensorSliceWriter {
 
 template <typename T>
 Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
-                                   const TensorSlice& slice, const T* data) {
+                              const TensorSlice& slice, const T* data) {
   // The tensor and the slice have to be compatible
   if (shape.dims() != slice.dims()) {
     return errors::Internal("Incompatible tensor shape and slice: ", "shape = ",
@@ -140,7 +139,7 @@ void TensorSliceWriter::SaveData(const T* data, int num_elements,
 // and set "*builder" to the allocated builder.  Otherwise, return a
 // non-OK status.
 Status CreateTableTensorSliceBuilder(const string& filename,
-                                          TensorSliceWriter::Builder** builder);
+                                     TensorSliceWriter::Builder** builder);
 
 }  // namespace checkpoint
 

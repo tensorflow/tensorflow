@@ -9,9 +9,9 @@
 
 #include <complex>
 
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
+#include "tensorflow/core/platform/port.h"
 
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {

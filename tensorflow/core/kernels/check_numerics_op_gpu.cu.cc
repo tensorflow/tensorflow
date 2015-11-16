@@ -1,14 +1,14 @@
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
-#include <stdio.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include <math.h>
 #include <algorithm>
 
-#include "tensorflow/core/platform/port.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

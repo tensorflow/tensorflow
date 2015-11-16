@@ -1,7 +1,7 @@
 #include "tensorflow/core/platform/port.h"
 #include <condition_variable>
-#include "tensorflow/core/lib/core/threadpool.h"
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 namespace port {

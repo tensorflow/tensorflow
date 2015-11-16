@@ -1,13 +1,13 @@
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/test.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 
@@ -42,7 +42,7 @@ void ExpectIdenticalIntArrays(const T* expected, int size, const U* actual) {
 
 // Nifty routine to get the size of an array
 template <typename T, unsigned SIZE>
-inline size_t ArraySize(const T(&v)[SIZE]) {
+inline size_t ArraySize(const T (&v)[SIZE]) {
   return SIZE;
 }
 

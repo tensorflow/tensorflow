@@ -1,7 +1,7 @@
 #include "tensorflow/core/public/tensor.h"
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include <gtest/gtest.h>
 
 namespace tensorflow {
 

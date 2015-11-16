@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <vector>
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -14,7 +15,6 @@
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include <gtest/gtest.h>
 
 class DummyKernel : public tensorflow::OpKernel {
  public:

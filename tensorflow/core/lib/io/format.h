@@ -5,11 +5,11 @@
 #ifndef TENSORFLOW_LIB_IO_FORMAT_H_
 #define TENSORFLOW_LIB_IO_FORMAT_H_
 
-#include <string>
 #include <stdint.h>
+#include <string>
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/lib/io/table_builder.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 class RandomAccessFile;
@@ -86,7 +86,7 @@ struct BlockContents {
 // Read the block identified by "handle" from "file".  On failure
 // return non-OK.  On success fill *result and return OK.
 extern Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
-                             BlockContents* result);
+                        BlockContents* result);
 
 // Implementation details follow.  Clients should ignore,
 

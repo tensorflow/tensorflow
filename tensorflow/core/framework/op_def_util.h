@@ -16,7 +16,7 @@ Status ValidateOpDef(const OpDef& op_def);
 // Validates that attr_value satisfies the type and constraints from attr.
 // REQUIRES: attr has already been validated.
 Status ValidateAttrValue(const AttrValue& attr_value,
-                              const OpDef::AttrDef& attr);
+                         const OpDef::AttrDef& attr);
 
 // The following search through op_def for an attr with the indicated name.
 // Returns nullptr if no such attr is found.

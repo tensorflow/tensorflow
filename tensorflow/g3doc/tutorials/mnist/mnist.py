@@ -91,7 +91,7 @@ def loss(logits, labels):
   # be a 1.0 in the entry corresponding to the label).
   batch_size = tf.size(labels)
   labels = tf.expand_dims(labels, 1)
-  indices = tf.expand_dims(tf.range(batch_size), 1)
+  indices = tf.expand_dims(tf.range(0, batch_size), 1)
   concated = tf.concat(1, [indices, labels])
   onehot_labels = tf.sparse_to_dense(
       concated, tf.pack([batch_size, NUM_CLASSES]), 1.0, 0.0)

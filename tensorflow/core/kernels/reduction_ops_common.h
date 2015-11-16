@@ -10,15 +10,15 @@
 
 #include "tensorflow/core/kernels/reduction_ops.h"
 
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -59,7 +59,7 @@ class ReductionHelper {
   ReductionHelper() : reduce_first_axis_(false) {}
 
   Status Simplify(const Tensor& data, const Tensor& axis,
-                       const bool keep_dims) {
+                  const bool keep_dims) {
     // bitmap[i] indicates whether to reduce data along i-th axis.
     std::vector<bool> bitmap(data.dims(), false);
     auto axis_vec = axis.flat<int32>();
@@ -180,7 +180,7 @@ class ReductionHelper {
   }
 
  private:
-  bool reduce_first_axis_;      // True if need to reduce the 0-th dimension.
+  bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.
   std::vector<int64> data_reshape_;  // Reshape the data before reduction.
   std::vector<int64> out_shape_;     // The final output shape.
   std::vector<int64> out_reshape_;   // Reshape the output for reduction.
