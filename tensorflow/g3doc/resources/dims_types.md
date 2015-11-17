@@ -18,7 +18,7 @@ Python list) has a rank of 2:
 A rank two tensor is what we typically think of as a matrix, a rank one tensor
 is a vector. For a rank two tensor you can acccess any element with the syntax
 `t[i, j]`.  For a rank three tensor you would need to address an element with
-'t[i, j, k]'.
+`t[i, j, k]`.
 
 Rank | Math entity | Python example
 --- | --- | ---
