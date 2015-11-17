@@ -14,3 +14,5 @@ Note: Many practical aspects of usage are covered in the Mechanics tab, and
 some additional documentation not specific to any particular language API is
 available in the Resources tab.
 
+* [Python API](python/index.md)
+* [C++ API](cc/index.md)

@@ -89,8 +89,8 @@ def bias_add_shape(op):
   return [output_shape]
 
 
-def _Get2DOutputSize(input_height, input_width, filter_height, filter_width,
-                     row_stride, col_stride, padding_type):
+def get2d_conv_output_size(input_height, input_width, filter_height,
+                           filter_width, row_stride, col_stride, padding_type):
   """Returns the number of rows and columns in a convolution/pooling output."""
   input_height = tensor_shape.as_dimension(input_height)
   input_width = tensor_shape.as_dimension(input_width)
@@ -184,7 +184,7 @@ def conv2d_shape(op):
   # in the kernel implementation.
   stride = stride_r
   padding = op.get_attr("padding")
-  out_rows, out_cols = _Get2DOutputSize(
+  out_rows, out_cols = get2d_conv_output_size(
       in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
 
   return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
@@ -246,7 +246,7 @@ def separable_conv2d_shape(op):
   # in the kernel implementation.
   stride = stride_r
   padding = op.get_attr("padding")
-  out_rows, out_cols = _Get2DOutputSize(
+  out_rows, out_cols = get2d_conv_output_size(
       in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
 
   return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
@@ -294,7 +294,7 @@ def avg_pool_shape(op):
   # in the kernel implementation.
   padding = op.get_attr("padding")
 
-  out_rows, out_cols = _Get2DOutputSize(
+  out_rows, out_cols = get2d_conv_output_size(
       in_rows, in_cols, ksize_r, ksize_c, stride_r, stride_c, padding)
 
   return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth])]
@@ -346,7 +346,7 @@ def max_pool_shape(op):
   # in the kernel implementation.
   if ksize_d == 1:
     padding = op.get_attr("padding")
-    out_rows, out_cols = _Get2DOutputSize(
+    out_rows, out_cols = get2d_conv_output_size(
         in_rows, in_cols, ksize_r, ksize_c, stride_r, stride_c, padding)
     return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth])]
   else:

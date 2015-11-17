@@ -186,8 +186,8 @@ extern void TF_SetTarget(TF_SessionOptions* options, const char* target);
 // config should be a serialized brain.ConfigProto proto.
 // If config was not parsed successfully as a ConfigProto, record the
 // error information in *status.
-extern void TF_SetConfig(TF_SessionOptions* options, const char* config,
-                         size_t config_len, TF_Status* status);
+extern void TF_SetConfig(TF_SessionOptions* options, const void* proto,
+                         size_t proto_len, TF_Status* status);
 
 // Destroy an options object.
 extern void TF_DeleteSessionOptions(TF_SessionOptions*);

@@ -11,24 +11,25 @@ namespace functor {
 // TODO(yangke): revisit these operations and in particular, see if we can
 // combine all of them into just one operation without causing nvcc to
 // timeout.
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T, int Dims, typename IndexType>
 struct ShuffleAndReverse {
-  void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-                  const Eigen::DSizes<Eigen::DenseIndex, Dims>& order,
+  void operator()(const Device& d,
+                  typename TTypes<T, Dims, IndexType>::ConstTensor input,
+                  const Eigen::DSizes<IndexType, Dims>& order,
                   const Eigen::array<bool, Dims>& reverse_dims,
-                  typename TTypes<T, Dims>::Tensor output) {
+                  typename TTypes<T, Dims, IndexType>::Tensor output) {
     output.device(d) = input.shuffle(order).reverse(reverse_dims);
   }
 };
 
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T, int Dims, typename IndexType>
 struct InflatePadAndShuffle {
   void operator()(
-      const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-      const Eigen::DSizes<Eigen::DenseIndex, Dims>& strides,
-      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, Dims>& pad_dims,
-      const Eigen::DSizes<Eigen::DenseIndex, Dims>& order,
-      typename TTypes<T, Dims>::Tensor output) {
+      const Device& d, typename TTypes<T, Dims, IndexType>::ConstTensor input,
+      const Eigen::DSizes<IndexType, Dims>& strides,
+      const Eigen::array<Eigen::IndexPair<IndexType>, Dims>& pad_dims,
+      const Eigen::DSizes<IndexType, Dims>& order,
+      typename TTypes<T, Dims, IndexType>::Tensor output) {
     output.device(d) = input.inflate(strides).pad(pad_dims).shuffle(order);
   }
 };
@@ -89,30 +90,92 @@ struct MatMulConvFunctor {
   }
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename IndexType>
 struct TransformFilter {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
-                  typename TTypes<T, 4>::Tensor out) {
-    out.device(d) = in.shuffle(Eigen::DSizes<Eigen::DenseIndex, 4>(3, 2, 0, 1));
+  void operator()(const Device& d,
+                  typename TTypes<T, 4, IndexType>::ConstTensor in,
+                  typename TTypes<T, 4, IndexType>::Tensor out) {
+    // We want a 3, 2, 0, 1 shuffle. We can merge dimensions 0 and 1 together
+    // to help speedup the shuffle operation.
+    Eigen::DSizes<IndexType, 3> merged_dims;
+    merged_dims[0] = in.dimension(0) * in.dimension(1);
+    merged_dims[1] = in.dimension(2);
+    merged_dims[2] = in.dimension(3);
+
+    Eigen::DSizes<IndexType, 4> expanded_dims;
+    expanded_dims[0] = in.dimension(3);
+    expanded_dims[1] = in.dimension(2);
+    expanded_dims[2] = in.dimension(0);
+    expanded_dims[3] = in.dimension(1);
+
+    out.device(d) = in.reshape(merged_dims)
+                        .shuffle(Eigen::DSizes<IndexType, 3>(2, 1, 0))
+                        .reshape(expanded_dims);
   }
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename IndexType>
 struct TransformDepth {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
-                  const Eigen::DSizes<Eigen::DenseIndex, 4>& shuffle,
-                  typename TTypes<T, 4>::Tensor out) {
-    out.device(d) = in.shuffle(shuffle);
+  void operator()(const Device& d,
+                  typename TTypes<T, 4, IndexType>::ConstTensor in,
+                  const Eigen::DSizes<IndexType, 4>& shuffle,
+                  typename TTypes<T, 4, IndexType>::Tensor out) {
+    Eigen::DSizes<IndexType, 3> merged_dims;
+    Eigen::DSizes<IndexType, 4> expanded_dims;
+    Eigen::DSizes<IndexType, 3> new_shuffle;
+
+    // Merge dimensions that won't be shuffled together to speed things up.
+    if (shuffle[1] == 2 && shuffle[2] == 3) {
+      merged_dims[0] = in.dimension(0);
+      merged_dims[1] = in.dimension(1);
+      merged_dims[2] = in.dimension(2) * in.dimension(3);
+      new_shuffle[0] = shuffle[0];
+      new_shuffle[1] = 2;
+      new_shuffle[2] = shuffle[3];
+      expanded_dims[0] = in.dimension(shuffle[0]);
+      expanded_dims[1] = in.dimension(2);
+      expanded_dims[2] = in.dimension(3);
+      expanded_dims[3] = in.dimension(shuffle[3]);
+    } else if (shuffle[0] == 2 && shuffle[1] == 3) {
+      merged_dims[0] = in.dimension(0);
+      merged_dims[1] = in.dimension(1);
+      merged_dims[2] = in.dimension(2) * in.dimension(3);
+      new_shuffle[0] = 2;
+      new_shuffle[1] = shuffle[2];
+      new_shuffle[2] = shuffle[3];
+      expanded_dims[0] = in.dimension(2);
+      expanded_dims[1] = in.dimension(3);
+      expanded_dims[2] = in.dimension(shuffle[2]);
+      expanded_dims[3] = in.dimension(shuffle[3]);
+    } else if (shuffle[0] == 0 && shuffle[1] == 3 && shuffle[2] == 1 &&
+               shuffle[3] == 2) {
+      merged_dims[0] = in.dimension(0);
+      merged_dims[1] = in.dimension(1) * in.dimension(2);
+      merged_dims[2] = in.dimension(3);
+      new_shuffle[0] = 0;
+      new_shuffle[1] = 2;
+      new_shuffle[2] = 1;
+      expanded_dims[0] = in.dimension(0);
+      expanded_dims[1] = in.dimension(3);
+      expanded_dims[2] = in.dimension(1);
+      expanded_dims[3] = in.dimension(2);
+    } else {
+      assert(false && "unexpected shuffle");
+    }
+
+    out.device(d) =
+        in.reshape(merged_dims).shuffle(new_shuffle).reshape(expanded_dims);
   }
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename IndexType>
 struct PadInput {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
+  void operator()(const Device& d,
+                  typename TTypes<T, 4, IndexType>::ConstTensor in,
                   int padding_rows_left, int padding_rows_right,
                   int padding_cols_left, int padding_cols_right,
-                  typename TTypes<T, 4>::Tensor out) {
-    Eigen::array<std::pair<ptrdiff_t, ptrdiff_t>, 4> padding;
+                  typename TTypes<T, 4, IndexType>::Tensor out) {
+    Eigen::array<std::pair<IndexType, IndexType>, 4> padding;
     padding[0] = std::make_pair(0, 0);
     padding[1] = std::make_pair(padding_rows_left, padding_rows_right);
     padding[2] = std::make_pair(padding_cols_left, padding_cols_right);

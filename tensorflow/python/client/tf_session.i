@@ -214,7 +214,7 @@ import_array();
                         "but got %s" % type(config))
       status = TF_NewStatus()
       config_str = config.SerializeToString()
-      _TF_SetConfig(opts, config_str, len(config_str), status)
+      _TF_SetConfig(opts, config_str, status)
       if TF_GetCode(status) != 0:
         raise ValueError(TF_Message(status))
     return opts

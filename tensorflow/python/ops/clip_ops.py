@@ -175,7 +175,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   with ops.op_scope(t_list + [clip_norm], name, "clip_by_global_norm") as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     scale = clip_norm * math_ops.minimum(
-        1.0 / use_norm, constant_op.constant(1.0 / clip_norm))
+        1.0 / use_norm,
+        constant_op.constant(1.0 / clip_norm, dtype=use_norm.dtype))
 
     values = [
         ops.convert_to_tensor(

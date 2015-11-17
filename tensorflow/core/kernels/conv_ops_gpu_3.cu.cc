@@ -9,13 +9,18 @@
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
-template struct functor::ShuffleAndReverse<GPUDevice, float, 4>;
+template struct functor::ShuffleAndReverse<GPUDevice, float, 4, int>;
+template struct functor::ShuffleAndReverse<GPUDevice, float, 4,
+                                           Eigen::DenseIndex>;
 
-template struct functor::TransformFilter<GPUDevice, float>;
+template struct functor::TransformFilter<GPUDevice, float, int>;
 
-template struct functor::PadInput<GPUDevice, float>;
+template struct functor::PadInput<GPUDevice, float, int>;
 
-template struct functor::TransformDepth<GPUDevice, float>;
+template struct functor::TransformDepth<GPUDevice, float, int>;
+// TODO(jiayq): currently pooling ops still use DenseIndex, so I am keeping it
+// here.
+template struct functor::TransformDepth<GPUDevice, float, Eigen::DenseIndex>;
 
 }  // namespace tensorflow
 

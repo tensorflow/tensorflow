@@ -141,9 +141,9 @@ void TF_SetTarget(TF_SessionOptions* options, const char* target) {
   options->options.target = target;
 }
 
-void TF_SetConfig(TF_SessionOptions* options, const char* config,
-                  size_t config_len, TF_Status* status) {
-  if (!options->options.config.ParseFromArray(config, config_len)) {
+void TF_SetConfig(TF_SessionOptions* options, const void* proto,
+                  size_t proto_len, TF_Status* status) {
+  if (!options->options.config.ParseFromArray(proto, proto_len)) {
     status->status =
         tensorflow::errors::InvalidArgument("Unparseable ConfigProto");
   }

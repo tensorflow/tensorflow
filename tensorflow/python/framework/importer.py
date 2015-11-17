@@ -167,7 +167,14 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   """
   # Type checks for inputs.
   if not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError('graph_def must be a GraphDef proto.')
+    # `graph_def` could be a dynamically-created message, so try a duck-typed
+    # approach
+    try:
+      old_graph_def = graph_def
+      graph_def = graph_pb2.GraphDef()
+      graph_def.MergeFrom(old_graph_def)
+    except TypeError:
+      raise TypeError('graph_def must be a GraphDef proto.')
   if input_map is None:
     input_map = {}
   else:

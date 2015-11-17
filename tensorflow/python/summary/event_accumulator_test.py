@@ -102,8 +102,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testTags(self):
     gen = _EventGenerator()
-    gen.AddScalar('sv1')
-    gen.AddScalar('sv2')
+    gen.AddScalar('s1')
+    gen.AddScalar('s2')
     gen.AddHistogram('hst1')
     gen.AddHistogram('hst2')
     gen.AddImage('im1')
@@ -113,7 +113,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertTagsEqual(
         acc.Tags(), {
             ea.IMAGES: ['im1', 'im2'],
-            ea.SCALARS: ['sv1', 'sv2'],
+            ea.SCALARS: ['s1', 's2'],
             ea.HISTOGRAMS: ['hst1', 'hst2'],
             ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
             ea.GRAPH: False})
@@ -123,8 +123,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(gen)
     acc.Reload()
     self.assertEqual(acc.Tags(), self.empty)
-    gen.AddScalar('sv1')
-    gen.AddScalar('sv2')
+    gen.AddScalar('s1')
+    gen.AddScalar('s2')
     gen.AddHistogram('hst1')
     gen.AddHistogram('hst2')
     gen.AddImage('im1')
@@ -133,7 +133,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1', 'im2'],
-        ea.SCALARS: ['sv1', 'sv2'],
+        ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
         ea.GRAPH: False})
@@ -141,13 +141,13 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
   def testScalars(self):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    sv1 = ea.ScalarEvent(wall_time=1, step=10, value=32)
-    sv2 = ea.ScalarEvent(wall_time=2, step=12, value=64)
-    gen.AddScalar('sv1', wall_time=1, step=10, value=32)
-    gen.AddScalar('sv2', wall_time=2, step=12, value=64)
+    s1 = ea.ScalarEvent(wall_time=1, step=10, value=32)
+    s2 = ea.ScalarEvent(wall_time=2, step=12, value=64)
+    gen.AddScalar('s1', wall_time=1, step=10, value=32)
+    gen.AddScalar('s2', wall_time=2, step=12, value=64)
     acc.Reload()
-    self.assertEqual(acc.Scalars('sv1'), [sv1])
-    self.assertEqual(acc.Scalars('sv2'), [sv2])
+    self.assertEqual(acc.Scalars('s1'), [s1])
+    self.assertEqual(acc.Scalars('s2'), [s2])
 
   def testHistograms(self):
     gen = _EventGenerator()
@@ -311,7 +311,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     with self.assertRaises(RuntimeError):
       acc.Tags()
     with self.assertRaises(RuntimeError):
-      acc.Scalars('sv1')
+      acc.Scalars('s1')
     acc.Reload()
     self.assertTrue(acc._activated)
     acc._activated = False
@@ -321,17 +321,17 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(gen)
     acc.Reload()
     with self.assertRaises(KeyError):
-      acc.Scalars('sv1')
+      acc.Scalars('s1')
     with self.assertRaises(KeyError):
       acc.Scalars('hst1')
     with self.assertRaises(KeyError):
       acc.Scalars('im1')
     with self.assertRaises(KeyError):
-      acc.Histograms('sv1')
+      acc.Histograms('s1')
     with self.assertRaises(KeyError):
       acc.Histograms('im1')
     with self.assertRaises(KeyError):
-      acc.Images('sv1')
+      acc.Images('s1')
     with self.assertRaises(KeyError):
       acc.Images('hst1')
 
@@ -339,20 +339,42 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Tests that non-value events in the generator don't cause early exits."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    gen.AddScalar('sv1', wall_time=1, step=10, value=20)
+    gen.AddScalar('s1', wall_time=1, step=10, value=20)
     gen.AddEvent(tf.Event(
-        wall_time=2, step=20, file_version='notsv2'))
-    gen.AddScalar('sv3', wall_time=3, step=100, value=1)
+        wall_time=2, step=20, file_version='nots2'))
+    gen.AddScalar('s3', wall_time=3, step=100, value=1)
     gen.AddHistogram('hst1')
     gen.AddImage('im1')
 
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1'],
-        ea.SCALARS: ['sv1', 'sv3'],
+        ea.SCALARS: ['s1', 's3'],
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
         ea.GRAPH: False})
+
+  def testExpiredDataDiscardedAfterRestart(self):
+    """Tests that events are discarded after a restart is detected.
+
+    If a step value is observed to be lower than what was previously seen,
+    this should force a discard of all previous items that are outdated.
+    """
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddScalar('s1', wall_time=1, step=100, value=20)
+    gen.AddScalar('s1', wall_time=1, step=200, value=20)
+    gen.AddScalar('s1', wall_time=1, step=300, value=20)
+    acc.Reload()
+    ## Check that number of items are what they should be
+    self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200, 300])
+
+    gen.AddScalar('s1', wall_time=1, step=101, value=20)
+    gen.AddScalar('s1', wall_time=1, step=201, value=20)
+    gen.AddScalar('s1', wall_time=1, step=301, value=20)
+    acc.Reload()
+    ## Check that we have discarded 200 and 300
+    self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
 
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):

@@ -10,11 +10,11 @@
 #include <fstream>
 #include <sstream>
 
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/message_lite.h"
 #include "tensorflow/core/platform/logging.h"
-#include "google/protobuf/src/google/protobuf/io/zero_copy_stream_impl.h"
-#include "google/protobuf/src/google/protobuf/io/zero_copy_stream_impl_lite.h"
-#include "google/protobuf/src/google/protobuf/io/coded_stream.h"
-#include "google/protobuf/src/google/protobuf/message_lite.h"
 
 static const char* const ASSET_PREFIX = "file:///android_asset/";
 

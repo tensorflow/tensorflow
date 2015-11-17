@@ -183,6 +183,13 @@ class Conv2DTest(tf.test.TestCase):
                        stride=1, padding="VALID",
                        expected=expected_output)
 
+  def testConv2DEmpty(self):
+    expected_output = []
+    self._VerifyValues(tensor_in_sizes=[0, 2, 3, 3],
+                       filter_in_sizes=[1, 1, 3, 3],
+                       stride=1, padding="VALID",
+                       expected=expected_output)
+
   def testConv2D2x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]
@@ -1008,4 +1015,5 @@ if __name__ == "__main__":
     setattr(Conv2DTest, "testInceptionBackFilter_" + str(index),
             GetInceptionBackFilterTest(input_size_, filter_size_, output_size_,
                                        stride_, padding_))
+
   tf.test.main()

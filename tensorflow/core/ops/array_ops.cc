@@ -859,10 +859,10 @@ REGISTER_OP("ListDiff")
     .Output("idx: int32")
     .Attr("T: type")
     .Doc(R"doc(
-Computes the difference between two lists of numbers.
+Computes the difference between two lists of numbers or strings.
 
 Given a list `x` and a list `y`, this operation returns a list `out` that
-represents all numbers that are in `x` but not in `y`. The returned list `out`
+represents all values that are in `x` but not in `y`. The returned list `out`
 is sorted in the same order that the numbers appear in `x` (duplicates are
 preserved). This operation also returns a list `idx` that represents the
 position of each `out` element in `x`. In other words:

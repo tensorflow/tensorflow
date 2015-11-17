@@ -839,6 +839,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/save_restore_ops_test.py",
     "kernel_tests/segment_reduction_ops_test.py",
     "kernel_tests/sparse_concat_op_test.py",
+    "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
     "kernel_tests/sparsemask_op_test.py",

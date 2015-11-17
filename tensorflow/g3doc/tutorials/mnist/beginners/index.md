@@ -136,7 +136,7 @@ that the evidence for a class \\(i\\) given an input \\(x\\) is:
 
 $$\text{evidence}_i = \sum_j W_{i,~ j} x_j + b_i$$
 
-where \\(W\_i\\) is the weights and \\(b\_i\\) is the bias for class \\(i\\),
+where \\(W_i\\) is the weights and \\(b_i\\) is the bias for class \\(i\\),
 and \\(j\\) is an index for summing over the pixels in our input image \\(x\\).
 We then convert the evidence tallies into our predicted probabilities
 \\(y\\) using the "softmax" function:

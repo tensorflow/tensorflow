@@ -1,6 +1,7 @@
 // See docs in ../ops/linalg_ops.cc.
 #include <cmath>
 
+#include "third_party/eigen3/Eigen/Cholesky"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +36,7 @@ class MatrixInverseOp
     }
   }
 
+  using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix;
   using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
   using
       typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ConstMatrixMap;
@@ -44,15 +46,36 @@ class MatrixInverseOp
     OP_REQUIRES(context, input.rows() == input.cols(),
                 errors::InvalidArgument("Input matrix must be square."));
     if (input.rows() == 0) {
-      // By definition, an empty matrix's inverse is an emptry matrix.
+      // By definition, an empty matrix's inverse is an empty matrix.
       return;
     }
-    Eigen::FullPivLU<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic,
-                                   Eigen::RowMajor>> lu_decomposition(input);
-    OP_REQUIRES(context, lu_decomposition.isInvertible(),
+    if (input.isApprox(input.transpose())) {
+      // Matrix is symmetric, compute Cholesky factorization
+      // input = L * L^T.
+      Eigen::LLT<Matrix, Eigen::Lower> cholesky_decomposition(input);
+      if (cholesky_decomposition.info() == Eigen::Success) {
+        // Cholesky succeeded => Matrix was SPD.
+        output->noalias() = cholesky_decomposition.solve(
+            Matrix::Identity(input.rows(), input.cols()));
+        return;
+      }
+    }
+    Eigen::PartialPivLU<Matrix> lu_decomposition(input);
+    // While PartialPivLU cannot give strong guarantees on invertability,
+    // we can at least guard against exact zero pivots. This can occur as
+    // a result of basic user mistakes, such as providing integer valued
+    // matrices that are exacly singular, or due to underflow if this
+    // code is run with denormals being flushed to zero.
+    // TODO(rmlarsen): Add check based on condition number estimation.
+    const Scalar min_abs_pivot =
+        lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > Scalar(0),
                 errors::InvalidArgument("Input is not invertible."));
-    *output = lu_decomposition.inverse();
+    output->noalias() = lu_decomposition.inverse();
   }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
 };
 
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<float, false>), float);

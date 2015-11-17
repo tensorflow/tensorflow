@@ -20,6 +20,8 @@ void Sparsify(Tensor* t, float sparsity) {
   for (int64 i = 0; i < N; ++i) {
     if (rnd.Uniform(K) < sparsity * K) {
       flat(i) = 0;
+    } else if (flat(i) == 0) {
+      flat(i) = 0.1;
     }
   }
 }
@@ -86,19 +88,29 @@ static Graph* MultiSparseMatMul(int m, int n, int d, float sparsity_a,
   return g;
 }
 
-#define BM_SPARSE(M, K, N, S)                                                  \
-  static void BM_Sparse##_##M##_##K##_##N##_##S(int iters) {                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
-    std::string label = strings::Printf("%d_%d_%d_%0.2f", M, K, N, S / 100.0); \
-    testing::SetLabel(label);                                                  \
-    test::Benchmark("cpu", SparseMatMul(M, N, K, S / 100.0, false, false))     \
-        .Run(iters);                                                           \
-  }                                                                            \
+#define BM_SPARSE(M, K, N, S)                                                 \
+  static void BM_Sparse##_##M##_##K##_##N##_##S(int iters) {                  \
+    testing::StopTiming();                                                    \
+    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);       \
+    std::string label;                                                        \
+    if (S == 0) {                                                             \
+      label = strings::Printf("%d*%d*%d_Eigen", M, K, N);                     \
+    } else {                                                                  \
+      label = strings::Printf("%d*%d*%d_sparsity:%0.2f", M, K, N, S / 100.0); \
+    }                                                                         \
+    testing::SetLabel(label);                                                 \
+    testing::UseRealTime();                                                   \
+    auto g = SparseMatMul(M, N, K, S / 100.0, false, false);                  \
+    testing::StartTiming();                                                   \
+    test::Benchmark("cpu", g).Run(iters);                                     \
+  }                                                                           \
   BENCHMARK(BM_Sparse##_##M##_##K##_##N##_##S);
 
 BM_SPARSE(2048, 2048, 2048, 0);
 BM_SPARSE(2048, 2048, 2048, 1);
+BM_SPARSE(2048, 2048, 2048, 50);
 BM_SPARSE(2048, 2048, 2048, 85);
+BM_SPARSE(2048, 2048, 2048, 99);
 
 BM_SPARSE(1024, 1024, 1024, 0);
 BM_SPARSE(1024, 1024, 1024, 1);
@@ -107,28 +119,34 @@ BM_SPARSE(1024, 1024, 1024, 85);
 BM_SPARSE(256, 256, 256, 1);
 BM_SPARSE(512, 512, 512, 1);
 
-#define BM_SPARSE_MULTI(M, K, N, S1, S2)                                       \
-  static void BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2(int iters) {     \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2 * 3);    \
-    std::string label = strings::Printf("%d_%d_%d_%0.2f_%0.2f", M, K, N,       \
-                                        S1 / 100.0, S2 / 100.0);               \
-    testing::SetLabel(label);                                                  \
-    test::Benchmark("cpu", MultiSparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0)) \
-        .Run(iters);                                                           \
-  }                                                                            \
+#define BM_SPARSE_MULTI(M, K, N, S1, S2)                                    \
+  static void BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2(int iters) {  \
+    testing::StopTiming();                                                  \
+    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2 * 3); \
+    std::string label = strings::Printf("%d_%d_%d_%0.2f_%0.2f", M, K, N,    \
+                                        S1 / 100.0, S2 / 100.0);            \
+    testing::SetLabel(label);                                               \
+    testing::UseRealTime();                                                 \
+    auto g = MultiSparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0);            \
+    testing::StartTiming();                                                 \
+    test::Benchmark("cpu", g).Run(iters);                                   \
+  }                                                                         \
   BENCHMARK(BM_Sparse_Multi##_##M##_##K##_##N##_##S1##_##S2);
 
-BM_SPARSE_MULTI(512, 2140, 4096, 0, 82);
-BM_SPARSE_MULTI(512, 4096, 2048, 83, 83);
+BM_SPARSE_MULTI(1024, 2140, 4096, 0, 82);
+BM_SPARSE_MULTI(1024, 4096, 2048, 83, 83);
 
 #define BM_SPARSE_TR(M, K, N, S, TA, TB)                                     \
   static void BM_Sparse##_##M##_##K##_##N##_##S##_##TA##_##TB(int iters) {   \
+    testing::StopTiming();                                                   \
     testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);      \
     std::string label =                                                      \
         strings::Printf("%d_%d_%d_%d_%d_%0.2f", M, K, N, TA, TB, S / 100.0); \
     testing::SetLabel(label);                                                \
-    test::Benchmark("cpu", SparseMatMul(M, N, K, S / 100.0, TA, TB))         \
-        .Run(iters);                                                         \
+    testing::UseRealTime();                                                  \
+    auto g = SparseMatMul(M, N, K, S / 100.0, TA, TB);                       \
+    testing::StartTiming();                                                  \
+    test::Benchmark("cpu", g).Run(iters);                                    \
   }                                                                          \
   BENCHMARK(BM_Sparse##_##M##_##K##_##N##_##S##_##TA##_##TB);
 
