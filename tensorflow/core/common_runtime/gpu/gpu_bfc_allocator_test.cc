@@ -30,7 +30,7 @@ TEST(GPUBFCAllocatorTest, NoDups) {
   std::sort(ptrs.begin(), ptrs.end());
 
   // Make sure none of them are equal, and that none of them overlap.
-  for (int i = 0; i < ptrs.size(); i++) {
+  for (size_t i = 0; i < ptrs.size(); i++) {
     if (i > 0) {
       ASSERT_NE(ptrs[i], ptrs[i - 1]);  // No dups
       size_t req_size = a.RequestedSize(ptrs[i - 1]);
@@ -40,7 +40,7 @@ TEST(GPUBFCAllocatorTest, NoDups) {
     }
   }
 
-  for (int i = 0; i < ptrs.size(); i++) {
+  for (size_t i = 0; i < ptrs.size(); i++) {
     a.DeallocateRaw(ptrs[i]);
   }
 }
@@ -63,7 +63,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 
   // Deallocate half of the memory, and keep track of the others.
   std::vector<void*> existing_ptrs;
-  for (int i = 0; i < initial_ptrs.size(); i++) {
+  for (size_t i = 0; i < initial_ptrs.size(); i++) {
     if (i % 2 == 1) {
       a.DeallocateRaw(initial_ptrs[i]);
     } else {
@@ -81,7 +81,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 
   std::sort(existing_ptrs.begin(), existing_ptrs.end());
   // Make sure none of them are equal
-  for (int i = 0; i < existing_ptrs.size(); i++) {
+  for (size_t i = 0; i < existing_ptrs.size(); i++) {
     if (i > 0) {
       CHECK_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
@@ -95,7 +95,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
     }
   }
 
-  for (int i = 0; i < existing_ptrs.size(); i++) {
+  for (size_t i = 0; i < existing_ptrs.size(); i++) {
     a.DeallocateRaw(existing_ptrs[i]);
   }
 }

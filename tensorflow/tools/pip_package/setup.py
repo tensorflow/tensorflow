@@ -10,8 +10,10 @@ from setuptools.dist import Distribution
 _VERSION = '0.5.0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.9.2',
+    'numpy >= 1.8.2',
     'six >= 1.10.0',
+    'protobuf == 3.0.0a3',
+    'wheel',
 ]
 
 # pylint: disable=line-too-long

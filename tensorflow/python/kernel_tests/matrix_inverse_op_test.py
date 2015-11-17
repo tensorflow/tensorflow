@@ -30,7 +30,7 @@ class InverseOpTest(tf.test.TestCase):
       self.assertAllClose(np_ans, out)
       self.assertShapeEqual(y, tf_ans)
 
-  def testBasic(self):
+  def testNonsymmetric(self):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
@@ -39,6 +39,18 @@ class InverseOpTest(tf.test.TestCase):
     # A multidimensional batch of 2x2 matrices
     matrix_batch = np.concatenate([np.expand_dims(matrix1, 0),
                                    np.expand_dims(matrix2, 0)])
+    matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
+    self._verifyInverse(matrix_batch)
+
+  def testSymmetricPositiveDefinite(self):
+    # 2x2 matrices
+    matrix1 = np.array([[2., 1.], [1., 2.]])
+    matrix2 = np.array([[3., -1.], [-1., 3.]])
+    self._verifyInverse(matrix1)
+    self._verifyInverse(matrix2)
+    # A multidimensional batch of 2x2 matrices
+    matrix_batch = np.concatenate([np.expand_dims(matrix1, 0), np.expand_dims(
+        matrix2, 0)])
     matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
     self._verifyInverse(matrix_batch)
 
@@ -58,20 +70,8 @@ class InverseOpTest(tf.test.TestCase):
     # The input should be invertible.
     with self.test_session():
       with self.assertRaisesOpError("Input is not invertible."):
-        # All rows of the matrix below add to zero
+        # All rows of the matrix below add to zero.
         tensor3 = tf.constant([[1., 0., -1.], [-1., 1., 0.], [0., -1., 1.]])
-        tf.matrix_inverse(tensor3).eval()
-
-    with self.test_session():
-      with self.assertRaisesOpError("Input is not invertible."):
-        # Determinant of the matrix below is zero
-        tensor3 = tf.constant([[1., 1.], [1., 1.]])
-        tf.matrix_inverse(tensor3).eval()
-
-    with self.test_session():
-      with self.assertRaisesOpError("Input is not invertible."):
-        # Determinant of the matrix below is zero
-        tensor3 = tf.constant([[np.inf, 1.], [1., 1.]])
         tf.matrix_inverse(tensor3).eval()
 
   def testEmpty(self):

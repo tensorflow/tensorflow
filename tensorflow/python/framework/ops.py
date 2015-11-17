@@ -2458,6 +2458,7 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
+      c = self.as_graph_element(c)
       if isinstance(c, Tensor):
         c = c.op
       elif not isinstance(c, Operation):

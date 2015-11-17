@@ -25,7 +25,7 @@ class StringToHashBucketOp : public OpKernel {
                                             &output_tensor));
     auto output_flat = output_tensor->flat<int64>();
 
-    for (std::size_t i = 0; i < input_flat.size(); ++i) {
+    for (size_t i = 0; i < input_flat.size(); ++i) {
       const uint64 input_hash = Hash64(input_flat(i));
       const uint64 bucket_id = input_hash % num_buckets_;
       // The number of buckets is always in the positive range of int64 so is

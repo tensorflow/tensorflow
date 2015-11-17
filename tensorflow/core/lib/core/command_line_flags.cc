@@ -17,6 +17,12 @@ bool StringToValue<int32>(const string& content, int* value) {
   return str_util::NumericParse32(content, value);
 }
 
+template <>
+bool StringToValue<string>(const string& content, string* value) {
+  *value = content;
+  return true;
+}
+
 // Parse a single argument by linearly searching through the command table.
 // The input format is: --argument=value.
 // Return OK if the argument is used. It store the extracted value into the
@@ -27,7 +33,7 @@ bool StringToValue<int32>(const string& content, int* value) {
 template <typename T>
 Status ParseArgument(const string& argument) {
   for (auto& command :
-       internal::CommandLineFlagRegistry<int>::Instance()->commands) {
+       internal::CommandLineFlagRegistry<T>::Instance()->commands) {
     string prefix = strings::StrCat("--", command.name, "=");
     if (tensorflow::StringPiece(argument).starts_with(prefix)) {
       string content = argument.substr(prefix.length());
@@ -62,6 +68,7 @@ Status ParseArgument<bool>(const string& argument) {
   return Status(error::NOT_FOUND,
                 strings::StrCat("Unknown command: ", argument));
 }
+
 }  // namespace
 
 Status ParseCommandLineFlags(int* argc, char* argv[]) {
@@ -78,6 +85,11 @@ Status ParseCommandLineFlags(int* argc, char* argv[]) {
     }
     // Search int32 commands.
     s = ParseArgument<int32>(argv[index]);
+    if (s.ok()) {
+      continue;
+    }
+    // Search string commands.
+    s = ParseArgument<string>(argv[index]);
     if (s.ok()) {
       continue;
     }

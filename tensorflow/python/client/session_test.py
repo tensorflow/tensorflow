@@ -445,6 +445,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       sess.close()
       t.join()
 
+  def testUseEmptyGraph(self):
+    with session.Session() as sess:
+      with self.assertRaisesWithPredicateMatch(
+          RuntimeError, lambda e: 'The Session graph is empty.' in str(e)):
+        sess.run([])
+
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)

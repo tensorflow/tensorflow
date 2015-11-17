@@ -43,10 +43,13 @@ struct CommandLineFlagRegister {
 }  // namespace internal
 
 #define TF_DEFINE_int32(name, default_value, text) \
-  TF_DEFINE_variable(int32, name, default_value, text);
+  TF_DEFINE_variable(tensorflow::int32, name, default_value, text);
 
 #define TF_DEFINE_bool(name, default_value, text) \
   TF_DEFINE_variable(bool, name, default_value, text);
+
+#define TF_DEFINE_string(name, default_value, text) \
+  TF_DEFINE_variable(string, name, default_value, text);
 
 // Parse argv[1]..argv[*argc-1] to options. Remove used arguments from the argv.
 // Returned the number of unused arguments in *argc.

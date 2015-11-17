@@ -445,7 +445,8 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=dtypes, shapes=shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
-    full = (math_ops.cast(queue.size() - min_after_dequeue, types.float32) *
+    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
+                          types.float32) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
@@ -513,7 +514,8 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=dtypes, shapes=shapes)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
-    full = (math_ops.cast(queue.size() - min_after_dequeue, types.float32) *
+    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
+                          types.float32) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.

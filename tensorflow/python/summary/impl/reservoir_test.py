@@ -90,12 +90,14 @@ class ReservoirBucketTest(googletest.TestCase):
     for i in xrange(100):
       b.AddItem(i)
     self.assertEqual(b.Items(), list(xrange(100)))
+    self.assertEqual(b._num_items_seen, 100)
 
   def testDoesntOverfill(self):
     b = reservoir._ReservoirBucket(10)
     for i in xrange(1000):
       b.AddItem(i)
     self.assertEqual(len(b.Items()), 10)
+    self.assertEqual(b._num_items_seen, 1000)
 
   def testMaintainsOrder(self):
     b = reservoir._ReservoirBucket(100)
@@ -119,18 +121,43 @@ class ReservoirBucketTest(googletest.TestCase):
     for i in xrange(20):
       b.AddItem(i)
       self.assertEqual(b.Items(), [i])
+    self.assertEqual(b._num_items_seen, 20)
 
   def testSizeZeroBucket(self):
     b = reservoir._ReservoirBucket(0)
     for i in xrange(20):
       b.AddItem(i)
       self.assertEqual(b.Items(), list(range(i + 1)))
+    self.assertEqual(b._num_items_seen, 20)
 
   def testSizeRequirement(self):
     with self.assertRaises(ValueError):
       reservoir._ReservoirBucket(-1)
     with self.assertRaises(ValueError):
       reservoir._ReservoirBucket(10.3)
+
+  def testRemovesItems(self):
+    b = reservoir._ReservoirBucket(100)
+    for i in xrange(10):
+      b.AddItem(i)
+    self.assertEqual(len(b.Items()), 10)
+    self.assertEqual(b._num_items_seen, 10)
+    self.assertEqual(b.FilterItems(lambda x: x <= 7), 2)
+    self.assertEqual(len(b.Items()), 8)
+    self.assertEqual(b._num_items_seen, 8)
+
+  def testRemovesItemsWhenItemsAreReplaced(self):
+    b = reservoir._ReservoirBucket(100)
+    for i in xrange(10000):
+      b.AddItem(i)
+    self.assertEqual(b._num_items_seen, 10000)
+
+    # Remove items
+    num_removed = b.FilterItems(lambda x: x <= 7)
+    self.assertGreater(num_removed, 92)
+    self.assertEqual([], [item for item in b.Items() if item > 7])
+    self.assertEqual(b._num_items_seen,
+                     int(round(10000 * (1 - float(num_removed) / 100))))
 
 
 class ReservoirBucketStatisticalDistributionTest(googletest.TestCase):

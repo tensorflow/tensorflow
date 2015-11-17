@@ -38,30 +38,53 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, the spatial semantics of the convolution ops
-are as follows.  If the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
-`[filter_height, filter_width, ...]`, then
+`[filter_height, filter_width, ...]`, then the spatial semantics of the
+convolution ops are as follows: first, according to the padding scheme chosen
+as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
+For the `'SAME'` padding, the output height and width are computed as:
 
-    shape(output) = [batch,
-                     (in_height - filter_height + 1) / strides[1],
-                     (in_width - filter_width + 1) / strides[2],
-                     ...]
+    out_height = ceil(float(in_height) / float(strides[1]))
+    out_width  = ceil(float(in_width) / float(stides[2]))
+
+and the padding on the top and left are computed as:
+
+    pad_along_height = ((out_height - 1) * strides[1] +
+                        filter_height - in_height)
+    pad_along_width = ((out_width - 1) * strides[2] +
+                       filter_width - in_width)
+    pad_top = pad_along_height / 2
+    pad_left = pad_along_width / 2
+
+Note that the division by 2 means that there might be cases when the padding on
+both sides (top vs bottom, right vs left) are off by one. In this case, the
+bottom and right sides always get the one additional padded pixel. For example,
+when `pad_along_height` is 5, we pad 2 pixels at the top and 3 pixels at the
+bottom. Note that this is different from existing libraries such as cuDNN and
+Caffe, which explicitly specify the number of padded pixels and always pad the
+same number of pixels on both sides.
+
+For the `'VALID`' padding, the output height and width are computed as:
+
+    out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
+    out_width  = ceil(float(in_width - filter_width + 1) / float(stides[2]))
+
+and the padding values are always zero. The output is then computed as
 
     output[b, i, j, :] =
-        sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, ...] *
+        sum_{di, dj} input[b, strides[1] * i + di - pad_top,
+                           strides[2] * j + dj - pad_left, ...] *
                      filter[di, dj, ...]
+
+where any value outside the original input image region are considered zero (
+i.e. we pad zero values around the border of the image).
 
 Since `input` is 4-D, each `input[b, i, j, :]` is a vector.  For `conv2d`, these
 vectors are multiplied by the `filter[di, dj, :, :]` matrices to produce new
 vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
 is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
 concatenated.
-
-In the formula for `shape(output)`, the rounding direction depends on padding:
-
-* `padding = 'SAME'`: Round down (only full size windows are considered).
-* `padding = 'VALID'`: Round up (partial windows are included).
 
 @@conv2d
 @@depthwise_conv2d
@@ -79,14 +102,8 @@ In detail, the output is
 
     output[i] = reduce(value[strides * i:strides * i + ksize])
 
-for each tuple of indices `i`.  The output shape is
-
-    shape(output) = (shape(value) - ksize + 1) / strides
-
-where the rounding direction depends on padding:
-
-* `padding = 'SAME'`: Round down (only full size windows are considered).
-* `padding = 'VALID'`: Round up (partial windows are included).
+where the indices also take into consideration the padding values. Please refer
+to the `Convolution` section for details about the padding calculation.
 
 @@avg_pool
 @@max_pool

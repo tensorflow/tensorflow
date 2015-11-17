@@ -35,7 +35,14 @@ REGISTER_OP("MatrixInverse")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Doc(R"doc(
-Calculates the inverse of a square invertible matrix. Checks for invertibility.
+Calculates the inverse of a square invertible matrix.
+
+The op uses the Cholesky decomposition if the matrix is symmetric positive
+definite and LU decomposition with partial pivoting otherwise.
+
+If the matrix is not invertible there is no guarantee what the op does. It
+may detect the condition and raise an exception or it may simply return a
+garbage result.
 
 input: Shape is `[M, M]`.
 output: Shape is `[M, M]` containing the matrix inverse of the input.
@@ -47,11 +54,18 @@ REGISTER_OP("BatchMatrixInverse")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Doc(R"doc(
-Calculates the inverse of square invertible matrices. Checks for invertibility.
+Calculates the inverse of square invertible matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
 containing the inverse for all input submatrices `[..., :, :]`.
+
+The op uses the Cholesky decomposition if the matrices are symmetric positive
+definite and LU decomposition with partial pivoting otherwise.
+
+If a matrix is not invertible there is no guarantee what the op does. It
+may detect the condition and raise an exception or it may simply return a
+garbage result.
 
 input: Shape is `[..., M, M]`.
 output: Shape is `[..., M, M]`.

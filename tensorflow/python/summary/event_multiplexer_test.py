@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import os.path
 
 import tensorflow.python.platform
 
@@ -11,6 +12,20 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
+
+
+def _AddEvents(path):
+  if not gfile.IsDirectory(path):
+    gfile.MakeDirs(path)
+  fpath = os.path.join(path, 'hypothetical.tfevents.out')
+  with gfile.GFile(fpath, 'w'):
+    return fpath
+
+
+def _CreateCleanDirectory(path):
+  if gfile.IsDirectory(path):
+    gfile.DeleteRecursively(path)
+  gfile.MkDir(path)
 
 
 class _FakeAccumulator(object):
@@ -122,34 +137,33 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.AddRunsFromDirectory(fakedir)
     self.assertEqual(x.Runs(), {}, 'loading fakedir had no effect')
 
-    if gfile.IsDirectory(realdir):
-      gfile.DeleteRecursively(realdir)
-    gfile.MkDir(realdir)
+    _CreateCleanDirectory(realdir)
     x.AddRunsFromDirectory(realdir)
     self.assertEqual(x.Runs(), {}, 'loading empty directory had no effect')
 
     path1 = join(realdir, 'path1')
     gfile.MkDir(path1)
     x.AddRunsFromDirectory(realdir)
-    self.assertEqual(sorted(x.Runs().keys()), ['path1'], 'loaded run: path1')
+    self.assertEqual(x.Runs(), {}, 'creating empty subdirectory had no effect')
+
+    _AddEvents(path1)
+    x.AddRunsFromDirectory(realdir)
+    self.assertItemsEqual(x.Runs(), ['path1'], 'loaded run: path1')
     loader1 = x._GetAccumulator('path1')
     self.assertEqual(loader1._path, path1, 'has the correct path')
 
     path2 = join(realdir, 'path2')
-    gfile.MkDir(path2)
+    _AddEvents(path2)
     x.AddRunsFromDirectory(realdir)
-    self.assertItemsEqual(sorted(x.Runs().keys()), ['path1', 'path2'])
+    self.assertItemsEqual(x.Runs(), ['path1', 'path2'])
     self.assertEqual(x._GetAccumulator('path1'), loader1,
                      'loader1 not regenerated')
-    loader2 = x._GetAccumulator('path2')
 
     path2_2 = join(path2, 'path2')
-    gfile.MkDir(path2_2)
-    x.AddRunsFromDirectory(path2)
-    self.assertItemsEqual(sorted(x.Runs().keys()), ['path1', 'path2'])
-    self.assertNotEqual(loader2, x._GetAccumulator('path2'),
-                        'loader2 regenerated')
-    self.assertEqual(x._GetAccumulator('path2')._path, path2_2,
+    _AddEvents(path2_2)
+    x.AddRunsFromDirectory(realdir)
+    self.assertItemsEqual(x.Runs(), ['path1', 'path2', 'path2/path2'])
+    self.assertEqual(x._GetAccumulator('path2/path2')._path, path2_2,
                      'loader2 path correct')
 
   def testAddRunsFromDirectoryThatContainsEvents(self):
@@ -158,21 +172,18 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     join = os.path.join
     realdir = join(tmpdir, 'event_containing_directory')
 
-    if gfile.IsDirectory(realdir):
-      gfile.DeleteRecursively(realdir)
-    gfile.MkDir(realdir)
+    _CreateCleanDirectory(realdir)
 
     self.assertEqual(x.Runs(), {})
 
-    with gfile.GFile(join(realdir, 'hypothetical.tfevents.out'), 'w'):
-      pass
+    _AddEvents(realdir)
     x.AddRunsFromDirectory(realdir)
-    self.assertItemsEqual(x.Runs(), ['event_containing_directory'])
+    self.assertItemsEqual(x.Runs(), ['.'])
 
     subdir = join(realdir, 'subdir')
-    gfile.MkDir(subdir)
+    _AddEvents(subdir)
     x.AddRunsFromDirectory(realdir)
-    self.assertItemsEqual(x.Runs(), ['event_containing_directory', 'subdir'])
+    self.assertItemsEqual(x.Runs(), ['.', 'subdir'])
 
   def testAddRunsFromDirectoryWithRunNames(self):
     x = event_multiplexer.EventMultiplexer()
@@ -180,30 +191,45 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     join = os.path.join
     realdir = join(tmpdir, 'event_containing_directory')
 
-    if gfile.IsDirectory(realdir):
-      gfile.DeleteRecursively(realdir)
-    gfile.MkDir(realdir)
+    _CreateCleanDirectory(realdir)
 
     self.assertEqual(x.Runs(), {})
 
-    with gfile.GFile(join(realdir, 'hypothetical.tfevents.out'), 'w'):
-      pass
+    _AddEvents(realdir)
     x.AddRunsFromDirectory(realdir, 'foo')
-    self.assertItemsEqual(x.Runs(), ['foo'])
+    self.assertItemsEqual(x.Runs(), ['foo/.'])
 
     subdir = join(realdir, 'subdir')
-    gfile.MkDir(subdir)
+    _AddEvents(subdir)
     x.AddRunsFromDirectory(realdir, 'foo')
-    self.assertItemsEqual(x.Runs(), ['foo', 'foo/subdir'])
+    self.assertItemsEqual(x.Runs(), ['foo/.', 'foo/subdir'])
+
+  def testAddRunsFromDirectoryWalksTree(self):
+    x = event_multiplexer.EventMultiplexer()
+    tmpdir = self.get_temp_dir()
+    join = os.path.join
+    realdir = join(tmpdir, 'event_containing_directory')
+
+    _CreateCleanDirectory(realdir)
+    _AddEvents(realdir)
+    sub = join(realdir, 'subdirectory')
+    sub1 = join(sub, '1')
+    sub2 = join(sub, '2')
+    sub1_1 = join(sub1, '1')
+    _AddEvents(sub1)
+    _AddEvents(sub2)
+    _AddEvents(sub1_1)
+    x.AddRunsFromDirectory(realdir)
+
+    self.assertItemsEqual(x.Runs(), ['.',
+                                     'subdirectory/1', 'subdirectory/2',
+                                     'subdirectory/1/1'])
 
   def testAddRunsFromDirectoryThrowsException(self):
     x = event_multiplexer.EventMultiplexer()
     tmpdir = self.get_temp_dir()
 
-    filepath = os.path.join(tmpdir, 'bad_file')
-    with gfile.GFile(filepath, 'w'):
-      pass
-
+    filepath = _AddEvents(tmpdir)
     with self.assertRaises(ValueError):
       x.AddRunsFromDirectory(filepath)
 

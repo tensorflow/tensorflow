@@ -77,7 +77,7 @@ class Reservoir(object):
       key: The key for which we are finding associated items.
 
     Raises:
-      KeyError: If the key is not ofund in the reservoir.
+      KeyError: If the key is not found in the reservoir.
 
     Returns:
       [list, of, items] associated with that key.
@@ -101,6 +101,19 @@ class Reservoir(object):
     with self._mutex:
       bucket = self._buckets[key]
     bucket.AddItem(item)
+
+  def FilterItems(self, filterFn):
+    """Filter items within a Reservoir, using a filtering function.
+
+    Args:
+      filterFn: A function that returns True for the items to be kept.
+
+    Returns:
+      The number of items removed.
+    """
+    with self._mutex:
+      return sum(bucket.FilterItems(filterFn)
+                 for bucket in self._buckets.values())
 
 
 class _ReservoirBucket(object):
@@ -128,7 +141,7 @@ class _ReservoirBucket(object):
     # AddItem are thread-safe
     self._mutex = threading.Lock()
     self._max_size = _max_size
-    self._count = 0
+    self._num_items_seen = 0
     if _random is not None:
       self._random = _random
     else:
@@ -139,13 +152,13 @@ class _ReservoirBucket(object):
 
     The new item is guaranteed to be added to the bucket, and to be the last
     element in the bucket. If the bucket has reached capacity, then an old item
-    will be replaced. With probability (_max_size/_count) a random item in the
-    bucket will be popped out and the new item will be appended to the end. With
-    probability (1 - _max_size/_count) the last item in the bucket will be
-    replaced.
+    will be replaced. With probability (_max_size/_num_items_seen) a random item
+    in the bucket will be popped out and the new item will be appended
+    to the end. With probability (1 - _max_size/_num_items_seen)
+    the last item in the bucket will be replaced.
 
-    Since the O(n) replacements occur with O(1/_count) liklihood, the amortized
-    runtime is O(1).
+    Since the O(n) replacements occur with O(1/_num_items_seen) likelihood,
+    the amortized runtime is O(1).
 
     Args:
       item: The item to add to the bucket.
@@ -154,13 +167,43 @@ class _ReservoirBucket(object):
       if len(self.items) < self._max_size or self._max_size == 0:
         self.items.append(item)
       else:
-        r = self._random.randint(0, self._count)
+        r = self._random.randint(0, self._num_items_seen)
         if r < self._max_size:
           self.items.pop(r)
           self.items.append(item)
         else:
           self.items[-1] = item
-      self._count += 1
+      self._num_items_seen += 1
+
+  def FilterItems(self, filterFn):
+    """Filter items in a ReservoirBucket, using a filtering function.
+
+    Filtering items from the reservoir bucket must update the
+    internal state variable self._num_items_seen, which is used for determining
+    the rate of replacement in reservoir sampling. Ideally, self._num_items_seen
+    would contain the exact number of items that have ever seen by the
+    ReservoirBucket and satisfy filterFn. However, the ReservoirBucket does not
+    have access to all items seen -- it only has access to the subset of items
+    that have survived sampling (self.items). Therefore, we estimate
+    self._num_items_seen by scaling it by the same ratio as the ratio of items
+    not removed from self.items.
+
+    Args:
+      filterFn: A function that returns True for items to be kept.
+
+    Returns:
+      The number of items removed from the bucket.
+    """
+    with self._mutex:
+      size_before = len(self.items)
+      self.items = filter(filterFn, self.items)
+      size_diff = size_before - len(self.items)
+
+      # Estimate a correction the the number of items seen
+      prop_remaining = len(self.items) / float(
+          size_before) if size_before > 0 else 0
+      self._num_items_seen = int(round(self._num_items_seen * prop_remaining))
+      return size_diff
 
   def Items(self):
     """Get all the items in the bucket."""

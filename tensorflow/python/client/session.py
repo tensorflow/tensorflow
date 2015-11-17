@@ -333,6 +333,9 @@ class BaseSession(SessionInterface):
     # Check session.
     if self._closed:
       raise RuntimeError('Attempted to use a closed Session.')
+    if self.graph.version == 0:
+      raise RuntimeError('The Session graph is empty.  Add operations to the '
+                         'graph before calling run().')
 
     # Validate and process fetches.
     is_list_fetch = isinstance(fetches, (list, tuple))

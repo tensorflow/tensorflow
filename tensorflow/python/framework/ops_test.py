@@ -632,6 +632,20 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
+  def testBasicWithConversion(self):
+    g = ops.Graph()
+    a = _apply_op(g, "const", [], [types.float32])
+
+    class ConvertibleObj(object):
+
+      def _as_graph_element(self):
+        return a
+
+    with g.control_dependencies([ConvertibleObj()]):
+      c = _apply_op(g, "const", [], [types.float32])
+
+    self.assertEqual(c.op.control_inputs, [a.op])
+
   def testNested(self):
     g = ops.Graph()
     a_1 = _apply_op(g, "const", [], [types.float32])

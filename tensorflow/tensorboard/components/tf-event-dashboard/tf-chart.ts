@@ -4,7 +4,7 @@
 module TF {
   type TFDatum = [number, number, number];
   type tooltipMap = {[run: string]: string};
-  type TooltipUpdater = (tooltipMap, xValue, closestRun) => void;
+  export type TooltipUpdater = (tooltipMap, xValue, closestRun) => void;
 
   let Y_TOOLTIP_FORMATTER_PRECISION = 4;
   let STEP_AXIS_FORMATTER_PRECISION = 4;
