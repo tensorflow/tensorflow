@@ -32,12 +32,14 @@ def maybe_download(filename, expected_bytes):
 filename = maybe_download('text8.zip', 31344016)
 
 
-# Read the data into a string.
+# Read the data into a list of words.
 def read_data(filename):
-  f = zipfile.ZipFile(filename)
-  for name in f.namelist():
-    return f.read(name).split()
-  f.close()
+  words = []
+  with zipfile.ZipFile(filename) as f: 
+     for name in f.namelist():
+        words += f.read(name).split()
+  return words
+  
 
 words = read_data(filename)
 print('Data size', len(words))
