@@ -4,8 +4,8 @@
 // Import whatever namespace protobuf comes from into the
 // ::tensorflow::protobuf namespace.
 //
-// TensorFlow code should the ::tensorflow::protobuf namespace to refer
-// to all protobuf APIs.
+// TensorFlow code should use the ::tensorflow::protobuf namespace to
+// refer to all protobuf APIs.
 
 #include "tensorflow/core/platform/port.h"
 #if defined(PLATFORM_GOOGLE)

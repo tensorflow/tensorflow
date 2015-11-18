@@ -14,33 +14,76 @@ from tensorflow.python.kernel_tests import gradient_checker as gc
 class MatrixInverseGradientTest(tf.test.TestCase):
   pass  # Filled in below
 
-def _GetMatrixInverseGradientTest(dtype, shape):
+
+def _GetMatrixInverseGradientTest(dtype_, shape_):
+
   def Test(self):
     with self.test_session():
       np.random.seed(1)
-      m = np.random.uniform(low=1.0, high=100.0, size=np.prod(shape)).reshape(
-          shape).astype(dtype)
+      m = np.random.uniform(low=1.0,
+                            high=100.0,
+                            size=np.prod(shape_)).reshape(shape_).astype(dtype_)
       a = tf.constant(m)
-      epsilon = np.finfo(dtype).eps
+      epsilon = np.finfo(dtype_).eps
       # Optimal stepsize for central difference is O(epsilon^{1/3}).
-      delta = epsilon ** (1.0 / 3.0)
+      delta = epsilon**(1.0 / 3.0)
       tol = 1e-3
 
-      if len(shape) == 2:
+      if len(shape_) == 2:
         ainv = tf.matrix_inverse(a)
       else:
         ainv = tf.batch_matrix_inverse(a)
 
-      theoretical, numerical = gc.ComputeGradient(a, shape, ainv, shape,
+      theoretical, numerical = gc.ComputeGradient(a,
+                                                  shape_,
+                                                  ainv,
+                                                  shape_,
                                                   delta=delta)
       self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
   return Test
 
 
-if __name__ == "__main__":
+class MatrixDeterminantGradientTest(tf.test.TestCase):
+  pass  # Filled in below
+
+
+def _GetMatrixDeterminantGradientTest(dtype_, shape_):
+
+  def Test(self):
+    with self.test_session():
+      np.random.seed(1)
+      m = np.random.uniform(low=1.0,
+                            high=100.0,
+                            size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+      a = tf.constant(m)
+      epsilon = np.finfo(dtype_).eps
+      # Optimal stepsize for central difference is O(epsilon^{1/3}).
+      delta = epsilon**(1.0 / 3.0)
+
+      # tolerance obtained by looking at actual differences using
+      # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+
+      tol = 1e-3
+
+      if len(shape_) == 2:
+        c = tf.matrix_determinant(a)
+      else:
+        c = tf.batch_matrix_determinant(a)
+
+      out_shape = shape_[:-2]  # last two dimensions hold matrices
+      theoretical, numerical = gc.ComputeGradient(a, shape_, c, out_shape,
+                                                  delta=delta)
+
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+  return Test
+
+
+if __name__ == '__main__':
   # TODO(rmlarsen,irving): Reenable float32 once tolerances are fixed
   # The test used to loop over (np.float, np.double), both of which are float64.
-  for dtype in np.float64,:
+  for dtype in (np.float64,):
     for size in 2, 3, 5, 10:
       # We skip the rank 4, size 10 case: it is slow and conceptually covered
       # by the other cases.
@@ -49,4 +92,14 @@ if __name__ == "__main__":
         name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
         setattr(MatrixInverseGradientTest, 'testMatrixInverseGradient_' + name,
                 _GetMatrixInverseGradientTest(dtype, shape))
+
+  for dtype in (np.float64,):
+    for size in 2, 5, 10:
+      # increase this list to check batch version
+      for extra in [()]:
+        shape = extra+(size, size)
+        name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
+        setattr(MatrixDeterminantGradientTest,
+                'testMatrixDeterminantGradient_' + name,
+                _GetMatrixDeterminantGradientTest(dtype, shape))
   tf.test.main()

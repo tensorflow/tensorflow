@@ -159,11 +159,12 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[]):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[]):
   name = name.replace(".cc", "")
   native.cc_test(name="%s" % (name.replace("/", "_")),
                  srcs=["%s.cc" % (name)],
                  copts=tf_copts(),
+                 data=data,
                  deps=deps,
                  linkopts=["-lpthread", "-lm"],
                  linkstatic=linkstatic,

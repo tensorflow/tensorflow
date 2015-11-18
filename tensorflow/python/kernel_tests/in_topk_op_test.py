@@ -35,6 +35,11 @@ class InTopKTest(tf.test.TestCase):
     target = [2, 3]
     self._validateInTopK(predictions, target, 2, [True, True])
 
+  def testInTop2_int64Target(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    target = np.asarray([0, 2]).astype(np.int64)
+    self._validateInTopK(predictions, target, 2, [False, True])
+
 
 if __name__ == "__main__":
   tf.test.main()

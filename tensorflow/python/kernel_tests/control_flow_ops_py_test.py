@@ -687,6 +687,29 @@ class ControlFlowTest(tf.test.TestCase):
     self._testWhile_Gpu_1(use_gpu=False)
     self._testWhile_Gpu_1(use_gpu=True)
 
+  def _testWhileNested_1(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      n = tf.constant(0)
+      def cpu_sum(s):
+        c = lambda i, s: tf.less(i, 10)
+        def b(i, s):
+          i1 = tf.add(i, 1)
+          with tf.device("/cpu:0"):
+            s1 = tf.add(i, s)
+          return i1, s1
+        _, r_s = control_flow_ops.While(c, b, [n, s])
+        return r_s
+      c = lambda x: tf.less(x, 200)
+      b = lambda x: tf.add(x, cpu_sum(n))
+      r = control_flow_ops.While(c, b, [n])
+
+      result = r.eval()
+    self.assertEqual(225, result)
+
+  def testWhileNested_1(self):
+    self._testWhileNested_1(use_gpu=False)
+    self._testWhileNested_1(use_gpu=True)
+
   def testWhileWithControl_1(self):
     with self.test_session():
       n = tf.constant(0)

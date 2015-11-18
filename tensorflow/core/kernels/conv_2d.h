@@ -184,6 +184,24 @@ struct PadInput {
   }
 };
 
+template <typename Device, typename T>
+struct NHWCToNCHW {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
+                  typename TTypes<T, 4>::Tensor out);
+};
+
+template <typename Device, typename T>
+struct NCHWToNHWC {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
+                  typename TTypes<T, 4>::Tensor out);
+};
+
+template <typename Device, typename T>
+struct ReverseTransformFilter {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
+                  typename TTypes<T, 4>::Tensor out);
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

@@ -122,17 +122,17 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsValues) {
 // --------------------------------------------------------------------------
 class SummaryHistoOpTest : public OpsTestBase {
  protected:
-  void MakeOp() {
+  void MakeOp(DataType dt) {
     ASSERT_OK(NodeDefBuilder("myop", "HistogramSummary")
                   .Input(FakeInput())
-                  .Input(FakeInput())
+                  .Input(FakeInput(dt))
                   .Finalize(node_def()));
     ASSERT_OK(InitOp());
   }
 };
 
-TEST_F(SummaryHistoOpTest, Simple) {
-  MakeOp();
+TEST_F(SummaryHistoOpTest, SimpleFloat) {
+  MakeOp(DT_FLOAT);
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({}), {"taghisto"});
@@ -159,8 +159,36 @@ TEST_F(SummaryHistoOpTest, Simple) {
       histo.ToString());
 }
 
+TEST_F(SummaryHistoOpTest, SimpleDouble) {
+  MakeOp(DT_DOUBLE);
+
+  // Feed and run
+  AddInputFromArray<string>(TensorShape({}), {"taghisto"});
+  AddInputFromArray<double>(TensorShape({3, 2}), {0.1, -0.7, 4.1, 4., 5., 4.});
+  ASSERT_OK(RunOpKernel());
+
+  // Check the output size.
+  Tensor* out_tensor = GetOutput(0);
+  ASSERT_EQ(0, out_tensor->dims());
+  Summary summary;
+  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ASSERT_EQ(summary.value_size(), 1);
+  EXPECT_EQ(summary.value(0).tag(), "taghisto");
+  histogram::Histogram histo;
+  EXPECT_TRUE(histo.DecodeFromProto(summary.value(0).histo()));
+  EXPECT_EQ(
+      "Count: 6  Average: 2.7500  StdDev: 2.20\n"
+      "Min: -0.7000  Median: 3.9593  Max: 5.0000\n"
+      "------------------------------------------------------\n"
+      "[      -0.76,      -0.69 )       1  16.667%  16.667% ###\n"
+      "[      0.093,        0.1 )       1  16.667%  33.333% ###\n"
+      "[        3.8,        4.2 )       3  50.000%  83.333% ##########\n"
+      "[        4.6,        5.1 )       1  16.667% 100.000% ###\n",
+      histo.ToString());
+}
+
 TEST_F(SummaryHistoOpTest, Error_WrongDimsTags) {
-  MakeOp();
+  MakeOp(DT_FLOAT);
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
@@ -170,7 +198,7 @@ TEST_F(SummaryHistoOpTest, Error_WrongDimsTags) {
 }
 
 TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
-  MakeOp();
+  MakeOp(DT_FLOAT);
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});

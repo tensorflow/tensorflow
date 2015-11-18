@@ -72,12 +72,19 @@ REGISTER_KERNEL_BUILDER(Name("Rank").Device(DEVICE_CPU).HostMemory("output"),
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-// A special GPU kernel for int32.
+// A special GPU kernel for int32 and bool.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Rank")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        RankOp);
+
+REGISTER_KERNEL_BUILDER(Name("Rank")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<bool>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
                         RankOp);

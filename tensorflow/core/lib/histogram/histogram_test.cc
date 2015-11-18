@@ -51,13 +51,39 @@ TEST(Histogram, CustomBuckets) {
   Validate(h);
 }
 
-TEST(Histogram, Percentile) {
+TEST(Histogram, Median) {
   Histogram h({0, 10, 100, DBL_MAX});
   h.Add(-2);
   h.Add(-2);
   h.Add(0);
-  double median = h.Percentile(50.0);
+  double median = h.Median();
   EXPECT_EQ(median, -0.5);
+}
+
+TEST(Histogram, Percentile) {
+  // 10%, 30%, 40%, 20%
+  Histogram h({1, 2, 3, 4});
+  // 10% first bucket
+  h.Add(-1.0);
+  // 30% second bucket
+  h.Add(1.5);
+  h.Add(1.5);
+  h.Add(1.5);
+  // 40% third bucket
+  h.Add(2.5);
+  h.Add(2.5);
+  h.Add(2.5);
+  h.Add(2.5);
+  // 20% fourth bucket
+  h.Add(3.5);
+  h.Add(3.9);
+
+  EXPECT_EQ(h.Percentile(0), -1.0);    // -1.0 = histo.min_
+  EXPECT_EQ(h.Percentile(25), 1.5);    // 1.5 = remap(25, 10, 40, 1, 2)
+  EXPECT_EQ(h.Percentile(50), 2.25);   // 2.25 = remap(50, 40, 80, 2, 3)
+  EXPECT_EQ(h.Percentile(75), 2.875);  // 2.875 = remap(75, 40, 80, 2, 3)
+  EXPECT_EQ(h.Percentile(90), 3.45);   // 3.45 = remap(90, 80, 100, 3, 3.9)
+  EXPECT_EQ(h.Percentile(100), 3.9);   // 3.9 = histo.max_
 }
 
 TEST(Histogram, Basic) {

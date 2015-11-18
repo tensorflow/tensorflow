@@ -24,5 +24,107 @@ Tensor DeepCopy(const Tensor& other) {
   return tmp;
 }
 
+Tensor Concat(const gtl::ArraySlice<Tensor>& tensors) {
+  CHECK_GT(tensors.size(), 0);
+  int64 total_dim0_size = 0;
+  for (const Tensor& tensor : tensors) {
+    CHECK_GT(tensor.dims(), 0);
+    total_dim0_size += tensor.dim_size(0);
+  }
+  TensorShape shape = tensors[0].shape();
+  shape.set_dim(0, total_dim0_size);
+  Tensor result = Tensor(tensors[0].dtype(), shape);
+
+  // We use StringPiece as a convenient map over the tensor buffer,
+  // but we cast the type to get to the underlying buffer to do the
+  // copy.
+  StringPiece to_data = result.tensor_data();
+
+  if (DataTypeCanUseMemcpy(result.dtype())) {
+    int64 offset = 0;
+    for (const Tensor& tensor : tensors) {
+      StringPiece from_data = tensor.tensor_data();
+      CHECK_LE(offset + from_data.size(), to_data.size());
+      memcpy(const_cast<char*>(to_data.data()) + offset, from_data.data(),
+             from_data.size());
+
+      offset += from_data.size();
+    }
+  } else {
+    CHECK_EQ(DT_STRING, result.dtype());
+    string* to_strings =
+        reinterpret_cast<string*>(const_cast<char*>(to_data.data()));
+
+    int64 offset = 0;
+    for (const Tensor& tensor : tensors) {
+      auto from_strings = tensor.flat<string>();
+      CHECK_LE(offset + tensor.NumElements(), result.NumElements());
+      for (int i = 0; i < tensor.NumElements(); ++i) {
+        to_strings[offset + i] = from_strings(i);
+      }
+
+      offset += tensor.NumElements();
+    }
+  }
+
+  return result;
+}
+
+std::vector<Tensor> Split(const Tensor& tensor,
+                          const gtl::ArraySlice<int64>& sizes) {
+  CHECK_GT(tensor.dims(), 0);
+  int64 total_size = 0;
+  for (int64 size : sizes) {
+    total_size += size;
+  }
+  CHECK_EQ(total_size, tensor.dim_size(0));
+
+  std::vector<Tensor> result;
+
+  StringPiece from_data = tensor.tensor_data();
+
+  if (DataTypeCanUseMemcpy(tensor.dtype())) {
+    int64 offset = 0;
+    for (int64 size : sizes) {
+      TensorShape shape = tensor.shape();
+      shape.set_dim(0, size);
+      result.emplace_back(tensor.dtype(), shape);
+      Tensor* split = &result[result.size() - 1];
+
+      // We use StringPiece as a convenient map over the tensor buffer,
+      // but we cast the type to get to the underlying buffer to do the
+      // copy.
+      StringPiece to_data = split->tensor_data();
+      CHECK_LE(offset + to_data.size(), from_data.size());
+      memcpy(const_cast<char*>(to_data.data()), from_data.data() + offset,
+             to_data.size());
+
+      offset += to_data.size();
+    }
+  } else {
+    CHECK_EQ(DT_STRING, tensor.dtype());
+    auto from_strings = tensor.flat<string>();
+
+    int64 offset = 0;
+    for (int64 size : sizes) {
+      TensorShape shape = tensor.shape();
+      shape.set_dim(0, size);
+      result.emplace_back(tensor.dtype(), shape);
+      Tensor& split = result[result.size() - 1];
+      string* to_strings = reinterpret_cast<string*>(
+          const_cast<char*>(split.tensor_data().data()));
+
+      CHECK_LE(offset + split.NumElements(), tensor.NumElements());
+      for (int i = 0; i < split.NumElements(); ++i) {
+        to_strings[i] = from_strings(offset + i);
+      }
+
+      offset += split.NumElements();
+    }
+  }
+
+  return result;
+}
+
 }  // namespace tensor
 }  // namespace tensorflow

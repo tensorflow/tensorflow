@@ -54,6 +54,7 @@ REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
                             .TypeConstraint<double>("T"),
                         SummaryScalarOp<double>);
 
+template <typename T>
 class SummaryHistoOp : public OpKernel {
  public:
   // SummaryHistoOp could be extended to take a list of custom bucket
@@ -63,13 +64,13 @@ class SummaryHistoOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
-    const auto flat = values.flat<float>();
+    const auto flat = values.flat<T>();
     OP_REQUIRES(c, TensorShapeUtils::IsLegacyScalar(tags.shape()),
                 errors::InvalidArgument("tags must be scalar"));
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
-      float v = flat(i);
+      T v = flat(i);
       if (!std::isfinite(v)) {
         c->SetStatus(
             errors::OutOfRange("Nan in summary histogram for: ", name()));
@@ -89,8 +90,14 @@ class SummaryHistoOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("HistogramSummary").Device(DEVICE_CPU),
-                        SummaryHistoOp);
+REGISTER_KERNEL_BUILDER(Name("HistogramSummary")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<float>("T"),
+                        SummaryHistoOp<float>);
+REGISTER_KERNEL_BUILDER(Name("HistogramSummary")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<double>("T"),
+                        SummaryHistoOp<double>);
 
 struct HistogramResource : public ResourceBase {
   histogram::ThreadSafeHistogram histogram;

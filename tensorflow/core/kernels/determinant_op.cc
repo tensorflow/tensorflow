@@ -13,10 +13,11 @@
 namespace tensorflow {
 
 template <class Scalar, bool SupportsBatchOperationT>
-class DeterminantOp : public LinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+class DeterminantOp
+    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
   explicit DeterminantOp(OpKernelConstruction* context)
-      : LinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
   ~DeterminantOp() override {}
 
   TensorShape GetOutputMatrixShape(
@@ -34,9 +35,10 @@ class DeterminantOp : public LinearAlgebraOp<Scalar, SupportsBatchOperationT> {
     }
   }
 
-  using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
   using
-      typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ConstMatrixMap;
+      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
+  using typename UnaryLinearAlgebraOp<Scalar,
+                                      SupportsBatchOperationT>::ConstMatrixMap;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
                      MatrixMap* output) override {

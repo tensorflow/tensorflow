@@ -11,29 +11,29 @@ package tensorflow;
 //   features {
 //     feature {
 //       key: "age"
-//       float_list {
+//       value { float_list {
 //         value: 29.0
-//       }
+//       }}
 //     }
 //     feature {
 //       key: "movie"
-//       bytes_list {
+//       value { bytes_list {
 //         value: "The Shawshank Redemption"
 //         value: "Fight Club"
-//       }
+//       }}
 //     }
 //     feature {
 //       key: "movie_ratings"
-//       float_list {
+//       value { float_list {
 //         value: 9.0
 //         value: 9.7
-//       }
+//       }}
 //     }
 //     feature {
 //       key: "suggestion"
-//       bytes_list {
+//       value { bytes_list {
 //         value: "Inception"
-//       }
+//       }}
 //     }
 //     # Note that this feature exists to be used as a label in training.
 //     # E.g., if training a logistic regression model to predict purchase
@@ -41,9 +41,9 @@ package tensorflow;
 //     # "suggestion_purchased".
 //     feature {
 //       key: "suggestion_purchased"
-//       float_list {
+//       value { float_list {
 //         value: 1.0
-//       }
+//       }}
 //     }
 //     # Similar to "suggestion_purchased" above this feature exists to be used
 //     # as a label in training.
@@ -52,9 +52,9 @@ package tensorflow;
 //     # "purchase_price".
 //     feature {
 //       key: "purchase_price"
-//       float_list {
+//       value { float_list {
 //         value: 9.99
-//       }
+//       }}
 //     }
 //  }
 //
