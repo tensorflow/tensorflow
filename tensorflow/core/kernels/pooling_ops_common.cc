@@ -167,26 +167,25 @@ void DnnPoolingGradOp<T>::Compute(
                        out_backprop.dim_size(1), out_backprop.dim_size(2)}),
           &transformed_output_backprop));
 
-  auto nhwc_to_nchw = Eigen::DSizes<Eigen::DenseIndex, 4>(0, 3, 1, 2);
   if (tensor_in) {
     // For AvgPoolGrad, the original input tensor is not necessary. However,
     // cudnn still requires them to run, although they do not affect the
     // results.
-    functor::TransformDepth<GPUDevice, T, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), tensor_in->tensor<T, 4>(),
-        nhwc_to_nchw, transformed_input.tensor<T, 4>());
+    functor::NHWCToNCHW<GPUDevice, T>()(context->eigen_device<Device>(),
+                                        tensor_in->tensor<T, 4>(),
+                                        transformed_input.tensor<T, 4>());
   }
   if (tensor_out) {
     // For AvgPoolGrad, the original output tensor is not necessary. However,
     // cudnn still requires them to run, although they do not affect the
     // results.
-    functor::TransformDepth<GPUDevice, T, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), tensor_out->tensor<T, 4>(),
-        nhwc_to_nchw, transformed_output.tensor<T, 4>());
+    functor::NHWCToNCHW<GPUDevice, T>()(context->eigen_device<Device>(),
+                                        tensor_out->tensor<T, 4>(),
+                                        transformed_output.tensor<T, 4>());
   }
-  functor::TransformDepth<GPUDevice, T, Eigen::DenseIndex>()(
+  functor::NHWCToNCHW<GPUDevice, T>()(
       context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
-      nhwc_to_nchw, transformed_output_backprop.tensor<T, 4>());
+      transformed_output_backprop.tensor<T, 4>());
 
   /// Get ready to call cudnn
   perftools::gputools::dnn::PoolingDescriptor pooling_desc;
@@ -238,11 +237,10 @@ void DnnPoolingGradOp<T>::Compute(
 
   /// Transform the output data from NCHW back to NHWC
   auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-  auto nchw_to_nhwc = Eigen::DSizes<Eigen::DenseIndex, 4>(0, 2, 3, 1);
-  functor::TransformDepth<GPUDevice, T, Eigen::DenseIndex>()(
+  functor::NCHWToNHWC<GPUDevice, T>()(
       context->eigen_device<Device>(),
       toConstTensor(transformed_input_backprop).template tensor<T, 4>(),
-      nchw_to_nhwc, output->tensor<T, 4>());
+      output->tensor<T, 4>());
 }
 
 template class DnnPoolingGradOp<float>;

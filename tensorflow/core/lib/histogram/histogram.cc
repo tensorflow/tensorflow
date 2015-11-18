@@ -102,24 +102,43 @@ void Histogram::Add(double value) {
 
 double Histogram::Median() const { return Percentile(50.0); }
 
+// Linearly map the variable x from [x0, x1] unto [y0, y1]
+double Histogram::Remap(double x, double x0, double x1, double y0,
+                        double y1) const {
+  return y0 + (x - x0) / (x1 - x0) * (y1 - y0);
+}
+
+// Pick tight left-hand-side and right-hand-side bounds and then
+// interpolate a histogram value at percentile p
 double Histogram::Percentile(double p) const {
   if (num_ == 0.0) return 0.0;
+
   double threshold = num_ * (p / 100.0);
-  double sum = 0;
-  for (size_t b = 0; b < buckets_.size(); b++) {
-    sum += buckets_[b];
-    if (sum >= threshold) {
-      // Scale linearly within this bucket
-      double left_point = (b == 0) ? min_ : bucket_limits_[b - 1];
-      double right_point = bucket_limits_[b];
-      double left_sum = sum - buckets_[b];
-      double right_sum = sum;
-      double pos = (threshold - left_sum) / (right_sum - left_sum);
-      double r = left_point + (right_point - left_point) * pos;
-      if (r < min_) r = min_;
-      if (r > max_) r = max_;
-      return r;
+  double cumsum_prev = 0;
+  for (size_t i = 0; i < buckets_.size(); i++) {
+    double cumsum = cumsum_prev + buckets_[i];
+
+    // Find the first bucket whose cumsum >= threshold
+    if (cumsum >= threshold) {
+      // Prevent divide by 0 in remap which happens if cumsum == cumsum_prev
+      // This should only get hit when p == 0, cumsum == 0, and cumsum_prev == 0
+      if (cumsum == cumsum_prev) {
+        continue;
+      }
+
+      // Calculate the lower bound of interpolation
+      double lhs = (i == 0 || cumsum_prev == 0) ? min_ : bucket_limits_[i - 1];
+      lhs = std::max(lhs, min_);
+
+      // Calculate the upper bound of interpolation
+      double rhs = bucket_limits_[i];
+      rhs = std::min(rhs, max_);
+
+      double weight = Remap(threshold, cumsum_prev, cumsum, lhs, rhs);
+      return weight;
     }
+
+    cumsum_prev = cumsum;
   }
   return max_;
 }

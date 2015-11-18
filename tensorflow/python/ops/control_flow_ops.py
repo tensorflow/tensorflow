@@ -47,6 +47,7 @@ debug your graph.
 @@Assert
 @@Print
 """
+# pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -342,26 +343,18 @@ class ControlFlowOpWrapper(object):
     return self._op.device
 
   @property
-  def output_types(self):
-    return self._op.output_types
-
-  @property
-  def input_types(self):
-    return self._op._input_types
-
-  @property
   def type(self):
     """Returns the type of the op."""
     return self._op.type
 
   @property
   def graph(self):
-    """Returns the parent graph."""
+    """The `Graph` that contains this operation."""
     return self._op.graph
 
-  def GetAttr(self, attr_name):
-    """Returns the value of attribute 'attr_name' of NodeDef."""
-    return self._op.get_attr(attr_name)
+  def get_attr(self, name):
+    """Returns the value of the attr of this op with the given `name`."""
+    return self._op.get_attr(name)
 
   def _get_control_flow_context(self):
     return self._op._get_control_flow_context()
@@ -625,7 +618,7 @@ def cond(pred, fn1, fn2, name=None):
     # r is set to f1()
   ```
   """
-  with ops.op_scope([pred], name, "Cond") as name:
+  with ops.op_scope([pred], name, "cond") as name:
     if not callable(fn1):
       raise TypeError("fn1 must be callable.")
     if not callable(fn2):
@@ -1316,7 +1309,7 @@ def fold(fn, elems, elem_shape, name=None):
   Raises:
     TypeError: if `fn` is not callable.
   """
-  with ops.op_scope([elems], name, "Fold") as name:
+  with ops.op_scope([elems], name, "fold") as name:
     if not callable(fn):
       raise TypeError("fn must be callable.")
 
@@ -1340,8 +1333,8 @@ def fold(fn, elems, elem_shape, name=None):
     return r[1]
 
 
-def case(pred_fn_pairs, default, exclusive=False, name="Case"):
-  """Create a Case operation.
+def case(pred_fn_pairs, default, exclusive=False, name="case"):
+  """Create a case operation.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
@@ -1366,9 +1359,9 @@ def case(pred_fn_pairs, default, exclusive=False, name="Case"):
 
     Expressions:
     ```
-      f1 = lambda: Constant(17)
-      f2 = lambda: Constant(23)
-      r = Case([(math_ops.less(x, y), f1)], default=f2)
+      f1 = lambda: tf.onstant(17)
+      f2 = lambda: tf.constant(23)
+      r = case([(tf.less(x, y), f1)], default=f2)
     ```
 
   Example 2:
@@ -1382,10 +1375,10 @@ def case(pred_fn_pairs, default, exclusive=False, name="Case"):
 
     Expressions:
     ```
-      def f1(): return Constant(17)
-      def f2(): return Constant(23)
-      def f3(): return Constant(-1)
-      r = Case({math_ops.less(x, y): f1, math_ops.greater(x, z): f2},
+      def f1(): return tf.constant(17)
+      def f2(): return tf.constant(23)
+      def f3(): return tf.constant(-1)
+      r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
                default=f3, exclusive=True)
     ```
 
@@ -1428,7 +1421,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="Case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([[f() for f in fns] + preds + [default()]], name, "Case"):
+  with ops.op_scope([[f() for f in fns] + preds + [default()]], name, "case"):
     if not preds:
       return default()
     not_preds = []
@@ -1451,10 +1444,10 @@ def case(pred_fn_pairs, default, exclusive=False, name="Case"):
       with ops.name_scope("case_%d" % i):
         case_preds.append(math_ops.logical_and(p, and_not_p_prev))
 
-    # case_sequence = [Cond(p3 & ..., f3, default),
-    #                  Cond(p2 & ..., f2, lambda: case_sequence[0]),
+    # case_sequence = [cond(p3 & ..., f3, default),
+    #                  cond(p2 & ..., f2, lambda: case_sequence[0]),
     #                  ...
-    #                  Cond(p1 & True, f1, lambda: case_sequence[i-1])]
+    #                  cond(p1 & True, f1, lambda: case_sequence[i-1])]
     # and prev_case_seq will loop from case_sequence[0] to case_sequence[-1]
     if exclusive:
       # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))

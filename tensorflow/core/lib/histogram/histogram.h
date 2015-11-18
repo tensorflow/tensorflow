@@ -77,6 +77,8 @@ class Histogram {
   gtl::ArraySlice<double> bucket_limits_;
   std::vector<double> buckets_;
 
+  double Remap(double x, double x0, double x1, double y0, double y1) const;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
 

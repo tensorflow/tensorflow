@@ -1,10 +1,10 @@
 // Based on the gulpfile provided by angular team
 // (https://github.com/angular/ts2dart/blob/master/gulpfile.js)
 var gulp = require('gulp');
+var tester = require('web-component-tester').test;
 var ts = require('gulp-typescript');
 var typescript = require('typescript');
 var gutil = require('gulp-util');
-var mochaPhantomJS = require('gulp-mocha-phantomjs');
 var tslint = require('gulp-tslint');
 var server = require('gulp-server-livereload');
 var concat = require('gulp-concat');
@@ -39,9 +39,8 @@ var onError = function(err) {
 
 gulp.task('compile.all', function() {
   hasError = false;
-  var isComponent = gulpFilter(['components/**/*.js', '!components/**/test/*']);
+  var isComponent = gulpFilter(['components/**/*.js']);
   var isApp = gulpFilter(['app/**/*.js']);
-  var isTest = gulpFilter(['test/**/*', 'components/**/test/*']);
 
   var srcs = ['components/**/*.ts', 'test/**/*.ts', 'app/**/*.ts',
               'typings/**/*.d.ts', 'bower_components/**/*.d.ts'];
@@ -66,17 +65,22 @@ gulp.task('compile.all', function() {
             .pipe(isApp)
             .pipe(gulp.dest('.')),
 
-    // Send all test code to build/test.js
-    tsResult.js
-            .pipe(isTest)
-            .pipe(concat('test.js'))
-            .pipe(gulp.dest('build')),
-
     // Create a unified defintions file at build/all.d.ts
     tsResult.dts
             .pipe(concat('all.d.ts'))
             .pipe(gulp.dest('build')),
   ]);
+});
+
+gulp.task('test', ['tslint-strict', 'compile.all'], function(done) {
+  tester({plugins: {local: {},   sauce: false}}, function(error) {
+    if (error) {
+      // Pretty error for gulp.
+      error = new Error(error.message || error);
+      error.showStack = false;
+    }
+    done(error);
+  });
 });
 
 var tslintTask = function(strict) {
@@ -100,23 +104,12 @@ var tslintTask = function(strict) {
 gulp.task('tslint-permissive', [], tslintTask(false));
 gulp.task('tslint-strict', [], tslintTask(true));
 
-
-gulp.task('run-tests', ['compile.all'], function(done) {
-  if (hasError) {
-    done();
-    return;
-  }
-  return gulp.src('tests.html')
-    .pipe(mochaPhantomJS({reporter: 'dot'}));
-});
-
-gulp.task('test', ['run-tests', 'tslint-strict']);
-gulp.task('watch', ['run-tests', 'tslint-permissive'], function() {
+gulp.task('watch', ['compile.all', 'tslint-permissive'], function() {
   failOnError = false;
   // Avoid watching generated .d.ts in the build (aka output) directory.
   return gulp.watch(['test/**/*.ts', 'components/**/*.ts'],
           {ignoreInitial: true},
-          ['run-tests', 'tslint-permissive']);
+          ['compile.all', 'tslint-permissive']);
 });
 
 gulp.task('server', function() {

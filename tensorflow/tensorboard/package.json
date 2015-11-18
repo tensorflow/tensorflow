@@ -29,6 +29,7 @@
     "vulcanize": "~1.14.0",
     "gulp-vulcanize": "~6.0.1",
     "minimist": "~1.2.0",
-    "gulp-replace": "~0.5.4"
+    "gulp-replace": "~0.5.4",
+    "web-component-tester": "~3.3.30"
   }
 }

@@ -9,7 +9,7 @@
 
 namespace tensorflow {
 
-template <typename T>
+template <typename T, typename TARGET_T>
 class InTopK : public OpKernel {
  public:
   explicit InTopK(OpKernelConstruction* context) : OpKernel(context) {
@@ -29,7 +29,7 @@ class InTopK : public OpKernel {
                                         " must match length of targets ",
                                         targets_in.dim_size(0)));
     const auto& predictions = predictions_in.matrix<T>();
-    const auto& targets = targets_in.vec<int>();
+    const auto& targets = targets_in.vec<TARGET_T>();
 
     Tensor* t_out = nullptr;
     OP_REQUIRES_OK(context,
@@ -53,6 +53,13 @@ class InTopK : public OpKernel {
   int k_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("InTopK").Device(DEVICE_CPU), InTopK<float>);
+REGISTER_KERNEL_BUILDER(Name("InTopK")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32>("T"),
+                        InTopK<float, int32>);
+REGISTER_KERNEL_BUILDER(Name("InTopK")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64>("T"),
+                        InTopK<float, int64>);
 
 }  // namespace tensorflow

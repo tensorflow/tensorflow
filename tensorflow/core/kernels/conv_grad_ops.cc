@@ -15,6 +15,7 @@
 #include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/stream.h"
@@ -593,19 +594,29 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     contract_dims[0].first = 0;
     contract_dims[0].second = 0;
 
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+
     for (int image_id = 0; image_id < batch; image_id += shard_size) {
       const int shard_limit = std::min(static_cast<int>(shard_size),
                                        static_cast<int>(batch) - image_id);
-      for (int shard_id = 0; shard_id < shard_limit; ++shard_id) {
-        // TODO(andydavis) Parallelize this loop.
-        // When we compute the gradient with respect to the filters, we need
-        // to do im2col to allow gemm-type computation.
-        Im2col<T>(input_data, in_depth, input_rows, input_cols, filter_rows,
-                  filter_cols, pad_top, pad_left, pad_bottom, pad_right, stride,
-                  stride, col_buffer_data + shard_id * size_A);
 
-        input_data += input_offset;
-      }
+      auto shard = [&input_data, &col_buffer_data, &in_depth, &input_rows,
+                    &input_cols, &filter_rows, &filter_cols, &pad_top,
+                    &pad_left, &pad_bottom, &pad_right, &stride, &input_offset,
+                    &size_A](int64 start, int64 limit) {
+        for (int shard_id = start; shard_id < limit; ++shard_id) {
+          auto input_data_shard = input_data + shard_id * input_offset;
+          auto col_data_shard = col_buffer_data + shard_id * size_A;
+
+          // When we compute the gradient with respect to the filters, we need
+          // to do im2col to allow gemm-type computation.
+          Im2col<T>(input_data_shard, in_depth, input_rows, input_cols,
+                    filter_rows, filter_cols, pad_top, pad_left, pad_bottom,
+                    pad_right, stride, stride, col_data_shard);
+        }
+      };
+      Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
+            size_A, shard);
 
       ConstTensorMap A(col_buffer_data, output_image_size * shard_limit,
                        filter_total_size);
@@ -615,6 +626,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
       // Gradient with respect to filter.
       C.device(context->eigen_cpu_device()) += A.contract(B, contract_dims);
 
+      input_data += input_offset * shard_limit;
       out_backprop_data += output_offset * shard_limit;
     }
   }
@@ -795,10 +807,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
               TensorShape({batch, out_depth, output_rows, output_cols}),
               &transformed_out_backprop));
 
-      functor::TransformDepth<Device, T, int>()(
-          context->eigen_device<Device>(), To32Bit(out_backprop.tensor<T, 4>()),
-          Eigen::DSizes<int, 4>(0, 3, 1, 2),
-          To32Bit(transformed_out_backprop.tensor<T, 4>()));
+      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
+                                       out_backprop.tensor<T, 4>(),
+                                       transformed_out_backprop.tensor<T, 4>());
 
       Tensor pre_transformed_in_backprop;
       OP_REQUIRES_OK(context,
@@ -831,12 +842,10 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       }
 
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-      functor::TransformDepth<Device, T, int>()(
+      functor::NCHWToNHWC<Device, T>()(
           context->eigen_device<Device>(),
-          To32Bit(toConstTensor(pre_transformed_in_backprop)
-                      .template tensor<T, 4>()),
-          Eigen::DSizes<int, 4>(0, 2, 3, 1),
-          To32Bit(in_backprop->tensor<T, 4>()));
+          toConstTensor(pre_transformed_in_backprop).template tensor<T, 4>(),
+          in_backprop->tensor<T, 4>());
     } else {
       // We fill out a padded out_backprop
       TensorShape padded_out_shape(
@@ -1033,11 +1042,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
               DataTypeToEnum<T>::value,
               TensorShape({batch, out_depth, output_rows, output_cols}),
               &transformed_out_backprop));
-
-      functor::TransformDepth<Device, T, int>()(
-          context->eigen_device<Device>(), To32Bit(out_backprop.tensor<T, 4>()),
-          Eigen::DSizes<int, 4>(0, 3, 1, 2),
-          To32Bit(transformed_out_backprop.tensor<T, 4>()));
+      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
+                                       out_backprop.tensor<T, 4>(),
+                                       transformed_out_backprop.tensor<T, 4>());
 
       Tensor transformed_input;
       OP_REQUIRES_OK(context,
@@ -1045,11 +1052,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                          DataTypeToEnum<T>::value,
                          TensorShape({batch, in_depth, input_rows, input_cols}),
                          &transformed_input));
-
-      functor::TransformDepth<Device, T, int>()(
-          context->eigen_device<Device>(), To32Bit(input.tensor<T, 4>()),
-          Eigen::DSizes<int, 4>(0, 3, 1, 2),
-          To32Bit(transformed_input.tensor<T, 4>()));
+      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
+                                       input.tensor<T, 4>(),
+                                       transformed_input.tensor<T, 4>());
 
       auto out_backprop_ptr =
           AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -1075,12 +1080,11 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       }
 
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-      functor::TransformDepth<Device, T, int>()(
+      functor::ReverseTransformFilter<Device, T>()(
           context->eigen_device<Device>(),
-          To32Bit(toConstTensor(pre_transformed_filter_backprop)
-                      .template tensor<T, 4>()),
-          Eigen::DSizes<int, 4>(2, 3, 1, 0),
-          To32Bit(filter_backprop->tensor<T, 4>()));
+          toConstTensor(pre_transformed_filter_backprop)
+              .template tensor<T, 4>(),
+          filter_backprop->tensor<T, 4>());
     } else {
       // Fall back to the non-cudnn code path
 

@@ -62,9 +62,11 @@ Batch normalization.
 
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
-  This is the first output from MovingMoments.
+  This is the first output from tf.nn.moments,
+  or a saved moving average thereof.
 v: A 1D variance Tensor with size matching the last dimension of t.
-  This is the second output from MovingMoments.
+  This is the second output from tf.nn.moments,
+  or a saved moving average thereof.
 beta: A 1D beta Tensor with size matching the last dimension of t.
   An offset to be added to the normalized tensor.
 gamma: A 1D gamma Tensor with size matching the last dimension of t.
@@ -94,9 +96,11 @@ Gradients for batch normalization.
 
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
-  This is the first output from MovingMoments.
+  This is the first output from tf.nn.moments,
+  or a saved moving average thereof.
 v: A 1D variance Tensor with size matching the last dimension of t.
-  This is the second output from MovingMoments.
+  This is the second output from tf.nn.moments,
+  or a saved moving average thereof.
 gamma: A 1D gamma Tensor with size matching the last dimension of t.
   If "scale_after_normalization" is true, this Tensor will be multiplied
   with the normalized Tensor.
@@ -488,10 +492,11 @@ backprop: backpropagated gradients (batch_size x num_classes matrix).
 // --------------------------------------------------------------------------
 
 REGISTER_OP("InTopK")
-    .Attr("k: int")
     .Input("predictions: float")
-    .Input("targets: int32")
+    .Input("targets: T")
     .Output("precision: bool")
+    .Attr("k: int")
+    .Attr("T: {int32, int64} = DT_INT32")
     .Doc(R"doc(
 Says whether the targets are in the top K predictions.
 
