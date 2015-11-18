@@ -1,0 +1,52 @@
+#  Copyright 2015 Google Inc. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+import numpy as np
+import tensorflow as tf
+
+from skflow import ops
+
+
+class OpsTest(tf.test.TestCase):
+
+    def test_embedding_lookup(self):
+        d_embed = 5
+        n_embed = 10
+        ids_shape = (2, 3, 4)
+        embeds = np.random.randn(n_embed, d_embed)
+        ids = np.random.randint(0, n_embed, ids_shape)
+        with self.test_session():
+            embed_np = embeds[ids]
+            embed_tf = ops.embedding_lookup(embeds, ids).eval()
+        self.assertEqual(embed_np.shape, embed_tf.shape)
+        self.assertAllClose(embed_np, embed_tf)
+
+    def test_categorical_variable(self):
+        tf.set_random_seed(42)
+        with self.test_session() as sess:
+            cat_var_idx = tf.placeholder(tf.int64, [2, 2])
+            embeddings = ops.categorical_variable(cat_var_idx, n_classes=5,
+                                                  embedding_size=10,
+                                                  name="my_cat_var")
+            sess.run(tf.initialize_all_variables())
+            emb1 = sess.run(embeddings, feed_dict={cat_var_idx.name: [[0, 1],
+                                                                      [2, 3]]})
+            emb2 = sess.run(embeddings, feed_dict={cat_var_idx.name: [[0, 2],
+                                                                      [1, 3]]})
+        self.assertEqual(emb1.shape, emb2.shape)
+        self.assertAllClose(np.transpose(emb2, axes=[1, 0, 2]), emb1)
+
+
+if __name__ == '__main__':
+    tf.test.main()
