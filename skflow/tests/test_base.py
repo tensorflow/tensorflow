@@ -15,7 +15,7 @@
 import random
 
 from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import skflow
 
@@ -32,6 +32,14 @@ class SkFlowTest(googletest.TestCase):
         score = accuracy_score(classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
+    def testIris_proba(self):
+        random.seed(42)
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowClassifier(n_classes=3)
+        classifier.fit(iris.data, iris.target)
+        score = log_loss(iris.target, classifier.predict_proba(iris.data))
+        self.assertLess(score, 0.6, "Failed with score = {0}".format(score))
+
     def testBoston(self):
         random.seed(42)
         boston = datasets.load_boston()
@@ -46,4 +54,3 @@ class SkFlowTest(googletest.TestCase):
 
 if __name__ == "__main__":
     googletest.main()
-

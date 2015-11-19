@@ -117,6 +117,15 @@ class TensorFlowEstimator(BaseEstimator):
             return pred
         return pred.argmax(axis=1)
 
+    def predict_proba(self, X):
+        pred = self._session.run(self._model.predictions,
+                                 feed_dict={
+                                     self._model.inp.name: X
+                                 })
+        if self.n_classes < 2:
+            return pred
+        return pred
+
 
 class TensorFlowRegressor(TensorFlowEstimator, RegressorMixin):
   pass
