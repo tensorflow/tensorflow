@@ -301,7 +301,7 @@ tf_proto_library(
     go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,  # TODO(irving): Handle 3
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

@@ -310,6 +310,10 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(10, v0.eval())
       self.assertEqual(20, v1.eval())
 
+    self.assertEqual(
+        tf.train.latest_checkpoint(self.get_temp_dir()),
+        os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+
   def testSaverDef(self):
     with self.test_session():
       v0 = tf.Variable(123, name="v0")

@@ -12,8 +12,9 @@
         </svg>
       </template>
       <template is="dom-if" if="[[_isSummary(node, summary)]]">
-        <img height$="[[height]]"
-            src="[[resolveUrl('../../lib/svg/summary-icon.svg')]]" />
+        <svg width$="[[height]]" height$="[[height]]" viewBox="0 0 12 12">
+          <use x="0" y="0" xlink:href="#summary-icon" />
+        </svg>
       </template>
       <template is="dom-if" if="[[_isRegularOp(node, const, summary)]]">
         <svg height$="[[height]]"

@@ -162,6 +162,14 @@ svg.icon {
   clear: both;
 }
 </style>
+<svg style="display:none;">
+  <defs>
+    <!-- Summary icon. -->
+    <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
+      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+    </svg>
+  </defs>
+</svg>
 <div class="allcontrols">
   <div class="control-holder">
     <paper-icon-button id="fit" icon="aspect-ratio" class="fit-button" on-click="fit" alt="Fit to screen">
@@ -301,9 +309,8 @@ svg.icon {
       </tr>
       <tr>
         <td>
-          <svg class="image-icon">
-            <image id="summary-icon" width="24" height="24" x="0" y="0"
-                class="image-icon"/>
+          <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
+            <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"/>
           </svg>
         </td>
         <td>Summary</td>
@@ -357,11 +364,6 @@ svg.icon {
 (function() { // Private scope.
 Polymer({
   is: 'tf-graph-controls',
-  ready: function() {
-    // Set the url to download the summary icon.
-    d3.select(this.$['summary-icon'])
-      .attr('xlink:href', this.resolveUrl('../../lib/svg/summary-icon.svg'));
-  },
   properties: {
     // Public API.
     hasStats: {

@@ -760,11 +760,15 @@ struct GpuDevice {
   GpuDevice()
       : stream_(perftools::gputools::MachineManager::singleton()->stream_for_device(0)),
         allocator_(nullptr),
-        stream_exec_(stream_->parent()) {}
+        stream_exec_(stream_->parent()),
+        device_descr_(&(stream_exec_->GetDeviceDescription())) {}
 
   GpuDevice(perftools::gputools::Stream* stream,
             const Allocator* alloc = nullptr)
-      : stream_(stream), allocator_(alloc), stream_exec_(stream_->parent()) { }
+      : stream_(stream),
+        allocator_(alloc),
+        stream_exec_(stream_->parent()),
+        device_descr_(&(stream_exec_->GetDeviceDescription())) {}
 
   EIGEN_STRONG_INLINE perftools::gputools::Stream* stream() const {
     return stream_;
@@ -873,28 +877,25 @@ struct GpuDevice {
     stream_->BlockHostUntilDone();
   }
 
-  // A gpu::DeviceDescription is cached inside a StreamExecutor, so these calls
-  // aren't expensive/wasteful.
   EIGEN_DEVICE_FUNC inline int getNumCudaMultiProcessors() const {
-    return stream_exec_->GetDeviceDescription().core_count();
+    return device_descr_->core_count();
   }
 
   EIGEN_DEVICE_FUNC inline int maxCudaThreadsPerBlock() const {
-    return stream_exec_->GetDeviceDescription().threads_per_block_limit();
+    return device_descr_->threads_per_block_limit();
   }
 
   EIGEN_DEVICE_FUNC inline int maxCudaThreadsPerMultiProcessor() const {
-    return stream_exec_->GetDeviceDescription().threads_per_core_limit();
+    return device_descr_->threads_per_core_limit();
   }
 
   EIGEN_DEVICE_FUNC inline int sharedMemPerBlock() const {
-    return stream_exec_->GetDeviceDescription().shared_memory_per_block();
+    return device_descr_->shared_memory_per_block();
   }
 
   EIGEN_DEVICE_FUNC inline int majorDeviceVersion() const {
     int major, minor;
-    if (stream_exec_->GetDeviceDescription().cuda_compute_capability(&major,
-                                                                  &minor)) {
+    if (device_descr_->cuda_compute_capability(&major, &minor)) {
       return major;
     } else {
       return 0;
@@ -906,6 +907,7 @@ struct GpuDevice {
  private:
   perftools::gputools::Stream* stream_;
   perftools::gputools::StreamExecutor* stream_exec_;
+  const perftools::gputools::DeviceDescription* device_descr_;
   const Allocator* allocator_;
 };
 

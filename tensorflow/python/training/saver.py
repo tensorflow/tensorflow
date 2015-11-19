@@ -884,9 +884,9 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    checkpoint_full_path = os.path.join(
+    checkpoint_pattern = os.path.join(
         checkpoint_dir, ckpt.model_checkpoint_path)
-    if gfile.Exists(checkpoint_full_path):
-      return checkpoint_full_path
+    if gfile.Glob(checkpoint_pattern):
+      return checkpoint_pattern
 
   return None

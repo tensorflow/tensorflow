@@ -100,11 +100,10 @@ function annotationToClassName(annotationType: render.AnnotationType) {
 
 function buildShape(aGroup, a: render.Annotation, sceneBehavior) {
   if (a.annotationType === tf.graph.render.AnnotationType.SUMMARY) {
-    let image = scene.selectOrCreateChild(aGroup, "image");
-    image.attr({
-      "xlink:href": sceneBehavior.resolveUrl("../../lib/svg/summary-icon.svg"),
-      "height": "12px",
-      "width": "12px",
+    let summary = scene.selectOrCreateChild(aGroup, "use");
+    summary.attr({
+      "class": "summary",
+      "xlink:href": "#summary-icon",
       "cursor": "pointer"
     });
   } else {
@@ -197,7 +196,7 @@ function update(aGroup, d: render.RenderNodeInformation, a: render.Annotation,
   // If there is an image, we adjust the location of the image to be vertically
   // centered with the node and horizontally centered between the arrow and the
   // text label.
-  aGroup.select("image").transition().attr({
+  aGroup.select("use.summary").transition().attr({
     x: d.x + a.dx - 3,
     y: d.y + a.dy - 6
   });

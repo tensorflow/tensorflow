@@ -32,6 +32,13 @@ string SummarizeOpDef(const OpDef& op_def);
 // REQUIRES: old_op and new_op must pass validation.
 Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op);
 
+// Returns an error if any attr in penultimate_op that is not in old_op
+// has a different default value in new_op.  In general it is not safe
+// to change the default for an attr that has been added to an op.
+Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
+                                   const OpDef& penultimate_op,
+                                   const OpDef& new_op);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_

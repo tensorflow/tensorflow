@@ -996,6 +996,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
       if (!edge->IsControlEdge() &&
           IsRefType(src->output_type(edge->src_output()))) {
+        AddNodeAttr("_start_time", recv_start_time, recv);
+        if (real_recv != recv) {
+          AddNodeAttr("_start_time", recv_start_time, real_recv);
+        }
         // If src is of ref type and the edge is not a control edge, dst has
         // read semantics and therefore we must control the recv.
         ref_recvs.push_back(real_recv);
