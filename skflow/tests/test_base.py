@@ -17,21 +17,34 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 
 import skflow
 
+import tensorflow as tf
 from tensorflow.python.platform import googletest
 
 class SkFlowTest(googletest.TestCase):
 
   def testIris(self):
+    tf.set_random_seed(42)
     iris = datasets.load_iris()
     classifier = skflow.TensorFlowClassifier(n_classes=3)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(classifier.predict(iris.data), iris.target)
     self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
+  def testIrisBigBatch(self):
+    tf.set_random_seed(42)
+    iris = datasets.load_iris()
+    classifier = skflow.TensorFlowClassifier(n_classes=3,
+                                             batch_size=iris.data.shape[0],
+                                             learning_rate=0.01)
+    classifier.fit(iris.data, iris.target)
+    score = accuracy_score(classifier.predict(iris.data), iris.target)
+    self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+
   def testBoston(self):
+    tf.set_random_seed(42)
     boston = datasets.load_boston()
     regressor = skflow.TensorFlowRegressor(n_classes=0,
-                                           batch_size=520,
+                                           batch_size=boston.data.shape[0],
                                            steps=500,
                                            learning_rate=0.001)
     regressor.fit(boston.data, boston.target)

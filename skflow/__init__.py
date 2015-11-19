@@ -21,35 +21,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from sklearn.utils import check_array
 
 from skflow.trainer import TensorFlowTrainer
-from skflow.ops import mean_squared_error_regressor, softmax_classifier
-
-
-class LinearRegression(object):
-    """Linear Regression TensorFlow model."""
-
-    def __init__(self, input_shape, graph):
-        with graph.as_default():
-            self.global_step = tf.Variable(0, name="global_step", trainable=False)
-            self.inp = tf.placeholder(tf.float32, [None, input_shape], name="input")
-            self.out = tf.placeholder(tf.float32, [None], name="output")
-            self.weights = tf.get_variable("weights", [input_shape, 1])
-            self.bias = tf.get_variable("bias", [1])
-            self.predictions, self.loss = mean_squared_error_regressor(
-                self.inp, self.out, self.weights, self.bias)
-
-
-class LogisticRegression(object):
-    """Logistic Regression TensorFlow model."""
-
-    def __init__(self, n_classes, input_shape, graph):
-        with graph.as_default():
-            self.global_step = tf.Variable(0, name="global_step", trainable=False)
-            self.inp = tf.placeholder(tf.float32, [None, input_shape], name="input")
-            self.out = tf.placeholder(tf.float32, [None, n_classes], name="output")
-            self.weights = tf.get_variable("weights", [input_shape, n_classes])
-            self.bias = tf.get_variable("bias", [n_classes])
-            self.predictions, self.loss = softmax_classifier(
-                self.inp, self.out, self.weights, self.bias)
+from skflow.models import LinearRegression, LogisticRegression
 
 
 class DataFeeder(object):
@@ -81,6 +53,16 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
+            if self.batch_size == self.X.shape[0]:
+                if self.n_classes > 1:
+                    out = np.zeros([self.batch_size, self.n_classes])
+                    out[:, self.y] = 1.0
+                else:
+                    out = self.y
+                return {
+                    input_placeholder.name: self.X,
+                    output_placeholder.name: out
+                }
             inp = np.zeros([self.batch_size, self.X.shape[1]])
             if self.n_classes > 1:
                 out = np.zeros([self.batch_size, self.n_classes])
