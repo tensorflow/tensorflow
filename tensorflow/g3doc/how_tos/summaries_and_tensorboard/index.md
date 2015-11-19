@@ -107,4 +107,4 @@ not contain any data relevant to that tab, a message will be displayed
 indicating how to serialize data that is applicable to that tab.
 
 For in depth information on how to use the *graph* tab to visualize your graph,
-see [TensorBoard: Visualizing your graph](../../how_tos/graph_viz/index.md).
+see [TensorBoard: Graph Visualization](../../how_tos/graph_viz/index.md).

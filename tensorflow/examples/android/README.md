@@ -5,9 +5,7 @@ This folder contains a simple camera-based demo application utilizing Tensorflow
 ## Description
 
 This demo uses a Google Inception model to classify camera frames in real-time,
-displaying the top results in an overlay on the camera image. See
-[`assets/imagenet_comp_graph_label_strings.txt`](assets/imagenet_comp_graph_label_strings.txt)
-for the possible classifications.
+displaying the top results in an overlay on the camera image.
 
 ## To build/install/run
 
@@ -21,7 +19,21 @@ installed the NDK and SDK. Otherwise an error such as:
 "The external label '//external:android/sdk' is not bound to anything" will
 be reported.
 
-To build the APK, run this from your workspace root:
+The TensorFlow `GraphDef` that contains the model definition and weights
+is not packaged in the repo because of its size. Instead, you must
+first download the file to the `assets` directory in the source tree:
+
+```bash
+$ wget https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -O tensorflow/examples/android/assets/inception5h.zip
+
+$ unzip tensorflow/examples/android/assets/inception5h.zip -d tensorflow/examples/android/assets/
+```
+
+The labels file describing the possible classification will also be in the
+assets directory.
+
+Then, after editing your WORKSPACE file, you must build the APK. Run this from
+your workspace root:
 
 ```bash
 $ bazel build //tensorflow/examples/android:tensorflow_demo -c opt --copt=-mfpu=neon

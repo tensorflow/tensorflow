@@ -296,10 +296,14 @@
 // 16 byte alignment on all platforms where vectorization might be enabled. In theory we could always
 // enable alignment, but it can be a cause of problems on some platforms, so we just disable it in
 // certain common platform (compiler+architecture combinations) to avoid these problems.
-// Only static alignment is really problematic (relies on nonstandard compiler extensions that don't
-// work everywhere, for example don't work on GCC/ARM), try to keep heap alignment even
-// when we have to disable static alignment.
-#if EIGEN_COMP_GNUC && !(EIGEN_ARCH_i386_OR_x86_64 || EIGEN_ARCH_PPC || EIGEN_ARCH_IA64)
+// Only static alignment is really problematic (relies on nonstandard compiler extensions),
+// try to keep heap alignment even when we have to disable static alignment.
+#if EIGEN_COMP_GNUC && !(EIGEN_ARCH_i386_OR_x86_64 || EIGEN_ARCH_ARM_OR_ARM64 || EIGEN_ARCH_PPC || EIGEN_ARCH_IA64)
+#define EIGEN_GCC_AND_ARCH_DOESNT_WANT_STACK_ALIGNMENT 1
+#elif EIGEN_ARCH_ARM_OR_ARM64 && EIGEN_COMP_GNUC_STRICT && EIGEN_GNUC_AT_MOST(4, 6)
+// Old versions of GCC on ARM, at least 4.4, were once seen to have buggy static alignment support.
+// Not sure which version fixed it, hopefully it doesn't affect 4.7, which is still somewhat in use.
+// 4.8 and newer seem definitely unaffected.
 #define EIGEN_GCC_AND_ARCH_DOESNT_WANT_STACK_ALIGNMENT 1
 #else
 #define EIGEN_GCC_AND_ARCH_DOESNT_WANT_STACK_ALIGNMENT 0
