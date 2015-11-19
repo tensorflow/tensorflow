@@ -25,7 +25,7 @@ from tensorflow.python.platform import googletest
 class SkFlowTest(googletest.TestCase):
 
     def testIris(self):
-        tf.set_random_seed(42)
+        random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
@@ -33,7 +33,7 @@ class SkFlowTest(googletest.TestCase):
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testBoston(self):
-        tf.set_random_seed(42)
+        random.seed(42)
         boston = datasets.load_boston()
         regressor = skflow.TensorFlowRegressor(n_classes=0,
                                                batch_size=boston.data.shape[0],

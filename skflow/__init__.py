@@ -79,19 +79,23 @@ class TensorFlowEstimator(BaseEstimator):
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
         learning_rate: Learning rate for optimizer.
+        tf_random_seed: Random seed for TensorFlow initializers.
+            Setting this value, allows consistency between reruns.
     """
 
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1):
+                 learning_rate=0.1, tf_random_seed=42):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
         self.steps = steps
         self.optimizer = optimizer
         self.learning_rate = learning_rate
+        self.tf_random_seed = tf_random_seed
 
     def fit(self, X, y):
         with tf.Graph().as_default() as graph:
+            tf.set_random_seed(self.tf_random_seed)
             if self.n_classes > 1:
                 self._model = LogisticRegression(self.n_classes, X.shape[1], graph)
             else:
