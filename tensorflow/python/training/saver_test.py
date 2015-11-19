@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import os.path
 import time
+import contextlib
+import shutil
+import tempfile
 
 import tensorflow.python.platform
 
@@ -581,6 +584,74 @@ class SaveRestoreWithVariableNameMap(tf.test.TestCase):
       # Check that the parameter nodes have been restored.
       self.assertEqual(10.0, v0.eval())
       self.assertEqual(20.0, v1.eval())
+
+
+class LatestCheckpointWithRelativePaths(tf.test.TestCase):
+
+  @staticmethod
+  @contextlib.contextmanager
+  def tempWorkingDir(temppath):
+    cwd = os.getcwd()
+    os.chdir(temppath)
+    try:
+      yield
+    finally:
+      os.chdir(cwd)
+
+  @staticmethod
+  @contextlib.contextmanager
+  def tempDir():
+      tempdir = tempfile.mkdtemp()
+      try:
+        yield tempdir
+      finally:
+        shutil.rmtree(tempdir)
+
+  def testRelativePath(self):
+    # Make sure we have a clean directory to work in.
+    with self.tempDir() as tempdir:
+
+      # Jump to that directory until this test is done.
+      with self.tempWorkingDir(tempdir):
+
+        # Save training snapshots to a relative path.
+        traindir = 'train/'
+        os.mkdir(traindir)
+
+        filename = 'snapshot'
+        filepath = os.path.join(traindir, filename)
+
+        with self.test_session() as sess:
+          # Build a simple graph.
+          v0 = tf.Variable(0.0)
+          inc = v0.assign_add(1.0)
+
+          save = tf.train.Saver({'v0': v0})
+
+          # Record a short training history.
+          tf.initialize_all_variables().run()
+          save.save(sess, filepath, global_step=0)
+          inc.eval()
+          save.save(sess, filepath, global_step=1)
+          inc.eval()
+          save.save(sess, filepath, global_step=2)
+
+        with self.test_session() as sess:
+          # Build a new graph with different initialization.
+          v0 = tf.Variable(-1.0)
+
+          # Create a new saver.
+          save = tf.train.Saver({'v0': v0})
+          tf.initialize_all_variables().run()
+
+          # Get the most recent checkpoint name from the training history file.
+          name = tf.train.latest_checkpoint(traindir)
+          self.assertIsNotNone(name)
+
+          # Restore "v0" from that checkpoint.
+          save.restore(sess, name)
+          self.assertEquals(v0.eval(), 2.0)
+
 
 
 if __name__ == "__main__":
