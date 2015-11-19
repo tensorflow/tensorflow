@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+from sklearn.utils import check_array
 
 from skflow.trainer import TensorFlowTrainer
 from skflow.ops import mean_squared_error_regressor, softmax_classifier
@@ -55,7 +56,7 @@ class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.
 
     Parameters:
-        X: feature matrix.
+        X: feature matrix of shape [n_samples, n_features].
         y: target vector, either floats for regression or class id for
             classification.
         n_classes: number of classes, 0 and 1 are considered regression.
@@ -63,8 +64,8 @@ class DataFeeder(object):
     """
 
     def __init__(self, X, y, n_classes, batch_size):
-        self.X = X
-        self.y = y
+        self.X = check_array(X, dtype=np.float32)
+        self.y = check_array(y, ensure_2d=False, dtype=None)
         self.n_classes = n_classes
         self.batch_size = batch_size
 
