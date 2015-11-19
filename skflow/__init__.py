@@ -53,16 +53,6 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            if self.batch_size == self.X.shape[0]:
-                if self.n_classes > 1:
-                    out = np.zeros([self.batch_size, self.n_classes])
-                    out[:, self.y] = 1.0
-                else:
-                    out = self.y
-                return {
-                    input_placeholder.name: self.X,
-                    output_placeholder.name: out
-                }
             inp = np.zeros([self.batch_size, self.X.shape[1]])
             if self.n_classes > 1:
                 out = np.zeros([self.batch_size, self.n_classes])
