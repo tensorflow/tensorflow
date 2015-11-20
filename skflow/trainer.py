@@ -32,20 +32,22 @@ class TensorFlowTrainer(object):
       gradients: Gradients tensor.
     """
 
-    def __init__(self, model, optimizer, learning_rate, clip_gradients=5.0):
+    def __init__(self, loss, global_step, optimizer, learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
         
         Args:
-          model: Model object, that has loss and global_step attributes.
+          loss: Tensor that evaluates to model's loss.
+          global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
         """
-        self.model = model
+        self.loss = loss
+        self.global_step = global_step
         self._learning_rate = tf.get_variable(
             "learning_rate",
             [],
             initializer=tf.constant_initializer(learning_rate))
         params = tf.trainable_variables()
-        self.gradients = tf.gradients(model.loss, params)
+        self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
           self.gradients, self.gradients_norm = tf.clip_by_global_norm(
               self.gradients, clip_gradients)
@@ -55,7 +57,7 @@ class TensorFlowTrainer(object):
         else:
           self._optimizer = optimizer(self.learning_rate)
         self.trainer = self._optimizer.apply_gradients(grads_and_vars,
-                                                       global_step=model.global_step,
+                                                       global_step=global_step,
                                                        name="train")
         # Get all initializers for all trainable variables.
         self._initializers = tf.initialize_all_variables()
@@ -87,7 +89,7 @@ class TensorFlowTrainer(object):
         for step in xrange(steps):
           feed_dict = feed_dict_fn()
           global_step, loss, _ = sess.run(
-              [self.model.global_step, self.model.loss, self.trainer],
+              [self.global_step, self.loss, self.trainer],
               feed_dict=feed_dict)
           losses.append(loss)
           if step % print_steps == 0:

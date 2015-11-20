@@ -22,12 +22,12 @@ import skflow
 import tensorflow as tf
 from tensorflow.python.platform import googletest
 
-class BaseTest(googletest.TestCase):
+class NonLinearTest(googletest.TestCase):
 
     def testIris(self):
         random.seed(42)
         iris = datasets.load_iris()
-        classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
+        classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
         classifier.fit(iris.data, iris.target)
         score = accuracy_score(classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
@@ -35,13 +35,13 @@ class BaseTest(googletest.TestCase):
     def testBoston(self):
         random.seed(42)
         boston = datasets.load_boston()
-        regressor = skflow.TensorFlowLinearRegressor(
-                                               batch_size=boston.data.shape[0],
-                                               steps=500,
-                                               learning_rate=0.001)
+        regressor = skflow.TensorFlowDNNRegressor(
+            hidden_units=[10, 20, 10], n_classes=0,
+            batch_size=boston.data.shape[0],
+            steps=200, learning_rate=0.001)
         regressor.fit(boston.data, boston.target)
         score = mean_squared_error(boston.target, regressor.predict(boston.data))
-        self.assertLess(score, 150, "Failed with score = {0}".format(score))
+        self.assertLess(score, 100, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":

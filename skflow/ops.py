@@ -16,6 +16,7 @@
 
 
 import tensorflow as tf
+from tensorflow.models.rnn import linear
 
 
 def embedding_lookup(params, ids, name="embedding_lookup"):
@@ -91,5 +92,28 @@ def softmax_classifier(tensor_in, labels, weights, biases, name=None):
         loss = tf.reduce_mean(xent, name="xent")
         predictions = tf.nn.softmax(logits, name=name)
         return predictions, loss
+
+
+def dnn(X, hidden_units, activation=tf.nn.relu, keep_prob=None):
+    """Creates fully connected deep neural network subgraph.
+
+    Args:
+        X: tensor or placeholder for input features.
+        hidden_units: list of counts of hidden units in each layer.
+        activation: activation function between layers.
+        keep_proba: if not None, will add a dropout layer with given
+                    probability. 
+
+    Returns:
+        A tensor which would be a deep neural network.
+    """
+    with tf.variable_scope('dnn'):
+        for i, n_units in enumerate(hidden_units):
+            with tf.variable_scope('layer%d' % i):
+                X = linear.linear(X, n_units, True)
+            X = activation(X)
+            if keep_prob:
+                X = tf.nn.dropout(X, keep_prob)
+        return X
 
 

@@ -14,33 +14,56 @@
 
 import tensorflow as tf
 
-from skflow.ops import mean_squared_error_regressor, softmax_classifier
+from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 
-class LinearRegression(object):
-    """Linear Regression TensorFlow model."""
+def linear_regression(X, y):
+    """Creates linear regression TensorFlow subgraph.
+    
+    Args:
+        X: tensor or placeholder for input features.
+        y: tensor or placeholder for target.
 
-    def __init__(self, input_shape, graph):
-        with graph.as_default():
-            self.global_step = tf.Variable(0, name="global_step", trainable=False)
-            self.inp = tf.placeholder(tf.float32, [None, input_shape], name="input")
-            self.out = tf.placeholder(tf.float32, [None], name="output")
-            self.weights = tf.get_variable("weights", [input_shape, 1])
-            self.bias = tf.get_variable("bias", [1])
-            self.predictions, self.loss = mean_squared_error_regressor(
-                self.inp, self.out, self.weights, self.bias)
+    Returns:
+        Predictions and loss tensors.
+    """
+    with tf.variable_scope('linear_regression'):
+        weights = tf.get_variable('weights', [X.get_shape()[1], 1])
+        bias = tf.get_variable('bias', [1])
+        return mean_squared_error_regressor(X, y, weights, bias)
 
 
-class LogisticRegression(object):
-    """Logistic Regression TensorFlow model."""
+def logistic_regression(X, y):
+    """Creates logistic regression TensorFlow subgraph.
 
-    def __init__(self, n_classes, input_shape, graph):
-        with graph.as_default():
-            self.global_step = tf.Variable(0, name="global_step", trainable=False)
-            self.inp = tf.placeholder(tf.float32, [None, input_shape], name="input")
-            self.out = tf.placeholder(tf.float32, [None, n_classes], name="output")
-            self.weights = tf.get_variable("weights", [input_shape, n_classes])
-            self.bias = tf.get_variable("bias", [n_classes])
-            self.predictions, self.loss = softmax_classifier(
-                self.inp, self.out, self.weights, self.bias)
+    Args:
+        X: tensor or placeholder for input features.
+        y: tensor or placeholder for target.
+
+    Returns:
+        Predictions and loss tensors.
+    """
+    with tf.variable_scope('logistic_regression'):
+        weights = tf.get_variable('weights', [X.get_shape()[1], y.get_shape()[1]])
+        bias = tf.get_variable('bias', [y.get_shape()[1]])
+        return softmax_classifier(X, y, weights, bias)
+
+
+def get_dnn_model(hidden_units, target_predictor_fn):
+    """Returns a function that creates a DNN TensorFlow subgraph with given
+    params.
+
+    Args:
+        hidden_units: List of values of hidden units for layers.
+        target_predictor_fn: Function that will predict target from input
+        features. This can be logistic regression, linear regression or any
+        other model, that takes X, y and returns predictions and loss tensors.
+
+    Returns:
+        A funcition that creates the subgraph.
+    """
+    def dnn_classifier(X, y):
+        layers = dnn(X, hidden_units)
+        return target_predictor_fn(layers, y)
+    return dnn_classifier
 
