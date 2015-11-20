@@ -843,8 +843,8 @@ For more details, see
 ### Backwards compatibility
 
 In general, changes to specifications must be backwards-compatible: changing the
-specification of an Op must not break prior serialized GraphDefs constructed
-from older specfications.
+specification of an Op must not break prior serialized `GraphDef` protocol
+buffers constructed from older specfications.
 
 There are several ways to preserve backwards-compatibility.
 
@@ -866,25 +866,38 @@ There are several ways to preserve backwards-compatibility.
    REGISTER_OP("MyGeneralUnaryOp")
        .Input("in: T")
        .Output("out: T")
-       .Attr("T: numerictype = float");
+       .Attr("T: numerictype = DT_FLOAT");
    ```
 
-1. You can safely make a constraint on an attr less restrictive.  For example,
-   you can change from `{int32, int64}` to `{int32, int64, float}` or from
-   `{"apple", "orange"}` to `{"apple", "banana", "orange"}`.
+2. You can safely make a constraint on an attr less restrictive.  For example,
+   you can change from `{int32, int64}` to `{int32, int64, float}` or `type`.
+   Or you may change from `{"apple", "orange"}` to `{"apple", "banana",
+   "orange"}` or `string`.
 
-1. Namespace any new Ops you create, by prefixing the Op names with something
+3. You can change single inputs / outputs into list inputs / outputs, as long as
+   the default for the list type matches the old signature.
+
+4. You can add a new list input / output, if it defaults to empty.
+
+5. Namespace any new Ops you create, by prefixing the Op names with something
    unique to your project. This avoids having your Op colliding with any Ops
    that might be included in future versions of Tensorflow.
 
-1. Plan ahead! Try to anticipate future uses for the Op. Some signature changes
-   can't be done in a compatible way (for example, adding an input, or making a
-   single input into a list).
+6. Plan ahead! Try to anticipate future uses for the Op. Some signature changes
+   can't be done in a compatible way (for example, making a list of the same
+   type into a list of varying types).
 
 The full list of safe and unsafe changes can be found in
 [tensorflow/core/framework/op_compatibility_test.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
 If you cannot make your change to an operation backwards compatible, then create
 a new operation with a new name with the new semantics.
+
+Also note that while these changes can maintain `GraphDef` compatibility, the
+generated Python code may change in a way that isn't compatible with old
+callers.  The Python API may be kept compatible by careful changes in a
+hand-written Python wrapper, by keeping the old signature except possibly adding
+new optional arguments to the end.  Generally incompatible changes may only be
+made when TensorFlow's changes major versions.
 
 ## GPU Support {#mult-archs}
 

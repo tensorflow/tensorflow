@@ -187,14 +187,14 @@ the smallest output, but is slower.
 The resizing Ops accept input images as tensors of several types.  They always
 output resized images as float32 tensors.
 
-The convenience function [resize_images()](#resize_images) supports both 4-D
+The convenience function [`resize_images()`](#resize_images) supports both 4-D
 and 3-D tensors as input and output.  4-D tensors are for batches of images,
 3-D tensors for individual images.
 
 Other resizing Ops only support 3-D individual images as input:
-[resize_area](#resize_area), [resize_bicubic](#resize_bicubic),
-[resize_bilinear](#resize_bilinear),
-[resize_nearest_neighbor](#resize_nearest_neighbor).
+[`resize_area`](#resize_area), [`resize_bicubic`](#resize_bicubic),
+[`resize_bilinear`](#resize_bilinear),
+[`resize_nearest_neighbor`](#resize_nearest_neighbor).
 
 Example:
 
@@ -216,17 +216,17 @@ Resize `images` to `new_width`, `new_height` using the specified `method`.
 
 Resized images will be distorted if their original aspect ratio is not
 the same as `new_width`, `new_height`.  To avoid distortions see
-[resize_image_with_crop_or_pad](#resize_image_with_crop_or_pad).
+[`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
 
 `method` can be one of:
 
-*   <b>ResizeMethod.BILINEAR</b>: [Bilinear interpolation.]
+*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.]
     (https://en.wikipedia.org/wiki/Bilinear_interpolation)
-*   <b>ResizeMethod.NEAREST_NEIGHBOR</b>: [Nearest neighbor interpolation.]
+*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.]
     (https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-*   <b>ResizeMethod.BICUBIC</b>: [Bicubic interpolation.]
+*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.]
     (https://en.wikipedia.org/wiki/Bicubic_interpolation)
-*   <b>ResizeMethod.AREA</b>: Area interpolation.
+*   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
 ##### Args:
 

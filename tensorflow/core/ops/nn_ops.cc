@@ -1,3 +1,18 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/util/padding.h"
@@ -498,27 +513,27 @@ REGISTER_OP("InTopK")
     .Attr("k: int")
     .Attr("T: {int32, int64} = DT_INT32")
     .Doc(R"doc(
-Says whether the targets are in the top K predictions.
+Says whether the targets are in the top `K` predictions.
 
-This outputs a batch_size bool array, an entry out[i] is true if the
-prediction for the target class is among the top k predictions among
-all predictions for example i. Note that the behavior of InTopK differs
-from the TopK op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-k boundary, all of those
-classes are considered to be in the top k.
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
 
 More formally, let
 
-  \\(predictions_i\\) be the predictions for all classes for example i,
-  \\(targets_i\\) be the target class for example i,
-  \\(out_i\\) be the output for example i,
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
 
 $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 
-predictions: A batch_size x classes tensor
-targets: A batch_size vector of class ids
-k: Number of top elements to look at for computing precision
-precision: Computed Precision at k as a bool Tensor
+predictions: A `batch_size` x `classes` tensor.
+targets: A `batch_size` vector of class ids.
+k: Number of top elements to look at for computing precision.
+precision: Computed Precision at `k` as a `bool Tensor`.
 
 )doc");
 
@@ -529,7 +544,7 @@ REGISTER_OP("TopK")
     .Output("indices: int32")
     .Attr("T: realnumbertype")
     .Doc(R"doc(
-Returns the values and indices of the k largest elements for each row.
+Returns the values and indices of the `k` largest elements for each row.
 
 \\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
 
@@ -537,11 +552,12 @@ Returns the values and indices of the k largest elements for each row.
 such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
 elements are equal, the lower-index element appears first.
 
-k: Number of top elements to look for within each row
-input: A batch_size x classes tensor
-values: A batch_size x k tensor with the k largest elements for each row,
-  sorted in descending order
-indices: A batch_size x k tensor with the index of each value within each row
+k: Number of top elements to look for within each row.
+input: A `batch_size` x `classes` tensor.
+values: A `batch_size` x `k` tensor with the `k` largest elements for
+  each row, sorted in descending order.
+indices: A `batch_size` x `k` tensor with the index of each value within
+  each row.
 
 )doc");
 

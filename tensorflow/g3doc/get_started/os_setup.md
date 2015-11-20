@@ -252,7 +252,7 @@ This creates a canonical set of symbolic links to the Cuda libraries on your sys
 Every time you change the Cuda library paths you need to run this step again before
 you invoke the bazel build command.
 
-##### Build your target with GPU support.
+##### Build your target with GPU support
 From the root of your source tree, run:
 
 ```bash
@@ -268,7 +268,7 @@ $ bazel-bin/tensorflow/cc/tutorials_example_trainer --use_gpu
 
 Note that "--config=cuda" is needed to enable the GPU support.
 
-##### Enabling Cuda 3.0.
+##### Enabling Cuda 3.0
 TensorFlow officially supports Cuda devices with 3.5 and 5.2 compute
 capabilities. In order to enable earlier Cuda devices such as Grid K520, you
 need to target Cuda 3.0. This can be done through TensorFlow unofficial
@@ -283,10 +283,10 @@ WARNING: You are configuring unofficial settings in TensorFlow. Because some
 external libraries are not backward compatible, these settings are largely
 untested and unsupported.
 
-Please specify a list of comma-separated Cuda compute capabilities you want to 
-build with. You can find the compute capability of your device at: 
-https://developer.nvidia.com/cuda-gpus. 
-Please note that each additional compute capability significantly increases 
+Please specify a list of comma-separated Cuda compute capabilities you want to
+build with. You can find the compute capability of your device at:
+https://developer.nvidia.com/cuda-gpus.
+Please note that each additional compute capability significantly increases
 your build time and binary size. [Default is: "3.5,5.2"]: 3.0
 
 Setting up Cuda include

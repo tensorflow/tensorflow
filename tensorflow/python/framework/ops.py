@@ -1,3 +1,18 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Classes and functions used to construct graphs."""
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -171,7 +186,7 @@ class Tensor(object):
       op: An `Operation`. `Operation` that computes this tensor.
       value_index: An `int`. Index of the operation's endpoint that produces
         this tensor.
-      dtype: A `types.DType`. Type of data stored in this tensor.
+      dtype: A `DType`. Type of elements stored in this tensor.
 
     Raises:
       TypeError: If the op is not an `Operation`.
@@ -921,39 +936,39 @@ class Operation(object):
                op_def=None):
     """Creates an `Operation`.
 
-    NOTE: This constructor validates the name of the Operation (passed
-    as "node_def.name"). Valid Operation names match the following
+    NOTE: This constructor validates the name of the `Operation` (passed
+    as `node_def.name`). Valid `Operation` names match the following
     regular expression:
 
-      [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
+        [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
     Args:
-      node_def: graph_pb2.NodeDef.  NodeDef for the Operation.
-        Used for attributes of graph_pb2.NodeDef, typically "name",
-        "op", and "device".  The "input" attribute is irrelevant here
+      node_def: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+        Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+        `op`, and `device`.  The `input` attribute is irrelevant here
         as it will be computed when generating the model.
-      g: Graph. The parent graph.
-      inputs: list of Tensor objects. The inputs to this Operation.
-      output_types: list of types_pb2.DataType.  List of the types of the
-        Tensors computed by this operation.  The length of this list indicates
-        the number of output endpoints of the Operation.
+      g: `Graph`. The parent graph.
+      inputs: list of `Tensor` objects. The inputs to this `Operation`.
+      output_types: list of `DType` objects.  List of the types of the
+        `Tensors` computed by this operation.  The length of this list indicates
+        the number of output endpoints of the `Operation`.
       control_inputs: list of operations or tensors from which to have a
         control dependency.
-      input_types: List of types_pb2.DataType representing the
-        types of the Tensors accepted by the Operation.  By default
-        uses [x.dtype.base_dtype for x in inputs].  Operations that expect
+      input_types: List of `DType` objects representing the
+        types of the tensors accepted by the `Operation`.  By default
+        uses `[x.dtype.base_dtype for x in inputs]`.  Operations that expect
         reference-typed inputs must specify these explicitly.
-      original_op: Optional. Used to associate the new Operation with an
-        existing Operation (for example, a replica with the op that was
+      original_op: Optional. Used to associate the new `Operation` with an
+        existing `Operation` (for example, a replica with the op that was
         replicated).
-      op_def: Optional. The op_def_pb2.OpDef proto that describes the
-        op type that this Operation represents.
+      op_def: Optional. The `op_def_pb2.OpDef` proto that describes the
+        op type that this `Operation` represents.
 
     Raises:
       TypeError: if control inputs are not Operations or Tensors,
-        or if node_def is not a NodeDef,
-        or if g is not a Graph,
-        or if inputs are not Tensors,
+        or if node_def is not a `NodeDef`,
+        or if g is not a `Graph`,
+        or if inputs are not tensors,
         or if inputs and input_types are incompatible.
       ValueError: if the node_def name is not valid.
     """
@@ -2149,19 +2164,20 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   def unique_name(self, name):
-    """Return a unique Operation name for "name".
+    """Return a unique operation name for `name`.
 
-    Note: You rarely need to call unique_name() directly.  Most of the time you
-    just need to create "with g.name_scope()" blocks to generate structured
-    names.
+    Note: You rarely need to call `unique_name()` directly.  Most of
+    the time you just need to create `with g.name_scope()` blocks to
+    generate structured names.
 
-    `unique_name` is used to generate structured names, separated by "/",
-    to help identify Operations when debugging a Graph.  Operation names
-    are displayed in error messages reported by the TensorFlow runtime,
-    and in various visualization tools such as TensorBoard.
+    `unique_name` is used to generate structured names, separated by
+    `"/"`, to help identify operations when debugging a graph.
+    Operation names are displayed in error messages reported by the
+    TensorFlow runtime, and in various visualization tools such as
+    TensorBoard.
 
     Args:
-      name: The name for an `Operation`.
+      name: The name for an operation.
 
     Returns:
       A string to be passed to `create_op()` that will be used
@@ -2218,7 +2234,7 @@ class Graph(object):
   def _push_default_device_function(self, device_function):
     """Pushes the given function onto the stack of device functions.
 
-    See Graph.device for more details.
+    See `Graph.device` for more details.
 
     Args:
       device_function: The function to be pushed onto the stack of device
@@ -2229,7 +2245,7 @@ class Graph(object):
   def _pop_default_device_function(self, device_function):
     """Pops the given function from the stack of device functions.
 
-    See Graph.device for more details.
+    See `Graph.device` for more details.
 
     Args:
       device_function: The function to be popped from the stack of device
@@ -2773,8 +2789,8 @@ def _eval_using_default_session(tensors, feed_dict, graph, session=None):
     session = get_default_session()
     if session is None:
       raise ValueError("Cannot evaluate tensor using eval(): No default "
-                       "session is registered. Use 'with "
-                       "DefaultSession(sess)' or pass an explicit session to "
+                       "session is registered. Use `with "
+                       "sess.as_default()` or pass an explicit session to "
                        "eval(session=sess)")
     if session.graph is not graph:
       raise ValueError("Cannot use the default session to evaluate tensor: "

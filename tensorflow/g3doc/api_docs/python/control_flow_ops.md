@@ -551,24 +551,12 @@ evaluating.
 *  <b>`message`</b>: A string, prefix of the error message.
 *  <b>`first_n`</b>: Only log `first_n` number of times. Negative numbers log always;
            this is the default.
-*  <b>`summarize`</b>: Only print this many entries of each tensor.
+*  <b>`summarize`</b>: Only print this many entries of each tensor. If None, then a
+             maximum of 3 elements are printed per input tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   Same tensor as `input_`.
 
-
-
-## Other Functions and Classes
-- - -
-
-### `class tf.xrange` {#xrange}
-
-xrange(stop) -> xrange object
-xrange(start, stop[, step]) -> xrange object
-
-Like range(), but instead of returning a list, returns an object that
-generates the numbers in the range on demand.  For looping, this is
-slightly faster than range() and more memory efficient.
 

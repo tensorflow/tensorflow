@@ -1640,7 +1640,7 @@ Returns tensor num_epochs times and then raises an OutOfRange error.
 ##### Args:
 
 
-*  <b>`tensor`</b>: Any Tensor.
+*  <b>`tensor`</b>: Any `Tensor`.
 *  <b>`num_epochs`</b>: An integer (optional).  If specified, limits the number
     of steps the output tensor may be evaluated.
 *  <b>`name`</b>: A name for the operations (optional).
@@ -1672,27 +1672,27 @@ Produces the integers from 0 to limit-1 in a queue.
 
 ##### Returns:
 
-  A Queue with the output integers.  A QueueRunner for the Queue
-  is added to the current Graph's QUEUE_RUNNER collection.
+  A Queue with the output integers.  A `QueueRunner` for the Queue
+  is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 
 - - -
 
 ### `tf.train.slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None, capacity=32, name=None)` {#slice_input_producer}
 
-Produces a slice of each Tensor in tensor_list.
+Produces a slice of each `Tensor` in `tensor_list`.
 
-Implemented using a Queue -- a QueueRunner for the Queue
-is added to the current Graph's QUEUE_RUNNER collection.
+Implemented using a Queue -- a `QueueRunner` for the Queue
+is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 ##### Args:
 
 
-*  <b>`tensor_list`</b>: A list of Tensors. Every Tensor in tensor_list must
-    have the same size in the first dimension.
+*  <b>`tensor_list`</b>: A list of `Tensor` objects. Every `Tensor` in
+    `tensor_list` must have the same size in the first dimension.
 *  <b>`num_epochs`</b>: An integer (optional). If specified, `slice_input_producer`
     produces each slice `num_epochs` times before generating
-    an OutOfRange error. If not specified, `slice_input_producer` can cycle
+    an `OutOfRange` error. If not specified, `slice_input_producer` can cycle
     through the slices an unlimited number of times.
 *  <b>`seed`</b>: An integer (optional). Seed used if shuffle == True.
 *  <b>`capacity`</b>: An integer. Sets the queue capacity.
@@ -1700,9 +1700,9 @@ is added to the current Graph's QUEUE_RUNNER collection.
 
 ##### Returns:
 
-  A list of tensors, one for each element of tensor_list.  If the tensor
-  in tensor_list has shape [N, a, b, .., z], then the corresponding output
-  tensor will have shape [a, b, ..., z].
+  A list of tensors, one for each element of `tensor_list`.  If the tensor
+  in `tensor_list` has shape `[N, a, b, .., z]`, then the corresponding output
+  tensor will have shape `[a, b, ..., z]`.
 
 
 - - -
@@ -1728,29 +1728,30 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
 
 ##### Returns:
 
-  A queue with the output strings.  A QueueRunner for the Queue
-  is added to the current Graph's QUEUE_RUNNER collection.
+  A queue with the output strings.  A `QueueRunner` for the Queue
+  is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 
 
 ### Batching at the end of an input pipeline
 
-These functions add a queue to the graph to assemble a batch of examples, with
-possible shuffling.  They also add a `QueueRunner` for running the subgraph
-that fills that queue.
+These functions add a queue to the graph to assemble a batch of
+examples, with possible shuffling.  They also add a `QueueRunner` for
+running the subgraph that fills that queue.
 
-Use [batch](#batch) or [batch_join](#batch_join) for batching examples that have
-already been well shuffled.  Use [shuffle_batch](#shuffle_batch) or
-[shuffle_batch_join](#shuffle_batch_join) for examples that
-would benefit from additional shuffling.
+Use [`batch`](#batch) or [`batch_join`](#batch_join) for batching
+examples that have already been well shuffled.  Use
+[`shuffle_batch`](#shuffle_batch) or
+[`shuffle_batch_join`](#shuffle_batch_join) for examples that would
+benefit from additional shuffling.
 
-Use [batch](#batch) or [shuffle_batch](#shuffle_batch) if you want a
+Use [`batch`](#batch) or [`shuffle_batch`](#shuffle_batch) if you want a
 single thread producing examples to batch, or if you have a
-single subgraph producing examples but you want to run it in N threads
-(where you increase N until it can keep the queue full).  Use
-[batch_join](#batch_join) or [shuffle_batch_join](#shuffle_batch_join)
-if you have N different subgraphs producing examples to batch and you
-want them run by N threads.
+single subgraph producing examples but you want to run it in *N* threads
+(where you increase *N* until it can keep the queue full).  Use
+[`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
+if you have *N* different subgraphs producing examples to batch and you
+want them run by *N* threads.
 
 - - -
 
@@ -1772,6 +1773,11 @@ first dimension.  If an input tensor has shape `[*, x, y, z]`, the
 output will have shape `[batch_size, x, y, z]`.  The `capacity` argument
 controls the how long the prefetching is allowed to grow the queues.
 
+*N.B.:* You must ensure that either (i) the `shapes` argument is
+passed, or (ii) all of the tensors in `tensor_list` must have
+fully-defined shapes. `ValueError` will be raised if neither of
+these conditions holds.
+
 ##### Args:
 
 
@@ -1787,6 +1793,12 @@ controls the how long the prefetching is allowed to grow the queues.
 ##### Returns:
 
   A list of tensors with the same number and types as `tensor_list`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensor_list`.
 
 
 - - -
@@ -1819,6 +1831,11 @@ same size in the first dimension.  The slices of any input tensor
 The `capacity` argument controls the how long the prefetching is allowed to
 grow the queues.
 
+*N.B.:* You must ensure that either (i) the `shapes` argument is
+passed, or (ii) all of the tensors in `tensor_list_list` must have
+fully-defined shapes. `ValueError` will be raised if neither of
+these conditions holds.
+
 ##### Args:
 
 
@@ -1835,6 +1852,12 @@ grow the queues.
 
   A list of tensors with the same number and types as
   `tensor_list_list[i]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensor_list_list`.
 
 
 - - -
@@ -1875,6 +1898,11 @@ image_batch, label_batch = tf.train.shuffle_batch(
       min_after_dequeue=10000)
 ```
 
+*N.B.:* You must ensure that either (i) the `shapes` argument is
+passed, or (ii) all of the tensors in `tensor_list` must have
+fully-defined shapes. `ValueError` will be raised if neither of
+these conditions holds.
+
 ##### Args:
 
 
@@ -1893,6 +1921,12 @@ image_batch, label_batch = tf.train.shuffle_batch(
 ##### Returns:
 
   A list of tensors with the same number and types as `tensor_list`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensor_list`.
 
 
 - - -
@@ -1927,6 +1961,11 @@ y, z]`, the output will have shape `[batch_size, x, y, z]`.
 The `capacity` argument controls the how long the prefetching is allowed to
 grow the queues.
 
+*N.B.:* You must ensure that either (i) the `shapes` argument is
+passed, or (ii) all of the tensors in `tensor_list_list` must have
+fully-defined shapes. `ValueError` will be raised if neither of
+these conditions holds.
+
 ##### Args:
 
 
@@ -1945,5 +1984,11 @@ grow the queues.
 ##### Returns:
 
   A list of tensors with the same number and types as `tensor_list_list[i]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensor_list_list`.
 
 

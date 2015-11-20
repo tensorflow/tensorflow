@@ -182,7 +182,7 @@ print sub.eval()
 TensorFlow programs use a tensor data structure to represent all data -- only
 tensors are passed between operations in the computation graph. You can think
 of a TensorFlow tensor as an n-dimensional array or list. A tensor has a
-static type a rank, and a shape.  To learn more about how TensorFlow handles
+static type, a rank, and a shape.  To learn more about how TensorFlow handles
 these concepts, see the [Rank, Shape, and Type](../resources/dims_types.md)
 reference.
 

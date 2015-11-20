@@ -1,3 +1,18 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Updates generated docs from Python doc comments."""
 from __future__ import absolute_import
 from __future__ import division
@@ -91,7 +106,7 @@ def all_libraries(module_to_name, members, documented):
                                "RankingExample", "SequenceExample"]),
   ]
 
-_hidden_symbols = ["Event", "Summary",
+_hidden_symbols = ["Event", "Summary", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "SessionInterface", "BaseSession"]
 
@@ -105,6 +120,15 @@ def main(unused_argv):
   module_to_name = get_module_to_name()
   members = docs.collect_members(module_to_name)
   libraries = all_libraries(module_to_name, members, documented)
+
+  # Define catch_all library before calling write_libraries to avoid complaining
+  # about generically hidden symbols.
+  catch_all = docs.Library(title="Catch All", module=None,
+                           exclude_symbols=_hidden_symbols,
+                           module_to_name=module_to_name, members=members,
+                           documented=documented)
+
+  # Write docs to files
   docs.write_libraries(FLAGS.out_dir, libraries)
 
   # Make it easy to search for hidden symbols
@@ -115,10 +139,6 @@ def main(unused_argv):
     print(r"hidden symbols regex = r'\b(%s)\b'" % "|".join(sorted(hidden)))
 
   # Verify that all symbols are mentioned in some library doc.
-  catch_all = docs.Library(title="Catch All", module=None,
-                           exclude_symbols=_hidden_symbols,
-                           module_to_name=module_to_name, members=members,
-                           documented=documented)
   catch_all.assert_no_leftovers()
 
   # Generate index

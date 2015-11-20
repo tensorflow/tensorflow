@@ -1,3 +1,18 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #include "tensorflow/core/framework/op_def_builder.h"
 
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -13,14 +28,14 @@ namespace tensorflow {
 
 namespace {
 
-bool RE2Consume(StringPiece* sp, const char* pattern) {
+bool RE2Consume(StringPiece* sp, const RE2& pattern) {
   RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
   bool r = RE2::Consume(&base_sp, pattern);
   *sp = FromRegexpStringPiece(base_sp);
   return r;
 }
 
-bool RE2Consume(StringPiece* sp, const char* pattern, StringPiece* out) {
+bool RE2Consume(StringPiece* sp, const RE2& pattern, StringPiece* out) {
   RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
   RegexpStringPiece base_out;
   bool r = RE2::Consume(&base_sp, pattern, &base_out);
@@ -29,7 +44,7 @@ bool RE2Consume(StringPiece* sp, const char* pattern, StringPiece* out) {
   return r;
 }
 
-bool RE2Consume(StringPiece* sp, const char* pattern, int64* out) {
+bool RE2Consume(StringPiece* sp, const RE2& pattern, int64* out) {
   RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
   bool r = RE2::Consume(&base_sp, pattern, out);
   *sp = FromRegexpStringPiece(base_sp);
@@ -38,6 +53,41 @@ bool RE2Consume(StringPiece* sp, const char* pattern, int64* out) {
 
 string AttrError(StringPiece orig, const string& op_name) {
   return strings::StrCat(" from Attr(\"", orig, "\") for Op ", op_name);
+}
+
+const RE2& AttrNameRE() {
+  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*");
+  return pattern;
+}
+
+const RE2& AttrListPrefixRE() {
+  static RE2 pattern("list\\s*\\(\\s*");
+  return pattern;
+}
+
+const RE2& SpacesRE() {
+  static RE2 pattern("\\s*");
+  return pattern;
+}
+
+const RE2& AttrDoubleQuotedRE() {
+  static RE2 pattern(R"xx("((?:[^"\\]|\\.)*)"\s*)xx");
+  return pattern;
+}
+
+const RE2& AttrSingleQuotedRE() {
+  static RE2 pattern(R"xx('((?:[^'\\]|\\.)*)'\s*)xx");
+  return pattern;
+}
+
+const RE2& AttrTypeRE() {
+  static RE2 pattern("([a-z0-9]+)\\s*");
+  return pattern;
+}
+
+const RE2& AttrNumberRE() {
+  static RE2 pattern("\\s*(-?\\d+)\\s*");
+  return pattern;
 }
 
 #define VERIFY(expr, ...)                                                 \
@@ -56,12 +106,12 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 
   // Parse "<name>:" at the beginning.
   StringPiece tmp_name;
-  VERIFY(RE2Consume(&spec, "([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*", &tmp_name),
+  VERIFY(RE2Consume(&spec, AttrNameRE(), &tmp_name),
          "Trouble parsing '<name>:'");
   attr->set_name(tmp_name.data(), tmp_name.size());
 
   // Read "<type>" or "list(<type>)".
-  bool is_list = RE2Consume(&spec, "list\\s*\\(\\s*");
+  bool is_list = RE2Consume(&spec, AttrListPrefixRE());
   string type;
   if (spec.Consume("string")) {
     type = "string";
@@ -100,16 +150,14 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
     }
   } else if (spec.Consume("{")) {
     // e.g. "{ int32, float, bool }" or "{ \"foo\", \"bar\" }"
-    RE2Consume(&spec, "\\s*");
+    RE2Consume(&spec, SpacesRE());
     AttrValue* allowed = attr->mutable_allowed_values();
     if (spec.starts_with("\"") || spec.starts_with("'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
         StringPiece escaped_string;
-        VERIFY((RE2Consume(&spec, R"xx("((?:[^"\\]|\\.)*)"\s*)xx",
-                           &escaped_string) ||
-                RE2Consume(&spec, R"xx('((?:[^'\\]|\\.)*)'\s*)xx",
-                           &escaped_string)),
+        VERIFY((RE2Consume(&spec, AttrDoubleQuotedRE(), &escaped_string) ||
+                RE2Consume(&spec, AttrSingleQuotedRE(), &escaped_string)),
                "Trouble parsing allowed string at '", spec, "'");
         string unescaped;
         string error;
@@ -118,7 +166,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
                error);
         allowed->mutable_list()->add_s(unescaped);
         if (spec.Consume(",")) {
-          RE2Consume(&spec, "\\s*");
+          RE2Consume(&spec, SpacesRE());
           if (spec.Consume("}")) break;  // Allow ending with ", }".
         } else {
           VERIFY(spec.Consume("}"),
@@ -130,14 +178,14 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
       type = "type";
       while (true) {
         StringPiece type_string;
-        VERIFY(RE2Consume(&spec, "([a-z0-9]+)\\s*", &type_string),
+        VERIFY(RE2Consume(&spec, AttrTypeRE(), &type_string),
                "Trouble parsing type string at '", spec, "'");
         DataType dt;
         VERIFY(DataTypeFromString(type_string, &dt),
                "Unrecognized type string '", type_string, "'");
         allowed->mutable_list()->add_type(dt);
         if (spec.Consume(",")) {
-          RE2Consume(&spec, "\\s*");
+          RE2Consume(&spec, SpacesRE());
           if (spec.Consume("}")) break;  // Allow ending with ", }".
         } else {
           VERIFY(spec.Consume("}"),
@@ -149,12 +197,12 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   } else {
     VERIFY(false, "Trouble parsing type string at '", spec, "'");
   }
-  RE2Consume(&spec, "\\s*");
+  RE2Consume(&spec, SpacesRE());
 
   // Write the type into *attr.
   if (is_list) {
     VERIFY(spec.Consume(")"), "Expected ) to close 'list(', not: '", spec, "'");
-    RE2Consume(&spec, "\\s*");
+    RE2Consume(&spec, SpacesRE());
     attr->set_type(strings::StrCat("list(", type, ")"));
   } else {
     attr->set_type(type);
@@ -163,7 +211,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   // Read optional minimum constraint at the end.
   if ((is_list || type == "int") && spec.Consume(">=")) {
     int64 min_limit = -999;
-    VERIFY(RE2Consume(&spec, "\\s*(-?\\d+)\\s*", &min_limit),
+    VERIFY(RE2Consume(&spec, AttrNumberRE(), &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
            "' instead");
     attr->set_has_minimum(true);
@@ -172,7 +220,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 
   // Parse default value, if present.
   if (spec.Consume("=")) {
-    RE2Consume(&spec, "\\s*");
+    RE2Consume(&spec, SpacesRE());
     VERIFY(ParseAttrValue(attr->type(), spec, attr->mutable_default_value()),
            "Could not parse default value '", spec, "'");
   } else {
@@ -185,6 +233,31 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 string InOutError(bool is_output, StringPiece orig, const string& op_name) {
   return strings::StrCat(" from ", is_output ? "Output" : "Input", "(\"", orig,
                          "\") for Op ", op_name);
+}
+
+const RE2& InOutNameRE() {
+  static RE2 pattern("([a-z][a-z0-9_]*)\\s*:\\s*");
+  return pattern;
+}
+
+const RE2& InOutRefOpenRE() {
+  static RE2 pattern("Ref\\s*\\(\\s*");
+  return pattern;
+}
+
+const RE2& InOutRefCloseRE() {
+  static RE2 pattern("\\)\\s*");
+  return pattern;
+}
+
+const RE2& InOutNameOrTypeRE() {
+  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*");
+  return pattern;
+}
+
+const RE2& InOutTimesTypeRE() {
+  static RE2 pattern("[*]\\s*([a-zA-Z][a-zA-Z0-9_]*)\\s*");
+  return pattern;
 }
 
 #define VERIFY(expr, ...)                                             \
@@ -205,20 +278,20 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 
   // Parse "<name>:" at the beginning.
   StringPiece tmp_name;
-  VERIFY(RE2Consume(&spec, "([a-z][a-z0-9_]*)\\s*:\\s*", &tmp_name),
+  VERIFY(RE2Consume(&spec, InOutNameRE(), &tmp_name),
          "Trouble parsing 'name:'");
   arg->set_name(tmp_name.data(), tmp_name.size());
 
   // Detect "Ref(...)".
-  if (RE2Consume(&spec, "Ref\\s*\\(\\s*")) {
+  if (RE2Consume(&spec, InOutRefOpenRE())) {
     arg->set_is_ref(true);
   }
 
   {  // Parse "<name|type>" or "<name>*<name|type>".
     StringPiece first, second, type_or_attr;
-    VERIFY(RE2Consume(&spec, "([a-zA-Z][a-zA-Z0-9_]*)\\s*", &first),
+    VERIFY(RE2Consume(&spec, InOutNameOrTypeRE(), &first),
            "Trouble parsing either a type or an attr name at '", spec, "'");
-    if (RE2Consume(&spec, "[*]\\s*([a-zA-Z][a-zA-Z0-9_]*)\\s*", &second)) {
+    if (RE2Consume(&spec, InOutTimesTypeRE(), &second)) {
       arg->set_number_attr(first.data(), first.size());
       type_or_attr = second;
     } else {
@@ -243,7 +316,7 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 
   // Closing ) for Ref(.
   if (arg->is_ref()) {
-    VERIFY(RE2Consume(&spec, "\\)\\s*"),
+    VERIFY(RE2Consume(&spec, InOutRefCloseRE()),
            "Did not find closing ')' for 'Ref(', instead found: '", spec, "'");
   }
 
@@ -280,6 +353,16 @@ int num_leading_spaces(StringPiece s) {
   return i;
 }
 
+const RE2& DocNameColonRE() {
+  static RE2 pattern("^[a-zA-Z][a-zA-Z0-9_]*\\s*:");
+  return pattern;
+}
+
+const RE2& DocNameColonSpacesRE() {
+  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*");
+  return pattern;
+}
+
 void FinalizeDoc(const string& text, OpDef* op_def,
                  std::vector<string>* errors) {
   std::vector<string> lines = str_util::Split(text, '\n');
@@ -301,7 +384,7 @@ void FinalizeDoc(const string& text, OpDef* op_def,
   // Lines until we see name: -> description.
   int start_l = l;
   while (static_cast<size_t>(l) < lines.size() &&
-         !RE2::PartialMatch(lines[l], "^[a-zA-Z][a-zA-Z0-9_]*\\s*:")) {
+         !RE2::PartialMatch(lines[l], DocNameColonRE())) {
     ++l;
   }
   int end_l = l;
@@ -319,10 +402,10 @@ void FinalizeDoc(const string& text, OpDef* op_def,
   while (static_cast<size_t>(l) < lines.size()) {
     description.clear();
     description.push_back(lines[l]);
-    RE2Consume(&description.back(), "([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*", &name);
+    RE2Consume(&description.back(), DocNameColonSpacesRE(), &name);
     ++l;
     while (static_cast<size_t>(l) < lines.size() &&
-           !RE2::PartialMatch(lines[l], "^[a-zA-Z][a-zA-Z0-9_]*\\s*:")) {
+           !RE2::PartialMatch(lines[l], DocNameColonRE())) {
       description.push_back(lines[l]);
       ++l;
     }

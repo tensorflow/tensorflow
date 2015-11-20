@@ -515,21 +515,22 @@ Returns the default device.
 
 #### `tf.Graph.unique_name(name)` {#Graph.unique_name}
 
-Return a unique Operation name for "name".
+Return a unique operation name for `name`.
 
-Note: You rarely need to call unique_name() directly.  Most of the time you
-just need to create "with g.name_scope()" blocks to generate structured
-names.
+Note: You rarely need to call `unique_name()` directly.  Most of
+the time you just need to create `with g.name_scope()` blocks to
+generate structured names.
 
-`unique_name` is used to generate structured names, separated by "/",
-to help identify Operations when debugging a Graph.  Operation names
-are displayed in error messages reported by the TensorFlow runtime,
-and in various visualization tools such as TensorBoard.
+`unique_name` is used to generate structured names, separated by
+`"/"`, to help identify operations when debugging a graph.
+Operation names are displayed in error messages reported by the
+TensorFlow runtime, and in various visualization tools such as
+TensorBoard.
 
 ##### Args:
 
 
-*  <b>`name`</b>: The name for an `Operation`.
+*  <b>`name`</b>: The name for an operation.
 
 ##### Returns:
 
@@ -768,43 +769,43 @@ Returns the call stack from when this operation was constructed.
 
 Creates an `Operation`.
 
-NOTE: This constructor validates the name of the Operation (passed
-as "node_def.name"). Valid Operation names match the following
+NOTE: This constructor validates the name of the `Operation` (passed
+as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-  [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
 
 ##### Args:
 
 
-*  <b>`node_def`</b>: graph_pb2.NodeDef.  NodeDef for the Operation.
-    Used for attributes of graph_pb2.NodeDef, typically "name",
-    "op", and "device".  The "input" attribute is irrelevant here
+*  <b>`node_def`</b>: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+    Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+    `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
-*  <b>`g`</b>: Graph. The parent graph.
-*  <b>`inputs`</b>: list of Tensor objects. The inputs to this Operation.
-*  <b>`output_types`</b>: list of types_pb2.DataType.  List of the types of the
-    Tensors computed by this operation.  The length of this list indicates
-    the number of output endpoints of the Operation.
+*  <b>`g`</b>: `Graph`. The parent graph.
+*  <b>`inputs`</b>: list of `Tensor` objects. The inputs to this `Operation`.
+*  <b>`output_types`</b>: list of `DType` objects.  List of the types of the
+    `Tensors` computed by this operation.  The length of this list indicates
+    the number of output endpoints of the `Operation`.
 *  <b>`control_inputs`</b>: list of operations or tensors from which to have a
     control dependency.
-*  <b>`input_types`</b>: List of types_pb2.DataType representing the
-    types of the Tensors accepted by the Operation.  By default
-    uses [x.dtype.base_dtype for x in inputs].  Operations that expect
+*  <b>`input_types`</b>: List of `DType` objects representing the
+    types of the tensors accepted by the `Operation`.  By default
+    uses `[x.dtype.base_dtype for x in inputs]`.  Operations that expect
     reference-typed inputs must specify these explicitly.
-*  <b>`original_op`</b>: Optional. Used to associate the new Operation with an
-    existing Operation (for example, a replica with the op that was
+*  <b>`original_op`</b>: Optional. Used to associate the new `Operation` with an
+    existing `Operation` (for example, a replica with the op that was
     replicated).
-*  <b>`op_def`</b>: Optional. The op_def_pb2.OpDef proto that describes the
-    op type that this Operation represents.
+*  <b>`op_def`</b>: Optional. The `op_def_pb2.OpDef` proto that describes the
+    op type that this `Operation` represents.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if control inputs are not Operations or Tensors,
-    or if node_def is not a NodeDef,
-    or if g is not a Graph,
-    or if inputs are not Tensors,
+    or if node_def is not a `NodeDef`,
+    or if g is not a `Graph`,
+    or if inputs are not tensors,
     or if inputs and input_types are incompatible.
 *  <b>`ValueError`</b>: if the node_def name is not valid.
 
@@ -1053,7 +1054,7 @@ Creates a new `Tensor`.
 *  <b>`op`</b>: An `Operation`. `Operation` that computes this tensor.
 *  <b>`value_index`</b>: An `int`. Index of the operation's endpoint that produces
     this tensor.
-*  <b>`dtype`</b>: A `types.DType`. Type of data stored in this tensor.
+*  <b>`dtype`</b>: A `DType`. Type of elements stored in this tensor.
 
 ##### Raises:
 
@@ -1983,11 +1984,11 @@ Returns a Dimension that combines the information in `self` and `other`.
 
 Dimensions are combined as follows:
 
-  Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
-  Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
-  Dimension(None).merge_with(Dimension(n))    == Dimension(n)
-  Dimension(None).merge_with(Dimension(None)) == Dimension(None)
-  Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
+    Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
+    Dimension(None).merge_with(Dimension(n))    == Dimension(n)
+    Dimension(None).merge_with(Dimension(None)) == Dimension(None)
+    Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
 
 ##### Args:
 

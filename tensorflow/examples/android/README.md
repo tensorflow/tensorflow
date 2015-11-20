@@ -24,9 +24,9 @@ is not packaged in the repo because of its size. Instead, you must
 first download the file to the `assets` directory in the source tree:
 
 ```bash
-$ wget https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -O tensorflow/examples/android/assets/inception5h.zip
+$ wget https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -O /tmp/inception5h.zip
 
-$ unzip tensorflow/examples/android/assets/inception5h.zip -d tensorflow/examples/android/assets/
+$ unzip /tmp/inception5h.zip -d tensorflow/examples/android/assets/
 ```
 
 The labels file describing the possible classification will also be in the

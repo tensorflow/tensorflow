@@ -744,7 +744,7 @@ Since they are nondifferentiable, they are typically used at evaluation time.
 
 ### `tf.nn.top_k(input, k, name=None)` {#top_k}
 
-Returns the values and indices of the k largest elements for each row.
+Returns the values and indices of the `k` largest elements for each row.
 
 \\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
 
@@ -756,52 +756,55 @@ elements are equal, the lower-index element appears first.
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
-    A batch_size x classes tensor
+    A `batch_size` x `classes` tensor.
 *  <b>`k`</b>: An `int` that is `>= 1`.
-    Number of top elements to look for within each row
+    Number of top elements to look for within each row.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A tuple of `Tensor` objects (values, indices).
 
-*  <b>`values`</b>: A `Tensor`. Has the same type as `input`. A batch_size x k tensor with the k largest elements for each row,
-    sorted in descending order
-*  <b>`indices`</b>: A `Tensor` of type `int32`. A batch_size x k tensor with the index of each value within each row
+*  <b>`values`</b>: A `Tensor`. Has the same type as `input`. A `batch_size` x `k` tensor with the `k` largest elements for
+    each row, sorted in descending order.
+*  <b>`indices`</b>: A `Tensor` of type `int32`. A `batch_size` x `k` tensor with the index of each value within
+    each row.
 
 
 - - -
 
 ### `tf.nn.in_top_k(predictions, targets, k, name=None)` {#in_top_k}
 
-Says whether the targets are in the top K predictions.
+Says whether the targets are in the top `K` predictions.
 
-This outputs a batch_size bool array, an entry out[i] is true if the
-prediction for the target class is among the top k predictions among
-all predictions for example i. Note that the behavior of InTopK differs
-from the TopK op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-k boundary, all of those
-classes are considered to be in the top k.
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
 
 More formally, let
 
-  \\(predictions_i\\) be the predictions for all classes for example i,
-  \\(targets_i\\) be the target class for example i,
-  \\(out_i\\) be the output for example i,
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
 
 $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 
 ##### Args:
 
 
-*  <b>`predictions`</b>: A `Tensor` of type `float32`. A batch_size x classes tensor
-*  <b>`targets`</b>: A `Tensor` of type `int32`. A batch_size vector of class ids
-*  <b>`k`</b>: An `int`. Number of top elements to look at for computing precision
+*  <b>`predictions`</b>: A `Tensor` of type `float32`.
+    A `batch_size` x `classes` tensor.
+*  <b>`targets`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A `batch_size` vector of class ids.
+*  <b>`k`</b>: An `int`. Number of top elements to look at for computing precision.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `bool`. Computed Precision at k as a bool Tensor
+  A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
 
 
 
@@ -834,8 +837,8 @@ unnormalized statistical models]
 Also see our [Candidate Sampling Algorithms Reference]
 (http://www.tensorflow.org/extras/candidate_sampling.pdf)
 
-Note: In the case where num_true > 1, we assign to each target class
-the target probability 1 / num_true so that the target probabilities
+Note: In the case where `num_true` > 1, we assign to each target class
+the target probability 1 / `num_true` so that the target probabilities
 sum to 1 per-example.
 
 Note: It would be useful to allow a variable number of target classes per
@@ -857,8 +860,8 @@ with an otherwise unused class.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`sampled_values`</b>: a tuple of `(sampled_candidates, true_expected_count,
-      sampled_expected_count)` returned by a *_candidate_sampler function.
-      (if None, we default to LogUniformCandidateSampler)
+      sampled_expected_count)` returned by a `*_candidate_sampler` function.
+      (if None, we default to `log_uniform_candidate_sampler`)
 *  <b>`remove_accidental_hits`</b>: A `bool`.  Whether to remove "accidental hits"
       where a sampled class equals one of the target classes.  If set to
       `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
@@ -907,8 +910,8 @@ Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
 *  <b>`sampled_values`</b>: a tuple of `(sampled_candidates, true_expected_count,
-      sampled_expected_count)` returned by a *_candidate_sampler function.
-      (if None, we default to LogUniformCandidateSampler)
+      sampled_expected_count)` returned by a `*_candidate_sampler` function.
+      (if None, we default to `log_uniform_candidate_sampler`)
 *  <b>`remove_accidental_hits`</b>: A `bool`.  whether to remove "accidental hits"
       where a sampled class equals one of the target classes.  Default is
       True.

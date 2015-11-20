@@ -1,3 +1,18 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 // A minimal but useful C++ example showing how to load an Imagenet-style object
 // recognition TensorFlow model, prepare input images for it, run them through
 // the graph, and interpret the results.
@@ -14,8 +29,7 @@
 // customize it to use your own models or images by changing the file names at
 // the top of the main() function.
 //
-// The model file specified in the README is a pre-trained version of
-// an Inception (GoogleNet) model.
+// The googlenet_graph.pb file included by default is created from Inception.
 
 #include <fstream>
 
@@ -49,13 +63,12 @@ using tensorflow::int32;
 TF_DEFINE_string(image,
                  "tensorflow/examples/label_image/data/grace_hopper.jpg",
                  "The image to classify (JPEG or PNG).");
-TF_DEFINE_string(
-    graph, "tensorflow/examples/label_image/data/tensorflow_inception_graph.pb",
-    "The location of the GraphDef file containing the protobuf"
-    " definition of the network.");
+TF_DEFINE_string(graph,
+                 "tensorflow/examples/label_image/data/googlenet_graph.pb",
+                 "The location of the GraphDef file containing the protobuf"
+                 " definition of the network.");
 TF_DEFINE_string(labels,
-                 "tensorflow/examples/label_image/data/"
-                 "imagenet_comp_graph_label_strings.txt",
+                 "tensorflow/examples/label_image/data/googlenet_labels.txt",
                  "A text file containing the labels of all the categories, one"
                  " per line.");
 TF_DEFINE_int32(input_width, 224, "Width of the image the network expects.");

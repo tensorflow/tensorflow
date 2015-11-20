@@ -1,3 +1,18 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # pylint: disable=wildcard-import,unused-import,g-bad-import-order
 """## Activation Functions
 
@@ -618,7 +633,7 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
   sum to 1 per-example.
 
   Args:
-    weights: tensor of label embeddings with shape = [num_classes, dim]
+    weights: tensor of label embeddings with shape = [num_classes, dim].
     biases: tensor of num_classes label biases
     inputs: tensor with shape = [batch_size, dim] corresponding to forward
         activations of the input network
@@ -626,21 +641,21 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     num_sampled: number of label classes to sample per batch
     num_classes: number of possible label classes in the data (e.g. vocab size)
     num_true: number of target classes per example (default: 1)
-    sampled_values: a tuple of (sampled_candidates, true_expected_count,
-        sampled_expected_count) returned by a *CandidateSampler function to use
-        (if None, we default to LogUniformCandidateSampler)
+    sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
+        `sampled_expected_count`) returned by a `*_candidate_sampler` function
+        to use (if None, we default to `log_uniform_candidate_sampler`)
     subtract_log_q: subtract the log expected count of the labels in the sample
         to get the logits of the true labels (default: True)
         Turn off for Negative Sampling.
     remove_accidental_hits: whether to remove "accidental hits" where a sampled
         label equals the true labels (bool, default: False)
-    name: name for this op
+    name: A name for the operation (optional).
 
   Returns:
-    out_logits, out_labels: tensors with shape [batch_size, num_true +
-        num_sampled] for passing to either SigmoidCrossEntropyWithLogits (NCE)
-        or SoftmaxCrossEntropyWithLogits (sampled softmax).
-
+    out_logits, out_labels: tensors with shape
+        `[batch_size, num_true + num_sampled]` for passing to either
+        `sigmoid_cross_entropy_with_logits` (NCE)
+        or `softmax_cross_entropy_with_logits` (sampled softmax).
   """
 
   with ops.op_scope(
@@ -751,8 +766,8 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
   Also see our [Candidate Sampling Algorithms Reference]
   (http://www.tensorflow.org/extras/candidate_sampling.pdf)
 
-  Note: In the case where num_true > 1, we assign to each target class
-  the target probability 1 / num_true so that the target probabilities
+  Note: In the case where `num_true` > 1, we assign to each target class
+  the target probability 1 / `num_true` so that the target probabilities
   sum to 1 per-example.
 
   Note: It would be useful to allow a variable number of target classes per
@@ -772,8 +787,8 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
     sampled_values: a tuple of `(sampled_candidates, true_expected_count,
-        sampled_expected_count)` returned by a *_candidate_sampler function.
-        (if None, we default to LogUniformCandidateSampler)
+        sampled_expected_count)` returned by a `*_candidate_sampler` function.
+        (if None, we default to `log_uniform_candidate_sampler`)
     remove_accidental_hits:  A `bool`.  Whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  If set to
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
@@ -834,8 +849,8 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
     sampled_values: a tuple of `(sampled_candidates, true_expected_count,
-        sampled_expected_count)` returned by a *_candidate_sampler function.
-        (if None, we default to LogUniformCandidateSampler)
+        sampled_expected_count)` returned by a `*_candidate_sampler` function.
+        (if None, we default to `log_uniform_candidate_sampler`)
     remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  Default is
         True.

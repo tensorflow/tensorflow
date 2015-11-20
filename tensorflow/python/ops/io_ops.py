@@ -1,3 +1,18 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # pylint: disable=line-too-long
 """## Placeholders
 
@@ -78,22 +93,23 @@ The "producer" functions add a queue to the graph and a corresponding
 
 ### Batching at the end of an input pipeline
 
-These functions add a queue to the graph to assemble a batch of examples, with
-possible shuffling.  They also add a `QueueRunner` for running the subgraph
-that fills that queue.
+These functions add a queue to the graph to assemble a batch of
+examples, with possible shuffling.  They also add a `QueueRunner` for
+running the subgraph that fills that queue.
 
-Use [batch](#batch) or [batch_join](#batch_join) for batching examples that have
-already been well shuffled.  Use [shuffle_batch](#shuffle_batch) or
-[shuffle_batch_join](#shuffle_batch_join) for examples that
-would benefit from additional shuffling.
+Use [`batch`](#batch) or [`batch_join`](#batch_join) for batching
+examples that have already been well shuffled.  Use
+[`shuffle_batch`](#shuffle_batch) or
+[`shuffle_batch_join`](#shuffle_batch_join) for examples that would
+benefit from additional shuffling.
 
-Use [batch](#batch) or [shuffle_batch](#shuffle_batch) if you want a
+Use [`batch`](#batch) or [`shuffle_batch`](#shuffle_batch) if you want a
 single thread producing examples to batch, or if you have a
-single subgraph producing examples but you want to run it in N threads
-(where you increase N until it can keep the queue full).  Use
-[batch_join](#batch_join) or [shuffle_batch_join](#shuffle_batch_join)
-if you have N different subgraphs producing examples to batch and you
-want them run by N threads.
+single subgraph producing examples but you want to run it in *N* threads
+(where you increase *N* until it can keep the queue full).  Use
+[`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
+if you have *N* different subgraphs producing examples to batch and you
+want them run by *N* threads.
 
 @@batch
 @@batch_join

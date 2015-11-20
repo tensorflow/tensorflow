@@ -36,7 +36,7 @@ this data by attaching
 [`histogram_summary`](../../api_docs/python/train.md#histogram_summary) ops to
 the gradient outputs and to the variable that holds your weights, respectively.
 
-For details on all of the summary operations avaiable, check out the docs on
+For details on all of the summary operations available, check out the docs on
 [summary operations]
 (../../api_docs/python/train.md#summary-operations).
 

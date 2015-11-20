@@ -71,7 +71,7 @@ these and charge ahead.  Don't worry, you'll still get to see MNIST -- we'll
 also use MNIST as an example in our technical tutorial where we elaborate on
 TensorFlow features.
 
-## Recommended Next Steps:
+## Recommended Next Steps
 * [Download and Setup](../get_started/os_setup.md)
 * [Basic Usage](../get_started/basic_usage.md)
 * [TensorFlow Mechanics 101](../tutorials/mnist/tf/index.md)

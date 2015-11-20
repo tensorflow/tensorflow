@@ -1461,8 +1461,8 @@ This op reports an `OutOfRange` error if any value is not finite.
 
 
 *  <b>`tag`</b>: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
-*  <b>`values`</b>: A `float32` `Tensor`. Any shape. Values to use to build the
-    histogram.
+*  <b>`values`</b>: A `float32` or `float64` `Tensor`. Any shape. Values to use to
+    build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 *  <b>`name`</b>: A name for the operation (optional).

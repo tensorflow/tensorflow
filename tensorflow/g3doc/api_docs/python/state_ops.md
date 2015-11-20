@@ -948,7 +948,7 @@ then all its sub-scopes become reusing as well.
 
 ### `tf.constant_initializer(value=0.0)` {#constant_initializer}
 
-Returns an initializer that generates Tensors with a single value.
+Returns an initializer that generates tensors with a single value.
 
 ##### Args:
 
@@ -958,14 +958,14 @@ Returns an initializer that generates Tensors with a single value.
 
 ##### Returns:
 
-  An initializer that generates Tensors with a single value.
+  An initializer that generates tensors with a single value.
 
 
 - - -
 
 ### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None)` {#random_normal_initializer}
 
-Returns an initializer that generates Tensors with a normal distribution.
+Returns an initializer that generates tensors with a normal distribution.
 
 ##### Args:
 
@@ -980,7 +980,7 @@ Returns an initializer that generates Tensors with a normal distribution.
 
 ##### Returns:
 
-  An initializer that generates Tensors with a normal distribution.
+  An initializer that generates tensors with a normal distribution.
 
 
 - - -
@@ -989,7 +989,7 @@ Returns an initializer that generates Tensors with a normal distribution.
 
 Returns an initializer that generates a truncated normal distribution.
 
-These values are similar to values from a random_normal_initializer
+These values are similar to values from a `random_normal_initializer`
 except that values more than two standard deviations from the mean
 are discarded and re-drawn. This is the recommended initializer for
 neural network weights and filters.
@@ -1007,7 +1007,7 @@ neural network weights and filters.
 
 ##### Returns:
 
-  An initializer that generates Tensors with a truncated normal
+  An initializer that generates tensors with a truncated normal
   distribution.
 
 
@@ -1015,7 +1015,7 @@ neural network weights and filters.
 
 ### `tf.random_uniform_initializer(minval=0.0, maxval=1.0, seed=None)` {#random_uniform_initializer}
 
-Returns an initializer that generates Tensors with a uniform distribution.
+Returns an initializer that generates tensors with a uniform distribution.
 
 ##### Args:
 
@@ -1030,7 +1030,7 @@ Returns an initializer that generates Tensors with a uniform distribution.
 
 ##### Returns:
 
-  An initializer that generates Tensors with a uniform distribution.
+  An initializer that generates tensors with a uniform distribution.
 
 
 - - -

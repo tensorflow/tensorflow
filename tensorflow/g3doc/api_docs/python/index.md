@@ -190,7 +190,6 @@
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
-  * [`xrange`](../../api_docs/python/control_flow_ops.md#xrange)
 
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)

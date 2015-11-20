@@ -1,45 +1,24 @@
-"""## Input pipeline
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
-TensorFlow functions for setting up an input-prefetching pipeline.
-Please see the [reading data how-to](../../how_tos/reading_data.md)
+"""Input pipeline.
+
+Please see the [reading data how-to](../../how_tos/reading_data/index.md)
 for context.
-
-### Beginning of an input pipeline
-
-The "producer" functions add a queue to the graph and a corresponding
-QueueRunner for running the subgraph that fills that queue.
-
-@@match_filenames_once
-@@limit_epochs
-@@range_input_producer
-@@slice_input_producer
-@@string_input_producer
-
-### Batching at the end of an input pipeline
-
-These functions add a queue to the graph to assemble a batch of
-examples, with possible shuffling.  They also add a QueueRunner for
-running the subgraph that fills that queue.
-
-Use [batch](#batch) or [batch_join](#batch_join) for batching examples that have
-already been well shuffled.  Use [shuffle_batch](#shuffle_batch) or
-[shuffle_batch_join](#shuffle_batch_join) for examples that
-would benefit from additional shuffling.
-
-Use [batch](#batch) or [shuffle_batch](#shuffle_batch) if you want a
-single thread producing examples to batch, or if you have a
-single subgraph producing examples but you want to run it in N threads
-(where you increase N until it can keep the queue full).  Use
-[batch_join](#batch_join) or [shuffle_batch_join](#shuffle_batch_join)
-if you have N different subgraphs producing examples to batch and you
-want them run by N threads.
-
-@@batch
-@@batch_join
-@@shuffle_batch
-@@shuffle_batch_join
-
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -79,7 +58,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
   """Returns tensor num_epochs times and then raises an OutOfRange error.
 
   Args:
-    tensor: Any Tensor.
+    tensor: Any `Tensor`.
     num_epochs: An integer (optional).  If specified, limits the number
       of steps the output tensor may be evaluated.
     name: A name for the operations (optional).
@@ -133,8 +112,8 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
     name: A name for the operations (optional).
 
   Returns:
-    A queue with the output strings.  A QueueRunner for the Queue
-    is added to the current Graph's QUEUE_RUNNER collection.
+    A queue with the output strings.  A `QueueRunner` for the Queue
+    is added to the current `Graph`'s `QUEUE_RUNNER` collection.
   """
   with ops.op_scope([string_tensor], name, "input_producer") as name:
     return _input_producer(
@@ -159,8 +138,8 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
     name: A name for the operations (optional).
 
   Returns:
-    A Queue with the output integers.  A QueueRunner for the Queue
-    is added to the current Graph's QUEUE_RUNNER collection.
+    A Queue with the output integers.  A `QueueRunner` for the Queue
+    is added to the current `Graph`'s `QUEUE_RUNNER` collection.
   """
   with ops.op_scope([limit], name, "input_producer") as name:
     range_tensor = math_ops.range(limit)
@@ -171,26 +150,26 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
 
 def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
                          capacity=32, name=None):
-  """Produces a slice of each Tensor in tensor_list.
+  """Produces a slice of each `Tensor` in `tensor_list`.
 
-  Implemented using a Queue -- a QueueRunner for the Queue
-  is added to the current Graph's QUEUE_RUNNER collection.
+  Implemented using a Queue -- a `QueueRunner` for the Queue
+  is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
   Args:
-    tensor_list: A list of Tensors. Every Tensor in tensor_list must
-      have the same size in the first dimension.
+    tensor_list: A list of `Tensor` objects. Every `Tensor` in
+      `tensor_list` must have the same size in the first dimension.
     num_epochs: An integer (optional). If specified, `slice_input_producer`
       produces each slice `num_epochs` times before generating
-      an OutOfRange error. If not specified, `slice_input_producer` can cycle
+      an `OutOfRange` error. If not specified, `slice_input_producer` can cycle
       through the slices an unlimited number of times.
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     name: A name for the operations (optional).
 
   Returns:
-    A list of tensors, one for each element of tensor_list.  If the tensor
-    in tensor_list has shape [N, a, b, .., z], then the corresponding output
-    tensor will have shape [a, b, ..., z].
+    A list of tensors, one for each element of `tensor_list`.  If the tensor
+    in `tensor_list` has shape `[N, a, b, .., z]`, then the corresponding output
+    tensor will have shape `[a, b, ..., z]`.
   """
   with ops.op_scope(tensor_list, name, "input_producer"):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)

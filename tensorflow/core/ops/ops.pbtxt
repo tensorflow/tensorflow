@@ -2940,23 +2940,23 @@ op {
   name: "InTopK"
   input_arg {
     name: "predictions"
-    description: "A batch_size x classes tensor"
+    description: "A `batch_size` x `classes` tensor."
     type: DT_FLOAT
   }
   input_arg {
     name: "targets"
-    description: "A batch_size vector of class ids"
+    description: "A `batch_size` vector of class ids."
     type_attr: "T"
   }
   output_arg {
     name: "precision"
-    description: "Computed Precision at k as a bool Tensor"
+    description: "Computed Precision at `k` as a `bool Tensor`."
     type: DT_BOOL
   }
   attr {
     name: "k"
     type: "int"
-    description: "Number of top elements to look at for computing precision"
+    description: "Number of top elements to look at for computing precision."
   }
   attr {
     name: "T"
@@ -2971,8 +2971,8 @@ op {
       }
     }
   }
-  summary: "Says whether the targets are in the top K predictions."
-  description: "This outputs a batch_size bool array, an entry out[i] is true if the\nprediction for the target class is among the top k predictions among\nall predictions for example i. Note that the behavior of InTopK differs\nfrom the TopK op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-k boundary, all of those\nclasses are considered to be in the top k.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example i,\n  \\\\(targets_i\\\\) be the target class for example i,\n  \\\\(out_i\\\\) be the output for example i,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
 }
 op {
   name: "InitializeTable"
@@ -7697,23 +7697,23 @@ op {
   name: "TopK"
   input_arg {
     name: "input"
-    description: "A batch_size x classes tensor"
+    description: "A `batch_size` x `classes` tensor."
     type_attr: "T"
   }
   output_arg {
     name: "values"
-    description: "A batch_size x k tensor with the k largest elements for each row,\nsorted in descending order"
+    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row, sorted in descending order."
     type_attr: "T"
   }
   output_arg {
     name: "indices"
-    description: "A batch_size x k tensor with the index of each value within each row"
+    description: "A `batch_size` x `k` tensor with the index of each value within\neach row."
     type: DT_INT32
   }
   attr {
     name: "k"
     type: "int"
-    description: "Number of top elements to look for within each row"
+    description: "Number of top elements to look for within each row."
     has_minimum: true
     minimum: 1
   }
@@ -7732,7 +7732,7 @@ op {
       }
     }
   }
-  summary: "Returns the values and indices of the k largest elements for each row."
+  summary: "Returns the values and indices of the `k` largest elements for each row."
   description: "\\\\(values_{i, j}\\\\) represents the j-th largest element in \\\\(input_i\\\\).\n\n\\\\(indices_{i, j}\\\\) gives the column index of the corresponding element,\nsuch that \\\\(input_{i, indices_{i, j}} = values_{i, j}\\\\). If two\nelements are equal, the lower-index element appears first."
 }
 op {

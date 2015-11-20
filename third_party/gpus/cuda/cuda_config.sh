@@ -1,4 +1,19 @@
 #!/bin/bash
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 
 # A simple script to configure the Cuda tree needed for the TensorFlow GPU
 # build. We need both Cuda toolkit 7.0 and Cudnn 6.5.
@@ -20,7 +35,7 @@ EOF
 
 CHECK_ONLY=0
 # Parse the arguments. Add more arguments as the "case" line when needed.
-while [[ $# > 0 ]]; do
+while [[ $# -gt 0 ]]; do
   argument="$1"
   shift
   case $argument in
@@ -84,8 +99,8 @@ function CheckAndLinkToSrcTree {
 
   # Link the output file to the source tree, avoiding self links if they are
   # the same. This could happen if invoked from the source tree by accident.
-  if [ ! `readlink -f $PWD` == `readlink -f $OUTPUTDIR/third_party/gpus/cuda` ]; then
-    mkdir -p `dirname $OUTPUTDIR/third_party/gpus/cuda/$FILE`
+  if [ ! $(readlink -f $PWD) == $(readlink -f $OUTPUTDIR/third_party/gpus/cuda) ]; then
+    mkdir -p $(dirname $OUTPUTDIR/third_party/gpus/cuda/$FILE)
     ln -sf $PWD/$FILE $OUTPUTDIR/third_party/gpus/cuda/$FILE
   fi
 }
@@ -135,9 +150,9 @@ function LinkOneDir {
   SRC_PREFIX=$1
   DST_PREFIX=$2
   SRC_DIR=$3
-  DST_DIR=`echo $SRC_DIR | sed "s,^$SRC_PREFIX,$DST_PREFIX,"`
+  DST_DIR=$(echo $SRC_DIR | sed "s,^$SRC_PREFIX,$DST_PREFIX,")
   mkdir -p $DST_DIR
-  FILE_LIST=`find -L $SRC_DIR -maxdepth 1 -type f`
+  FILE_LIST=$(find -L $SRC_DIR -maxdepth 1 -type f)
   if test "$FILE_LIST" != ""; then
     ln -sf $FILE_LIST $DST_DIR/ || exit -1
   fi

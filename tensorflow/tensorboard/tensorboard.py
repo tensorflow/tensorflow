@@ -1,3 +1,18 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Serve TensorFlow summary data to a web frontend.
 
 This is a simple web server to proxy data from the event_loader to the web, and
@@ -23,25 +38,27 @@ from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard import tensorboard_handler
 
-flags.DEFINE_string('logdir', None, """logdir specifies the directory where
-TensorBoard will look to find TensorFlow event files that it can display.
-TensorBoard will recursively walk the directory structure rooted at logdir,
-looking for .*tfevents.* files.
+flags.DEFINE_string('logdir', None, """
+logdir specifies where TensorBoard will look to find TensorFlow event files
+that it can display. In the simplest case, logdir is a directory containing
+tfevents files. TensorBoard also supports comparing multiple TensorFlow
+executions: to do this, you can use directory whose subdirectories contain
+tfevents files, as in the following example:
 
-You may also pass a comma seperated list of log directories, and TensorBoard
-will watch each directory. You can also assign names to individual log
-directories by putting a colon between the name and the path, as in
+foo/bar/logdir/
+foo/bar/logdir/mnist_1/events.out.tfevents.1444088766
+foo/bar/logdir/mnist_2/events.out.tfevents.1444090064
+
+You may also pass a comma seperated list of log directories, and you can
+assign names to individual log directories by putting a colon between the name
+and the path, as in
 
 tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 """)
-
 flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
                      'This increases log verbosity to DEBUG.')
-
-
 flags.DEFINE_string('host', '127.0.0.1', 'What host to listen to. Defaults to '
                     'serving on localhost, set to 0.0.0.0 for remote access.')
-
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
 FLAGS = flags.FLAGS
