@@ -3,7 +3,7 @@
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
 Why TensorFlow?
-* TensorFlow provides a good backbone for building different shapes of machine learning applicaitons.
+* TensorFlow provides a good backbone for building different shapes of machine learning applications.
 * It will continue evolve both in distributed direction and as a general pipelininig machinery.
 
 Why Scikit Flow?
