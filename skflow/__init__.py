@@ -28,7 +28,7 @@ class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.
 
     Parameters:
-        X: feature matrix of shape [n_samples, n_features].
+        X: feature Nd numpy matrix of shape [n_samples, n_features, ...].
         y: target vector, either floats for regression or class id for
             classification.
         n_classes: number of classes, 0 and 1 are considered regression.
@@ -36,10 +36,13 @@ class DataFeeder(object):
     """
 
     def __init__(self, X, y, n_classes, batch_size):
-        self.X = check_array(X, dtype=np.float32)
+        self.X = check_array(X, dtype=np.float32, ensure_2d=False,
+                             allow_nd=True)
         self.y = check_array(y, ensure_2d=False, dtype=None)
         self.n_classes = n_classes
         self.batch_size = batch_size
+        self._input_shape = [batch_size] + list(X.shape[1:])
+        self._output_shape = [batch_size, n_classes] if n_classes > 1 else [batch_size]
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -53,11 +56,8 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros([self.batch_size, self.X.shape[1]])
-            if self.n_classes > 1:
-                out = np.zeros([self.batch_size, self.n_classes])
-            else:
-                out = np.zeros([self.batch_size])
+            inp = np.zeros(self._input_shape)
+            out = np.zeros(self._output_shape)
             for i in xrange(self.batch_size):
                 sample = random.randint(0, self.X.shape[0] - 1)
                 inp[i, :] = self.X[sample, :]
@@ -101,16 +101,27 @@ class TensorFlowEstimator(BaseEstimator):
         with tf.Graph().as_default() as graph:
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(0, name="global_step", trainable=False)
-            self._inp = tf.placeholder(tf.float32, [None, X.shape[1]],
+
+            # Setting up input and output placeholders.
+            input_shape = [None] + list(X.shape[1:])
+            self._inp = tf.placeholder(tf.float32, input_shape,
                                        name="input")
             self._out = tf.placeholder(tf.float32, 
                 [None] if self.n_classes < 2 else [None, self.n_classes],
                 name="output")
+
+            # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(self._inp, self._out)
+
+            # Create data feeder, to sample inputs from dataset.
             self._data_feeder = DataFeeder(X, y, self.n_classes, self.batch_size)
+
+            # Create trainer and augment graph with gradients and optimizer.
             self._trainer = TensorFlowTrainer(self._model_loss,
                 self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master)
+
+            # Initialize and train model.
             self._trainer.initialize(self._session)
             self._trainer.train(self._session,
                                 self._data_feeder.get_feed_dict_fn(self._inp,
