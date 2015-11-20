@@ -22,10 +22,14 @@ Example usage:
 Simple linear classification.
 
 ```Python
+import skflow
+from sklearn import datasets, metrics
+
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+print "Accuracy: ", score
 ```
 
 ### Deep Neural Network
@@ -33,24 +37,35 @@ score = accuracy_score(classifier.predict(iris.data), iris.target)
 Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 
 ```Python
+import skflow
+from sklearn import datasets, metrics
+
+iris = datasets.load_iris()
 classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = accuracy_score(classifier.predict(iris.data), iris.target)
+print "Accuracy: ", score
 ```
 
 ### Custom model
 
-This example how to pass custom model to the TensorFlowEstimator
+This is example of how to pass custom model to the TensorFlowEstimator
 
 ```Python
+import skflow
+from sklearn import datasets, metrics
+
+iris = datasets.load_iris()
+
 def my_model(X, y):
     """This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability."""
-    layers = skflow.ops.dnn(X, [10, 20, 10], keep_proba=0.5)
-    return skflow.logistic_classifier(layers, y)
+    layers = skflow.ops.dnn(X, [10, 20, 10], keep_prob=0.5)
+    return skflow.ops.logistic_classifier(layers, y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = accuracy_score(classifier.predict(iris.data), iris.target)
+print "Accuracy: ", score
 ```
 
 ## Coming soon
