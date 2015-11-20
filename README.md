@@ -2,6 +2,16 @@
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
+Why TensorFlow?
+* TensorFlow provides a good backbone for building different shapes of machine learning applicaitons.
+* It will continue evolve both in distributed direction and as a general pipelininig machinery.
+
+Why Scikit Flow?
+* To smooth the transition from Scikit Learn world of one-liner machine learning into 
+more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you getting comfortable.
+* Provide a set of reference models, that would be easy to integrate with existing code.
+
+
 ## Installation
 
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
@@ -29,7 +39,7 @@ iris = datasets.load_iris()
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
-print "Accuracy: ", score
+print("Accuracy: ", score)
 ```
 
 ### Deep Neural Network
@@ -44,7 +54,7 @@ iris = datasets.load_iris()
 classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = accuracy_score(classifier.predict(iris.data), iris.target)
-print "Accuracy: ", score
+print("Accuracy: ", score)
 ```
 
 ### Custom model
@@ -65,7 +75,7 @@ def my_model(X, y):
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = accuracy_score(classifier.predict(iris.data), iris.target)
-print "Accuracy: ", score
+print("Accuracy: ", score)
 ```
 
 ## Coming soon
