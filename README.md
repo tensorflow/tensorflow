@@ -25,7 +25,8 @@ First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
 ## Usage
 
-Example usage:
+Below are few simple examples of API. 
+For more examples, please see [examples](https://github.com/google/skflow/examples/).
 
 ### Linear Classifier
 
