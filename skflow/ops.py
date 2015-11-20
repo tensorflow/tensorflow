@@ -94,11 +94,11 @@ def softmax_classifier(tensor_in, labels, weights, biases, name=None):
         return predictions, loss
 
 
-def dnn(X, hidden_units, activation=tf.nn.relu, keep_prob=None):
+def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     """Creates fully connected deep neural network subgraph.
 
     Args:
-        X: tensor or placeholder for input features.
+        tenson_in: tensor or placeholder for input features.
         hidden_units: list of counts of hidden units in each layer.
         activation: activation function between layers.
         keep_proba: if not None, will add a dropout layer with given
@@ -110,10 +110,44 @@ def dnn(X, hidden_units, activation=tf.nn.relu, keep_prob=None):
     with tf.variable_scope('dnn'):
         for i, n_units in enumerate(hidden_units):
             with tf.variable_scope('layer%d' % i):
-                X = linear.linear(X, n_units, True)
-            X = activation(X)
+                tensor_in = linear.linear(tensor_in, n_units, True)
+            tensor_in = activation(tensor_in)
             if keep_prob:
-                X = tf.nn.dropout(X, keep_prob)
-        return X
+                tensor_in = tf.nn.dropout(tensor_in, keep_prob)
+        return tensor_in
 
+
+def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
+           bias=True):
+    """Creates 2D convolutional subgraph with bank of filters.
+
+    Uses tf.nn.conv2d under the hood.
+    Creates a filter bank:
+      [filter_shape[0], filter_shape[1], tensor_in[3], n_filters]
+    and applies it to the input tensor.
+
+    Args:
+        tensor_in: input Tensor, 4D shape: 
+                   [batch, in_height, in_width, in_depth].
+        n_filters: number of filters in the bank.
+        filter_shape: Shape of filters, a list of ints, 1-D of length 2.
+        strides: A list of ints, 1-D of length 4. The stride of the sliding
+                 window for each dimension of input.
+        padding: A string: 'SAME' or 'VALID'. The type of padding algorthim to
+                 use.
+        bias: Boolean, if to add bias.
+    Returns:
+        A Tensor with resuling convolution.
+    """
+    with tf.variable_scope('convolution'):
+        if strides is None: strides = [1, 1, 1, 1]
+        input_shape = tensor_in.get_shape()
+        filter_shape = list(filter_shape) + [input_shape[3], n_filters]
+        filters = tf.get_variable('filters', filter_shape, tf.float32)
+        output = tf.nn.conv2d(tensor_in, filters, strides, padding)
+        if bias:
+            bias_var = tf.get_variable('bias', [1, 1, 1, n_filters],
+                                       tf.float32)
+            output = output + bias_var
+        return output
 

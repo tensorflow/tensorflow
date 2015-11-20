@@ -47,6 +47,22 @@ class OpsTest(tf.test.TestCase):
         self.assertEqual(emb1.shape, emb2.shape)
         self.assertAllClose(np.transpose(emb2, axes=[1, 0, 2]), emb1)
 
+    def test_conv2d(self):
+        tf.set_random_seed(42)
+        batch_size = 32
+        input_shape = (10, 10)
+        n_filters = 7
+        filter_shape = (5, 5)
+        vals = np.random.randn(batch_size, input_shape[0], input_shape[1], 1)
+        with self.test_session() as sess:
+            tensor_in = tf.placeholder(tf.float32, [batch_size, input_shape[0],
+                                                    input_shape[1], 1])
+            res = ops.conv2d(tensor_in, n_filters, filter_shape)
+            sess.run(tf.initialize_all_variables())
+            conv = sess.run(res, feed_dict={tensor_in.name: vals})
+        self.assertEqual(conv.shape, (batch_size, input_shape[0],
+                                      input_shape[1], n_filters))
+
 
 if __name__ == '__main__':
     tf.test.main()
