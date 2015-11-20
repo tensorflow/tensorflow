@@ -40,7 +40,7 @@ iris = datasets.load_iris()
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
-print("Accuracy: ", score)
+print("Accuracy: %f" % score)
 ```
 
 ### Deep Neural Network
@@ -54,8 +54,8 @@ from sklearn import datasets, metrics
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = accuracy_score(classifier.predict(iris.data), iris.target)
-print("Accuracy: ", score)
+score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+print("Accuracy: %f" % score)
 ```
 
 ### Custom model
@@ -75,8 +75,8 @@ def my_model(X, y):
 
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = accuracy_score(classifier.predict(iris.data), iris.target)
-print("Accuracy: ", score)
+score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+print("Accuracy: %f" % score)
 ```
 
 ## Coming soon
