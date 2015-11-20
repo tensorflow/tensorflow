@@ -110,17 +110,17 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
   CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
-  CheckAndLinkToSrcTree CudaError lib64/libcublas.so.7.0
-  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.6.5
-  CheckAndLinkToSrcTree CudaError lib64/libcudart.so.7.0
+  CheckAndLinkToSrcTree CudaError lib64/libcublas.so.7.5
+  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.7.0
+  CheckAndLinkToSrcTree CudaError lib64/libcudart.so.7.5
   exit 0
 fi
 
 # Actually configure the source tree for TensorFlow's canonical view of Cuda
 # libraries.
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0"
+if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.5; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.5"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -137,9 +137,9 @@ else
 fi
 
 # Locate libcudnn.so.6.5
-if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so.6.5; then
+if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so.7.0; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so.6.5; then
+elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so.7.0; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/lib64
 else
   CudnnError "cannot find libcudnn.so.6.5 under: ${CUDNN_INSTALL_PATH}"
@@ -181,4 +181,4 @@ LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || 
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/libcudnn.so.6.5 $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so.6.5 || exit -1
+ln -sf $CUDNN_LIB_PATH/libcudnn.so.7.0 $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so.7.0 || exit -1

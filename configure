@@ -27,7 +27,7 @@ while true; do
       CUDA_TOOLKIT_PATH=$default_cuda_path
     fi
   fi
-  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.7.0" ]; then
+  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.7.5" ]; then
     break
   fi
   echo "Invalid path to CUDA 7.0 toolkit. ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0 cannot be found"
@@ -52,7 +52,7 @@ while true; do
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=$(bash -c "readlink -f $CUDNN_INSTALL_PATH")
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.6.5" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.7.0" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.7.0" ]; then
     break
   fi
   echo "Invalid path to CUDNN 6.5 V2 toolkit. Neither of the following two files can be found:"
