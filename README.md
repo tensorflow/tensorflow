@@ -4,12 +4,12 @@ This is a simplified interface for TensorFlow, to get people started on predicti
 
 Why TensorFlow?
 * TensorFlow provides a good backbone for building different shapes of machine learning applications.
-* It will continue evolve both in distributed direction and as a general pipelininig machinery.
+* It will continue to evolve both in the distributed direction and as general pipelinining machinery.
 
 Why Scikit Flow?
-* To smooth the transition from Scikit Learn world of one-liner machine learning into 
-more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you getting comfortable.
-* Provide a set of reference models, that would be easy to integrate with existing code.
+* To smooth the transition from the Scikit Learn world of one-liner machine learning into the
+more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable.
+* To provide a set of reference models that would be easy to integrate with existing code.
 
 
 ## Installation
@@ -25,7 +25,7 @@ First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
 ## Usage
 
-Below are few simple examples of API. 
+Below are few simple examples of the API. 
 For more examples, please see [examples](https://github.com/google/skflow/tree/master/examples).
 
 ### Linear Classifier
@@ -60,7 +60,7 @@ print("Accuracy: %f" % score)
 
 ### Custom model
 
-This is example of how to pass custom model to the TensorFlowEstimator
+Example of how to pass a custom model to the TensorFlowEstimator:
 
 ```Python
 import skflow
