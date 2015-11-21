@@ -53,10 +53,10 @@ cc_library(
 cc_library(
     name = "cudart",
     srcs = [
-        "lib64/libcudart.so.7.0",
+        "lib64/libcudart.so.7.5",
     ],
     data = [
-        "lib64/libcudart.so.7.0",
+        "lib64/libcudart.so.7.5",
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -66,10 +66,10 @@ cc_library(
 cc_library(
     name = "cublas",
     srcs = [
-        "lib64/libcublas.so.7.0",
+        "lib64/libcublas.so.7.5",
     ],
     data = [
-        "lib64/libcublas.so.7.0",
+        "lib64/libcublas.so.7.5",
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -79,10 +79,10 @@ cc_library(
 cc_library(
     name = "cudnn",
     srcs = [
-        "lib64/libcudnn.so.6.5",
+        "lib64/libcudnn.so.7.0",
     ],
     data = [
-        "lib64/libcudnn.so.6.5",
+        "lib64/libcudnn.so.7.0",
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -116,9 +116,9 @@ genrule(
         "include/cublas.h",
         "include/cudnn.h",
         "lib64/libcudart_static.a",
-        "lib64/libcublas.so.7.0",
-        "lib64/libcudnn.so.6.5",
-        "lib64/libcudart.so.7.0",
+        "lib64/libcublas.so.7.5",
+        "lib64/libcudnn.so.7.0",
+        "lib64/libcudart.so.7.5",
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
@@ -132,9 +132,9 @@ genrule(
           "touch $(@D)/include/cublas.h",
           "touch $(@D)/include/cudnn.h",
           "touch $(@D)/lib64/libcudart_static.a",
-          "touch $(@D)/lib64/libcublas.so.7.0",
-          "touch $(@D)/lib64/libcudnn.so.6.5",
-          "touch $(@D)/lib64/libcudart.so.7.0"
+          "touch $(@D)/lib64/libcublas.so.7.5",
+          "touch $(@D)/lib64/libcudnn.so.7.0",
+          "touch $(@D)/lib64/libcudart.so.7.5"
             ]),
     ),
     local = 1,

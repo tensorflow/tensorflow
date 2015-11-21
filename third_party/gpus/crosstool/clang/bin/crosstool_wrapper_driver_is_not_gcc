@@ -234,7 +234,8 @@ def InvokeNvcc(argv, log=False):
 
   # "configure" uses the specific format to substitute the following string.
   # If you change it, make sure you modify "configure" as well.
-  supported_cuda_compute_capabilities = [ "3.5", "5.2" ]
+  # Unofficial setting. DO NOT SUBMIT!!!
+  supported_cuda_compute_capabilities = ["3.0",]
   nvccopts = ''
   for capability in supported_cuda_compute_capabilities:
     capability = capability.replace('.', '')
