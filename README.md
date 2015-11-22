@@ -28,6 +28,14 @@ First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 Below are few simple examples of the API. 
 For more examples, please see [examples](https://github.com/google/skflow/tree/master/examples).
 
+### General tips
+
+* It's useful to re-scale dataset before passing to estimator to 0 mean and unit standard deviation. 
+Stochastic Gradient Descent doesn't always do the right thing when variable are very differen scale.
+
+* Categorical variables needed to be delt before passing input to the estimator.
+I'll write a tutorial in coming days how to handle categorical variables Deep Learning-style.
+
 ### Linear Classifier
 
 Simple linear classification.
@@ -41,6 +49,22 @@ classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
 print("Accuracy: %f" % score)
+```
+
+### Linear Regressor
+
+Simple linear regression.
+
+```Python
+import skflow
+from sklearn import datasets, metrics, preprocessing
+
+boston = dataset.load_boston()
+X = preprocessing.StandardScale().fit_tranform(boston.data)
+regressor = skflow.TensorFlowLinearRegressor()
+regressor.fit(X, boston.target)
+score = metrics.mean_squared_error(regressor.predict(X), boston.target)
+print ("MSE: %f" % score)
 ```
 
 ### Deep Neural Network

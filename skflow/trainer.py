@@ -14,6 +14,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import numpy as np
+
 import tensorflow as tf
 
 
@@ -73,7 +75,7 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
-    def train(self, sess, feed_dict_fn, steps, print_steps=50):
+    def train(self, sess, feed_dict_fn, steps, print_steps=0):
         """Trains a model for given number of steps, given feed_dict function.
         
         Args:
@@ -85,14 +87,18 @@ class TensorFlowTrainer(object):
         Returns:
             List of losses for each step.
         """
-        losses = []
+        losses, print_loss_buffer = [], []
+        print_steps = print_steps if print_steps else (steps / 10)
         for step in xrange(steps):
           feed_dict = feed_dict_fn()
           global_step, loss, _ = sess.run(
               [self.global_step, self.loss, self.trainer],
               feed_dict=feed_dict)
           losses.append(loss)
+          print_loss_buffer.append(loss)
           if step % print_steps == 0:
-            print "Step #%d, loss: %.5f" % (global_step, loss)
+            avg_loss = np.mean(print_loss_buffer)
+            print_loss_buffer = []
+            print "Step #%d, avg. loss: %.5f" % (global_step, avg_loss)
         return losses
 
