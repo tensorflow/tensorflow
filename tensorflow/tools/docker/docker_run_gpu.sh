@@ -34,4 +34,4 @@ if [[ "${DEVICES}" = "" ]]; then
   exit 1
 fi
 
-docker run -it $CUDA_SO $DEVICES b.gcr.io/tensorflow/tensorflow-full-gpu "$@"
+docker run -it -p 8888:8888 $CUDA_SO $DEVICES b.gcr.io/tensorflow/tensorflow-full-gpu "$@"
