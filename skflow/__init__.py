@@ -21,52 +21,8 @@ from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from sklearn.utils import check_array
 
 from skflow.trainer import TensorFlowTrainer
+from skflow.data_feeder import DataFeeder, StreamingDataFeeder
 from skflow import models
-
-
-class DataFeeder(object):
-    """Data feeder is an example class to sample data for TF trainer.
-
-    Parameters:
-        X: feature Nd numpy matrix of shape [n_samples, n_features, ...].
-        y: target vector, either floats for regression or class id for
-            classification.
-        n_classes: number of classes, 0 and 1 are considered regression.
-        batch_size: mini batch size to accumulate.
-    """
-
-    def __init__(self, X, y, n_classes, batch_size):
-        self.X = check_array(X, dtype=np.float32, ensure_2d=False,
-                             allow_nd=True)
-        self.y = check_array(y, ensure_2d=False, dtype=None)
-        self.n_classes = n_classes
-        self.batch_size = batch_size
-        self._input_shape = [batch_size] + list(X.shape[1:])
-        self._output_shape = [batch_size, n_classes] if n_classes > 1 else [batch_size]
-
-    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
-        """Returns a function, that will sample data and provide it to given
-        placeholders.
-
-        Args:
-            input_placeholder: tf.Placeholder for input features mini batch.
-            output_placeholder: tf.Placeholder for output targets.
-        Returns:
-            A function that when called samples a random subset of batch size
-            from X and y.
-        """
-        def _feed_dict_fn():
-            inp = np.zeros(self._input_shape)
-            out = np.zeros(self._output_shape)
-            for i in xrange(self.batch_size):
-                sample = random.randint(0, self.X.shape[0] - 1)
-                inp[i, :] = self.X[sample, :]
-                if self.n_classes > 1:
-                    out[i, self.y[sample]] = 1.0
-                else:
-                    out[i] = self.y[sample]
-            return {input_placeholder.name: inp, output_placeholder.name: out}
-        return _feed_dict_fn
 
 
 class TensorFlowEstimator(BaseEstimator):
