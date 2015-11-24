@@ -94,7 +94,11 @@ __global__ void SwapDimension0And2InTensor3(int nthreads, const T* input,
 
     int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
 
-    output[output_index] = __ldg(input + input_index);
+    #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 320)
+      output[output_index] = __ldg(input + input_index);
+    #else
+      output[output_index] = input[input_index];
+    #endif  
   }
 }
 
@@ -118,8 +122,13 @@ __global__ void SwapDimension1And2InTensor3(int nthreads, const T* input,
     input_tensor_index[2] = output_tensor_index[1];
 
     int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
+    
+    #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 320)
+      output[output_index] = __ldg(input + input_index);
+    #else
+      output[output_index] = input[input_index];
+    #endif  
 
-    output[output_index] = __ldg(input + input_index);
   }
 }
 
