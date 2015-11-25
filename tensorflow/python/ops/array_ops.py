@@ -65,10 +65,10 @@ import sys
 import tensorflow.python.platform
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -460,9 +460,9 @@ def transpose(a, perm=None, name="transpose"):
                        [3 6]]
 
   # Equivalently
-  tf.transpose(x perm=[0, 1]) ==> [[1 4]
-                                   [2 5]
-                                   [3 6]]
+  tf.transpose(x, perm=[1, 0]) ==> [[1 4]
+                                    [2 5]
+                                    [3 6]]
 
   # 'perm' is more useful for n-dimensional tensors, for n > 2
   # 'x' is   [[[1  2  3]
@@ -502,7 +502,7 @@ def transpose(a, perm=None, name="transpose"):
     return ret
 
 
-def zeros(shape, dtype=types.float32, name=None):
+def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
@@ -528,7 +528,7 @@ def zeros(shape, dtype=types.float32, name=None):
     else:
       shape = ops.convert_to_tensor(shape, name="shape")
       output = fill(shape, constant(0, dtype=dtype), name=name)
-  assert output.dtype.base_dtype == types.as_dtype(dtype).base_dtype
+  assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
 
 
@@ -594,12 +594,12 @@ def ones_like(tensor, dtype=None, name=None):
     return ones(ones_shape, dtype=dtype, name=name)
 
 
-def zeros_initializer(shape, dtype=types.float32):
+def zeros_initializer(shape, dtype=dtypes.float32):
   """An adaptor for zeros() to match the Initializer spec."""
   return zeros(shape, dtype)
 
 
-def ones(shape, dtype=types.float32, name=None):
+def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to 1.
 
   This operation returns a tensor of type `dtype` with shape `shape` and all
@@ -625,7 +625,7 @@ def ones(shape, dtype=types.float32, name=None):
     else:
       shape = ops.convert_to_tensor(shape, name="shape")
       output = fill(shape, constant(1, dtype=dtype), name=name)
-  assert output.dtype.base_dtype == types.as_dtype(dtype).base_dtype
+  assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
 
 

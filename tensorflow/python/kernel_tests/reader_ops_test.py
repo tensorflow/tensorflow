@@ -24,6 +24,8 @@ import tensorflow.python.platform
 
 import tensorflow as tf
 
+from tensorflow.python.util import compat
+
 
 class IdentityReaderTest(tf.test.TestCase):
 
@@ -49,12 +51,12 @@ class IdentityReaderTest(tf.test.TestCase):
       queue.close().run()
       self.assertAllEqual(3, queued_length.eval())
 
-      self._ExpectRead(sess, key, value, "A")
+      self._ExpectRead(sess, key, value, b"A")
       self.assertAllEqual(1, produced.eval())
 
-      self._ExpectRead(sess, key, value, "B")
+      self._ExpectRead(sess, key, value, b"B")
 
-      self._ExpectRead(sess, key, value, "C")
+      self._ExpectRead(sess, key, value, b"C")
       self.assertAllEqual(3, produced.eval())
       self.assertAllEqual(0, queued_length.eval())
 
@@ -74,14 +76,14 @@ class IdentityReaderTest(tf.test.TestCase):
       key, value = reader.read(queue)
 
       enqueue.run()
-      self._ExpectRead(sess, key, value, "DD")
-      self._ExpectRead(sess, key, value, "EE")
+      self._ExpectRead(sess, key, value, b"DD")
+      self._ExpectRead(sess, key, value, b"EE")
       enqueue.run()
-      self._ExpectRead(sess, key, value, "DD")
-      self._ExpectRead(sess, key, value, "EE")
+      self._ExpectRead(sess, key, value, b"DD")
+      self._ExpectRead(sess, key, value, b"EE")
       enqueue.run()
-      self._ExpectRead(sess, key, value, "DD")
-      self._ExpectRead(sess, key, value, "EE")
+      self._ExpectRead(sess, key, value, b"DD")
+      self._ExpectRead(sess, key, value, b"EE")
       queue.close().run()
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
@@ -95,26 +97,26 @@ class IdentityReaderTest(tf.test.TestCase):
       queue.enqueue_many([["X", "Y", "Z"]]).run()
       key, value = reader.read(queue)
 
-      self._ExpectRead(sess, key, value, "X")
+      self._ExpectRead(sess, key, value, b"X")
       self.assertAllEqual(1, produced.eval())
       state = reader.serialize_state().eval()
 
-      self._ExpectRead(sess, key, value, "Y")
-      self._ExpectRead(sess, key, value, "Z")
+      self._ExpectRead(sess, key, value, b"Y")
+      self._ExpectRead(sess, key, value, b"Z")
       self.assertAllEqual(3, produced.eval())
 
       queue.enqueue_many([["Y", "Z"]]).run()
       queue.close().run()
       reader.restore_state(state).run()
       self.assertAllEqual(1, produced.eval())
-      self._ExpectRead(sess, key, value, "Y")
-      self._ExpectRead(sess, key, value, "Z")
+      self._ExpectRead(sess, key, value, b"Y")
+      self._ExpectRead(sess, key, value, b"Z")
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         sess.run([key, value])
       self.assertAllEqual(3, produced.eval())
 
-      self.assertEqual(str, type(state))
+      self.assertEqual(bytes, type(state))
 
       with self.assertRaises(ValueError):
         reader.restore_state([])
@@ -132,15 +134,15 @@ class IdentityReaderTest(tf.test.TestCase):
 
       with self.assertRaisesOpError(
           "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state(state + "ExtraJunk").run()
+        reader.restore_state(state + b"ExtraJunk").run()
 
       with self.assertRaisesOpError(
           "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state("PREFIX" + state).run()
+        reader.restore_state(b"PREFIX" + state).run()
 
       with self.assertRaisesOpError(
           "Could not parse state for IdentityReader 'test_reader'"):
-        reader.restore_state("BOGUS" + state[5:]).run()
+        reader.restore_state(b"BOGUS" + state[5:]).run()
 
   def testReset(self):
     with self.test_session() as sess:
@@ -152,11 +154,11 @@ class IdentityReaderTest(tf.test.TestCase):
       key, value = reader.read(queue)
 
       queue.enqueue_many([["X", "Y", "Z"]]).run()
-      self._ExpectRead(sess, key, value, "X")
+      self._ExpectRead(sess, key, value, b"X")
       self.assertLess(0, queued_length.eval())
       self.assertAllEqual(1, produced.eval())
 
-      self._ExpectRead(sess, key, value, "Y")
+      self._ExpectRead(sess, key, value, b"Y")
       self.assertLess(0, work_completed.eval())
       self.assertAllEqual(2, produced.eval())
 
@@ -164,10 +166,10 @@ class IdentityReaderTest(tf.test.TestCase):
       self.assertAllEqual(0, work_completed.eval())
       self.assertAllEqual(0, produced.eval())
       self.assertAllEqual(1, queued_length.eval())
-      self._ExpectRead(sess, key, value, "Z")
+      self._ExpectRead(sess, key, value, b"Z")
 
       queue.enqueue_many([["K", "L"]]).run()
-      self._ExpectRead(sess, key, value, "K")
+      self._ExpectRead(sess, key, value, b"K")
 
 
 class WholeFileReaderTest(tf.test.TestCase):
@@ -176,9 +178,9 @@ class WholeFileReaderTest(tf.test.TestCase):
     super(WholeFileReaderTest, self).setUp()
     self._filenames = [os.path.join(self.get_temp_dir(), "whole_file.%d.txt" % i)
                        for i in range(3)]
-    self._content = ["One\na\nb\n", "Two\nC\nD", "Three x, y, z"]
+    self._content = [b"One\na\nb\n", b"Two\nC\nD", b"Three x, y, z"]
     for fn, c in zip(self._filenames, self._content):
-      open(fn, "w").write(c)
+      open(fn, "wb").write(c)
 
   def tearDown(self):
     super(WholeFileReaderTest, self).tearDown()
@@ -187,7 +189,7 @@ class WholeFileReaderTest(tf.test.TestCase):
 
   def _ExpectRead(self, sess, key, value, index):
     k, v = sess.run([key, value])
-    self.assertAllEqual(self._filenames[index], k)
+    self.assertAllEqual(compat.as_bytes(self._filenames[index]), k)
     self.assertAllEqual(self._content[index], v)
 
   def testOneEpoch(self):
@@ -233,20 +235,20 @@ class TextLineReaderTest(tf.test.TestCase):
     self._num_lines = 5
 
   def _LineText(self, f, l):
-    return "%d: %d" % (f, l)
+    return compat.as_bytes("%d: %d" % (f, l))
 
   def _CreateFiles(self):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "w")
+      f = open(fn, "wb")
       for j in range(self._num_lines):
         f.write(self._LineText(i, j))
         # Always include a newline after the record unless it is
         # at the end of the file, in which case we include it sometimes.
         if j + 1 != self._num_lines or i == 0:
-          f.write("\n")
+          f.write(b"\n")
     return filenames
 
   def testOneEpoch(self):
@@ -261,7 +263,7 @@ class TextLineReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_lines):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 1), k)
+          self.assertAllEqual("%s:%d" % (files[i], j + 1), compat.as_text(k))
           self.assertAllEqual(self._LineText(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -280,7 +282,7 @@ class TextLineReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_lines - 1):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 2), k)
+          self.assertAllEqual("%s:%d" % (files[i], j + 2), compat.as_text(k))
           self.assertAllEqual(self._LineText(i, j + 1), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -299,18 +301,18 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
     self._footer_bytes = 2
 
   def _Record(self, f, r):
-    return str(f * 2 + r) * self._record_bytes
+    return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
 
   def _CreateFiles(self):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "w")
-      f.write("H" * self._header_bytes)
+      f = open(fn, "wb")
+      f.write(b"H" * self._header_bytes)
       for j in range(self._num_records):
         f.write(self._Record(i, j))
-      f.write("F" * self._footer_bytes)
+      f.write(b"F" * self._footer_bytes)
     return filenames
 
   def testOneEpoch(self):
@@ -329,7 +331,7 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_records):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j), k)
+          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
           self.assertAllEqual(self._Record(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -345,7 +347,7 @@ class TFRecordReaderTest(tf.test.TestCase):
     self._num_records = 7
 
   def _Record(self, f, r):
-    return "Record %d of file %d" % (r, f)
+    return compat.as_bytes("Record %d of file %d" % (r, f))
 
   def _CreateFiles(self):
     filenames = []
@@ -369,7 +371,7 @@ class TFRecordReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_records):
           k, v = sess.run([key, value])
-          self.assertTrue(k.startswith("%s:" % files[i]))
+          self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
           self.assertAllEqual(self._Record(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "

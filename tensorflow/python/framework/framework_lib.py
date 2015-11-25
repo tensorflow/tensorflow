@@ -86,4 +86,4 @@ from tensorflow.python.framework.ops import RegisterShape
 from tensorflow.python.framework.tensor_shape import Dimension
 from tensorflow.python.framework.tensor_shape import TensorShape
 
-from tensorflow.python.framework.types import *
+from tensorflow.python.framework.dtypes import *

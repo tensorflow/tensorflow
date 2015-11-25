@@ -28,6 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
@@ -973,6 +974,30 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertEqual([10], r.eval())
       for i in xrange(10):
         self.assertEqual([i], q.dequeue().eval())
+
+  def testWhileStack_1(self):
+    with self.test_session():
+      s = gen_data_flow_ops._stack(tf.int32, stack_name="foo")
+      i = tf.constant(0)
+
+      def c(i):
+        return tf.less(i, 10)
+      def b(i):
+        ni = tf.add(i, 1)
+        ni = control_flow_ops.with_dependencies(
+            [gen_data_flow_ops._stack_push(s, i)], ni)
+        return ni
+      r = control_flow_ops.While(c, b, [i], parallel_iterations=1)
+
+      x = tf.constant(0)
+      def c1(i, _):
+        return tf.greater(i, 0)
+      def b1(i, x):
+        ni = tf.sub(i, 1)
+        nx = x + gen_data_flow_ops._stack_pop(s, tf.int32)
+        return [ni, nx]
+      _, rx = control_flow_ops.While(c1, b1, [r, x], parallel_iterations=1)
+      self.assertEqual(45, rx.eval())
 
   def testFold_1(self):
     with self.test_session():

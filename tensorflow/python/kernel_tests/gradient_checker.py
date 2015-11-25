@@ -26,8 +26,8 @@ import tensorflow.python.platform
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gradients
@@ -152,10 +152,10 @@ def _ComputeDxAndDy(x, y, y_shape):
 def _ComputeGradient(x, x_shape, dx, y, y_shape, dy,
                      x_init_value=None, delta=1e-3):
   """Computes the theoretical and numerical jacobian."""
-  t = types.as_dtype(x.dtype)
-  allowed_types = [types.float32, types.float64]
+  t = dtypes.as_dtype(x.dtype)
+  allowed_types = [dtypes.float32, dtypes.float64]
   assert t.base_dtype in allowed_types, "Don't support type %s for x" % t.name
-  t2 = types.as_dtype(y.dtype)
+  t2 = dtypes.as_dtype(y.dtype)
   assert t2.base_dtype in allowed_types, "Don't support type %s for y" % t2.name
 
   if x_init_value is not None:
@@ -164,7 +164,7 @@ def _ComputeGradient(x, x_shape, dx, y, y_shape, dy,
         x_shape, i_shape)
     x_data = x_init_value
   else:
-    if t == types.float32:
+    if t == dtypes.float32:
       dtype = np.float32
     else:
       dtype = np.float64

@@ -22,11 +22,13 @@ from __future__ import print_function
 import contextlib
 import math
 import re
+import sys
 import threading
 
 import tensorflow.python.platform
 
 import numpy as np
+import six
 
 from google.protobuf import text_format
 
@@ -454,3 +456,11 @@ class TensorFlowTestCase(googletest.TestCase):
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
     self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list())
+
+  # Fix Python 3 compatibility issues
+  if six.PY3:
+    # Silence a deprecation warning
+    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+
+    # assertItemsEqual is assertCountEqual as of 3.2.
+    assertItemsEqual = googletest.TestCase.assertCountEqual

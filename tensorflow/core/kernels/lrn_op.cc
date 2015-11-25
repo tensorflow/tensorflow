@@ -66,7 +66,7 @@ class LRNOp : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
 
-#if !defined(__ANDROID__)
+#if defined(__ANDROID__)
     MognetLRN(in, batch, rows, cols, depth, output);
 #else
     const int nodes = cols * rows;

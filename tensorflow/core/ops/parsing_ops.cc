@@ -26,11 +26,12 @@ REGISTER_OP("DecodeRaw")
 Reinterpret the bytes of a string as a vector of numbers.
 
 bytes: All the elements must have the same length.
-little_endian: Whether the input bytes are in little-endian order.
-  Ignored for out_types that are stored in a single byte like uint8.
-output: A Tensor with one more dimension than the input bytes.  The
+little_endian: Whether the input `bytes` are in little-endian order.
+  Ignored for `out_type` values that are stored in a single byte like
+  `uint8`.
+output: A Tensor with one more dimension than the input `bytes`.  The
   added dimension will have size equal to the length of the elements
-  of bytes divided by the number of bytes to represent out_type.
+  of `bytes` divided by the number of bytes to represent `out_type`.
 )doc");
 
 REGISTER_OP("ParseExample")
@@ -113,7 +114,7 @@ Converts each string in the input Tensor to the specified numeric type.
 results in a rounded value.)
 
 out_type: The numeric type to interpret each string in string_tensor as.
-output: A Tensor of the same shape as the input string_tensor.
+output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 
 }  // namespace tensorflow

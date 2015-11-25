@@ -4,7 +4,7 @@ TensorFlow's public C++ API includes only the API for executing graphs, as of
 version 0.5. To control the execution of a graph from C++:
 
 1. Build the computation graph using the [Python API](../python/).
-1. Use [tf.train.write_graph()](../python/train.md#write_graph) to
+1. Use [`tf.train.write_graph()`](../python/train.md#write_graph) to
 write the graph to a file.
 1. Load the graph using the C++ Session API. For example:
 

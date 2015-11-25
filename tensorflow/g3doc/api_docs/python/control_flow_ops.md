@@ -504,7 +504,7 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
 
 ### `tf.add_check_numerics_ops()` {#add_check_numerics_ops}
 
-Connect a check_numerics to every floating point tensor.
+Connect a `check_numerics` to every floating point tensor.
 
 `check_numerics` operations themselves are added for each `float` or `double`
 tensor in the graph. For all ops in the graph, the `check_numerics` op for

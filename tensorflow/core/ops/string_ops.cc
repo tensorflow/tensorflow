@@ -30,7 +30,7 @@ process.
 Note that the hash function may change from time to time.
 
 num_buckets: The number of buckets.
-output: A Tensor of the same shape as the input string_tensor.
+output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 
 }  // namespace tensorflow

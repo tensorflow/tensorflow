@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Implements the graph generation for computation of gradients."""
 
 from __future__ import absolute_import
@@ -27,16 +26,17 @@ import tensorflow.python.platform
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 # pylint: disable=unused-import
 from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_grad
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import image_grad
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import linalg_grad
 from tensorflow.python.ops import math_grad
@@ -44,7 +44,6 @@ from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.platform import logging
-
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -69,8 +68,8 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None):
   """
   if dtype and not dtype.is_compatible_with(value.dtype):
     raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s"
-        % (dtype.name, value.dtype.name))
+        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
+        (dtype.name, value.dtype.name))
   if value.dense_shape is None:
     raise ValueError(
         "Tensor conversion requested for IndexedSlices without dense_shape: %s"
@@ -88,11 +87,14 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None):
     warnings.warn(
         "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
         "This may consume a large amount of memory.")
-  return math_ops.unsorted_segment_sum(
-      value.values, value.indices, value.dense_shape[0], name=name)
+  return math_ops.unsorted_segment_sum(value.values,
+                                       value.indices,
+                                       value.dense_shape[0],
+                                       name=name)
 
 
-ops.register_tensor_conversion_function(ops.IndexedSlices, _IndexedSlicesToTensor)
+ops.register_tensor_conversion_function(ops.IndexedSlices,
+                                        _IndexedSlicesToTensor)
 
 
 def _MarkReachedOps(from_ops, reached_ops):
@@ -236,14 +238,16 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     y = ys[i]
     if grad_y is None:
       with ops.device(_GetGradsDevice(y.op, colocate_gradients_with_ops)):
-        grad_ys[i] = array_ops.fill(array_ops.shape(y),
-                                    constant_op.constant(1, dtype=y.dtype))
+        grad_ys[i] = array_ops.fill(
+            array_ops.shape(y),
+            constant_op.constant(1,
+                                 dtype=y.dtype))
     else:
       if grad_y.dtype != y.dtype:
         raise ValueError("Y and ys_grad must be of the same type, "
                          "not y: %s, ys_grad: %s " %
-                         (types.as_dtype(y.dtype).name,
-                          types.as_dtype(grad_y.dtype).name))
+                         (dtypes.as_dtype(y.dtype).name,
+                          dtypes.as_dtype(grad_y.dtype).name))
   return grad_ys
 
 
@@ -265,11 +269,10 @@ def _VerifyGeneratedGradients(grads, op):
     inp = op.inputs[i]
     if grad is not None:
       if not grad.dtype.is_compatible_with(inp.dtype):
-        raise ValueError(
-            "Gradient type %s generated for op %s does "
-            "not match input type %s" %
-            (types.as_dtype(grad.dtype).name, op.node_def,
-             types.as_dtype(inp.dtype).name))
+        raise ValueError("Gradient type %s generated for op %s does "
+                         "not match input type %s" %
+                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                          dtypes.as_dtype(inp.dtype).name))
 
 
 def _StopOps(from_ops, pending_count):
@@ -301,7 +304,10 @@ def _StopOps(from_ops, pending_count):
   return stop_ops
 
 
-def gradients(ys, xs, grad_ys=None, name="gradients",
+def gradients(ys,
+              xs,
+              grad_ys=None,
+              name="gradients",
               colocate_gradients_with_ops=False,
               gate_gradients=False,
               aggregation_method=None):
@@ -319,7 +325,7 @@ def gradients(ys, xs, grad_ys=None, name="gradients",
   `grad_ys` is a list of tensors of the same length as `ys` that holds
   the initial gradients for each y in `ys`.  When `grad_ys` is None,
   we fill in a tensor of '1's of the shape of y for each y in `ys`.  A
-  user can provide their own initial 'grad_ys` to compute the
+  user can provide their own initial `grad_ys` to compute the
   derivatives using a different initial gradient for each y (e.g., if
   one wanted to weight the gradient differently for each value in
   each y).
@@ -369,8 +375,8 @@ def gradients(ys, xs, grad_ys=None, name="gradients",
     # to the xs.
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
-    pending_count, has_control_flow = _PendingCount(
-        ops.get_default_graph(), to_ops, from_ops)
+    pending_count, has_control_flow = _PendingCount(ops.get_default_graph(),
+                                                    to_ops, from_ops)
 
     # Iterate over the collected ops.
     #
@@ -418,9 +424,9 @@ def gradients(ys, xs, grad_ys=None, name="gradients",
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if (not out_grad
-                and types.as_dtype(op.outputs[i].dtype).base_dtype in (
-                    types.float32, types.float64)):
+            if (not out_grad and
+                dtypes.as_dtype(op.outputs[i].dtype).base_dtype in
+                (dtypes.float32, dtypes.float64)):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
               out_grads[i] = array_ops.zeros_like(op.outputs[i])
@@ -485,7 +491,8 @@ def _GetGrad(grads, t):
   """Gets gradient for tensor "t"."""
   op = t.op
   op_grads = grads.get(op)
-  if not op_grads: return None
+  if not op_grads:
+    return None
   t_grad = op_grads[t.value_index]
   assert not isinstance(t_grad, list), (
       "gradients list should have been aggregated by now.")
@@ -622,8 +629,8 @@ def _AggregatedGrads(grads, op, has_control_flow, aggregation_method=None):
         # indices.
         out_grads[i] = ops.IndexedSlices(
             array_ops.concat(0, [x.values for x in out_grad]),
-            array_ops.concat(0, [x.indices for x in out_grad]),
-            out_grad[0].dense_shape)
+            array_ops.concat(0, [x.indices
+                                 for x in out_grad]), out_grad[0].dense_shape)
     else:
       out_grads[i] = []
   return out_grads

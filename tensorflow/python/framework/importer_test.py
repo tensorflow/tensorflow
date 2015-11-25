@@ -335,7 +335,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'Oi' }
             node { name: 'B' op: 'None' input: 'A:0' }
             """))
-      self.assertTrue('More inputs specified (u\'A:0\') than the op expects' in
+      self.assertTrue('More inputs specified (\'A:0\') than the op expects' in
                       str(e.exception))
 
   def testInvalidSignatureNotEnoughInputsInGraphDef(self):
@@ -356,8 +356,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             self._MakeGraphDef("""
             node { name: 'B' op: 'If' input: 'A:0' }
             """))
-      self.assertTrue('Input tensor %r not found' % (u'A:0',) in
-                      str(e.exception))
+      self.assertTrue("Input tensor 'A:0' not found" in str(e.exception))
 
   def testMissingInputOpInGraphDefButAppearsInInputMap(self):
     with tf.Graph().as_default():
@@ -378,8 +377,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'Of' }
             node { name: 'B' op: 'If' input: 'A:1' }
             """))
-      self.assertTrue('Input tensor %r not found' % (u'A:1',) in
-                      str(e.exception))
+      self.assertTrue("Input tensor 'A:1' not found" in str(e.exception))
 
   def testMissingControlInputInGraphDef(self):
     with tf.Graph().as_default():
@@ -388,8 +386,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: '^A' }
             """))
-      self.assertTrue('Control input %r not found' % (u'^A',) in
-                      str(e.exception))
+      self.assertTrue("Control input '^A' not found" in str(e.exception))
 
   def testInvalidTensorNameOutputIndexInGraphDef(self):
     with tf.Graph().as_default():
@@ -398,8 +395,8 @@ class ImportGraphDefTest(tf.test.TestCase):
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B' }
             """))
-      self.assertEqual(
-          'Cannot convert %r to a tensor name.' % (u'A:B',), str(e.exception))
+      self.assertEqual("Cannot convert 'A:B' to a tensor name.",
+                       str(e.exception))
 
   def testInvalidTensorNameInGraphDef(self):
     with tf.Graph().as_default():
@@ -408,8 +405,8 @@ class ImportGraphDefTest(tf.test.TestCase):
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B:0' }
             """))
-      self.assertEqual(
-          'Cannot convert %r to a tensor name.' % (u'A:B:0',), str(e.exception))
+      self.assertEqual("Cannot convert 'A:B:0' to a tensor name.",
+                       str(e.exception))
 
   def testMissingReturnOperation(self):
     with tf.Graph().as_default():
@@ -419,7 +416,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'None' }
             """),
             return_elements=['B'])
-      self.assertTrue('return_element %r not found in graph_def.' % ('B') in
+      self.assertTrue("return_element 'B' not found in graph_def." in
                       str(e.exception))
 
   def testMissingReturnTensor(self):
@@ -430,7 +427,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=['A:1'])
-      self.assertTrue('return_element %r not found in graph_def.' % ('A:1') in
+      self.assertTrue("return_element 'A:1' not found in graph_def." in
                       str(e.exception))
 
       with self.assertRaises(ValueError) as e:
@@ -439,7 +436,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=['B:0'])
-      self.assertTrue('return_element %r not found in graph_def.' % ('B:0') in
+      self.assertTrue("return_element 'B:0' not found in graph_def." in
                       str(e.exception))
 
       with self.assertRaises(ValueError) as e:
@@ -448,7 +445,7 @@ class ImportGraphDefTest(tf.test.TestCase):
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=['A:B:0'])
-      self.assertTrue('return_element %r not found in graph_def.' % ('A:B:0') in
+      self.assertTrue("return_element 'A:B:0' not found in graph_def." in
                       str(e.exception))
 
   def testMissingInputMap(self):

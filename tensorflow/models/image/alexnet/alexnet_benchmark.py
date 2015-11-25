@@ -35,10 +35,10 @@ from __future__ import print_function
 
 from datetime import datetime
 import math
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import time
 
 import tensorflow.python.platform
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 

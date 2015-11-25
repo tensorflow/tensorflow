@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import tensorflow.python.platform
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -39,7 +39,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
   def testStaircase(self):
     with self.test_session():
-      step = state_ops.variable_op([], types.int32)
+      step = state_ops.variable_op([], dtypes.int32)
       assign_100 = state_ops.assign(step, 100)
       assign_1 = state_ops.assign(step, 1)
       assign_2 = state_ops.assign(step, 2)

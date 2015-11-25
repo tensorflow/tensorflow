@@ -301,6 +301,55 @@ size: The number of elements in the given queue.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A stack that produces elements in first-in last-out order.
+
+handle: The handle to the stack.
+elem_type: The type of the elements on the stack.
+stack_name: Overrides the name used for the temporary stack resource. Default
+value is the name of the 'Stack' op (which is guaranteed unique).
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Push an element onto the stack.
+
+handle: The handle to a stack.
+elem: The tensor to be pushed onto the stack.
+output: The same tensor as the input 'elem'.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .Doc(R"doc(
+Pop the element at the top of the stack.
+
+handle: The handle to a stack.
+elem_type: The type of the elem that is popped.
+elem: The tensor that is popped from the top of the stack.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .Doc(R"doc(
+Delete the stack from its resource container.
+
+handle: The handle to a stack.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("LookupTableFind")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")

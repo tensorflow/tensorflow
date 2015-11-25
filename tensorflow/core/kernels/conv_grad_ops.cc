@@ -383,12 +383,53 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     // The output image size is the spatial size of the output.
     const int output_image_size = out_rows * out_cols;
 
+    // TODO(andydavis) Get L2/L3 cache sizes from device.
+    const size_t l2_cache_size = 256LL << 10;
+    const size_t l3_cache_size = 30LL << 20;
+
+    // Use L3 cache size as target working set size.
+    const size_t target_working_set_size = l3_cache_size / sizeof(T);
+
+    // Calculate size of matrices involved in MatMul: C = A x B.
+    const size_t size_A = output_image_size * out_depth;
+
+    const size_t size_B = filter_total_size * out_depth;
+
+    const size_t size_C = output_image_size * filter_total_size;
+
+    const size_t work_unit_size = size_A + size_B + size_C;
+
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+
+    // Calculate per-thread work unit size.
+    const size_t thread_work_unit_size =
+        work_unit_size / worker_threads.num_threads;
+
+    // Set minimum per-thread work unit size to size of L2 cache.
+    const size_t min_thread_work_unit_size = l2_cache_size / sizeof(T);
+
+    // Use parallel tensor contractions if there is no batching, or if the
+    // minimum per-thread work unit size threshold has been exceeded.
+    // Otherwise, revert to multiple single-threaded matmul ops running in
+    // parallel to keep all threads busy.
+    // TODO(andydavis) Explore alternatives to branching the code in this way
+    // (i.e. run multiple, parallel tensor contractions in another thread pool).
+    const bool use_parallel_contraction =
+        batch == 1 || thread_work_unit_size >= min_thread_work_unit_size;
+
+    const size_t shard_size =
+        use_parallel_contraction
+            ? 1
+            : (target_working_set_size + work_unit_size - 1) / work_unit_size;
+
     Tensor col_buffer;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_temp(
-            DataTypeToEnum<T>::value,
-            TensorShape({output_image_size, filter_total_size}), &col_buffer));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(
+                       DataTypeToEnum<T>::value,
+                       TensorShape({static_cast<int64>(shard_size),
+                                    static_cast<int64>(output_image_size),
+                                    static_cast<int64>(filter_total_size)}),
+                       &col_buffer));
 
     // The input offset corresponding to a single input image.
     const int input_offset = input_rows * input_cols * in_depth;
@@ -400,31 +441,74 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     auto* out_backprop_data = out_backprop.template flat<T>().data();
     auto* input_backprop_data = in_backprop->template flat<T>().data();
 
-    typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> TensorMap;
-    typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> ConstTensorMap;
+    if (use_parallel_contraction) {
+      typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
+                               Eigen::Unaligned> TensorMap;
+      typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
+                               Eigen::Unaligned> ConstTensorMap;
 
-    // Initialize contraction dims (we need to transpose 'B' below).
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
-    contract_dims[0].first = 1;
-    contract_dims[0].second = 1;
+      // Initialize contraction dims (we need to transpose 'B' below).
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
+      contract_dims[0].first = 1;
+      contract_dims[0].second = 1;
 
-    for (int image_id = 0; image_id < batch; ++image_id) {
-      // Compute gradient into col_buffer.
-      TensorMap C(col_buffer_data, output_image_size, filter_total_size);
+      for (int image_id = 0; image_id < batch; ++image_id) {
+        // Compute gradient into col_buffer.
+        TensorMap C(col_buffer_data, output_image_size, filter_total_size);
 
-      ConstTensorMap A(out_backprop_data + output_offset * image_id,
-                       output_image_size, out_depth);
-      ConstTensorMap B(filter_data, filter_total_size, out_depth);
+        ConstTensorMap A(out_backprop_data + output_offset * image_id,
+                         output_image_size, out_depth);
+        ConstTensorMap B(filter_data, filter_total_size, out_depth);
 
-      C.device(context->eigen_cpu_device()) = A.contract(B, contract_dims);
+        C.device(context->eigen_cpu_device()) = A.contract(B, contract_dims);
 
-      Col2im<T>(col_buffer_data, in_depth, input_rows, input_cols, filter_rows,
-                filter_cols, pad_top, pad_left, pad_bottom, pad_right, stride,
-                stride, input_backprop_data);
+        Col2im<T>(col_buffer_data, in_depth, input_rows, input_cols,
+                  filter_rows, filter_cols, pad_top, pad_left, pad_bottom,
+                  pad_right, stride, stride, input_backprop_data);
 
-      input_backprop_data += input_offset;
+        input_backprop_data += input_offset;
+      }
+    } else {
+      typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                       Eigen::RowMajor>> MatrixMap;
+      typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                             Eigen::RowMajor>> ConstMatrixMap;
+
+      for (int image_id = 0; image_id < batch; image_id += shard_size) {
+        const int shard_limit = std::min(static_cast<int>(shard_size),
+                                         static_cast<int>(batch) - image_id);
+
+        auto shard = [&in_depth, &input_rows, &input_cols, &filter_rows,
+                      &filter_cols, &pad_top, &pad_left, &pad_bottom,
+                      &pad_right, &stride, &output_image_size,
+                      &filter_total_size, &out_depth, &input_backprop_data,
+                      &col_buffer_data, &out_backprop_data, &filter_data,
+                      &input_offset, &output_offset,
+                      &size_C](int64 start, int64 limit) {
+          for (int shard_id = start; shard_id < limit; ++shard_id) {
+            T* im2col_buf = col_buffer_data + shard_id * size_C;
+            T* input_data = input_backprop_data + shard_id * input_offset;
+            const T* out_data = out_backprop_data + shard_id * output_offset;
+
+            // Compute gradient into 'im2col_buf'.
+            MatrixMap C(im2col_buf, output_image_size, filter_total_size);
+
+            ConstMatrixMap A(out_data, output_image_size, out_depth);
+            ConstMatrixMap B(filter_data, filter_total_size, out_depth);
+
+            C.noalias() = A * B.transpose();
+
+            Col2im<T>(im2col_buf, in_depth, input_rows, input_cols, filter_rows,
+                      filter_cols, pad_top, pad_left, pad_bottom, pad_right,
+                      stride, stride, input_data);
+          }
+        };
+        Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
+              work_unit_size, shard);
+
+        input_backprop_data += input_offset * shard_limit;
+        out_backprop_data += output_offset * shard_limit;
+      }
     }
   }
 
@@ -620,8 +704,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                     &pad_left, &pad_bottom, &pad_right, &stride, &input_offset,
                     &size_A](int64 start, int64 limit) {
         for (int shard_id = start; shard_id < limit; ++shard_id) {
-          auto input_data_shard = input_data + shard_id * input_offset;
-          auto col_data_shard = col_buffer_data + shard_id * size_A;
+          const T* input_data_shard = input_data + shard_id * input_offset;
+          T* col_data_shard = col_buffer_data + shard_id * size_A;
 
           // When we compute the gradient with respect to the filters, we need
           // to do im2col to allow gemm-type computation.

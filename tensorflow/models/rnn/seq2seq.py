@@ -210,8 +210,8 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   encoder state, on embedded decoder_inputs.
 
   Args:
-    encoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
-    decoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
+    encoder_inputs: a list of 1D int32-Tensors of shape [batch_size].
+    decoder_inputs: a list of 1D int32-Tensors of shape [batch_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
     num_encoder_symbols: integer; number of symbols on the encoder side.
     num_decoder_symbols: integer; number of symbols on the decoder side.

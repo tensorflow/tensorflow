@@ -332,11 +332,13 @@ Properties.
 
 The name of this variable.
 
+
 - - -
 
 #### `tf.Variable.dtype` {#Variable.dtype}
 
 The `DType` of this variable.
+
 
 - - -
 
@@ -355,11 +357,13 @@ The `TensorShape` of this variable.
 
 The device of this variable.
 
+
 - - -
 
 #### `tf.Variable.initializer` {#Variable.initializer}
 
 The initializer operation for this variable.
+
 
 - - -
 
@@ -367,11 +371,13 @@ The initializer operation for this variable.
 
 The `Graph` of this variable.
 
+
 - - -
 
 #### `tf.Variable.op` {#Variable.op}
 
 The `Operation` of this variable.
+
 
 
 
@@ -587,43 +593,43 @@ saver = tf.train.Saver([v1, v2])
 saver = tf.train.Saver({v.op.name: v for v in [v1, v2]})
 ```
 
-The optional `reshape` argument, if True, allows restoring a variable from
+The optional `reshape` argument, if `True`, allows restoring a variable from
 a save file where the variable had a different shape, but the same number
 of elements and type.  This is useful if you have reshaped a variable and
 want to reload it from an older checkpoint.
 
-The optional `sharded` argument, if True, instructs the saver to shard
+The optional `sharded` argument, if `True`, instructs the saver to shard
 checkpoints per device.
 
 ##### Args:
 
 
-*  <b>`var_list`</b>: A list of Variables or a dictionary mapping names to
-    Variables.  If None, defaults to the list of all variables.
-*  <b>`reshape`</b>: If True, allows restoring parameters from a checkpoint
+*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names to
+    variables.  If `None`, defaults to the list of all variables.
+*  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
-*  <b>`sharded`</b>: If True, shard the checkpoints, one per device.
+*  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
 *  <b>`max_to_keep`</b>: maximum number of recent checkpoints to keep.
     Defaults to 10,000 hours.
 *  <b>`keep_checkpoint_every_n_hours`</b>: How often to keep checkpoints.
     Defaults to 10,000 hours.
 *  <b>`name`</b>: string.  Optional name to use as a prefix when adding operations.
-*  <b>`restore_sequentially`</b>: A Bool, which if true, causes restore of different
+*  <b>`restore_sequentially`</b>: A `Bool`, which if true, causes restore of different
     variables to happen sequentially within each device.  This can lower
     memory usage when restoring very large models.
-*  <b>`saver_def`</b>: Optional SaverDef proto to use instead of running the builder.
-    This is only useful for specialty code that wants to recreate a Saver
-    object for a previously built Graph that had a Saver.  The saver_def
-    proto should be the one returned by the as_saver_def() call of the
-    Saver that was created for that Graph.
-*  <b>`builder`</b>: Optional SaverBuilder to use if a saver_def was not provided.
-    Defaults to BaseSaverBuilder().
+*  <b>`saver_def`</b>: Optional `SaverDef` proto to use instead of running the
+    builder. This is only useful for specialty code that wants to recreate
+    a `Saver` object for a previously built `Graph` that had a `Saver`.
+    The `saver_def` proto should be the one returned by the
+    `as_saver_def()` call of the `Saver` that was created for that `Graph`.
+*  <b>`builder`</b>: Optional `SaverBuilder` to use if a `saver_def` was not provided.
+    Defaults to `BaseSaverBuilder()`.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: If `var_list` is invalid.
-*  <b>`ValueError`</b>: If any of the keys or values in `var_list` is not unique.
+*  <b>`ValueError`</b>: If any of the keys or values in `var_list` are not unique.
 
 
 - - -
@@ -647,7 +653,7 @@ path can be passed directly to a call to `restore()`.
     `sharded`, this is the prefix of the sharded checkpoint filename.
 *  <b>`global_step`</b>: If provided the global step number is appended to
     `save_path` to create the checkpoint filename. The optional argument
-    can be a Tensor, a Tensor name or an integer.
+    can be a `Tensor`, a `Tensor` name or an integer.
 *  <b>`latest_filename`</b>: Optional name for the protocol buffer file that will
     contains the list of most recent checkpoint filenames.  That file,
     kept in the same directory as the checkpoint files, is automatically
@@ -663,7 +669,7 @@ path can be passed directly to a call to `restore()`.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `sess` is not a Session.
+*  <b>`TypeError`</b>: If `sess` is not a `Session`.
 
 
 - - -
@@ -683,7 +689,7 @@ The `save_path` argument is typically a value previously returned from a
 ##### Args:
 
 
-*  <b>`sess`</b>: A Session to use to restore the parameters.
+*  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
 
 
@@ -702,21 +708,22 @@ You can pass any of the returned values to `restore()`.
 
   A list of checkpoint filenames, sorted from oldest to newest.
 
+
 - - -
 
 #### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
-Sets the list of not-yet-deleted checkpoint filenames.
+Sets the list of old checkpoint filenames.
 
 ##### Args:
 
 
-*  <b>`last_checkpoints`</b>: a list of checkpoint filenames.
+*  <b>`last_checkpoints`</b>: A list of checkpoint filenames.
 
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: if the list of checkpoint filenames has already been set.
+*  <b>`AssertionError`</b>: If the list of checkpoint filenames has already been set.
 
 
 - - -
@@ -748,7 +755,7 @@ Finds the filename of latest saved checkpoint file.
 
 ##### Returns:
 
-  The full path to the latest checkpoint or None if no checkpoint was found.
+  The full path to the latest checkpoint or `None` if no checkpoint was found.
 
 
 
@@ -1319,11 +1326,13 @@ Creates an `IndexedSlices`.
 
 A `Tensor` containing the values of the slices.
 
+
 - - -
 
 #### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
 
 A 1-D `Tensor` containing the indices of the slices.
+
 
 - - -
 
@@ -1332,11 +1341,13 @@ A 1-D `Tensor` containing the indices of the slices.
 A 1-D `Tensor` containing the shape of the corresponding dense tensor.
 
 
+
 - - -
 
 #### `tf.IndexedSlices.name` {#IndexedSlices.name}
 
 The name of this `IndexedSlices`.
+
 
 - - -
 
@@ -1344,16 +1355,19 @@ The name of this `IndexedSlices`.
 
 The `DType` of elements in this tensor.
 
+
 - - -
 
 #### `tf.IndexedSlices.device` {#IndexedSlices.device}
 
 The name of the device on which `values` will be produced, or `None`.
 
+
 - - -
 
 #### `tf.IndexedSlices.op` {#IndexedSlices.op}
 
 The `Operation` that produces `values` as an output.
+
 
 

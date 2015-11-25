@@ -28,7 +28,7 @@ May be useful to clients who wish to override just part of the functionality of 
 * [`Status tensorflow::EnvWrapper::DeleteDir(const string &d) override`](#Status_tensorflow_EnvWrapper_DeleteDir)
   * Deletes the specified directory.
 * [`Status tensorflow::EnvWrapper::GetFileSize(const string &f, uint64 *s) override`](#Status_tensorflow_EnvWrapper_GetFileSize)
-  * Stores the size of fname in *file_size.
+  * Stores the size of `fname` in `*file_size`.
 * [`Status tensorflow::EnvWrapper::RenameFile(const string &s, const string &t) override`](#Status_tensorflow_EnvWrapper_RenameFile)
   * Renames file src to target. If target already exists, it will be replaced.
 * [`uint64 tensorflow::EnvWrapper::NowMicros() override`](#uint64_tensorflow_EnvWrapper_NowMicros)
@@ -114,7 +114,7 @@ Deletes the specified directory.
 
 #### `Status tensorflow::EnvWrapper::GetFileSize(const string &f, uint64 *s) override` {#Status_tensorflow_EnvWrapper_GetFileSize}
 
-Stores the size of fname in *file_size.
+Stores the size of `fname` in `*file_size`.
 
 
 

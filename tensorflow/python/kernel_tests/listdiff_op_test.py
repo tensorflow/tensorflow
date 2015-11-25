@@ -25,6 +25,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.util import compat
+
 _TYPES = [tf.int32, tf.int64, tf.float32, tf.float64, tf.string]
 
 
@@ -33,9 +35,9 @@ class ListDiffTest(tf.test.TestCase):
   def _testListDiff(self, x, y, out, idx):
     for dtype in _TYPES:
       if dtype == tf.string:
-        x = [str(a) for a in x]
-        y = [str(a) for a in y]
-        out = [str(a) for a in out]
+        x = [compat.as_bytes(str(a)) for a in x]
+        y = [compat.as_bytes(str(a)) for a in y]
+        out = [compat.as_bytes(str(a)) for a in out]
 
       with self.test_session() as sess:
         x_tensor = tf.convert_to_tensor(x, dtype=dtype)

@@ -20,10 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import numbers
 import os.path
 import time
 
+import numpy as np
 import six
 
 from google.protobuf import text_format
@@ -44,6 +44,7 @@ from tensorflow.python.platform import logging
 from tensorflow.python.training import saver_pb2
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.util import compat
 
 
 class BaseSaverBuilder(object):
@@ -516,13 +517,13 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       checkpoint_dir, latest_filename)
   f = None
   try:
-    # Check that the file exists before opeining it to avoid
+    # Check that the file exists before opening it to avoid
     # many lines of errors from colossus in the logs.
     if gfile.Exists(coord_checkpoint_filename):
       f = gfile.FastGFile(coord_checkpoint_filename, mode="r")
       ckpt = CheckpointState()
       text_format.Merge(f.read(), ckpt)
-  except gfile.FileError:
+  except IOError:
     # It's ok if the file cannot be read
     return None
   except text_format.ParseError as e:
@@ -657,39 +658,39 @@ class Saver(object):
     saver = tf.train.Saver({v.op.name: v for v in [v1, v2]})
     ```
 
-    The optional `reshape` argument, if True, allows restoring a variable from
+    The optional `reshape` argument, if `True`, allows restoring a variable from
     a save file where the variable had a different shape, but the same number
     of elements and type.  This is useful if you have reshaped a variable and
     want to reload it from an older checkpoint.
 
-    The optional `sharded` argument, if True, instructs the saver to shard
+    The optional `sharded` argument, if `True`, instructs the saver to shard
     checkpoints per device.
 
     Args:
-      var_list: A list of Variables or a dictionary mapping names to
-        Variables.  If None, defaults to the list of all variables.
-      reshape: If True, allows restoring parameters from a checkpoint
+      var_list: A list of `Variable` objects or a dictionary mapping names to
+        variables.  If `None`, defaults to the list of all variables.
+      reshape: If `True`, allows restoring parameters from a checkpoint
         where the variables have a different shape.
-      sharded: If True, shard the checkpoints, one per device.
+      sharded: If `True`, shard the checkpoints, one per device.
       max_to_keep: maximum number of recent checkpoints to keep.
         Defaults to 10,000 hours.
       keep_checkpoint_every_n_hours: How often to keep checkpoints.
         Defaults to 10,000 hours.
       name: string.  Optional name to use as a prefix when adding operations.
-      restore_sequentially: A Bool, which if true, causes restore of different
+      restore_sequentially: A `Bool`, which if true, causes restore of different
         variables to happen sequentially within each device.  This can lower
         memory usage when restoring very large models.
-      saver_def: Optional SaverDef proto to use instead of running the builder.
-        This is only useful for specialty code that wants to recreate a Saver
-        object for a previously built Graph that had a Saver.  The saver_def
-        proto should be the one returned by the as_saver_def() call of the
-        Saver that was created for that Graph.
-      builder: Optional SaverBuilder to use if a saver_def was not provided.
-        Defaults to BaseSaverBuilder().
+      saver_def: Optional `SaverDef` proto to use instead of running the
+        builder. This is only useful for specialty code that wants to recreate
+        a `Saver` object for a previously built `Graph` that had a `Saver`.
+        The `saver_def` proto should be the one returned by the
+        `as_saver_def()` call of the `Saver` that was created for that `Graph`.
+      builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
+        Defaults to `BaseSaverBuilder()`.
 
     Raises:
       TypeError: If `var_list` is invalid.
-      ValueError: If any of the keys or values in `var_list` is not unique.
+      ValueError: If any of the keys or values in `var_list` are not unique.
     """
     if saver_def is None:
       if builder is None:
@@ -728,26 +729,25 @@ class Saver(object):
     self._last_checkpoints = []
 
   def _CheckpointFilename(self, p):
-    """Returns the checkpoint file name.
-
-    If p is (filename, time) pair, return p[0]; else return p.
+    """Returns the checkpoint filename given a `(filename, time)` pair.
 
     Args:
-      p: (filename, time) pair or just checkpoint filename.
+      p: (filename, time) pair.
 
     Returns:
       Checkpoint file name.
     """
-    return p[0] if isinstance(p, tuple) else p
+    name, _ = p
+    return name
 
   def _MaybeDeleteOldCheckpoints(self, latest_save_path):
     """Deletes old checkpoints if necessary.
 
-    Always keep the last max_to_keep checkpoints.  If
-    keep_checkpoint_every_n_hours was specified, keep an additional checkpoint
-    every N hours. For example, if N is 0.5, an additional checkpoint is kept
-    for every 0.5 hours of training; if N is 10, an additional checkpoint is
-    kept for every 10 hours of training.
+    Always keep the last `max_to_keep` checkpoints.  If
+    `keep_checkpoint_every_n_hours` was specified, keep an additional checkpoint
+    every `N` hours. For example, if `N` is 0.5, an additional checkpoint is
+    kept for every 0.5 hours of training; if `N` is 10, an additional
+    checkpoint is kept for every 10 hours of training.
 
     Args:
       latest_save_path: Name including path of checkpoint file to save.
@@ -774,7 +774,7 @@ class Saver(object):
       for f in gfile.Glob(self._CheckpointFilename(p)):
         try:
           gfile.Remove(f)
-        except gfile.GOSError as e:
+        except OSError as e:
           logging.warning("Ignoring: %s", str(e))
 
   def as_saver_def(self):
@@ -803,17 +803,20 @@ class Saver(object):
     return list(self._CheckpointFilename(p) for p in self._last_checkpoints)
 
   def set_last_checkpoints(self, last_checkpoints):
-    """Sets the list of not-yet-deleted checkpoint filenames.
+    """Sets the list of old checkpoint filenames.
 
     Args:
-      last_checkpoints: a list of checkpoint filenames.
+      last_checkpoints: A list of checkpoint filenames.
 
     Raises:
-      AssertionError: if the list of checkpoint filenames has already been set.
+      AssertionError: If the list of checkpoint filenames has already been set.
     """
     assert not self._last_checkpoints
     assert isinstance(last_checkpoints, list)
-    self._last_checkpoints = list(last_checkpoints)
+    # We use a timestamp of +inf so that this checkpoint will never be
+    # deleted.  This is both safe and backwards compatible to a previous
+    # version of the code which used s[1] as the "timestamp".
+    self._last_checkpoints = [(s, np.inf) for s in last_checkpoints]
 
   def save(self, sess, save_path, global_step=None, latest_filename=None):
     """Saves variables.
@@ -831,7 +834,7 @@ class Saver(object):
         `sharded`, this is the prefix of the sharded checkpoint filename.
       global_step: If provided the global step number is appended to
         `save_path` to create the checkpoint filename. The optional argument
-        can be a Tensor, a Tensor name or an integer.
+        can be a `Tensor`, a `Tensor` name or an integer.
       latest_filename: Optional name for the protocol buffer file that will
         contains the list of most recent checkpoint filenames.  That file,
         kept in the same directory as the checkpoint files, is automatically
@@ -844,12 +847,12 @@ class Saver(object):
         is the number of shards created.
 
     Raises:
-      TypeError: If `sess` is not a Session.
+      TypeError: If `sess` is not a `Session`.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
     if global_step is not None:
-      if not isinstance(global_step, numbers.Number):
+      if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
       checkpoint_file = "%s-%d" % (save_path, global_step)
     else:
@@ -860,7 +863,7 @@ class Saver(object):
 
     model_checkpoint_path = sess.run(
         self._save_tensor_name, {self._filename_tensor_name: checkpoint_file})
-    model_checkpoint_path = str(model_checkpoint_path)
+    model_checkpoint_path = compat.as_str(model_checkpoint_path)
     self._MaybeDeleteOldCheckpoints(model_checkpoint_path)
     update_checkpoint_state(save_path, model_checkpoint_path,
                             self.last_checkpoints, latest_filename)
@@ -878,7 +881,7 @@ class Saver(object):
     `save()` call, or a call to `latest_checkpoint()`.
 
     Args:
-      sess: A Session to use to restore the parameters.
+      sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
     """
     sess.run([self._restore_op_name], {self._filename_tensor_name: save_path})
@@ -894,7 +897,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
       See the corresponding argument to `Saver.save()`.
 
   Returns:
-    The full path to the latest checkpoint or None if no checkpoint was found.
+    The full path to the latest checkpoint or `None` if no checkpoint was found.
   """
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)

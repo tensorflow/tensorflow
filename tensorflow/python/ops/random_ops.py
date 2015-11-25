@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_random_ops
@@ -35,14 +35,14 @@ from tensorflow.python.ops.gen_random_ops import *
 def _ShapeTensor(shape):
   """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
   if isinstance(shape, (tuple, list)) and not shape:
-    dtype = types.int32
+    dtype = dtypes.int32
   else:
     dtype = None
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
 # pylint: disable=protected-access
-def random_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
+def random_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
                   seed=None, name=None):
   """Outputs random values from a normal distribution.
 
@@ -80,7 +80,7 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
 ops.NoGradient("RandomStandardNormal")
 
 
-def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=types.float32,
+def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
                      seed=None, name=None):
   """Outputs random values from a truncated normal distribution.
 
@@ -123,7 +123,7 @@ ops.NoGradient("TruncatedNormal")
 
 
 def random_uniform(shape, minval=0.0, maxval=1.0,
-                   dtype=types.float32, seed=None,
+                   dtype=dtypes.float32, seed=None,
                    name=None):
   """Outputs random values from a uniform distribution.
 

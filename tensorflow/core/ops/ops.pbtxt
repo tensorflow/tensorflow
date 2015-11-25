@@ -1874,7 +1874,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A Tensor with one more dimension than the input bytes.  The\nadded dimension will have size equal to the length of the elements\nof bytes divided by the number of bytes to represent out_type."
+    description: "A Tensor with one more dimension than the input `bytes`.  The\nadded dimension will have size equal to the length of the elements\nof `bytes` divided by the number of bytes to represent `out_type`."
     type_attr: "out_type"
   }
   attr {
@@ -1898,7 +1898,7 @@ op {
     default_value {
       b: true
     }
-    description: "Whether the input bytes are in little-endian order.\nIgnored for out_types that are stored in a single byte like uint8."
+    description: "Whether the input `bytes` are in little-endian order.\nIgnored for `out_type` values that are stored in a single byte like\n`uint8`."
   }
   summary: "Reinterpret the bytes of a string as a vector of numbers."
 }
@@ -5667,6 +5667,38 @@ op {
   description: "Input images can be of different types but output images are always float."
 }
 op {
+  name: "ResizeNearestNeighborGrad"
+  input_arg {
+    name: "grads"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    description: "= A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The\noriginal input size."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients\nwith respect to the input image."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT32
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes the gradient of nearest neighbor interpolation."
+}
+op {
   name: "Restore"
   input_arg {
     name: "file_pattern"
@@ -6125,7 +6157,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -6169,7 +6201,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -6213,7 +6245,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -6257,7 +6289,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -6301,7 +6333,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -7044,7 +7076,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -7058,7 +7090,7 @@ op {
     }
   }
   summary: "Computes the mean along sparse segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentMean`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension_0, specified by `indices`."
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentMean`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`."
 }
 op {
   name: "SparseSegmentMeanGrad"
@@ -7079,7 +7111,7 @@ op {
   }
   input_arg {
     name: "output_dim0"
-    description: "dimension_0 of \"data\" passed to SparseSegmentMean op."
+    description: "dimension 0 of \"data\" passed to SparseSegmentMean op."
     type: DT_INT32
   }
   output_arg {
@@ -7097,7 +7129,7 @@ op {
     }
   }
   summary: "Computes gradients for SparseSegmentMean."
-  description: "Returns tensor \"output\" with same shape as grad, except for dimension_0 whose\nvalue is output_dim0."
+  description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
 op {
   name: "SparseSegmentSum"
@@ -7117,7 +7149,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `k`, the number of segments."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
     type_attr: "T"
   }
   attr {
@@ -7136,7 +7168,7 @@ op {
     }
   }
   summary: "Computes the sum along sparse segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension_0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
   name: "SparseToDense"
@@ -7295,6 +7327,84 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor of the same type with\nall dimensions of size 1 removed. If you don\'t want to remove all size 1\ndimensions, you can remove specific size 1 dimensions by specifying\n`squeeze_dims`.\n\nFor example:\n\n```prettyprint\n# \'t\' is a tensor of shape [1, 2, 1, 3, 1, 1]\nshape(squeeze(t)) ==> [2, 3]\n```\n\nOr, to remove specific size 1 dimensions:\n\n```prettyprint\n# \'t\' is a tensor of shape [1, 2, 1, 3, 1, 1]\nshape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]\n```"
 }
 op {
+  name: "Stack"
+  output_arg {
+    name: "handle"
+    description: "The handle to the stack."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+    description: "The type of the elements on the stack."
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
+  }
+  summary: "A stack that produces elements in first-in last-out order."
+  is_stateful: true
+}
+op {
+  name: "StackClose"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Delete the stack from its resource container."
+}
+op {
+  name: "StackPop"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "elem"
+    description: "The tensor that is popped from the top of the stack."
+    type_attr: "elem_type"
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+    description: "The type of the elem that is popped."
+  }
+  summary: "Pop the element at the top of the stack."
+}
+op {
+  name: "StackPush"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "elem"
+    description: "The tensor to be pushed onto the stack."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The same tensor as the input \'elem\'."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Push an element onto the stack."
+}
+op {
   name: "StopGradient"
   input_arg {
     name: "input"
@@ -7319,7 +7429,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A Tensor of the same shape as the input string_tensor."
+    description: "A Tensor of the same shape as the input `string_tensor`."
     type: DT_INT64
   }
   attr {
@@ -7340,7 +7450,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A Tensor of the same shape as the input string_tensor."
+    description: "A Tensor of the same shape as the input `string_tensor`."
     type_attr: "out_type"
   }
   attr {
@@ -7942,7 +8052,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension_0 which\nhas size `num_segments`."
+    description: "Has same shape as data, except for dimension 0 which\nhas size `num_segments`."
     type_attr: "T"
   }
   attr {

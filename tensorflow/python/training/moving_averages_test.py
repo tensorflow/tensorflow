@@ -21,9 +21,9 @@ from __future__ import print_function
 import tensorflow.python.platform
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -36,7 +36,7 @@ class MovingAveragesTest(test_util.TensorFlowTestCase):
   def testAssignMovingAverage(self):
     with self.test_session():
       var = variables.Variable([10.0, 11.0])
-      val = constant_op.constant([1.0, 2.0], types.float32)
+      val = constant_op.constant([1.0, 2.0], dtypes.float32)
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
       variables.initialize_all_variables().run()
@@ -151,7 +151,7 @@ class ExponentialMovingAverageTest(test_util.TensorFlowTestCase):
     with ops.device("dev_v0"):
       v0 = variables.Variable(10.0, name="v0")
     with ops.device("dev_v1"):
-      v1 = state_ops.variable_op(shape=[1], dtype=types.float32, name="v1")
+      v1 = state_ops.variable_op(shape=[1], dtype=dtypes.float32, name="v1")
     tensor2 = v0 + v1
     ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
     with ops.device("default"):

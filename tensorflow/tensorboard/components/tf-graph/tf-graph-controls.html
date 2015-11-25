@@ -61,10 +61,6 @@ table td {
   padding-bottom: 10px;
 }
 
-#fit {
-  color: var(--paper-orange-500);
-}
-
 paper-radio-button {
   padding: 5px;
 }
@@ -132,7 +128,7 @@ svg.icon {
   padding: 0 0 0 55px;
 }
 
-.fit-button-text {
+.button-text {
   text-transform: none;
   padding: 8px 18px 0 18px;
   font-size: 14px
@@ -145,10 +141,11 @@ svg.icon {
   margin-top: 4px;
 }
 
-.fit-button {
+.iconbutton {
   padding: 2px;
   width: 30px;
   height: 30px;
+  color: var(--paper-orange-500);
 }
 
 .hidden-input {
@@ -162,20 +159,20 @@ svg.icon {
   clear: both;
 }
 </style>
-<svg style="display:none;">
-  <defs>
-    <!-- Summary icon. -->
-    <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
-      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
-    </svg>
-  </defs>
-</svg>
 <div class="allcontrols">
   <div class="control-holder">
-    <paper-icon-button id="fit" icon="aspect-ratio" class="fit-button" on-click="fit" alt="Fit to screen">
+    <paper-icon-button icon="aspect-ratio" class="iconbutton" on-click="fit" alt="Fit to screen">
     </paper-icon-button>
-    <paper-button class="fit-button-text" on-click="fit">Fit to screen
+    <paper-button class="button-text" on-click="fit">Fit to screen
     </paper-button>
+  </div>
+  <div class="control-holder">
+    <paper-icon-button icon="file-download" class="iconbutton" on-click="download" alt="Download PNG">
+    </paper-icon-button>
+    <paper-button class="button-text" on-click="download">Download PNG
+    </paper-button>
+    <a href="#" id="graphdownload" class="title" download="graph.png">
+    </a>
   </div>
   <div class="control-holder">
     <div class="title">Run</div>
@@ -383,6 +380,7 @@ Polymer({
       type: Number,
       notify: true,
       value: 0,
+      observer: '_selectedDatasetChanged'
     },
     selectedFile: {
       type: Object,
@@ -434,17 +432,44 @@ Polymer({
       endColor: params.endColor
     };
   },
+  download: function() {
+    this.$.graphdownload.click();
+  },
   _updateFileInput: function(e) {
+    var file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+    this._setDownloadFilename(file.name);
     this.set('selectedFile', e);
   },
   _datasetsChanged: function(newDatasets, oldDatasets) {
     if (oldDatasets != null || this.selected == null) {
       // Select the first dataset by default.
       this.set('selectedDataset', 0);
+      this._setDownloadFilename(this.datasets[this.selectedDataset].path);
+    }
+  },
+  _selectedDatasetChanged: function(newDataset, oldDataset) {
+    if (this.datasets) {
+      this._setDownloadFilename(this.datasets[newDataset].path);
     }
   },
   _getFile: function() {
     this.$.file.click();
+  },
+  _setDownloadFilename: function(graphPath) {
+    // Strip off everything before the last "/" and strip off the file
+    // extension in order to get the name of the PNG for the graph.
+    var dotIndex = graphPath.lastIndexOf('.');
+    if (dotIndex) {
+      graphPath = graphPath.substring(0, dotIndex);
+    }
+    var slashIndex = graphPath.lastIndexOf('/');
+    if (slashIndex) {
+      graphPath = graphPath.substring(slashIndex + 1);
+    }
+    this.$.graphdownload.setAttribute('download', graphPath + '.png');
   }
 });
 

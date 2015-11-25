@@ -31,9 +31,9 @@ class ShardedFileOpsTest(tf.test.TestCase):
         target="",
         config=tf.ConfigProto(device_count={"CPU": 2})):
       self.assertEqual(gen_io_ops._sharded_filename("foo", 4, 100).eval(),
-                       "foo-00004-of-00100")
+                       b"foo-00004-of-00100")
       self.assertEqual(gen_io_ops._sharded_filespec("foo", 100).eval(),
-                       "foo-?????-of-00100")
+                       b"foo-?????-of-00100")
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ class SummaryOpsTest(tf.test.TestCase):
           sum_squares: 100.0
           bucket_limit: 9.93809490288
           bucket_limit: 10.9319043932
-          bucket_limit: 1.79769313486e+308
+          bucket_limit: 1.7976931348623157e+308
           bucket: 0.0
           bucket: 1.0
           bucket: 0.0

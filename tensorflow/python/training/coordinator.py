@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Coordinator to help multiple threads stop when requested."""
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +22,9 @@ import threading
 import time
 
 from tensorflow.python.platform import logging
+from tensorflow.python.util import compat
+
+import six
 
 
 class Coordinator(object):
@@ -122,21 +124,23 @@ class Coordinator(object):
   def request_stop(self, ex=None):
     """Request that the threads stop.
 
-    After this is called, calls to should_stop() will return True.
+    After this is called, calls to `should_stop()` will return `True`.
 
     Args:
-      ex: Optional Exception, or Python 'exc_info' tuple as returned by
-        sys.exc_info().  If this is the first call to request_stop() the
-        corresponding exception is recorded and re-raised from join().
+      ex: Optional `Exception`, or Python `exc_info` tuple as returned by
+        `sys.exc_info()`.  If this is the first call to `request_stop()` the
+        corresponding exception is recorded and re-raised from `join()`.
     """
     with self._lock:
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
-            logging.info("Error reported to Coordinator: %s", str(ex[1]))
+            logging.info("Error reported to Coordinator: %s",
+                         compat.as_str(unicode(ex[1])))
             self._exc_info_to_raise = ex
           else:
-            logging.info("Error reported to Coordinator: %s", str(ex))
+            logging.info("Error reported to Coordinator: %s",
+                         compat.as_str(unicode(ex)))
             self._exc_info_to_raise = sys.exc_info()
         self._stop_event.set()
 
@@ -163,24 +167,24 @@ class Coordinator(object):
   def join(self, threads, stop_grace_period_secs=120):
     """Wait for threads to terminate.
 
-    Blocks until all 'threads' have terminated or request_stop() is called.
+    Blocks until all `threads` have terminated or `request_stop()` is called.
 
-    After the threads stop, if an 'exc_info' was passed to request_stop, that
+    After the threads stop, if an `exc_info` was passed to `request_stop`, that
     exception is re-reaised.
 
-    Grace period handling: When request_stop() is called, threads are given
+    Grace period handling: When `request_stop()` is called, threads are given
     'stop_grace_period_secs' seconds to terminate.  If any of them is still
-    alive after that period expires, a RuntimeError is raised.  Note that if
-    an 'exc_info' was passed to request_stop() then it is raised instead of
-    that RuntimeError.
+    alive after that period expires, a `RuntimeError` is raised.  Note that if
+    an `exc_info` was passed to `request_stop()` then it is raised instead of
+    that `RuntimeError`.
 
     Args:
-      threads: List threading.Threads. The started threads to join.
+      threads: List of `threading.Threads`. The started threads to join.
       stop_grace_period_secs: Number of seconds given to threads to stop after
-        request_stop() has been called.
+        `request_stop()` has been called.
 
     Raises:
-      RuntimeError: If any thread is still alive after request_stop()
+      RuntimeError: If any thread is still alive after `request_stop()`
         is called and the grace period expires.
     """
     # Wait for all threads to stop or for request_stop() to be called.
@@ -198,8 +202,7 @@ class Coordinator(object):
     # Terminate with an exception if appropriate.
     with self._lock:
       if self._exc_info_to_raise:
-        exc_info = self._exc_info_to_raise
-        raise exc_info[0], exc_info[1], exc_info[2]
+        six.reraise(*self._exc_info_to_raise)
       elif stragglers:
         raise RuntimeError("Coordinator stopped with threads still running: %s",
                            " ".join(stragglers))

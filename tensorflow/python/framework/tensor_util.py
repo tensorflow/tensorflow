@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numbers
 import tensorflow.python.platform
 import numpy as np
 import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.util import compat
 
 # TODO(opensource): Add support for pyx_library in the open-source build.
 # For now, we use the slow versions that fast_tensor_util replaces.
@@ -35,8 +35,8 @@ try:
 except ImportError:
   _FAST_TENSOR_UTIL_AVAILABLE = False
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types
 # pylint: enable=g-import-not-at-top
 
 
@@ -53,10 +53,11 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.complex128: fast_tensor_util.AppendComplex128ArrayToTensorProto,
       np.object: fast_tensor_util.AppendObjectArrayToTensorProto,
       np.bool: fast_tensor_util.AppendBoolArrayToTensorProto,
-      types.qint8.as_numpy_dtype: fast_tensor_util.AppendInt8ArrayToTensorProto,
-      types.quint8.as_numpy_dtype:
+      dtypes.qint8.as_numpy_dtype:
+          fast_tensor_util.AppendInt8ArrayToTensorProto,
+      dtypes.quint8.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
-      types.qint32.as_numpy_dtype:
+      dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
@@ -80,7 +81,7 @@ else:
                                       for v in [x.real, x.imag]])
 
   def SlowAppendObjectArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.string_val.extend([str(x) for x in proto_values])
+    tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
 
   def SlowAppendBoolArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
@@ -97,9 +98,9 @@ else:
       np.complex128: SlowAppendComplexArrayToTensorProto,
       np.object: SlowAppendObjectArrayToTensorProto,
       np.bool: SlowAppendBoolArrayToTensorProto,
-      types.qint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
-      types.quint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
-      types.qint32.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
+      dtypes.qint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
+      dtypes.quint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
+      dtypes.qint32.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 
@@ -170,8 +171,8 @@ def _FlattenToStrings(nested_strings):
 
 
 _TENSOR_CONTENT_TYPES = frozenset([
-    types.float32, types.float64, types.int32, types.uint8, types.int16,
-    types.int8, types.int64
+    dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
+    dtypes.int8, dtypes.int64
 ])
 
 
@@ -204,25 +205,25 @@ def _NotNone(v):
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, numbers.Integral) else _NotNone(v)
+  return None if isinstance(v, compat.integral_types) else _NotNone(v)
 
 
 def _FilterFloat(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterFloat(x) for x in v])
-  return None if isinstance(v, numbers.Real) else _NotNone(v)
+  return None if isinstance(v, compat.real_types) else _NotNone(v)
 
 
 def _FilterComplex(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterComplex(x) for x in v])
-  return None if isinstance(v, numbers.Complex) else _NotNone(v)
+  return None if isinstance(v, compat.complex_types) else _NotNone(v)
 
 
 def _FilterStr(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterStr(x) for x in v])
-  if isinstance(v, (six.string_types, six.binary_type)):
+  if isinstance(v, compat.bytes_or_text_types):
     return None
   else:
     return _NotNone(v)
@@ -241,19 +242,19 @@ def _FilterNotTensor(v):
 
 
 _TF_TO_IS_OK = {
-    types.float32: _FilterFloat,
-    types.float64: _FilterFloat,
-    types.int32: _FilterInt,
-    types.uint8: _FilterInt,
-    types.int16: _FilterInt,
-    types.int8: _FilterInt,
-    types.string: _FilterStr,
-    types.complex64: _FilterComplex,
-    types.int64: _FilterInt,
-    types.bool: _FilterBool,
-    types.qint32: _FilterInt,
-    types.quint8: _FilterInt,
-    types.qint8: _FilterInt,
+    dtypes.float32: _FilterFloat,
+    dtypes.float64: _FilterFloat,
+    dtypes.int32: _FilterInt,
+    dtypes.uint8: _FilterInt,
+    dtypes.int16: _FilterInt,
+    dtypes.int8: _FilterInt,
+    dtypes.string: _FilterStr,
+    dtypes.complex64: _FilterComplex,
+    dtypes.int64: _FilterInt,
+    dtypes.bool: _FilterBool,
+    dtypes.qint32: _FilterInt,
+    dtypes.quint8: _FilterInt,
+    dtypes.qint8: _FilterInt,
 }
 
 
@@ -264,8 +265,8 @@ def _AssertCompatible(values, dtype):
     if dtype is None:
       raise TypeError("List of Tensors when single Tensor expected")
     else:
-      raise TypeError("Expected %s, got %s instead." %
-                      (dtype.name, repr(mismatch)))
+      raise TypeError("Expected %s, got %s of type '%s' instead." %
+                      (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
 def make_tensor_proto(values, dtype=None, shape=None):
@@ -308,7 +309,7 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   """
   if dtype:
-    dtype = types.as_dtype(dtype)
+    dtype = dtypes.as_dtype(dtype)
 
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
@@ -338,13 +339,13 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   # if dtype is provided, it must be compatible with what numpy
   # conversion says.
-  numpy_dtype = types.as_dtype(nparray.dtype)
+  numpy_dtype = dtypes.as_dtype(nparray.dtype)
   if numpy_dtype is None:
     raise TypeError("Unrecognized data type: %s" % nparray.dtype)
 
   # If dtype was specified and is a quantized type, we convert
   # numpy_dtype back into the quantized version.
-  if dtype in [types.qint8, types.quint8, types.qint32]:
+  if dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint32]:
     numpy_dtype = dtype
 
   if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
@@ -378,9 +379,9 @@ def make_tensor_proto(values, dtype=None, shape=None):
   # strings. Since values could be a list of strings, or a multi-dimensional
   # list of lists that might or might not correspond to the given shape,
   # we flatten it conservatively.
-  if numpy_dtype == types.string and not isinstance(values, np.ndarray):
+  if numpy_dtype == dtypes.string and not isinstance(values, np.ndarray):
     proto_values = _FlattenToStrings(values)
-    tensor_proto.string_val.extend([str(x) for x in proto_values])
+    tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
     return tensor_proto
 
   # TensorFlow expects C order (a.k.a., eigen row major).
@@ -412,45 +413,45 @@ def MakeNdarray(tensor):
   """
   shape = [d.size for d in tensor.tensor_shape.dim]
   num_elements = np.prod(shape)
-  tensor_dtype = types.as_dtype(tensor.dtype)
+  tensor_dtype = dtypes.as_dtype(tensor.dtype)
   dtype = tensor_dtype.as_numpy_dtype
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.float32:
+  elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.float_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.float64:
+  elif tensor_dtype == dtypes.float64:
     if len(tensor.double_val) == 1:
       return np.repeat(np.array(tensor.double_val[0], dtype=dtype),
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype in [types.int32, types.uint8, types.int16, types.int8,
-                        types.qint32, types.quint8, types.qint8,
-                        types.bfloat16]:
+  elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.int16, dtypes.int8,
+                        dtypes.qint32, dtypes.quint8, dtypes.qint8,
+                        dtypes.bfloat16]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.int_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.int64:
+  elif tensor_dtype == dtypes.int64:
     if len(tensor.int64_val) == 1:
       return np.repeat(np.array(tensor.int64_val[0], dtype=dtype),
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.int64_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.string:
+  elif tensor_dtype == dtypes.string:
     if len(tensor.string_val) == 1:
-      return np.repeat(np.array(str(tensor.string_val[0]), dtype=dtype),
+      return np.repeat(np.array(tensor.string_val[0], dtype=dtype),
                        num_elements).reshape(shape)
     else:
-      return np.array([str(x) for x in tensor.string_val],
+      return np.array([x for x in tensor.string_val],
                       dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.complex64:
+  elif tensor_dtype == dtypes.complex64:
     it = iter(tensor.scomplex_val)
     if len(tensor.scomplex_val) == 2:
       return np.repeat(np.array(complex(tensor.scomplex_val[0],
@@ -459,7 +460,7 @@ def MakeNdarray(tensor):
     else:
       return np.array([complex(x[0], x[1]) for x in zip(it, it)],
                       dtype=dtype).reshape(shape)
-  elif tensor_dtype == types.bool:
+  elif tensor_dtype == dtypes.bool:
     if len(tensor.bool_val) == 1:
       return np.repeat(np.array(tensor.bool_val[0], dtype=dtype),
                        num_elements).reshape(shape)

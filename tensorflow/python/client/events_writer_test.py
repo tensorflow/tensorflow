@@ -26,14 +26,15 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
   def testWriteEvents(self):
     file_prefix = os.path.join(self.get_temp_dir(), "events")
-    writer = pywrap_tensorflow.EventsWriter(file_prefix)
-    filename = writer.FileName()
+    writer = pywrap_tensorflow.EventsWriter(compat.as_bytes(file_prefix))
+    filename = compat.as_text(writer.FileName())
     event_written = event_pb2.Event(
         wall_time=123.45, step=67,
         summary=summary_pb2.Summary(
@@ -66,7 +67,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     class _Invalid(object):
       def __str__(self): return "Invalid"
     with self.assertRaisesRegexp(TypeError, "Invalid"):
-      pywrap_tensorflow.EventsWriter("foo").WriteEvent(_Invalid())
+      pywrap_tensorflow.EventsWriter(b"foo").WriteEvent(_Invalid())
 
 
 if __name__ == "__main__":

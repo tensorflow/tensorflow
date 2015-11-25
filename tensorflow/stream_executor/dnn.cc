@@ -137,6 +137,7 @@ string BatchDescriptor::ToShortString() const {
       return port::StrCat(batch, depth, y, x, suffix);
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
+      return "";  // Avoid lack-of-return warning
   }
 }
 
@@ -204,6 +205,7 @@ string FilterDescriptor::ToShortString() const {
       return port::StrCat(y, x, id, od);
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout_);
+      return "";  // Avoid lack-of-return warning
   }
 }
 

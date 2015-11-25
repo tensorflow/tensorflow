@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// We define the PY_ARRAY_UNIQUE_SYMBOL in this .cc file and provide an
+// ImportNumpy function to populate it.
+#define TF_IMPORT_NUMPY
+
 #include "tensorflow/python/client/tf_session_helper.h"
 
 #include <cstring>
@@ -80,7 +84,7 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
 Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
                                    TF_DataType* out_tf_datatype) {
   int pyarray_type = PyArray_TYPE(array);
-  PyArray_Descr* descr = array->descr;
+  PyArray_Descr* descr = PyArray_DESCR(array);
   switch (pyarray_type) {
     case NPY_FLOAT32:
       *out_tf_datatype = TF_FLOAT;
@@ -185,8 +189,8 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
   Safe_PyObjectPtr iter = tensorflow::make_safe(
       PyArray_IterNew(reinterpret_cast<PyObject*>(array)));
   while (PyArray_ITER_NOTDONE(iter.get())) {
-    auto item = tensorflow::make_safe(
-        PyArray_GETITEM(array, PyArray_ITER_DATA(iter.get())));
+    auto item = tensorflow::make_safe(PyArray_GETITEM(
+        array, static_cast<char*>(PyArray_ITER_DATA(iter.get()))));
     if (!item.get()) {
       return errors::Internal("Unable to get element from the feed.");
     }
@@ -197,7 +201,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     // Accept unicode in Python 3, by converting to UTF-8 bytes.
     if (PyUnicode_Check(item.get())) {
       ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
-      if (!buf) {
+      if (!ptr) {
         return errors::Internal("Unable to get element from the feed.");
       }
     } else {
@@ -260,7 +264,8 @@ static Status TF_StringTensor_GetPtrAndLen(const TF_Tensor* src,
       reinterpret_cast<const tensorflow::uint64*>(input)[i];
   const char* p =
       tensorflow::core::GetVarint64Ptr(data_start + offset, limit, len);
-  if (offset >= (limit - data_start) || !p || (*len > (limit - p))) {
+  if (static_cast<int64>(offset) >= (limit - data_start) || !p ||
+      static_cast<int64>(*len) > (limit - p)) {
     return errors::InvalidArgument("Malformed TF_STRING tensor; element ", i,
                                    " out of range");
   }
@@ -279,8 +284,8 @@ static Status CopyStringToPyArrayElement(PyArrayObject* pyarray, void* i_ptr,
   TF_RETURN_IF_ERROR(
       TF_StringTensor_GetPtrAndLen(tensor, num_elements, i, &ptr, &len));
   auto py_string = tensorflow::make_safe(PyBytes_FromStringAndSize(ptr, len));
-  int success =
-      PyArray_SETITEM(pyarray, PyArray_ITER_DATA(i_ptr), py_string.get());
+  int success = PyArray_SETITEM(
+      pyarray, static_cast<char*>(PyArray_ITER_DATA(i_ptr)), py_string.get());
   if (success != 0) {
     return errors::Internal("Error setting element ", i);
   }
@@ -323,7 +328,8 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
   }
   PyArrayObject* py_array =
       reinterpret_cast<PyArrayObject*>(safe_out_array.get());
-  if (PyArray_NBYTES(py_array) != TF_TensorByteSize(tensor)) {
+  if (PyArray_NBYTES(py_array) !=
+      static_cast<int64>(TF_TensorByteSize(tensor))) {
     if (TF_TensorType(tensor) == TF_STRING) {
       // Copy element by element.
       auto iter = tensorflow::make_safe(PyArray_IterNew(safe_out_array.get()));
@@ -341,7 +347,8 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
                               TF_TensorByteSize(tensor), " bytes");
     }
   } else {
-    memcpy(py_array->data, TF_TensorData(tensor), PyArray_NBYTES(py_array));
+    memcpy(PyArray_DATA(py_array), TF_TensorData(tensor),
+           PyArray_NBYTES(py_array));
   }
 
   // PyArray_Return turns rank 0 arrays into numpy scalars
@@ -395,8 +402,6 @@ tensorflow::Status TF_Status_to_Status(TF_Status* tf_status) {
   }
 }
 
-static bool numpy_imported = false;
-
 }  // namespace
 
 Safe_PyObjectPtr make_safe(PyObject* o) {
@@ -410,12 +415,6 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
                     const NameVector& output_names,
                     const NameVector& target_nodes, Status* out_status,
                     PyObjectVector* out_values) {
-  // 0. Ensure that numpy has been imported.
-  if (!numpy_imported) {
-    import_array();
-    numpy_imported = true;
-  }
-
   // 1. Convert the feed inputs to the appropriate form for TF_Run.
   NameVector input_names;
   Safe_PyObjectVector
@@ -428,7 +427,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
         make_safe(reinterpret_cast<PyObject*>(name_and_array.second)));
   }
 
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     input_names.push_back(inputs[i].first);
     PyArrayObject* array = inputs[i].second;
 
@@ -460,7 +459,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
       // requirements for tensorflow::Tensor. We hard code this here to
       // avoid taking a dependency on Eigen in the client code.
       void* data = tensorflow::cpu_allocator()->AllocateRaw(32, size);
-      std::memcpy(data, array->data, size);
+      std::memcpy(data, PyArray_DATA(array), size);
       inputs_safe.emplace_back(make_safe(
           TF_NewTensor(dtype, dims.data(), dims.size(), data, size,
                        [](void* data, size_t len, void* arg) {
@@ -525,7 +524,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
   // 6. Convert the fetched tensors into numpy ndarrays. Store them in a safe
   // container so that we do not leak
   Safe_PyObjectVector py_outputs_safe;
-  for (int i = 0; i < output_names.size(); ++i) {
+  for (size_t i = 0; i < output_names.size(); ++i) {
     PyObject* py_array;
     *out_status = TF_Tensor_to_PyObject(outputs[i], &py_array);
     if (!out_status->ok()) {
@@ -541,5 +540,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
   }
   *out_status = Status::OK();
 }
+
+void ImportNumpy() { import_array1(); }
 
 }  // namespace tensorflow

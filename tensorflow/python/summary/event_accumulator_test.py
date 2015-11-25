@@ -58,7 +58,7 @@ class _EventGenerator(object):
         summary=tf.Summary(value=[tf.Summary.Value(tag=tag, histo=histo)]))
     self.AddEvent(event)
 
-  def AddImage(self, tag, wall_time=0, step=0, encoded_image_string='imgstr',
+  def AddImage(self, tag, wall_time=0, step=0, encoded_image_string=b'imgstr',
                width=150, height=100):
     image = tf.Summary.Image(encoded_image_string=encoded_image_string,
                              width=width, height=height)
@@ -307,13 +307,13 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
   def testImages(self):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    im1 = ea.ImageEvent(wall_time=1, step=10, encoded_image_string='big',
+    im1 = ea.ImageEvent(wall_time=1, step=10, encoded_image_string=b'big',
                         width=400, height=300)
-    im2 = ea.ImageEvent(wall_time=2, step=12, encoded_image_string='small',
+    im2 = ea.ImageEvent(wall_time=2, step=12, encoded_image_string=b'small',
                         width=40, height=30)
-    gen.AddImage('im1', wall_time=1, step=10, encoded_image_string='big',
+    gen.AddImage('im1', wall_time=1, step=10, encoded_image_string=b'big',
                  width=400, height=300)
-    gen.AddImage('im2', wall_time=2, step=12, encoded_image_string='small',
+    gen.AddImage('im2', wall_time=2, step=12, encoded_image_string=b'small',
                  width=40, height=30)
     acc.Reload()
     self.assertEqual(acc.Images('im1'), [im1])

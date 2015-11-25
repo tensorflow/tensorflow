@@ -56,7 +56,7 @@ class DirectoryWatcher(object):
     self._directory = directory
     self._loader_factory = loader_factory
     self._loader = None
-    self._path = None
+    self._path = ''
     self._path_filter = path_filter
 
   def Load(self):

@@ -156,10 +156,10 @@ import tensorflow.python.platform
 import numpy as np
 import six.moves
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_math_ops
@@ -196,7 +196,7 @@ def abs(x, name=None):
   """
   with ops.op_scope([x], name, "Abs") as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype == types.complex64:
+    if x.dtype == dtypes.complex64:
       return gen_math_ops.complex_abs(x, name=name)
     return gen_math_ops._abs(x, name=name)
 
@@ -333,7 +333,7 @@ def to_float(x, name="ToFloat"):
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
   """
-  return cast(x, types.float32, name=name)
+  return cast(x, dtypes.float32, name=name)
 
 
 def to_double(x, name="ToDouble"):
@@ -349,7 +349,7 @@ def to_double(x, name="ToDouble"):
   Raises:
     TypeError: If `x` cannot be cast to the `float64`.
   """
-  return cast(x, types.float64, name=name)
+  return cast(x, dtypes.float64, name=name)
 
 
 def to_int32(x, name="ToInt32"):
@@ -365,7 +365,7 @@ def to_int32(x, name="ToInt32"):
   Raises:
     TypeError: If `x` cannot be cast to the `int32`.
   """
-  return cast(x, types.int32, name=name)
+  return cast(x, dtypes.int32, name=name)
 
 
 def to_int64(x, name="ToInt64"):
@@ -381,7 +381,7 @@ def to_int64(x, name="ToInt64"):
   Raises:
     TypeError: If `x` cannot be cast to the `int64`.
   """
-  return cast(x, types.int64, name=name)
+  return cast(x, dtypes.int64, name=name)
 
 
 def to_bfloat16(x, name="ToBFloat16"):
@@ -397,7 +397,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   Raises:
     TypeError: If `x` cannot be cast to the `bfloat16`.
   """
-  return cast(x, types.bfloat16, name=name)
+  return cast(x, dtypes.bfloat16, name=name)
 
 
 ops.Tensor._override_operator("__neg__", neg)
@@ -437,14 +437,14 @@ def _OverrideBinaryOperatorHelper(func, op_name):
 
 # Conversion table for __truediv__.  None entries mean no conversion required.
 _TRUEDIV_TABLE = {
-    types.uint8: types.float32,
-    types.int8: types.float32,
-    types.int16: types.float32,
-    types.int32: types.float64,
-    types.int64: types.float64,
-    types.float32: None,
-    types.float64: None,
-    types.complex64: None,
+    dtypes.uint8: dtypes.float32,
+    dtypes.int8: dtypes.float32,
+    dtypes.int16: dtypes.float32,
+    dtypes.int32: dtypes.float64,
+    dtypes.int64: dtypes.float64,
+    dtypes.float32: None,
+    dtypes.float64: None,
+    dtypes.complex64: None,
 }
 
 
@@ -891,7 +891,7 @@ def matmul(a, b,
   with ops.op_scope([a, b], name, "MatMul") as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
-    if a.dtype == types.float32 and (a_is_sparse or b_is_sparse):
+    if a.dtype == dtypes.float32 and (a_is_sparse or b_is_sparse):
       return sparse_matmul(a, b,
                            transpose_a=transpose_a,
                            transpose_b=transpose_b,
@@ -953,14 +953,14 @@ def _as_indexed_slices_list(inputs):
     raise TypeError("Expected a list or tuple, not a %s" % type(inputs))
   outputs = [_as_indexed_slices(i) for i in inputs]
   with_int32_index = [o.indices for o in outputs
-                      if o.indices.dtype == types.int32]
+                      if o.indices.dtype == dtypes.int32]
   if not with_int32_index or len(with_int32_index) == len(outputs):
     return outputs
   casted_outputs = []
   for o in outputs:
-    if o.indices.dtype == types.int32:
+    if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values, cast(o.indices, types.int64),
+          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
                             o.dense_shape))
     else:
       casted_outputs.append(o)

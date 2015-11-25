@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.kernel_tests import gradient_checker as gc
+from tensorflow.python.util import compat
 
 
 def _AsLong(array):
@@ -145,7 +146,7 @@ def _EmbeddingResult(params, id_vals, num_shards, weight_vals=None):
   for ids, wts in zip(id_vals, weight_vals):
     val_aggr = None
     wt_aggr = None
-    if isinstance(ids, int):
+    if isinstance(ids, compat.integral_types):
       ids = [ids]
       wts = [wts]
     for i, wt_val in zip(ids, wts):

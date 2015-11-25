@@ -22,13 +22,12 @@ import contextlib
 
 import tensorflow.python.platform
 
-import six
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types as types_lib
+from tensorflow.python.util import compat
 
 
 # TODO(josh11b): SWIG the code from node_def_util instead of duplicating
@@ -61,7 +60,7 @@ def _ArgToTypesNoRef(node_def, arg_def):
 def _SingleArgToTypes(node_def, arg_def):
   types = _ArgToTypesNoRef(node_def, arg_def)
   if arg_def.is_ref:
-    return [types_lib.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
+    return [dtypes.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
   return types
 
 
@@ -122,6 +121,7 @@ def _ParseTensorName(tensor_name):
 
 
 def _CanonicalInputName(input_name):
+  input_name = compat.as_str(input_name)
   if _IsControlInput(input_name):
     return input_name
   input_op_name, output_index = _ParseTensorName(input_name)
@@ -170,11 +170,11 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
-    corresponding to the names in `return_elements'.
+    corresponding to the names in `return_elements`.
 
   Raises:
     TypeError: If `graph_def` is not a `GraphDef` proto,
-      `input_map' is not a dictionary mapping strings to `Tensor` objects,
+      `input_map` is not a dictionary mapping strings to `Tensor` objects,
       or `return_elements` is not a list of strings.
     ValueError: If `input_map`, or `return_elements` contains names that
       do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
@@ -194,14 +194,15 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     input_map = {}
   else:
     if not (isinstance(input_map, dict)
-            and all(isinstance(k, six.string_types) for k in input_map.keys())):
+            and all(isinstance(k, compat.bytes_or_text_types)
+                    for k in input_map.keys())):
       raise TypeError('input_map must be a dictionary mapping strings to '
                       'Tensor objects.')
-  if (return_elements is not None
-      and not (isinstance(return_elements, (list, tuple))
-               and all(isinstance(x, six.string_types)
-                       for x in return_elements))):
-    raise TypeError('return_elements must be a list of strings.')
+  if return_elements is not None:
+    return_elements = tuple(return_elements)
+    if not all(isinstance(x, compat.bytes_or_text_types)
+               for x in return_elements):
+      raise TypeError('return_elements must be a list of strings.')
 
   # Use a canonical representation for all tensor names.
   input_map = {_CanonicalInputName(k): v for k, v in input_map.items()}
@@ -219,7 +220,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
-    # `graph_def'.
+    # `graph_def`.
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
@@ -267,7 +268,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             used_input_keys.add(input_name)
 
           else:
-            # (c) Input should be taken from an op in `graph_def'.
+            # (c) Input should be taken from an op in `graph_def`.
             operation_name, output_index = _ParseTensorName(input_name)
             try:
               source_op = name_to_op[operation_name]
@@ -284,9 +285,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             op._add_input(source_tensor, dtype=input_type)
             # pylint: enable=protected-access
           except TypeError as te:
-            raise ValueError(
-                _InvalidNodeMessage(node, 'Input tensor %r %s'
-                                    % (input_name, te.message)))
+            raise ValueError(_InvalidNodeMessage(
+                node, 'Input tensor %r %s' % (input_name, te)))
 
       # pylint: disable=protected_access
       if op._input_dtypes != input_types:
@@ -294,7 +294,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             _InvalidNodeMessage(
                 node,
                 'Input types mismatch (expected %r but got %r)'
-                % (", ".join(types_lib.as_dtype(x).name for x in input_types),
+                % (", ".join(dtypes.as_dtype(x).name for x in input_types),
                    ", ".join(x.name for x in op._input_dtypes))))
       # pylint: enable=protected_access
 
@@ -316,6 +316,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     else:
       ret = []
       for name in return_elements:
+        name = compat.as_str(name)
         if ':' in name:
           try:
             operation_name, output_index = _ParseTensorName(name)

@@ -24,8 +24,9 @@ import itertools
 import tensorflow.python.platform
 
 import numpy as np
+import tensorflow as tf
 
-from tensorflow.python.framework import types
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import variables
@@ -37,13 +38,13 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _toType(self, dtype):
     if dtype == np.float32:
-      return types.float32
+      return tf.float32
     elif dtype == np.float64:
-      return types.float64
+      return tf.float64
     elif dtype == np.int32:
-      return types.int32
+      return tf.int32
     elif dtype == np.int64:
-      return types.int64
+      return tf.int64
     else:
       assert False, (dtype)
 

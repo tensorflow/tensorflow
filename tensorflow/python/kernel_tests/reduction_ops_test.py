@@ -131,13 +131,13 @@ class SumReductionTest(tf.test.TestCase):
     np_arr = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = tf.convert_to_tensor(np_arr)
     with self.assertRaisesWithPredicateMatch(
-        ValueError, lambda e: "Invalid reduction dimension" in e.message):
+        ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [-1])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, lambda e: "Invalid reduction dimension" in e.message):
+        ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [2])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, lambda e: "Invalid reduction dimension" in e.message):
+        ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [0, 2])
 
   # Int64??

@@ -34,9 +34,10 @@ import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import types
+from tensorflow.python.util import compat
 
 
 def _convert_stack(stack):
@@ -195,7 +196,7 @@ class Tensor(object):
       raise TypeError("op needs to be an Operation: %s" % op)
     self._op = op
     self._value_index = value_index
-    self._dtype = types.as_dtype(dtype)
+    self._dtype = dtypes.as_dtype(dtype)
     self._shape = tensor_shape.unknown_shape()
     # List of operations that use this Tensor as input.  We maintain this list
     # to easily navigate a computation graph.
@@ -393,10 +394,11 @@ class Tensor(object):
       ValueError: If operator has already been overwritten,
         or if operator is not allowed to be overwritten.
     """
-    if getattr(Tensor, operator, None) is not None:
-      # check to see if this is a default method-wrapper which will be true
-      # for the comparison operators.
-      if not isinstance(getattr(Tensor, operator, None), type(all.__call__)):
+    existing = getattr(Tensor, operator, None)
+    if existing is not None:
+      # Check to see if this is a default method-wrapper or slot wrapper which
+      # will be true for the comparison operators.
+      if not isinstance(existing, type(object.__lt__)):
         raise ValueError("operator %s cannot be overwritten again." % operator)
     if operator not in Tensor.OVERLOADABLE_OPERATORS:
       raise ValueError("Overriding %s is disallowed" % operator)
@@ -496,7 +498,7 @@ def convert_to_tensor(value, dtype=None, name=None):
   """
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
-    dtype = types.as_dtype(dtype)
+    dtype = dtypes.as_dtype(dtype)
   for _, funcs_at_priority in sorted(_tensor_conversion_func_registry.items()):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
@@ -538,10 +540,10 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
     ValueError: If `dtype` does not match the element type of `value`.
   """
   if isinstance(value, IndexedSlices):
-    if dtype and not types.AsDType(dtype).is_compatible_with(value.dtype):
+    if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
-          % (types.AsDType(dtype).name, value.dtype.name, str(value)))
+          % (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
     return convert_to_tensor(value, dtype, name)
@@ -880,8 +882,8 @@ def _NodeDef(op_type, name, device=None, attrs=None):
     A graph_pb2.NodeDef protocol buffer.
   """
   node_def = graph_pb2.NodeDef()
-  node_def.op = str(op_type)
-  node_def.name = str(name)
+  node_def.op = compat.as_bytes(op_type)
+  node_def.name = compat.as_bytes(name)
   if attrs is not None:
     for k, v in six.iteritems(attrs):
       node_def.attr[k].CopyFrom(v)
@@ -966,11 +968,11 @@ class Operation(object):
 
     Raises:
       TypeError: if control inputs are not Operations or Tensors,
-        or if node_def is not a `NodeDef`,
-        or if g is not a `Graph`,
-        or if inputs are not tensors,
-        or if inputs and input_types are incompatible.
-      ValueError: if the node_def name is not valid.
+        or if `node_def` is not a `NodeDef`,
+        or if `g` is not a `Graph`,
+        or if `inputs` are not tensors,
+        or if `inputs` and `input_types` are incompatible.
+      ValueError: if the `node_def` name is not valid.
     """
     if not isinstance(node_def, graph_pb2.NodeDef):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
@@ -1079,7 +1081,7 @@ class Operation(object):
 
     Args:
       tensor: the Tensor to add as an input.
-      dtype: types.DType: type of the input; defaults to
+      dtype: tf.DType: type of the input; defaults to
         the tensor's dtype.
 
     Raises:
@@ -1093,7 +1095,7 @@ class Operation(object):
     if dtype is None:
       dtype = tensor.dtype
     else:
-      dtype = types.as_dtype(dtype)
+      dtype = dtypes.as_dtype(dtype)
       if not dtype.is_compatible_with(tensor.dtype):
         raise TypeError(
             "Cannot convert a tensor of type %s to an input of type %s"
@@ -1111,7 +1113,7 @@ class Operation(object):
     Args:
       index: the index of the input to update.
       tensor: the Tensor to be used as the input at the given index.
-      dtype: types.DType: type of the input; defaults to
+      dtype: tf.DType: type of the input; defaults to
         the tensor's dtype.
 
     Raises:
@@ -1125,7 +1127,7 @@ class Operation(object):
     if dtype is None:
       dtype = tensor.dtype
     else:
-      dtype = types.as_dtype(dtype)
+      dtype = dtypes.as_dtype(dtype)
       if not dtype.is_compatible_with(tensor.dtype):
         raise TypeError(
             "Cannot convert a tensor of type %s to an input of type %s"
@@ -1414,7 +1416,7 @@ class RegisterShape(object):
   """
 
   def __init__(self, op_type):
-    """Saves the "op_type" as the Operation type."""
+    """Saves the `op_type` as the `Operation` type."""
     if not isinstance(op_type, six.string_types):
       raise TypeError("op_type must be a string")
     self._op_type = op_type
@@ -1664,7 +1666,7 @@ class Graph(object):
       protocol buffer.
 
     Raises:
-      ValueError: If the graph_def would be too large.
+      ValueError: If the `graph_def` would be too large.
     """
     graph = graph_pb2.GraphDef()
     bytesize = 0
@@ -1763,7 +1765,7 @@ class Graph(object):
     try:
       kernel_label = self._op_to_kernel_label_map[op_type]
       node_def.attr["_kernel"].CopyFrom(
-          attr_value_pb2.AttrValue(s=kernel_label))
+          attr_value_pb2.AttrValue(s=compat.as_bytes(kernel_label)))
     except KeyError:
       pass
 
@@ -1772,7 +1774,7 @@ class Graph(object):
     try:
       mapped_op_type = self._gradient_override_map[op_type]
       node_def.attr["_gradient_op_type"].CopyFrom(
-          attr_value_pb2.AttrValue(s=mapped_op_type))
+          attr_value_pb2.AttrValue(s=compat.as_bytes(mapped_op_type)))
     except KeyError:
       pass
 
@@ -1843,8 +1845,8 @@ class Graph(object):
       obj = conv_fn()
 
     # If obj appears to be a name...
-    if isinstance(obj, six.string_types):
-      name = obj
+    if isinstance(obj, compat.bytes_or_text_types):
+      name = compat.as_str(obj)
 
       if ":" in name and allow_tensor:
         # Looks like a Tensor name and can be a Tensor.
@@ -2926,8 +2928,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   Returns:
     The appropriate graph to use for the given inputs.
   """
-  if not isinstance(op_input_list, (list, tuple)):
-    raise TypeError("The op_input_list must be a list or tuple")
+  op_input_list = tuple(op_input_list)  # Handle generators correctly
 
   # 1. If the graph is specified explicitly, we validate that all of the inputs
   #    are compatible with that graph.

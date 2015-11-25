@@ -90,7 +90,7 @@ string EventsWriter::FileName() {
   return filename_;
 }
 
-void EventsWriter::WriteSerializedEvent(const string& event_str) {
+void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
   if (recordio_writer_.get() == NULL) {
     if (!Init()) {
       LOG(ERROR) << "Write failed because file could not be opened.";

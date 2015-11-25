@@ -69,9 +69,9 @@ from __future__ import print_function
 
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import constant_op
@@ -443,7 +443,7 @@ def _GetRealValue(value):
 
       # The begin position of the slice at slice_index.
       slice_index = forward_ctxt.grad_context.index
-      b1 = array_ops.zeros(elem_rank_vec, dtype=types.int32)
+      b1 = array_ops.zeros(elem_rank_vec, dtype=dtypes.int32)
       b = array_ops.concat(0, [array_ops.expand_dims(slice_index, 0), b1])
 
       # The slice at slice_index.
@@ -1134,7 +1134,7 @@ def _AsTensorList(x, p):
   Returns:
     A list of Tensors or IndexedSlices.
   """
-  if not isinstance(x, list) and not isinstance(x, _basetuple):
+  if not isinstance(x, (list, _basetuple)):
     x = [x]
 
   l = []
@@ -1249,7 +1249,10 @@ def group(*inputs, **kwargs):
     # 2-level tree. The root node is the returned NoOp node.
     # deps contains 1 NoOp node for each device.
     deps = []
-    for dev in sorted(six.iterkeys(ops_on_device)):
+    def device_key(dev):
+      """A sort key that allows None to be compared to strings."""
+      return "" if dev is None else dev
+    for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
     return _GroupControlDeps(None, deps, name=name)
 
@@ -1332,7 +1335,7 @@ def fold(fn, elems, elem_shape, name=None):
     d0 = elem_shape[0]
     n = math_ops.div(s0, d0)
     b1 = array_ops.zeros(array_ops.expand_dims(array_ops.rank(elems) - 1, 0),
-                         dtype=types.int32)
+                         dtype=dtypes.int32)
     # Initialize the output with slice 0
     b = array_ops.concat(0, [[0], b1])
     o = array_ops.slice(elems, b, elem_shape)
@@ -1374,7 +1377,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
     Expressions:
     ```
-      f1 = lambda: tf.onstant(17)
+      f1 = lambda: tf.constant(17)
       f2 = lambda: tf.constant(23)
       r = case([(tf.less(x, y), f1)], default=f2)
     ```
@@ -1428,7 +1431,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     if not isinstance(tup, _basetuple) or len(tup) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
     pred, fn = tup
-    if pred.dtype != types.bool:
+    if pred.dtype != dtypes.bool:
       raise TypeError("pred must be of type bool: %s", pred.name)
     if not callable(fn):
       raise TypeError("fn for pred %s must be callable." % pred.name)
@@ -1468,7 +1471,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))
       preds_c = array_ops.concat(0, preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
-          math_ops.cast(preds_c, types.int32), name="num_true_conds")
+          math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(
           num_true_conditions, constant_op.constant(2, name="two_true_conds"))
 

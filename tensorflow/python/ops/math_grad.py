@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
@@ -288,7 +288,7 @@ def _MulGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  if x.dtype.base_dtype == types.complex64:
+  if x.dtype.base_dtype == dtypes.complex64:
     return (array_ops.reshape(math_ops.reduce_sum(grad * math_ops.conj(y), rx), sx),
             array_ops.reshape(math_ops.reduce_sum(math_ops.conj(x) * grad, ry), sy))
   else:
@@ -412,29 +412,14 @@ def _SparseMatMulGrad(op, grad):
     assert t1 in is_sparse and t2 in is_sparse
     t1_sparse = is_sparse[t1]
     t2_sparse = is_sparse[t2]
-    if not t1_sparse and not t2_sparse:
-      return math_ops.matmul(t1, t2,
-                             transpose_a=transpose_a,
-                             transpose_b=transpose_b)
-    transpose_out = False
-    if not t1_sparse:
-      transpose_out = True
-      t1, t2 = t2, t1
-      t1_sparse, t2_sparse = t2_sparse, t1_sparse
-      assert t1_sparse
-      transpose_a, transpose_b = not transpose_b, not transpose_a
-
     if transpose_b:
       t2 = array_ops.transpose(t2)
       transpose_b = False
-    m = math_ops.matmul(t1, t2,
-                        transpose_a=transpose_a,
-                        transpose_b=transpose_b,
-                        a_is_sparse=t1_sparse,
-                        b_is_sparse=t2_sparse)
-    if transpose_out:
-      m = array_ops.transpose(m)
-    return m
+    return math_ops.matmul(t1, t2,
+                           transpose_a=transpose_a,
+                           transpose_b=transpose_b,
+                           a_is_sparse=t1_sparse,
+                           b_is_sparse=t2_sparse)
 
   if not t_a and not t_b:
     return (_SparseMatMul(grad, op.inputs[1], transpose_b=True),
@@ -515,7 +500,7 @@ def _ConjGrad(_, grad):
 
 @ops.RegisterGradient("Cast")
 def _CastGrad(op, grad):
-  t = [types.float32, types.float64, types.bfloat16]
+  t = [dtypes.float32, dtypes.float64, dtypes.bfloat16]
   src_type = op.inputs[0].dtype.base_dtype
   dst_type = grad.dtype.base_dtype
   if src_type in t and dst_type in t:

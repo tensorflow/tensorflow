@@ -20,8 +20,8 @@ limitations under the License.
 // It's designed to have as few dependencies and be as clear as possible, so
 // it's more verbose than it could be in production code. In particular, using
 // auto for the types of a lot of the returned values from TensorFlow calls can
-// remove a lot of boilerplate, but I find them explicit types useful in sample
-// code to make it  simple to look up the classes involved.
+// remove a lot of boilerplate, but I find the explicit types useful in sample
+// code to make it simple to look up the classes involved.
 //
 // To use it, compile and then run in a working directory with the
 // learning/brain/tutorials/label_image/data/ folder below it, and you should

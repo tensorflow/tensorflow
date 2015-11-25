@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 def tf_record_iterator(path):
@@ -34,7 +35,7 @@ def tf_record_iterator(path):
   Raises:
     IOError: If `path` cannot be opened for reading.
   """
-  reader = pywrap_tensorflow.PyRecordReader_New(path, 0)
+  reader = pywrap_tensorflow.PyRecordReader_New(compat.as_bytes(path), 0)
   if reader is None:
     raise IOError("Could not open %s." % path)
   while reader.GetNext():
@@ -62,7 +63,7 @@ class TFRecordWriter(object):
     Raises:
       IOError: If `path` cannot be opened for writing.
     """
-    self._writer = pywrap_tensorflow.PyRecordWriter_New(path)
+    self._writer = pywrap_tensorflow.PyRecordWriter_New(compat.as_bytes(path))
     if self._writer is None:
       raise IOError("Could not write to %s." % path)
 

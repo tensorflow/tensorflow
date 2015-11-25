@@ -27,7 +27,7 @@ All Env implementations are safe for concurrent access from multiple threads wit
 * [`virtual Status tensorflow::Env::DeleteDir(const string &dirname)=0`](#virtual_Status_tensorflow_Env_DeleteDir)
   * Deletes the specified directory.
 * [`virtual Status tensorflow::Env::GetFileSize(const string &fname, uint64 *file_size)=0`](#virtual_Status_tensorflow_Env_GetFileSize)
-  * Stores the size of fname in *file_size.
+  * Stores the size of `fname` in `*file_size`.
 * [`virtual Status tensorflow::Env::RenameFile(const string &src, const string &target)=0`](#virtual_Status_tensorflow_Env_RenameFile)
   * Renames file src to target. If target already exists, it will be replaced.
 * [`virtual uint64 tensorflow::Env::NowMicros()=0`](#virtual_uint64_tensorflow_Env_NowMicros)
@@ -109,7 +109,7 @@ Deletes the specified directory.
 
 #### `virtual Status tensorflow::Env::GetFileSize(const string &fname, uint64 *file_size)=0` {#virtual_Status_tensorflow_Env_GetFileSize}
 
-Stores the size of fname in *file_size.
+Stores the size of `fname` in `*file_size`.
 
 
 

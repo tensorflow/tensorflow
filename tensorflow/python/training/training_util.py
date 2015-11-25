@@ -52,7 +52,7 @@ def global_step(sess, global_step_tensor):
 def write_graph(graph_def, logdir, name, as_text=True):
   """Writes a graph proto on disk.
 
-  The graph is written as a binary proto unless as_text is `True`.
+  The graph is written as a binary proto unless `as_text` is `True`.
 
   ```python
   v = tf.Variable(0, name='my_variable')

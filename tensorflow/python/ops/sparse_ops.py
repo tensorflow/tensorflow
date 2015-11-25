@@ -46,10 +46,10 @@ import tensorflow.python.platform
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_sparse_ops
@@ -178,7 +178,7 @@ def sparse_reorder(sp_input, name=None):
 
   Reordering does not affect the shape of the `SparseTensor`.
 
-  For example, if sp_input has shape `[4, 5]` and `indices` / `values`:
+  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
 
       [0, 3]: b
       [0, 1]: a
@@ -334,8 +334,8 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
     rank = indices_shape[1]
 
     ids = sp_input.values
-    if ids.dtype != types.int64:
-      ids = math_ops.cast(ids, types.int64)
+    if ids.dtype != dtypes.int64:
+      ids = math_ops.cast(ids, dtypes.int64)
 
     # Slice off the last dimension of indices, then then tack on the ids
     indices_columns_to_preserve = array_ops.slice(
@@ -451,8 +451,8 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
 
-    num_rows = math_ops.cast(sp_input.shape[0], types.int32)
-    all_row_indices = math_ops.cast(math_ops.range(num_rows), types.int64)
+    num_rows = math_ops.cast(sp_input.shape[0], dtypes.int32)
+    all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
     empty_row_indices, _ = array_ops.list_diff(
         all_row_indices, sp_input.indices[:, 0])
     empty_row_indicator = gen_sparse_ops.sparse_to_dense(

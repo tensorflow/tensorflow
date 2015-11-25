@@ -30,10 +30,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import config_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
@@ -41,6 +41,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 # NOTE(mrry): Dummy shape registration for op used in the tests.
@@ -96,7 +97,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testErrorPayload(self):
     with session.Session():
-      a = array_ops.placeholder(types.float32)
+      a = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
 
@@ -120,7 +121,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with sess.graph._original_op(a.op):
         b = array_ops.identity(a, name='id')
       with sess.graph._original_op(b.op):
-        c = array_ops.placeholder(types.float32)
+        c = array_ops.placeholder(dtypes.float32)
       # pylint: enable=protected-access
 
       def exc_predicate(e):
@@ -514,15 +515,15 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testFeedAndFetch(self):
     with session.Session():
-      for dtype in [types.float32,
-                    types.float64,
-                    types.int32,
-                    types.uint8,
-                    types.int16,
-                    types.int8,
-                    types.int64,
-                    types.bool,
-                    types.complex64]:
+      for dtype in [dtypes.float32,
+                    dtypes.float64,
+                    dtypes.int32,
+                    dtypes.uint8,
+                    dtypes.int16,
+                    dtypes.int8,
+                    dtypes.int64,
+                    dtypes.bool,
+                    dtypes.complex64]:
         for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:
           np_dtype = dtype.as_numpy_dtype
 
@@ -531,9 +532,9 @@ class SessionTest(test_util.TensorFlowTestCase):
 
           np_array = np.random.randint(-10, 10, shape)
 
-          if dtype == types.bool:
+          if dtype == dtypes.bool:
             np_array = np_array > 0
-          elif dtype == types.complex64:
+          elif dtype == dtypes.complex64:
             np_array = np.sqrt(np_array.astype(np_dtype))
           else:
             np_array = np_array.astype(np_dtype)
@@ -547,7 +548,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array([str(i) for i in xrange(size)],
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
                           dtype=np.object).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
         self.assertAllEqual(c.eval(), c_list)
@@ -558,16 +559,16 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array([str(i) for i in xrange(size)],
+        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
                           dtype=np.object).reshape(shape)
-        feed_t = array_ops.placeholder(dtype=types.string, shape=shape)
+        feed_t = array_ops.placeholder(dtype=dtypes.string, shape=shape)
         c = array_ops.identity(feed_t)
         self.assertAllEqual(c.eval(feed_dict={feed_t: c_list}), c_list)
 
   def testStringFeedWithNullCharacters(self):
     with session.Session():
-      c_list = ['\n\x01\x00', '\n\x00\x01']
-      feed_t = array_ops.placeholder(dtype=types.string, shape=[2])
+      c_list = [b'\n\x01\x00', b'\n\x00\x01']
+      feed_t = array_ops.placeholder(dtype=dtypes.string, shape=[2])
       c = array_ops.identity(feed_t)
       out = c.eval(feed_dict={feed_t: c_list})
       self.assertEqual(c_list[0], out[0])
@@ -576,7 +577,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testStringFeedWithUnicode(self):
     with session.Session():
       c_list = [u'\n\x01\x00', u'\n\x00\x01']
-      feed_t = array_ops.placeholder(dtype=types.string, shape=[2])
+      feed_t = array_ops.placeholder(dtype=dtypes.string, shape=[2])
       c = array_ops.identity(feed_t)
 
       out = c.eval(feed_dict={feed_t: c_list})

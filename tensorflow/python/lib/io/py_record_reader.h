@@ -37,7 +37,7 @@ class PyRecordReader {
   ~PyRecordReader();
 
   // Attempt to get the next record at "current_offset()".  If
-  // successful, returns true, and the record contents can be retrieve
+  // successful, returns true, and the record contents can be retrieved
   // with "this->record()".  Otherwise, returns false.
   bool GetNext();
   // Return the current record contents.  Only valid after the preceding call

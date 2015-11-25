@@ -36,12 +36,8 @@ Then, after editing your WORKSPACE file, you must build the APK. Run this from
 your workspace root:
 
 ```bash
-$ bazel build //tensorflow/examples/android:tensorflow_demo -c opt --copt=-mfpu=neon
+$ bazel build //tensorflow/examples/android:tensorflow_demo
 ```
-
-Note that `-c opt` is currently required; if not set, an assert (for an
-otherwise non-problematic issue) in Eigen will halt the application during
-execution. This issue will be corrected in an upcoming release.
 
 If adb debugging is enabled on your Android 5.0 or later device, you may then
 use the following command from your workspace root to install the APK once
@@ -55,7 +51,7 @@ Alternatively, a streamlined means of building, installing and running in one
 command is:
 
 ```bash
-$ bazel mobile-install //tensorflow/examples/android:tensorflow_demo -c opt --start_app --copt=-mfpu=neon
+$ bazel mobile-install //tensorflow/examples/android:tensorflow_demo --start_app
 ```
 
 If camera permission errors are encountered (possible on Android Marshmallow or

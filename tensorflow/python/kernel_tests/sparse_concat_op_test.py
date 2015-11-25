@@ -236,7 +236,7 @@ class SparseConcatTest(tf.test.TestCase):
           concat_out.indices,
           [[0, 2], [1, 0], [1, 4], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7]])
       self.assertAllEqual(
-          concat_out.values, ["a", "b", "e", "c", "d", "f", "g", "h"])
+          concat_out.values, [b"a", b"b", b"e", b"c", b"d", b"f", b"g", b"h"])
       self.assertAllEqual(concat_out.shape, [3, 8])
 
   def testMismatchedRank(self):

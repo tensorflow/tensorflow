@@ -121,9 +121,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import types
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_io_ops
 # pylint: disable=wildcard-import
@@ -183,7 +183,7 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
   Returns:
     A tensor of type "tensor_type".
   """
-  base_type = types.as_dtype(tensor_type).base_dtype
+  base_type = dtypes.as_dtype(tensor_type).base_dtype
   return gen_io_ops._restore_slice(
       file_pattern, tensor_name, shape_and_slice, base_type,
       preferred_shard, name=name)

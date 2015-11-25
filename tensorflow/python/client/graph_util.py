@@ -24,8 +24,8 @@ import tensorflow.python.platform
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types
 from tensorflow.python.platform import logging
 
 _VARIABLE_OPS = {
@@ -90,18 +90,18 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
   if node_def.op == "Const":
     # Get the value of the 'dtype' attr
     dtype = node_def.attr["dtype"].type
-    if dtype == types.string or dtype == types.int32:
+    if dtype == dtypes.string or dtype == dtypes.int32:
       return True
 
   if node_def.op == "DynamicStitch":
     dtype = node_def.attr["T"].type
-    if dtype == types.int32:
+    if dtype == dtypes.int32:
       # DynamicStitch on GPU only works for int32 values.
       return True
 
   if node_def.op in ["Cast"]:
     dtype = node_def.attr["SrcT"].type
-    if dtype == types.int32:
+    if dtype == dtypes.int32:
       # Cast on GPU does not works for int32 values.
       return True
   return False

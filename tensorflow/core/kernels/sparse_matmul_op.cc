@@ -141,8 +141,7 @@ void SparseSlice::Initialize(const ConstMatrixMap& mat, int col_offset) {
   Index idx;
   int data3_size = 0;
   for (int i = 0; i < num_blocks; ++i) {
-    int num_block_cols =
-        std::min(block_size, num_cols - block_size * (num_blocks - 1));
+    int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
       idx3.m = static_cast<uint8>(row);
       const float* start =
@@ -457,13 +456,11 @@ class SparseMatMulOp : public OpKernel {
                 errors::InvalidArgument("b is not a matrix"));
 
     auto left = a.matrix<float>();
-    auto right_mat = b.matrix<float>();
+    auto right = b.matrix<float>();
     const int m = transpose_a_ ? left.dimension(1) : left.dimension(0);
     const int k = transpose_a_ ? left.dimension(0) : left.dimension(1);
-    const int n =
-        transpose_b_ ? right_mat.dimension(0) : right_mat.dimension(1);
-    const int k2 =
-        transpose_b_ ? right_mat.dimension(1) : right_mat.dimension(0);
+    const int n = transpose_b_ ? right.dimension(0) : right.dimension(1);
+    const int k2 = transpose_b_ ? right.dimension(1) : right.dimension(0);
 
     OP_REQUIRES(ctx, k == k2,
                 errors::InvalidArgument("Matrix size incompatible: a: ",
@@ -473,7 +470,7 @@ class SparseMatMulOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
     auto out = output->matrix<float>();
 
-    if (!a_is_sparse_) {
+    if (!a_is_sparse_ && !b_is_sparse_) {
       // Fallback to Eigen contract.
       // Note that we currently don't optimize the case where only right is
       // sparse. That can generally be handled by tranposing the order of the
@@ -482,26 +479,41 @@ class SparseMatMulOp : public OpKernel {
       dim_pair[0].first = transpose_a_ ? 0 : 1;
       dim_pair[0].second = transpose_b_ ? 1 : 0;
       out.device(ctx->template eigen_device<CPUDevice>()) =
-          left.contract(right_mat, dim_pair);
+          left.contract(right, dim_pair);
       return;
+    }
+    auto left_mat = &left;
+    auto right_mat = &right;
+    bool transpose_output = false;
+    bool transpose_a = transpose_a_;
+    bool transpose_b = transpose_b_;
+    if (!a_is_sparse_) {
+      // Swap the order of multiplications using the identity:
+      // A * B = (B' *  A')'.
+      std::swap(left_mat, right_mat);
+      std::swap(transpose_a, transpose_b);
+      transpose_a = !transpose_a;
+      transpose_b = !transpose_b;
+      transpose_output = !transpose_output;
     }
     std::unique_ptr<Matrix> right_tr_mat;
     std::unique_ptr<TTypes<float>::ConstMatrix> right_tr_map;
-    if (transpose_b_) {
+    if (transpose_b) {
       // TODO(agarwal): avoid transposing the matrix here and directly handle
       // transpose in CreateDenseSlices.
-      right_tr_mat.reset(new Matrix(k, n));
+      right_tr_mat.reset(
+          new Matrix(right_mat->dimension(1), right_mat->dimension(0)));
       Eigen::array<int, 2> perm({1, 0});
       right_tr_mat->device(ctx->template eigen_device<CPUDevice>()) =
-          right_mat.shuffle(perm);
+          right_mat->shuffle(perm);
       right_tr_map.reset(new TTypes<float>::ConstMatrix(
           right_tr_mat->data(), right_tr_mat->dimensions()));
+      right_mat = right_tr_map.get();
     }
-    TTypes<float>::ConstMatrix& right =
-        transpose_b_ ? *right_tr_map : right_mat;
 
-    SparseMatMul(left, right, transpose_a_,
-                 ctx->device()->tensorflow_cpu_worker_threads(), &out);
+    SparseMatMul(*left_mat, *right_mat, transpose_a,
+                 ctx->device()->tensorflow_cpu_worker_threads(),
+                 transpose_output, &out);
   }
 
  private:
@@ -510,7 +522,7 @@ class SparseMatMulOp : public OpKernel {
   static inline void SparseMatMul(
       const ConstMatrixMap& left, const ConstMatrixMap& right,
       bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
-      MatrixMap* output);
+      bool transpose_output, MatrixMap* output);
 
   // Computes multiplication of left and num_cols columns of right, and stores
   // the output block in *"output" at offsets "output_row_offset" and
@@ -518,9 +530,9 @@ class SparseMatMulOp : public OpKernel {
   // else adds the values to the existing values.
   static inline void ComputeOutputBlock(const std::vector<SparseSlice*>& left,
                                         const ConstMatrixMap& right,
-                                        const int num_cols,
-                                        int output_row_offset,
+                                        int num_cols, int output_row_offset,
                                         int output_col_offset, bool assign,
+                                        bool transpose_output,
                                         MatrixMap* output);
 
   // Encodes "mat" using a sparse representation and stores that in
@@ -578,9 +590,10 @@ class SparseMatMulOp : public OpKernel {
 
 inline void SparseMatMulOp::ComputeOutputBlock(
     const std::vector<SparseSlice*>& left, const ConstMatrixMap& right,
-    const int num_cols, int output_row_offset, int output_col_offset,
-    bool assign, MatrixMap* output) {
-  const int num_rows = left[0]->num_rows;
+    int num_cols, int output_row_offset, int output_col_offset, bool assign,
+    bool transpose_output, MatrixMap* output) {
+  static const Eigen::array<int, 2> perm({1, 0});
+  int num_rows = left[0]->num_rows;
   const int rhs_num_cols = right.dimension(1);
   DCHECK_LE(num_cols, rhs_num_cols);
   Matrix out(num_rows, rhs_num_cols);
@@ -593,18 +606,33 @@ inline void SparseMatMulOp::ComputeOutputBlock(
   if (!assign) {
     const Eigen::array<int, 2> begin = {output_row_offset, output_col_offset};
     const Eigen::array<int, 2> sizes = {num_rows, num_cols};
-    if (num_cols == rhs_num_cols) {
-      output->slice(begin, sizes) += out;
+    if (transpose_output) {
+      if (num_cols == rhs_num_cols) {
+        output->shuffle(perm).slice(begin, sizes) += out;
+      } else {
+        static const Eigen::array<int, 2> zero = {0, 0};
+        output->shuffle(perm).slice(begin, sizes) += out.slice(zero, sizes);
+      }
     } else {
-      static const Eigen::array<int, 2> zero = {0, 0};
-      output->slice(begin, sizes) += out.slice(zero, sizes);
+      if (num_cols == rhs_num_cols) {
+        output->slice(begin, sizes) += out;
+      } else {
+        static const Eigen::array<int, 2> zero = {0, 0};
+        output->slice(begin, sizes) += out.slice(zero, sizes);
+      }
     }
   } else {
-    // output->slice(begin, sizes) = out.slice(zero, sizes), implemented
-    // using memcpy.
+    std::unique_ptr<Matrix> out_tr;
+    if (transpose_output) {
+      out_tr.reset(new Matrix(rhs_num_cols, num_rows));
+      *out_tr = out.shuffle(perm);
+      std::swap(output_row_offset, output_col_offset);
+      std::swap(num_rows, num_cols);
+    }
+    const Matrix& final_out = transpose_output ? *out_tr : out;
     for (int i = 0; i < num_rows; ++i) {
-      memcpy(&(*output)(output_row_offset + i, output_col_offset), &out(i, 0),
-             num_cols * sizeof(float));
+      memcpy(&(*output)(output_row_offset + i, output_col_offset),
+             &final_out(i, 0), num_cols * sizeof(float));
     }
   }
 }
@@ -807,7 +835,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
 inline void SparseMatMulOp::SparseMatMul(
     const ConstMatrixMap& left, const ConstMatrixMap& right,
     bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
-    MatrixMap* output) {
+    bool transpose_output, MatrixMap* output) {
   const int num_threads = thread_pool->num_threads;
   int KR, NR, KL, JB, IB;
   ComputeBlockSizes(left, right, transpose_left, num_threads, &KR, &NR, &KL,
@@ -868,7 +896,7 @@ inline void SparseMatMulOp::SparseMatMul(
               tasks.push_back(std::bind(
                   &SparseMatMulOp::ComputeOutputBlock, block_left_slices,
                   std::ref(*right_slices[j_inner]), num_cols, M * i_inner,
-                  N * j_inner + nb * NR, kb == 0, output));
+                  N * j_inner + nb * NR, kb == 0, transpose_output, output));
             }
           }
         }

@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
@@ -36,8 +36,8 @@ def _DynamicStitchGrads(op, grad):
   indices_grad = [None] * num_values
 
   def AsInt32(x):
-    return (x if op.inputs[0].dtype == types.int32 else
-            math_ops.cast(x, types.int32))
+    return (x if op.inputs[0].dtype == dtypes.int32 else
+            math_ops.cast(x, dtypes.int32))
   inputs = [AsInt32(op.inputs[i]) for i in xrange(num_values)]
   if isinstance(grad, ops.IndexedSlices):
     output_shape = array_ops.shape(op.outputs[0])
@@ -54,3 +54,8 @@ ops.NoGradient("QueueDequeue")
 ops.NoGradient("QueueDequeueMany")
 ops.NoGradient("QueueClose")
 ops.NoGradient("QueueSize")
+
+ops.NoGradient("Stack")
+ops.NoGradient("StackPush")
+ops.NoGradient("StackPop")
+ops.NoGradient("StackClose")

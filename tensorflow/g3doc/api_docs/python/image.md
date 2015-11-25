@@ -425,7 +425,7 @@ Crops an image to a specified bounding box.
 This op cuts a rectangular part out of `image`. The top-left corner of the
 returned image is at `offset_height, offset_width` in `image`, and its
 lower-right corner is at
-`offset_height + target_height, offset_width + target_width'.
+`offset_height + target_height, offset_width + target_width`.
 
 ##### Args:
 
@@ -724,7 +724,7 @@ have modifications in the range `[-max_delta,max_delta]`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if max_delta is negative.
+*  <b>`ValueError`</b>: if `max_delta` is negative.
 
 
 
@@ -829,5 +829,29 @@ Note that this implementation is limited:
 
 
 *  <b>`ValueError`</b>: if the shape of 'image' is incompatible with this function.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.image.resize_nearest_neighbor_grad(grads, size, name=None)` {#resize_nearest_neighbor_grad}
+
+Computes the gradient of nearest neighbor interpolation.
+
+##### Args:
+
+
+*  <b>`grads`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
+    original input size.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `grads`.
+  4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
+  with respect to the input image.
 
 

@@ -117,7 +117,7 @@ Python op wrappers are created automatically in
 `bazel-genfiles/tensorflow/python/ops/gen_user_ops.py` for all ops placed in the
 [`tensorflow/core/user_ops`][user_ops] directory when you build Tensorflow.
 
-> Note: The generated function will be given a snake_case name (to comply with
+> Note: The generated function will be given a snake\_case name (to comply with
 > [PEP8](https://www.python.org/dev/peps/pep-0008/)).  So if your op is named
 > `ZeroOut` in the C++ files, the python function will be called `zero_out`.
 
@@ -294,7 +294,7 @@ which can then be used in the `Compute` method:
 <code class="lang-c++"><pre>
   void Compute(OpKernelContext\* context) override {
     // ...
-<br/>    <b>// Check that preserve_index is in range
+<br/>    <b>// Check that preserve\_index is in range
     OP\_REQUIRES(context, preserve\_index_ &lt; input.dimension(0),
                 errors::InvalidArgument("preserve\_index out of range"));<br/>
     </b>// Set all the elements of the output tensor to 0
@@ -314,7 +314,7 @@ which can then be used in the `Compute` method:
 > <code class="lang-c++"><pre>
 > REGISTER\_OP("ZeroOut")
 >     <b>.Attr("preserve\_index: int = 0")</b>
->     .Input("to_zero: int32")
+>     .Input("to\_zero: int32")
 >     .Output("zeroed: int32");
 > </pre></code>
 
@@ -449,7 +449,7 @@ in addition to `int32`s, your Op registration might look like:
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, int32}")</b>
-    .Input("to_zero: <b>T</b>")
+    .Input("to\_zero: <b>T</b>")
     .Output("zeroed: <b>T</b>");
 </pre></code>
 
@@ -457,7 +457,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 `int32`, and that its output will be the same type, since both have type `T`.
 
 > A note on naming:{#naming} Inputs, outputs, and attrs generally should be
-> given snake_case names.  The one exception is attrs that are used as the type
+> given snake\_case names.  The one exception is attrs that are used as the type
 > of an input or in the type of an input. Those attrs can be inferred when the
 > op is added to the graph and so don't appear in the op's function.  For
 > example, this last definition of ZeroOut will generate a Python function that
@@ -560,7 +560,7 @@ REGISTER\_KERNEL\_BUILDER(
 > <code class="lang-c++"><pre>
 > REGISTER\_OP("ZeroOut")
 >   <b>.Attr("T: {float, int32} = DT_INT32")</b>
->   .Input("to_zero: T")
+>   .Input("to\_zero: T")
 >   .Output("zeroed: T")
 > </pre></code>
 
@@ -569,7 +569,7 @@ Lets say you wanted to add more types, say `double`:
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, <b>double,</b> int32}")</b>
-    .Input("to_zero: <b>T</b>")
+    .Input("to\_zero: <b>T</b>")
     .Output("zeroed: <b>T</b>");
 </pre></code>
 
@@ -888,7 +888,7 @@ There are several ways to preserve backwards-compatibility.
    type into a list of varying types).
 
 The full list of safe and unsafe changes can be found in
-[tensorflow/core/framework/op_compatibility_test.cc](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
+[`tensorflow/core/framework/op_compatibility_test.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
 If you cannot make your change to an operation backwards compatible, then create
 a new operation with a new name with the new semantics.
 

@@ -311,7 +311,7 @@ def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
 
 def compute_accidental_hits(true_classes, sampled_candidates, num_true,
                             seed=None, name=None):
-  """Compute the ids of positions in sampled_candidates matching true_classes.
+  """Compute the position ids in `sampled_candidates` matching `true_classes`.
 
   In Candidate Sampling, this operation facilitates virtually removing
   sampled classes which happen to match target classes.  This is done

@@ -143,7 +143,8 @@ and described in
 
 Another approach is to convert whatever data you have into a supported format.
 This approach makes it easier to mix and match data sets and network
-architectures. The recommended format for TensorFlow is a TFRecords file
+architectures. The recommended format for TensorFlow is a
+[TFRecords file](../../api_docs/python/python_io.md#tfrecords-format-details)
 containing
 [`tf.train.Example` protocol buffers](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
 (which contain

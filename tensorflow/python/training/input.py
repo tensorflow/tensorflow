@@ -24,9 +24,9 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import constant_op
@@ -55,7 +55,7 @@ def match_filenames_once(pattern, name=None):
 
 
 def limit_epochs(tensor, num_epochs=None, name=None):
-  """Returns tensor num_epochs times and then raises an OutOfRange error.
+  """Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
   Args:
     tensor: Any `Tensor`.
@@ -64,14 +64,14 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     name: A name for the operations (optional).
 
   Returns:
-    tensor or OutOfRange.
+    tensor or `OutOfRange`.
   """
   if num_epochs is None:
     return tensor
   if num_epochs <= 0:
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.op_scope([tensor], name, "limit_epochs") as name:
-    zero64 = constant_op.constant(0, dtype=types.int64)
+    zero64 = constant_op.constant(0, dtype=dtypes.int64)
     epochs = variables.Variable(zero64, name="epochs")
     counter = epochs.count_up_to(num_epochs)
     with ops.control_dependencies([counter]):
@@ -89,7 +89,7 @@ def _input_producer(input_tensor, dtype, num_epochs, shuffle, seed, capacity,
   enq = q.enqueue_many([input_tensor])
   queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
   summary_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
-                             math_ops.cast(q.size(), types.float32) *
+                             math_ops.cast(q.size(), dtypes.float32) *
                              (1. / capacity))
   return q
 
@@ -117,7 +117,7 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
   """
   with ops.op_scope([string_tensor], name, "input_producer") as name:
     return _input_producer(
-        string_tensor, types.string, num_epochs, shuffle, seed, capacity, name,
+        string_tensor, dtypes.string, num_epochs, shuffle, seed, capacity, name,
         "fraction_of_%d_full" % capacity)
 
 
@@ -144,7 +144,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
   with ops.op_scope([limit], name, "input_producer") as name:
     range_tensor = math_ops.range(limit)
     return _input_producer(
-        range_tensor, types.int32, num_epochs, shuffle, seed, capacity, name,
+        range_tensor, dtypes.int32, num_epochs, shuffle, seed, capacity, name,
         "fraction_of_%d_full" % capacity)
 
 
@@ -208,14 +208,14 @@ def _validate_join(tensor_list_list):
 
 
 def _dtypes(tensor_list_list):
-  all_dtypes = [[t.dtype for t in tl] for tl in tensor_list_list]
-  dtypes = all_dtypes[0]
-  for other_dtypes in all_dtypes[1:]:
-    if other_dtypes != dtypes:
+  all_types = [[t.dtype for t in tl] for tl in tensor_list_list]
+  types = all_types[0]
+  for other_types in all_types[1:]:
+    if other_types != types:
       raise TypeError("Expected types to be consistent: %s vs. %s." %
-                      ", ".join(x.name for x in dtypes),
-                      ", ".join(x.name for x in other_dtypes))
-  return dtypes
+                      ", ".join(x.name for x in types),
+                      ", ".join(x.name for x in other_types))
+  return types
 
 
 def _merge_shapes(shape_list, enqueue_many):
@@ -274,6 +274,12 @@ def batch(tensor_list, batch_size, num_threads=1, capacity=32,
   output will have shape `[batch_size, x, y, z]`.  The `capacity` argument
   controls the how long the prefetching is allowed to grow the queues.
 
+  The returned operation is a dequeue operation and will throw
+  `tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+  operation is feeding another input queue, its queue runner will catch
+  this exception, however, if this operation is used in your main thread
+  you are responsible for catching this yourself.
+
   *N.B.:* You must ensure that either (i) the `shapes` argument is
   passed, or (ii) all of the tensors in `tensor_list` must have
   fully-defined shapes. `ValueError` will be raised if neither of
@@ -298,15 +304,15 @@ def batch(tensor_list, batch_size, num_threads=1, capacity=32,
   """
   with ops.op_scope(tensor_list, name, "batch") as name:
     tensor_list = _validate(tensor_list)
-    dtypes = _dtypes([tensor_list])
+    types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
     queue = data_flow_ops.FIFOQueue(
-        capacity=capacity, dtypes=dtypes, shapes=shapes)
+        capacity=capacity, dtypes=types, shapes=shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
     summary_ops.scalar_summary(
         "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), types.float32) * (1. / capacity))
+        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
     return queue.dequeue_many(batch_size, name=name)
 
 
@@ -344,6 +350,12 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
   The `capacity` argument controls the how long the prefetching is allowed to
   grow the queues.
 
+  The returned operation is a dequeue operation and will throw
+  `tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+  operation is feeding another input queue, its queue runner will catch
+  this exception, however, if this operation is used in your main thread
+  you are responsible for catching this yourself.
+
   *N.B.:* You must ensure that either (i) the `shapes` argument is
   passed, or (ii) all of the tensors in `tensor_list_list` must have
   fully-defined shapes. `ValueError` will be raised if neither of
@@ -369,15 +381,15 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
   """
   with ops.op_scope(_flatten(tensor_list_list), name, "batch_join") as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    dtypes = _dtypes(tensor_list_list)
+    types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
     queue = data_flow_ops.FIFOQueue(
-        capacity=capacity, dtypes=dtypes, shapes=shapes)
+        capacity=capacity, dtypes=types, shapes=shapes)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
     summary_ops.scalar_summary(
         "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.cast(queue.size(), types.float32) * (1. / capacity))
+        math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
     return queue.dequeue_many(batch_size, name=name)
 
 
@@ -405,6 +417,12 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
 
   The `capacity` argument controls the how long the prefetching is allowed to
   grow the queues.
+
+  The returned operation is a dequeue operation and will throw
+  `tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+  operation is feeding another input queue, its queue runner will catch
+  this exception, however, if this operation is used in your main thread
+  you are responsible for catching this yourself.
 
   For example:
 
@@ -445,14 +463,14 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
   """
   with ops.op_scope(tensor_list, name, "shuffle_batch") as name:
     tensor_list = _validate(tensor_list)
-    dtypes = _dtypes([tensor_list])
+    types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
     queue = data_flow_ops.RandomShuffleQueue(
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
-        dtypes=dtypes, shapes=shapes)
+        dtypes=types, shapes=shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
     full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          types.float32) *
+                          dtypes.float32) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
@@ -495,10 +513,11 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
   The `capacity` argument controls the how long the prefetching is allowed to
   grow the queues.
 
-  *N.B.:* You must ensure that either (i) the `shapes` argument is
-  passed, or (ii) all of the tensors in `tensor_list_list` must have
-  fully-defined shapes. `ValueError` will be raised if neither of
-  these conditions holds.
+  The returned operation is a dequeue operation and will throw
+  `tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+  operation is feeding another input queue, its queue runner will catch
+  this exception, however, if this operation is used in your main thread
+  you are responsible for catching this yourself.
 
   Args:
     tensor_list_list: A list of tuples of tensors to enqueue.
@@ -523,14 +542,14 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
   with ops.op_scope(
       _flatten(tensor_list_list), name, "shuffle_batch_join") as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    dtypes = _dtypes(tensor_list_list)
+    types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
     queue = data_flow_ops.RandomShuffleQueue(
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
-        dtypes=dtypes, shapes=shapes)
+        dtypes=types, shapes=shapes)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
     full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          types.float32) *
+                          dtypes.float32) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.

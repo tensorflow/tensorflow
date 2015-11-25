@@ -24,37 +24,14 @@ import functools
 import glob as _glob
 import os
 import shutil
+import six
 import threading
 
 
-class FileError(IOError):
-  """An error occurred while reading or writing a file."""
-
-
-class GOSError(OSError):
-  """An error occurred while finding a file or in handling pathnames."""
-
-
-class _GFileBase(object):
+class _GFileBase(six.Iterator):
   """Base I/O wrapper class.  Similar semantics to Python's file object."""
 
   # pylint: disable=protected-access
-  def _error_wrapper(fn):
-    """Decorator wrapping GFileBase class method errors."""
-    @functools.wraps(fn)  # Preserve methods' __doc__
-    def wrap(self, *args, **kwargs):
-      try:
-        return fn(self, *args, **kwargs)
-      except ValueError as e:
-        # Sometimes a ValueError is raised, e.g., a read() on a closed file.
-        raise FileError(errno.EIO, e.message, self._name)
-      except IOError as e:
-        e.filename = self._name
-        raise FileError(e)
-      except OSError as e:
-        raise GOSError(e)
-    return wrap
-
   def _synchronized(fn):
     """Synchronizes file I/O for methods in GFileBase."""
     @functools.wraps(fn)
@@ -69,7 +46,6 @@ class _GFileBase(object):
     return sync
   # pylint: enable=protected-access
 
-  @_error_wrapper
   def __init__(self, name, mode, locker):
     """Create the GFileBase object with the given filename, mode, and locker.
 
@@ -92,7 +68,6 @@ class _GFileBase(object):
     """Make GFileBase usable with "with" statement."""
     self.close()
 
-  @_error_wrapper
   @_synchronized
   def __del__(self):
     # __del__ is sometimes called before initialization, in which
@@ -100,20 +75,17 @@ class _GFileBase(object):
     # before trying to close the file handle.
     if hasattr(self, '_fp'): self._fp.close()
 
-  @_error_wrapper
   @_synchronized
   def flush(self):
     """Flush the underlying file handle."""
     return self._fp.flush()
 
   @property
-  @_error_wrapper
   @_synchronized
   def closed(self):
     """Returns "True" if the file handle is closed.  Otherwise False."""
     return self._fp.closed
 
-  @_error_wrapper
   @_synchronized
   def write(self, data):
     """Write data to the underlying file handle.
@@ -123,13 +95,11 @@ class _GFileBase(object):
     """
     self._fp.write(data)
 
-  @_error_wrapper
   @_synchronized
   def writelines(self, seq):
     """Write a sequence of strings to the underlying file handle."""
     self._fp.writelines(seq)
 
-  @_error_wrapper
   @_synchronized
   def tell(self):
     """Return the location from the underlying file handle.
@@ -139,7 +109,6 @@ class _GFileBase(object):
     """
     return self._fp.tell()
 
-  @_error_wrapper
   @_synchronized
   def seek(self, offset, whence=0):
     """Seek to offset (conditioned on whence) in the underlying file handle.
@@ -150,7 +119,6 @@ class _GFileBase(object):
     """
     self._fp.seek(offset, whence)
 
-  @_error_wrapper
   @_synchronized
   def truncate(self, new_size=None):
     """Truncate the underlying file handle to new_size.
@@ -161,7 +129,6 @@ class _GFileBase(object):
     """
     self._fp.truncate(new_size)
 
-  @_error_wrapper
   @_synchronized
   def readline(self, max_length=-1):
     """Read a single line (up to max_length) from the underlying file handle.
@@ -174,7 +141,6 @@ class _GFileBase(object):
     """
     return self._fp.readline(max_length)
 
-  @_error_wrapper
   @_synchronized
   def readlines(self, sizehint=None):
     """Read lines from the underlying file handle.
@@ -195,8 +161,7 @@ class _GFileBase(object):
     return self
 
   # Not synchronized
-  @_error_wrapper
-  def next(self):
+  def __next__(self):
     """Enable line iteration on the underlying handle (not synchronized).
 
     Returns:
@@ -208,7 +173,6 @@ class _GFileBase(object):
     """
     return next(self._fp)
 
-  @_error_wrapper
   @_synchronized
   def Size(self):   # pylint: disable=invalid-name
     """Get byte size of the file from the underlying file handle."""
@@ -220,7 +184,6 @@ class _GFileBase(object):
       self.seek(cur)
     return size
 
-  @_error_wrapper
   @_synchronized
   def read(self, n=-1):
     """Read n bytes from the underlying file handle.
@@ -233,7 +196,6 @@ class _GFileBase(object):
     """
     return self._fp.read(n)
 
-  @_error_wrapper
   @_synchronized
   def close(self):
     """Close the underlying file handle."""
@@ -241,7 +203,6 @@ class _GFileBase(object):
 
   # Declare wrappers as staticmethods at the end so that we can
   # use them as decorators.
-  _error_wrapper = staticmethod(_error_wrapper)
   _synchronized = staticmethod(_synchronized)
 
 
@@ -284,40 +245,21 @@ class _Nulllocker(object):
     pass
 
 
-def _func_error_wrapper(fn):
-  """Decorator wrapping function errors."""
-  @functools.wraps(fn)  # Preserve methods' __doc__
-  def wrap(*args, **kwargs):
-    try:
-      return fn(*args, **kwargs)
-    except ValueError as e:
-      raise FileError(errno.EIO, e.message)
-    except IOError as e:
-      raise FileError(e)
-    except OSError as e:
-      raise GOSError(e)
-  return wrap
-
-
-@_func_error_wrapper
 def Exists(path):   # pylint: disable=invalid-name
   """Retruns True iff "path" exists (as a dir, file, non-broken symlink)."""
   return os.path.exists(path)
 
 
-@_func_error_wrapper
 def IsDirectory(path):   # pylint: disable=invalid-name
   """Return True iff "path" exists and is a directory."""
   return os.path.isdir(path)
 
 
-@_func_error_wrapper
 def Glob(glob):   # pylint: disable=invalid-name
   """Return a list of filenames matching the glob "glob"."""
   return _glob.glob(glob)
 
 
-@_func_error_wrapper
 def MkDir(path, mode=0o755):  # pylint: disable=invalid-name
   """Create the directory "path" with the given mode.
 
@@ -329,12 +271,11 @@ def MkDir(path, mode=0o755):  # pylint: disable=invalid-name
     None
 
   Raises:
-    GOSError: if the path already exists
+    OSError: if the path already exists
   """
   os.mkdir(path, mode)
 
 
-@_func_error_wrapper
 def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
   """Recursively create the directory "path" with the given mode.
 
@@ -347,12 +288,11 @@ def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
 
 
   Raises:
-    GOSError: if the path already exists
+    OSError: if the path already exists
   """
   os.makedirs(path, mode)
 
 
-@_func_error_wrapper
 def RmDir(directory):   # pylint: disable=invalid-name
   """Removes the directory "directory" iff the directory is empty.
 
@@ -360,12 +300,11 @@ def RmDir(directory):   # pylint: disable=invalid-name
     directory: The directory to remove.
 
   Raises:
-    GOSError: If the directory does not exist or is not empty.
+    OSError: If the directory does not exist or is not empty.
   """
   os.rmdir(directory)
 
 
-@_func_error_wrapper
 def Remove(path):   # pylint: disable=invalid-name
   """Delete the (non-directory) file "path".
 
@@ -373,12 +312,11 @@ def Remove(path):   # pylint: disable=invalid-name
     path: The file to remove.
 
   Raises:
-    GOSError: If "path" does not exist, is a directory, or cannot be deleted.
+    OSError: If "path" does not exist, is a directory, or cannot be deleted.
   """
   os.remove(path)
 
 
-@_func_error_wrapper
 def DeleteRecursively(path):   # pylint: disable=invalid-name
   """Delete the file or directory "path" recursively.
 
@@ -386,7 +324,7 @@ def DeleteRecursively(path):   # pylint: disable=invalid-name
     path: The path to remove (may be a non-empty directory).
 
   Raises:
-    GOSError: If the path does not exist or cannot be deleted.
+    OSError: If the path does not exist or cannot be deleted.
   """
   if IsDirectory(path):
     shutil.rmtree(path)
@@ -394,7 +332,6 @@ def DeleteRecursively(path):   # pylint: disable=invalid-name
     Remove(path)
 
 
-@_func_error_wrapper
 def ListDirectory(directory, return_dotfiles=False):  # pylint: disable=invalid-name
   """Returns a list of files in dir.
 
@@ -415,7 +352,7 @@ def ListDirectory(directory, return_dotfiles=False):  # pylint: disable=invalid-
     Other entries starting with a dot will only be returned if return_dotfiles
     is True.
   Raises:
-    GOSError: if there is an error retrieving the directory listing.
+    OSError: if there is an error retrieving the directory listing.
   """
   files = os.listdir(directory)
   if not return_dotfiles:

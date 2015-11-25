@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numbers
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -27,11 +26,12 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import types as types_lib
 from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import logging
+from tensorflow.python.util import compat
 
 
 def _Attr(op_def, name):
@@ -55,8 +55,8 @@ def _SatisfiesTypeConstraint(dtype, attr_def):
     if dtype not in allowed_list:
       raise TypeError(
           "DataType %s for attr '%s' not in list of allowed values: %s" %
-          (types_lib.as_dtype(dtype).name, attr_def.name,
-           ", ".join(types_lib.as_dtype(x).name for x in allowed_list)))
+          (dtypes.as_dtype(dtype).name, attr_def.name,
+           ", ".join(dtypes.as_dtype(x).name for x in allowed_list)))
 
 
 def _IsListParameter(arg):
@@ -137,7 +137,7 @@ def _Restructure(l, structure):
 
 
 def _MakeFloat(v, arg_name):
-  if not isinstance(v, numbers.Real):
+  if not isinstance(v, compat.real_types):
     raise TypeError("Expected float for argument '%s' not %s." %
                     (arg_name, repr(v)))
   return float(v)
@@ -155,11 +155,10 @@ def _MakeInt(v, arg_name):
 
 
 def _MakeStr(v, arg_name):
-  if not isinstance(v, six.string_types):
+  if not isinstance(v, compat.bytes_or_text_types):
     raise TypeError("Expected string for argument '%s' not %s." %
                     (arg_name, repr(v)))
-  # TODO(irving): Figure out what to do here from Python 3
-  return str(v)  # Convert unicode strings to bytes.
+  return compat.as_bytes(v)  # Convert unicode strings to bytes.
 
 
 def _MakeBool(v, arg_name):
@@ -171,7 +170,7 @@ def _MakeBool(v, arg_name):
 
 def _MakeType(v, attr_def):
   try:
-    v = types_lib.as_dtype(v)
+    v = dtypes.as_dtype(v)
   except TypeError:
     raise TypeError("Expected DataType for argument '%s' not %s." %
                     (attr_def.name, repr(v)))
@@ -381,7 +380,7 @@ class OpDefLibrary(object):
           try:
             values = ops.convert_n_to_tensor_or_indexed_slices(
                 values, name=input_arg.name,
-                dtype=types_lib.as_dtype(dtype).base_dtype if dtype else None)
+                dtype=dtypes.as_dtype(dtype).base_dtype if dtype else None)
           except (TypeError, ValueError):
             assert dtype is not None, "Should not fail if dtype is None"
             assert input_arg.number_attr, "Should be number_attr case"
@@ -394,11 +393,11 @@ class OpDefLibrary(object):
                 (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
               raise TypeError("%s that do not match expected type %s." %
-                              (prefix, types_lib.as_dtype(dtype).name))
+                              (prefix, dtypes.as_dtype(dtype).name))
             elif input_arg.type_attr in attrs:
               raise TypeError("%s that do not match type %s inferred from "
                               "earlier arguments." %
-                              (prefix, types_lib.as_dtype(dtype).name))
+                              (prefix, dtypes.as_dtype(dtype).name))
             else:
               raise TypeError("%s that don't all match." % prefix)
 
@@ -423,11 +422,11 @@ class OpDefLibrary(object):
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
               raise TypeError("%s expected type of %s." %
-                              (prefix, types_lib.as_dtype(input_arg.type).name))
+                              (prefix, dtypes.as_dtype(input_arg.type).name))
             else:
               raise TypeError(
                   "%s type %s of argument '%s'." %
-                  (prefix, types_lib.as_dtype(attrs[input_arg.type_attr]).name,
+                  (prefix, dtypes.as_dtype(attrs[input_arg.type_attr]).name,
                    inferred_from[input_arg.type_attr]))
 
           types = [values.dtype]
@@ -501,8 +500,8 @@ class OpDefLibrary(object):
                   "Input '%s' of '%s' Op has type list of %s that does not "
                   "match type list %s of argument '%s'." %
                   (input_name, op_type_name,
-                   ", ".join(types_lib.as_dtype(x).name for x in attr_value),
-                   ", ".join(types_lib.as_dtype(x).name
+                   ", ".join(dtypes.as_dtype(x).name for x in attr_value),
+                   ", ".join(dtypes.as_dtype(x).name
                              for x in attrs[input_arg.type_list_attr]),
                    inferred_from[input_arg.type_list_attr]))
           else:
@@ -567,8 +566,9 @@ class OpDefLibrary(object):
             if attr_value.s not in attr_def.allowed_values.list.s:
               raise ValueError(
                   "Attr '%s' of '%s' Op passed string '%s' not in: \"%s\"." %
-                  (key, op_type_name, attr_value.s,
-                   '", "'.join(attr_def.allowed_values.list.s)))
+                  (key, op_type_name, compat.as_text(attr_value.s),
+                   '", "'.join(map(compat.as_text,
+                                   attr_def.allowed_values.list.s))))
         elif attr_def.type == "list(string)":
           attr_value.list.s.extend([_MakeStr(x, key) for x in value])
           if attr_def.HasField("allowed_values"):
@@ -576,8 +576,9 @@ class OpDefLibrary(object):
               if x not in attr_def.allowed_values.list.s:
                 raise ValueError(
                     "Attr '%s' of '%s' Op passed string '%s' not in: \"%s\"." %
-                    (key, op_type_name, x,
-                     '", "'.join(attr_def.allowed_values.list.s)))
+                    (key, op_type_name, compat.as_text(x),
+                     '", "'.join(map(compat.as_text,
+                                     attr_def.allowed_values.list.s))))
         elif attr_def.type == "int":
           attr_value.i = _MakeInt(value, key)
           if attr_def.has_minimum:
@@ -640,7 +641,7 @@ class OpDefLibrary(object):
           types = [arg.type]
           output_structure.append(None)
         if arg.is_ref:
-          types = [types_lib.as_dtype(x).as_ref for x in types]
+          types = [dtypes.as_dtype(x).as_ref for x in types]
         output_types.extend(types)
 
       if keywords:

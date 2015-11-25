@@ -211,7 +211,7 @@ class _ReservoirBucket(object):
     """
     with self._mutex:
       size_before = len(self.items)
-      self.items = filter(filterFn, self.items)
+      self.items = list(filter(filterFn, self.items))
       size_diff = size_before - len(self.items)
 
       # Estimate a correction the the number of items seen

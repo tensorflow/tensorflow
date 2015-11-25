@@ -590,9 +590,9 @@ tf.transpose(x) ==> [[1 4]
                      [3 6]]
 
 # Equivalently
-tf.transpose(x perm=[0, 1]) ==> [[1 4]
-                                 [2 5]
-                                 [3 6]]
+tf.transpose(x, perm=[1, 0]) ==> [[1 4]
+                                  [2 5]
+                                  [3 6]]
 
 # 'perm' is more useful for n-dimensional tensors, for n > 2
 # 'x' is   [[[1  2  3]
@@ -1355,7 +1355,7 @@ that `segment_ids[j] == i`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1389,7 +1389,7 @@ that `segment_ids[j] == i`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1423,7 +1423,7 @@ that `segment_ids[j] == i`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1456,7 +1456,7 @@ that `segment_ids[j] == i`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1491,7 +1491,7 @@ values summed.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1533,7 +1533,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `num_segments`.
 
 
@@ -1549,7 +1549,7 @@ Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
 Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
-dimension, selecting a subset of dimension_0, specified by `indices`.
+dimension, selecting a subset of dimension 0, specified by `indices`.
 
 For example:
 
@@ -1587,7 +1587,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 
@@ -1602,7 +1602,7 @@ Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
 Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-dimension, selecting a subset of dimension_0, specified by `indices`.
+dimension, selecting a subset of dimension 0, specified by `indices`.
 
 ##### Args:
 
@@ -1617,7 +1617,7 @@ dimension, selecting a subset of dimension_0, specified by `indices`.
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension_0 which
+  Has same shape as data, except for dimension 0 which
   has size `k`, the number of segments.
 
 

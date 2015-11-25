@@ -231,7 +231,7 @@ public class CameraConnectionFragment extends Fragment {
   private static Size chooseOptimalSize(
       final Size[] choices, final int width, final int height, final Size aspectRatio) {
     // Collect the supported resolutions that are at least as big as the preview Surface
-    final List<Size> bigEnough = new ArrayList<>();
+    final List<Size> bigEnough = new ArrayList<Size>();
     for (final Size option : choices) {
       if (option.getHeight() >= MINIMUM_PREVIEW_SIZE && option.getWidth() >= MINIMUM_PREVIEW_SIZE) {
         LOGGER.i("Adding size: " + option.getWidth() + "x" + option.getHeight());

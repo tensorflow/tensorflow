@@ -88,12 +88,12 @@ def parse_example(serialized,
 
   ```
   serialized = [
-    features:
-      { feature: [ key: { "ft" value: float_list: { value: [1.0, 2.0] } } ] },
-    features:
-      { feature: [] },
-    features:
-      { feature: [ key: { "ft" value: float_list: { value: [3.0] } } ] }
+    features
+      { feature { key: "ft" value { float_list { value: [1.0, 2.0] } } } },
+    features
+      { feature []},
+    features
+      { feature { key: "ft" value { float_list { value: [3.0] } } }
   ]
   ```
 
@@ -109,14 +109,14 @@ def parse_example(serialized,
 
   ```
   [
-    features: {
-      feature: { key: "kw" value: { bytes_list: { value: [ "knit", "big" ] } } }
-      feature: { key: "gps" value: { float_list: { value: [] } } }
+    features {
+      feature { key: "kw" value { bytes_list { value: [ "knit", "big" ] } } }
+      feature { key: "gps" value { float_list { value: [] } } }
     },
-    features: {
-      feature: { key: "kw" value: { bytes_list: { value: [ "emmy" ] } } }
-      feature: { key: "dank" value: { int64_list: { value: [ 42 ] } } }
-      feature: { key: "gps" value: { } }
+    features {
+      feature { key: "kw" value { bytes_list { value: [ "emmy" ] } } }
+      feature { key: "dank" value { int64_list { value: [ 42 ] } } }
+      feature { key: "gps" value { } }
     }
   ]
   ```
@@ -152,13 +152,13 @@ def parse_example(serialized,
 
   ```
   [
-    features: {
-      feature: { key: "age" value: { int64_list: { value: [ 0 ] } } }
-      feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
+    features {
+      feature { key: "age" value { int64_list { value: [ 0 ] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
      },
-     features: {
-      feature: { key: "age" value: { int64_list: { value: [] } } }
-      feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
+     features {
+      feature { key: "age" value { int64_list { value: [] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
     }
   ]
   ```
@@ -204,6 +204,8 @@ def parse_example(serialized,
       The keys of the dict must match the dense_keys of the feature.
     dense_shapes: A list of tuples with the same length as `dense_keys`.
       The shape of the data for each dense feature referenced by `dense_keys`.
+      Required for any input tensors identified by dense_keys whose shapes are
+      anything other than [] or [1].
     name: A name for this operation (optional).
 
   Returns:
@@ -297,22 +299,22 @@ def parse_single_example(serialized,  # pylint: disable=invalid-name
 
   For `SparseTensor`s, the first (batch) column of the indices matrix is removed
   (the indices matrix is a column vector), the values vector is unchanged, and
-  the first (batch_size) entry of the shape vector is removed (it is now a
+  the first (`batch_size`) entry of the shape vector is removed (it is now a
   single element vector).
 
   See also `parse_example`.
 
   Args:
     serialized: A scalar string Tensor, a single serialized Example.
-      See parse_example documentation for more details.
+      See `parse_example` documentation for more details.
     names: (Optional) A scalar string Tensor, the associated name.
-      See parse_example documentation for more details.
-    sparse_keys: See parse_example documentation for more details.
-    sparse_types: See parse_example documentation for more details.
-    dense_keys: See parse_example documentation for more details.
-    dense_types: See parse_example documentation for more details.
-    dense_defaults: See parse_example documentation for more details.
-    dense_shapes: See parse_example documentation for more details.
+      See `parse_example` documentation for more details.
+    sparse_keys: See `parse_example` documentation for more details.
+    sparse_types: See `parse_example` documentation for more details.
+    dense_keys: See `parse_example` documentation for more details.
+    dense_types: See `parse_example` documentation for more details.
+    dense_defaults: See `parse_example` documentation for more details.
+    dense_shapes: See `parse_example` documentation for more details.
     name: A name for this operation (optional).
 
   Returns:

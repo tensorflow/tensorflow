@@ -107,7 +107,7 @@ class Env {
   /// Deletes the specified directory.
   virtual Status DeleteDir(const string& dirname) = 0;
 
-  /// Stores the size of fname in *file_size.
+  /// Stores the size of `fname` in `*file_size`.
   virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
 
   /// \brief Renames file src to target. If target already exists, it will be
@@ -146,18 +146,18 @@ class RandomAccessFile {
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
 
-  /// \brief Reads up to "n" bytes from the file starting at "offset".
+  /// \brief Reads up to `n` bytes from the file starting at `offset`.
   ///
-  /// "scratch[0..n-1]" may be written by this routine.  Sets "*result"
-  /// to the data that was read (including if fewer than "n" bytes were
-  /// successfully read).  May set "*result" to point at data in
-  /// "scratch[0..n-1]", so "scratch[0..n-1]" must be live when
-  /// "*result" is used.
+  /// `scratch[0..n-1]` may be written by this routine.  Sets `*result`
+  /// to the data that was read (including if fewer than `n` bytes were
+  /// successfully read).  May set `*result` to point at data in
+  /// `scratch[0..n-1]`, so `scratch[0..n-1]` must be live when
+  /// `*result` is used.
   ///
-  /// On OK returned status: "n" bytes have been stored in "*result".
-  /// On non-OK returned status: [0..n] bytes have been stored in "*result".
+  /// On OK returned status: `n` bytes have been stored in `*result`.
+  /// On non-OK returned status: `[0..n]` bytes have been stored in `*result`.
   ///
-  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in "*result"
+  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in `*result`
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
@@ -263,16 +263,16 @@ struct ThreadOptions {
   size_t guard_size = 0;  // 0: use system default value
 };
 
-/// A utility routine: reads contents of named file into *data
+/// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);
 
-/// A utility routine: write contents of "data" to file named "fname"
+/// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
 
 /// Reads contents of named file and parse as binary encoded proto data
-/// and store into *proto.
+/// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
 

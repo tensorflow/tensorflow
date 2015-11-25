@@ -40,7 +40,7 @@ class LinearTest(tf.test.TestCase):
         # Checks prevent you from accidentally creating a shared function.
         with self.assertRaises(ValueError) as exc:
           l1 = linear.linear([x], 2, False)
-        self.assertEqual(exc.exception.message[:12], "Over-sharing")
+        self.assertEqual(str(exc.exception)[:12], "Over-sharing")
 
         # But you can create a new one in a new scope and share the variables.
         with tf.variable_scope("l1") as new_scope:

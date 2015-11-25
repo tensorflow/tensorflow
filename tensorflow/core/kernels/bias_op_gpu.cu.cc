@@ -37,7 +37,7 @@ __global__ void BiasOpCustomKernel(int nthreads, const T* input, const T* bias,
                                    T* output) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     int bias_offset = index % bias_size;
-    output[index] = __ldg(input + index) + __ldg(bias + bias_offset);
+    output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
 }
 

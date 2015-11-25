@@ -153,6 +153,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.ReaderBase.reset(name=None)` {#ReaderBase.reset}
@@ -214,6 +215,7 @@ Unimplemented error.
 #### `tf.ReaderBase.supports_serialize` {#ReaderBase.supports_serialize}
 
 Whether the Reader implementation can serialize its state.
+
 
 
 - - -
@@ -304,6 +306,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.TextLineReader.reset(name=None)` {#TextLineReader.reset}
@@ -365,6 +368,7 @@ Unimplemented error.
 #### `tf.TextLineReader.supports_serialize` {#TextLineReader.supports_serialize}
 
 Whether the Reader implementation can serialize its state.
+
 
 
 - - -
@@ -455,6 +459,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.WholeFileReader.reset(name=None)` {#WholeFileReader.reset}
@@ -516,6 +521,7 @@ Unimplemented error.
 #### `tf.WholeFileReader.supports_serialize` {#WholeFileReader.supports_serialize}
 
 Whether the Reader implementation can serialize its state.
+
 
 
 - - -
@@ -606,6 +612,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.IdentityReader.reset(name=None)` {#IdentityReader.reset}
@@ -667,6 +674,7 @@ Unimplemented error.
 #### `tf.IdentityReader.supports_serialize` {#IdentityReader.supports_serialize}
 
 Whether the Reader implementation can serialize its state.
+
 
 
 - - -
@@ -754,6 +762,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.TFRecordReader.reset(name=None)` {#TFRecordReader.reset}
@@ -815,6 +824,7 @@ Unimplemented error.
 #### `tf.TFRecordReader.supports_serialize` {#TFRecordReader.supports_serialize}
 
 Whether the Reader implementation can serialize its state.
+
 
 
 - - -
@@ -905,6 +915,7 @@ finished with the previous file).
 
 Op that implements the reader.
 
+
 - - -
 
 #### `tf.FixedLengthRecordReader.reset(name=None)` {#FixedLengthRecordReader.reset}
@@ -969,6 +980,7 @@ Whether the Reader implementation can serialize its state.
 
 
 
+
 ## Converting
 
 TensorFlow provides several operations that you can use to convert various data
@@ -1016,16 +1028,17 @@ Reinterpret the bytes of a string as a vector of numbers.
     All the elements must have the same length.
 *  <b>`out_type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
 *  <b>`little_endian`</b>: An optional `bool`. Defaults to `True`.
-    Whether the input bytes are in little-endian order.
-    Ignored for out_types that are stored in a single byte like uint8.
+    Whether the input `bytes` are in little-endian order.
+    Ignored for `out_type` values that are stored in a single byte like
+    `uint8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `out_type`.
-  A Tensor with one more dimension than the input bytes.  The
+  A Tensor with one more dimension than the input `bytes`.  The
   added dimension will have size equal to the length of the elements
-  of bytes divided by the number of bytes to represent out_type.
+  of `bytes` divided by the number of bytes to represent `out_type`.
 
 
 
@@ -1084,12 +1097,12 @@ serialized `Example`s are provided:
 
 ```
 serialized = [
-  features:
-    { feature: [ key: { "ft" value: float_list: { value: [1.0, 2.0] } } ] },
-  features:
-    { feature: [] },
-  features:
-    { feature: [ key: { "ft" value: float_list: { value: [3.0] } } ] }
+  features
+    { feature { key: "ft" value { float_list { value: [1.0, 2.0] } } } },
+  features
+    { feature []},
+  features
+    { feature { key: "ft" value { float_list { value: [3.0] } } }
 ]
 ```
 
@@ -1105,14 +1118,14 @@ Given two `Example` input protos in `serialized`:
 
 ```
 [
-  features: {
-    feature: { key: "kw" value: { bytes_list: { value: [ "knit", "big" ] } } }
-    feature: { key: "gps" value: { float_list: { value: [] } } }
+  features {
+    feature { key: "kw" value { bytes_list { value: [ "knit", "big" ] } } }
+    feature { key: "gps" value { float_list { value: [] } } }
   },
-  features: {
-    feature: { key: "kw" value: { bytes_list: { value: [ "emmy" ] } } }
-    feature: { key: "dank" value: { int64_list: { value: [ 42 ] } } }
-    feature: { key: "gps" value: { } }
+  features {
+    feature { key: "kw" value { bytes_list { value: [ "emmy" ] } } }
+    feature { key: "dank" value { int64_list { value: [ 42 ] } } }
+    feature { key: "gps" value { } }
   }
 ]
 ```
@@ -1148,13 +1161,13 @@ For dense results in two serialized `Example`s:
 
 ```
 [
-  features: {
-    feature: { key: "age" value: { int64_list: { value: [ 0 ] } } }
-    feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
+  features {
+    feature { key: "age" value { int64_list { value: [ 0 ] } } }
+    feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
    },
-   features: {
-    feature: { key: "age" value: { int64_list: { value: [] } } }
-    feature: { key: "gender" value: { bytes_list: { value: [ "f" ] } } }
+   features {
+    feature { key: "age" value { int64_list { value: [] } } }
+    feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
   }
 ]
 ```
@@ -1202,6 +1215,8 @@ And the expected output is:
     The keys of the dict must match the dense_keys of the feature.
 *  <b>`dense_shapes`</b>: A list of tuples with the same length as `dense_keys`.
     The shape of the data for each dense feature referenced by `dense_keys`.
+    Required for any input tensors identified by dense_keys whose shapes are
+    anything other than [] or [1].
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -1229,7 +1244,7 @@ same as the shape given in `dense_shape`.
 
 For `SparseTensor`s, the first (batch) column of the indices matrix is removed
 (the indices matrix is a column vector), the values vector is unchanged, and
-the first (batch_size) entry of the shape vector is removed (it is now a
+the first (`batch_size`) entry of the shape vector is removed (it is now a
 single element vector).
 
 See also `parse_example`.
@@ -1238,15 +1253,15 @@ See also `parse_example`.
 
 
 *  <b>`serialized`</b>: A scalar string Tensor, a single serialized Example.
-    See parse_example documentation for more details.
+    See `parse_example` documentation for more details.
 *  <b>`names`</b>: (Optional) A scalar string Tensor, the associated name.
-    See parse_example documentation for more details.
-*  <b>`sparse_keys`</b>: See parse_example documentation for more details.
-*  <b>`sparse_types`</b>: See parse_example documentation for more details.
-*  <b>`dense_keys`</b>: See parse_example documentation for more details.
-*  <b>`dense_types`</b>: See parse_example documentation for more details.
-*  <b>`dense_defaults`</b>: See parse_example documentation for more details.
-*  <b>`dense_shapes`</b>: See parse_example documentation for more details.
+    See `parse_example` documentation for more details.
+*  <b>`sparse_keys`</b>: See `parse_example` documentation for more details.
+*  <b>`sparse_types`</b>: See `parse_example` documentation for more details.
+*  <b>`dense_keys`</b>: See `parse_example` documentation for more details.
+*  <b>`dense_types`</b>: See `parse_example` documentation for more details.
+*  <b>`dense_defaults`</b>: See `parse_example` documentation for more details.
+*  <b>`dense_shapes`</b>: See `parse_example` documentation for more details.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -1450,17 +1465,44 @@ Constructs a queue object from a queue reference.
 
 The list of dtypes for each component of a queue element.
 
+
+- - -
+
+#### `tf.QueueBase.from_list(index, queues)` {#QueueBase.from_list}
+
+Create a queue using the queue reference from `queues[index]`.
+
+##### Args:
+
+
+*  <b>`index`</b>: An integer scalar tensor that determines the input that gets
+    selected.
+*  <b>`queues`</b>: A list of `QueueBase` objects.
+
+##### Returns:
+
+  A `QueueBase` object.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: When `queues` is not a list of `QueueBase` objects,
+    or when the data types of `queues` are not all the same.
+
+
 - - -
 
 #### `tf.QueueBase.name` {#QueueBase.name}
 
 The name of the underlying queue.
 
+
 - - -
 
 #### `tf.QueueBase.queue_ref` {#QueueBase.queue_ref}
 
 The underlying queue reference.
+
 
 
 - - -
@@ -1635,7 +1677,7 @@ Save the list of files matching pattern, so it is only computed once.
 
 ### `tf.train.limit_epochs(tensor, num_epochs=None, name=None)` {#limit_epochs}
 
-Returns tensor num_epochs times and then raises an OutOfRange error.
+Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
 ##### Args:
 
@@ -1647,7 +1689,7 @@ Returns tensor num_epochs times and then raises an OutOfRange error.
 
 ##### Returns:
 
-  tensor or OutOfRange.
+  tensor or `OutOfRange`.
 
 
 - - -
@@ -1773,6 +1815,12 @@ first dimension.  If an input tensor has shape `[*, x, y, z]`, the
 output will have shape `[batch_size, x, y, z]`.  The `capacity` argument
 controls the how long the prefetching is allowed to grow the queues.
 
+The returned operation is a dequeue operation and will throw
+`tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+operation is feeding another input queue, its queue runner will catch
+this exception, however, if this operation is used in your main thread
+you are responsible for catching this yourself.
+
 *N.B.:* You must ensure that either (i) the `shapes` argument is
 passed, or (ii) all of the tensors in `tensor_list` must have
 fully-defined shapes. `ValueError` will be raised if neither of
@@ -1831,6 +1879,12 @@ same size in the first dimension.  The slices of any input tensor
 The `capacity` argument controls the how long the prefetching is allowed to
 grow the queues.
 
+The returned operation is a dequeue operation and will throw
+`tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+operation is feeding another input queue, its queue runner will catch
+this exception, however, if this operation is used in your main thread
+you are responsible for catching this yourself.
+
 *N.B.:* You must ensure that either (i) the `shapes` argument is
 passed, or (ii) all of the tensors in `tensor_list_list` must have
 fully-defined shapes. `ValueError` will be raised if neither of
@@ -1885,6 +1939,12 @@ output will have shape `[batch_size, x, y, z]`.
 
 The `capacity` argument controls the how long the prefetching is allowed to
 grow the queues.
+
+The returned operation is a dequeue operation and will throw
+`tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+operation is feeding another input queue, its queue runner will catch
+this exception, however, if this operation is used in your main thread
+you are responsible for catching this yourself.
 
 For example:
 
@@ -1961,10 +2021,11 @@ y, z]`, the output will have shape `[batch_size, x, y, z]`.
 The `capacity` argument controls the how long the prefetching is allowed to
 grow the queues.
 
-*N.B.:* You must ensure that either (i) the `shapes` argument is
-passed, or (ii) all of the tensors in `tensor_list_list` must have
-fully-defined shapes. `ValueError` will be raised if neither of
-these conditions holds.
+The returned operation is a dequeue operation and will throw
+`tf.errors.OutOfRangeError` if the input queue is exhausted. If this
+operation is feeding another input queue, its queue runner will catch
+this exception, however, if this operation is used in your main thread
+you are responsible for catching this yourself.
 
 ##### Args:
 

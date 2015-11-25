@@ -60,6 +60,7 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
   if (op_def == nullptr) {
     status->Update(
         errors::NotFound("Op type not registered '", op_type_name, "'"));
+    LOG(INFO) << status->ToString();
     static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;

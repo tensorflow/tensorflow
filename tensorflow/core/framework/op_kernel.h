@@ -817,6 +817,11 @@ class OpKernelContext {
     return output_allocation_types_[index];
   }
 
+  // Per-step resource manager for use by white-listed internal ops.
+  ResourceMgr* step_resource_manager() const {
+    return params_.step_resource_manager;
+  }
+
  private:
   Allocator* get_allocator(AllocatorAttributes attr) {
     Allocator* allocator = params_.device->GetAllocator(attr);
@@ -834,13 +839,6 @@ class OpKernelContext {
     } else {
       return allocator;
     }
-  }
-
-  // Per-step resource manager for use by white-listed internal ops.
-  friend class TemporaryVariableOp;
-  friend class DestroyTemporaryVariableOp;
-  ResourceMgr* step_resource_manager() const {
-    return params_.step_resource_manager;
   }
 
   // Internal common method used when allocating tensor memory

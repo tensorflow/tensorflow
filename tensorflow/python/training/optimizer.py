@@ -20,8 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import types as tf_types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -38,7 +38,7 @@ class Optimizer(object):
 
   ### Usage
 
-  ```
+  ```python
   # Create an optimizer with the desired parameters.
   opt = GradientDescentOptimizer(learning_rate=0.1)
   # Add Ops to the graph to minimize a cost by updating a list of variables.
@@ -49,7 +49,7 @@ class Optimizer(object):
 
   In the training program you will just have to run the returned Op.
 
-  ```
+  ```python
   # Execute opt_op to do one step of training:
   opt_op.run()
   ```
@@ -66,7 +66,7 @@ class Optimizer(object):
 
   Example:
 
-  ```
+  ```python
   # Create an optimizer.
   opt = GradientDescentOptimizer(learning_rate=0.1)
 
@@ -95,18 +95,18 @@ class Optimizer(object):
 
   The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
-  <b>GATE_NONE</b>: Compute and apply gradients in parallel.  This provides the
-  maximum parallelism in execution, at the cost of some non-reproducibility in
-  the results.  For example the two gradients of MatMul depend on the input
+  <b>`GATE_NONE`</b>: Compute and apply gradients in parallel.  This provides
+  the maximum parallelism in execution, at the cost of some non-reproducibility
+  in the results.  For example the two gradients of `matmul` depend on the input
   values: With `GATE_NONE` one of the gradients could be applied to one of the
   inputs _before_ the other gradient is computed resulting in non-reproducible
   results.
 
-  <b>GATE_OP</b>: For each Op, make sure all gradients are computed before they
-  are used.  This prevents race conditions for Ops that generate gradients for
-  multiple inputs where the gradients depend on the inputs.
+  <b>`GATE_OP`</b>: For each Op, make sure all gradients are computed before
+  they are used.  This prevents race conditions for Ops that generate gradients
+  for multiple inputs where the gradients depend on the inputs.
 
-  <b>GATE_GRAPH</b>: Make sure all gradients for all variables are computed
+  <b>`GATE_GRAPH`</b>: Make sure all gradients for all variables are computed
   before any one of them is used.  This provides the least parallelism but can
   be useful if you want to process all gradients before applying any of them.
 
@@ -154,32 +154,32 @@ class Optimizer(object):
 
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None, name=None):
-    """Add operations to minimize 'loss' by updating 'var_list'.
+    """Add operations to minimize `loss` by updating `var_list`.
 
-    This method simply combines calls compute_gradients() and
-    apply_gradients(). If you want to process the gradient before applying them
-    call compute_gradients() and apply_gradients() explicitly instead of using
-    this function.
+    This method simply combines calls `compute_gradients()` and
+    `apply_gradients()`. If you want to process the gradient before applying
+    them call `compute_gradients()` and `apply_gradients()` explicitly instead
+    of using this function.
 
     Args:
-      loss: A Tensor containing the value to minimize.
-      global_step: Optional Variable to increment by one after the
+      loss: A `Tensor` containing the value to minimize.
+      global_step: Optional `Variable` to increment by one after the
         variables have been updated.
-      var_list: Optional list of variables.Variable to update to minimize
-        'loss'.  Defaults to the list of variables collected in the graph
-        under the key GraphKeys.TRAINABLE_VARIABLES.
+      var_list: Optional list of `Variable` objects to update to minimize
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKeys.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
-        GATE_NONE, GATE_OP, or  GATE_GRAPH.
+        `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
       name: Optional name for the returned operation.
 
     Returns:
-      An Operation that updates the variables in 'var_list'.  If 'global_step'
-      was not None, that operation also increments global_step.
+      An Operation that updates the variables in `var_list`.  If `global_step`
+      was not `None`, that operation also increments `global_step`.
 
     Raises:
-      ValueError: if some of the variables are not variables.Variable objects.
+      ValueError: if some of the variables are not `Variable` objects.
     """
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
@@ -189,21 +189,21 @@ class Optimizer(object):
 
   def compute_gradients(self, loss, var_list=None, gate_gradients=GATE_OP,
                         aggregation_method=None):
-    """Compute gradients of "loss" for the variables in "var_list".
+    """Compute gradients of `loss` for the variables in `var_list`.
 
-    This is the first part of minimize().  It returns a list
+    This is the first part of `minimize()`.  It returns a list
     of (gradient, variable) pairs where "gradient" is the gradient
-    for "variable".  Note that "gradient" can be a Tensor, a
-    IndexedSlices, or None if there is no gradient for the
+    for "variable".  Note that "gradient" can be a `Tensor`, an
+    `IndexedSlices`, or `None` if there is no gradient for the
     given variable.
 
     Args:
       loss: A Tensor containing the value to minimize.
       var_list: Optional list of variables.Variable to update to minimize
-        "loss".  Defaults to the list of variables collected in the graph
-        under the key GraphKey.TRAINABLE_VARIABLES.
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
-        GATE_NONE, GATE_OP, or  GATE_GRAPH.
+        `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
         Valid values are defined in the class `AggregationMethod`.
 
@@ -211,7 +211,7 @@ class Optimizer(object):
       A list of (gradient, variable) pairs.
 
     Raises:
-      TypeError: If var_list contains anything else than variables.Variable.
+      TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
     """
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
@@ -237,27 +237,28 @@ class Optimizer(object):
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
 
-    This is the second part of minimize(). It returns an Operation that
+    This is the second part of `minimize()`. It returns an `Operation` that
     applies gradients.
 
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
-        compute_gradients().
-      global_step: Optional Variable to increment by one after the
+        `compute_gradients()`.
+      global_step: Optional `Variable` to increment by one after the
         variables have been updated.
       name: Optional name for the returned operation.  Default to the
-        name passed to the Optimizer constructor.
+        name passed to the `Optimizer` constructor.
 
     Returns:
-      An Operation that applies the specified gradients. If 'global_step'
-      was not None, that operation also increments global_step.
+      An `Operation` that applies the specified gradients. If `global_step`
+      was not None, that operation also increments `global_step`.
 
     Raises:
-      TypeError: if grads_and_vars is malformed.
+      TypeError: if `grads_and_vars` is malformed.
     """
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
+    grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works
     for g, v in grads_and_vars:
       if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
         raise TypeError(
@@ -287,20 +288,21 @@ class Optimizer(object):
             return state_ops.assign_add(global_step, 1, name=name).op
 
   def get_slot(self, var, name):
-    """Return a slot named "name" created for "var" by the Optimizer.
+    """Return a slot named `name` created for `var` by the Optimizer.
 
-    Some Optimizer subclasses use additional variables.  For example
-    Momentum and Adagrad use variables to accumulate updates.  This method
-    gives access to these Variables if for some reason you need them.
+    Some `Optimizer` subclasses use additional variables.  For example
+    `Momentum` and `Adagrad` use variables to accumulate updates.  This method
+    gives access to these `Variable` objects if for some reason you need them.
 
-    Use get_slot_names() to get the list of slot names created by the Optimizer.
+    Use `get_slot_names()` to get the list of slot names created by the
+    `Optimizer`.
 
     Args:
-      var: A variable passed to minimize() or apply_gradients().
+      var: A variable passed to `minimize()` or `apply_gradients()`.
       name: A string.
 
     Returns:
-      The Variable for the slot if it was created, None otherwise.
+      The `Variable` for the slot if it was created, `None` otherwise.
     """
     named_slots = self._slots.get(name, None)
     if not named_slots:
@@ -308,9 +310,9 @@ class Optimizer(object):
     return named_slots.get(var, None)
 
   def get_slot_names(self):
-    """Return a list of the names of slots created by the Optimizer.
+    """Return a list of the names of slots created by the `Optimizer`.
 
-    See get_slot().
+    See `get_slot()`.
 
     Returns:
       A list of strings.
@@ -318,7 +320,7 @@ class Optimizer(object):
     return sorted(self._slots.keys())
 
   def _assert_valid_dtypes(self, tensors):
-    """Asserts tensors are all valid types (see _valid_dtypes).
+    """Asserts tensors are all valid types (see `_valid_dtypes`).
 
     Args:
       tensors: tensors to check.
@@ -340,18 +342,18 @@ class Optimizer(object):
   def _valid_dtypes(self):
     """Valid types for loss, variables and gradients.
 
-    Defaults to float32. Subclasses should override to allow other types.
+    Defaults to `float32`. Subclasses should override to allow other types.
 
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set([tf_types.float32])
+    return set([dtypes.float32])
 
   def _create_slots(self, var_list):
     """Create all slots needed by the variables.
 
     Args:
-      var_list: A list of variables.Variable.
+      var_list: A list of `Variable` objects.
     """
     # No slots needed by default
     pass
@@ -365,38 +367,39 @@ class Optimizer(object):
     pass
 
   def _apply_dense(self, grad, var):
-    """Add ops to apply dense gradients to "var".
+    """Add ops to apply dense gradients to `var`.
 
     Args:
-      grad: A Tensor.
-      var: A variables.Variable.
+      grad: A `Tensor`.
+      var: A `Variable` object.
 
     Return:
-      An Operation.
+      An `Operation`.
     """
     raise NotImplementedError()
 
   def _apply_sparse(self, grad, var):
-    """Add ops to apply sparse gradients to "var".
+    """Add ops to apply sparse gradients to `var`.
 
     Args:
-      grad: IndexedSlices.
-      var: A variables.Variable.
+      grad: `IndexedSlices`.
+      var: A `Variable` object.
 
     Return:
-      An Operation.
+      An `Operation`.
     """
     raise NotImplementedError()
 
   def _finish(self, update_ops, name_scope):
     """Do what is needed to finish the update.
 
-    This is called with the name_scope using the "name" that
+    This is called with the `name_scope` using the "name" that
     users have chosen for the application of gradients.
 
     Args:
-      update_ops: List of Operations to update variables.  This list contains
-        the values returned by the _apply_dense() and _apply_sparse() calls.
+      update_ops: List of `Operation` objects to update variables.  This list
+        contains the values returned by the `_apply_dense()` and
+        `_apply_sparse()` calls.
       name_scope: string.  Name to use for the returned operation.
 
     Returns:
@@ -412,14 +415,14 @@ class Optimizer(object):
     """Find or create a slot for a variable.
 
     Args:
-      var: A variables.Variable.
-      val: A Tensor.  The initial value of the slot.
+      var: A `Variable` object.
+      val: A `Tensor`.  The initial value of the slot.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
         needs to be created for  the slot.
 
     Returns:
-      A variables.Variable.
+      A `Variable` object.
     """
     named_slots = self._slots.get(slot_name, None)
     if named_slots is None:
@@ -439,13 +442,13 @@ class Optimizer(object):
     """Find or create a slot initialized with 0.0.
 
     Args:
-      var: A variables.Variable.
+      var: A `Variable` object.
       slot_name: Name for the slot.
       op_name: Name to use when scoping the Variable that
         needs to be created for  the slot.
 
     Returns:
-      A variables.Variable.
+      A `Variable` object.
     """
     val = array_ops.zeros(var.get_shape().as_list(), dtype=var.dtype)
     return self._get_or_make_slot(var, val, slot_name, op_name)

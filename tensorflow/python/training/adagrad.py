@@ -43,7 +43,7 @@ class AdagradOptimizer(optimizer.Optimizer):
         gradients.  Defaults to "Adagrad".
 
     Raises:
-      ValueError: If the initial_accumulator_value is invalid.
+      ValueError: If the `initial_accumulator_value` is invalid.
     """
     if initial_accumulator_value <= 0.0:
       raise ValueError("initial_accumulator_value must be positive: %s" %

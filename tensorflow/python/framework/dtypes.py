@@ -70,8 +70,8 @@ class DType(object):
     """Creates a new `DataType`.
 
     NOTE(mrry): In normal circumstances, you should not need to
-    construct a DataType object directly. Instead, use the
-    types.as_dtype() function.
+    construct a `DataType` object directly. Instead, use the
+    `tf.as_dtype()` function.
 
     Args:
       type_enum: A `types_pb2.DataType` enum value.
@@ -222,6 +222,9 @@ class DType(object):
 
   def __repr__(self):
     return "tf." + self.name
+
+  def __hash__(self):
+    return self._type_enum
 
 
 # Define standard wrappers for the types_pb2.DataType enum.

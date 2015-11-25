@@ -60,6 +60,15 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   return config;
 }
 
+template <typename T>
+__device__ __host__ inline T ldg(const T* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  return __ldg(address);
+#else
+  return *address;
+#endif
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

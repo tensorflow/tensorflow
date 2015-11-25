@@ -1,3 +1,18 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 /// <reference path="../../../../typings/tsd.d.ts" />
 /// <reference path="../common.ts" />
 
@@ -13,6 +28,8 @@ export class Minimap {
   private canvas: HTMLCanvasElement;
   /** A buffer canvas used for temporary drawing to avoid flickering. */
   private canvasBuffer: HTMLCanvasElement;
+  private download: HTMLLinkElement;
+  private downloadCanvas: HTMLCanvasElement;
 
   /** The minimap svg used for holding the viewpoint rectangle. */
   private minimapSvg: SVGSVGElement;
@@ -91,12 +108,16 @@ export class Minimap {
       this.viewpointCoord.y = clickCoords[1] - height / 2;
       this.updateViewpoint();
     });
-    this.viewpoint = <SVGRectElement> $viewpoint.node();
-    this.minimapSvg = <SVGSVGElement> $minimapSvg.node();
+    this.viewpoint = <SVGRectElement>$viewpoint.node();
+    this.minimapSvg = <SVGSVGElement>$minimapSvg.node();
     this.minimap = minimap;
-    this.canvas = <HTMLCanvasElement> $minimap.select("canvas.first").node();
+    this.canvas = <HTMLCanvasElement>$minimap.select("canvas.first").node();
     this.canvasBuffer =
-        <HTMLCanvasElement> $minimap.select("canvas.second").node();
+       <HTMLCanvasElement>$minimap.select("canvas.second").node();
+    this.downloadCanvas =
+        <HTMLCanvasElement>$minimap.select("canvas.download").node();
+    d3.select(this.downloadCanvas).style("display", "none");
+
   }
 
   /**
@@ -121,6 +142,12 @@ export class Minimap {
    * was updated (e.g. when a node was expanded).
    */
   update(): void {
+    let $download = d3.select("#graphdownload");
+    this.download = <HTMLLinkElement>$download.node();
+    $download.on("click", d => {
+      this.download.href = this.downloadCanvas.toDataURL("image/png");
+    });
+
     let $svg = d3.select(this.svg);
     // Read all the style rules in the document and embed them into the svg.
     // The svg needs to be self contained, i.e. all the style rules need to be
@@ -156,7 +183,8 @@ export class Minimap {
     // Get the size of the entire scene.
     let sceneSize = this.zoomG.getBBox();
     // Since we add padding, account for that here.
-    sceneSize.height += this.labelPadding;
+    sceneSize.height += this.labelPadding * 2;
+    sceneSize.width += this.labelPadding * 2;
 
     // Temporarily assign an explicit width/height to the main svg, since
     // it doesn't have one (uses flex-box), but we need it for the canvas
@@ -182,6 +210,14 @@ export class Minimap {
     // viewpoint rect.
     d3.select(this.minimapSvg).attr(<any>this.minimapSize);
     d3.select(this.canvasBuffer).attr(<any>this.minimapSize);
+
+    // Download canvas width and height are multiples of the style width and
+    // height in order to increase pixel density of the PNG for clarity.
+    d3.select(this.downloadCanvas).style(
+      <any>{ width: sceneSize.width, height: sceneSize.height });
+    d3.select(this.downloadCanvas).attr(
+      <any>{ width: sceneSize.width * 3, height: sceneSize.height * 3 });
+
     if (this.translate != null && this.zoom != null) {
       // Update the viewpoint rectangle shape since the aspect ratio of the
       // map has changed.
@@ -216,6 +252,11 @@ export class Minimap {
         // Swap the two canvases.
         [this.canvas, this.canvasBuffer] = [this.canvasBuffer, this.canvas];
       });
+      let downloadContext = this.downloadCanvas.getContext("2d");
+      downloadContext.clearRect(0, 0, this.downloadCanvas.width,
+        this.downloadCanvas.height);
+      downloadContext.drawImage(image, 0, 0,
+        this.downloadCanvas.width, this.downloadCanvas.height);
     };
     image.src = "data:image/svg+xml;base64," + btoa(svgXml);
   }

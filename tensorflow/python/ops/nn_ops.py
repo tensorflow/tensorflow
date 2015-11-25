@@ -22,10 +22,10 @@ from __future__ import print_function
 import tensorflow.python.platform
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import types
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
 # pylint: disable=wildcard-import

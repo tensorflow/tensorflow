@@ -133,7 +133,7 @@ py_library(
         "framework/random_seed.py",
         "framework/registry.py",
         "framework/tensor_shape.py",
-        "framework/types.py",
+        "framework/dtypes.py",
         "framework/tensor_util.py",
         "ops/common_shapes.py",
     ],
@@ -282,9 +282,9 @@ py_test(
 )
 
 py_test(
-    name = "framework_types_test",
-    srcs = ["framework/types_test.py"],
-    main = "framework/types_test.py",
+    name = "framework_dtypes_test",
+    srcs = ["framework/dtypes_test.py"],
+    main = "framework/dtypes_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
@@ -335,6 +335,7 @@ tf_gen_op_wrapper_py(
         "AllCandidateSampler",
         "ComputeAccidentalHits",
         "FixedUnigramCandidateSampler",
+        "LearnedUnigramCandidateSampler",
         "LogUniformCandidateSampler",
         "ThreadUnsafeUnigramCandidateSampler",
         "UniformCandidateSampler",
@@ -374,6 +375,10 @@ tf_gen_op_wrapper_py(
         "QueueEnqueueMany",
         "QueueSize",
         "RandomShuffleQueue",
+        "Stack",
+        "StackPop",
+        "StackPush",
+        "StackClose",
     ],
     require_shape_functions = True,
 )
@@ -567,6 +572,7 @@ py_library(
         "ops/gen_string_ops.py",
         "ops/gen_summary_ops.py",
         "ops/gradients.py",
+        "ops/image_grad.py",
         "ops/image_ops.py",
         "ops/init_ops.py",
         "ops/io_ops.py",
@@ -944,6 +950,7 @@ py_library(
         ":client",
         ":framework",
         ":pywrap_tensorflow",
+        ":util",
         "//tensorflow/core:protos_all_py",
     ],
 )

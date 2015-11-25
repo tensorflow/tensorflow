@@ -25,8 +25,8 @@ import tensorflow.python.platform
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import types
 from tensorflow.python.kernel_tests import gradient_checker as gc
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
@@ -50,7 +50,7 @@ class SigmoidCrossEntropyWithLogitsTest(test_util.TensorFlowTestCase):
     pred = [min(max(p, eps), 1 - eps) for p in pred]
     return [-z * log(y) - (1 - z) * log(1 - y) for y, z in zip(pred, targets)]
 
-  def _Inputs(self, x=None, y=None, dtype=types.float64, sizes=None):
+  def _Inputs(self, x=None, y=None, dtype=dtypes.float64, sizes=None):
     x = [-100, -2, -2, 0, 2, 2, 2, 100] if x is None else x
     y = [0, 0, 1, 0, 0, 1, 0.5, 1] if y is None else y
     assert len(x) == len(y)
@@ -70,7 +70,7 @@ class SigmoidCrossEntropyWithLogitsTest(test_util.TensorFlowTestCase):
   def testLogisticOutput(self):
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=types.float32)
+        logits, targets, losses = self._Inputs(dtype=dtypes.float32)
         loss = nn.sigmoid_cross_entropy_with_logits(logits, targets)
         np_loss = np.array(losses).astype(np.float32)
         tf_loss = loss.eval()
@@ -79,7 +79,7 @@ class SigmoidCrossEntropyWithLogitsTest(test_util.TensorFlowTestCase):
   def testLogisticOutputMultiDim(self):
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=types.float32,
+        logits, targets, losses = self._Inputs(dtype=dtypes.float32,
                                                sizes=[2, 2, 2])
         loss = nn.sigmoid_cross_entropy_with_logits(logits, targets)
         np_loss = np.array(losses).astype(np.float32)
@@ -168,9 +168,9 @@ class DeConv2DTest(test_util.TensorFlowTestCase):
       f_shape = [3, 3, 2, 3]
 
       x = constant_op.constant(1.0, shape=x_shape, name="x",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       f = constant_op.constant(1.0, shape=f_shape, name="filter",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       output = nn.deconv2d(x, f, y_shape, strides=strides, padding="SAME")
       value = output.eval()
 
@@ -205,9 +205,9 @@ class DeConv2DTest(test_util.TensorFlowTestCase):
       f_shape = [3, 3, 2, 3]
 
       x = constant_op.constant(1.0, shape=x_shape, name="x",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       f = constant_op.constant(1.0, shape=f_shape, name="filter",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       output = nn.deconv2d(x, f, y_shape, strides=strides, padding="SAME")
       value = output.eval()
 
@@ -237,9 +237,9 @@ class DeConv2DTest(test_util.TensorFlowTestCase):
       f_shape = [3, 3, 2, 3]
 
       x = constant_op.constant(1.0, shape=x_shape, name="x",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       f = constant_op.constant(1.0, shape=f_shape, name="filter",
-                               dtype=types.float32)
+                               dtype=dtypes.float32)
       output = nn.deconv2d(x, f, y_shape, strides=strides, padding="VALID")
       value = output.eval()
 
@@ -281,8 +281,8 @@ class DeConv2DTest(test_util.TensorFlowTestCase):
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
     with self.test_session():
-      x = constant_op.constant(x_val, name="x", dtype=types.float32)
-      f = constant_op.constant(f_val, name="f", dtype=types.float32)
+      x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
       output = nn.deconv2d(x, f, y_shape, strides=strides, padding="SAME")
       err = gc.ComputeGradientError([x, f], [x_shape, f_shape], output, y_shape)
     print("DeConv gradient err = %g " % err)
@@ -355,7 +355,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
       with self.test_session():
         t = constant_op.constant(1.0,
                                  shape=[x_dim, y_dim],
-                                 dtype=types.float32)
+                                 dtype=dtypes.float32)
         dropout = nn.dropout(t, keep_prob)
         final_count = 0
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
@@ -384,7 +384,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
       with self.test_session():
         t = constant_op.constant(1.0,
                                  shape=[x_dim, y_dim],
-                                 dtype=types.float32)
+                                 dtype=dtypes.float32)
         dropout = nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         final_count = 0
@@ -410,7 +410,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
       with self.test_session():
         t = constant_op.constant(1.0,
                                  shape=[x_dim, y_dim],
-                                 dtype=types.float32)
+                                 dtype=dtypes.float32)
         dropout = nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         for _ in xrange(0, num_iter):
@@ -431,8 +431,8 @@ class DropoutTest(test_util.TensorFlowTestCase):
       with self.test_session():
         t = constant_op.constant(1.0,
                                  shape=[x_dim, y_dim],
-                                 dtype=types.float32)
-        keep_prob_placeholder = array_ops.placeholder(types.float32)
+                                 dtype=dtypes.float32)
+        keep_prob_placeholder = array_ops.placeholder(dtypes.float32)
         dropout = nn.dropout(t, keep_prob_placeholder)
         final_count = 0
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
@@ -453,9 +453,9 @@ class DropoutTest(test_util.TensorFlowTestCase):
     x_dim = 40
     y_dim = 30
     keep_prob = 0.5
-    x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=types.float32)
+    x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     dropout_x = nn.dropout(
-        x, keep_prob, noise_shape=array_ops.placeholder(types.int32))
+        x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
   def testInvalidKeepProb(self):
@@ -463,7 +463,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
     y_dim = 30
     t = constant_op.constant(1.0,
                              shape=[x_dim, y_dim],
-                             dtype=types.float32)
+                             dtype=dtypes.float32)
     with self.assertRaises(ValueError):
       nn.dropout(t, -1.0)
     with self.assertRaises(ValueError):
@@ -471,9 +471,9 @@ class DropoutTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       nn.dropout(t, [0.0, 1.0])
     with self.assertRaises(ValueError):
-      nn.dropout(t, array_ops.placeholder(types.float64))
+      nn.dropout(t, array_ops.placeholder(dtypes.float64))
     with self.assertRaises(ValueError):
-      nn.dropout(t, array_ops.placeholder(types.float32, shape=[2]))
+      nn.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
@@ -482,7 +482,7 @@ class DropoutTest(test_util.TensorFlowTestCase):
     keep_prob = 0.5
     t = constant_op.constant(1.0,
                              shape=[x_dim, y_dim],
-                             dtype=types.float32)
+                             dtype=dtypes.float32)
     with self.assertRaises(ValueError):
       _ = nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
     with self.assertRaises(ValueError):
@@ -641,7 +641,7 @@ class MomentsTest(test_util.TensorFlowTestCase):
       assert len(shape) == 4
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = array_ops.placeholder(types.float32, shape=[None] * len(shape))
+      x = array_ops.placeholder(dtypes.float32, shape=[None] * len(shape))
 
       axes = [0, 1, 2] if global_norm else [0]
       mean, var = nn.moments(x, axes)
@@ -722,6 +722,7 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
     self._num_classes = 5
     self._dim = 10
     self._batch_size = 3
+    self._num_shards = 3
 
   def _GenerateTestInputs(self):
     np.random.seed(0)
@@ -729,8 +730,11 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
     biases = np.random.randn(self._num_classes).astype(np.float32)
     hidden_acts = np.random.randn(self._batch_size, self._dim).astype(
         np.float32)
-
-    return weights, biases, hidden_acts
+    sharded_weights = [
+        weights[[row for row in range(self._num_classes)
+                 if row % self._num_shards == shard]]
+        for shard in range(self._num_shards)]
+    return weights, biases, hidden_acts, sharded_weights
 
   def _ComputeSampledLogitsNP(self, true_w, true_b, sampled_w, sampled_b,
                               hidden_acts,
@@ -763,11 +767,14 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
                               subtract_log_q, remove_accidental_hits,
                               name="sampled_loss_TF"):
     # Should be called from within a `with test_session():` block
-    weights_tf = constant_op.constant(weights)
+    if isinstance(weights, list):
+      weights_tf = [constant_op.constant(shard) for shard in weights]
+    else:
+      weights_tf = constant_op.constant(weights)
     biases_tf = constant_op.constant(biases)
     hidden_acts_tf = constant_op.constant(hidden_acts,
                                           shape=(self._batch_size, self._dim))
-    labels_tf = constant_op.constant(labels, dtype=types.int64,
+    labels_tf = constant_op.constant(labels, dtype=dtypes.int64,
                                      shape=(self._batch_size, num_true))
 
     pred_logits_tf, pred_labels_tf = nn._compute_sampled_logits(
@@ -780,7 +787,7 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
 
   def testComputeSampledLogitsShapes(self):
     # We just check that the shapes of the returned values are correct.
-    weights, biases, hidden_acts = self._GenerateTestInputs()
+    weights, biases, hidden_acts, _ = self._GenerateTestInputs()
     sampled = [1, 0, 2, 3]
     num_sampled = len(sampled)
     true_exp = sampled_exp = [1., 1., 1., 1.]
@@ -811,7 +818,7 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
 
   def testComputeSampledLogitsValues(self):
     # Here we check the actual numerics.
-    weights, biases, hidden_acts = self._GenerateTestInputs()
+    weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
     eps = 1e-3
     sampled = [1, 0, 2, 3]
     num_sampled = len(sampled)
@@ -887,6 +894,23 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(logits_np, logits_tf_val, eps)
         self.assertAllClose(labels_np, labels_tf_val, eps)
 
+        # Test 4: Test 1, with sharded weights
+        logits_np, labels_np = self._ComputeSampledLogitsNP(
+            true_w, true_b, sampled_w, sampled_b, hidden_acts,
+            num_true=num_true_test)
+        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
+            sharded_weights, biases, hidden_acts, labels, num_sampled,
+            self._num_classes,
+            num_true=num_true_test,
+            sampled_vals=test_sampled_vals,
+            subtract_log_q=False,
+            remove_accidental_hits=False,
+            name="sampled_loss_test1_num_true%d" % num_true_test)
+
+        logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
+        self.assertAllClose(logits_np, logits_tf_val, eps)
+        self.assertAllClose(labels_np, labels_tf_val, eps)
+
   def testNCELoss(self):
     # A simple test to verify the numerics.
 
@@ -898,7 +922,7 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
       pred = np.minimum(np.maximum(pred, eps), 1 - eps)
       return -targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
 
-    weights, biases, hidden_acts = self._GenerateTestInputs()
+    weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
     labels = [0, 1, 2]
     true_w, true_b = weights[labels], biases[labels]
     sampled = [1, 0, 2, 3]
@@ -932,6 +956,17 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
 
+      # Test with sharded weights
+      nce_loss_tf = nn.nce_loss(
+          [constant_op.constant(shard) for shard in sharded_weights],
+          biases_tf, inputs_tf, labels_tf,
+          num_sampled=1,
+          num_classes=self._num_classes,
+          num_true=1,
+          sampled_values=test_sampled_vals)
+
+      self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
+
   def testSampledSoftmaxLoss(self):
     # A simple test to verify the numerics.
 
@@ -943,7 +978,7 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
-    weights, biases, hidden_acts = self._GenerateTestInputs()
+    weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
     labels = [0, 1, 2]
     true_w, true_b = weights[labels], biases[labels]
     sampled = [1, 0, 2, 3]
@@ -968,6 +1003,19 @@ class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
 
       sampled_softmax_loss_tf = nn.sampled_softmax_loss(
           weights_tf, biases_tf, inputs_tf, labels_tf,
+          num_sampled=1,
+          num_classes=self._num_classes,
+          num_true=1,
+          sampled_values=test_sampled_vals,
+          remove_accidental_hits=False)
+
+      self.assertAllClose(
+          sampled_softmax_loss_np, sampled_softmax_loss_tf.eval(), 1e-4)
+
+      # Test with sharded weights
+      sampled_softmax_loss_tf = nn.sampled_softmax_loss(
+          [constant_op.constant(shard) for shard in sharded_weights],
+          biases_tf, inputs_tf, labels_tf,
           num_sampled=1,
           num_classes=self._num_classes,
           num_true=1,

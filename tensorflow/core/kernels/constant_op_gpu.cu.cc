@@ -42,9 +42,10 @@ struct scalar_const_op {
     return *val;
   }
 
-  template <typename Index>
-  EIGEN_STRONG_INLINE const Packet packetOp(Index, Index = 0) const {
-    return internal::pset1<Packet>(*val);
+  template <typename Index, typename PacketType = Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const PacketType
+      packetOp(Index, Index = 0) const {
+    return internal::pset1<PacketType>(*val);
   }
 };
 

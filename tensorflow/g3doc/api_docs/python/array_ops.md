@@ -32,7 +32,7 @@ results in a rounded value.)
 ##### Returns:
 
   A `Tensor` of type `out_type`.
-  A Tensor of the same shape as the input string_tensor.
+  A Tensor of the same shape as the input `string_tensor`.
 
 
 - - -
@@ -817,9 +817,9 @@ tf.transpose(x) ==> [[1 4]
                      [3 6]]
 
 # Equivalently
-tf.transpose(x perm=[0, 1]) ==> [[1 4]
-                                 [2 5]
-                                 [3 6]]
+tf.transpose(x, perm=[1, 0]) ==> [[1 4]
+                                  [2 5]
+                                  [3 6]]
 
 # 'perm' is more useful for n-dimensional tensors, for n > 2
 # 'x' is   [[[1  2  3]

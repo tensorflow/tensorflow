@@ -37,7 +37,7 @@ def if_cuda(a, b=[]):
 
 
 def tf_copts():
-  return ["-pthread", "-fno-exceptions",] + if_cuda(["-DGOOGLE_CUDA=1"])
+  return ["-pthread", "-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] + if_cuda(["-DGOOGLE_CUDA=1"])
 
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -149,6 +149,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
   # Make a py_library out of the generated python file.
   native.py_library(name=name,
                     srcs=[out],
+                    srcs_version="PY2AND3",
                     visibility=visibility,
                     deps=[
                         "//tensorflow/core:protos_all_py",
@@ -309,6 +310,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
       deps=deps)
   native.py_library(name=name,
                     srcs=[":" + name + ".py"],
+                    srcs_version="PY2AND3",
                     data=[":" + cc_library_name])
 
 

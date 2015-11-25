@@ -57,7 +57,7 @@ class _GFileBaseTest(_BaseTest):
     with self.gfile(self.tmp + "test_with", "w") as fh:
       fh.write("hi")
     with self.gfile(self.tmp + "test_with", "r") as fh:
-      self.assertEquals(fh.read(), "hi")
+      self.assertEqual(fh.read(), "hi")
 
   def testSizeAndTellAndSeek(self):
     with self.gfile(self.tmp + "test_tell", "w") as fh:
@@ -90,17 +90,19 @@ class _GFileBaseTest(_BaseTest):
 
   def testErrors(self):
     self.assertRaises(
-        gfile.FileError, lambda: self.gfile(self.tmp + "doesnt_exist", "r"))
+        IOError, lambda: self.gfile(self.tmp + "doesnt_exist", "r"))
     with self.gfile(self.tmp + "test_error", "w") as fh:
-      self.assertRaises(gfile.FileError, lambda: fh.seek(-1))
+      # Raises FileError inside Google and ValueError outside, so we
+      # can only test for Exception.
+      self.assertRaises(Exception, lambda: fh.seek(-1))
     # test_error now exists, we can read from it:
     with self.gfile(self.tmp + "test_error", "r") as fh:
-      self.assertRaises(gfile.FileError, lambda: fh.write("ack"))
+      self.assertRaises(IOError, lambda: fh.write("ack"))
     fh = self.gfile(self.tmp + "test_error", "w")
     self.assertFalse(fh.closed)
     fh.close()
     self.assertTrue(fh.closed)
-    self.assertRaises(gfile.FileError, lambda: fh.write("ack"))
+    self.assertRaises(ValueError, lambda: fh.write("ack"))
 
   def testIteration(self):
     with self.gfile(self.tmp + "test_iter", "w") as fh:
@@ -147,16 +149,16 @@ class FunctionTests(_BaseTest, googletest.TestCase):
 
   def testErrors(self):
     self.assertRaises(
-        gfile.GOSError, lambda: gfile.RmDir(self.tmp + "dir_doesnt_exist"))
+        OSError, lambda: gfile.RmDir(self.tmp + "dir_doesnt_exist"))
     self.assertRaises(
-        gfile.GOSError, lambda: gfile.Remove(self.tmp + "file_doesnt_exist"))
+        OSError, lambda: gfile.Remove(self.tmp + "file_doesnt_exist"))
     gfile.MkDir(self.tmp + "error_dir")
     with gfile.GFile(self.tmp + "error_dir/file", "w"):
       pass  # Create file
     self.assertRaises(
-        gfile.GOSError, lambda: gfile.Remove(self.tmp + "error_dir"))
+        OSError, lambda: gfile.Remove(self.tmp + "error_dir"))
     self.assertRaises(
-        gfile.GOSError, lambda: gfile.RmDir(self.tmp + "error_dir"))
+        OSError, lambda: gfile.RmDir(self.tmp + "error_dir"))
     self.assertTrue(gfile.Exists(self.tmp + "error_dir"))
     gfile.DeleteRecursively(self.tmp + "error_dir")
     self.assertFalse(gfile.Exists(self.tmp + "error_dir"))

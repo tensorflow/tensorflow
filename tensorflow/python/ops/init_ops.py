@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-from tensorflow.python.framework import types
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
@@ -38,7 +38,7 @@ def constant_initializer(value=0.0):
   Returns:
     An initializer that generates tensors with a single value.
   """
-  def _initializer(shape, dtype=types.float32):
+  def _initializer(shape, dtype=dtypes.float32):
     return constant_op.constant(value, dtype=dtype, shape=shape)
   return _initializer
 
@@ -57,7 +57,7 @@ def random_uniform_initializer(minval=0.0, maxval=1.0, seed=None):
   Returns:
     An initializer that generates tensors with a uniform distribution.
   """
-  def _initializer(shape, dtype=types.float32):
+  def _initializer(shape, dtype=dtypes.float32):
     return random_ops.random_uniform(shape, minval, maxval, dtype, seed=seed)
   return _initializer
 
@@ -76,7 +76,7 @@ def random_normal_initializer(mean=0.0, stddev=1.0, seed=None):
   Returns:
     An initializer that generates tensors with a normal distribution.
   """
-  def _initializer(shape, dtype=types.float32):
+  def _initializer(shape, dtype=dtypes.float32):
     return random_ops.random_normal(shape, mean, stddev, dtype, seed=seed)
   return _initializer
 
@@ -101,7 +101,7 @@ def truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None):
     An initializer that generates tensors with a truncated normal
     distribution.
   """
-  def _initializer(shape, dtype=types.float32):
+  def _initializer(shape, dtype=dtypes.float32):
     return random_ops.truncated_normal(shape, mean, stddev, dtype, seed=seed)
   return _initializer
 
@@ -132,7 +132,7 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None):
   Returns:
     An initializer that generates tensors with unit variance.
   """
-  def _initializer(shape, dtype=types.float32):
+  def _initializer(shape, dtype=dtypes.float32):
     input_size = 1.0
     # Estimating input size is not possible to do perfectly, but we try.
     # The estimate, obtained by multiplying all dimensions but the last one,
@@ -146,7 +146,7 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None):
 
 
 # TODO(vrv): Unhide when we are ready to expose this publicly.
-def _random_walk(shape, nonlinearity, dtype=types.float32, seed=None,
+def _random_walk(shape, nonlinearity, dtype=dtypes.float32, seed=None,
                  name="random_walk"):
   """Create a random tensor such that backprop neither vanishes nor explodes.
 
@@ -200,7 +200,7 @@ class _RandomWalkInitializer(object):
     self._nonlinearity = nonlinearity
     self._seed = seed
 
-  def __call__(self, shape, dtype=types.float32):
+  def __call__(self, shape, dtype=dtypes.float32):
     """Generate a tensor used to initialize a variable."""
     return random_ops._random_walk(shape, self._nonlinearity, dtype,
                                    seed=self._seed)

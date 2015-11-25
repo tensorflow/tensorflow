@@ -90,6 +90,22 @@ resized_images:  4-D with shape
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ResizeNearestNeighborGrad")
+    .Input("grads: T")
+    .Input("size: int32")
+    .Output("output: T")
+    .Attr("T: {uint8, int8, int32, float, double}")
+    .Doc(R"doc(
+Computes the gradient of nearest neighbor interpolation.
+
+grads: 4-D with shape `[batch, height, width, channels]`.
+size:= A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
+  original input size.
+output: 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
+  with respect to the input image.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("RandomCrop")
     .Input("image: T")
     .Input("size: int64")

@@ -26,7 +26,7 @@ class directly, but instead instantiate one of its subclasses such as
 
 ### Usage
 
-```
+```python
 # Create an optimizer with the desired parameters.
 opt = GradientDescentOptimizer(learning_rate=0.1)
 # Add Ops to the graph to minimize a cost by updating a list of variables.
@@ -37,7 +37,7 @@ opt_op = opt.minimize(cost, <list of variables>)
 
 In the training program you will just have to run the returned Op.
 
-```
+```python
 # Execute opt_op to do one step of training:
 opt_op.run()
 ```
@@ -54,7 +54,7 @@ before applying them you can instead use the optimizer in three steps:
 
 Example:
 
-```
+```python
 # Create an optimizer.
 opt = GradientDescentOptimizer(learning_rate=0.1)
 
@@ -96,49 +96,49 @@ This must be called by the constructors of subclasses.
 
 #### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, name=None)` {#Optimizer.minimize}
 
-Add operations to minimize 'loss' by updating 'var_list'.
+Add operations to minimize `loss` by updating `var_list`.
 
-This method simply combines calls compute_gradients() and
-apply_gradients(). If you want to process the gradient before applying them
-call compute_gradients() and apply_gradients() explicitly instead of using
-this function.
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
 
 ##### Args:
 
 
-*  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`global_step`</b>: Optional Variable to increment by one after the
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
     variables have been updated.
-*  <b>`var_list`</b>: Optional list of variables.Variable to update to minimize
-    'loss'.  Defaults to the list of variables collected in the graph
-    under the key GraphKeys.TRAINABLE_VARIABLES.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
-    GATE_NONE, GATE_OP, or  GATE_GRAPH.
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
 *  <b>`name`</b>: Optional name for the returned operation.
 
 ##### Returns:
 
-  An Operation that updates the variables in 'var_list'.  If 'global_step'
-  was not None, that operation also increments global_step.
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if some of the variables are not variables.Variable objects.
+*  <b>`ValueError`</b>: if some of the variables are not `Variable` objects.
 
 
 - - -
 
 #### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None)` {#Optimizer.compute_gradients}
 
-Compute gradients of "loss" for the variables in "var_list".
+Compute gradients of `loss` for the variables in `var_list`.
 
-This is the first part of minimize().  It returns a list
+This is the first part of `minimize()`.  It returns a list
 of (gradient, variable) pairs where "gradient" is the gradient
-for "variable".  Note that "gradient" can be a Tensor, a
-IndexedSlices, or None if there is no gradient for the
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
 given variable.
 
 ##### Args:
@@ -146,10 +146,10 @@ given variable.
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
 *  <b>`var_list`</b>: Optional list of variables.Variable to update to minimize
-    "loss".  Defaults to the list of variables collected in the graph
-    under the key GraphKey.TRAINABLE_VARIABLES.
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
-    GATE_NONE, GATE_OP, or  GATE_GRAPH.
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
 
@@ -160,7 +160,7 @@ given variable.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If var_list contains anything else than variables.Variable.
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
 *  <b>`ValueError`</b>: If some arguments are invalid.
 
 
@@ -170,28 +170,28 @@ given variable.
 
 Apply gradients to variables.
 
-This is the second part of minimize(). It returns an Operation that
+This is the second part of `minimize()`. It returns an `Operation` that
 applies gradients.
 
 ##### Args:
 
 
 *  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
-    compute_gradients().
-*  <b>`global_step`</b>: Optional Variable to increment by one after the
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
     variables have been updated.
 *  <b>`name`</b>: Optional name for the returned operation.  Default to the
-    name passed to the Optimizer constructor.
+    name passed to the `Optimizer` constructor.
 
 ##### Returns:
 
-  An Operation that applies the specified gradients. If 'global_step'
-  was not None, that operation also increments global_step.
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if grads_and_vars is malformed.
+*  <b>`TypeError`</b>: if `grads_and_vars` is malformed.
 
 
 
@@ -203,18 +203,18 @@ gradients.
 
 The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
-<b>GATE_NONE</b>: Compute and apply gradients in parallel.  This provides the
-maximum parallelism in execution, at the cost of some non-reproducibility in
-the results.  For example the two gradients of MatMul depend on the input
+<b>`GATE_NONE`</b>: Compute and apply gradients in parallel.  This provides
+the maximum parallelism in execution, at the cost of some non-reproducibility
+in the results.  For example the two gradients of `matmul` depend on the input
 values: With `GATE_NONE` one of the gradients could be applied to one of the
 inputs _before_ the other gradient is computed resulting in non-reproducible
 results.
 
-<b>GATE_OP</b>: For each Op, make sure all gradients are computed before they
-are used.  This prevents race conditions for Ops that generate gradients for
-multiple inputs where the gradients depend on the inputs.
+<b>`GATE_OP`</b>: For each Op, make sure all gradients are computed before
+they are used.  This prevents race conditions for Ops that generate gradients
+for multiple inputs where the gradients depend on the inputs.
 
-<b>GATE_GRAPH</b>: Make sure all gradients for all variables are computed
+<b>`GATE_GRAPH`</b>: Make sure all gradients for all variables are computed
 before any one of them is used.  This provides the least parallelism but can
 be useful if you want to process all gradients before applying any of them.
 
@@ -233,9 +233,9 @@ about the slots, etc.
 
 #### `tf.train.Optimizer.get_slot_names()` {#Optimizer.get_slot_names}
 
-Return a list of the names of slots created by the Optimizer.
+Return a list of the names of slots created by the `Optimizer`.
 
-See get_slot().
+See `get_slot()`.
 
 ##### Returns:
 
@@ -246,23 +246,24 @@ See get_slot().
 
 #### `tf.train.Optimizer.get_slot(var, name)` {#Optimizer.get_slot}
 
-Return a slot named "name" created for "var" by the Optimizer.
+Return a slot named `name` created for `var` by the Optimizer.
 
-Some Optimizer subclasses use additional variables.  For example
-Momentum and Adagrad use variables to accumulate updates.  This method
-gives access to these Variables if for some reason you need them.
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
 
-Use get_slot_names() to get the list of slot names created by the Optimizer.
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
 
 ##### Args:
 
 
-*  <b>`var`</b>: A variable passed to minimize() or apply_gradients().
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
 *  <b>`name`</b>: A string.
 
 ##### Returns:
 
-  The Variable for the slot if it was created, None otherwise.
+  The `Variable` for the slot if it was created, `None` otherwise.
 
 
 
@@ -315,7 +316,7 @@ Construct a new Adagrad optimizer.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the initial_accumulator_value is invalid.
+*  <b>`ValueError`</b>: If the `initial_accumulator_value` is invalid.
 
 
 
@@ -505,7 +506,7 @@ for y in `ys`.
 `grad_ys` is a list of tensors of the same length as `ys` that holds
 the initial gradients for each y in `ys`.  When `grad_ys` is None,
 we fill in a tensor of '1's of the shape of y for each y in `ys`.  A
-user can provide their own initial 'grad_ys` to compute the
+user can provide their own initial `grad_ys` to compute the
 derivatives using a different initial gradient for each y (e.g., if
 one wanted to weight the gradient differently for each value in
 each y).
@@ -631,7 +632,7 @@ greater than `clip_value_max` are set to `clip_value_max`.
 Clips tensor values to a maximum L2-norm.
 
 Given a tensor `t`, and a maximum clip value `clip_norm`, this operation
-normalizes `t` so that its L2-norm is less than or equal to `clip_norm'.
+normalizes `t` so that its L2-norm is less than or equal to `clip_norm`.
 Specifically, if the L2-norm is already less than or equal to `clip_norm`,
 then `t` is not modified. If the L2-norm is greater than `clip_norm`, then
 this operation returns a tensor of the same type and shape as `t` with its
@@ -664,7 +665,7 @@ Clips tensor values to a maximum average L2-norm.
 
 Given a tensor `t`, and a maximum clip value `clip_norm`, this operation
 normalizes `t` so that its average L2-norm is less than or equal to
-`clip_norm'. Specifically, if the average L2-norm is already less than or
+`clip_norm`. Specifically, if the average L2-norm is already less than or
 equal to `clip_norm`, then `t` is not modified. If the average L2-norm is
 greater than `clip_norm`, then this operation returns a tensor of the same
 type and shape as `t` with its values set to:
@@ -700,18 +701,18 @@ and the global norm (`global_norm`) of all tensors in `t_list`. Optionally,
 if you've already computed the global norm for `t_list`, you can specify
 the global norm with `use_norm`.
 
-To perform the clipping, the values t_list[i] are set to:
+To perform the clipping, the values `t_list[i]` are set to:
 
-`t_list[i] * clip_norm / max(global_norm, clip_norm)`
+    t_list[i] * clip_norm / max(global_norm, clip_norm)
 
 where:
 
-`global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))`
+    global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))
 
 If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
 otherwise they're all shrunk by the global ratio.
 
-Any of the entries of `t_list` that are of type None are ignored.
+Any of the entries of `t_list` that are of type `None` are ignored.
 
 This is the correct way to perform gradient clipping (for example, see
 R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
@@ -1136,28 +1137,28 @@ Create a new Coordinator.
 
 Wait for threads to terminate.
 
-Blocks until all 'threads' have terminated or request_stop() is called.
+Blocks until all `threads` have terminated or `request_stop()` is called.
 
-After the threads stop, if an 'exc_info' was passed to request_stop, that
+After the threads stop, if an `exc_info` was passed to `request_stop`, that
 exception is re-reaised.
 
-Grace period handling: When request_stop() is called, threads are given
+Grace period handling: When `request_stop()` is called, threads are given
 'stop_grace_period_secs' seconds to terminate.  If any of them is still
-alive after that period expires, a RuntimeError is raised.  Note that if
-an 'exc_info' was passed to request_stop() then it is raised instead of
-that RuntimeError.
+alive after that period expires, a `RuntimeError` is raised.  Note that if
+an `exc_info` was passed to `request_stop()` then it is raised instead of
+that `RuntimeError`.
 
 ##### Args:
 
 
-*  <b>`threads`</b>: List threading.Threads. The started threads to join.
+*  <b>`threads`</b>: List of `threading.Threads`. The started threads to join.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
-    request_stop() has been called.
+    `request_stop()` has been called.
 
 ##### Raises:
 
 
-*  <b>`RuntimeError`</b>: If any thread is still alive after request_stop()
+*  <b>`RuntimeError`</b>: If any thread is still alive after `request_stop()`
     is called and the grace period expires.
 
 
@@ -1167,14 +1168,14 @@ that RuntimeError.
 
 Request that the threads stop.
 
-After this is called, calls to should_stop() will return True.
+After this is called, calls to `should_stop()` will return `True`.
 
 ##### Args:
 
 
-*  <b>`ex`</b>: Optional Exception, or Python 'exc_info' tuple as returned by
-    sys.exc_info().  If this is the first call to request_stop() the
-    corresponding exception is recorded and re-raised from join().
+*  <b>`ex`</b>: Optional `Exception`, or Python `exc_info` tuple as returned by
+    `sys.exc_info()`.  If this is the first call to `request_stop()` the
+    corresponding exception is recorded and re-raised from `join()`.
 
 
 - - -
@@ -1304,6 +1305,7 @@ depending on whether or not a `Coordinator` was passed to
 
   A list of Python `Exception` objects.  The list is empty if no exception
   was captured.  (No exceptions are captured when using a Coordinator.)
+
 
 
 - - -
@@ -1768,7 +1770,7 @@ global_step: 10
 
 Writes a graph proto on disk.
 
-The graph is written as a binary proto unless as_text is `True`.
+The graph is written as a binary proto unless `as_text` is `True`.
 
 ```python
 v = tf.Variable(0, name='my_variable')

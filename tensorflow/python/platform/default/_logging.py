@@ -23,9 +23,9 @@ from __future__ import print_function
 
 import logging
 import os
+import six
 import sys
 import time
-import thread
 from logging import DEBUG
 from logging import ERROR
 from logging import FATAL
@@ -199,7 +199,7 @@ def set_verbosity(verbosity):
 
 def _get_thread_id():
   """Get id of current thread, suitable for logging as an unsigned quantity."""
-  thread_id = thread.get_ident()
+  thread_id = six.moves._thread.get_ident()
   return thread_id & _THREAD_ID_MASK
 
 

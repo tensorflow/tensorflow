@@ -197,7 +197,7 @@ For regularization, we also apply the usual
 variables.  The objective function for the model is the sum of the cross entropy
 loss and all these weight decay terms, as returned by the `loss()` function.
 
-We visualize it in TensorBoard with a [scalar_summary](../../api_docs/python/train.md#scalar_summary):
+We visualize it in TensorBoard with a [`scalar_summary`](../../api_docs/python/train.md#scalar_summary):
 
 ![CIFAR-10 Loss](./cifar_loss.png "CIFAR-10 Total Loss")
 

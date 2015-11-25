@@ -97,17 +97,18 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
                    state.dtype))
       max_sequence_length = tf.reduce_max(sequence_length)
 
-    output_state = (None, None)
     for time, input_ in enumerate(inputs):
-      if time > 0:
-        tf.get_variable_scope().reuse_variables()
-      output_state = cell(input_, state)
+      if time > 0: tf.get_variable_scope().reuse_variables()
+      # pylint: disable=cell-var-from-loop
+      def output_state():
+        return cell(input_, state)
+      # pylint: enable=cell-var-from-loop
       if sequence_length:
         (output, state) = control_flow_ops.cond(
             time >= max_sequence_length,
-            lambda: zero_output_state, lambda: output_state)
+            lambda: zero_output_state, output_state)
       else:
-        (output, state) = output_state
+        (output, state) = output_state()
 
       outputs.append(output)
       states.append(state)
@@ -122,7 +123,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
   Args:
     cell: An instance of RNNCell.
     inputs: A length T list of inputs, each a vector with shape [batch_size].
-    state_saver: A StateSaver object.
+    state_saver: A state saver object with methods `state` and `save_state`.
     state_name: The name to use with the state_saver.
     sequence_length: (optional) An int64 vector (tensor) size [batch_size].
       See the documentation for rnn() for more details about sequence_length.
@@ -137,10 +138,10 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
     TypeError: If "cell" is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
   """
-  initial_state = state_saver.State(state_name)
+  initial_state = state_saver.state(state_name)
   (outputs, states) = rnn(cell, inputs, initial_state=initial_state,
                           sequence_length=sequence_length, scope=scope)
-  save_state = state_saver.SaveState(state_name, states[-1])
+  save_state = state_saver.save_state(state_name, states[-1])
   with tf.control_dependencies([save_state]):
     outputs[-1] = tf.identity(outputs[-1])
 

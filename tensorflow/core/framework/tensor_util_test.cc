@@ -140,7 +140,7 @@ TEST(TensorUtil, Concat) {
   std::vector<Tensor> to_concat;
   int64 total_size = 0;
   int offset = 0;
-  for (int entry = 0; entry < sizes.size(); ++entry) {
+  for (size_t entry = 0; entry < sizes.size(); ++entry) {
     const int64 size = sizes[entry];
     Tensor tensor(DT_INT32, TensorShape({size, 2}));
     for (int i = offset; i < offset + size; ++i) {
@@ -175,7 +175,7 @@ TEST(TensorUtil, Split) {
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;
-  for (int entry = 0; entry < splits.size(); ++entry) {
+  for (size_t entry = 0; entry < splits.size(); ++entry) {
     const int64 size = sizes[entry];
     const Tensor& split = splits[entry];
 

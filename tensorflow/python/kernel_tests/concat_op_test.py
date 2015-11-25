@@ -294,7 +294,8 @@ class ConcatOpTest(tf.test.TestCase):
                 x0 = np.random.randn(*(shape0 + (n0,) + shape1))
                 x1 = np.random.randn(*(shape0 + (n1,) + shape1))
                 correct = np.concatenate([x0, x1], axis=axis)
-                xs = map(tf.constant, [x0, x1])
+                # TODO(irving): Make tf.concat handle map, then drop list().
+                xs = list(map(tf.constant, [x0, x1]))
                 c = tf.concat(axis, xs)
                 self.assertAllEqual(c.eval(), correct)
                 # Check gradients

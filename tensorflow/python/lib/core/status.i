@@ -1,3 +1,18 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 // SWIG wrapper for lib::tensorflow::Status
 
 %include "tensorflow/python/platform/base.i"
@@ -69,13 +84,13 @@ void RaiseStatusNotOK(const tensorflow::Status& status, swig_type_info *type) {
   }
 
   if (StatusNotOKError != Py_None) {
-    auto fullmsg_ptr = make_safe(_SwigString_FromString(fullmsg));
+    auto fullmsg_ptr = make_safe(_SwigSimpleStr_FromString(fullmsg));
     auto exception_ptr = make_safe(PyObject_CallFunctionObjArgs(
         StatusNotOKError, fullmsg_ptr.get(), NULL));
     exception = exception_ptr.get();
     if (exception) {
       auto pycode = make_safe(PyInt_FromLong(static_cast<long>(code)));
-      auto pymsg = make_safe(_SwigString_FromString(status.error_message()));
+      auto pymsg = make_safe(_SwigSimpleStr_FromString(status.error_message()));
       auto pystatus = make_safe(SWIG_NewPointerObj(
           SWIG_as_voidptr(new tensorflow::Status(status)), type, SWIG_POINTER_OWN));
       PyObject_SetAttrString(exception, "code", pycode.get());
@@ -100,16 +115,8 @@ void RaiseStatusNotOK(const tensorflow::Status& status, swig_type_info *type) {
 %unignore tensorflow;
 %unignore tensorflow::lib;
 %unignore tensorflow::Status;
-%unignore tensorflow::Status::Status;
-%unignore tensorflow::Status::Status(tensorflow::error::Code, StringPiece);
 %unignore tensorflow::Status::~Status;
-%unignore tensorflow::Status::code;
-%unignore tensorflow::Status::ok;
-%unignore tensorflow::Status::error_message;
-%unignore tensorflow::Status::ToString;
 %ignore tensorflow::Status::operator=;
-
-%rename(__str__) tensorflow::Status::ToString;
 
 %include "tensorflow/core/public/status.h"
 
