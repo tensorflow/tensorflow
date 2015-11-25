@@ -60,10 +60,14 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Setting up input and output placeholders.
             input_shape = [None] + list(X.shape[1:])
+            output_shape = [None] if self.n_classes < 2 else [None,
+                self.n_classes]
+            if len(y.shape) > 1:
+                # Add another dimension for multi-label prediction.
+                output_shape += [y.shape[1]]
             self._inp = tf.placeholder(tf.float32, input_shape,
                                        name="input")
-            self._out = tf.placeholder(tf.float32, 
-                [None] if self.n_classes < 2 else [None, self.n_classes],
+            self._out = tf.placeholder(tf.float32,  output_shape,
                 name="output")
 
             # Create model's graph.
@@ -99,7 +103,8 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42):
         super(TensorFlowLinearRegressor, self).__init__(
-            model_fn=models.linear_regression, n_classes=n_classes, tf_master=tf_master,
+            model_fn=models.linear_regression, n_classes=n_classes,
+            tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed)
 
@@ -110,7 +115,7 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42):
         super(TensorFlowLinearClassifier, self).__init__(
-            model_fn=models.logistic_regression, n_classes=n_classes, 
+            model_fn=models.logistic_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed)

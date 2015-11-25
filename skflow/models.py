@@ -37,15 +37,18 @@ def logistic_regression(X, y):
     """Creates logistic regression TensorFlow subgraph.
 
     Args:
-        X: tensor or placeholder for input features.
-        y: tensor or placeholder for target.
+        X: tensor or placeholder for input features,
+           shape should be [batch_size, n_features].
+        y: tensor or placeholder for target,
+           shape should be [batch_size, n_classes].
 
     Returns:
         Predictions and loss tensors.
     """
     with tf.variable_scope('logistic_regression'):
-        weights = tf.get_variable('weights', [X.get_shape()[1], y.get_shape()[1]])
-        bias = tf.get_variable('bias', [y.get_shape()[1]])
+        weights = tf.get_variable('weights', [X.get_shape()[1],
+            y.get_shape()[-1]])
+        bias = tf.get_variable('bias', [y.get_shape()[-1]])
         return softmax_classifier(X, y, weights, bias)
 
 

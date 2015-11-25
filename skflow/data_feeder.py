@@ -14,10 +14,25 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import itertools
 import random
 import numpy as np
 
 from sklearn.utils import check_array
+
+
+def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
+    """Returns shape for input and output of the data feeder."""
+    input_shape = [batch_size] + list(x_shape[1:])
+    y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
+    # Skip first dimention if it is 1.
+    if y_shape and y_shape[0] == 1:
+        y_shape = y_shape[1:]
+    if n_classes > 1:
+        output_shape = [batch_size] + y_shape + [n_classes]
+    else:
+        output_shape = [batch_size] + y_shape
+    return input_shape, output_shape
 
 
 class DataFeeder(object):
@@ -26,7 +41,8 @@ class DataFeeder(object):
     Parameters:
         X: feature Nd numpy matrix of shape [n_samples, n_features, ...].
         y: target vector, either floats for regression or class id for
-            classification.
+            classification. If matrix, will consider as a sequence
+            of targets.
         n_classes: number of classes, 0 and 1 are considered regression.
         batch_size: mini batch size to accumulate.
     """
@@ -37,8 +53,8 @@ class DataFeeder(object):
         self.y = check_array(y, ensure_2d=False, dtype=None)
         self.n_classes = n_classes
         self.batch_size = batch_size
-        self._input_shape = [batch_size] + list(X.shape[1:])
-        self._output_shape = [batch_size, n_classes] if n_classes > 1 else [batch_size]
+        self._input_shape, self._output_shape = _get_in_out_shape(
+            X.shape, y.shape, n_classes, batch_size)
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -58,7 +74,11 @@ class DataFeeder(object):
                 sample = random.randint(0, self.X.shape[0] - 1)
                 inp[i, :] = self.X[sample, :]
                 if self.n_classes > 1:
-                    out[i, self.y[sample]] = 1.0
+                    if len(self._output_shape) == 2:
+                        out.itemset((i, self.y[sample]), 1.0)
+                    else:
+                        for idx, value in enumerate(self.y[sample]):
+                            out.itemset(tuple([i, idx, value]), 1.0)
                 else:
                     out[i] = self.y[sample]
             return {input_placeholder.name: inp, output_placeholder.name: out}
@@ -81,7 +101,15 @@ class StreamingDataFeeder(object):
     """
 
     def __init__(self, X, y, n_classes, batch_size):
-        pass
+        X_first_el = X.next()
+        y_first_el = y.next()
+        self.X = itertools.chain([X_first_el], X)
+        self.y = itertools.chain([y_first_el], y)
+        self.n_classes = n_classes
+        self.batch_size = batch_size
+        self._input_shape, self._output_shape = _get_in_out_shape(
+            [1] + list(X_first_el.shape),
+            [1] + list(y_first_el.shape), n_classes, batch_size)
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -96,6 +124,19 @@ class StreamingDataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            pass
+            inp = np.zeros(self._input_shape)
+            out = np.zeros(self._output_shape)
+            for i in xrange(self.batch_size):
+                inp[i, :] = self.X.next()
+                y = self.y.next()
+                if self.n_classes > 1:
+                    if len(self._output_shape) == 2:
+                        out.itemset((i, y), 1.0)
+                    else:
+                        for idx, value in enumerate(y):
+                            out.itemset(tuple([i, idx, value]), 1.0)
+                else:
+                    out[i] = y
+            return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
