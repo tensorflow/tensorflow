@@ -45,6 +45,9 @@ class WordVocabulary(object):
         self._freq = collections.defaultdict(int)
         self._freeze = False
 
+    def __len__(self):
+        return len(self._mapping)
+
     def freeze(self, freeze=True):
         self._freeze = freeze
 
@@ -147,7 +150,7 @@ class VocabularyProcessor(object):
                 Word-id matrix.
         """
         for tokens in self._tokenizer(raw_documents):
-            word_ids = np.zeros(self.max_document_length)
+            word_ids = np.zeros(self.max_document_length, np.int64)
             for idx, token in enumerate(tokens):
                 if idx >= self.max_document_length:
                     break

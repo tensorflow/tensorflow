@@ -53,16 +53,19 @@ class DataFeeder(object):
         batch_size: mini batch size to accumulate.
         input_shape: shape of the input.
         output_shape: shape of the output.
+        input_dtype: dtype of input.
+        output_dtype: dtype of output.
     """
 
     def __init__(self, X, y, n_classes, batch_size):
-        self.X = check_array(X, dtype=np.float32, ensure_2d=False,
-                             allow_nd=True)
+        self.X = check_array(X, ensure_2d=False,
+                             allow_nd=True, dtype=None)
         self.y = check_array(y, ensure_2d=False, dtype=None)
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.input_shape, self.output_shape = _get_in_out_shape(
             X.shape, y.shape, n_classes, batch_size)
+        self.input_dtype, self.output_dtype = X.dtype, y.dtype
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -114,6 +117,8 @@ class StreamingDataFeeder(object):
         batch_size: mini batch size to accumulate.
         input_shape: shape of the input.
         output_shape: shape of the output.
+        input_dtype: dtype of input.
+        output_dtype: dtype of output.
     """
 
     def __init__(self, X, y, n_classes, batch_size):
@@ -126,6 +131,8 @@ class StreamingDataFeeder(object):
         self.input_shape, self.output_shape = _get_in_out_shape(
             [1] + list(X_first_el.shape),
             [1] + list(y_first_el.shape), n_classes, batch_size)
+        self.input_dtype, self.output_dtype = (
+            X_first_el.dtype, y_first_el.dtype)
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
