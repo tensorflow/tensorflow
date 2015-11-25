@@ -54,6 +54,20 @@ class TensorFlowEstimator(BaseEstimator):
         self.model_fn = model_fn
 
     def fit(self, X, y):
+        """Builds a neural network model given provided `model_fn` and training
+        data X and y.
+
+        Args:
+            X: matrix or tensor of shape [n_samples, n_features...]. Can be
+            iterator that returns arrays of features. The training input
+            samples for fitting the model.
+            y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+            iterator that returns array of targets. The training target values
+            (class labels in classification, real numbers in regression).
+
+        Returns:
+            Returns self.
+        """
         with tf.Graph().as_default() as graph:
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -88,25 +102,47 @@ class TensorFlowEstimator(BaseEstimator):
             self._trainer.initialize(self._session)
             self._trainer.train(self._session,
                                 self._data_feeder.get_feed_dict_fn(self._inp,
-                                                             self._out), self.steps)
+                                                             self._out),
+                                                             self.steps)
+            return self
 
-    def predict(self, X):
+    def _predict(self, X):
         pred = self._session.run(self._model_predictions,
                                  feed_dict={
                                      self._inp.name: X
                                  })
+        return pred
+
+    def predict(self, X):
+        """Predict class or regression for X.
+
+        For a classification model, the predicted class for each sample in X is
+        returned. For a regression model, the predicted value based on X is
+        returned.
+
+        Args:
+            X: array-like matrix, [n_samples, n_features...] or iterator.
+
+        Returns:
+            y: array of shape [n_samples]. The predicted classes or predicted
+            value.
+        """
+        pred = self._predict(X)
         if self.n_classes < 2:
             return pred
         return pred.argmax(axis=1)
 
     def predict_proba(self, X):
-        pred = self._session.run(self._model.predictions,
-                                 feed_dict={
-                                     self._model.inp.name: X
-                                 })
-        if self.n_classes < 2:
-            return pred
-        return pred
+        """Predict class probability of the input samples X.
+
+        Args:
+            X: array-like matrix, [n_samples, n_features...] or iterator.
+
+        Returns:
+            y: array of shape [n_samples, n_classes]. The predicted
+            probabilities for each class.
+        """
+        return self._predict(X)
 
 
 class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
