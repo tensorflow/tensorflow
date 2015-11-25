@@ -45,6 +45,14 @@ class DataFeeder(object):
             of targets.
         n_classes: number of classes, 0 and 1 are considered regression.
         batch_size: mini batch size to accumulate.
+
+    Attributes:
+        X: input features.
+        y: input target.
+        n_classes: number of classes.
+        batch_size: mini batch size to accumulate.
+        input_shape: shape of the input.
+        output_shape: shape of the output.
     """
 
     def __init__(self, X, y, n_classes, batch_size):
@@ -53,7 +61,7 @@ class DataFeeder(object):
         self.y = check_array(y, ensure_2d=False, dtype=None)
         self.n_classes = n_classes
         self.batch_size = batch_size
-        self._input_shape, self._output_shape = _get_in_out_shape(
+        self.input_shape, self.output_shape = _get_in_out_shape(
             X.shape, y.shape, n_classes, batch_size)
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
@@ -68,13 +76,13 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self._input_shape)
-            out = np.zeros(self._output_shape)
+            inp = np.zeros(self.input_shape)
+            out = np.zeros(self.output_shape)
             for i in xrange(self.batch_size):
                 sample = random.randint(0, self.X.shape[0] - 1)
                 inp[i, :] = self.X[sample, :]
                 if self.n_classes > 1:
-                    if len(self._output_shape) == 2:
+                    if len(self.output_shape) == 2:
                         out.itemset((i, self.y[sample]), 1.0)
                     else:
                         for idx, value in enumerate(self.y[sample]):
@@ -98,6 +106,14 @@ class StreamingDataFeeder(object):
            regression values.
         n_classes: indicator of how many classes the target has.
         batch_size: Mini batch size to accumulate.
+ 
+    Attributes:
+        X: input features.
+        y: input target.
+        n_classes: number of classes.
+        batch_size: mini batch size to accumulate.
+        input_shape: shape of the input.
+        output_shape: shape of the output.
     """
 
     def __init__(self, X, y, n_classes, batch_size):
@@ -107,7 +123,7 @@ class StreamingDataFeeder(object):
         self.y = itertools.chain([y_first_el], y)
         self.n_classes = n_classes
         self.batch_size = batch_size
-        self._input_shape, self._output_shape = _get_in_out_shape(
+        self.input_shape, self.output_shape = _get_in_out_shape(
             [1] + list(X_first_el.shape),
             [1] + list(y_first_el.shape), n_classes, batch_size)
 
@@ -124,13 +140,13 @@ class StreamingDataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self._input_shape)
-            out = np.zeros(self._output_shape)
+            inp = np.zeros(self.input_shape)
+            out = np.zeros(self.output_shape)
             for i in xrange(self.batch_size):
                 inp[i, :] = self.X.next()
                 y = self.y.next()
                 if self.n_classes > 1:
-                    if len(self._output_shape) == 2:
+                    if len(self.output_shape) == 2:
                         out.itemset((i, y), 1.0)
                     else:
                         for idx, value in enumerate(y):

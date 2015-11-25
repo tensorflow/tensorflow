@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import collections
 import random
 
 import numpy as np
@@ -21,8 +22,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from sklearn.utils import check_array
 
 from skflow.trainer import TensorFlowTrainer
-from skflow.data_feeder import DataFeeder, StreamingDataFeeder
-from skflow import models
+from skflow import models, data_feeder
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -58,13 +58,19 @@ class TensorFlowEstimator(BaseEstimator):
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(0, name="global_step", trainable=False)
 
+            # Create data feeder, to sample inputs from dataset.
+            # If X and y are iterators, use StreamingDataFeeder.
+            if hasattr(X, 'next'):
+                assert hasattr(y, 'next')
+                self._data_feeder = data_feeder.StreamingDataFeeder(X, y,
+                    self.n_classes, self.batch_size)
+            else:
+                self._data_feeder = data_feeder.DataFeeder(X, y,
+                    self.n_classes, self.batch_size)
+
             # Setting up input and output placeholders.
-            input_shape = [None] + list(X.shape[1:])
-            output_shape = [None] if self.n_classes < 2 else [None,
-                self.n_classes]
-            if len(y.shape) > 1:
-                # Add another dimension for multi-label prediction.
-                output_shape += [y.shape[1]]
+            input_shape = [None] + self._data_feeder.input_shape[1:]
+            output_shape = [None] + self._data_feeder.output_shape[1:]
             self._inp = tf.placeholder(tf.float32, input_shape,
                                        name="input")
             self._out = tf.placeholder(tf.float32,  output_shape,
@@ -72,9 +78,6 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(self._inp, self._out)
-
-            # Create data feeder, to sample inputs from dataset.
-            self._data_feeder = DataFeeder(X, y, self.n_classes, self.batch_size)
 
             # Create trainer and augment graph with gradients and optimizer.
             self._trainer = TensorFlowTrainer(self._model_loss,
