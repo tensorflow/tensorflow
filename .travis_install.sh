@@ -2,7 +2,7 @@
 
 # Create virtual env
 deactivate
-virtualenv --system-site-packages testvenv
+virtualenv --system-site-packages testenv
 source testenv/bin/activate
 
 # Install dependencies
