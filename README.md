@@ -59,7 +59,7 @@ Simple linear regression.
 import skflow
 from sklearn import datasets, metrics, preprocessing
 
-boston = dataset.load_boston()
+boston = datasets.load_boston()
 X = preprocessing.StandardScale().fit_tranform(boston.data)
 regressor = skflow.TensorFlowLinearRegressor()
 regressor.fit(X, boston.target)
