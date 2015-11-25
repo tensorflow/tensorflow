@@ -32,6 +32,18 @@ class BaseTest(googletest.TestCase):
         score = accuracy_score(classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
+    def testIrisContinueTraining(self):
+        random.seed(42)
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
+            continue_training=True)
+        classifier.fit(iris.data, iris.target)
+        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
+        classifier.fit(iris.data, iris.target)
+        score2 = accuracy_score(classifier.predict(iris.data), iris.target)
+        self.assertGreater(score2, score1,
+            "Failed with score = {0}".format(score2))
+
     def testIrisStreaming(self):
         iris = datasets.load_iris()
         def iris_data():

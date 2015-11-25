@@ -41,10 +41,12 @@ class TensorFlowEstimator(BaseEstimator):
         learning_rate: Learning rate for optimizer.
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
+        continue_training: when continue_training is True, once initialized
+            model will be continuely trained on every call of fit.
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -53,35 +55,26 @@ class TensorFlowEstimator(BaseEstimator):
         self.learning_rate = learning_rate
         self.tf_random_seed = tf_random_seed
         self.model_fn = model_fn
+        self.continue_training = continue_training
+        self._initialized = False
 
-    def fit(self, X, y):
-        """Builds a neural network model given provided `model_fn` and training
-        data X and y.
-
-        Args:
-            X: matrix or tensor of shape [n_samples, n_features...]. Can be
-            iterator that returns arrays of features. The training input
-            samples for fitting the model.
-            y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-            iterator that returns array of targets. The training target values
-            (class labels in classification, real numbers in regression).
-
-        Returns:
-            Returns self.
+    def _setup_data_feeder(self, X, y):
+        """Create data feeder, to sample inputs from dataset.
+        If X and y are iterators, use StreamingDataFeeder.
         """
+        if hasattr(X, 'next'):
+            assert hasattr(y, 'next')
+            self._data_feeder = data_feeder.StreamingDataFeeder(X, y,
+                self.n_classes, self.batch_size)
+        else:
+            self._data_feeder = data_feeder.DataFeeder(X, y,
+                self.n_classes, self.batch_size)
+
+    def _setup_training(self):
+        """Sets up graph, model and trainer."""
         with tf.Graph().as_default() as graph:
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(0, name="global_step", trainable=False)
-
-            # Create data feeder, to sample inputs from dataset.
-            # If X and y are iterators, use StreamingDataFeeder.
-            if hasattr(X, 'next'):
-                assert hasattr(y, 'next')
-                self._data_feeder = data_feeder.StreamingDataFeeder(X, y,
-                    self.n_classes, self.batch_size)
-            else:
-                self._data_feeder = data_feeder.DataFeeder(X, y,
-                    self.n_classes, self.batch_size)
 
             # Setting up input and output placeholders.
             input_shape = [None] + self._data_feeder.input_shape[1:]
@@ -101,13 +94,35 @@ class TensorFlowEstimator(BaseEstimator):
                 self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master)
 
-            # Initialize and train model.
+    def fit(self, X, y):
+        """Builds a neural network model given provided `model_fn` and training
+        data X and y.
+
+        Args:
+            X: matrix or tensor of shape [n_samples, n_features...]. Can be
+            iterator that returns arrays of features. The training input
+            samples for fitting the model.
+            y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+            iterator that returns array of targets. The training target values
+            (class labels in classification, real numbers in regression).
+
+        Returns:
+            Returns self.
+        """
+        # Sets up data feeder.
+        self._setup_data_feeder(X, y)
+        if not self.continue_training or not self._initialized:
+            # Sets up model and trainer.
+            self._setup_training()
+            # Initialize model parameters.
             self._trainer.initialize(self._session)
-            self._trainer.train(self._session,
-                                self._data_feeder.get_feed_dict_fn(self._inp,
-                                                             self._out),
-                                                             self.steps)
-            return self
+            self._initialized = True
+
+        # Train model for given number of steps.
+        self._trainer.train(self._session,
+            self._data_feeder.get_feed_dict_fn(self._inp, self._out),
+            self.steps)
+        return self
 
     def _predict(self, X):
         pred = self._session.run(self._model_predictions,
@@ -152,24 +167,26 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow Linear Regression model."""
   
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
         super(TensorFlowLinearRegressor, self).__init__(
             model_fn=models.linear_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed)
+            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            continue_training=continue_training)
 
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
    
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
         super(TensorFlowLinearClassifier, self).__init__(
             model_fn=models.logistic_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed)
+            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            continue_training=continue_training)
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor
@@ -190,17 +207,21 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         learning_rate: Learning rate for optimizer.
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
-    """
+        continue_training: when continue_training is True, once initialized
+            model will be continuely trained on every call of fit.
+     """
     
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32, 
-                 steps=50, optimizer="SGD", learning_rate=0.1, tf_random_seed=42):
+                 steps=50, optimizer="SGD", learning_rate=0.1,
+                 tf_random_seed=42, continue_training=False):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.logistic_regression)
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=model_fn, 
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed)
+            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            continue_training=continue_training)
 
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
@@ -216,15 +237,19 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
         learning_rate: Learning rate for optimizer.
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
+        continue_training: when continue_training is True, once initialized
+            model will be continuely trained on every call of fit.
     """
     
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32, 
-                 steps=50, optimizer="SGD", learning_rate=0.1, tf_random_seed=42):
+                 steps=50, optimizer="SGD", learning_rate=0.1,
+                 tf_random_seed=42, continue_training=False):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.linear_regression)
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=model_fn, 
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed)
+            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            continue_training=continue_training)
 

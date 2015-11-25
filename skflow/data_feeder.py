@@ -59,13 +59,13 @@ class DataFeeder(object):
 
     def __init__(self, X, y, n_classes, batch_size):
         self.X = check_array(X, ensure_2d=False,
-                             allow_nd=True, dtype=None)
-        self.y = check_array(y, ensure_2d=False, dtype=None)
+                             allow_nd=True, dtype=[np.float32, np.int64])
+        self.y = check_array(y, ensure_2d=False, dtype=np.float32)
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.input_shape, self.output_shape = _get_in_out_shape(
-            X.shape, y.shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = X.dtype, y.dtype
+            self.X.shape, self.y.shape, n_classes, batch_size)
+        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -79,8 +79,8 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self.input_shape)
-            out = np.zeros(self.output_shape)
+            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
+            out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
                 sample = random.randint(0, self.X.shape[0] - 1)
                 inp[i, :] = self.X[sample, :]
@@ -131,8 +131,13 @@ class StreamingDataFeeder(object):
         self.input_shape, self.output_shape = _get_in_out_shape(
             [1] + list(X_first_el.shape),
             [1] + list(y_first_el.shape), n_classes, batch_size)
-        self.input_dtype, self.output_dtype = (
-            X_first_el.dtype, y_first_el.dtype)
+        self.input_dtype = X_first_el.dtype
+        # Convert float64 to float32, as all the parameters in the model are
+        # floats32 and there is a lot of benefits in using it in NNs.
+        if self.input_dtype == np.float64:
+            self.input_dtype = np.float32
+        # Output types are floats, due to both softmaxes and regression req.
+        self.output_dtype = np.float32
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -147,8 +152,8 @@ class StreamingDataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self.input_shape)
-            out = np.zeros(self.output_shape)
+            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
+            out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
                 inp[i, :] = self.X.next()
                 y = self.y.next()
