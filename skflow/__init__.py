@@ -86,8 +86,6 @@ class TensorFlowEstimator(BaseEstimator):
             # Setting up input and output placeholders.
             input_shape = [None] + self._data_feeder.input_shape[1:]
             output_shape = [None] + self._data_feeder.output_shape[1:]
-            print self._data_feeder.input_dtype
-            print tf.as_dtype(self._data_feeder.input_dtype)
             self._inp = tf.placeholder(
                 tf.as_dtype(self._data_feeder.input_dtype), input_shape,
                 name="input")
