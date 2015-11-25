@@ -23,6 +23,7 @@ from sklearn.utils import check_array
 
 from skflow.trainer import TensorFlowTrainer
 from skflow import models, data_feeder
+from skflow import preprocessing
 
 
 class TensorFlowEstimator(BaseEstimator):

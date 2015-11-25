@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,11 +22,14 @@ from skflow.preprocessing import text
 class TextTest(tf.test.TestCase):
 
     def testTokenizer(self):
-        words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c"])
+        words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c", 
+            u"фыв выф", u"你好 怎么样"])
         self.assertEqual(list(words), 
             [["a", "b", "c"], 
              ["a", "b", "c"], 
-             ["a", "b", "-", "c"]])
+             ["a", "b", "-", "c"],
+             [u"фыв", u"выф"],
+             [u"你好", u"怎么样"]])
 
     def testWordVocabulary(self):
         vocab = text.WordVocabulary()
