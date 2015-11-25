@@ -24,8 +24,6 @@ import tensorflow.python.platform
 
 import tensorflow as tf
 
-from tensorflow.python.util import compat
-
 
 class IdentityReaderTest(tf.test.TestCase):
 
@@ -189,7 +187,7 @@ class WholeFileReaderTest(tf.test.TestCase):
 
   def _ExpectRead(self, sess, key, value, index):
     k, v = sess.run([key, value])
-    self.assertAllEqual(compat.as_bytes(self._filenames[index]), k)
+    self.assertAllEqual(tf.compat.as_bytes(self._filenames[index]), k)
     self.assertAllEqual(self._content[index], v)
 
   def testOneEpoch(self):
@@ -235,7 +233,7 @@ class TextLineReaderTest(tf.test.TestCase):
     self._num_lines = 5
 
   def _LineText(self, f, l):
-    return compat.as_bytes("%d: %d" % (f, l))
+    return tf.compat.as_bytes("%d: %d" % (f, l))
 
   def _CreateFiles(self):
     filenames = []
@@ -263,7 +261,7 @@ class TextLineReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_lines):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 1), compat.as_text(k))
+          self.assertAllEqual("%s:%d" % (files[i], j + 1), tf.compat.as_text(k))
           self.assertAllEqual(self._LineText(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -282,7 +280,7 @@ class TextLineReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_lines - 1):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j + 2), compat.as_text(k))
+          self.assertAllEqual("%s:%d" % (files[i], j + 2), tf.compat.as_text(k))
           self.assertAllEqual(self._LineText(i, j + 1), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -301,7 +299,7 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
     self._footer_bytes = 2
 
   def _Record(self, f, r):
-    return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
+    return tf.compat.as_bytes(str(f * 2 + r) * self._record_bytes)
 
   def _CreateFiles(self):
     filenames = []
@@ -331,7 +329,7 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_records):
           k, v = sess.run([key, value])
-          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
+          self.assertAllEqual("%s:%d" % (files[i], j), tf.compat.as_text(k))
           self.assertAllEqual(self._Record(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
@@ -347,7 +345,7 @@ class TFRecordReaderTest(tf.test.TestCase):
     self._num_records = 7
 
   def _Record(self, f, r):
-    return compat.as_bytes("Record %d of file %d" % (r, f))
+    return tf.compat.as_bytes("Record %d of file %d" % (r, f))
 
   def _CreateFiles(self):
     filenames = []
@@ -371,7 +369,7 @@ class TFRecordReaderTest(tf.test.TestCase):
       for i in range(self._num_files):
         for j in range(self._num_records):
           k, v = sess.run([key, value])
-          self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
+          self.assertTrue(tf.compat.as_text(k).startswith("%s:" % files[i]))
           self.assertAllEqual(self._Record(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "

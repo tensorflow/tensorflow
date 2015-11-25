@@ -45,7 +45,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.models.embedding import gen_word2vec as word2vec
-from tensorflow.python.util import compat
 
 flags = tf.app.flags
 
@@ -381,7 +380,7 @@ class Word2Vec(object):
     opts = self._options
     with open(os.path.join(opts.save_path, "vocab.txt"), "w") as f:
       for i in xrange(opts.vocab_size):
-        f.write("%s %d\n" % (compat.as_text(opts.vocab_words[i]),
+        f.write("%s %d\n" % (tf.compat.as_text(opts.vocab_words[i]),
                              opts.vocab_counts[i]))
 
   def _train_thread_body(self):

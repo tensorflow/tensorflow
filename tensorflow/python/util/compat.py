@@ -24,15 +24,10 @@ import six
 
 
 def as_bytes(bytes_or_text):
-  """Returns the given argument as a byte array.
-
-  NOTE(mrry): For Python 2 and 3 compatibility, we convert all string
-  arguments to SWIG methods into byte arrays. Unicode strings are
-  encoded as UTF-8; however the valid arguments for all of the
-  human-readable arguments must currently be a subset of ASCII.
+  """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
 
   Args:
-    bytes_or_text: A `unicode`, `string`, or `bytes` object.
+    bytes_or_text: A `bytes`, `str`, or `unicode` object.
 
   Returns:
     A `bytes` object.
@@ -51,13 +46,8 @@ def as_bytes(bytes_or_text):
 def as_text(bytes_or_text):
   """Returns the given argument as a unicode string.
 
-  NOTE(mrry): For Python 2 and 3 compatibility, we interpret all
-  returned strings from SWIG methods as byte arrays. This function
-  converts those strings that are intended to be human-readable into
-  UTF-8 unicode strings.
-
   Args:
-    bytes_or_text: A `unicode`, `string`, or `bytes` object.
+    bytes_or_text: A `bytes`, `str, or `unicode` object.
 
   Returns:
     A `unicode` (Python 2) or `str` (Python 3) object.

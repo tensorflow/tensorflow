@@ -26,15 +26,13 @@ import tensorflow.python.platform
 
 import tensorflow as tf
 
-from tensorflow.python.util import compat
-
 
 class IoOpsTest(tf.test.TestCase):
 
   def testReadFile(self):
     cases = ['', 'Some contents', 'Неки садржаји на српском']
     for contents in cases:
-      contents = compat.as_bytes(contents)
+      contents = tf.compat.as_bytes(contents)
       temp = tempfile.NamedTemporaryFile(prefix='ReadFileTest')
       open(temp.name, 'wb').write(contents)
       with self.test_session():
@@ -43,7 +41,7 @@ class IoOpsTest(tf.test.TestCase):
         self.assertEqual(read.eval(), contents)
 
   def _subset(self, files, indices):
-    return set(compat.as_bytes(files[i].name)
+    return set(tf.compat.as_bytes(files[i].name)
                for i in range(len(files)) if i in indices)
 
   def testMatchingFiles(self):
@@ -55,7 +53,7 @@ class IoOpsTest(tf.test.TestCase):
       # Test exact match without wildcards.
       for f in files:
         self.assertEqual(tf.matching_files(f.name).eval(),
-                         compat.as_bytes(f.name))
+                         tf.compat.as_bytes(f.name))
 
       # We will look for files matching "ABxDEF.GH*" where "x" is some wildcard.
       pos = files[0].name.find(cases[0])

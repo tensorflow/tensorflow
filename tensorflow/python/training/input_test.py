@@ -26,8 +26,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.util import compat
-
 
 class MatchFilenamesOnceTest(tf.test.TestCase):
 
@@ -46,9 +44,10 @@ class MatchFilenamesOnceTest(tf.test.TestCase):
           os.path.join(self.get_temp_dir(), "match_filenames.?"))
       one = tf.train.match_filenames_once(additional[1])
       tf.initialize_all_variables().run()
-      self.assertItemsEqual(map(compat.as_bytes, filenames), star.eval())
-      self.assertItemsEqual(map(compat.as_bytes, additional), question.eval())
-      self.assertItemsEqual([compat.as_bytes(additional[1])], one.eval())
+      self.assertItemsEqual(map(tf.compat.as_bytes, filenames), star.eval())
+      self.assertItemsEqual(map(tf.compat.as_bytes, additional),
+                            question.eval())
+      self.assertItemsEqual([tf.compat.as_bytes(additional[1])], one.eval())
 
 
 class LimitEpochsTest(tf.test.TestCase):
@@ -241,7 +240,7 @@ class SliceInputProducerTest(tf.test.TestCase):
         frequency[e] = 0
       for _ in range(num_epochs):
         output = [sess.run(slices) for _ in range(len(source_strings))]
-        key = b",".join([s + compat.as_bytes(str(i)) for s, i in output])
+        key = b",".join([s + tf.compat.as_bytes(str(i)) for s, i in output])
         self.assertIn(key, expected)
         frequency[key] += 1
 
