@@ -7,14 +7,18 @@ cache:
     directories:
         - $HOME/.cache/pip
 
+addons:
+    apt:
+        packages:
+            - libatlas3gf-base
+            - libatlas-dev
+            - python-scipy
+
 python:
     - "2.7"
     - "3.5"
     - "nightly"
 install:
     - source .travis_install.sh
-    - pip install sklearn scipy numpy
-    - pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-    - pip install nose
 script: nosetests
 
