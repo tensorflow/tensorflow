@@ -58,8 +58,9 @@ class DataFeeder(object):
     """
 
     def __init__(self, X, y, n_classes, batch_size):
+        x_dtype = np.int64 if X.dtype == np.int64 else np.float32
         self.X = check_array(X, ensure_2d=False,
-                             allow_nd=True, dtype=[np.float32, np.int64])
+                             allow_nd=True, dtype=x_dtype)
         self.y = check_array(y, ensure_2d=False, dtype=np.float32)
         self.n_classes = n_classes
         self.batch_size = batch_size
