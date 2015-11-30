@@ -61,7 +61,7 @@ import skflow
 from sklearn import datasets, metrics, preprocessing
 
 boston = datasets.load_boston()
-X = preprocessing.StandardScale().fit_tranform(boston.data)
+X = preprocessing.StandardScaler().fit_transform(boston.data)
 regressor = skflow.TensorFlowLinearRegressor()
 regressor.fit(X, boston.target)
 score = metrics.mean_squared_error(regressor.predict(X), boston.target)
