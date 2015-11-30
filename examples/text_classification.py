@@ -32,7 +32,7 @@ def load_dataset(filename):
     reader = csv.reader(open(filename), delimiter=',')
     for line in reader:
         target.append(int(line[0]))
-        data.append(line[1])
+        data.append(line[2])
     return data, np.array(target, np.float32)
 
 X_train, y_train = load_dataset('dbpedia_csv/train.csv')
@@ -68,7 +68,7 @@ def rnn_model(X, y):
     return skflow.models.logistic_regression(encoding[-1], y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
-    steps=1000, continue_training=True)
+    steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continuesly train for 1000 steps & predict on test set.
 while True:
