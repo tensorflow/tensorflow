@@ -1,6 +1,10 @@
-sudo: required
+sudo: true
 
 language: python
+
+os:
+    - linux
+    - osx
 
 cache:
     apt: true
@@ -13,12 +17,13 @@ addons:
             - libatlas3gf-base
             - libatlas-dev
             - python-scipy
+            - python-sklearn
 
 python:
     - "2.7"
-    - "3.5"
-    - "nightly"
+
 install:
     - source .travis_install.sh
+
 script: nosetests
 
