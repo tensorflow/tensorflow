@@ -34,6 +34,37 @@ def tokenizer(iterator):
         yield TOKENIZER_RE.findall(value)
 
 
+class ByteProcessor(object):
+    """Maps documents into sequence of ids for bytes."""
+
+    def __init__(self, max_document_length):
+        self.max_document_length = max_document_length
+
+    def fit(self, X):
+        """Does nothing."""
+        pass
+
+    def fit_transform(self, X):
+        """Calls transform."""
+        return self.transform(X)
+
+    def transform(self, X):
+        """Transforms input documents into sequence of ids.
+
+        Args:
+            X: iterator or list of input documents.
+        Returns:
+            iterator of byte ids.
+        """
+        for doc in X:
+            word_ids = np.zeros(self.max_document_length, np.int64)
+            for idx, token in enumerate(doc):
+                if idx >= self.max_document_length:
+                    break
+                word_ids[idx] = ord(token)
+            yield word_ids
+
+
 class WordVocabulary(object):
     """Word vocabulary class.
 
@@ -75,6 +106,7 @@ class WordVocabulary(object):
             if count <= min_frequency and (max_frequency < 0 or 
                count >= max_frequency):
                self._mapping.pop(word)
+
 
 class VocabularyProcessor(object):
     """Maps documents to sequences of word ids.

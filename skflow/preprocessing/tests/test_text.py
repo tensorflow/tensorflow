@@ -31,6 +31,12 @@ class TextTest(tf.test.TestCase):
              [u"фыв", u"выф"],
              [u"你好", u"怎么样"]])
 
+    def testByteProcessor(self):
+        processor = text.ByteProcessor(max_document_length=8)
+        res = processor.transform(["abc", "фыва"])
+        self.assertAllClose(list(res),
+            [[97, 98, 99, 0, 0, 0, 0, 0], [209, 132, 209, 139, 208, 178, 208, 176]])
+
     def testWordVocabulary(self):
         vocab = text.WordVocabulary()
         self.assertEqual(vocab.get('a'), 1)
