@@ -24,8 +24,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker
-
 
 class UnpackOpTest(tf.test.TestCase):
 
@@ -53,8 +51,7 @@ class UnpackOpTest(tf.test.TestCase):
           with self.test_session(use_gpu=use_gpu):
             x = tf.constant(data)
             cs = tf.unpack(x, num=shape[0])
-            err = gradient_checker.ComputeGradientError(x, shape, cs[i],
-                                                        shapes[i])
+            err = tf.test.compute_gradient_error(x, shape, cs[i], shapes[i])
             self.assertLess(err, 1e-6)
 
   def testInferNum(self):

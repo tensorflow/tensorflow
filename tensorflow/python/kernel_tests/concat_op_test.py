@@ -303,6 +303,63 @@ class ConcatOpTest(tf.test.TestCase):
                 dxs = sess.run(tf.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
+  def testTensorConcatDim0Grad(self):
+    x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
+    output_shape = [44, 7, 3]
+    x_vals = [np.random.random_sample(x_shape).astype(
+        np.float64) for x_shape in x_shapes]
+    with self.test_session():
+      xs = [tf.constant(x_val) for x_val in x_vals]
+      output = tf.concat(0, xs)
+      err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
+    self.assertLess(err, 1e-11)
+
+  def testTensorConcatDim1Grad(self):
+    x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
+    output_shape = [20, 11, 3]
+    x_vals = [np.random.random_sample(x_shape).astype(
+        np.float64) for x_shape in x_shapes]
+    with self.test_session():
+      xs = [tf.constant(x_val) for x_val in x_vals]
+      output = tf.concat(1, xs)
+      err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
+    self.assertLess(err, 1e-11)
+
+  def testIndexedSlicesConcatDim0Grad(self):
+    x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
+    output_shape = [4, 7, 3]
+    x_vals = [np.random.random_sample(x_shape).astype(
+        np.float64) for x_shape in x_shapes]
+    with self.test_session():
+      xs = [tf.constant(x_val) for x_val in x_vals]
+      x_concat = tf.concat(0, xs)
+      output = tf.gather(x_concat, [1, 2, 0, 5])
+      err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
+    self.assertLess(err, 1e-11)
+
+  def testIndexedSlicesConcatDim1Grad(self):
+    x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
+    output_shape = [4, 11, 3]
+    x_vals = [np.random.random_sample(x_shape).astype(
+        np.float64) for x_shape in x_shapes]
+    with self.test_session():
+      xs = [tf.constant(x_val) for x_val in x_vals]
+      x_concat = tf.concat(1, xs)
+      output = tf.gather(x_concat, [1, 2, 0, 5])
+      err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
+    self.assertLess(err, 1e-11)
+
+  def testIndexedSlicesConcatDim2Grad(self):
+    x_shapes = [[20, 7, 3], [20, 7, 1], [20, 7, 2]]
+    output_shape = [4, 7, 6]
+    x_vals = [np.random.random_sample(x_shape).astype(
+        np.float64) for x_shape in x_shapes]
+    with self.test_session():
+      xs = [tf.constant(x_val) for x_val in x_vals]
+      x_concat = tf.concat(2, xs)
+      output = tf.gather(x_concat, [1, 2, 0, 5])
+      err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
+    self.assertLess(err, 1e-11)
 
 if __name__ == "__main__":
   tf.test.main()

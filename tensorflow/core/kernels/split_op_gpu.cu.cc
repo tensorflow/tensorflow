@@ -33,7 +33,7 @@ void Split<Device, T>::operator()(
     typename TTypes<T, 3>::ConstTensor input,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
-  output.device(d) = input.slice(slice_indices, slice_sizes);
+  To32Bit(output).device(d) = To32Bit(input).slice(slice_indices, slice_sizes);
 }
 
 #define DEFINE_GPU_KERNELS(T) template struct Split<Eigen::GpuDevice, T>;

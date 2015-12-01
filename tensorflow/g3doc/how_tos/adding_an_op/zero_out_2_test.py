@@ -24,7 +24,6 @@ import tensorflow.python.platform
 import tensorflow as tf
 from tensorflow.g3doc.how_tos.adding_an_op import gen_zero_out_op_2
 from tensorflow.g3doc.how_tos.adding_an_op import zero_out_grad_2
-from tensorflow.python.kernel_tests import gradient_checker
 
 
 class ZeroOut2Test(tf.test.TestCase):
@@ -39,7 +38,7 @@ class ZeroOut2Test(tf.test.TestCase):
       shape = (5,)
       x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
       y = gen_zero_out_op_2.zero_out(x)
-      err = gradient_checker.ComputeGradientError(x, shape, y, shape)
+      err = tf.test.compute_gradient_error(x, shape, y, shape)
       self.assertLess(err, 1e-4)
 
 

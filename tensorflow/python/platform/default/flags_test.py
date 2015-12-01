@@ -26,9 +26,15 @@ from tensorflow.python.platform.default import _flags as flags
 
 
 flags.DEFINE_string("string_foo", "default_val", "HelpString")
-flags.DEFINE_boolean("bool_foo", True, "HelpString")
 flags.DEFINE_integer("int_foo", 42, "HelpString")
 flags.DEFINE_float("float_foo", 42.0, "HelpString")
+
+flags.DEFINE_boolean("bool_foo", True, "HelpString")
+flags.DEFINE_boolean("bool_negation", True, "HelpString")
+flags.DEFINE_boolean("bool_a", False, "HelpString")
+flags.DEFINE_boolean("bool_c", False, "HelpString")
+flags.DEFINE_boolean("bool_d", True, "HelpString")
+flags.DEFINE_boolean("bool_e", True, "HelpString")
 
 FLAGS = flags.FLAGS
 
@@ -46,14 +52,23 @@ class FlagsTest(googletest.TestCase):
     FLAGS.bool_foo = False
     self.assertFalse(FLAGS.bool_foo)
 
-  def testNoBool(self):
-    FLAGS.bool_foo = True
-    try:
-      sys.argv.append("--nobool_foo")
-      FLAGS._parse_flags()
-      self.assertFalse(FLAGS.bool_foo)
-    finally:
-      sys.argv.pop()
+  def testBoolCommandLines(self):
+    # Specified on command line with no args, sets to True,
+    # even if default is False.
+    self.assertEqual(True, FLAGS.bool_a)
+
+    # --no before the flag forces it to False, even if the
+    # default is True
+    self.assertEqual(False, FLAGS.bool_negation)
+
+    # --bool_flag=True sets to True
+    self.assertEqual(True, FLAGS.bool_c)
+
+    # --bool_flag=False sets to False
+    self.assertEqual(False, FLAGS.bool_d)
+
+    # --bool_flag=gibberish sets to False
+    self.assertEqual(False, FLAGS.bool_e)
 
   def testInt(self):
     res = FLAGS.int_foo
@@ -69,4 +84,12 @@ class FlagsTest(googletest.TestCase):
 
 
 if __name__ == "__main__":
-  googletest.main()
+  # Test command lines
+  sys.argv.extend(["--bool_a", "--nobool_negation", "--bool_c=True",
+                   "--bool_d=False", "--bool_e=gibberish"])
+
+  # googletest.main() tries to interpret the above flags, so use the
+  # direct functions instead.
+  runner = googletest.TextTestRunner()
+  itersuite = googletest.TestLoader().loadTestsFromTestCase(FlagsTest)
+  runner.run(itersuite)

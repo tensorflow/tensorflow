@@ -132,6 +132,28 @@ class StringInputProducerTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testNullStringPython(self):
+    # Graph-construction time check for empty string list:
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        _ = tf.train.string_input_producer([])
+
+  def testNullString(self):
+    # Runtime check for empty string list.  This is slightly oblique:
+    # The queue runner should die with an assertion error on the null
+    # input tensor, causing the dequeue to fail with an OutOfRangeError.
+    with self.test_session():
+      coord = tf.train.Coordinator()
+      queue = tf.train.string_input_producer(tf.constant([], dtype=tf.string))
+      dequeue = queue.dequeue()
+      tf.initialize_all_variables().run()
+      threads = tf.train.start_queue_runners(coord=coord)
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        dequeue.eval()
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
 
 class RangeInputProducerTest(tf.test.TestCase):
 

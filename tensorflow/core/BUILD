@@ -293,14 +293,13 @@ cc_library(
     ],
 )
 
-# TODO(opensource): Make it work externally
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    py_api_version = 2,  # TODO(irving): Handle 3
+    py_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -507,7 +506,6 @@ filegroup(
             "kernels/maxpooling_op.h",
             "kernels/pooling_ops_common.h",
             "kernels/pooling_ops_common.cc",
-            "kernels/reference_gemm.h",
         ],
         exclude = [
             "**/*test.cc",
@@ -571,7 +569,6 @@ filegroup(
         "//tensorflow/core:kernels/no_op.cc",
         "//tensorflow/core:kernels/no_op.h",
         "//tensorflow/core:kernels/pack_op.cc",
-        "//tensorflow/core:kernels/reference_gemm.h",
         "//tensorflow/core:kernels/reshape_op.cc",
         "//tensorflow/core:kernels/reshape_op.h",
         "//tensorflow/core:kernels/reverse_sequence_op.cc",
@@ -628,6 +625,8 @@ filegroup(
         "//tensorflow/core:kernels/relu_op.h",
         "//tensorflow/core:kernels/softplus_op.cc",
         "//tensorflow/core:kernels/softplus_op.h",
+        "//tensorflow/core:kernels/softsign_op.cc",
+        "//tensorflow/core:kernels/softsign_op.h",
         "//tensorflow/core:kernels/stack_ops.cc",
         "//tensorflow/core:kernels/transpose_op.cc",
         "//tensorflow/core:kernels/transpose_op.h",

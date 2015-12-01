@@ -225,6 +225,8 @@ class Optimizer(object):
     for var in var_list:
       if not isinstance(var, variables.Variable):
         raise TypeError("Argument is not a variables.Variable: %s" % var)
+    if not var_list:
+      raise ValueError("No variables to optimize")
     grads = gradients.gradients(
         loss, var_list, gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method)
@@ -254,6 +256,7 @@ class Optimizer(object):
 
     Raises:
       TypeError: if `grads_and_vars` is malformed.
+      ValueError: if none of the variables have gradients.
     """
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
@@ -268,7 +271,11 @@ class Optimizer(object):
             "Variable must be a variables.Variable: %s" % v)
       if g is not None:
         self._assert_valid_dtypes([g, v])
-    self._create_slots([v for g, v in grads_and_vars if g is not None])
+    var_list = [v for g, v in grads_and_vars if g is not None]
+    if not var_list:
+      raise ValueError("No gradients provided for any variable: %s" %
+                       grads_and_vars)
+    self._create_slots(var_list)
     update_ops = []
     with ops.op_scope([], name, self._name) as name:
       self._prepare()

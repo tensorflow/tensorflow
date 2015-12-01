@@ -192,6 +192,7 @@ applies gradients.
 
 
 *  <b>`TypeError`</b>: if `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: if none of the variables have gradients.
 
 
 
@@ -388,9 +389,9 @@ current good choice is 1.0 or 0.1.
 *  <b>`beta1`</b>: A float value or a constant float tensor.
     The exponential decay rate for the 1st moment estimates.
 *  <b>`beta2`</b>: A float value or a constant float tensor.
-    The exponential decay rate for the 2st moment estimates.
+    The exponential decay rate for the 2nd moment estimates.
 *  <b>`epsilon`</b>: A small constant for numerical stability.
-*  <b>`use_locking`</b>: If True use locks for update operation.s
+*  <b>`use_locking`</b>: If True use locks for update operations.
 *  <b>`name`</b>: Optional name for the operations created when applying gradients.
     Defaults to "Adam".
 

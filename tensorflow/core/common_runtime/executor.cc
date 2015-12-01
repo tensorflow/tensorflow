@@ -758,7 +758,11 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 
   // Ask the device to fill in the device context map.
   Device* device = impl_->params_.device;
-  device->FillContextMap(graph, &device_context_map_);
+  Status fill_status = device->FillContextMap(graph, &device_context_map_);
+  if (!fill_status.ok()) {
+    done(fill_status);
+    return;
+  }
 
   // Initialize the ready queue.
   for (const Node* n : graph->nodes()) {
@@ -1077,7 +1081,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
   for (int i = 0; i < node->num_outputs(); ++i) {
     TensorValue val = ctx->release_output(i);
-    // Only Switch and Recv nodes can generate new dead outputs
+    // Only Switch and Recv can generate new dead outputs.
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
       DCHECK(IsSwitch(node) || IsRecv(node));
     } else {

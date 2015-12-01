@@ -990,17 +990,22 @@ def _ReverseSequenceShape(op):
     A single-element list containing the shape of the output.
 
   Raises:
-    ValueError: If the input shapes are incompatible.
+    ValueError: If the input shapes are incompatible or seq_dim == batch_dim.
   """
   input_shape = op.inputs[0].get_shape()
   seq_lens_shape = op.inputs[1].get_shape().with_rank(1)
-  batch_size = input_shape[0].merge_with(seq_lens_shape[0])
-  input_shape = tensor_shape.TensorShape([batch_size]).concatenate(
-      input_shape[1:])
   seq_dim = op.get_attr("seq_dim")
+  batch_dim = op.get_attr("batch_dim")
+  if batch_dim >= input_shape.ndims:
+    raise ValueError("batch_dim must be < input.dims() (%d vs %d)" %
+                     (batch_dim, input_shape.ndims))
   if seq_dim >= input_shape.ndims:
     raise ValueError("seq_dim must be < input.dims() (%d vs %d)" %
                      (seq_dim, input_shape.ndims))
+  batch_size = input_shape[batch_dim].merge_with(seq_lens_shape[0])
+  input_shape = tensor_shape.TensorShape([
+      value if ix != batch_dim else batch_size
+      for ix, value in enumerate(input_shape)])
   return [input_shape]
 
 

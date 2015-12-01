@@ -1091,9 +1091,10 @@ class ControlFlowTest(tf.test.TestCase):
 
       # Use a control dependency to ensure init_variable is run
       # while asking for c
-      real_v = control_flow_ops.with_dependencies(name="real_tensor",
-                                                 output_tensor=v,
-                                                 dependencies=[v.initializer])
+      real_v = control_flow_ops.with_dependencies(
+          name="real_tensor",
+          output_tensor=v.ref(),
+          dependencies=[v.initializer])
       c_val, real_v_val = sess.run([c, real_v])
 
     # Ensure the result of 'real_c' is the same as 'c'
@@ -1259,12 +1260,12 @@ class TupleTest(tf.test.TestCase):
       with self.test_session():
         v1 = tf.Variable([1.0])
         add1 = tf.add(
-            control_flow_ops.with_dependencies([v1.initializer], v1),
+            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
             2.0)
         v2 = tf.Variable([10.0])
-        add2 = tf.add(control_flow_ops.with_dependencies([v2.initializer],
-                                                               v2),
-                            20.0)
+        add2 = tf.add(
+            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
+            20.0)
         t1, _, t2 = control_flow_ops.tuple([add1, None, add2])
 
         # v1 is not initialized.
@@ -1291,14 +1292,14 @@ class TupleTest(tf.test.TestCase):
             np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
                 np.float32))
         v1_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v1.initializer], v1),
+            control_flow_ops.with_dependencies([v1.initializer], v1.ref()),
             tf.constant([1]))
 
         v2 = tf.Variable(
             np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
                 np.float32))
         v2_at_1 = tf.IndexedSlices(
-            control_flow_ops.with_dependencies([v2.initializer], v2),
+            control_flow_ops.with_dependencies([v2.initializer], v2.ref()),
             tf.constant([1]))
 
         st1, st2 = control_flow_ops.tuple([v1_at_1, v2_at_1])

@@ -73,7 +73,7 @@ struct FillFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
                   typename TTypes<T>::ConstScalar in) {
     Eigen::internal::scalar_const_op<T> f(in.data());
-    out.device(d) = out.nullaryExpr(f);
+    To32Bit(out).device(d) = To32Bit(out).nullaryExpr(f);
   }
 };
 
@@ -91,7 +91,7 @@ DEFINE_FILL_GPU(int64);
 template <typename T>
 struct SetZeroFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(0);
+    To32Bit(out).device(d) = To32Bit(out).constant(0);
   }
 };
 

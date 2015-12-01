@@ -264,7 +264,7 @@ Returns element-wise smallest integer in not less than x.
 
 #define BINARY_MORE()                              \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {float, double, int8, int16, int32, complex64, int64}")
+      "T: {float, double, uint8, int8, int16, int32, int64, complex64}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
@@ -293,7 +293,7 @@ Returns x * y element-wise.
 )doc");
 
 REGISTER_OP("Div")
-    .BINARY_FEWER()
+    .BINARY_MORE()
     .Doc(R"doc(
 Returns x / y element-wise.
 )doc");

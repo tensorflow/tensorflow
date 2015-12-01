@@ -378,14 +378,18 @@ class OpDefLibrary(object):
                   break
 
           try:
+            if not input_arg.is_ref and dtype:
+              dtype = dtypes.as_dtype(dtype).base_dtype
             values = ops.convert_n_to_tensor_or_indexed_slices(
                 values, name=input_arg.name,
-                dtype=dtypes.as_dtype(dtype).base_dtype if dtype else None)
+                dtype=dtype if dtype else None,
+                as_ref=input_arg.is_ref)
           except (TypeError, ValueError):
             assert dtype is not None, "Should not fail if dtype is None"
             assert input_arg.number_attr, "Should be number_attr case"
             # What types does the conversion function think values have?
-            values = ops.convert_n_to_tensor_or_indexed_slices(values)
+            values = ops.convert_n_to_tensor_or_indexed_slices(
+                values, as_ref=input_arg.is_ref)
             observed = ", ".join(v.dtype.base_dtype.name for v in values)
 
             prefix = (
@@ -393,11 +397,11 @@ class OpDefLibrary(object):
                 (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
               raise TypeError("%s that do not match expected type %s." %
-                              (prefix, dtypes.as_dtype(dtype).name))
+                              (prefix, dtype.name))
             elif input_arg.type_attr in attrs:
               raise TypeError("%s that do not match type %s inferred from "
                               "earlier arguments." %
-                              (prefix, dtypes.as_dtype(dtype).name))
+                              (prefix, dtype.name))
             else:
               raise TypeError("%s that don't all match." % prefix)
 
@@ -411,13 +415,14 @@ class OpDefLibrary(object):
             dtype = input_arg.type
           elif input_arg.type_attr in attrs:
             dtype = attrs[input_arg.type_attr]
-
           try:
             values = ops.convert_to_tensor(
-                values, name=input_arg.name, dtype=dtype)
+                values, name=input_arg.name, dtype=dtype,
+                as_ref=input_arg.is_ref)
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.convert_to_tensor(values).dtype.name
+            observed = ops.convert_to_tensor(values,
+                                             as_ref=input_arg.is_ref).dtype.name
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:

@@ -94,7 +94,15 @@ def DEFINE_boolean(flag_name, default_value, docstring):
     default_value: The default value the flag should take as a boolean.
     docstring: A helpful message explaining the use of the flag.
   """
-  _define_helper(flag_name, default_value, docstring, bool)
+  # Register a custom function for 'bool' so --flag=True works.
+  def str2bool(v):
+    return v.lower() in ('true', 't', '1')
+  _global_parser.add_argument('--' + flag_name,
+                              nargs='?',
+                              const=True,
+                              help=docstring,
+                              default=default_value,
+                              type=str2bool)
   _global_parser.add_argument('--no' + flag_name,
                               action='store_false',
                               dest=flag_name)

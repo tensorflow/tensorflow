@@ -53,7 +53,7 @@ def convert_to(images, labels, name):
   num_examples = labels.shape[0]
   if images.shape[0] != num_examples:
     raise ValueError("Images size %d does not match label size %d." %
-                     (dat.shape[0], num_examples))
+                     (images.shape[0], num_examples))
   rows = images.shape[1]
   cols = images.shape[2]
   depth = images.shape[3]

@@ -1,13 +1,20 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs.
+TensorFlow runs and graphs. Before running TensorBoard, make sure you have
+generated summary data in a log directory by creating a `SummaryWriter`:
 
-Example Usage:
+```python
+# sess.graph_def is the graph definition.
+summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph_def)
+```
+
+For more details, see [this tutorial](http://www.tensorflow.org/how_tos/summaries_and_tensorboard/index.html#serializing-the-data).
+Then run TensorBoard and provide the log directory:
 
 ```
 python tensorflow/tensorboard/tensorboard.py --logdir=path/to/logs
-# if installed via pip
+# or if installed via pip, run:
 tensorboard --logdir=path/to/logs
 
 # if building from source
@@ -26,7 +33,14 @@ includes a frontend (app/tf-tensorboard.html) that contains html and javascript
 for displaying this data in a UI.
 
 
-## Building the TensorBoard frontend
+## TensorBoard Development Instructions
+
+The following instructions are useful if you want to develop the TensorBoard
+frontend in a lightweight frontend-only environment. It sets up gulp with
+automatic recompiling and serves just the frontend assets without a connected
+backend.
+
+If you just want to use TensorBoard, there is no need to read any further.
 
 ### Install Node, npm, gulp, bower, and tsd in your machine
 Get nodejs and npm through whatever package distribution system is appropriate
@@ -43,24 +57,11 @@ run the following commands.
     bower install
     tsd install
 
-### Run Gulp Vulcanize
+### Run Gulp
 
-Inside this directory, run `gulp vulcanize`. That will compile all of the
-html/js/css dependencies for TensorBoard into a monolithic index.html file under
-dist/. Once you've done this, you can locally run your own TensorBoard instance
-and it will have a working frontend.
+Inside this directory, run `gulp`. That will compile all of the
+html/js/css dependencies for TensorBoard, and also spin up a server
+(by default at port 8000). You can navigate to component-specific demo pages to
+check out their behavior.
 
-### Frontend General Dev Instructions
-
-To speed up the development process, we can run the frontend code independently
-of the backend, and mock out the backend with static JSON files. This allows
-testing the frontend's correctness without needing to find  real data and spin
-up a real server. Look at app/demo/index.html for an example.
-
-The following gulp commands are useful:
-
-* `gulp test` - build, test, and lint the code
-* `gulp watch` - build, test, and rebuild on change
-* `gulp server` - start a livereload server on localhost:8000
-* `gulp` - alias for `gulp watch`
-* `gulp vulcanize` -
+Running `gulp test` will run all unit tests, the linter, etc.

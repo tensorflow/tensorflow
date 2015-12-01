@@ -36,7 +36,7 @@ class PyRecordWriter {
   static PyRecordWriter* New(const string& filename);
   ~PyRecordWriter();
 
-  bool WriteRecord(::tensorflow::StringPiece record);
+  bool WriteRecord(tensorflow::StringPiece record);
   void Close();
 
  private:

@@ -358,3 +358,25 @@ def ListDirectory(directory, return_dotfiles=False):  # pylint: disable=invalid-
   if not return_dotfiles:
     files = [f for f in files if not f.startswith('.')]
   return files
+
+
+def Walk(top, topdown=1, onerror=None):
+  """Recursive directory tree generator.
+
+  Args:
+    top: string, a pathname.
+    topdown: bool, should traversal be pre-order (True) or post-order (False)
+    onerror: function, optional callback for errors.
+
+  By default, errors that occur when listing a directory are ignored.
+  (This is the same semantics as Python's os.walk() generator.)  If the
+  optional argument "onerror" is specified, it should be a function.  It
+  will be called with one argument, an os.error instance.  It can return
+  to continue with the walk, or reraise the exception to abort the walk.
+
+  Yields:
+    # Each yield is a 3-tuple:  the pathname of a directory, followed
+    # by lists of all its subdirectories and leaf files.
+    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
+  """
+  return os.walk(top, topdown=topdown, onerror=onerror)

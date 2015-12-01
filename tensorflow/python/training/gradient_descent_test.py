@@ -44,6 +44,25 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
       self.assertAllClose([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1], var0.eval())
       self.assertAllClose([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01], var1.eval())
 
+  def testTensorLearningRate(self):
+    with self.test_session():
+      var0 = tf.Variable([1.0, 2.0])
+      var1 = tf.Variable([3.0, 4.0])
+      grads0 = tf.constant([0.1, 0.1])
+      grads1 = tf.constant([0.01, 0.01])
+      lrate = tf.constant(3.0)
+      sgd_op = tf.train.GradientDescentOptimizer(lrate).apply_gradients(
+          zip([grads0, grads1], [var0, var1]))
+      tf.initialize_all_variables().run()
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], var0.eval())
+      self.assertAllClose([3.0, 4.0], var1.eval())
+      # Run 1 step of sgd
+      sgd_op.run()
+      # Validate updated params
+      self.assertAllClose([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1], var0.eval())
+      self.assertAllClose([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01], var1.eval())
+
   def testFloat64(self):
     with self.test_session():
       opt = tf.train.GradientDescentOptimizer(3.0)

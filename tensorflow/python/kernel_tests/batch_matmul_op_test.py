@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class BatchMatmulOpTest(tf.test.TestCase):
 
@@ -176,9 +174,14 @@ class BatchMatmulGradientTest(tf.test.TestCase):
       z = tf.batch_matmul(inx, iny, adj_x, adj_y)
       loss = tf.reduce_sum(z)
       epsilon = 1e-2
-      ((x_jacob_t, x_jacob_n), (y_jacob_t, y_jacob_n)) = gc.ComputeGradient(
-          [inx, iny], [x.shape, y.shape], loss, [1],
-          x_init_value=[x, y], delta=epsilon)
+      ((x_jacob_t, x_jacob_n),
+       (y_jacob_t, y_jacob_n)) = tf.test.compute_gradient(
+           [inx, iny],
+           [x.shape, y.shape],
+           loss,
+           [1],
+           x_init_value=[x, y],
+           delta=epsilon)
 
     tf.logging.info("x_jacob_t = %s", x_jacob_t.reshape(x.shape))
     tf.logging.info("x_jacob_n = %s", x_jacob_n.reshape(x.shape))

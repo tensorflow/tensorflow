@@ -378,19 +378,25 @@ class ConstantValueTest(test_util.TensorFlowTestCase):
     self.assertIs(None, tensor_util.ConstantValue(tf_val))
 
   def testShape(self):
-    np_val = np.array([1, 2, 3])
+    np_val = np.array([1, 2, 3], dtype=np.int32)
     tf_val = array_ops.shape(constant_op.constant(0.0, shape=[1, 2, 3]))
-    self.assertAllEqual(np_val, tensor_util.ConstantValue(tf_val))
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllEqual(np_val, c_val)
+    self.assertEqual(np.int32, c_val.dtype)
 
   def testSize(self):
-    np_val = np.array([6])
+    np_val = np.array([6], dtype=np.int32)
     tf_val = array_ops.size(constant_op.constant(0.0, shape=[1, 2, 3]))
-    self.assertAllEqual(np_val, tensor_util.ConstantValue(tf_val))
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllEqual(np_val, c_val)
+    self.assertEqual(np.int32, c_val.dtype)
 
   def testRank(self):
-    np_val = np.array([3])
+    np_val = np.array([3], dtype=np.int32)
     tf_val = array_ops.rank(constant_op.constant(0.0, shape=[1, 2, 3]))
-    self.assertAllEqual(np_val, tensor_util.ConstantValue(tf_val))
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllEqual(np_val, c_val)
+    self.assertEqual(np.int32, c_val.dtype)
 
 
 if __name__ == "__main__":

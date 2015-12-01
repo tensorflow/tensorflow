@@ -26,7 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.models.rnn import rnn_cell
+from tensorflow.python.ops import rnn_cell
 
 
 class RNNCellTest(tf.test.TestCase):
@@ -96,9 +96,9 @@ class RNNCellTest(tf.test.TestCase):
         # Different inputs so different outputs and states
         for i in range(1, batch_size):
           self.assertTrue(
-              float(np.linalg.norm((res[0][0,:] - res[0][i,:]))) > 1e-6)
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
           self.assertTrue(
-              float(np.linalg.norm((res[1][0,:] - res[1][i,:]))) > 1e-6)
+              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
 
   def testOutputProjectionWrapper(self):
     with self.test_session() as sess:

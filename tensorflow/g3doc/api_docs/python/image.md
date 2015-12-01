@@ -18,7 +18,8 @@ are all of variable size.  If you need fixed size images, pass the output of
 the decode Ops to one of the cropping and resizing Ops.
 
 Note: The PNG encode and decode Ops support RGBA, but the conversions Ops
-presently only support RGB, HSV, and GrayScale.
+presently only support RGB, HSV, and GrayScale. Presently, the alpha channel has
+to be stripped from the image and re-attached using slicing ops.
 
 - - -
 
@@ -203,10 +204,6 @@ Example:
 image = tf.image.decode_jpeg(...)
 resized_image = tf.image.resize_bilinear(image, [299, 299])
 ```
-
-<i>Maybe refer to the Queue examples that show how to add images to a Queue
-after resizing them to a fixed size, and how to dequeue batches of resized
-images from the Queue.</i>
 
 - - -
 
@@ -658,6 +655,43 @@ See also `transpose()`.
 
 
 *  <b>`ValueError`</b>: if the shape of `image` not supported.
+
+
+
+## Converting Between Colorspaces.
+
+Internally, images are either stored in as one `float32` per channel per pixel
+(implicitly, values are assumed to lie in `[0,1)`) or one `uint8` per channel
+per pixel (values are assumed to lie in `[0,255]`).
+
+- - -
+
+### `tf.image.convert_image_dtype(image, dtype, name=None)` {#convert_image_dtype}
+
+Convert `image` to `dtype`, scaling its values if needed.
+
+Images that are represented using floating point values are expected to have
+values in the range [0,1). Image data stored in integer data types are
+expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+positive representable number for the data type.
+
+This op converts between data types, scaling the values appropriately before
+casting.
+
+Note that for floating point inputs, this op expects values to lie in [0,1).
+Conversion of an image containing values outside that range may lead to
+overflow errors when converted to integer `Dtype`s.
+
+##### Args:
+
+
+*  <b>`image`</b>: An image.
+*  <b>`dtype`</b>: A `DType` to convert `image` to.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  `image`, converted to `dtype`.
 
 
 

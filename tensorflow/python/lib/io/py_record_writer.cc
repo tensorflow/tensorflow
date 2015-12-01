@@ -42,7 +42,7 @@ PyRecordWriter::~PyRecordWriter() {
   delete file_;
 }
 
-bool PyRecordWriter::WriteRecord(::tensorflow::StringPiece record) {
+bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
   if (writer_ == nullptr) return false;
   Status s = writer_->WriteRecord(record);
   return s.ok();

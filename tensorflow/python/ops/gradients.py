@@ -50,7 +50,7 @@ from tensorflow.python.platform import logging
 _LARGE_SPARSE_NUM_ELEMENTS = 100000000
 
 
-def _IndexedSlicesToTensor(value, dtype=None, name=None):
+def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
   """Converts an IndexedSlices object `value` to a Tensor.
 
   NOTE(mrry): This function is potentially expensive.
@@ -59,6 +59,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None):
     value: An ops.IndexedSlices object.
     dtype: The dtype of the Tensor to be returned.
     name: Optional name to use for the returned Tensor.
+    as_ref: True if a ref is requested.
 
   Returns:
     A dense Tensor representing the values in the given IndexedSlices.
@@ -66,6 +67,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None):
   Raises:
     ValueError: If the IndexedSlices does not have the same dtype.
   """
+  _ = as_ref
   if dtype and not dtype.is_compatible_with(value.dtype):
     raise ValueError(
         "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %

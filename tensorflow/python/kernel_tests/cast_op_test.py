@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class CastOpTest(tf.test.TestCase):
 
@@ -160,7 +158,7 @@ class CastOpTest(tf.test.TestCase):
           x = tf.constant(1.0, src_t)
           z = tf.identity(x)
           y = tf.cast(z, dst_t)
-          err = gc.ComputeGradientError(x, [1], y, [1])
+          err = tf.test.compute_gradient_error(x, [1], y, [1])
           self.assertLess(err, 1e-3)
 
 

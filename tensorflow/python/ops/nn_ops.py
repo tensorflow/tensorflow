@@ -26,8 +26,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 
@@ -235,11 +238,13 @@ def max_pool(value, ksize, strides, padding, name=None):
 ops.RegisterShape("Relu")(common_shapes.unchanged_shape)
 ops.RegisterShape("Relu6")(common_shapes.unchanged_shape)
 ops.RegisterShape("Softplus")(common_shapes.unchanged_shape)
+ops.RegisterShape("Softsign")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("ReluGrad")
 @ops.RegisterShape("Relu6Grad")
 @ops.RegisterShape("SoftplusGrad")
+@ops.RegisterShape("SoftsignGrad")
 def _BinaryElementwiseShape(op):
   """Returns same shape as both inputs to op.
 
@@ -383,3 +388,81 @@ def _MaxPoolGradShape(op):
   """Shape function for the MaxPoolGrad op."""
   orig_input_shape = op.inputs[0].get_shape().with_rank(4)
   return [orig_input_shape]
+
+
+def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(x, weights) + biases.
+
+  Args:
+    x: a 2D tensor.  Dimensions typically: batch, in_units
+    weights: a 2D tensor.  Dimensions typically: in_units, out_units
+    biases: a 1D tensor.  Dimensions: out_units
+    name: A name for the operation (optional).  If not specified
+      "wx_plus_b" is used.
+
+  Returns:
+    A 2-D Tensor computing matmul(x, weights) + biases.
+    Dimensions typically: batch, out_units.
+  """
+  with ops.op_scope([x, weights, biases], name, "xw_plus_b") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    weights = ops.convert_to_tensor(weights, name="weights")
+    biases = ops.convert_to_tensor(biases, name="biases")
+    mm = math_ops.matmul(x, weights)
+    return bias_add(mm, biases, name=name)
+
+
+# pylint: disable=invalid-name
+def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
+  """Computes dropout.
+
+  With probability `keep_prob`, outputs the input element scaled up by
+  `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+  sum is unchanged.
+
+  By default, each element is kept or dropped independently.  If `noise_shape`
+  is specified, it must be
+  [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
+  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
+  kept independently and each row and column will be kept or not kept together.
+
+  Args:
+    x: A tensor.
+    keep_prob: A scalar `Tensor` with the same type as x. The probability
+      that each element is kept.
+    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+      shape for randomly generated keep/drop flags.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: A name for this operation (optional).
+
+  Returns:
+    A Tensor of the same shape of `x`.
+
+  Raises:
+    ValueError: If `keep_prob` is not in `(0, 1]`.
+  """
+  with ops.op_scope([x], name, "dropout") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    if isinstance(keep_prob, float) and not 0 < keep_prob <= 1:
+      raise ValueError("keep_prob must be a scalar tensor or a float in the "
+                       "range (0, 1], got %g" % keep_prob)
+    keep_prob = ops.convert_to_tensor(
+        keep_prob, dtype=x.dtype, name="keep_prob")
+    keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+
+    noise_shape = noise_shape or array_ops.shape(x)
+    # uniform [keep_prob, 1.0 + keep_prob)
+    random_tensor = keep_prob
+    random_tensor += random_ops.random_uniform(
+        noise_shape, seed=seed, dtype=x.dtype)
+    # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
+    binary_tensor = math_ops.floor(random_tensor)
+    ret = x * math_ops.inv(keep_prob) * binary_tensor
+    ret.set_shape(x.get_shape())
+    return ret
+
+# pylint: enable=invalid-name

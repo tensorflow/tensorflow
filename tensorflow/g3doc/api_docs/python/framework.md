@@ -1355,7 +1355,7 @@ for more details.
 
 - - -
 
-### `tf.convert_to_tensor(value, dtype=None, name=None)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -1390,6 +1390,7 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
+*  <b>`as_ref`</b>: True if we want the result as a ref tensor.
 
 ##### Returns:
 

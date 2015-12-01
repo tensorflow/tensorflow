@@ -23,7 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
 from tensorflow.python.ops import gen_nn_ops
 
 
@@ -436,9 +435,12 @@ class PoolingTest(tf.test.TestCase):
       t = pool_func(input_tensor, ksize=[1, window_rows, window_rows, 1],
                     strides=[1, row_stride, col_stride, 1],
                     padding=padding, name=func_name)
-      err = gc.ComputeGradientError(
-          input_tensor, input_sizes, t, output_sizes,
-          x_init_value=x_init_value, delta=1e-2)
+      err = tf.test.compute_gradient_error(input_tensor,
+                                           input_sizes,
+                                           t,
+                                           output_sizes,
+                                           x_init_value=x_init_value,
+                                           delta=1e-2)
     print("%s gradient error = " % func_name, err)
     self.assertLess(err, err_margin)
 

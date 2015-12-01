@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class MatMulTest(tf.test.TestCase):
 
@@ -161,7 +159,7 @@ class MatMulGradientTest(tf.test.TestCase):
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
                    shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
-      err = gc.ComputeGradientError(x, [3, 2], m, [3, 4])
+      err = tf.test.compute_gradient_error(x, [3, 2], m, [3, 4])
     print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -172,7 +170,7 @@ class MatMulGradientTest(tf.test.TestCase):
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
                    shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
-      err = gc.ComputeGradientError(y, [2, 4], m, [3, 4])
+      err = tf.test.compute_gradient_error(y, [2, 4], m, [3, 4])
     print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -189,7 +187,7 @@ class MatMulGradientTest(tf.test.TestCase):
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
                    shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = gc.ComputeGradientError(x, shape_x, m, [3, 4])
+      err = tf.test.compute_gradient_error(x, shape_x, m, [3, 4])
     print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -211,7 +209,7 @@ class MatMulGradientTest(tf.test.TestCase):
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
                    shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = gc.ComputeGradientError(y, shape_y, m, [3, 4])
+      err = tf.test.compute_gradient_error(y, shape_y, m, [3, 4])
     print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 

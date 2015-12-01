@@ -77,6 +77,57 @@ class MomentumOptimizerTest(tf.test.TestCase):
                                     3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
                           var1.eval())
 
+  def testTensorLearningRateAndMomentum(self):
+    with self.test_session():
+      var0 = tf.Variable([1.0, 2.0])
+      var1 = tf.Variable([3.0, 4.0])
+      grads0 = tf.constant([0.1, 0.1])
+      grads1 = tf.constant([0.01, 0.01])
+      mom_opt = tf.train.MomentumOptimizer(
+          learning_rate=tf.constant(2.0), momentum=tf.constant(0.9))
+      mom_update = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      tf.initialize_all_variables().run()
+      # Check we have slots
+      self.assertEqual(["momentum"], mom_opt.get_slot_names())
+      slot0 = mom_opt.get_slot(var0, "momentum")
+      self.assertEquals(slot0.get_shape(), var0.get_shape())
+      self.assertFalse(slot0 in tf.trainable_variables())
+      slot1 = mom_opt.get_slot(var1, "momentum")
+      self.assertEquals(slot1.get_shape(), var1.get_shape())
+      self.assertFalse(slot1 in tf.trainable_variables())
+
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], var0.eval())
+      self.assertAllClose([3.0, 4.0], var1.eval())
+      # Step 1: the momentum accumulators where 0. So we should see a normal
+      # update: v -= grad * learning_rate
+      mom_update.run()
+      # Check that the momentum accumulators have been updated.
+      self.assertAllClose(np.array([0.1, 0.1]), slot0.eval())
+      self.assertAllClose(np.array([0.01, 0.01]), slot1.eval())
+      # Check that the parameters have been updated.
+      self.assertAllClose(np.array([1.0 - (0.1 * 2.0),
+                                    2.0 - (0.1 * 2.0)]),
+                          var0.eval())
+      self.assertAllClose(np.array([3.0 - (0.01 * 2.0),
+                                    4.0 - (0.01 * 2.0)]),
+                          var1.eval())
+      # Step 2: the momentum accumulators contain the previous update.
+      mom_update.run()
+      # Check that the momentum accumulators have been updated.
+      self.assertAllClose(np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+                          slot0.eval())
+      self.assertAllClose(np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+                          slot1.eval())
+      # Check that the parameters have been updated.
+      self.assertAllClose(
+          np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                    2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
+          var0.eval())
+      self.assertAllClose(np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                                    3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
+                          var1.eval())
+
   def testFloat64(self):
     with self.test_session():
       opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)

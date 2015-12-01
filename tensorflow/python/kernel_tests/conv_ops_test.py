@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 def GetInceptionShapes():
   """Iterator for the convolution shapes used in the Inception 2015 model.
@@ -429,11 +427,11 @@ class Conv2DTest(tf.test.TestCase):
                            name="conv")
       self.assertEqual(output_shape, conv.get_shape())
       if test_input:
-        err = gc.ComputeGradientError(input_tensor, input_shape,
-                                      conv, output_shape)
+        err = tf.test.compute_gradient_error(input_tensor, input_shape, conv,
+                                             output_shape)
       else:
-        err = gc.ComputeGradientError(filter_tensor, filter_shape,
-                                      conv, output_shape)
+        err = tf.test.compute_gradient_error(filter_tensor, filter_shape, conv,
+                                             output_shape)
       print("conv_2d gradient error = ", err)
       self.assertLess(err, tolerance)
 

@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class ReshapeTest(tf.test.TestCase):
 
@@ -81,8 +79,11 @@ class ReshapeTest(tf.test.TestCase):
     with self.test_session():
       input_tensor = tf.constant(x, shape=[2, 3, 4])
       reshape_out = tf.reshape(input_tensor, [1, 8, 3])
-      err = gc.ComputeGradientError(input_tensor, s,
-                                    reshape_out, s, x_init_value=x)
+      err = tf.test.compute_gradient_error(input_tensor,
+                                           s,
+                                           reshape_out,
+                                           s,
+                                           x_init_value=x)
     print("Reshape gradient error = " % err)
     self.assertLess(err, 1e-3)
 

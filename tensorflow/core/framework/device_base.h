@@ -119,9 +119,10 @@ class DeviceBase {
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
   struct GpuDeviceInfo {
-    perftools::gputools::Stream* stream;
-    DeviceContext* default_context;
-    EventMgr* event_mgr;
+    // Make sure all the defaults are NULL, so we can spot missing assignments.
+    perftools::gputools::Stream* stream = nullptr;
+    DeviceContext* default_context = nullptr;
+    EventMgr* event_mgr = nullptr;
   };
 
   // Does not take ownership.

@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker
-
 
 class SegmentReductionHelper(tf.test.TestCase):
 
@@ -127,8 +125,12 @@ class SegmentReductionOpTest(SegmentReductionHelper):
       with self.test_session():
         tf_x, np_x = self._input(shape, dtype=tf.float64)
         s = tf_op(data=tf_x, segment_ids=indices)
-        jacob_t, jacob_n = gradient_checker.ComputeGradient(
-            tf_x, shape, s, [3, 4], x_init_value=np_x.astype(np.double),
+        jacob_t, jacob_n = tf.test.compute_gradient(
+            tf_x,
+            shape,
+            s,
+            [3, 4],
+            x_init_value=np_x.astype(np.double),
             delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
@@ -170,7 +172,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
         s = tf.unsorted_segment_sum(data=tf_x,
                                     segment_ids=indices,
                                     num_segments=num_segments)
-        jacob_t, jacob_n = gradient_checker.ComputeGradient(
+        jacob_t, jacob_n = tf.test.compute_gradient(
             tf_x,
             shape,
             s,
@@ -196,14 +198,20 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
       unsorted_s = tf.unsorted_segment_sum(data=tf_x,
                                                  segment_ids=indices,
                                                  num_segments=num_segments)
-      unsorted_jacob_t, unsorted_jacob_n = gradient_checker.ComputeGradient(
-          tf_x, shape, unsorted_s, [num_segments, num_cols],
+      (unsorted_jacob_t, unsorted_jacob_n) = tf.test.compute_gradient(
+          tf_x,
+          shape,
+          unsorted_s,
+          [num_segments, num_cols],
           x_init_value=np_x.astype(np.double),
           delta=1)
       # Results from SegmentSum
       sorted_s = tf.segment_sum(data=tf_x, segment_ids=indices)
-      sorted_jacob_t, sorted_jacob_n = gradient_checker.ComputeGradient(
-          tf_x, shape, sorted_s, [num_segments, num_cols],
+      sorted_jacob_t, sorted_jacob_n = tf.test.compute_gradient(
+          tf_x,
+          shape,
+          sorted_s,
+          [num_segments, num_cols],
           x_init_value=np_x.astype(np.double),
           delta=1)
     self.assertAllClose(unsorted_jacob_t, sorted_jacob_t, rtol=1e-3, atol=1e-3)
@@ -277,8 +285,12 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=tf.float64)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-        jacob_t, jacob_n = gradient_checker.ComputeGradient(
-            tf_x, shape, s, [3, 4], x_init_value=np_x.astype(np.double),
+        jacob_t, jacob_n = tf.test.compute_gradient(
+            tf_x,
+            shape,
+            s,
+            [3, 4],
+            x_init_value=np_x.astype(np.double),
             delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 

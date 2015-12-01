@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_BINARY3(mul, float, double, int64);
+DEFINE_BINARY7(mul, float, double, uint8, int8, int16, int32, int64);
 }  // namespace functor
 }  // namespace tensorflow
 

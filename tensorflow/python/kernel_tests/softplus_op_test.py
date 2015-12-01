@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class SoftplusTest(tf.test.TestCase):
 
@@ -57,7 +55,11 @@ class SoftplusTest(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           y,
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 

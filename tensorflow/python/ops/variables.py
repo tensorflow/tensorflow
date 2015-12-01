@@ -139,6 +139,8 @@ class Variable(object):
   @@graph
   @@op
   """
+  # TODO(touts): Add @@value and @@ref in the docstring above once they are
+  # ready for consumption.
 
   def __init__(self, initial_value, trainable=True, collections=None,
                validate_shape=True, name=None):
@@ -199,6 +201,7 @@ class Variable(object):
         with ops.device(self._variable.device):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value, validate_shape=False).op
+          self._snapshot = array_ops.identity(self._variable, name="read")
       else:
         self._variable = state_ops.variable_op(
             self._initial_value.get_shape(),
@@ -207,6 +210,7 @@ class Variable(object):
         with ops.device(self._variable.device):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value).op
+          self._snapshot = array_ops.identity(self._variable, name="read")
     for key in collections:
       ops.add_to_collection(key, self)
     self._save_slice_info = None
@@ -216,7 +220,50 @@ class Variable(object):
     return self._variable
 
   def _AsTensor(self):
-    """Conversion function for ops.convert_to_tensor()."""
+    """Converts this variable to a Tensor.
+
+    See [`value()`](#Variable.value).
+
+    Returns:
+      A `Tensor` containing the value of the variable.
+    """
+    return self._snapshot
+
+  def value(self):
+    """Returns the last snapshot of this variable.
+
+    You usually do not need to call this method as all ops that need the value
+    of the variable call it automatically through a `convert_to_tensor()` call.
+
+    Returns a `Tensor` which holds the value of the variable.  You can not
+    assign a new value to this tensor as it is not a reference to the variable.
+    See [`ref()`](#Variable.ref) if you want to get a reference to the
+    variable.
+
+    To avoid copies, if the consumer of the returned value is on the same device
+    as the variable, this actually returns the live value of the variable, not
+    a copy.  Updates to the variable are seen by the consumer.  If the consumer
+    is on a different device it will get a copy of the variable.
+
+    Returns:
+      A `Tensor` containing the value of the variable.
+    """
+    return self._snapshot
+
+  def ref(self):
+    """Returns a reference to this variable.
+
+    You usually do not need to call this method as all ops that need a reference
+    to the variable call it automatically.
+
+    Returns is a `Tensor` which holds a reference to the variable.  You can
+    assign a new value to the variable by passing the tensor to an assign op.
+    See [`value()`](#Variable.value) if you want to get the value of the
+    variable.
+
+    Returns:
+      A `Tensor` that is a reference to the variable.
+    """
     return self._variable
 
   def eval(self, session=None):
@@ -366,15 +413,17 @@ class Variable(object):
 
   # Conversion to tensor.
   @staticmethod
-  def _TensorConversionFunction(v, dtype=None, name=None):
+  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
     """Utility function for converting a Variable to a Tensor."""
     _ = name
-    ret = v._AsTensor()  # pylint: disable=protected-access
     if dtype and not dtype.is_compatible_with(v.dtype):
       raise ValueError(
           "Incompatible type conversion requested to type '%s' for variable "
           "of type '%s'" % (dtype.name, v.dtype.name))
-    return ret
+    if as_ref:
+      return v.ref()
+    else:
+      return v.value()
 
   # Operator overloading.
   #

@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
@@ -786,6 +787,47 @@ class PngTest(test_util.TensorFlowTestCase):
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
 
+
+class ConvertImageTest(test_util.TensorFlowTestCase):
+
+  def _convert(self, original, original_dtype, output_dtype, expected):
+    x_np = np.array(original, dtype=original_dtype.as_numpy_dtype())
+    y_np = np.array(expected, dtype=output_dtype.as_numpy_dtype())
+
+    with self.test_session():
+      image = constant_op.constant(x_np)
+      y = image_ops.convert_image_dtype(image, output_dtype)
+      self.assertTrue(y.dtype == output_dtype)
+      self.assertAllClose(y.eval(), y_np, atol=1e-5)
+
+  def testNoConvert(self):
+    # Make sure converting to the same data type creates no ops
+    with self.test_session():
+      image = constant_op.constant([1], dtype=dtypes.uint8)
+      y = image_ops.convert_image_dtype(image, dtypes.uint8)
+      self.assertEquals(image, y)
+
+  def testConvertBetweenInteger(self):
+    # Make sure converting to between integer types scales appropriately
+    with self.test_session():
+      self._convert([0, 255], dtypes.uint8, dtypes.int16, [0, 255 * 128])
+      self._convert([0, 32767], dtypes.int16, dtypes.uint8, [0, 255])
+
+  def testConvertBetweenFloat(self):
+    # Make sure converting to between float types does nothing interesting
+    with self.test_session():
+      self._convert([-1.0, 0, 1.0, 200000], dtypes.float32, dtypes.float64,
+                    [-1.0, 0, 1.0, 200000])
+      self._convert([-1.0, 0, 1.0, 200000], dtypes.float64, dtypes.float32,
+                    [-1.0, 0, 1.0, 200000])
+
+  def testConvertBetweenIntegerAndFloat(self):
+    # Make sure converting from and to a float type scales appropriately
+    with self.test_session():
+      self._convert([0, 1, 255], dtypes.uint8, dtypes.float32,
+                    [0, 1.0 / 255.0, 1])
+      self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
+                    [0, 1, 255])
 
 if __name__ == '__main__':
   googletest.main()

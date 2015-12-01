@@ -379,6 +379,8 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER6(OP, D, N, F, T0, T1, T2, T3, T4, T5) REGISTER(OP, D, N, F, T0)
 #define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6) \
   REGISTER(OP, D, N, F, T0)
+#define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
+  REGISTER(OP, D, N, F, T0)
 #else  // !defined(__ANDROID__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
@@ -398,6 +400,9 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6) \
   REGISTER4(OP, D, N, F, T0, T1, T2, T3)                   \
   REGISTER3(OP, D, N, F, T4, T5, T6)
+#define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
+  REGISTER4(OP, D, N, F, T0, T1, T2, T3)                       \
+  REGISTER4(OP, D, N, F, T4, T5, T6, T7)
 #endif  // defined(__ANDROID__)
 
 }  // end namespace tensorflow

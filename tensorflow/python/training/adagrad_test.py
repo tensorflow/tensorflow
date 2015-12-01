@@ -47,6 +47,28 @@ class AdagradOptimizerTest(tf.test.TestCase):
       self.assertAllClose(np.array([2.715679168701172, 3.715679168701172]),
                           var1.eval())
 
+  def testTensorLearningRate(self):
+    with self.test_session():
+      var0 = tf.Variable([1.0, 2.0])
+      var1 = tf.Variable([3.0, 4.0])
+      grads0 = tf.constant([0.1, 0.1])
+      grads1 = tf.constant([0.01, 0.01])
+      ada_opt = tf.train.AdagradOptimizer(
+          tf.constant(3.0), initial_accumulator_value=0.1)
+      ada_update = ada_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      tf.initialize_all_variables().run()
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], var0.eval())
+      self.assertAllClose([3.0, 4.0], var1.eval())
+      # Run 3 steps of adagrad
+      for _ in range(3):
+        ada_update.run()
+      # Validate updated params
+      self.assertAllClose(np.array([-1.6026098728179932, -0.6026098728179932]),
+                          var0.eval())
+      self.assertAllClose(np.array([2.715679168701172, 3.715679168701172]),
+                          var1.eval())
+
   def testFloat64(self):
     with self.test_session():
       opt = tf.train.AdagradOptimizer(3.0, initial_accumulator_value=0.1)

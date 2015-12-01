@@ -39,7 +39,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device>
-void CheckErrors(OpKernelContext* context, int seq_dim) {
+void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
   const Tensor& input = context->input(0);
   const Tensor& seq_lens = context->input(1);
 
@@ -52,15 +52,18 @@ void CheckErrors(OpKernelContext* context, int seq_dim) {
       seq_lens_vec.data(), seq_lens_t.data(),
       sizeof(int64) * seq_lens_t.size());
 
-  OP_REQUIRES(context, 0 != seq_dim, errors::InvalidArgument("0 == seq_dim"));
+  OP_REQUIRES(context, batch_dim != seq_dim,
+              errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim));
   OP_REQUIRES(context, seq_dim < input.dims(),
               errors::InvalidArgument("seq_dim must be < input.dims()", "( ",
                                       seq_dim, " vs. ", input.dims(), ")"));
-
-  OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(0),
-              errors::InvalidArgument("len(seq_lens) != input.dims(", 0, "), ",
-                                      "(", seq_lens.NumElements(), " vs. ",
-                                      input.dim_size(seq_dim)));
+  OP_REQUIRES(context, batch_dim < input.dims(),
+              errors::InvalidArgument("batch_dim must be < input.dims()", "( ",
+                                      batch_dim, " vs. ", input.dims(), ")"));
+  OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(batch_dim),
+              errors::InvalidArgument("len(seq_lens) != input.dims(", batch_dim,
+                                      "), ", "(", seq_lens.NumElements(),
+                                      " vs. ", input.dim_size(batch_dim)));
 
   for (int d = 0; d < seq_lens_vec.size(); ++d) {
     OP_REQUIRES(context, seq_lens_vec[d] >= 0,
@@ -72,19 +75,24 @@ void CheckErrors(OpKernelContext* context, int seq_dim) {
 }
 
 template <>
-void CheckErrors<GPUDevice>(OpKernelContext* context, int seq_dim) {
+void CheckErrors<GPUDevice>(OpKernelContext* context, int batch_dim,
+                            int seq_dim) {
   const Tensor& input = context->input(0);
   const Tensor& seq_lens = context->input(1);
 
-  OP_REQUIRES(context, 0 != seq_dim, errors::InvalidArgument("0 == seq_dim"));
+  OP_REQUIRES(context, batch_dim != seq_dim,
+              errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim));
   OP_REQUIRES(context, seq_dim < input.dims(),
               errors::InvalidArgument("seq_dim must be < input.dims()", "( ",
                                       seq_dim, " vs. ", input.dims(), ")"));
+  OP_REQUIRES(context, batch_dim < input.dims(),
+              errors::InvalidArgument("batch_dim must be < input.dims()", "( ",
+                                      batch_dim, " vs. ", input.dims(), ")"));
 
-  OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(0),
-              errors::InvalidArgument("len(seq_lens) != input.dims(", 0, "), ",
-                                      "(", seq_lens.NumElements(), " vs. ",
-                                      input.dim_size(seq_dim)));
+  OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(batch_dim),
+              errors::InvalidArgument("len(seq_lens) != input.dims(", batch_dim,
+                                      "), ", "(", seq_lens.NumElements(),
+                                      " vs. ", input.dim_size(batch_dim)));
 }
 
 template <typename Device, typename T>
@@ -92,6 +100,7 @@ class ReverseSequenceOp : public OpKernel {
  public:
   explicit ReverseSequenceOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("batch_dim", &batch_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("seq_dim", &seq_dim_));
   }
 
@@ -106,7 +115,7 @@ class ReverseSequenceOp : public OpKernel {
 
     auto seq_lens_t = seq_lens.vec<int64>();
 
-    CheckErrors<Device>(context, seq_dim_);
+    CheckErrors<Device>(context, batch_dim_, seq_dim_);
 
     const int input_dims = input.dims();
 
@@ -114,11 +123,11 @@ class ReverseSequenceOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
 
-#define HANDLE_DIM(NDIM)                                                    \
-  case NDIM:                                                                \
-    functor::ReverseSequence<Device, T, NDIM>::Compute(                     \
-        context->eigen_device<Device>(), input.tensor<T, NDIM>(), seq_dim_, \
-        seq_lens_t, output->tensor<T, NDIM>());                             \
+#define HANDLE_DIM(NDIM)                                                      \
+  case NDIM:                                                                  \
+    functor::ReverseSequence<Device, T, NDIM>::Compute(                       \
+        context->eigen_device<Device>(), input.tensor<T, NDIM>(), batch_dim_, \
+        seq_dim_, seq_lens_t, output->tensor<T, NDIM>());                     \
     break;
 
     switch (input_dims) {
@@ -136,6 +145,7 @@ class ReverseSequenceOp : public OpKernel {
   }
 
  private:
+  int32 batch_dim_;
   int32 seq_dim_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ReverseSequenceOp);
@@ -152,12 +162,12 @@ TF_CALL_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE);
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T, Dims)                                      \
-  template <>                                                          \
-  void ReverseSequence<GPUDevice, T, Dims>::Compute(                   \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input, \
-      int32 seq_dim, TTypes<int64>::ConstVec seq_lens,                 \
-      typename TTypes<T, Dims>::Tensor output);                        \
+#define DECLARE_GPU_SPEC(T, Dims)                                       \
+  template <>                                                           \
+  void ReverseSequence<GPUDevice, T, Dims>::Compute(                    \
+      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,  \
+      int32 batch_dim, int32 seq_dim, TTypes<int64>::ConstVec seq_lens, \
+      typename TTypes<T, Dims>::Tensor output);                         \
   extern template struct ReverseSequence<GPUDevice, T, Dims>;
 
 #define DECLARE_GPU_SPECS(T) \

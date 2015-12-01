@@ -24,7 +24,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.kernel_tests import gradient_checker
 
 
 class SumReductionTest(tf.test.TestCase):
@@ -150,13 +149,12 @@ class SumReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_sum(t, reduction_axes)
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t,
-          shape,
-          su,
-          sum_shape,
-          x_init_value=x,
-          delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  shape,
+                                                  su,
+                                                  sum_shape,
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient(self):
@@ -211,18 +209,30 @@ class MeanReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_mean(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
       su = tf.reduce_mean(t, [0, 1, 2, 3])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [1], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [1],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
       su = tf.reduce_mean(t, [])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 3, 4, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 3, 4, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
 
@@ -269,18 +279,30 @@ class ProdReductionTest(tf.test.TestCase):
       t = tf.convert_to_tensor(x)
 
       su = tf.reduce_prod(t, [])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 3, 4, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 3, 4, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
       su = tf.reduce_prod(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
       su = tf.reduce_prod(t, [0, 1, 2, 3])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [1], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [1],
+                                                  x_init_value=x,
+                                                  delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
     # NOTE(kearnes): the current gradient calculation gives NaNs for 0 inputs
@@ -288,8 +310,12 @@ class ProdReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_prod(t, [])
-      jacob_t, _ = gradient_checker.ComputeGradient(
-          t, s, su, [2, 3, 4, 2], x_init_value=x, delta=1)
+      jacob_t, _ = tf.test.compute_gradient(t,
+                                            s,
+                                            su,
+                                            [2, 3, 4, 2],
+                                            x_init_value=x,
+                                            delta=1)
       with self.assertRaisesOpError("Tensor had NaN values"):
         tf.check_numerics(jacob_t, message="_ProdGrad NaN test").op.run()
 
@@ -336,8 +362,12 @@ class MinReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_min(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient2(self):
@@ -346,8 +376,12 @@ class MinReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_min(t, [1])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 4, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 4, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient3(self):
@@ -356,8 +390,12 @@ class MinReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_min(t, [2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 3, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 3, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient4(self):
@@ -366,8 +404,12 @@ class MinReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_min(t)
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [1], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [1],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
 
@@ -414,8 +456,12 @@ class MaxReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_max(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient2(self):
@@ -424,8 +470,12 @@ class MaxReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_max(t, [1])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 4, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 4, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient3(self):
@@ -434,8 +484,12 @@ class MaxReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_max(t, [2])
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [2, 3, 2], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [2, 3, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient4(self):
@@ -444,8 +498,12 @@ class MaxReductionTest(tf.test.TestCase):
     with self.test_session():
       t = tf.convert_to_tensor(x)
       su = tf.reduce_max(t)
-      jacob_t, jacob_n = gradient_checker.ComputeGradient(
-          t, s, su, [1], x_init_value=x, delta=1)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [1],
+                                                  x_init_value=x,
+                                                  delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
 

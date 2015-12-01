@@ -25,9 +25,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests.gradient_checker import ComputeGradientError
-
-
 
 class LRNOpTest(tf.test.TestCase):
 
@@ -107,7 +104,7 @@ class LRNOpTest(tf.test.TestCase):
       lrn_op = tf.nn.local_response_normalization(
           inp, name="lrn", depth_radius=lrn_depth_radius, bias=bias,
           alpha=alpha, beta=beta)
-      err = ComputeGradientError(inp, shape, lrn_op, shape)
+      err = tf.test.compute_gradient_error(inp, shape, lrn_op, shape)
     print("LRN Gradient error ", err)
     self.assertLess(err, 1e-4)
 

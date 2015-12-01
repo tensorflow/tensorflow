@@ -327,6 +327,10 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """Serves the index page (i.e., the tensorboard app itself)."""
     self._serve_static_file('/dist/index.html')
 
+  def _serve_js(self, unused_query_params):
+    """Serves the JavaScript for the index page."""
+    self._serve_static_file('/dist/app.js')
+
   def _serve_static_file(self, path):
     """Serves the static file located at the given path.
 
@@ -377,7 +381,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         IMAGES_ROUTE: self._serve_images,
         INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
         RUNS_ROUTE: self._serve_runs,
-        '': self._serve_index
+        '': self._serve_index,
+        '/app.js': self._serve_js
     }
 
     if clean_path in handlers:

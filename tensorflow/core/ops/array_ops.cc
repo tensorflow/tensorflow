@@ -404,8 +404,9 @@ Reshapes a tensor.
 Given `tensor`, this operation returns a tensor that has the same values
 as `tensor` with shape `shape`.
 
-If `shape` is the special value `[-1]`, then `tensor` is flattened and the
-operation outputs a 1-D tensor with all elements of `tensor`.
+If one component of `shape` is the special value -1, the size of that dimension
+is computed so that the total size remains constant.  In particular, a `shape`
+of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
 
 If `shape` is 1-D or higher, then the operation returns a tensor with shape
 `shape` filled with the values of `tensor`. In this case, the number of elements
@@ -435,6 +436,13 @@ reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
 # tensor 't' has shape [3, 2, 3]
 # pass '[-1]' to flatten 't'
 reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
+# -1 can also be used with higher dimensional shapes
+reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+
+# tensor 't' is [7]
+# shape `[]` reshapes to a scalar
+reshape(t, []) ==> 7
 ```
 
 shape: Defines the shape of the output tensor.
@@ -535,25 +543,29 @@ REGISTER_OP("ReverseSequence")
     .Input("seq_lengths: int64")
     .Output("output: T")
     .Attr("seq_dim: int")
+    .Attr("batch_dim: int = 0")
     .Attr("T: type")
     .Doc(R"doc(
-Reverses variable length slices in dimension `seq_dim`.
+Reverses variable length slices.
 
-This op first slices `input` along the first dimension, and for each slice `i`,
-reverses the first `seq_lengths[i]` elements along the dimension `seq_dim`.
+This op first slices `input` along the dimension `batch_dim`, and for each
+slice `i`, reverses the first `seq_lengths[i]` elements along
+the dimension `seq_dim`.
 
 The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
-and `seq_lengths` must be a vector of length `input.dims(0)`.
+and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
-The output slice `i` along dimension 0 is then given by input slice `i`, with
-the first `seq_lengths[i]` slices along dimension `seq_dim` reversed.
+The output slice `i` along dimension `batch_dim` is then given by input
+slice `i`, with the first `seq_lengths[i]` slices along dimension
+`seq_dim` reversed.
 
 For example:
 
 ```prettyprint
 # Given this:
+batch_dim = 0
 seq_dim = 1
-input.dims = (4, ...)
+input.dims = (4, 8, ...)
 seq_lengths = [7, 2, 3, 5]
 
 # then slices of input are reversed on seq_dim, but only up to seq_lengths:
@@ -569,10 +581,32 @@ output[2, 3:, :, ...] = input[2, 3:, :, ...]
 output[3, 2:, :, ...] = input[3, 2:, :, ...]
 ```
 
+In contrast, if:
+```prettyprint
+# Given this:
+batch_dim = 2
+seq_dim = 0
+input.dims = (8, ?, 4, ...)
+seq_lengths = [7, 2, 3, 5]
+
+# then slices of input are reversed on seq_dim, but only up to seq_lengths:
+output[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]
+output[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]
+output[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]
+output[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]
+
+# while entries past seq_lens are copied through:
+output[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]
+output[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]
+output[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]
+output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
+```
+
 input: The input to reverse.
 seq_lengths: 1-D with length `input.dims(0)` and
   `max(seq_lengths) < input.dims(seq_dim)`
 seq_dim: The dimension which is partially reversed.
+batch_dim: The dimension along which reversal is performed.
 output: The partially reversed input. It has the same shape as `input`.
 )doc");
 

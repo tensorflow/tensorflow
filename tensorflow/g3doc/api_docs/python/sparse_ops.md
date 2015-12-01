@@ -43,23 +43,23 @@ dense[tuple(indices[i])] = values[i]
 ```
 
 By convention, `indices` should be sorted in row-major order (or equivalently
-lexigraphic order on the tuples `indices[i]`).  This is not enforced when
-`SparseTensor` objects are constructed, but most Ops assume correct ordering.
+lexicographic order on the tuples `indices[i]`).  This is not enforced when
+`SparseTensor` objects are constructed, but most ops assume correct ordering.
 If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
 misordered `SparseTensor`.
 
 Example: The sparse tensor
 
 ```python
-  SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
 ```
 
 represents the dense tensor
 
 ```python
-  [[1, 0, 0, 0]
-   [0, 0, 2, 0]
-   [0, 0, 0, 0]]
+[[1, 0, 0, 0]
+ [0, 0, 2, 0]
+ [0, 0, 0, 0]]
 ```
 
 - - -
@@ -73,7 +73,7 @@ Creates a `SparseTensor`.
 
 *  <b>`indices`</b>: A 2-D int64 tensor of shape `[N, ndims]`.
 *  <b>`values`</b>: A 1-D tensor of any type and shape `[N]`.
-*  <b>`dense_shape`</b>: A 1-D int64 tensor of shape `[ndims]`.
+*  <b>`shape`</b>: A 1-D int64 tensor of shape `[ndims]`.
 
 ##### Returns:
 

@@ -33,7 +33,7 @@ def _SwitchGrad(op, *grad):
   if isinstance(ctxt, WhileContext):
     merge_op = ctxt.switch_map.get(op)
     if merge_op:
-      merge_op._update_input(1, grad[1])
+      merge_op._update_input(1, next_iteration(grad[1]))
       return None, None
     else:
       merge_op = merge(grad, name="b_switch")[0]
@@ -70,7 +70,7 @@ def _MergeGrad(op, grad, _):
   else:
     num_inputs = len(op.inputs)
     cond = [math_ops.equal(op.outputs[1], i) for i in xrange(num_inputs)]
-    return [Switch(grad, cond[i])[1] for i in xrange(num_inputs)]
+    return [switch(grad, cond[i])[1] for i in xrange(num_inputs)]
 
 
 @ops.RegisterGradient("Exit")
@@ -89,7 +89,7 @@ def _ExitGrad(op, grad):
 
 @ops.RegisterGradient("NextIteration")
 def _NextIterationGrad(_, grad):
-  return next_iteration(grad)
+  return grad
 
 
 @ops.RegisterGradient("Enter")

@@ -442,8 +442,8 @@ class Tensor(object):
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
 
-def _TensorTensorConversionFunction(t, dtype=None, name=None):
-  _ = name
+def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
+  _ = name, as_ref
   if dtype and not dtype.is_compatible_with(t.dtype):
     raise ValueError(
         "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
@@ -455,7 +455,7 @@ _tensor_conversion_func_registry = {
     0: [(Tensor, _TensorTensorConversionFunction)]}
 
 
-def convert_to_tensor(value, dtype=None, name=None):
+def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -487,6 +487,7 @@ def convert_to_tensor(value, dtype=None, name=None):
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
+    as_ref: True if we want the result as a ref tensor.
 
   Returns:
     A `Tensor` based on `value`.
@@ -502,7 +503,7 @@ def convert_to_tensor(value, dtype=None, name=None):
   for _, funcs_at_priority in sorted(_tensor_conversion_func_registry.items()):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
-        ret = conversion_func(value, dtype=dtype, name=name)
+        ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
         if not isinstance(ret, Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r"
@@ -519,7 +520,8 @@ def convert_to_tensor(value, dtype=None, name=None):
                   % (error_prefix, value, type(value)))
 
 
-def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
+def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
+                                        as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` it is returned
@@ -532,6 +534,7 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name to use if a new `Tensor` is created.
+    as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
     An `Tensor` or an `IndexedSlices` based on `value`.
@@ -546,10 +549,11 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
           % (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return convert_to_tensor(value, dtype, name)
+    return convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
 
 
-def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
+def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
+                                          as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
   Args:
@@ -557,10 +561,10 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor`
       `IndexedSlices`.
-
     name: (Optional.) A name prefix to used when a new `Tensor` is
       created, in which case element `i` will be given the name `name
       + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -580,7 +584,8 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
     else:
       n = None if name is None else "%s_%d" % (name, i)
       ret.append(
-          convert_to_tensor_or_indexed_slices(value, dtype=dtype, name=n))
+          convert_to_tensor_or_indexed_slices(value, dtype=dtype, name=n,
+                                              as_ref=as_ref))
   return ret
 
 
@@ -590,12 +595,15 @@ def register_tensor_conversion_function(base_type, conversion_func,
 
   The conversion function must have the following signature:
 
-      def conversion_func(value, dtype=None, name=None):
+      def conversion_func(value, dtype=None, name=None, as_ref=False):
         # ...
 
   It must return a Tensor with the given dtype if specified. If the
   conversion function creates a new Tensor, it should use the given
   name if specified. All exceptions will be propagated to the caller.
+
+  If `as_ref` is true, the function must return a Tensor reference,
+  such as a VariableOp.
 
   NOTE: The conversion functions will execute in order of priority,
     followed by order of registration. To ensure that a conversion
@@ -762,23 +770,23 @@ class SparseTensor(object):
   ```
 
   By convention, `indices` should be sorted in row-major order (or equivalently
-  lexigraphic order on the tuples `indices[i]`).  This is not enforced when
-  `SparseTensor` objects are constructed, but most Ops assume correct ordering.
+  lexicographic order on the tuples `indices[i]`).  This is not enforced when
+  `SparseTensor` objects are constructed, but most ops assume correct ordering.
   If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
   misordered `SparseTensor`.
 
   Example: The sparse tensor
 
   ```python
-    SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+  SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
   ```
 
   represents the dense tensor
 
   ```python
-    [[1, 0, 0, 0]
-     [0, 0, 2, 0]
-     [0, 0, 0, 0]]
+  [[1, 0, 0, 0]
+   [0, 0, 2, 0]
+   [0, 0, 0, 0]]
   ```
 
   @@__init__
@@ -795,14 +803,18 @@ class SparseTensor(object):
     Args:
       indices: A 2-D int64 tensor of shape `[N, ndims]`.
       values: A 1-D tensor of any type and shape `[N]`.
-     dense_shape: A 1-D int64 tensor of shape `[ndims]`.
+      shape: A 1-D int64 tensor of shape `[ndims]`.
 
     Returns:
       A `SparseTensor`
     """
     with op_scope([indices, values, shape], None, "SparseTensor"):
       indices = convert_to_tensor(indices, name="indices")
-      values = convert_to_tensor(values, name="values")
+      # Always pass as_ref=True because we want to be able to update
+      # values later if it is a VariableOp.
+      # TODO(touts): Consider adding mutable_values() when 'values'
+      # is a VariableOp and updating users of SparseTensor.
+      values = convert_to_tensor(values, name="values", as_ref=True)
       shape = convert_to_tensor(shape, name="shape")
     self._indices = indices
     self._values = values
@@ -987,7 +999,9 @@ class Operation(object):
     self._graph = g
     if inputs is None:
       inputs = []
-    self._inputs = inputs
+    elif not isinstance(inputs, list):
+      raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
+    self._inputs = list(inputs)  # Defensive copy.
     for a in self._inputs:
       if not isinstance(a, Tensor):
         raise TypeError("input needs to be a Tensor: %s" % a)
@@ -1390,6 +1404,7 @@ def get_gradient_function(op):
 
 _shape_registry = registry.Registry("shape functions")
 _default_shape_function_registry = registry.Registry("default shape functions")
+
 
 class RegisterShape(object):
   """A decorator for registering the shape function for an op type.
@@ -1924,6 +1939,7 @@ class Graph(object):
       A list of Operations.
     """
     return list(self._nodes_by_id.values())
+
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.
 
@@ -2045,7 +2061,7 @@ class Graph(object):
     else:
       c = []
       for item in self._collections.get(name, list()):
-        if hasattr(item, 'name') and item.name.startswith(scope):
+        if hasattr(item, "name") and item.name.startswith(scope):
           c.append(item)
       return c
 

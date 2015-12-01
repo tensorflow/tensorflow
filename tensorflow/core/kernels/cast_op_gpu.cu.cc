@@ -33,25 +33,27 @@ struct CastFunctor<GPUDevice, O, I> {
   }
 };
 
-#define DEFINE(O, I) template struct CastFunctor<GPUDevice, O, I>;
-DEFINE(float, double);
-DEFINE(float, int32);
-DEFINE(float, int64);
-DEFINE(double, float);
-DEFINE(double, int32);
-DEFINE(double, int64);
-DEFINE(int32, float);
-DEFINE(int32, double);
-DEFINE(int32, int64);
-DEFINE(int64, float);
-DEFINE(int64, double);
-DEFINE(int64, int32);
-DEFINE(int32, bool);
-DEFINE(float, bool);
-DEFINE(float, uint8);
-DEFINE(uint8, float);
-DEFINE(float, bfloat16);
+#define DEFINE(O, I) template struct CastFunctor<GPUDevice, O, I>
+#define DEFINE_ALL_FROM(in_type) \
+  DEFINE(in_type, bool);         \
+  DEFINE(in_type, uint8);        \
+  DEFINE(in_type, int16);        \
+  DEFINE(in_type, int32);        \
+  DEFINE(in_type, int64);        \
+  DEFINE(in_type, float);        \
+  DEFINE(in_type, double)
+
+DEFINE_ALL_FROM(bool);
+DEFINE_ALL_FROM(uint8);
+DEFINE_ALL_FROM(int16);
+DEFINE_ALL_FROM(int32);
+DEFINE_ALL_FROM(int64);
+DEFINE_ALL_FROM(float);
+DEFINE_ALL_FROM(double);
 DEFINE(bfloat16, float);
+DEFINE(float, bfloat16);
+
+#undef DEFINE_ALL_FROM
 #undef DEFINE
 
 }  // end namespace functor

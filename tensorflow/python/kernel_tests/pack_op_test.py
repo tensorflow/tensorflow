@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker
-
 
 class PackOpTest(tf.test.TestCase):
 
@@ -51,7 +49,7 @@ class PackOpTest(tf.test.TestCase):
           # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(tf.constant, data))
           c = tf.pack(xs)
-          err = gradient_checker.ComputeGradientError(xs, shapes, c, shape)
+          err = tf.test.compute_gradient_error(xs, shapes, c, shape)
           self.assertLess(err, 1e-6)
 
   def testZeroSize(self):

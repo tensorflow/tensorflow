@@ -21,7 +21,6 @@ var ts = require('gulp-typescript');
 var typescript = require('typescript');
 var gutil = require('gulp-util');
 var tslint = require('gulp-tslint');
-var server = require('gulp-server-livereload');
 var concat = require('gulp-concat');
 var merge = require('merge2');
 var gulpFilter = require('gulp-filter');
@@ -29,10 +28,11 @@ var vulcanize = require('gulp-vulcanize');
 var rename = require('gulp-rename');
 var minimist = require('minimist');
 var replace = require('gulp-replace');
-
+var tfserve = require('./scripts/tfserve.js');
 var options = minimist(process.argv.slice(2), {
   default: {
-    p: 8000  // port for gulp server
+    p: 8000,  // port for gulp server
+    h: '0.0.0.0', // host to serve on
   }
 });
 
@@ -88,7 +88,8 @@ gulp.task('compile.all', function() {
 });
 
 gulp.task('test', ['tslint-strict', 'compile.all'], function(done) {
-  tester({plugins: {local: {},   sauce: false}}, function(error) {
+  tester({suites: ['components/test/'],
+          plugins: {local: {}, sauce: false}}, function(error) {
     if (error) {
       // Pretty error for gulp.
       error = new Error(error.message || error);
@@ -128,16 +129,11 @@ gulp.task('watch', ['compile.all', 'tslint-permissive'], function() {
 });
 
 gulp.task('server', function() {
-  gulp.src('.')
-      .pipe(server({
-        host: '0.0.0.0',
-        port: options.p,
-        livereload: {
-          enable: true,
-          port: 27729 + options.p
-        },
-        directoryListing: true,
-      }));
+  tfserve({
+    port: options.p,
+    host: options.h,
+    verbose: options.v,
+  });
 });
 
 
@@ -175,4 +171,4 @@ gulp.task('vulcanize', ['compile.all', 'tslint-strict'], function() {
 });
 
 gulp.task('serve', ['server']); // alias
-gulp.task('default', ['watch']);
+gulp.task('default', ['watch', 'serve']);

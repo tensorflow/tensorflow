@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class XentTest(tf.test.TestCase):
 
@@ -120,7 +118,7 @@ class XentTest(tf.test.TestCase):
                        0.1, 0.8, 2.7, 6.4], shape=[3, 4],
                       dtype=tf.float64, name="f")
       x = tf.nn.softmax_cross_entropy_with_logits(f, l, name="xent")
-      err = gc.ComputeGradientError(f, [3, 4], x, [3])
+      err = tf.test.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 

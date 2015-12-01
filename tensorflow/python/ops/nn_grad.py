@@ -137,6 +137,11 @@ def _SoftplusGrad(op, grad):
   return gen_nn_ops._softplus_grad(grad, op.inputs[0])
 
 
+@ops.RegisterGradient("Softsign")
+def _SoftsignGrad(op, grad):
+  return gen_nn_ops._softsign_grad(grad, op.inputs[0])
+
+
 @ops.RegisterGradient("ReluGrad")
 def _ReluGradGrad(op, grad):
   x = op.inputs[1]

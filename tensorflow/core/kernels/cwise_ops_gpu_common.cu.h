@@ -40,7 +40,7 @@ template <typename Functor>
 struct UnaryFunctor<GPUDevice, Functor> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
-    out.device(d) = in.unaryExpr(typename Functor::func());
+    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
   }
 };
 
@@ -50,7 +50,8 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1) {
-    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+    To32Bit(out).device(d) =
+        To32Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const GPUDevice& d, typename Functor::tout_type out,
@@ -60,7 +61,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
-    out.device(d) = in.unaryExpr(Unary(scalar.data()));
+    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
   }
 
   void Right(const GPUDevice& d, typename Functor::tout_type out,
@@ -70,7 +71,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
-    out.device(d) = in.unaryExpr(Unary(scalar.data()));
+    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
   }
 
   void BCast(const GPUDevice& d,
@@ -86,16 +87,18 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
       const bool bcast0_all_one = AllOne<NDIMS>(bcast0);
       const bool bcast1_all_one = AllOne<NDIMS>(bcast1);
       if (bcast0_all_one && !bcast1_all_one) {
-        out.device(d) = in0.binaryExpr(in1.broadcast(bcast1), func);
+        To32Bit(out).device(d) =
+            To32Bit(in0).binaryExpr(To32Bit(in1).broadcast(bcast1), func);
         return;
       }
       if (!bcast0_all_one && bcast1_all_one) {
-        out.device(d) = in0.broadcast(bcast0).binaryExpr(in1, func);
+        To32Bit(out).device(d) =
+            To32Bit(in0).broadcast(bcast0).binaryExpr(To32Bit(in1), func);
         return;
       }
     }
-    out.device(d) =
-        in0.broadcast(bcast0).binaryExpr(in1.broadcast(bcast1), func);
+    To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
+        To32Bit(in1).broadcast(bcast1), func);
   }
 };
 
@@ -105,7 +108,8 @@ struct SelectFunctor<GPUDevice, T> {
                   typename TTypes<bool>::ConstFlat cond_flat,
                   typename TTypes<T>::ConstFlat then_flat,
                   typename TTypes<T>::ConstFlat else_flat) {
-    out.device(d) = cond_flat.select(then_flat, else_flat);
+    To32Bit(out).device(d) =
+        To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
   }
 };
 
@@ -143,6 +147,12 @@ struct SelectFunctor<GPUDevice, T> {
 #define DEFINE_BINARY5(F, T0, T1, T2, T3, T4) \
   DEFINE_BINARY2(F, T0, T1);                  \
   DEFINE_BINARY3(F, T2, T3, T4)
+#define DEFINE_BINARY6(F, T0, T1, T2, T3, T4, T5) \
+  DEFINE_BINARY3(F, T0, T1, T2);                  \
+  DEFINE_BINARY3(F, T3, T4, T5)
+#define DEFINE_BINARY7(F, T0, T1, T2, T3, T4, T5, T6) \
+  DEFINE_BINARY3(F, T0, T1, T2);                      \
+  DEFINE_BINARY4(F, T3, T4, T5, T6)
 
 }  // end namespace functor
 }  // end namespace tensorflow

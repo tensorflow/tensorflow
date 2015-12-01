@@ -21,7 +21,6 @@ from __future__ import print_function
 # pylint: disable=g-bad-import-order,
 # pylint: disable=unused-import
 import tensorflow.python.platform
-from tensorflow.python.kernel_tests import gradient_checker as gc
 
 import numpy as np
 import tensorflow as tf
@@ -56,11 +55,11 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
       input_tensor = tf.constant(x, shape=in_shape)
       resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
-      err = gc.ComputeGradientError(input_tensor,
-                                    in_shape,
-                                    resize_out,
-                                    out_shape,
-                                    x_init_value=x)
+      err = tf.test.compute_gradient_error(input_tensor,
+                                           in_shape,
+                                           resize_out,
+                                           out_shape,
+                                           x_init_value=x)
     self.assertLess(err, 1e-3)
 
   def testGradFromResizeToSmallerInBothDims(self):
@@ -73,11 +72,11 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
       input_tensor = tf.constant(x, shape=in_shape)
       resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
-      err = gc.ComputeGradientError(input_tensor,
-                                    in_shape,
-                                    resize_out,
-                                    out_shape,
-                                    x_init_value=x)
+      err = tf.test.compute_gradient_error(input_tensor,
+                                           in_shape,
+                                           resize_out,
+                                           out_shape,
+                                           x_init_value=x)
     self.assertLess(err, 1e-3)
 
 

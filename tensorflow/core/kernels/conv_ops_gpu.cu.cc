@@ -33,12 +33,8 @@ struct SpatialConvolution<GPUDevice, T> {
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor filter, int stride,
                   const Eigen::PaddingType& padding) {
-    // TODO(keveman): nvcc 6.5 crashes when 32 bit indexing is turned on. Enable
-    // this when we move to cuda 7.0.
-    // SpatialConvolutionFunc(d, To32Bit(output), To32Bit(input),
-    // To32Bit(filter), stride, padding);
-
-    SpatialConvolutionFunc(d, output, input, filter, stride, padding);
+    SpatialConvolutionFunc(d, To32Bit(output), To32Bit(input), To32Bit(filter),
+                           stride, padding);
   }
 };
 

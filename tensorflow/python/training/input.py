@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import summary_ops
@@ -114,8 +115,21 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
   Returns:
     A queue with the output strings.  A `QueueRunner` for the Queue
     is added to the current `Graph`'s `QUEUE_RUNNER` collection.
+
+  Raises:
+    ValueError: If the string_tensor is a null Python list.  At runtime,
+    will fail with an assertion if string_tensor becomes a null tensor.
   """
+  not_null_err = "string_input_producer requires a non-null input tensor"
+  if not string_tensor:
+    raise ValueError(not_null_err)
+
   with ops.op_scope([string_tensor], name, "input_producer") as name:
+    string_tensor = ops.convert_to_tensor(string_tensor, dtype=dtypes.string)
+    with ops.control_dependencies([
+        logging_ops.Assert(math_ops.greater(array_ops.size(string_tensor), 0),
+                           [not_null_err])]):
+      string_tensor = array_ops.identity(string_tensor)
     return _input_producer(
         string_tensor, dtypes.string, num_epochs, shuffle, seed, capacity, name,
         "fraction_of_%d_full" % capacity)

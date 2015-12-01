@@ -1773,6 +1773,12 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
   A queue with the output strings.  A `QueueRunner` for the Queue
   is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the string_tensor is a null Python list.  At runtime,
+  will fail with an assertion if string_tensor becomes a null tensor.
+
 
 
 ### Batching at the end of an input pipeline

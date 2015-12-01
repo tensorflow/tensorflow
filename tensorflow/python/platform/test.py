@@ -17,9 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
 from tensorflow.python.platform.googletest import GetTempDir
 from tensorflow.python.platform.googletest import main
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import IsGoogleCudaEnabled as IsBuiltWithCuda
 
+from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
+from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
+
 get_temp_dir = GetTempDir
+# pylint: enable=unused-import

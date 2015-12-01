@@ -22,7 +22,7 @@ to:
 * Optionally, write a function to compute gradients for the Op.
 * Optionally, write a function that describes the input and output shapes
   for the Op.  This allows shape inference to work with your Op.
-* Test the Op, typically in Python.
+* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/kernel_tests/gradient_checker.py).
 
 [TOC]
 

@@ -380,6 +380,51 @@ The `Operation` of this variable.
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.Variable.ref()` {#Variable.ref}
+
+Returns a reference to this variable.
+
+You usually do not need to call this method as all ops that need a reference
+to the variable call it automatically.
+
+Returns is a `Tensor` which holds a reference to the variable.  You can
+assign a new value to the variable by passing the tensor to an assign op.
+See [`value()`](#Variable.value) if you want to get the value of the
+variable.
+
+##### Returns:
+
+  A `Tensor` that is a reference to the variable.
+
+
+- - -
+
+#### `tf.Variable.value()` {#Variable.value}
+
+Returns the last snapshot of this variable.
+
+You usually do not need to call this method as all ops that need the value
+of the variable call it automatically through a `convert_to_tensor()` call.
+
+Returns a `Tensor` which holds the value of the variable.  You can not
+assign a new value to this tensor as it is not a reference to the variable.
+See [`ref()`](#Variable.ref) if you want to get a reference to the
+variable.
+
+To avoid copies, if the consumer of the returned value is on the same device
+as the variable, this actually returns the live value of the variable, not
+a copy.  Updates to the variable are seen by the consumer.  If the consumer
+is on a different device it will get a copy of the variable.
+
+##### Returns:
+
+  A `Tensor` containing the value of the variable.
+
+
+
 
 ## Variable helper functions
 

@@ -24,8 +24,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class PadOpTest(tf.test.TestCase):
 
@@ -58,7 +56,11 @@ class PadOpTest(tf.test.TestCase):
       y = tf.pad(inx, ina)
       # Expected y's shape to be:
       ys = list(np.array(x.shape) + np.sum(np.array(a), axis=1))
-      jacob_t, jacob_n = gc.ComputeGradient(inx, xs, y, ys, x_init_value=x)
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  xs,
+                                                  y,
+                                                  ys,
+                                                  x_init_value=x)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _testAll(self, np_inputs, paddings):

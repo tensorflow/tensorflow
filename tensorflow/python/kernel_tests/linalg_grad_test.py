@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class MatrixInverseGradientTest(tf.test.TestCase):
   pass  # Filled in below
@@ -49,11 +47,11 @@ def _GetMatrixInverseGradientTest(dtype_, shape_):
       else:
         ainv = tf.batch_matrix_inverse(a)
 
-      theoretical, numerical = gc.ComputeGradient(a,
-                                                  shape_,
-                                                  ainv,
-                                                  shape_,
-                                                  delta=delta)
+      theoretical, numerical = tf.test.compute_gradient(a,
+                                                        shape_,
+                                                        ainv,
+                                                        shape_,
+                                                        delta=delta)
       self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
@@ -87,8 +85,11 @@ def _GetMatrixDeterminantGradientTest(dtype_, shape_):
         c = tf.batch_matrix_determinant(a)
 
       out_shape = shape_[:-2]  # last two dimensions hold matrices
-      theoretical, numerical = gc.ComputeGradient(a, shape_, c, out_shape,
-                                                  delta=delta)
+      theoretical, numerical = tf.test.compute_gradient(a,
+                                                        shape_,
+                                                        c,
+                                                        out_shape,
+                                                        delta=delta)
 
       self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 

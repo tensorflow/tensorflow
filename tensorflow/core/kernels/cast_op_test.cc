@@ -41,22 +41,48 @@ class CastOpTest : public OpsTestBase {
   void MakeOp(DataType src, DataType dst) {
     RequireDefaultOps();
     EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
-                  .Input(FakeInput(DT_INT32))
+                  .Input(FakeInput(src))
                   .Attr("SrcT", src)
                   .Attr("DstT", dst)
                   .Finalize(node_def()));
     EXPECT_OK(InitOp());
   }
+
+  template <typename IN, typename OUT>
+  void CheckCast() {
+    DataType in_type = DataTypeToEnum<IN>::v();
+    DataType out_type = DataTypeToEnum<OUT>::v();
+    MakeOp(in_type, out_type);
+    AddInputFromArray<IN>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+    ASSERT_OK(RunOpKernel());
+    Tensor expected(allocator(), out_type, TensorShape({1, 2, 2, 1}));
+    test::FillValues<OUT>(&expected, {1, 2, 3, 4});
+    test::ExpectTensorEqual<OUT>(expected, *GetOutput(0));
+  }
 };
 
-TEST_F(CastOpTest, Int32ToUint8) {
-  MakeOp(DT_INT32, DT_UINT8);
-  AddInputFromArray<int32>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_UINT8, TensorShape({1, 2, 2, 1}));
-  test::FillValues<uint8>(&expected, {1, 2, 3, 4});
-  test::ExpectTensorEqual<uint8>(expected, *GetOutput(0));
-}
+#define TEST_CAST(in, out) \
+  TEST_F(CastOpTest, TestCast##_##in##_##out) { CheckCast<in, out>(); }
+
+#define TEST_ALL_CASTS_FROM(in) \
+  TEST_CAST(in, uint8);         \
+  TEST_CAST(in, int16);         \
+  TEST_CAST(in, int32);         \
+  TEST_CAST(in, int64);         \
+  TEST_CAST(in, float);         \
+  TEST_CAST(in, double)
+
+TEST_ALL_CASTS_FROM(uint8)
+TEST_ALL_CASTS_FROM(int16)
+TEST_ALL_CASTS_FROM(int32)
+TEST_ALL_CASTS_FROM(int64)
+TEST_ALL_CASTS_FROM(float)
+TEST_ALL_CASTS_FROM(double)
+
+#undef TEST_ALL_CASTS_FROM
+#undef TEST_CAST
+
+// TODO(wicke): check conversions from/to bool, and bfloat16
 
 static void BM_cpu_float_int64(int iters, int num) {
   testing::ItemsProcessed(static_cast<int64>(iters) * num);

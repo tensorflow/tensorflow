@@ -277,8 +277,9 @@ Reshapes a tensor.
 Given `tensor`, this operation returns a tensor that has the same values
 as `tensor` with shape `shape`.
 
-If `shape` is the special value `[-1]`, then `tensor` is flattened and the
-operation outputs a 1-D tensor with all elements of `tensor`.
+If one component of `shape` is the special value -1, the size of that dimension
+is computed so that the total size remains constant.  In particular, a `shape`
+of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
 
 If `shape` is 1-D or higher, then the operation returns a tensor with shape
 `shape` filled with the values of `tensor`. In this case, the number of elements
@@ -308,6 +309,13 @@ reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
 # tensor 't' has shape [3, 2, 3]
 # pass '[-1]' to flatten 't'
 reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
+# -1 can also be used with higher dimensional shapes
+reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+
+# tensor 't' is [7]
+# shape `[]` reshapes to a scalar
+reshape(t, []) ==> 7
 ```
 
 ##### Args:

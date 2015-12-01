@@ -224,13 +224,13 @@ We describe these interacting operations by manipulating symbolic variables.
 Let's create one:
 
 ```python
-x = tf.placeholder("float", [None, 784])
+x = tf.placeholder(tf.float32, [None, 784])
 ```
 
 `x` isn't a specific value. It's a `placeholder`, a value that we'll input when
 we ask TensorFlow to run a computation. We want to be able to input any number
 of MNIST images, each flattened into a 784-dimensional vector. We represent
-this as a 2d tensor of floating point numbers, with a shape `[None, 784]`.
+this as a 2-D tensor of floating-point numbers, with a shape `[None, 784]`.
 (Here `None` means that a dimension can be of any length.)
 
 We also need the weights and biases for our model. We could imagine treating
@@ -242,7 +242,7 @@ operations. It can be used and even modified by the computation. For machine
 learning applications, one generally has the model parameters be `Variable`s.
 
 ```python
-W = tf.Variable(tf.zeros([784,10]))
+W = tf.Variable(tf.zeros([784, 10]))
 b = tf.Variable(tf.zeros([10]))
 ```
 
@@ -259,10 +259,10 @@ to the output.
 We can now implement our model. It only takes one line!
 
 ```python
-y = tf.nn.softmax(tf.matmul(x,W) + b)
+y = tf.nn.softmax(tf.matmul(x, W) + b)
 ```
 
-First, we multiply `x` by `W` with the expression `tf.matmul(x,W)`. This is
+First, we multiply `x` by `W` with the expression `tf.matmul(x, W)`. This is
 flipped from when we multiplied them in our equation, where we had \\(Wx\\), as a
 small trick
 to deal with `x` being a 2D tensor with multiple inputs. We then add `b`, and
@@ -301,7 +301,7 @@ To implement cross-entropy we need to first add a new placeholder to input
 the correct answers:
 
 ```python
-y_ = tf.placeholder("float", [None,10])
+y_ = tf.placeholder(tf.float32, [None, 10])
 ```
 
 Then we can implement the cross-entropy, \\(-\sum y'\log(y)\\):

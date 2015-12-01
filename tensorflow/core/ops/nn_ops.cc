@@ -466,6 +466,27 @@ features: The features passed as input to the corresponding softplus operation.
 backprops: The gradients: `gradients / (1 + exp(-features))`.
 )doc");
 
+REGISTER_OP("Softsign")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Computes softsign: `features / (abs(features) + 1)`.
+)doc");
+
+REGISTER_OP("SoftsignGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Output("backprops: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Computes softsign gradients for a softsign operation.
+
+gradients: The backpropagated gradients to the corresponding softsign operation.
+features: The features passed as input to the corresponding softsign operation.
+backprops: The gradients: `gradients / (1 + abs(-features)) ** 2`.
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Softmax")

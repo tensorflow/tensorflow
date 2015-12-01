@@ -64,6 +64,26 @@ class OptimizerTest(tf.test.TestCase):
       self.assertAllClose([-14., -13.], var0.eval())
       self.assertAllClose([-6., -5.], var1.eval())
 
+  def testNoVariables(self):
+    with self.test_session():
+      var0 = tf.Variable([1.0, 2.0], trainable=False)
+      var1 = tf.Variable([3.0, 4.0], trainable=False)
+      cost = 5 * var0 + var1
+      sgd_op = tf.train.GradientDescentOptimizer(3.0)
+      with self.assertRaisesRegexp(ValueError, 'No variables'):
+        sgd_op.minimize(cost)
+
+  def testNoGradients(self):
+    with self.test_session():
+      var0 = tf.Variable([1.0, 2.0])
+      var1 = tf.Variable([3.0, 4.0])
+      cost = 5 * var0
+      global_step = tf.Variable(tf.zeros([], tf.int64), name='global_step')
+      sgd_op = tf.train.GradientDescentOptimizer(3.0)
+      with self.assertRaisesRegexp(ValueError, 'No gradients'):
+        # var1 has no gradient
+        sgd_op.minimize(cost, global_step, [var1])
+
 
 if __name__ == "__main__":
   tf.test.main()

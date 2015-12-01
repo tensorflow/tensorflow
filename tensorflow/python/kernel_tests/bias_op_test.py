@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker
-
 
 class BiasAddTest(tf.test.TestCase):
 
@@ -82,7 +80,7 @@ class BiasAddTest(tf.test.TestCase):
                                dtype=tf.float64)
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
-      err = gradient_checker.ComputeGradientError(t, [3, 2], bo, [3, 2])
+      err = tf.test.compute_gradient_error(t, [3, 2], bo, [3, 2])
     print("bias add tensor gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -92,7 +90,7 @@ class BiasAddTest(tf.test.TestCase):
                                dtype=tf.float64)
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
-      err = gradient_checker.ComputeGradientError(b, [2], bo, [3, 2])
+      err = tf.test.compute_gradient_error(b, [2], bo, [3, 2])
     print("bias add bias gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -103,7 +101,7 @@ class BiasAddTest(tf.test.TestCase):
       t = tf.constant(x, shape=s, dtype=tf.float32)
       b = tf.constant([1.3, 2.4], dtype=tf.float32)
       bo = tf.nn.bias_add(t, b)
-      err = gradient_checker.ComputeGradientError(t, s, bo, s, x_init_value=x)
+      err = tf.test.compute_gradient_error(t, s, bo, s, x_init_value=x)
     print("bias add tensor gradient err = ", err)
     self.assertLess(err, 1e-3)
 

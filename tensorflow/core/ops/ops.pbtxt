@@ -44,11 +44,12 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
       }
     }
   }
@@ -1973,9 +1974,12 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
       }
     }
   }
@@ -4251,11 +4255,12 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
       }
     }
   }
@@ -5532,7 +5537,7 @@ op {
     type: "type"
   }
   summary: "Reshapes a tensor."
-  description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf `shape` is the special value `[-1]`, then `tensor` is flattened and the\noperation outputs a 1-D tensor with all elements of `tensor`.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3]\n                        [4, 5, 6]\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]]\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2]\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n```"
+  description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf one component of `shape` is the special value -1, the size of that dimension\nis computed so that the total size remains constant.  In particular, a `shape`\nof `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3]\n                        [4, 5, 6]\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]]\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2]\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n# -1 can also be used with higher dimensional shapes\nreshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n\n# tensor \'t\' is [7]\n# shape `[]` reshapes to a scalar\nreshape(t, []) ==> 7\n```"
 }
 op {
   name: "ResizeArea"
@@ -6769,6 +6774,67 @@ op {
     }
   }
   summary: "Computes softplus gradients for a softplus operation."
+}
+op {
+  name: "Softsign"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+      }
+    }
+  }
+  summary: "Computes softsign: `features / (abs(features) + 1)`."
+}
+op {
+  name: "SoftsignGrad"
+  input_arg {
+    name: "gradients"
+    description: "The backpropagated gradients to the corresponding softsign operation."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "features"
+    description: "The features passed as input to the corresponding softsign operation."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    description: "The gradients: `gradients / (1 + abs(-features)) ** 2`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+      }
+    }
+  }
+  summary: "Computes softsign gradients for a softsign operation."
 }
 op {
   name: "SparseApplyAdagrad"

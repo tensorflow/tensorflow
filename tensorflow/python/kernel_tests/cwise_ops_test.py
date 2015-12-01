@@ -24,7 +24,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
 
 _ADD = lambda x, y: x + y
 _SUB = lambda x, y: x - y
@@ -58,11 +57,19 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertAllClose(np_ans, tf_cpu)
       if x.dtype == np.float32:
         s = list(np.shape(x))
-        jacob_t, jacob_n = gc.ComputeGradient(inx, s, y, s, x_init_value=x)
+        jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                    s,
+                                                    y,
+                                                    s,
+                                                    x_init_value=x)
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
       elif x.dtype == np.float64:
         s = list(np.shape(x))
-        jacob_t, jacob_n = gc.ComputeGradient(inx, s, y, s, x_init_value=x)
+        jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                    s,
+                                                    y,
+                                                    s,
+                                                    x_init_value=x)
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGpu(self, x, np_func, tf_func):
@@ -216,7 +223,11 @@ class BinaryOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = tf_func(inx, iny)
       xs = list(x.shape)
-      jacob_t, jacob_n = gc.ComputeGradient(inx, xs, out, zs, x_init_value=x)
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  xs,
+                                                  out,
+                                                  zs,
+                                                  x_init_value=x)
       if x.dtype == np.float32:
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
       elif x.dtype == np.float64:
@@ -230,7 +241,11 @@ class BinaryOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = tf_func(inx, iny)
       ys = list(np.shape(y))
-      jacob_t, jacob_n = gc.ComputeGradient(iny, ys, out, zs, x_init_value=y)
+      jacob_t, jacob_n = tf.test.compute_gradient(iny,
+                                                  ys,
+                                                  out,
+                                                  zs,
+                                                  x_init_value=y)
     if x.dtype == np.float32:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
     elif x.dtype == np.float64:
@@ -833,7 +848,11 @@ class SelectOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = tf.select(c, inx, iny)
       s = list(np.shape(c))
-      jacob_t, jacob_n = gc.ComputeGradient(inx, s, out, s, x_init_value=x)
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=x)
     if x.dtype == np.float32:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
     elif x.dtype == np.float64:
@@ -845,7 +864,11 @@ class SelectOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = tf.select(c, inx, iny)
       s = list(np.shape(c))
-      jacob_t, jacob_n = gc.ComputeGradient(iny, s, out, s, x_init_value=y)
+      jacob_t, jacob_n = tf.test.compute_gradient(iny,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=y)
     if x.dtype == np.float32:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
     elif x.dtype == np.float64:
@@ -923,7 +946,11 @@ class MinMaxOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = func(inx, iny)
       s = list(np.shape(x))
-      jacob_t, jacob_n = gc.ComputeGradient(inx, s, out, s, x_init_value=x)
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=x)
     if x.dtype == np.float32:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
     elif x.dtype == np.float64:
@@ -935,7 +962,11 @@ class MinMaxOpTest(tf.test.TestCase):
       iny = tf.convert_to_tensor(y)
       out = func(inx, iny)
       s = list(np.shape(x))
-      jacob_t, jacob_n = gc.ComputeGradient(iny, s, out, s, x_init_value=y)
+      jacob_t, jacob_n = tf.test.compute_gradient(iny,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=y)
     if x.dtype == np.float32:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
     elif x.dtype == np.float64:
@@ -1159,8 +1190,12 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
           tf.square(tf.real(cplx))) + tf.reduce_sum(
               tf.square(tf.imag(cplx)))
       epsilon = 1e-3
-      jacob_t, jacob_n = gc.ComputeGradient(inx, list(x.shape), loss, [1],
-                                            x_init_value=x, delta=epsilon)
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  list(x.shape),
+                                                  loss,
+                                                  [1],
+                                                  x_init_value=x,
+                                                  delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def testGradient(self):
@@ -1187,8 +1222,12 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
       # Defines the loss function as the sum of all coefficients of z.
       loss = tf.reduce_sum(tf.real(z) + tf.imag(z))
       epsilon = 0.005
-      jacob_t, jacob_n = gc.ComputeGradient(inp, list(data.shape), loss, [1],
-                                            x_init_value=data, delta=epsilon)
+      jacob_t, jacob_n = tf.test.compute_gradient(inp,
+                                                  list(data.shape),
+                                                  loss,
+                                                  [1],
+                                                  x_init_value=data,
+                                                  delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def testMulGradient(self):

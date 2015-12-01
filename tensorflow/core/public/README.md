@@ -12,7 +12,7 @@ process.
 
 First, bring in tensorflow python dependency
 
-//third_party/tensorflow:tensorflow_py
+//third_party/py/tensorflow
 
 to get the python TensorFlow API.
 
@@ -22,9 +22,9 @@ Then:
 import tensorflow as tf
 
 with tf.Session("local"):
-  input1 = tf.Constant(1.0, shape=[1, 1], name="input1")
-  input2 = tf.Constant(2.0, shape=[1, 1], name="input2")
-  output = tf.MatMul(input1, input2)
+  input1 = tf.constant(1.0, shape=[1, 1], name="input1")
+  input2 = tf.constant(2.0, shape=[1, 1], name="input2")
+  output = tf.matmul(input1, input2)
 
   # Run graph and fetch the output
   result = output.eval()

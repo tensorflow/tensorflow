@@ -55,6 +55,24 @@ struct CastFunctor<CPUDevice, O, I> {
 
 }  // namespace functor
 
+#define CURRY_TYPES2(FN, arg0) \
+  FN(arg0, bool);              \
+  FN(arg0, uint8);             \
+  FN(arg0, int16);             \
+  FN(arg0, int32);             \
+  FN(arg0, int64);             \
+  FN(arg0, float);             \
+  FN(arg0, double)
+
+#define CURRY_TYPES3(FN, arg0, arg1) \
+  FN(arg0, arg1, bool);              \
+  FN(arg0, arg1, uint8);             \
+  FN(arg0, arg1, int16);             \
+  FN(arg0, arg1, int32);             \
+  FN(arg0, arg1, int64);             \
+  FN(arg0, arg1, float);             \
+  FN(arg0, arg1, double)
+
 #define CAST_CASE(DEVICE, IN, OUT)                                         \
   if (DataTypeToEnum<IN>::value == src_dtype_ &&                           \
       DataTypeToEnum<OUT>::value == dst_dtype_) {                          \
@@ -110,27 +128,14 @@ class CpuCastOp : public CastOpBase {
       work_ = nullptr;  // Identity
       return Status::OK();
     }
-    CAST_CASE(CPUDevice, bool, float);
-    CAST_CASE(CPUDevice, bool, int32);
-    CAST_CASE(CPUDevice, bool, double);
-    CAST_CASE(CPUDevice, double, float);
-    CAST_CASE(CPUDevice, double, int32);
-    CAST_CASE(CPUDevice, double, int64);
-    CAST_CASE(CPUDevice, float, double);
-    CAST_CASE(CPUDevice, float, uint8);
-    CAST_CASE(CPUDevice, float, int32);
-    CAST_CASE(CPUDevice, float, int64);
-    CAST_CASE(CPUDevice, int32, double);
-    CAST_CASE(CPUDevice, int32, float);
-    CAST_CASE(CPUDevice, int32, uint8);
-    CAST_CASE(CPUDevice, int32, int64);
-    CAST_CASE(CPUDevice, int64, double);
-    CAST_CASE(CPUDevice, int64, float);
-    CAST_CASE(CPUDevice, int64, int32);
-    CAST_CASE(CPUDevice, uint8, float);
-    CAST_CASE(CPUDevice, uint8, int32);
-    CAST_CASE(CPUDevice, uint8, int64);
-    CAST_CASE(CPUDevice, uint8, double);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, bool);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, uint8);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, int16);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, int32);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, int64);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, float);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, double);
+
     if (src_dtype_ == DT_BFLOAT16 && dst_dtype_ == DT_FLOAT) {
       work_ = [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
         int64 N = out->NumElements();
@@ -185,24 +190,15 @@ class GpuCastOp : public CastOpBase {
       work_ = nullptr;  // Identity
       return Status::OK();
     }
-    CAST_CASE(GPUDevice, bfloat16, float);
-    CAST_CASE(GPUDevice, bool, float);
-    CAST_CASE(GPUDevice, double, float);
-    CAST_CASE(GPUDevice, double, int64);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, bool);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, uint8);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, int16);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, int32);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, int64);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, float);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, double);
     CAST_CASE(GPUDevice, float, bfloat16);
-    CAST_CASE(GPUDevice, float, double);
-    CAST_CASE(GPUDevice, float, int64);
-    CAST_CASE(GPUDevice, int64, double);
-    CAST_CASE(GPUDevice, int64, float);
-    CAST_CASE(GPUDevice, uint8, float);
-    CAST_CASE(GPUDevice, float, uint8);
-    CAST_CASE(GPUDevice, bool, int32);
-    CAST_CASE(GPUDevice, double, int32);
-    CAST_CASE(GPUDevice, float, int32);
-    CAST_CASE(GPUDevice, int32, double);
-    CAST_CASE(GPUDevice, int32, float);
-    CAST_CASE(GPUDevice, int32, int64);
-    CAST_CASE(GPUDevice, int64, int32);
+    CAST_CASE(GPUDevice, bfloat16, float);
     return Unimplemented();
   }
 };
@@ -217,27 +213,23 @@ REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
                               .TypeConstraint<srctype>("SrcT") \
                               .TypeConstraint<dsttype>("DstT") \
                               .Device(DEVICE_GPU),             \
-                          GpuCastOp);
-REGISTER_CAST_GPU(bfloat16, float);
-REGISTER_CAST_GPU(bool, float);
-REGISTER_CAST_GPU(double, float);
-REGISTER_CAST_GPU(double, int64);
+                          GpuCastOp)
+
+CURRY_TYPES2(REGISTER_CAST_GPU, bool);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint8);
+CURRY_TYPES2(REGISTER_CAST_GPU, int16);
+CURRY_TYPES2(REGISTER_CAST_GPU, int32);
+CURRY_TYPES2(REGISTER_CAST_GPU, int64);
+CURRY_TYPES2(REGISTER_CAST_GPU, float);
+CURRY_TYPES2(REGISTER_CAST_GPU, double);
 REGISTER_CAST_GPU(float, bfloat16);
-REGISTER_CAST_GPU(float, double);
-REGISTER_CAST_GPU(float, int64);
-REGISTER_CAST_GPU(int64, double);
-REGISTER_CAST_GPU(int64, float);
-REGISTER_CAST_GPU(uint8, float);
-REGISTER_CAST_GPU(float, uint8);
-REGISTER_CAST_GPU(bool, int32);
-REGISTER_CAST_GPU(double, int32);
-REGISTER_CAST_GPU(float, int32);
-REGISTER_CAST_GPU(int32, double);
-REGISTER_CAST_GPU(int32, float);
-REGISTER_CAST_GPU(int32, int64);
-REGISTER_CAST_GPU(int64, int32);
+REGISTER_CAST_GPU(bfloat16, float);
+
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA
+
+#undef CURRY_TYPES2
+#undef CURRY_TYPES3
 
 // HostCast differs from Cast in that its input and output are in host memory.
 REGISTER_KERNEL_BUILDER(Name("_HostCast").Device(DEVICE_CPU), CpuCastOp);

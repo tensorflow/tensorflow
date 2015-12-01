@@ -23,8 +23,6 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.kernel_tests import gradient_checker as gc
-
 
 class ReluTest(tf.test.TestCase):
 
@@ -67,7 +65,11 @@ class ReluTest(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           y,
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
@@ -98,7 +100,11 @@ class ReluTest(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           y,
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu (double) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -112,8 +118,11 @@ class ReluTest(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float32, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], z[0], [2, 5],
-                                    x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           z[0],
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu (float) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
@@ -127,8 +136,11 @@ class ReluTest(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
           dtype=np.float64, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], z[0], [2, 5],
-                                    x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           z[0],
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu (double) gradient of gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -178,7 +190,11 @@ class Relu6Test(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
           dtype=np.float32, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           y,
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu6 (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
@@ -191,7 +207,11 @@ class Relu6Test(tf.test.TestCase):
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
           dtype=np.float64, order="F")
-      err = gc.ComputeGradientError(x, [2, 5], y, [2, 5], x_init_value=x_init)
+      err = tf.test.compute_gradient_error(x,
+                                           [2, 5],
+                                           y,
+                                           [2, 5],
+                                           x_init_value=x_init)
     print("relu6 (double) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
