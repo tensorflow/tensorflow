@@ -59,13 +59,8 @@ namespace {
 
   template <typename T>
   struct DividerTraits {
-#if defined(__SIZEOF_INT128__) && !defined(__CUDACC__)
     typedef typename conditional<sizeof(T) == 8, uint64_t, uint32_t>::type type;
     static const int N = sizeof(T) * 8;
-#else
-    typedef uint32_t type;
-    static const int N = 32;
-#endif
   };
 
 
@@ -78,40 +73,39 @@ namespace {
 #endif
   }
 
-#if defined(__CUDA_ARCH__)
- template <typename T>
- EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE uint64_t muluh(const uint64_t a, const T b) {
-    return __umul64hi(a, b);
- }
-#else
   template <typename T>
-  EIGEN_ALWAYS_INLINE uint64_t muluh(const uint64_t a, const T b) {
-#if defined(__SIZEOF_INT128__) && !defined(__CUDACC__)
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE uint64_t muluh(const uint64_t a, const T b) {
+#if defined(__CUDA_ARCH__)
+    return __umul64hi(a, b);
+#elif defined(__SIZEOF_INT128__)
     __uint128_t v = static_cast<__uint128_t>(a) * static_cast<__uint128_t>(b);
     return static_cast<uint64_t>(v >> 64);
 #else
-    EIGEN_STATIC_ASSERT(sizeof(T) == 4, YOU_MADE_A_PROGRAMMING_MISTAKE);
-    return (a * b) >> 32;
+    return (TensorUInt128<static_val<0>, uint64_t>(a) * TensorUInt128<static_val<0>, uint64_t>(b)).upper();
 #endif
   }
-#endif
 
   template <int N, typename T>
   struct DividerHelper {
-    static EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE uint32_t computeMultiplier (const int log_div, const T divider) {
+    static EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE uint32_t computeMultiplier(const int log_div, const T divider) {
       EIGEN_STATIC_ASSERT(N == 32, YOU_MADE_A_PROGRAMMING_MISTAKE);
       return (static_cast<uint64_t>(1) << (N+log_div)) / divider - (static_cast<uint64_t>(1) << N) + 1;
     }
   };
 
-#if defined(__SIZEOF_INT128__) && !defined(__CUDACC__)
   template <typename T>
   struct DividerHelper<64, T> {
-    static EIGEN_ALWAYS_INLINE uint64_t computeMultiplier(const int log_div, const T divider) {
+    static EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE uint64_t computeMultiplier(const int log_div, const T divider) {
+#if defined(__SIZEOF_INT128__) && !defined(__CUDA_ARCH__)
       return ((static_cast<__uint128_t>(1) << (64+log_div)) / static_cast<__uint128_t>(divider) - (static_cast<__uint128_t>(1) << 64) + 1);
+#else
+      const uint64_t shift = 1ULL << log_div;
+      TensorUInt128<uint64_t, uint64_t> result = (TensorUInt128<uint64_t, static_val<0> >(shift, 0) / TensorUInt128<static_val<0>, uint64_t>(divider) - TensorUInt128<static_val<1>, static_val<0> >(1, 0) + TensorUInt128<static_val<0>, static_val<1> >(1));
+      return static_cast<uint64_t>(result);
+#endif
     }
   };
-#endif
+
 }
 
 

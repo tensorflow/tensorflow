@@ -418,11 +418,13 @@ inline void TensorExecutor<Expression, GpuDevice, false, Tileable>::run(
   TensorEvaluator<Expression, GpuDevice> evaluator(expr, device);
   const bool needs_assign = evaluator.evalSubExprsIfNeeded(NULL);
   if (needs_assign) {
-    const int num_blocks = device.getNumCudaMultiProcessors() *
-                           device.maxCudaThreadsPerMultiProcessor() /
-                           device.maxCudaThreadsPerBlock();
     const int block_size = device.maxCudaThreadsPerBlock();
+    const int max_blocks = device.getNumCudaMultiProcessors() *
+                           device.maxCudaThreadsPerMultiProcessor() / block_size;
     const Index size = array_prod(evaluator.dimensions());
+    // Create a least one block to ensure we won't crash when tensorflow calls with tensors of size 0.
+    const int num_blocks = numext::maxi<int>(numext::mini<int>(max_blocks, (size + block_size - 1) / block_size), 1);
+
     LAUNCH_CUDA_KERNEL(
         (EigenMetaKernel_NonVectorizable<TensorEvaluator<Expression, GpuDevice>,
                                          Index>),
@@ -438,11 +440,13 @@ inline void TensorExecutor<Expression, GpuDevice, true, Tileable>::run(
   TensorEvaluator<Expression, GpuDevice> evaluator(expr, device);
   const bool needs_assign = evaluator.evalSubExprsIfNeeded(NULL);
   if (needs_assign) {
-    const int num_blocks = device.getNumCudaMultiProcessors() *
-                           device.maxCudaThreadsPerMultiProcessor() /
-                           device.maxCudaThreadsPerBlock();
     const int block_size = device.maxCudaThreadsPerBlock();
+    const int max_blocks = device.getNumCudaMultiProcessors() *
+                           device.maxCudaThreadsPerMultiProcessor() / block_size;
     const Index size = array_prod(evaluator.dimensions());
+    // Create a least one block to ensure we won't crash when tensorflow calls with tensors of size 0.
+    const int num_blocks = numext::maxi<int>(numext::mini<int>(max_blocks, (size + block_size - 1) / block_size), 1);
+
     LAUNCH_CUDA_KERNEL(
         (EigenMetaKernel_Vectorizable<TensorEvaluator<Expression, GpuDevice>,
                                       Index>),

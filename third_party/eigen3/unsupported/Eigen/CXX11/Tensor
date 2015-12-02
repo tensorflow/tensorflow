@@ -59,7 +59,7 @@
 #include <curand_kernel.h>
 #endif  // defined(__CUDACC__)
 #else
-#include "perftools/gputools/executor/gcuda.h"
+#include "platforms/gpus/gcudacc/runtime/gcudacc_runtime.h"
 #ifdef __CUDACC__
 #include "third_party/gpus/cuda/curand_device/curand_kernel.h"
 #endif  // defined(__CUDACC__)
@@ -88,6 +88,7 @@
 #include "unsupported/Eigen/CXX11/src/Tensor/TensorInitializer.h"
 #include "unsupported/Eigen/CXX11/src/Tensor/TensorTraits.h"
 #include "unsupported/Eigen/CXX11/src/Tensor/TensorFunctors.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorUInt128.h"
 #include "unsupported/Eigen/CXX11/src/Tensor/TensorIntDiv.h"
 #include "unsupported/Eigen/CXX11/src/Tensor/TensorBlock.h"
 

@@ -141,6 +141,7 @@ struct TensorEvaluator<const TensorShufflingOp<Shuffle, ArgType>, Device>
         m_unshuffledInputStrides[i] =
             m_unshuffledInputStrides[i - 1] * input_dims[i - 1];
         m_outputStrides[i] = m_outputStrides[i - 1] * m_dimensions[i - 1];
+        m_fastOutputStrides[i] = internal::TensorIntDivisor<Index>(m_outputStrides[i]);
       }
     } else {
       m_unshuffledInputStrides[NumDims - 1] = 1;
@@ -149,6 +150,7 @@ struct TensorEvaluator<const TensorShufflingOp<Shuffle, ArgType>, Device>
         m_unshuffledInputStrides[i] =
             m_unshuffledInputStrides[i + 1] * input_dims[i + 1];
         m_outputStrides[i] = m_outputStrides[i + 1] * m_dimensions[i + 1];
+        m_fastOutputStrides[i] = internal::TensorIntDivisor<Index>(m_outputStrides[i]);
       }
     }
 
@@ -319,14 +321,14 @@ struct TensorEvaluator<const TensorShufflingOp<Shuffle, ArgType>, Device>
     Index inputIndex = 0;
     if (static_cast<int>(Layout) == static_cast<int>(ColMajor)) {
       for (int i = NumDims - 1; i > 0; --i) {
-        const Index idx = index / m_outputStrides[i];
+        const Index idx = index / m_fastOutputStrides[i];
         inputIndex += idx * m_inputStrides[i];
         index -= idx * m_outputStrides[i];
       }
       return inputIndex + index * m_inputStrides[0];
     } else {
       for (int i = 0; i < NumDims - 1; ++i) {
-        const Index idx = index / m_outputStrides[i];
+        const Index idx = index / m_fastOutputStrides[i];
         inputIndex += idx * m_inputStrides[i];
         index -= idx * m_outputStrides[i];
       }
@@ -338,6 +340,7 @@ struct TensorEvaluator<const TensorShufflingOp<Shuffle, ArgType>, Device>
   Dimensions m_dimensions;
   array<Index, NumDims> m_inverseShuffle;
   array<Index, NumDims> m_outputStrides;
+  array<internal::TensorIntDivisor<Index>, NumDims> m_fastOutputStrides;
   array<Index, NumDims> m_inputStrides;
   array<Index, NumDims> m_unshuffledInputStrides;
   TensorEvaluator<ArgType, Device> m_impl;
