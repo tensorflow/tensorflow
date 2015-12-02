@@ -101,7 +101,10 @@ tf_cuda_library(
             "**/*main.cc",
         ],
     ),
-    hdrs = glob(["public/**/*.h"]),
+    hdrs = glob([
+        "public/**/*.h",
+        "util/device_name_utils.h",
+    ]),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -345,6 +348,12 @@ cc_library(
     alwayslink = 1,
 )
 
+# This is to workaround strict header checks
+cc_library(
+    name = "strict_headers",
+    hdrs = glob(["**/*.h"]),
+)
+
 # Low level library tests
 tf_cc_tests(
     tests = glob(
@@ -356,6 +365,7 @@ tf_cc_tests(
     ),
     deps = [
         ":lib",
+        ":strict_headers",
         ":test_main",
     ],
 )
@@ -404,6 +414,7 @@ tf_cc_tests(
         ":direct_session",
         ":kernels",
         ":lib",
+        ":strict_headers",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
@@ -424,6 +435,7 @@ tf_cc_tests(
     deps = [
         ":direct_session",
         ":kernels",
+        ":strict_headers",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",

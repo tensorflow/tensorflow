@@ -88,6 +88,71 @@ class UniformDistribution<Generator, double> {
   }
 };
 
+template <class Generator>
+class UniformDistribution<Generator, int32> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<int32, kResultElementCount> ResultType;
+  typedef int32 ResultElementType;
+
+  // Must have lo < hi
+  UniformDistribution(int32 lo, int32 hi) : lo_(lo), range_(hi - lo) {}
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = lo_ + static_cast<int32>(sample[i] % range_);
+    }
+    return result;
+  }
+
+ private:
+  // Note that lo_ is intentionally signed while range_ is intentionally
+  // unsigned.  This is because hi - lo can overflow signed integers if
+  // lo < 0 < hi, but always fits in unsigned.
+  int32 lo_;
+  uint32 range_;
+};
+
+template <class Generator>
+class UniformDistribution<Generator, int64> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<int64, kResultElementCount> ResultType;
+  typedef int64 ResultElementType;
+
+  // Must have lo < hi
+  UniformDistribution(int64 lo, int64 hi) : lo_(lo), range_(hi - lo) {}
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      auto bits = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
+      result[i] = lo_ + static_cast<int64>(bits % range_);
+    }
+    return result;
+  }
+
+ private:
+  // Note that lo_ is intentionally signed while range_ is intentionally
+  // unsigned.  This is because hi - lo can overflow signed integers if
+  // lo < 0 < hi, but always fits in unsigned.
+  int64 lo_;
+  uint64 range_;
+};
+
 // A class that adapts the underlying native multiple samples to return a single
 // sample at a time.
 template <class Generator>

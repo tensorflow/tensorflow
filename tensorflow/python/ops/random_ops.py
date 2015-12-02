@@ -122,7 +122,7 @@ def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
 ops.NoGradient("TruncatedNormal")
 
 
-def random_uniform(shape, minval=0.0, maxval=1.0,
+def random_uniform(shape, minval=0, maxval=None,
                    dtype=dtypes.float32, seed=None,
                    name=None):
   """Outputs random values from a uniform distribution.
@@ -131,13 +131,22 @@ def random_uniform(shape, minval=0.0, maxval=1.0,
   `[minval, maxval)`. The lower bound `minval` is included in the range, while
   the upper bound `maxval` is excluded.
 
+  For floats, the default range is `[0, 1)`.  For ints, at least `maxval` must
+  be specified explicitly.
+
+  In the integer case, the random integers are slightly biased unless
+  `maxval - minval` is an exact power of two.  The bias is small for values of
+  `maxval - minval` significantly smaller than the range of the output (either
+  `2**32` or `2**64`).
+
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on the
-      range of random values to generate.
+      range of random values to generate.  Defaults to 0.
     maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
-      the range of random values to generate.
-    dtype: The type of the output.
+      the range of random values to generate.  Defaults to 1 if `dtype` is
+      floating point.
+    dtype: The type of the output: `float32`, `float64`, `int32`, or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
@@ -146,19 +155,28 @@ def random_uniform(shape, minval=0.0, maxval=1.0,
 
   Returns:
     A tensor of the specified shape filled with random uniform values.
+
+  Raises:
+    ValueError: If `dtype` is integral and `maxval` is not specified.
   """
+  dtype = dtypes.as_dtype(dtype)
+  if maxval is None:
+    if dtype.is_integer:
+      raise ValueError("Must specify maxval for integer dtype %r" % dtype)
+    maxval = 1
   with ops.op_scope([shape, minval, maxval], name, "random_uniform") as name:
-    shape_tensor = _ShapeTensor(shape)
-    min_tensor = ops.convert_to_tensor(minval, dtype=dtype, name="min")
-    range_tensor = ops.convert_to_tensor(
-        maxval - minval, dtype=dtype, name="range")
+    shape = _ShapeTensor(shape)
+    minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+    maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._random_uniform(shape_tensor, dtype,
-                                         seed=seed1,
-                                         seed2=seed2)
-    mul = rnd * range_tensor
-    value = math_ops.add(mul, min_tensor, name=name)
-    return value
+    if dtype.is_integer:
+      return gen_random_ops._random_uniform_int(shape, minval, maxval,
+                                                seed=seed1, seed2=seed2,
+                                                name=name)
+    else:
+      rnd = gen_random_ops._random_uniform(shape, dtype, seed=seed1,
+                                           seed2=seed2)
+      return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
 def random_shuffle(value, seed=None, name=None):
@@ -197,6 +215,7 @@ ops.NoGradient("RandomUniform")
 @ops.RegisterShape("TruncatedNormal")
 @ops.RegisterShape("RandomStandardNormal")
 @ops.RegisterShape("RandomUniform")
+@ops.RegisterShape("RandomUniformInt")
 def _RandomShape(op):
   shape_val = tensor_util.ConstantValue(op.inputs[0])
   if shape_val is not None:

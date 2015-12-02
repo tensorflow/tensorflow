@@ -32,7 +32,7 @@ bind(
 git_repository(
   name = "re2",
   remote = "https://github.com/google/re2.git",
-  tag = "2015-07-01",
+  commit = "791beff",
 )
 
 new_http_archive(

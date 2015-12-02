@@ -71,6 +71,11 @@ class SparseToDenseTest(tf.test.TestCase):
                        [ 1, -1, -1, -1]]).astype(np.int32)
     self.assertAllClose(np_ans, tf_ans)
 
+  def testZeroDefault(self):
+    with self.test_session():
+      x = tf.sparse_to_dense(2, [4], 7).eval()
+      self.assertAllEqual(x, [0, 0, 7, 0])
+
   def test3d(self):
     with self.test_session(use_gpu=False):
       tf_ans = _SparseToDense([[1, 3, 0], [2, 0, 1]], [3, 4, 2], 1, -1).eval()

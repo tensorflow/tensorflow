@@ -5108,6 +5108,68 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomUniformInt"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "minval"
+    description: "0-D.  Inclusive lower bound on the generated integers."
+    type_attr: "Tout"
+  }
+  input_arg {
+    name: "maxval"
+    description: "0-D.  Exclusive upper bound on the generated integers."
+    type_attr: "Tout"
+  }
+  output_arg {
+    name: "output"
+    description: "A tensor of the specified shape filled with uniform random integers."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs random integers from a uniform distribution."
+  description: "The generated values are uniform integers in the range `[minval, maxval)`.\nThe lower bound `minval` is included in the range, while the upper bound\n`maxval` is excluded.\n\nThe random integers are slightly biased unless `maxval - minval` is an exact\npower of two.  The bias is small for values of `maxval - minval` significantly\nsmaller than the range of the output (either `2^32` or `2^64`)."
+  is_stateful: true
+}
+op {
   name: "Range"
   input_arg {
     name: "start"
@@ -5831,11 +5893,19 @@ op {
     description: "The dimension which is partially reversed."
   }
   attr {
+    name: "batch_dim"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "The dimension along which reversal is performed."
+  }
+  attr {
     name: "T"
     type: "type"
   }
-  summary: "Reverses variable length slices in dimension `seq_dim`."
-  description: "This op first slices `input` along the first dimension, and for each slice `i`,\nreverses the first `seq_lengths[i]` elements along the dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims(0)`.\n\nThe output slice `i` along dimension 0 is then given by input slice `i`, with\nthe first `seq_lengths[i]` slices along dimension `seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nseq_dim = 1\ninput.dims = (4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```"
+  summary: "Reverses variable length slices."
+  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
 }
 op {
   name: "Rsqrt"

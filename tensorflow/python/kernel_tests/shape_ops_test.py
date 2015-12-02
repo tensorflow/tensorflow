@@ -216,13 +216,14 @@ class ShapeOpsTest(tf.test.TestCase):
 class TileTest(tf.test.TestCase):
 
   def testScalar(self):
-    with self.test_session():
-      a = tf.constant(7, shape=[], dtype=tf.float32)
-      tiled = tf.tile(a, [])
-      result = tiled.eval()
-    self.assertEqual(result.shape, ())
-    self.assertEqual([], tiled.get_shape())
-    self.assertEqual(7, result)
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        a = tf.constant(7, shape=[], dtype=tf.float32)
+        tiled = tf.tile(a, [])
+        result = tiled.eval()
+      self.assertEqual(result.shape, ())
+      self.assertEqual([], tiled.get_shape())
+      self.assertEqual(7, result)
 
   def testSimple(self):
     with self.test_session():
@@ -357,20 +358,23 @@ class TileTest(tf.test.TestCase):
     self.assertAllClose(expected, result, 1e-3)
 
   def _RunAndVerifyGradientResult(self, input_shape, multiples):
-    with self.test_session():
-      # Random values
-      inp = np.random.rand(*input_shape)
-      a = tf.constant([float(x) for x in inp.flatten()],
-                   shape=input_shape, dtype=tf.float64)
-      tiled = tf.tile(a, multiples)
-      grad_shape = list(np.array(multiples) * np.array(inp.shape))
-      err = tf.test.compute_gradient_error(a,
-                                           list(input_shape),
-                                           tiled,
-                                           grad_shape,
-                                           x_init_value=inp)
-    print("tile(float) error = ", err)
-    self.assertLess(err, 1e-3)
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        # Random values
+        inp = np.asarray(np.random.rand(*input_shape))
+        a = tf.constant(inp, dtype=tf.float64)
+        tiled = tf.tile(a, multiples)
+        grad_shape = list(np.array(multiples) * np.array(inp.shape))
+        err = tf.test.compute_gradient_error(a,
+                                             list(input_shape),
+                                             tiled,
+                                             grad_shape,
+                                             x_init_value=inp)
+      print("tile(float) error = ", err)
+      self.assertLess(err, 1e-3)
+
+  def testGradientRandomScalar(self):
+    self._RunAndVerifyGradientResult([], [])
 
   def testGradientRandom(self):
     self._RunAndVerifyGradientResult([2, 2, 1, 1, 3], [1, 2, 1, 3, 1])

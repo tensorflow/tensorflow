@@ -41,6 +41,38 @@ seed2: A second seed to avoid seed collision.
 output: A tensor of the specified shape filled with uniform random values.
 )doc");
 
+REGISTER_OP("RandomUniformInt")
+    .Input("shape: T")
+    .Input("minval: Tout")
+    .Input("maxval: Tout")
+    .SetIsStateful()
+    .Output("output: Tout")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("Tout: {int32, int64}")
+    .Attr("T: {int32, int64}")
+    .Doc(R"doc(
+Outputs random integers from a uniform distribution.
+
+The generated values are uniform integers in the range `[minval, maxval)`.
+The lower bound `minval` is included in the range, while the upper bound
+`maxval` is excluded.
+
+The random integers are slightly biased unless `maxval - minval` is an exact
+power of two.  The bias is small for values of `maxval - minval` significantly
+smaller than the range of the output (either `2^32` or `2^64`).
+
+shape: The shape of the output tensor.
+minval: 0-D.  Inclusive lower bound on the generated integers.
+maxval: 0-D.  Exclusive upper bound on the generated integers.
+seed: If either `seed` or `seed2` are set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, it is seeded by a
+  random seed.
+seed2: A second seed to avoid seed collision.
+
+output: A tensor of the specified shape filled with uniform random integers.
+)doc");
+
 REGISTER_OP("RandomStandardNormal")
     .Input("shape: T")
     .SetIsStateful()

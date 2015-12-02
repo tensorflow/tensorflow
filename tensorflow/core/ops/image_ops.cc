@@ -31,7 +31,7 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
-resized_images:  4-D with shape
+resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
 
@@ -49,7 +49,7 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
-resized_images:  4-D with shape
+resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
 
@@ -67,7 +67,7 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
-resized_images:  4-D with shape
+resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
 
@@ -85,7 +85,7 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
-resized_images:  4-D with shape
+resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
 

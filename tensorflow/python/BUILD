@@ -487,6 +487,7 @@ tf_gen_op_wrapper_py(
     name = "random_ops",
     hidden = [
         "RandomUniform",
+        "RandomUniformInt",
         "RandomShuffle",
         "RandomStandardNormal",
         "TruncatedNormal",
@@ -510,6 +511,7 @@ tf_gen_op_wrapper_py(
         "SparseConcat",
         "SparseSelectLastK",
         "SparseReorder",
+        "SparseToDense",
     ],
     require_shape_functions = True,
 )

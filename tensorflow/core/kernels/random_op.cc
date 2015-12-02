@@ -46,7 +46,7 @@ template <typename Device, class Distribution>
 struct FillPhiloxRandom {
   typedef typename Distribution::ResultElementType T;
   void operator()(OpKernelContext*, const Device&, random::PhiloxRandom gen,
-                  T* data, int64 size) {
+                  T* data, int64 size, Distribution dist) {
     LOG(FATAL) << "Default FillPhiloxRandom should not be executed.";
   }
 };
@@ -57,7 +57,8 @@ template <class Distribution>
 struct FillPhiloxRandom<GPUDevice, Distribution> {
   typedef typename Distribution::ResultElementType T;
   void operator()(OpKernelContext* ctx, const GPUDevice&,
-                  random::PhiloxRandom gen, T* data, int64 size);
+                  random::PhiloxRandom gen, T* data, int64 size,
+                  Distribution dist);
 };
 
 #endif
@@ -72,8 +73,7 @@ template <class Distribution>
 struct FillPhiloxRandomTask<Distribution, false> {
   typedef typename Distribution::ResultElementType T;
   static void Run(random::PhiloxRandom gen, T* data, int64 size,
-                  int64 start_group, int64 limit_group) {
-    Distribution dist;
+                  int64 start_group, int64 limit_group, Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
     gen.Skip(start_group);
@@ -96,7 +96,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
   }
 };
 
-// Specialization for distribution that takes a varaiable number of samples for
+// Specialization for distribution that takes a variable number of samples for
 // each output. This will be slower due to the generality.
 template <class Distribution>
 struct FillPhiloxRandomTask<Distribution, true> {
@@ -104,11 +104,10 @@ struct FillPhiloxRandomTask<Distribution, true> {
   static const int64 kReservedSamplesPerOutput = 256;
 
   static void Run(random::PhiloxRandom base_gen, T* data, int64 size,
-                  int64 start_group, int64 limit_group) {
+                  int64 start_group, int64 limit_group, Distribution dist) {
     using random::PhiloxRandom;
     using random::SingleSampleAdapter;
 
-    Distribution dist;
     const int kGroupSize = Distribution::kResultElementCount;
 
     static const int kGeneratorSkipPerOutputGroup =
@@ -153,7 +152,8 @@ template <class Distribution>
 struct FillPhiloxRandom<CPUDevice, Distribution> {
   typedef typename Distribution::ResultElementType T;
   void operator()(OpKernelContext* context, const CPUDevice&,
-                  random::PhiloxRandom gen, T* data, int64 size) {
+                  random::PhiloxRandom gen, T* data, int64 size,
+                  Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
@@ -164,16 +164,48 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
     // sub-linear. Too many threads causes a much worse overall performance.
     int num_workers = 6;
     Shard(num_workers, worker_threads.workers, total_group_count, kGroupSize,
-          [&gen, data, size](int64 start_group, int64 limit_group) {
+          [&gen, data, size, dist](int64 start_group, int64 limit_group) {
             FillPhiloxRandomTask<
                 Distribution,
                 Distribution::kVariableSamplesPerOutput>::Run(gen, data, size,
                                                               start_group,
-                                                              limit_group);
+                                                              limit_group,
+                                                              dist);
           });
   }
 };
 }  // namespace functor
+
+namespace {
+
+static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
+                                      int index, Tensor** output) {
+  if (!TensorShapeUtils::IsLegacyVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().ShortDebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    TF_RETURN_IF_ERROR(ctx->allocate_output(
+        index, TensorShapeUtils::MakeShape(vec.data(), vec.size()), output));
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    TF_RETURN_IF_ERROR(ctx->allocate_output(
+        index, TensorShapeUtils::MakeShape(vec.data(), vec.size()), output));
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+  }
+  return Status::OK();
+}
+
+// Reserve enough random samples in the generator for the given output count.
+// Note that the 256 multiplier is repeated above; do not change it just here.
+static random::PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom& generator,
+                                                 int64 output_count) {
+  int64 conservative_sample_count = output_count << 8;
+  return generator.ReserveSamples128(conservative_sample_count);
+}
 
 // For now, use the same interface as RandomOp, so we can choose either one
 // at the run-time.
@@ -186,40 +218,64 @@ class PhiloxRandomOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& input = ctx->input(0);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsLegacyVector(input.shape()),
-        errors::InvalidArgument("shape must be a vector of {int32,int64}."));
-    Tensor* output = nullptr;
-    if (input.dtype() == DataType::DT_INT32) {
-      auto vec = input.flat<int32>();
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShapeUtils::MakeShape(
-                                                      vec.data(), vec.size()),
-                                               &output));
-    } else if (input.dtype() == DataType::DT_INT64) {
-      auto vec = input.flat<int64>();
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShapeUtils::MakeShape(
-                                                      vec.data(), vec.size()),
-                                               &output));
-    } else {
-      OP_REQUIRES(ctx, false, errors::InvalidArgument(
-                                  "shape must be a vector of {int32,int64}."));
-    }
+    const Tensor& shape = ctx->input(0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
+    auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(output->flat<T>().size()),
-        output->flat<T>().data(), output->flat<T>().size());
+        ReserveRandomOutputs(generator_, output_flat.size()),
+        output_flat.data(), output_flat.size(), Distribution());
   }
 
  private:
   GuardedPhiloxRandom generator_;
-
-  // Reserve enough random samples in the generator for the given output count.
-  random::PhiloxRandom ReserveRandomOutputs(int64 output_count) {
-    int64 conservative_sample_count = output_count << 8;
-    return generator_.ReserveSamples128(conservative_sample_count);
-  }
 };
+
+template <typename Device, class IntType>
+class RandomUniformIntOp : public OpKernel {
+ public:
+  explicit RandomUniformIntOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, generator_.Init(ctx));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& shape = ctx->input(0);
+    const Tensor& minval = ctx->input(1);
+    const Tensor& maxval = ctx->input(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
+                errors::InvalidArgument("minval must be 0-D, got shape ",
+                                        minval.shape().ShortDebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval.shape()),
+                errors::InvalidArgument("maxval must be 0-D, got shape ",
+                                        maxval.shape().ShortDebugString()));
+
+    // Verify that minval < maxval
+    IntType lo = minval.scalar<IntType>()();
+    IntType hi = maxval.scalar<IntType>()();
+    OP_REQUIRES(
+        ctx, lo < hi,
+        errors::InvalidArgument("Need minval < maxval, got ", lo, " >= ", hi));
+
+    // Build distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, IntType>
+        Distribution;
+    Distribution dist(lo, hi);
+
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
+    auto output_flat = output->flat<IntType>();
+    functor::FillPhiloxRandom<Device, Distribution>()(
+        ctx, ctx->eigen_device<Device>(),
+        ReserveRandomOutputs(generator_, output_flat.size()),
+        output_flat.data(), output_flat.size(), dist);
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+};
+
+}  // namespace
 
 #define REGISTER(TYPE)                                              \
   REGISTER_KERNEL_BUILDER(                                          \
@@ -246,10 +302,22 @@ class PhiloxRandomOp : public OpKernel {
           random::TruncatedNormalDistribution<                      \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
 
+#define REGISTER_INT(IntType)                                   \
+  REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \
+                              .Device(DEVICE_CPU)               \
+                              .HostMemory("shape")              \
+                              .HostMemory("minval")             \
+                              .HostMemory("maxval")             \
+                              .TypeConstraint<IntType>("Tout"), \
+                          RandomUniformIntOp<CPUDevice, IntType>);
+
 REGISTER(float);
 REGISTER(double);
+REGISTER_INT(int32);
+REGISTER_INT(int64);
 
 #undef REGISTER
+#undef REGISTER_INT
 
 #if GOOGLE_CUDA
 
@@ -281,10 +349,23 @@ REGISTER(double);
           random::TruncatedNormalDistribution<                      \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
 
+#define REGISTER_INT(IntType)                                   \
+  REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \
+                              .Device(DEVICE_GPU)               \
+                              .HostMemory("shape")              \
+                              .HostMemory("minval")             \
+                              .HostMemory("maxval")             \
+                              .TypeConstraint<int32>("T")       \
+                              .TypeConstraint<IntType>("Tout"), \
+                          RandomUniformIntOp<GPUDevice, IntType>);
+
 REGISTER(float);
 REGISTER(double);
+REGISTER_INT(int32);
+REGISTER_INT(int64);
 
 #undef REGISTER
+#undef REGISTER_INT
 
 #endif  // GOOGLE_CUDA
 

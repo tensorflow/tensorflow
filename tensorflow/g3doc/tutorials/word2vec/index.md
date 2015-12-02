@@ -147,7 +147,7 @@ $$J_\text{NEG} = \log Q_\theta(D=1 |w_t, h) +
 where \\(Q_\theta(D=1 | w, h)\\) is the binary logistic regression probability
 under the model of seeing the word \\(w\\) in the context \\(h\\) in the dataset
 \\(D\\), calculated in terms of the learned embedding vectors \\(\theta\\). In
-practice we approximate the expectation by drawing \\(k\\) constrastive words
+practice we approximate the expectation by drawing \\(k\\) contrastive words
 from the noise distribution (i.e. we compute a
 [Monte Carlo average](https://en.wikipedia.org/wiki/Monte_Carlo_integration)).
 

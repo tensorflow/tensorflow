@@ -52,11 +52,16 @@ class TileOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",
                     input.dims(), " but got length ", multiples.dim_size(0)));
-
     const int input_dims = input.dims();
+
+    // Eigen doesn't support scalars on the GPU, so handle 0-D specially
+    if (input_dims == 0) {
+      context->set_output(0, input);
+      return;
+    }
+
     const gtl::ArraySlice<int32> multiples_array(multiples.flat<int32>().data(),
                                                  input_dims);
-
     TensorShape output_shape;
     for (int i = 0; i < input_dims; ++i) {
       OP_REQUIRES(
@@ -75,7 +80,6 @@ class TileOp : public OpKernel {
   }
 
 #define HANDLE_TYPE(T) \
-  HANDLE_DIM(T, 0)     \
   HANDLE_DIM(T, 1)     \
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
@@ -142,16 +146,13 @@ inline void TileOp<Device>::HandleCase(
     HandleCaseImpl<dtype, ndim>(context, multiples_array, result);     \
   }
 
-#define HANDLE_CASE_DIM_POSITIVE(device, dtype) \
-  HANDLE_CASE(device, dtype, 1);                \
-  HANDLE_CASE(device, dtype, 2);                \
-  HANDLE_CASE(device, dtype, 3);                \
-  HANDLE_CASE(device, dtype, 4);                \
-  HANDLE_CASE(device, dtype, 5);
-
+// 0-D handled above
 #define HANDLE_CASE_DIM(device, dtype) \
-  HANDLE_CASE(device, dtype, 0);       \
-  HANDLE_CASE_DIM_POSITIVE(device, dtype);
+  HANDLE_CASE(device, dtype, 1);       \
+  HANDLE_CASE(device, dtype, 2);       \
+  HANDLE_CASE(device, dtype, 3);       \
+  HANDLE_CASE(device, dtype, 4);       \
+  HANDLE_CASE(device, dtype, 5);
 
 HANDLE_CASE_DIM(CPUDevice, DT_BOOL);
 HANDLE_CASE_DIM(CPUDevice, DT_FLOAT);
@@ -163,15 +164,13 @@ HANDLE_CASE_DIM(CPUDevice, DT_INT64);
 HANDLE_CASE_DIM(CPUDevice, DT_STRING);
 
 #if GOOGLE_CUDA
-// Eigen on GPU does not handle 0-dimension data types yet.
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_FLOAT);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_DOUBLE);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT16);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT32);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT64);
+HANDLE_CASE_DIM(GPUDevice, DT_FLOAT);
+HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
+HANDLE_CASE_DIM(GPUDevice, DT_INT16);
+HANDLE_CASE_DIM(GPUDevice, DT_INT32);
+HANDLE_CASE_DIM(GPUDevice, DT_INT64);
 #endif  // GOOGLE_CUDA
 
-#undef HANDLE_CASE_DIM_POSITIVE
 #undef HANDLE_CASE_DIM
 #undef HANDLE_CASE
 
@@ -194,9 +193,15 @@ class TileGradientOp : public OpKernel {
                     input.dims(), " but got length ", multiples.dim_size(0)));
 
     const int input_dims = input.dims();
+
+    // Eigen doesn't support scalars on the GPU, so handle 0-D specially
+    if (input_dims == 0) {
+      context->set_output(0, input);
+      return;
+    }
+
     const gtl::ArraySlice<int32> multiples_array(multiples.flat<int32>().data(),
                                                  input_dims);
-
     TensorShape output_shape;
     std::vector<int32> input_dim_size_vec;
     for (int i = 0; i < input_dims; ++i) {
@@ -223,7 +228,6 @@ class TileGradientOp : public OpKernel {
   }
 
 #define HANDLE_TYPE(T) \
-  HANDLE_DIM(T, 0)     \
   HANDLE_DIM(T, 1)     \
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
@@ -282,7 +286,7 @@ class TileGradientOp : public OpKernel {
       // NOTE(keveman): Handling the most common case here.
       // Adding more cases here would require more templating and code
       // explosion. For instance, HANDLE_DIM(2) wouldn't make sense for NDIM=1.
-      HANDLE_DIM(NDIM > 0 ? 1 : 0);
+      HANDLE_DIM(1);
 
 // Fall through to the unoptimized version.
 #undef HANDLE_DIM
@@ -362,16 +366,13 @@ inline void TileGradientOp<Device>::HandleCase(
     HandleCaseImpl<dtype, ndim>(context, input_dims, multiples_array, result); \
   }
 
-#define HANDLE_CASE_DIM_POSITIVE(device, dtype) \
-  HANDLE_CASE(device, dtype, 1);                \
-  HANDLE_CASE(device, dtype, 2);                \
-  HANDLE_CASE(device, dtype, 3);                \
-  HANDLE_CASE(device, dtype, 4);                \
-  HANDLE_CASE(device, dtype, 5);
-
+// 0-D handled specially above
 #define HANDLE_CASE_DIM(device, dtype) \
-  HANDLE_CASE(device, dtype, 0);       \
-  HANDLE_CASE_DIM_POSITIVE(device, dtype);
+  HANDLE_CASE(device, dtype, 1);       \
+  HANDLE_CASE(device, dtype, 2);       \
+  HANDLE_CASE(device, dtype, 3);       \
+  HANDLE_CASE(device, dtype, 4);       \
+  HANDLE_CASE(device, dtype, 5);
 
 HANDLE_CASE_DIM(CPUDevice, DT_FLOAT);
 HANDLE_CASE_DIM(CPUDevice, DT_DOUBLE);
@@ -380,15 +381,13 @@ HANDLE_CASE_DIM(CPUDevice, DT_INT32);
 HANDLE_CASE_DIM(CPUDevice, DT_INT64);
 
 #if GOOGLE_CUDA
-// Eigen on GPU does not handle 0-dimension data types yet.
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_FLOAT);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_DOUBLE);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT16);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT32);
-HANDLE_CASE_DIM_POSITIVE(GPUDevice, DT_INT64);
+HANDLE_CASE_DIM(GPUDevice, DT_FLOAT);
+HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
+HANDLE_CASE_DIM(GPUDevice, DT_INT16);
+HANDLE_CASE_DIM(GPUDevice, DT_INT32);
+HANDLE_CASE_DIM(GPUDevice, DT_INT64);
 #endif  // GOOGLE_CUDA
 
-#undef HANDLE_CASE_DIM_POSITIVE
 #undef HANDLE_CASE_DIM
 #undef HANDLE_CASE
 

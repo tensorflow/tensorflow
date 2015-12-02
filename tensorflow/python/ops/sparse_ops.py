@@ -240,7 +240,48 @@ def _SparseToDenseShape(op):
     return [tensor_shape.unknown_shape(ndims=input_shape_shape.num_elements())]
 
 
-def sparse_tensor_to_dense(sp_input, default_value, name=None):
+def sparse_to_dense(sparse_indices, output_shape, sparse_values,
+                    default_value=0, name=None):
+  """Converts a sparse representation into a dense tensor.
+
+  Builds an array `dense` with shape `output_shape` such that
+
+  ```python
+  # If sparse_indices is scalar
+  dense[i] = (i == sparse_indices ? sparse_values : default_value)
+
+  # If sparse_indices is a vector, then for each i
+  dense[sparse_indices[i]] = sparse_values[i]
+
+  # If sparse_indices is an n by d matrix, then for each i in [0, n)
+  dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
+  ```
+
+  All other values in `dense` are set to `default_value`.  If `sparse_values`
+  is a scalar, all sparse indices are set to this single value.
+
+  Args:
+    sparse_indices: A 0-D, 1-D, or 2-D `Tensor` of type `int32` or `int64`.
+      `sparse_indices[i]` contains the complete index where `sparse_values[i]`
+      will be placed.
+    output_shape: A 1-D `Tensor` of the same type as `sparse_indices`.  Shape
+      of the dense output tensor.
+    sparse_values: A 0-D or 1-D `Tensor`.  Values corresponding to each row of
+      `sparse_indices`, or a scalar value to be used for all sparse indices.
+    default_value: A 0-D `Tensor` of the same type as `sparse_values`.  Value
+      to set for indices not specified in `sparse_indices`.  Defaults to zero.
+    name: A name for the operation (optional).
+
+  Returns:
+    Dense `Tensor` of shape `output_shape`.  Has the same type as
+    `sparse_values`.
+  """
+  return gen_sparse_ops._sparse_to_dense(sparse_indices, output_shape,
+                                         sparse_values, default_value,
+                                         name=name)
+
+
+def sparse_tensor_to_dense(sp_input, default_value=0, name=None):
   """Converts a `SparseTensor` into a dense tensor.
 
   This op is a convenience wrapper around `sparse_to_dense` for `SparseTensor`s.
@@ -261,7 +302,7 @@ def sparse_tensor_to_dense(sp_input, default_value, name=None):
   Args:
     sp_input: The input `SparseTensor`.
     default_value: Scalar value to set for indices not specified in
-      `sp_input`.
+      `sp_input`.  Defaults to zero.
     name: A name prefix for the returned tensors (optional).
 
   Returns:
@@ -275,12 +316,8 @@ def sparse_tensor_to_dense(sp_input, default_value, name=None):
   if not isinstance(sp_input, ops.SparseTensor):
     raise TypeError("Input must be a SparseTensor")
 
-  return gen_sparse_ops.sparse_to_dense(
-      sp_input.indices,
-      sp_input.shape,
-      sp_input.values,
-      default_value,
-      name=name)
+  return sparse_to_dense(sp_input.indices, sp_input.shape, sp_input.values,
+                         default_value, name=name)
 
 
 def sparse_to_indicator(sp_input, vocab_size, name=None):
@@ -455,7 +492,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
     empty_row_indices, _ = array_ops.list_diff(
         all_row_indices, sp_input.indices[:, 0])
-    empty_row_indicator = gen_sparse_ops.sparse_to_dense(
+    empty_row_indicator = sparse_to_dense(
         empty_row_indices, array_ops.expand_dims(sp_input.shape[0], -1), True,
         False)
 

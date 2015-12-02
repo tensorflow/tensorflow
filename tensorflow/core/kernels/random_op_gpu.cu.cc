@@ -42,8 +42,8 @@ struct FillPhiloxRandomKernel;
 template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, false> {
   typedef typename Distribution::ResultElementType T;
-  PHILOX_DEVICE_FUNC void Run(random::PhiloxRandom gen, T* data, int64 size) {
-    Distribution dist;
+  PHILOX_DEVICE_FUNC void Run(random::PhiloxRandom gen, T* data, int64 size,
+                              Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
     const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -74,7 +74,7 @@ template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, true> {
   typedef typename Distribution::ResultElementType T;
   PHILOX_DEVICE_FUNC void Run(const random::PhiloxRandom& base_gen, T* data,
-                              int64 size) {
+                              int64 size, Distribution dist) {
     using random::PhiloxRandom;
     using random::SingleSampleAdapter;
 
@@ -88,7 +88,6 @@ struct FillPhiloxRandomKernel<Distribution, true> {
     const int32 total_thread_count = gridDim.x * blockDim.x;
     int64 group_index = thread_id;
     int64 offset = group_index * kGroupSize;
-    Distribution dist;
 
     while (offset < size) {
       // Since each output takes a variable number of samples, we need to
@@ -118,10 +117,10 @@ template <class Distribution>
 __global__ void __launch_bounds__(1024)
     FillPhiloxRandomKernelLaunch(random::PhiloxRandom base_gen,
                                  typename Distribution::ResultElementType* data,
-                                 int64 size) {
+                                 int64 size, Distribution dist) {
   FillPhiloxRandomKernel<Distribution,
                          Distribution::kVariableSamplesPerOutput>()
-      .Run(base_gen, data, size);
+      .Run(base_gen, data, size, dist);
 }
 
 // Partial specialization for GPU
@@ -130,7 +129,7 @@ struct FillPhiloxRandom<GPUDevice, Distribution> {
   typedef typename Distribution::ResultElementType T;
   typedef GPUDevice Device;
   void operator()(OpKernelContext*, const Device& d, random::PhiloxRandom gen,
-                  T* data, int64 size) {
+                  T* data, int64 size, Distribution dist) {
     const int32 block_size = d.maxCudaThreadsPerBlock();
     const int32 num_blocks =
         (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
@@ -138,7 +137,7 @@ struct FillPhiloxRandom<GPUDevice, Distribution> {
 
     FillPhiloxRandomKernelLaunch<
         Distribution><<<num_blocks, block_size, 0, d.stream()>>>(gen, data,
-                                                                 size);
+                                                                 size, dist);
   }
 };
 
@@ -149,6 +148,10 @@ template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
+template struct FillPhiloxRandom<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
+template struct FillPhiloxRandom<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<

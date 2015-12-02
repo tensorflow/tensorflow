@@ -548,7 +548,7 @@ $ sudo easy_install -U six
 [MacPorts](https://www.macports.org/) and re-install TensorFlow in that
 copy of Python.
 
-# Mac OS X: TypeError: `__init__()` got an unexpected keyword argument 'syntax'
+### Mac OS X: TypeError: `__init__()` got an unexpected keyword argument 'syntax'
 
 On Mac OS X, you may encounter the following when importing tensorflow.
 

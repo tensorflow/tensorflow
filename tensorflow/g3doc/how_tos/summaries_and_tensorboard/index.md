@@ -69,7 +69,7 @@ The code example below is a modification of the [simple MNIST tutorial]
 added some summary ops, and run them every ten steps. If you run this and then
 launch `tensorboard --logdir=/tmp/mnist_data`, you'll be able to visualize
 statistics, such as how the weights or accuracy varied during training.
-The code below is an exerpt; full source is [here](mnist_with_summaries.py).
+The code below is an exerpt; full source is [here](../../tutorials/mnist/mnist_with_summaries.py).
 
 ```python
 # Create the model

@@ -91,12 +91,15 @@ def extract_labels(filename, one_hot=False):
 
 class DataSet(object):
 
-  def __init__(self, images, labels, fake_data=False):
+  def __init__(self, images, labels, fake_data=False, one_hot=False):
+    """Construct a DataSet. one_hot arg is used only if fake_data is true."""
+
     if fake_data:
       self._num_examples = 10000
+      self.one_hot = one_hot
     else:
       assert images.shape[0] == labels.shape[0], (
-          "images.shape: %s labels.shape: %s" % (images.shape,
+          'images.shape: %s labels.shape: %s' % (images.shape,
                                                  labels.shape))
       self._num_examples = images.shape[0]
 
@@ -132,8 +135,11 @@ class DataSet(object):
   def next_batch(self, batch_size, fake_data=False):
     """Return the next `batch_size` examples from this data set."""
     if fake_data:
-      fake_image = [1.0 for _ in xrange(784)]
-      fake_label = 0
+      fake_image = [1] * 784
+      if self.one_hot:
+        fake_label = [1] + [0] * 9
+      else:
+        fake_label = 0
       return [fake_image for _ in xrange(batch_size)], [
           fake_label for _ in xrange(batch_size)]
     start = self._index_in_epoch
@@ -160,9 +166,9 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False):
   data_sets = DataSets()
 
   if fake_data:
-    data_sets.train = DataSet([], [], fake_data=True)
-    data_sets.validation = DataSet([], [], fake_data=True)
-    data_sets.test = DataSet([], [], fake_data=True)
+    data_sets.train = DataSet([], [], fake_data=True, one_hot=one_hot)
+    data_sets.validation = DataSet([], [], fake_data=True, one_hot=one_hot)
+    data_sets.test = DataSet([], [], fake_data=True, one_hot=one_hot)
     return data_sets
 
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
