@@ -288,6 +288,24 @@ export class RenderGraphInformation {
     setGroupNodeDepth(this.root, +depth);
   }
 
+  /**
+   * Returns true if the renderNode is an isolated node within its parent node.
+   */
+  isNodeAuxilliary(renderNode: RenderNodeInformation): boolean {
+    let parentNode = <RenderGroupNodeInformation>this.getRenderNodeByName(
+      renderNode.node.parentNode.name);
+    let found = _.find(parentNode.isolatedInExtract, node => {
+      return node.node.name === renderNode.node.name;
+    });
+    if (found) {
+      return true;
+    }
+    found = _.find(parentNode.isolatedOutExtract, node => {
+      return node.node.name === renderNode.node.name;
+    });
+    return !!found;
+  }
+
   buildSubhierarchy(nodeName: string): void {
     // Terminate if the rendering hierarchy was already constructed
     // for this node.
@@ -555,6 +573,7 @@ export class RenderGraphInformation {
             cardinality: 0,
             parentNode: null,
             stats: null,
+            include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
           };
@@ -573,6 +592,7 @@ export class RenderGraphInformation {
           cardinality: 1,
           parentNode: null,
           stats: null,
+          include: InclusionType.UNSPECIFIED,
           // BridgeNode properties.
           inbound: inbound,
         };
@@ -692,6 +712,7 @@ export class RenderGraphInformation {
             cardinality: 1,
             parentNode: null,
             stats: null,
+            include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
           };
@@ -1127,6 +1148,16 @@ function createShortcut(graph: graphlib.Graph<RenderNodeInformation, {}>,
   let sink = graph.node(w);
   let edge = graph.edge(v, w);
 
+  // If either of the nodes is explicitly included in the main graph and
+  // both nodes are in the main graph then do not create the shortcut
+  // and instead keep the real edge.
+  if ((src.node.include === InclusionType.INCLUDE ||
+       sink.node.include === InclusionType.INCLUDE) &&
+      src.node.include !== InclusionType.EXCLUDE &&
+      sink.node.include !== InclusionType.EXCLUDE) {
+    return;
+  }
+
   // Add each annotation.
   addOutAnnotation(src, sink.node, sink, edge, AnnotationType.SHORTCUT, params);
   addInAnnotation(sink, src.node, src, edge, AnnotationType.SHORTCUT, params);
@@ -1139,27 +1170,29 @@ function createShortcut(graph: graphlib.Graph<RenderNodeInformation, {}>,
  * Remove edges from a node, and set its isOutExtract property to true,
  * and remove the node and move it to isolatedOutExtract.
  *
- * If detachAllEdgesForHighDegree is true, extract all of its edges.
- * Otherwise, only extract all in-edges.
+ * If detachAllEdgesForHighDegree or forceDetach is true, extract all of its
+ * edges. Otherwise, only extract all in-edges.
  */
 function makeOutExtract(renderNode: RenderGroupNodeInformation, n: string,
-    params: RenderGraphParams) {
+    params: RenderGraphParams, forceDetach?: boolean) {
   let graph = renderNode.coreGraph;
-
-  graph.node(n).isOutExtract = true;
+  let child = graph.node(n);
+  child.isOutExtract = true;
 
   _.each(graph.predecessors(n), (p, index) => {
     createShortcut(graph, p, n, params);
   });
 
-  if (params.detachAllEdgesForHighDegree) {
+  if (params.detachAllEdgesForHighDegree || forceDetach) {
     _.each(graph.successors(n), (s, index) => {
       createShortcut(graph, n, s, params);
     });
   }
 
-  if (params.detachAllEdgesForHighDegree || graph.neighbors(n).length === 0) {
-    renderNode.isolatedOutExtract.push(graph.node(n));
+  // Remove the node from the core graph if it no longer has neighbors.
+  if (graph.neighbors(n).length === 0) {
+    child.node.include = InclusionType.EXCLUDE;
+    renderNode.isolatedOutExtract.push(child);
     graph.removeNode(n);
   }
 }
@@ -1167,27 +1200,30 @@ function makeOutExtract(renderNode: RenderGroupNodeInformation, n: string,
 /**
  * Remove edges from a node, set its isInExtract property to true,
  * and remove the node and move it to isolatedInExtract.
- * If detachAllEdgesForHighDegree is true, extract all of its edges.
- * Otherwise, only remove all out-edges.
+ *
+ * If detachAllEdgesForHighDegree or forceDetach is true, extract all of its
+ * edges. Otherwise, only remove all out-edges.
  */
-function makeInExtract(renderNode: RenderGroupNodeInformation, n: string,
-    params: RenderGraphParams) {
+export function makeInExtract(renderNode: RenderGroupNodeInformation, n: string,
+    params: RenderGraphParams, forceDetach?: boolean) {
   let graph = renderNode.coreGraph;
-  graph.node(n).isInExtract = true;
+  let child = graph.node(n);
+  child.isInExtract = true;
 
   _.each(graph.successors(n), (s, index) => {
     createShortcut(graph, n, s, params);
   });
 
-  if (params.detachAllEdgesForHighDegree) {
+  if (params.detachAllEdgesForHighDegree || forceDetach) {
     _.each(graph.predecessors(n), (p, index) => {
       createShortcut(graph, p, n, params);
     });
   }
 
-  // Remove the node from the core graph if conditions are met.
-  if (params.detachAllEdgesForHighDegree || graph.neighbors(n).length === 0) {
-    renderNode.isolatedInExtract.push(graph.node(n));
+  // Remove the node from the core graph if it no longer has neighbors.
+  if (graph.neighbors(n).length === 0) {
+    child.node.include = InclusionType.EXCLUDE;
+    renderNode.isolatedInExtract.push(child);
     graph.removeNode(n);
   }
 }
@@ -1214,12 +1250,32 @@ function hasTypeIn(node: Node, types: string[]): boolean {
   return false;
 }
 
+/** Move nodes that are speficied to be excluded out of the core graph. */
+function extractSpeficiedNodes(renderNode: RenderGroupNodeInformation,
+    params: RenderGraphParams) {
+  let graph = renderNode.coreGraph;
+  _.each(graph.nodes(), n => {
+    let renderInfo = graph.node(n);
+    if (renderInfo.node.include === InclusionType.EXCLUDE) {
+      if (renderNode.coreGraph.outEdges(n).length >
+          renderNode.coreGraph.inEdges(n).length) {
+        makeOutExtract(renderNode, n, params, true);
+      } else {
+        makeInExtract(renderNode, n, params, true);
+      }
+    }
+  });
+}
+
 /** Remove edges from pre-defined out-extract patterns */
 function extractPredefinedSink(renderNode: RenderGroupNodeInformation,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
   _.each(graph.nodes(), n => {
     let renderInfo = graph.node(n);
+    if (renderInfo.node.include !== InclusionType.UNSPECIFIED) {
+      return;
+    }
     if (hasTypeIn(renderInfo.node, params.outExtractTypes)) {
       makeOutExtract(renderNode, n, params);
     }
@@ -1233,6 +1289,9 @@ function extractPredefinedSource(renderNode: RenderGroupNodeInformation,
 
   _.each(graph.nodes(), n => {
     let renderInfo = graph.node(n);
+    if (renderInfo.node.include !== InclusionType.UNSPECIFIED) {
+      return;
+    }
     if (hasTypeIn(renderInfo.node, params.inExtractTypes)) {
       makeInExtract(renderNode, n, params);
     }
@@ -1247,6 +1306,9 @@ function extractHighInDegree(renderNode: RenderGroupNodeInformation,
 
   // detect first so degrees don't get affected by other removal
   let highInDegreeNames = _.filter(graph.nodes(), n => {
+    if (graph.node(n).node.include !== InclusionType.UNSPECIFIED) {
+      return false;
+    }
     // Count the in-degree based on only regular edges, unless there are
     // no regular edges, in which case use the number of control edges.
     // This is done so that control edges don't effect if nodes are extracted
@@ -1274,6 +1336,9 @@ function extractHighOutDegree(renderNode: RenderGroupNodeInformation,
 
   // detect first so degrees don't get affected by other removal
   let highOutDegreeNames = _.filter(graph.nodes(), n => {
+    if (graph.node(n).node.include !== InclusionType.UNSPECIFIED) {
+      return false;
+    }
     // Count the out-degree based on only regular edges, unless there are
     // no regular edges, in which case use the number of control edges.
     // This is done so that control edges don't effect if nodes are extracted
@@ -1345,6 +1410,9 @@ export function mapIndexToHue(id: number): number {
  */
 function extractHighDegrees(renderNode: RenderGroupNodeInformation,
     params: RenderGraphParams) {
+
+  extractSpeficiedNodes(renderNode, params);
+
   if (params.outExtractTypes) {
     extractPredefinedSink(renderNode, params);
   }
@@ -1386,7 +1454,9 @@ function extractHighDegrees(renderNode: RenderGroupNodeInformation,
   _.each(graph.nodes(), n => {
     let child = graph.node(n);
     let degree = graph.neighbors(n).length;
-
+    if (child.node.include !== InclusionType.UNSPECIFIED) {
+      return;
+    }
     if (degree === 0) {
       let hasOutAnnotations = child.outAnnotations.list.length > 0;
       let hasInAnnotations = child.inAnnotations.list.length > 0;
@@ -1395,20 +1465,24 @@ function extractHighDegrees(renderNode: RenderGroupNodeInformation,
         // This case only happens if detachAllEdgesForHighDegree is false.
         // (Otherwise all source-like nodes are all isolated already.)
         renderNode.isolatedInExtract.push(child);
+        child.node.include = InclusionType.EXCLUDE;
         graph.removeNode(n);
       } else if (child.isOutExtract) { // Is sink-like.
         // This case only happens if detachAllEdgesForHighDegree is false.
         // // (Otherwise all sink-like nodes are all isolated already.)
         renderNode.isolatedOutExtract.push(child);
+        child.node.include = InclusionType.EXCLUDE;
         graph.removeNode(n);
       } else if (params.extractIsolatedNodesWithAnnotationsOnOneSide) {
         if (hasOutAnnotations && !hasInAnnotations) {
           child.isInExtract = true; // for ones with high out-annotations
           renderNode.isolatedInExtract.push(child);
+          child.node.include = InclusionType.EXCLUDE;
           graph.removeNode(n);
         } else if (hasInAnnotations && !hasOutAnnotations) {
           child.isOutExtract = true; // for ones with high in-annotations
           renderNode.isolatedOutExtract.push(child);
+          child.node.include = InclusionType.EXCLUDE;
           graph.removeNode(n);
         } else {
           // if a low degree node has both in- & out- annotations, do nothing

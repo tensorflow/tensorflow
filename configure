@@ -1,12 +1,38 @@
 #!/bin/bash
 
+## Set up python-related environment settings
+while true; do
+  fromuser=""
+  if [ -z "$PYTHON_BIN_PATH" ]; then
+    default_python_bin_path=$(which python)
+    read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
+    fromuser="1"
+    if [ -z "$PYTHON_BIN_PATH" ]; then
+      PYTHON_BIN_PATH=$default_python_bin_path
+    fi
+  fi
+  if [ -e "$PYTHON_BIN_PATH" ]; then
+    break
+  fi
+  echo "Invalid python path. ${PYTHON_BIN_PATH} cannot be found" 1>&2
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  PYTHON_BIN_PATH=""
+  # Retry
+done
+
+# Invoke python_config and set up symlinks to python includes
+(./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
+
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
-  read -p "Do you wish to build TensorFlow with GPU support? [y/n] " INPUT
+  read -p "Do you wish to build TensorFlow with GPU support? [y/N] " INPUT
   case $INPUT in
-    [Yy]* ) echo -e "GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=1;;
-    [Nn]* ) echo -e "No GPU support will be enabled for TensorFlow\n"; TF_NEED_CUDA=0;;
+    [Yy]* ) echo "GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
+    [Nn]* ) echo "No GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
+    "" ) echo "No GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
     * ) echo "Invalid selection: " $INPUT;;
   esac
 done
@@ -77,7 +103,7 @@ CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 EOF
 
 function UnofficialSetting() {
-  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n"
+  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n" 1>&2
 
   # Configure the compute capabilities that TensorFlow builds for.
   # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.

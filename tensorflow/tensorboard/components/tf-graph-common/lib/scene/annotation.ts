@@ -17,6 +17,7 @@ limitations under the License.
 /// <reference path="../render.ts" />
 /// <reference path="scene.ts" />
 /// <reference path="edge.ts" />
+/// <reference path="contextmenu.ts" />
 
 module tf.graph.scene.annotation {
 
@@ -90,7 +91,7 @@ export function buildGroup(container, annotationData: render.AnnotationList,
       let aGroup = d3.select(this);
       update(aGroup, d, a, sceneBehavior);
       if (a.annotationType !== tf.graph.render.AnnotationType.ELLIPSIS) {
-        addInteraction(aGroup, d, sceneBehavior);
+        addInteraction(aGroup, d, a, sceneBehavior);
       }
     });
 
@@ -151,7 +152,7 @@ function addAnnotationLabel(aGroup, label, a, additionalClassNames,
 }
 
 function addInteraction(selection, d: render.RenderNodeInformation,
-    sceneBehavior) {
+    annotation: tf.graph.render.Annotation, sceneBehavior) {
   selection
     .on("mouseover", a => {
       sceneBehavior.fire("annotation-highlight", {
@@ -174,6 +175,11 @@ function addInteraction(selection, d: render.RenderNodeInformation,
         hostName: d.node.name
       });
     });
+  if (annotation.annotationType !== tf.graph.render.AnnotationType.SUMMARY &&
+      annotation.annotationType !== tf.graph.render.AnnotationType.CONSTANT) {
+    selection.on("contextmenu", tf.graph.scene.contextmenu.getMenu(
+      tf.graph.scene.node.getContextMenu(annotation.node, sceneBehavior)));
+  }
 };
 
 /**

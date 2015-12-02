@@ -13,3 +13,4 @@ components/tf-graph-common/lib/scene/*.js
 components/tf-event-dashboard/*.js
 components/tf-categorizer/*.js
 components/tf-dashboard-common/*.js
+components/**/test/*.js

@@ -88,6 +88,40 @@ struct Relu6Grad {
   }
 };
 
+// Functor used by EluOp to do the computations.
+template <typename Device, typename T>
+struct Elu {
+  // Computes Relu activation.
+  //
+  // features: any shape.
+  // activations: same shape as "features".
+  void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
+                  typename TTypes<T>::Tensor activations) {
+    // features.constant(?)
+    activations.device(d) =
+        (features < static_cast<T>(0))
+            .select(features.exp() - features.constant(static_cast<T>(1)),
+                    features);
+  }
+};
+
+// Functor used by EluGradOp to do the computations.
+template <typename Device, typename T>
+struct EluGrad {
+  // Computes EluGrad backprops.
+  //
+  // gradients: gradients backpropagated to the Elu op.
+  // activations: outputs of the Elu op.
+  // backprops: gradients to backpropagate to the Elu inputs.
+  void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
+                  typename TTypes<T>::ConstTensor activations,
+                  typename TTypes<T>::Tensor backprops) {
+    backprops.device(d) =
+        (activations < static_cast<T>(0))
+            .select((activations + static_cast<T>(1)) * gradients, gradients);
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

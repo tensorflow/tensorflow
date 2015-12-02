@@ -131,12 +131,14 @@ class _VariableScope(object):
     name: name of the current scope, used as prefix in get_variable.
     initializer: default initializer passed to get_variable.
     reuse: Boolean or None, setting the reuse in get_variable.
+    name_scope: The name passed to tf.name_scope.
   """
 
-  def __init__(self, reuse, name="", initializer=None):
+  def __init__(self, reuse, name="", initializer=None, name_scope=""):
     self._name = name
     self._initializer = initializer
     self._reuse = reuse
+    self._name_scope = name_scope
 
   @property
   def name(self):
@@ -239,6 +241,60 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
 
 
 @contextlib.contextmanager
+def _pure_variable_scope(name_or_scope, reuse=None, initializer=None):
+  """Creates a context for the variable_scope, see `variable_scope` for docs.
+
+  Note: this does not create a name scope.
+
+  Args:
+    name_or_scope: `string` or `VariableScope`: the scope to open.
+    reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
+      well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+    initializer: default initializer for variables within this scope.
+
+  Yields:
+    A scope that can be to captured and reused.
+
+  Raises:
+    ValueError: when trying to reuse within a create scope, or create within
+      a reuse scope, or if reuse is not `None` or `True`.
+    TypeError: when the types of some arguments are not appropriate.
+
+  """
+  get_variable_scope()  # Ensure that a default exists, then get a pointer.
+  default_varscope = ops.get_collection(_VARSCOPE_KEY)
+  try:
+    old = default_varscope[0]
+    reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
+    if isinstance(name_or_scope, _VariableScope):
+      name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
+      # Handler for the case when we jump to a shared scope.
+      #   We create a new VariableScope (default_varscope[0]) that contains
+      #   a copy of the provided shared scope, possibly with changed reuse
+      #   and initializer, if the user requested this.
+      default_varscope[0] = _VariableScope(reuse, name_or_scope.name,
+                                           name_or_scope.initializer,
+                                           name_scope)
+      if initializer:
+        default_varscope[0].set_initializer(initializer)
+      yield default_varscope[0]
+    else:
+      # Handler for the case when we just prolong current variable scope.
+      #   VariableScope with name extended by the provided one, and inherited
+      #   reuse and initializer (except if the user provided values to set).
+      new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
+      default_varscope[0] = _VariableScope(reuse, name=new_name,
+                                           initializer=old.initializer,
+                                           name_scope=name_or_scope)
+      if initializer:
+        default_varscope[0].set_initializer(initializer)
+      yield default_varscope[0]
+  finally:
+    default_varscope[0] = old
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
 def variable_scope(name_or_scope, reuse=None, initializer=None):
   """Returns a context for variable scope.
 
@@ -304,7 +360,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
       well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
     initializer: default initializer for variables within this scope.
 
-  Yields:
+  Returns:
     A scope that can be to captured and reused.
 
   Raises:
@@ -315,39 +371,76 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
   if not isinstance(name_or_scope, (_VariableScope,) + six.string_types):
     raise TypeError("VariableScope: name_scope must be a string or "
                     "VariableScope.")
-  if reuse not in [None, True]:
-    raise ValueError("VariableScope reuse parameter must be True or None.")
-  if not reuse and isinstance(name_or_scope, (_VariableScope)):
-    logging.info("Passing VariableScope to a non-reusing scope, intended?")
-  if reuse and isinstance(name_or_scope, six.string_types):
-    logging.info("Re-using string-named scope, consider capturing as object.")
-  get_variable_scope()  # Ensure that a default exists, then get a pointer.
-  default_varscope = ops.get_collection(_VARSCOPE_KEY)
-  try:
-    old = default_varscope[0]
-    reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
-    if isinstance(name_or_scope, _VariableScope):
-      # Handler for the case when we jump to a shared scope.
-      #   In this case, we leave the current name_scope unchanged.
-      #   We create a new VariableScope (default_varscope[0]) that contains
-      #   a copy of the provided shared scope, possibly with changed reuse
-      #   and initializer, if the user requested this.
-      default_varscope[0] = _VariableScope(reuse, name_or_scope.name,
-                                           name_or_scope.initializer)
-      if initializer:
-        default_varscope[0].set_initializer(initializer)
-      yield default_varscope[0]
+  if isinstance(name_or_scope, six.string_types):
+    name = name_or_scope
+  else:
+    name = name_or_scope._name_scope  # pylint: disable=protected-access
+  if name:
+    with ops.name_scope(name), _pure_variable_scope(
+        name_or_scope, reuse, initializer) as vs:
+      yield vs
+  else:
+    # This can only happen if someone is entering the root variable scope.
+    with _pure_variable_scope(name_or_scope, reuse, initializer) as vs:
+      yield vs
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
+def variable_op_scope(values, name, default_name, initializer=None):
+  """Returns a context manager for defining an op that creates variables.
+
+  This context manager validates that the given `values` are from the
+  same graph, ensures that that graph is the default graph, and pushes a
+  name scope and a variable scope.
+
+  If `name` is not None, it is used as is in the variable scope. If `name`
+  is None, then `default_name` is used.  In that case, if the same name has been
+  previously used in the same scope, it will made unique be appending `_N` to
+  it.
+
+  This is intended to be used when defining generic ops and so reuse is always
+  inherited.
+
+  For example, to define a new Python op called `my_op_with_vars`:
+
+  ```python
+  def my_op_with_vars(a, b, name=None):
+    with tf.variable_op_scope([a, b], name, "MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      b = tf.convert_to_tensor(b, name="b")
+      c = tf.get_variable('c')
+      # Define some computation that uses `a`, `b`, and `c`.
+      return foo_op(..., name=scope)
+  ```
+
+  Args:
+    values: The list of `Tensor` arguments that are passed to the op function.
+    name: The name argument that is passed to the op function, this name is not
+      uniquified in the variable scope.
+    default_name: The default name to use if the `name` argument is `None`, this
+      name will be uniquified.
+    initializer: A default initializer to pass to variable scope.
+
+  Returns:
+    A context manager for use in defining a Python op.
+
+  Raises:
+    ValueError: when trying to reuse within a create scope, or create within
+      a reuse scope, or if reuse is not `None` or `True`.
+    TypeError: when the types of some arguments are not appropriate.
+  """
+  if default_name is None:
+    raise TypeError("default_name cannot be None")
+  g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
+  with g.as_default():
+    if name:
+      with variable_scope(name, initializer=initializer) as vs:
+        yield vs
     else:
-      # Handler for the case when we just prolong current variable scope.
-      #   In this case we prolong the current name_scope and create a new
-      #   VariableScope with name extended by the provided one, and inherited
-      #   reuse and initializer (except if the user provided values to set).
-      with ops.name_scope(name_or_scope):
-        new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
-        default_varscope[0] = _VariableScope(reuse, name=new_name,
-                                             initializer=old.initializer)
-        if initializer:
-          default_varscope[0].set_initializer(initializer)
-        yield default_varscope[0]
-  finally:
-    default_varscope[0] = old
+      with ops.name_scope(default_name) as scope:
+        count = len(default_name.split("/"))
+        scoped_name = "/".join(scope.split("/")[-count - 1:-1])
+        with _pure_variable_scope(scoped_name,
+                                  initializer=initializer) as vs:
+          yield vs

@@ -33,6 +33,10 @@ features = lambda d: tf.train.Features(feature=d)
 bytes_feature = lambda v: feature(bytes_list=tf.train.BytesList(value=v))
 int64_feature = lambda v: feature(int64_list=tf.train.Int64List(value=v))
 float_feature = lambda v: feature(float_list=tf.train.FloatList(value=v))
+# Helpers for creating SequenceExample objects
+feature_list = lambda l: tf.train.FeatureList(feature=l)
+feature_lists = lambda d: tf.train.FeatureLists(feature_list=d)
+sequence_example = tf.train.SequenceExample
 
 
 def flatten(list_of_lists):
@@ -473,6 +477,25 @@ class ParseSingleExampleTest(tf.test.TestCase):
             "dense_keys": ["a", "b", "c"],
             "dense_shapes": dense_shapes
         }, expected_output)
+
+
+class ParseSequenceExampleTest(tf.test.TestCase):
+
+  def testCreateSequenceExample(self):
+    value = sequence_example(
+        context=features({
+            "global_feature": float_feature([1, 2, 3]),
+            }),
+        feature_lists=feature_lists({
+            "repeated_feature_2_frames": feature_list([
+                bytes_feature(["a", "b", "c"]),
+                bytes_feature(["a", "d", "e"])]),
+            "repeated_feature_3_frames": feature_list([
+                int64_feature([3, 4, 5, 6, 7]),
+                int64_feature([-1, 0, 0, 0, 0]),
+                int64_feature([1, 2, 3, 4, 5])])
+            }))
+    value.SerializeToString()  # Smoke test
 
 
 if __name__ == "__main__":

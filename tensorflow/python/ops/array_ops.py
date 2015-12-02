@@ -335,7 +335,10 @@ def _ConcatShape(op):
         value.get_shape().assert_has_rank(rank)
       else:
         rank = value.get_shape().ndims
-    return [tensor_shape.unknown_shape(ndims=max(rank, 1))]
+    # TODO(irving): Remove once !kAllowLegacyScalars.
+    if rank is not None:
+      rank = max(rank, 1)
+    return [tensor_shape.unknown_shape(ndims=rank)]
 
   else:
     # Merge all the non-concat dims, and sum the concat dim to make an

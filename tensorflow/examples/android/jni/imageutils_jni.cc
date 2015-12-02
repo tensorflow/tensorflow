@@ -38,10 +38,14 @@ IMAGEUTILS_METHOD(convertYUV420SPToARGB8888)(
     JNIEnv* env, jclass clazz, jbyteArray input, jintArray output,
     jint width, jint height, jboolean halfSize);
 
-JNIEXPORT void JNICALL
-IMAGEUTILS_METHOD(convertYUV420SPToRGB565)(
-    JNIEnv* env, jclass clazz, jbyteArray input, jbyteArray output,
-    jint width, jint height);
+JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420ToARGB8888)(
+    JNIEnv* env, jclass clazz, jbyteArray y, jbyteArray u, jbyteArray v,
+    jintArray output, jint width, jint height, jint y_row_stride,
+    jint uv_row_stride, jint uv_pixel_stride, jboolean halfSize);
+
+JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420SPToRGB565)(
+    JNIEnv* env, jclass clazz, jbyteArray input, jbyteArray output, jint width,
+    jint height);
 
 JNIEXPORT void JNICALL
 IMAGEUTILS_METHOD(convertARGB8888ToYUV420SP)(
@@ -82,10 +86,39 @@ IMAGEUTILS_METHOD(convertYUV420SPToARGB8888)(
   env->ReleaseIntArrayElements(output, o, 0);
 }
 
-JNIEXPORT void JNICALL
-IMAGEUTILS_METHOD(convertYUV420SPToRGB565)(
-    JNIEnv* env, jclass clazz, jbyteArray input, jbyteArray output,
-    jint width, jint height) {
+JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420ToARGB8888)(
+    JNIEnv* env, jclass clazz, jbyteArray y, jbyteArray u, jbyteArray v,
+    jintArray output, jint width, jint height, jint y_row_stride,
+    jint uv_row_stride, jint uv_pixel_stride, jboolean halfSize) {
+  jboolean inputCopy = JNI_FALSE;
+  jbyte* const y_buff = env->GetByteArrayElements(y, &inputCopy);
+  jboolean outputCopy = JNI_FALSE;
+  jint* const o = env->GetIntArrayElements(output, &outputCopy);
+
+  if (halfSize) {
+    ConvertYUV420SPToARGB8888HalfSize(reinterpret_cast<uint8*>(y_buff),
+                                      reinterpret_cast<uint32*>(o), width,
+                                      height);
+  } else {
+    jbyte* const u_buff = env->GetByteArrayElements(u, &inputCopy);
+    jbyte* const v_buff = env->GetByteArrayElements(v, &inputCopy);
+
+    ConvertYUV420ToARGB8888(
+        reinterpret_cast<uint8*>(y_buff), reinterpret_cast<uint8*>(u_buff),
+        reinterpret_cast<uint8*>(v_buff), reinterpret_cast<uint32*>(o), width,
+        height, y_row_stride, uv_row_stride, uv_pixel_stride);
+
+    env->ReleaseByteArrayElements(u, u_buff, JNI_ABORT);
+    env->ReleaseByteArrayElements(v, v_buff, JNI_ABORT);
+  }
+
+  env->ReleaseByteArrayElements(y, y_buff, JNI_ABORT);
+  env->ReleaseIntArrayElements(output, o, 0);
+}
+
+JNIEXPORT void JNICALL IMAGEUTILS_METHOD(convertYUV420SPToRGB565)(
+    JNIEnv* env, jclass clazz, jbyteArray input, jbyteArray output, jint width,
+    jint height) {
   jboolean inputCopy = JNI_FALSE;
   jbyte* const i = env->GetByteArrayElements(input, &inputCopy);
 

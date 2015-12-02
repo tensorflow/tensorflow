@@ -276,6 +276,10 @@ class ConcatOpTest(tf.test.TestCase):
     concat = tf.concat(dim, [p1, c1, p2, c2])
     self.assertEqual(4, concat.get_shape().ndims)
 
+    # All dimensions unknown.
+    concat2 = tf.concat(dim, [p1, p2])
+    self.assertEqual(None, concat2.get_shape())
+
     # Rank doesn't match.
     c3 = tf.constant(30.0, shape=[4, 4, 4])
     with self.assertRaises(ValueError):

@@ -6,7 +6,8 @@
 //   - float
 //   - int64
 //
-// Base features are contained in Lists which may hold zero or more values.
+// A Feature contains Lists which may hold zero or more values.  These
+// lists are the base values BytesList, FloatList, Int64List.
 //
 // Features are organized into categories by name.  The Features message
 // contains the mapping from name to Feature.
@@ -50,12 +51,25 @@
 //       value: 9.99
 //     }}
 //   }
+//
 
 syntax = "proto3";
 // option cc_enable_arenas = true;
 
 package tensorflow;
 
+// Containers to hold repeated fundamental values.
+message BytesList {
+  repeated bytes value = 1;
+}
+message FloatList {
+  repeated float value = 1 [packed = true];
+}
+message Int64List {
+  repeated int64 value = 1 [packed = true];
+}
+
+// Containers for non-sequential data.
 message Feature {
   // Each feature can be exactly one kind.
   oneof kind {
@@ -70,13 +84,19 @@ message Features {
   map<string, Feature> feature = 1;
 };
 
-// Containers to hold repeated fundamental features.
-message BytesList {
-  repeated bytes value = 1;
-}
-message FloatList {
-  repeated float value = 1 [packed = true];
-}
-message Int64List {
-  repeated int64 value = 1 [packed = true];
-}
+// Containers for sequential data.
+//
+// A FeatureList contains lists of Features.  These may hold zero or more
+// Feature values.
+//
+// FeatureLists are organized into categories by name.  The FeatureLists message
+// contains the mapping from name to FeatureList.
+//
+message FeatureList {
+  repeated Feature feature = 1;
+};
+
+message FeatureLists {
+  // Map from feature name to feature list.
+  map<string, FeatureList> feature_list = 1;
+};

@@ -14,16 +14,6 @@ load("/tensorflow/tensorflow", "cuda_py_tests")
 load("/tensorflow/tensorflow", "tf_py_wrap_cc")
 load("/tensorflow/core/platform/default/build_config", "tf_proto_library_py")
 
-config_setting(
-    name = "macosx",
-    values = {"cpu": "darwin"},
-)
-
-numpy_macosx_include_dir = select({
-    ":macosx": ["-I/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/numpy/core/include"],
-    "//conditions:default": [],
-})
-
 py_library(
     name = "python",
     srcs = ["__init__.py"],
@@ -467,6 +457,7 @@ tf_gen_op_wrapper_py(
         "MaxPoolGradWithArgmax",
         "ReluGrad",
         "Relu6Grad",
+        "EluGrad",
         "SoftplusGrad",
         "SoftsignGrad",
         "BiasAdd",
@@ -712,7 +703,6 @@ tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
     hdrs = ["client/tf_session_helper.h"],
-    copts = numpy_macosx_include_dir + ["-I/usr/include/python2.7"],
     deps = [
         ":construction_fails_op",
         ":test_kernel_label_op_kernel",
@@ -721,13 +711,14 @@ tf_cuda_library(
         "//tensorflow/core:kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
     ],
 )
 
 tf_py_wrap_cc(
     name = "client/pywraptensorflow_server_lib",
     srcs = ["client/tensorflow_server.i"],
-    copts = numpy_macosx_include_dir,
     swig_includes = [
         "lib/core/status.i",
         "lib/core/strings.i",
@@ -737,13 +728,13 @@ tf_py_wrap_cc(
         "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
+        "//util/python:python_headers",
     ],
 )
 
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
-    copts = numpy_macosx_include_dir,
     swig_includes = [
         "client/events_writer.i",
         "client/tf_session.i",
@@ -760,6 +751,7 @@ tf_py_wrap_cc(
         ":py_record_reader_lib",
         ":py_record_writer_lib",
         ":tf_session_helper",
+        "//util/python:python_headers",
     ],
 )
 

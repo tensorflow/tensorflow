@@ -89,6 +89,23 @@
     padding: 0;
   }
 
+  .toggle-include-group {
+    padding-top: 4px;
+  }
+
+  .toggle-include {
+    margin: 5px 6px;
+    text-transform: none;
+    padding: 4px 6px;
+    font-size: 10pt;
+    background-color: #fafafa;
+    color: #666;
+  }
+
+  .toggle-include:hover {
+    background-color: var(--google-yellow-100);
+  }
+
   .non-control-list-item {
     padding-left: 10px;
   }
@@ -248,6 +265,11 @@
             </div>
           </template>
         </div>
+        <div class="toggle-include-group">
+          <paper-button raised class="toggle-include" on-click="_toggleInclude">
+            <span>[[_auxButtonText]]</span>
+          </paper-button>
+        </div>
       </div>
     </template>
     </iron-collapse>
@@ -272,6 +294,11 @@
             type: Object,
             computed: '_getNode(nodeName, graphHierarchy)',
             observer: '_resetState'
+          },
+          // The enum value of the include property of the selected node.
+          nodeInclude: {
+            type: Number,
+            observer: '_nodeIncludeStateChanged'
           },
           _attributes: {
             type: Array,
@@ -313,6 +340,7 @@
             type: Boolean,
             value: false
           },
+          _auxButtonText: String
         },
         expandNode: function() {
           this.fire('_node.expand', this.node);
@@ -379,6 +407,16 @@
           if (list) {
             list.fire('iron-resize');
           }
+        },
+        _toggleInclude: function() {
+          var graphElem = document.querySelector("#graph");
+          graphElem.fire("node-toggle-extract", { name: this.nodeName });
+          var graphBoardElem = document.querySelector("#graphboard");
+          graphBoardElem.fire("node-toggle-extract");
+        },
+        _nodeIncludeStateChanged: function(include, oldInclude) {
+          this.set("_auxButtonText",
+            tf.graph.getIncludeNodeButtonString(include));
         }
       });
     })();

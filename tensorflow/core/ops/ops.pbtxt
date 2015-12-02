@@ -2097,6 +2097,58 @@ op {
   description: "The inputs are variable-length sequences provided by SparseTensors\n  (hypothesis_indices, hypothesis_values, hypothesis_shape)\nand\n  (truth_indices, truth_values, truth_shape).\n\nThe inputs are:"
 }
 op {
+  name: "Elu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise."
+  description: "See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)\n](http://arxiv.org/abs/1511.07289)"
+}
+op {
+  name: "EluGrad"
+  input_arg {
+    name: "gradients"
+    description: "The backpropagated gradients to the corresponding Elu operation."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    description: "The outputs of the corresponding Elu operation."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    description: "The gradients: `gradients * (outputs + 1)` if outputs < 0,\n`gradients` otherwise."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for the exponential linear (Elu) operation."
+}
+op {
   name: "EncodeJpeg"
   input_arg {
     name: "image"

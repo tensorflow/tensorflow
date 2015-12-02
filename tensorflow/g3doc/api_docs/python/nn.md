@@ -10,9 +10,10 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 ## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
-networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `softplus`,
-and `softsign`), continuous but not everywhere differentiable functions (`relu`,
-`relu6`, and `relu_x`), and random regularization (`dropout`).
+networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
+`softplus`, and `softsign`), continuous but not everywhere differentiable
+functions (`relu`, `relu6`, and `relu_x`), and random regularization
+(`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
 shape as the input tensor.
@@ -50,6 +51,26 @@ Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 ##### Returns:
 
   A `Tensor` with the same type as `features`.
+
+
+- - -
+
+### `tf.nn.elu(features, name=None)` {#elu}
+
+Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
+
+See [Fast and Aaccurate Deep Network Learning by Exponential Linear Units (ELUs)
+](http://arxiv.org/abs/1511.07289)
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `features`.
 
 
 - - -

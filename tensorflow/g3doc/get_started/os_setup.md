@@ -39,7 +39,7 @@ Python.
 The packages that will be installed or upgraded during the pip install are listed in the
 [REQUIRED_PACKAGES section of setup.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/pip_package/setup.py)
 
-Install pip if not already installed:
+Install pip if it is not already installed:
 
 ```bash
 # Ubuntu/Linux 64-bit
@@ -118,8 +118,9 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 With the Virtualenv environment activated, you can now
 [test your installation](#test_install).
 
+When you are done using TensorFlow, deactivate the environment.
+
 ```bash
-# When you are done using TensorFlow, deactivate the environment.
 (tensorflow)$ deactivate
 
 $  # Your prompt should change back
@@ -152,15 +153,14 @@ We provide 2 Docker images:
 With Docker the installation is as follows:
 
 *  Install Docker on your machine.
+*  Create a [Docker
+group](http://docs.docker.com/engine/installation/ubuntulinux/#create-a-docker-group)
+to allow launching containers without `sudo`.
 *  Launch a Docker container with the TensorFlow image.  The image
    gets downloaded automatically on first launch.
 
 See [installing Docker](http://docs.docker.com/engine/installation/) for instructions
 on installing Docker on your machine.
-
-Also create a [Docker
-group](http://docs.docker.com/engine/installation/ubuntulinux/#create-a-docker-group)
-to allow launching containers without `sudo`.
 
 After Docker is installed, launch a Docker container with the TensorFlow binary
 image as follows.
@@ -169,7 +169,7 @@ image as follows.
 $ docker run -it b.gcr.io/tensorflow/tensorflow
 ```
 
-Within the Docker container, you can now [test your installation](#test_install).
+You can now [test your installation](#test_install) within the Docker container.
 
 You can alternatively launch the TensorFlow source image, for example if you want
 to experiment directly with the source.
@@ -196,7 +196,7 @@ export CUDA_HOME=/usr/local/cuda
 
 ### Run TensorFlow from the Command Line
 
-See [common problems](#common_install_problems) if some error happens.
+See [common problems](#common_install_problems) if an error happens.
 
 Open a terminal and type the following:
 
@@ -275,10 +275,10 @@ $ chmod +x PATH_TO_INSTALL.SH
 $ ./PATH_TO_INSTALL.SH --user
 ```
 
-Remember to replace `PATH_TO_INSTALL.SH` to point to the location where you
+Remember to replace `PATH_TO_INSTALL.SH` with the location where you
 downloaded the installer.
 
-Finally, follow the instructions in that script to place bazel into your binary
+Finally, follow the instructions in that script to place `bazel` into your binary
 path.
 
 #### Install other dependencies
@@ -287,12 +287,26 @@ path.
 $ sudo apt-get install python-numpy swig python-dev
 ```
 
+#### Configure the installation {#configure}
+
+Run the `configure` script at the root of the tree.  The configure script
+asks you for the path to your python interpreter and allows (optional)
+configuration of the CUDA libraries (see [below](#configure_cuda)).
+
+This step is used to locate the python and numpy header files.
+
+```bash
+$ ./configure
+Please specify the location of python. [Default is /usr/bin/python]:
+```
+
 #### Optional: Install CUDA (GPUs on Linux) {#install_cuda}
 
 In order to build or run TensorFlow with GPU support, both Cuda Toolkit 7.0 and
 CUDNN 6.5 V2 from NVIDIA need to be installed.
 
-TensorFlow GPU support requires having a GPU card with NVidia Compute Capability >= 3.5.  Supported cards include but are not limited to:
+TensorFlow GPU support requires having a GPU card with NVidia Compute Capability >= 3.5.
+Supported cards include but are not limited to:
 
 * NVidia Titan
 * NVidia Titan X
@@ -318,12 +332,14 @@ sudo cp cudnn-6.5-linux-x64-v2/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-6.5-linux-x64-v2/libcudnn* /usr/local/cuda/lib64
 ```
 
-##### Configure TensorFlow's canonical view of Cuda libraries
-From the root of your source tree, run:
+##### Configure TensorFlow's canonical view of Cuda libraries {#configure_cuda}
+When running the `configure` script from the root of your source tree, select
+the option `Y` when asked to build TensorFlow with GPU support.
 
 ``` bash
 $ ./configure
-Do you wish to build TensorFlow with GPU support? [y/n] y
+Please specify the location of python. [Default is /usr/bin/python]:
+Do you wish to build TensorFlow with GPU support? [y/N] y
 GPU support will be enabled for TensorFlow
 
 Please specify the location where CUDA 7.0 toolkit is installed. Refer to
@@ -400,9 +416,9 @@ given necessary bazel new feature support.
 
 ### Installation for Mac OS X
 
-Mac needs the same set of dependencies as Linux, however installing those
-dependencies is different. Here is a set of useful links to help with installing
-the dependencies on Mac OS X :
+Mac needs the same set of dependencies as Linux, but the installation
+process for those dependencies is different. Here is a set of useful links
+to help with installing the dependencies on Mac OS X :
 
 #### Bazel
 
@@ -420,6 +436,18 @@ Notes : You need to install
 
 Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/install.html).
 
+#### Configure the installation {#configure_osx}
+
+Run the `configure` script at the root of the tree.  The configure script
+asks you for the path to your python interpreter.
+
+This step is used to locate the python and numpy header files.
+
+```bash
+$ ./configure
+Please specify the location of python. [Default is /usr/bin/python]:
+Do you wish to build TensorFlow with GPU support? [y/N]
+```
 
 ### Create the pip package and install {#create-pip}
 
@@ -505,7 +533,7 @@ SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
 
 Solution: Download the wheel manually via curl or wget, and pip install locally.
 
-### On Linux
+### Linux issues
 
 If you encounter:
 
@@ -533,7 +561,7 @@ Solution: TensorFlow depends on protobuf, which requires the Python package
 
 You can resolve the issue in one of the following ways:
 
-* Upgrade the Python installation with the current version `six`:
+* Upgrade the Python installation with the current version of `six`:
 
 ```bash
 $ sudo easy_install -U six

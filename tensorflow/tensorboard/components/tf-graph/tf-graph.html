@@ -82,7 +82,6 @@ Polymer({
       type: Object,
       readOnly: true,
       notify: true,
-      computed: '_buildRenderHierarchy(graphHierarchy, _graphParams)'
     },
     // internal properties
     _graphParams: {
@@ -100,8 +99,11 @@ Polymer({
       value: true
     }
   },
+  observers: [
+    '_buildRenderHierarchy(graphHierarchy, _graphParams)'
+  ],
   _buildRenderHierarchy: function(graphHierarchy, params) {
-    return tf.time('new tf.graph.render.Hierarchy', function() {
+    tf.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {
         // root must be metanode but sometimes Polymer's dom-if has not
         // remove tf-graph element yet in <tf-node-info>
@@ -135,7 +137,7 @@ Polymer({
           };
         })
       });
-      return renderGraph;
+      this._setRenderHierarchy(renderGraph);
     }.bind(this));
   },
   _getVisible: function(name) {
@@ -153,6 +155,7 @@ Polymer({
     'node-select': '_nodeSelected',
     'node-highlight': '_nodeHighlighted',
     'node-unhighlight': '_nodeUnhighlighted',
+    'node-toggle-extract': '_nodeToggleExtract',
 
     // Annotations
 
@@ -213,6 +216,23 @@ Polymer({
     this.querySelector('#scene').setNodeExpanded(renderNode);
     // Also select the expanded node.
     this._nodeSelected(event);
+  },
+  _nodeToggleExtract: function(event) {
+    // Toggle the include setting of the specified node appropriately.
+    var nodeName = event.detail.name;
+    var renderNode = this.renderHierarchy.getRenderNodeByName(nodeName);
+    if (renderNode.node.include == tf.graph.InclusionType.INCLUDE) {
+      renderNode.node.include = tf.graph.InclusionType.EXCLUDE;
+    } else if (renderNode.node.include == tf.graph.InclusionType.EXCLUDE) {
+      renderNode.node.include = tf.graph.InclusionType.INCLUDE;
+    } else {
+      renderNode.node.include =
+       this.renderHierarchy.isNodeAuxilliary(renderNode)
+          ? tf.graph.InclusionType.INCLUDE : tf.graph.InclusionType.EXCLUDE;
+    }
+
+    // Rebuild the render hierarchy.
+    this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
   },
   not: function(x) {
     return !x;

@@ -946,7 +946,7 @@ assert v1 == v
 Sharing a variable by capturing a scope and setting reuse:
 
 ```python
-with tf.variable_scope("foo") as scope.
+with tf.variable_scope("foo") as scope:
     v = tf.get_variable("v", [1])
     scope.reuse_variables()
     v1 = tf.get_variable("v", [1])
@@ -957,7 +957,7 @@ To prevent accidental sharing of variables, we raise an exception when
 getting an existing variable in a non-reusing scope.
 
 ```python
-with tf.variable_scope("foo") as scope.
+with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
     v1 = tf.get_variable("v", [1])
     #  Raises ValueError("... v already exists ...").

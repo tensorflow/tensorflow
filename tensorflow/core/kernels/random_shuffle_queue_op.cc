@@ -312,7 +312,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
             int32 s = queues_[0].size();
             if (closed_ && s < attempt->elements_requested) {
               attempt->context->SetStatus(errors::OutOfRange(
-                  "RandomSuffleQueue '", name_, "' is closed and has ",
+                  "RandomShuffleQueue '", name_, "' is closed and has ",
                   "insufficient elements (requested ",
                   attempt->elements_requested, ", current size ", s, ")"));
               return kComplete;

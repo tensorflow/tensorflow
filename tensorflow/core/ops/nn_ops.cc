@@ -445,6 +445,31 @@ backprops: The gradients:
   `gradients * features * (features > 0) * (features < 6)`.
 )doc");
 
+REGISTER_OP("Elu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
+
+See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
+](http://arxiv.org/abs/1511.07289)
+)doc");
+
+REGISTER_OP("EluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes gradients for the exponential linear (Elu) operation.
+
+gradients: The backpropagated gradients to the corresponding Elu operation.
+outputs: The outputs of the corresponding Elu operation.
+backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
+`gradients` otherwise.
+)doc");
+
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")

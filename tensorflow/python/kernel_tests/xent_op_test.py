@@ -50,6 +50,29 @@ class XentTest(tf.test.TestCase):
     self._testXent(features, labels, use_gpu=False)
     self._testXent(features, labels, use_gpu=True)
 
+  def _testSingleClass(self, use_gpu=False):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      loss = tf.nn.softmax_cross_entropy_with_logits(
+          np.array([[1.], [-1.], [0.]]).astype(np.float32),
+          np.array([[-1.], [0.], [1.]]).astype(np.float32))
+      backprop = loss.op.outputs[1]
+      tf_loss, tf_backprop = sess.run([loss, backprop])
+    self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
+    self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
+
+  def testSingleClass(self):
+    self._testSingleClass(True)
+    self._testSingleClass(False)
+
+  def testRankTooLarge(self):
+    np_features = np.array(
+        [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(np.float32)
+    np_labels = np.array(
+        [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(np.float32)
+    self.assertRaisesRegexp(
+        ValueError, "must have the same rank",
+        tf.nn.softmax_cross_entropy_with_logits, np_features, np_labels)
+
   def testNpXent(self):
     # We create 2 batches of logits for testing.
     # batch 0 is the boring uniform distribution: 1, 1, 1, 1, with target 3.

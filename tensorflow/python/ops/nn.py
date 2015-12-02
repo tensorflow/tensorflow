@@ -17,15 +17,17 @@
 """## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
-networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `softplus`,
-and `softsign`), continuous but not everywhere differentiable functions (`relu`,
-`relu6`, and `relu_x`), and random regularization (`dropout`).
+networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
+`softplus`, and `softsign`), continuous but not everywhere differentiable
+functions (`relu`, `relu6`, and `relu_x`), and random regularization
+(`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
 shape as the input tensor.
 
 @@relu
 @@relu6
+@@elu
 @@softplus
 @@softsign
 @@dropout

@@ -115,14 +115,14 @@ class GPUBFCAllocator : public VisitableAllocator {
   };
 
   Chunk* AllocateNewChunk(size_t num_bytes);
-  void SplitChunk(Chunk* c, size_t num_bytes);
-  void Merge(Chunk* c1, Chunk* c2);
-  void FreeAndMaybeCoalesce(Chunk* c);
-  void InsertFreeChunkIntoBin(Chunk* c);
+  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void RemoveFreeChunkFromBin(Chunk* c);
-  void DeleteChunk(Chunk* c);
+  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  void DumpMemoryLog(size_t num_bytes);
+  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A Bin is a collection of similar-sized free chunks.
   struct Bin {
@@ -163,7 +163,7 @@ class GPUBFCAllocator : public VisitableAllocator {
   // Structures mutable after construction
   mutable mutex lock_;
   // Chunk * owned.
-  std::unordered_map<void*, Chunk*> ptr_to_chunk_map_;
+  std::unordered_map<void*, Chunk*> ptr_to_chunk_map_ GUARDED_BY(lock_);
 
   // Called once on each region, ASAP.
   std::vector<Visitor> region_visitors_;

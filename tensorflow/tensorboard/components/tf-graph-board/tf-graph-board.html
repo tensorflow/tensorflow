@@ -77,6 +77,32 @@ paper-progress {
   --paper-progress-height: 6px;
   --paper-progress-active-color: #f3913e;
 }
+
+.context-menu {
+  position: absolute;
+  display: none;
+  background-color: #e2e2e2;
+  border-radius: 2px;
+  font-size: 14px;
+  min-width: 150px;
+  border: 1px solid #d4d4d4;
+}
+
+/deep/ .context-menu ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+}
+
+/deep/ .context-menu ul li {
+  padding: 4px 16px;
+}
+
+/deep/ .context-menu ul li:hover {
+  background-color: #f3913e;
+  color: white;
+}
 </style>
 <template is="dom-if" if="[[_isNotComplete(progress)]]">
   <div id="progress-bar">
@@ -104,11 +130,13 @@ paper-progress {
                     render-hierarchy="[[_renderHierarchy]]"
                     graph="[[graph]]"
                     selected-node="{{_selectedNode}}"
+                    selected-node-include="{{_selectedNodeInclude}}"
                     highlighted-node="{{_highlightedNode}}"
                     color-by="[[colorBy]]"
                     color-by-params="[[colorByParams]]"
     ></tf-graph-info>
   </div>
+  <div class="context-menu"></div>
 </div>
 </template>
 </dom-module>
@@ -137,9 +165,17 @@ Polymer({
     },
     // Private API: Data routing between child components.
     _selectedNode: String,
+    // The enum value of the include property of the selected node.
+    _selectedNodeInclude: Number,
     _highlightedNode: String,
     _renderHierarchy: Object,
   },
+  listeners: {
+    'node-toggle-extract': '_nodeToggleExtract'
+  },
+  observers: [
+    '_updateNodeInclude(_selectedNode)'
+  ],
   /** True if the progress is not complete yet (< 100 %). */
   _isNotComplete: function(progress) {
     return progress.value < 100;
@@ -153,6 +189,14 @@ Polymer({
       result += ' loading';
     }
     return result;
+  },
+  _updateNodeInclude: function(nodeName) {
+    var node = this.graphHierarchy.node(nodeName);
+    this.set("_selectedNodeInclude",
+      node ? node.include : tf.graph.InclusionType.UNSPECIFIED);
+  },
+  _nodeToggleExtract: function() {
+    this._updateNodeInclude(this._selectedNode);
   }
 });
 </script>

@@ -22,6 +22,7 @@ h2 {
                   render-hierarchy="[[renderHierarchy]]"
                   flat-graph="[[graph]]"
                   node-name="[[selectedNode]]"
+                  node-include="[[selectedNodeInclude]]"
                   highlighted-node="{{highlightedNode}}"
                   color-by="[[colorBy]]">
     </tf-node-info>
@@ -46,6 +47,11 @@ h2 {
       },
       highlightedNode: {
         type: String,
+        notify: true
+      },
+      // The enum value of the include property of the selected node.
+      selectedNodeInclude: {
+        type: Number,
         notify: true
       }
     },

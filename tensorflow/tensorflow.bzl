@@ -284,30 +284,33 @@ _py_wrap_cc = rule(attrs={
                    },
                    implementation=_py_wrap_cc_impl,)
 
-
 def tf_extension_linkopts():
   return []  # No extension link opts
+
+def tf_extension_copts():
+  return []  # No extension c opts
 
 def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
   module_name = name.split("/")[-1]
   # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
   # and use that as the name for the rule producing the .so file.
   cc_library_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".so"])
+  extra_deps = []
   _py_wrap_cc(name=name + "_py_wrap",
               srcs=srcs,
               swig_includes=swig_includes,
-              deps=deps,
+              deps=deps + extra_deps,
               module_name=module_name,
               py_module_name=name)
   native.cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=copts + ["-Wno-self-assign", "-Wno-write-strings"
-                    ] + ["-I/usr/include/python2.7"],
+      copts=(copts + ["-Wno-self-assign", "-Wno-write-strings"]
+             + tf_extension_copts()),
       linkopts=tf_extension_linkopts(),
       linkstatic=1,
       linkshared=1,
-      deps=deps)
+      deps=deps + extra_deps)
   native.py_library(name=name,
                     srcs=[":" + name + ".py"],
                     srcs_version="PY2AND3",

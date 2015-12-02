@@ -342,6 +342,7 @@ size_t GPUBFCAllocator::AllocatedSize(void* ptr) {
 
 void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // For each bin: tally up the total number of chunks and bytes.
+  // Note that bins hold only free chunks.
   for (auto bit : bins_) {
     Bin* b = bit.second;
 
@@ -389,6 +390,24 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
       LOG(INFO) << c->DebugString(true);
     }
   }
-}
 
+  // Next show the the chunks that are in use, and also summarize their
+  // number by size.
+  std::map<size_t, int> in_use_by_size;
+  for (auto& it : ptr_to_chunk_map_) {
+    const Chunk& c = *it.second;
+    in_use_by_size[c.size]++;
+    LOG(INFO) << "Chunk at " << it.first << " of size " << c.size;
+  }
+
+  LOG(INFO) << "     Summary of in-use Chunks by size: ";
+  size_t total_bytes = 0;
+  for (auto& it : in_use_by_size) {
+    LOG(INFO) << it.second << " Chunks of size " << it.first << " totalling "
+              << strings::HumanReadableNumBytes(it.first * it.second);
+    total_bytes += (it.first * it.second);
+  }
+  LOG(INFO) << "Sum Total of in-use chunks: "
+            << strings::HumanReadableNumBytes(total_bytes);
+}
 }  // namespace tensorflow

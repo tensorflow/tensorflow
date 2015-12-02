@@ -29,6 +29,9 @@ export enum GraphType {FULL, EMBEDDED, META, SERIES, CORE, SHADOW, BRIDGE,
     EDGE};
 export enum NodeType {META, OP, SERIES, BRIDGE, ELLIPSIS};
 
+/** Indicates if a node is to be included in the main graph when rendered. */
+export enum InclusionType {INCLUDE, EXCLUDE, UNSPECIFIED};
+
 /**
  * A BaseEdge is the label object (in the graphlib sense) for an edge in the
  * original, full graph produced after parsing. Subsequent graphs, like those
@@ -98,6 +101,12 @@ export interface Node {
   parentNode: Node;
   /** Runtime execution stats for this node, if available */
   stats: NodeStats;
+  /** If the node is to be included or excluded from the main graph when
+   *  rendered. Defaults to UNSPECIFIED, which means that the rendering
+   *  algorithm determines if it will be included or not. Then can be set to
+   *  INCLUDE or EXCLUDE manually by the user.
+   */
+  include: InclusionType;
 }
 
 export interface OpNode extends Node {
@@ -258,6 +267,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
   isGroupNode: boolean;
   cardinality: number;
   parentNode: Node;
+  include: InclusionType;
 
   /**
    * Constructs a new ellipsis annotation node.
@@ -271,6 +281,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
     this.parentNode = null;
     this.stats = null;
     this.setNumMoreNodes(numNodes);
+    this.include = InclusionType.UNSPECIFIED;
   }
 
   setNumMoreNodes(numNodes: number) {
@@ -296,6 +307,7 @@ class OpNodeImpl implements OpNode {
   inEmbeddings: OpNode[];
   outEmbeddings: OpNode[];
   parentNode: Node;
+  include: InclusionType;
 
   /**
    * Constructs a new Op node.
@@ -319,6 +331,7 @@ class OpNodeImpl implements OpNode {
     this.inEmbeddings = [];
     this.outEmbeddings = [];
     this.parentNode = null;
+    this.include = InclusionType.UNSPECIFIED;
   }
 };
 
@@ -419,6 +432,7 @@ class MetanodeImpl implements Metanode {
   deviceHistogram: {[op: string]: number};
   parentNode: Node;
   hasNonControlEdges: boolean;
+  include: InclusionType;
 
   /** A label object for meta-nodes in the graph hierarchy */
   constructor(name: string, opt = {}) {
@@ -448,6 +462,7 @@ class MetanodeImpl implements Metanode {
     this.parentNode = null;
     this.stats = new NodeStats(0, 0, null);
     this.hasNonControlEdges = false;
+    this.include = InclusionType.UNSPECIFIED;
   }
 
   getFirstChild(): GroupNode|OpNode {
@@ -599,6 +614,7 @@ class SeriesNodeImpl implements SeriesNode {
   parentNode: Node;
   deviceHistogram: {[op: string]: number};
   hasNonControlEdges: boolean;
+  include: InclusionType;
 
   constructor(prefix: string, suffix: string, parent: string,
       clusterId: number, name: string) {
@@ -619,6 +635,7 @@ class SeriesNodeImpl implements SeriesNode {
     this.deviceHistogram = {};
     this.hasNonControlEdges = false;
     this.stats = new NodeStats(0, 0, null);
+    this.include = InclusionType.UNSPECIFIED;
   }
 }
 
@@ -901,4 +918,15 @@ export function getHierarchicalPath(name: string,
   return path;
 };
 
+/**
+ * Returns the string for the node inclusion toggle button, dependant
+ * on the provided current InclusionType.
+ */
+export function getIncludeNodeButtonString(include: InclusionType) {
+  if (include === tf.graph.InclusionType.EXCLUDE) {
+    return "Add to main graph";
+  } else {
+    return "Remove from main graph";
+  }
+};
 } // close module tf.graph

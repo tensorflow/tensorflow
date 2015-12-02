@@ -24,12 +24,12 @@ import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
+
 import junit.framework.Assert;
 
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
@@ -38,7 +38,7 @@ import java.util.List;
 public class TensorflowImageListener implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 
-  private static final boolean SAVE_PREVIEW_BITMAP = false;
+  private static final boolean SAVE_PREVIEW_BITMAP = true;
 
   private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
   private static final String LABEL_FILE =
@@ -55,7 +55,7 @@ public class TensorflowImageListener implements OnImageAvailableListener {
 
   private int previewWidth = 0;
   private int previewHeight = 0;
-  private byte[] yuvBytes = null;
+  private byte[][] yuvBytes;
   private int[] rgbBytes = null;
   private Bitmap rgbFrameBitmap = null;
   private Bitmap croppedBitmap = null;
@@ -66,44 +66,6 @@ public class TensorflowImageListener implements OnImageAvailableListener {
     tensorflow.initializeTensorflow(
         assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN);
     this.scoreView = scoreView;
-  }
-
-  private void readPlanesToYuvBuffer(final Plane[] planes, final byte[] yuvBytes) {
-    int position = 0;
-
-    // Copy the bytes from the Image into a buffer for easier conversion to RGB.
-    // TODO(andrewharp): Modify native code to accept multiple buffers so that
-    // only one pass is necessary during conversion to RGB.
-    final Plane yPlane = planes[0];
-    final ByteBuffer yBuffer = yPlane.getBuffer();
-    final int yRowStride = yPlane.getRowStride();
-
-    // Read the y (luminance buffer).
-    for (int row = 0; row < previewHeight; ++row) {
-      yBuffer.position(yRowStride * row);
-
-      // Pixel stride is guaranteed to be 1 so we can
-      // just do a copy operation.
-      yBuffer.get(yuvBytes, position, previewWidth);
-      position += previewWidth;
-    }
-
-    // Interleave the u and v buffers.
-    final ByteBuffer uBuffer = planes[1].getBuffer();
-    final ByteBuffer vBuffer = planes[2].getBuffer();
-    final int uvPixelStride = planes[1].getPixelStride();
-    final int uvWidth = previewWidth / 2;
-    final int uvHeight = previewHeight / 2;
-    Assert.assertEquals(
-        planes[1].getRowStride(), planes[2].getRowStride());
-    for (int y = 0; y < uvHeight; ++y) {
-      int readPos = planes[1].getRowStride() * y;
-      for (int x = 0; x < uvWidth; ++x) {
-        yuvBytes[position++] = vBuffer.get(readPos);
-        yuvBytes[position++] = uBuffer.get(readPos);
-        readPos += uvPixelStride;
-      }
-    }
   }
 
   private void drawResizedBitmap(final Bitmap src, final Bitmap dst) {
@@ -141,6 +103,8 @@ public class TensorflowImageListener implements OnImageAvailableListener {
         return;
       }
 
+      final Plane[] planes = image.getPlanes();
+
       // Initialize the storage bitmaps once when the resolution is known.
       if (previewWidth != image.getWidth() || previewHeight != image.getHeight()) {
         previewWidth = image.getWidth();
@@ -148,16 +112,35 @@ public class TensorflowImageListener implements OnImageAvailableListener {
 
         LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
         rgbBytes = new int[previewWidth * previewHeight];
-        yuvBytes = new byte[ImageUtils.getYUVByteSize(previewWidth, previewHeight)];
         rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
         croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
+
+        yuvBytes = new byte[planes.length][];
+        for (int i = 0; i < planes.length; ++i) {
+          yuvBytes[i] = new byte[planes[i].getBuffer().capacity()];
+        }
       }
 
-      readPlanesToYuvBuffer(image.getPlanes(), yuvBytes);
+      for (int i = 0; i < planes.length; ++i) {
+        planes[i].getBuffer().get(yuvBytes[i]);
+      }
+
+      final int yRowStride = planes[0].getRowStride();
+      final int uvRowStride = planes[1].getRowStride();
+      final int uvPixelStride = planes[1].getPixelStride();
+      ImageUtils.convertYUV420ToARGB8888(
+          yuvBytes[0],
+          yuvBytes[1],
+          yuvBytes[2],
+          rgbBytes,
+          previewWidth,
+          previewHeight,
+          yRowStride,
+          uvRowStride,
+          uvPixelStride,
+          false);
 
       image.close();
-
-      ImageUtils.convertYUV420SPToARGB8888(yuvBytes, rgbBytes, previewWidth, previewHeight, false);
     } catch (final Exception e) {
       if (image != null) {
         image.close();

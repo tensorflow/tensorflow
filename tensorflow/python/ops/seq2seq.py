@@ -147,7 +147,7 @@ def embedding_rnn_decoder(decoder_inputs, initial_state, cell, num_symbols,
   """RNN decoder with embedding and a pure-decoding option.
 
   Args:
-    decoder_inputs: a list of 1D batch-sized int32-Tensors (decoder inputs).
+    decoder_inputs: a list of 1D batch-sized int32 Tensors (decoder inputs).
     initial_state: 2D Tensor [batch_size x cell.state_size].
     cell: rnn_cell.RNNCell defining the cell function.
     num_symbols: integer, how many symbols come into the embedding.
@@ -219,8 +219,8 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   encoder state, on embedded decoder_inputs.
 
   Args:
-    encoder_inputs: a list of 1D int32-Tensors of shape [batch_size].
-    decoder_inputs: a list of 1D int32-Tensors of shape [batch_size].
+    encoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
+    decoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
     num_encoder_symbols: integer; number of symbols on the encoder side.
     num_decoder_symbols: integer; number of symbols on the decoder side.
@@ -286,8 +286,8 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   encoder state, on embedded decoder_inputs.
 
   Args:
-    encoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
-    decoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
+    encoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
+    decoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
     num_symbols: integer; number of symbols for both encoder and decoder.
     output_projection: None or a pair (W, B) of output projection weights and
@@ -486,7 +486,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
-    decoder_inputs: a list of 1D batch-sized int32-Tensors (decoder inputs).
+    decoder_inputs: a list of 1D batch-sized int32 Tensors (decoder inputs).
     initial_state: 2D Tensor [batch_size x cell.state_size].
     attention_states: 3D Tensor [batch_size x attn_length x attn_size].
     cell: rnn_cell.RNNCell defining the cell function.
@@ -566,8 +566,8 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
   encoder state, on embedded decoder_inputs and attending to encoder outputs.
 
   Args:
-    encoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
-    decoder_inputs: a list of 2D Tensors [batch_size x cell.input_size].
+    encoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
+    decoder_inputs: a list of 1D int32 Tensors of shape [batch_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
     num_encoder_symbols: integer; number of symbols on the encoder side.
     num_decoder_symbols: integer; number of symbols on the decoder side.
@@ -636,7 +636,7 @@ def sequence_loss_by_example(logits, targets, weights, num_decoder_symbols,
 
   Args:
     logits: list of 2D Tensors of shape [batch_size x num_decoder_symbols].
-    targets: list of 1D batch-sized int32-Tensors of the same length as logits.
+    targets: list of 1D batch-sized int32 Tensors of the same length as logits.
     weights: list of 1D batch-sized float-Tensors of the same length as logits.
     num_decoder_symbols: integer, number of decoder symbols (output classes).
     average_across_timesteps: If set, divide the returned cost by the total
@@ -692,7 +692,7 @@ def sequence_loss(logits, targets, weights, num_decoder_symbols,
 
   Args:
     logits: list of 2D Tensors os shape [batch_size x num_decoder_symbols].
-    targets: list of 1D batch-sized int32-Tensors of the same length as logits.
+    targets: list of 1D batch-sized int32 Tensors of the same length as logits.
     weights: list of 1D batch-sized float-Tensors of the same length as logits.
     num_decoder_symbols: integer, number of decoder symbols (output classes).
     average_across_timesteps: If set, divide the returned cost by the total
@@ -731,7 +731,7 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
   Args:
     encoder_inputs: a list of Tensors to feed the encoder; first seq2seq input.
     decoder_inputs: a list of Tensors to feed the decoder; second seq2seq input.
-    targets: a list of 1D batch-sized int32-Tensors (desired output sequence).
+    targets: a list of 1D batch-sized int32 Tensors (desired output sequence).
     weights: list of 1D batch-sized float-Tensors to weight the targets.
     buckets: a list of pairs of (input size, output size) for each bucket.
     num_decoder_symbols: integer, number of decoder symbols (output classes).

@@ -16,6 +16,7 @@ limitations under the License.
 /// <reference path="../graph.ts" />
 /// <reference path="scene.ts" />
 /// <reference path="annotation.ts" />
+/// <reference path="contextmenu.ts" />
 
 module tf.graph.scene.node {
 
@@ -229,30 +230,51 @@ function addInteraction(selection, d: render.RenderNodeInformation,
     selection.attr("pointer-events", "none");
     return;
   }
+
+  let contextMenuFunction = tf.graph.scene.contextmenu.getMenu(
+    getContextMenu(d.node, sceneBehavior));
   selection.on("dblclick", d => {
-  sceneBehavior.fire("node-toggle-expand", { name: d.node.name });
+    sceneBehavior.fire("node-toggle-expand", { name: d.node.name });
   })
     .on("mouseover", d => {
       // don't send mouseover over expanded group,
       // otherwise it is causing too much glitches
-    if (sceneBehavior.isNodeExpanded(d)) { return; }
+      if (sceneBehavior.isNodeExpanded(d)) { return; }
 
       sceneBehavior.fire("node-highlight", { name: d.node.name });
     })
     .on("mouseout", d => {
       // don't send mouseover over expanded group,
       // otherwise it is causing too much glitches
-    if (sceneBehavior.isNodeExpanded(d)) { return; }
+      if (sceneBehavior.isNodeExpanded(d)) { return; }
 
-    sceneBehavior.fire("node-unhighlight", { name: d.node.name });
+      sceneBehavior.fire("node-unhighlight", { name: d.node.name });
     })
     .on("click", d => {
       // Stop this event's propagation so that it isn't also considered
       // a graph-select.
       (<Event>d3.event).stopPropagation();
       sceneBehavior.fire("node-select", { name: d.node.name });
+    })
+    .on("contextmenu", (d, i) => {
+      sceneBehavior.fire("node-select", { name: d.node.name });
+      contextMenuFunction.call(d, i);
     });
 };
+
+/**
+ * Returns the d3 context menu specification for the provided node.
+ */
+export function getContextMenu(node: Node, sceneBehavior) {
+  return [{
+    title: d => {
+      return tf.graph.getIncludeNodeButtonString(node.include);
+    },
+    action: (elm, d, i) => {
+      sceneBehavior.fire("node-toggle-extract", { name: node.name });
+    }
+  }];
+}
 
 /**
  * Append svg text for label and assign data.
