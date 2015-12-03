@@ -1,0 +1,23 @@
+FROM tensorflow:ci_build.cpu
+
+MAINTAINER Jan Prach <jendap@google.com>
+
+# Install Cuda.
+RUN cd /tmp && \
+    wget http://developer.download.nvidia.com/compute/cuda/7_0/Prod/local_installers/cuda_7.0.28_linux.run && \
+    chmod +x *.run && ./cuda_*_linux.run -extract=`pwd` && \
+    ./NVIDIA-Linux-x86_64-*.run -s --no-kernel-module && \
+    ./cuda-linux64-rel-*.run -noprompt && \
+    rm -rf *
+
+# Set up CUDA variables in .bashrc
+RUN echo "CUDA_PATH=/usr/local/cuda" >>~/.bash_profile && \
+    echo "LD_LIBRARY_PATH=/usr/local/cuda/lib64:/tensorflow_extra_deps/cudnn-6.5-linux-x64-v2" >>~/.bash_profile
+
+# Set up cuda variables.
+ENV CUDA_PATH /usr/local/cuda
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:/tensorflow_extra_deps/cudnn-6.5-linux-x64-v2
+
+# Set up variables fo tensorflow to use cuda.
+ENV CUDA_TOOLKIT_PATH /usr/local/cuda
+ENV CUDNN_INSTALL_PATH /tensorflow_extra_deps/cudnn-6.5-linux-x64-v2

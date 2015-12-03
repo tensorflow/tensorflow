@@ -1340,7 +1340,7 @@ Computes a tensor such that
 that `segment_ids[j] == i`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/SegmentSum.png" alt>
+<img style="width:100%" src="../../images/SegmentSum.png" alt>
 </div>
 
 ##### Args:
@@ -1374,7 +1374,7 @@ Computes a tensor such that
 that `segment_ids[j] == i`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/SegmentProd.png" alt>
+<img style="width:100%" src="../../images/SegmentProd.png" alt>
 </div>
 
 ##### Args:
@@ -1408,7 +1408,7 @@ Computes a tensor such that
 that `segment_ids[j] == i`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/SegmentMin.png" alt>
+<img style="width:100%" src="../../images/SegmentMin.png" alt>
 </div>
 
 ##### Args:
@@ -1441,7 +1441,7 @@ Computes a tensor such that
 that `segment_ids[j] == i`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/SegmentMax.png" alt>
+<img style="width:100%" src="../../images/SegmentMax.png" alt>
 </div>
 
 ##### Args:
@@ -1476,7 +1476,7 @@ over `j` such that `segment_ids[j] == i` and `N` is the total number of
 values summed.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/SegmentMean.png" alt>
+<img style="width:100%" src="../../images/SegmentMean.png" alt>
 </div>
 
 ##### Args:
@@ -1517,7 +1517,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 `num_segments` should equal the number of distinct segment IDs.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
 </div>
 
 ##### Args:

@@ -42,21 +42,13 @@ class TEST_EventMgrHelper {
 
   void QueueTensors(perftools::gputools::Stream* stream,
                     std::vector<Tensor>* tensors) {
-    ::perftools::gputools::Event* e;
-    {
-      mutex_lock l(em_->mu_);
-      em_->QueueTensors(stream, tensors, &e);
-    }
-    stream->ThenRecordEvent(e);
+    mutex_lock l(em_->mu_);
+    em_->QueueTensors(stream, tensors);
   }
 
   void PollEvents(bool is_dedicated_poller) {
-    EventMgr::ToFreeVector to_free;
-    {
-      mutex_lock l(em_->mu_);
-      em_->PollEvents(is_dedicated_poller, &to_free);
-    }
-    em_->FreeMemory(to_free);
+    mutex_lock l(em_->mu_);
+    em_->PollEvents(is_dedicated_poller);
   }
 
  private:

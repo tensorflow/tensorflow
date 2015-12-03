@@ -60,10 +60,10 @@ suggest skimming blue, then red.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px; display: flex; flex-direction: row">
  <a href="../tutorials/mnist/beginners/index.md" title="MNIST for ML Beginners tutorial">
-   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="blue_pill.png" alt="MNIST for machine learning beginners tutorial" />
+   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="../images/blue_pill.png" alt="MNIST for machine learning beginners tutorial" />
  </a>
  <a href="../tutorials/mnist/pros/index.md" title="Deep MNIST for ML Experts tutorial">
-   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="red_pill.png" alt="Deep MNIST for machine learning experts tutorial" />
+   <img style="flex-grow:1; flex-shrink:1; border: 1px solid black;" src="../images/red_pill.png" alt="Deep MNIST for machine learning experts tutorial" />
  </a>
 </div>
 <p style="font-size:10px;">Images licensed CC BY-SA 4.0; original by W. Carter</p>
@@ -77,12 +77,3 @@ TensorFlow features.
 * [Download and Setup](../get_started/os_setup.md)
 * [Basic Usage](../get_started/basic_usage.md)
 * [TensorFlow Mechanics 101](../tutorials/mnist/tf/index.md)
-
-
-<div class='sections-order' style="display: none;">
-<!--
-<!-- os_setup.md -->
-<!-- basic_usage.md -->
--->
-</div>
-

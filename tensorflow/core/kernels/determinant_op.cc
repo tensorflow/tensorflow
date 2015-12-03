@@ -44,7 +44,7 @@ class DeterminantOp
     const int64 rows = input_matrix_shape.dim_size(0);
     if (rows > (1LL << 20)) {
       // A big number to cap the cost in case overflow.
-      return kint32max;
+      return kint64max;
     } else {
       return rows * rows * rows;
     }

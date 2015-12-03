@@ -79,7 +79,10 @@ Status AttrSlice::Find(const string& attr_name,
     return Status::OK();
   }
   Status s = errors::NotFound("No attr named '", attr_name, "' in NodeDef:");
-  if (ndef_) {
+  // Skip AttachDef for internal attrs since it is a little bit
+  // expensive and it is common for them to correctly not be included
+  // in a NodeDef.
+  if (!StringPiece(attr_name).starts_with("_") && ndef_) {
     s = AttachDef(s, *ndef_);
   }
   return s;

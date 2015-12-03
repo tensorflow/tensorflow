@@ -711,7 +711,7 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
   unnormalized statistical models]
   (http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
   Also see our [Candidate Sampling Algorithms Reference]
-  (http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  (../../extras/candidate_sampling.pdf)
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -743,7 +743,7 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
         learning to generate log-odds instead of log probabilities.  See
         our [Candidate Sampling Algorithms Reference]
-        (http://www.tensorflow.org/extras/candidate_sampling.pdf).
+        (../../extras/candidate_sampling.pdf).
         Default is False.
     name: A name for the operation (optional).
 
@@ -782,7 +782,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 
   See our [Candidate Sampling Algorithms Reference]
-  (http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  (../../extras/candidate_sampling.pdf)
 
   Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
 

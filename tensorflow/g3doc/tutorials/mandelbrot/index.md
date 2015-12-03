@@ -110,7 +110,7 @@ Let's see what we've got.
 DisplayFractal(ns.eval())
 ```
 
-![jpeg](mandelbrot_output.jpg)
+![jpeg](../../images/mandelbrot_output.jpg)
 
 Not bad!
 

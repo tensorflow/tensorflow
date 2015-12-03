@@ -68,6 +68,7 @@
   * [`uniform_unit_scaling_initializer`](../../api_docs/python/state_ops.md#uniform_unit_scaling_initializer)
   * [`update_checkpoint_state`](../../api_docs/python/state_ops.md#update_checkpoint_state)
   * [`Variable`](../../api_docs/python/state_ops.md#Variable)
+  * [`variable_op_scope`](../../api_docs/python/state_ops.md#variable_op_scope)
   * [`variable_scope`](../../api_docs/python/state_ops.md#variable_scope)
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
@@ -356,20 +357,3 @@
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
   * [`zero_fraction`](../../api_docs/python/train.md#zero_fraction)
 
-<div class="sections-order" style="display: none;">
-<!--
-<!-- framework.md -->
-<!-- constant_op.md -->
-<!-- state_ops.md -->
-<!-- array_ops.md -->
-<!-- math_ops.md -->
-<!-- control_flow_ops.md -->
-<!-- image.md -->
-<!-- sparse_ops.md -->
-<!-- io_ops.md -->
-<!-- python_io.md -->
-<!-- nn.md -->
-<!-- client.md -->
-<!-- train.md -->
--->
-</div>

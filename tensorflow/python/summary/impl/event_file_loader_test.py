@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tempfile
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -32,8 +33,7 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
             b'\xd5A\x1a\rbrain.Event:1\xec\xf32\x8d')
 
   def _WriteToFile(self, filename, data):
-    path = os.path.join(self.get_temp_dir(), filename)
-    with open(path, 'ab') as f:
+    with open(filename, 'ab') as f:
       f.write(data)
 
   def _LoaderForTestFile(self, filename):
@@ -41,36 +41,41 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
         os.path.join(self.get_temp_dir(), filename))
 
   def testEmptyEventFile(self):
-    self._WriteToFile('empty_event_file', b'')
-    loader = self._LoaderForTestFile('empty_event_file')
+    filename = tempfile.NamedTemporaryFile().name
+    self._WriteToFile(filename, b'')
+    loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 0)
 
   def testSingleWrite(self):
-    self._WriteToFile('single_event_file', EventFileLoaderTest.RECORD)
-    loader = self._LoaderForTestFile('single_event_file')
+    filename = tempfile.NamedTemporaryFile().name
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    loader = self._LoaderForTestFile(filename)
     events = list(loader.Load())
     self.assertEqual(len(events), 1)
     self.assertEqual(events[0].wall_time, 1440183447.0)
     self.assertEqual(len(list(loader.Load())), 0)
 
   def testMultipleWrites(self):
-    self._WriteToFile('staggered_event_file', EventFileLoaderTest.RECORD)
-    loader = self._LoaderForTestFile('staggered_event_file')
+    filename = tempfile.NamedTemporaryFile().name
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 1)
-    self._WriteToFile('staggered_event_file', EventFileLoaderTest.RECORD)
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     self.assertEqual(len(list(loader.Load())), 1)
 
   def testMultipleLoads(self):
-    self._WriteToFile('multiple_loads_event_file', EventFileLoaderTest.RECORD)
-    loader = self._LoaderForTestFile('multiple_loads_event_file')
+    filename = tempfile.NamedTemporaryFile().name
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    loader = self._LoaderForTestFile(filename)
     loader.Load()
     loader.Load()
     self.assertEqual(len(list(loader.Load())), 1)
 
   def testMultipleWritesAtOnce(self):
-    self._WriteToFile('multiple_event_file', EventFileLoaderTest.RECORD)
-    self._WriteToFile('multiple_event_file', EventFileLoaderTest.RECORD)
-    loader = self._LoaderForTestFile('staggered_event_file')
+    filename = tempfile.NamedTemporaryFile().name
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 2)
 
 

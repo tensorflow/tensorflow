@@ -326,7 +326,7 @@ If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/Gather.png" alt>
+<img style="width:100%" src="../../images/Gather.png" alt>
 </div>
 )doc");
 

@@ -13,38 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Read a file and return its contents."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
+from tensorflow.python.platform import googletest
+from tensorflow.python.platform.default import _resource_loader as resource_loader
 
-from tensorflow.python.platform import logging
 
+class DefaultResourceLoaderTest(googletest.TestCase):
 
-def load_resource(path):
-  """Load the resource at given path, where path is relative to tensorflow/.
+  def test_exception(self):
+    with self.assertRaises(IOError):
+      resource_loader.load_resource("/fake/file/path/dne")
 
-  Args:
-    path: a string resource path relative to tensorflow/.
-
-  Returns:
-    The contents of that resource.
-
-  Raises:
-    IOError: If the path is not found, or the resource can't be opened.
-  """
-  tensorflow_root = (
-      os.path.join(
-          os.path.dirname(__file__), os.pardir, os.pardir,
-          os.pardir))
-  path = os.path.join(tensorflow_root, path)
-  path = os.path.abspath(path)
-  try:
-    with open(path, 'rb') as f:
-      return f.read()
-  except IOError as e:
-    logging.warning('IOError %s on path %s', e, path)
-    raise e
+if __name__ == "__main__":
+  googletest.main()

@@ -44,7 +44,10 @@ REGISTER_GPU_KERNELS(float);
 #undef REGISTER_GPU_KERNELS
 
 REGISTER_KERNEL_BUILDER(
-    Name("Sum").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
+    Name("Sum")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<complex64>("T")
+        .HostMemory("reduction_indices"),
     ReductionOp<GPUDevice, complex64, Eigen::internal::SumReducer<complex64>>);
 
 #endif

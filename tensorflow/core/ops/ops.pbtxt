@@ -1225,6 +1225,32 @@ op {
   summary: "Gradients for batch normalization."
 }
 op {
+  name: "BatchSelfAdjointEig"
+  input_arg {
+    name: "input"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M+1, M]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Calculates the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a \'[..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
+}
+op {
   name: "BiasAdd"
   input_arg {
     name: "value"
@@ -6518,6 +6544,32 @@ op {
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
   description: "The `condition`, `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape. The `condition` tensor acts\nas an element-wise mask that chooses, based on the value at each\nelement, whether the corresponding element in the output should be\ntaken from `t` (if true) or `e` (if false). For example:\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True, False]\n#                        [True, False]]\n# \'t\' is [[1, 1],\n#         [1, 1]]\n# \'e\' is [[2, 2],\n#         [2, 2]]\nselect(condition, t, e) ==> [[1, 2],\n                             [1, 2]]\n```"
+}
+op {
+  name: "SelfAdjointEig"
+  input_arg {
+    name: "input"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M+1, M]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Calculates the Eigen Decomposition of a square Self-Adjoint matrix."
+  description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
 }
 op {
   name: "Shape"

@@ -59,7 +59,7 @@ Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
 
-See [Fast and Aaccurate Deep Network Learning by Exponential Linear Units (ELUs)
+See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 ](http://arxiv.org/abs/1511.07289)
 
 ##### Args:
@@ -872,7 +872,7 @@ See [Noise-contrastive estimation: A new estimation principle for
 unnormalized statistical models]
 (http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
 Also see our [Candidate Sampling Algorithms Reference]
-(http://www.tensorflow.org/extras/candidate_sampling.pdf)
+(../../extras/candidate_sampling.pdf)
 
 Note: In the case where `num_true` > 1, we assign to each target class
 the target probability 1 / `num_true` so that the target probabilities
@@ -906,7 +906,7 @@ with an otherwise unused class.
       `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
       learning to generate log-odds instead of log probabilities.  See
       our [Candidate Sampling Algorithms Reference]
-      (http://www.tensorflow.org/extras/candidate_sampling.pdf).
+      (../../extras/candidate_sampling.pdf).
       Default is False.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -931,7 +931,7 @@ At inference time, you can compute full softmax probabilities with the
 expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 
 See our [Candidate Sampling Algorithms Reference]
-(http://www.tensorflow.org/extras/candidate_sampling.pdf)
+(../../extras/candidate_sampling.pdf)
 
 Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
 

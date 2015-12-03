@@ -92,7 +92,7 @@ for n in range(40):
 DisplayArray(u_init, rng=[-0.1, 0.1])
 ```
 
-![jpeg](pde_output_1.jpg)
+![jpeg](../../images/pde_output_1.jpg)
 
 
 Now let's specify the details of the differential equation.
@@ -137,7 +137,7 @@ for i in range(1000):
     DisplayArray(U.eval(), rng=[-0.1, 0.1])
 ```
 
-![jpeg](pde_output_2.jpg)
+![jpeg](../../images/pde_output_2.jpg)
 
 Look! Ripples!
 

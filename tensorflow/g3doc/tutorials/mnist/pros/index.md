@@ -9,7 +9,7 @@ while constructing a deep convolutional MNIST classifier.
 *This introduction assumes familiarity with neural networks and the MNIST
 dataset. If you don't have
 a background with them, check out the
-[introduction for beginners](../../../tutorials/mnist/beginners/index.md).*
+[introduction for beginners](../beginners/index.md).*
 
 ## Setup
 

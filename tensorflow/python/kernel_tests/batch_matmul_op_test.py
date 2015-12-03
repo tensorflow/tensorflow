@@ -151,14 +151,14 @@ class BatchMatmulOpTest(tf.test.TestCase):
                   self._randComplex([10, 30, 75]), True, True)
 
   def testEmpty(self):
-    self._compare(np.empty([0, 3, 2]).astype(np.float32),
-                  np.empty([0, 2, 4]).astype(np.float32), False, False)
-    self._compare(np.empty([3, 2, 0]).astype(np.float32),
-                  np.empty([3, 0, 5]).astype(np.float32), False, False)
-    self._compare(np.empty([3, 0, 2]).astype(np.float32),
-                  np.empty([3, 2, 5]).astype(np.float32), False, False)
-    self._compare(np.empty([3, 3, 2]).astype(np.float32),
-                  np.empty([3, 2, 0]).astype(np.float32), False, False)
+    self._compare(np.zeros([0, 3, 2]).astype(np.float32),
+                  np.zeros([0, 2, 4]).astype(np.float32), False, False)
+    self._compare(np.zeros([3, 2, 0]).astype(np.float32),
+                  np.zeros([3, 0, 5]).astype(np.float32), False, False)
+    self._compare(np.zeros([3, 0, 2]).astype(np.float32),
+                  np.zeros([3, 2, 5]).astype(np.float32), False, False)
+    self._compare(np.zeros([3, 3, 2]).astype(np.float32),
+                  np.zeros([3, 2, 0]).astype(np.float32), False, False)
 
 
 class BatchMatmulGradientTest(tf.test.TestCase):

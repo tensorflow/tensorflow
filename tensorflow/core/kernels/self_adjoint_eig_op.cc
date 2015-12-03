@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-// TODO(konstantinos): Enable complex inputs. This will require additional tests
-//                     and OP_REQUIRES.
 
 #include <cmath>
 
-#include "third_party/eigen3/Eigen/Cholesky"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/Eigenvalues"
+
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
@@ -31,15 +31,16 @@ limitations under the License.
 namespace tensorflow {
 
 template <class Scalar, bool SupportsBatchOperationT>
-class CholeskyOp
+class SelfAdjointEigOp
     : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
-  explicit CholeskyOp(OpKernelConstruction* context)
+  explicit SelfAdjointEigOp(OpKernelConstruction* context)
       : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
 
   TensorShape GetOutputMatrixShape(
       const TensorShape& input_matrix_shape) override {
-    return input_matrix_shape;
+    int64 d = input_matrix_shape.dim_size(0);
+    return TensorShape({d + 1, d});
   }
 
   int64 GetCostPerUnit(const TensorShape& input_matrix_shape) override {
@@ -66,24 +67,23 @@ class CholeskyOp
       // Therefore, we return X.
       return;
     }
-    // Perform the actual LL^T Cholesky decomposition. This will only use
-    // the lower triangular part of data_in by default. The upper triangular
-    // part of the matrix will not be read.
-    Eigen::LLT<
+
+    Eigen::SelfAdjointEigenSolver<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-        llt_decomposition(input);
-
-    // Output the lower triangular in a dense form.
-    *output = llt_decomposition.matrixL();
-
-    OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
-                errors::InvalidArgument("LLT decomposition was not successful. "
+        es(input);
+    output->row(0) = es.eigenvalues().transpose();
+    output->bottomRows(input.rows()) = es.eigenvectors();
+    OP_REQUIRES(context, es.info() == Eigen::Success,
+                errors::InvalidArgument("Self Adjoint Eigen decomposition was"
+                                        "not successful. "
                                         "The input might not be valid."));
   }
 };
 
-REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float, false>), float);
-REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double, false>), double);
-REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float, true>), float);
-REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double, true>), double);
+REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<float, false>), float);
+REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<double, false>), double);
+REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<float, true>),
+                   float);
+REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<double, true>),
+                   double);
 }  // namespace tensorflow

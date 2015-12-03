@@ -1,7 +1,9 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -49,13 +51,23 @@ py_library(
 )
 
 py_tests(
-    name = "platform_tests",
+    name = "default_platform_tests",
     srcs = glob(["platform/default/*_test.py"]),
     additional_deps = [
         ":platform",
         ":platform_test",
     ],
-    prefix = "platform",
+    prefix = "default_platform",
+)
+
+py_tests(
+    name = "google_platform_tests",
+    srcs = glob(["platform/google/*_test.py"]),
+    additional_deps = [
+        ":platform",
+        ":platform_test",
+    ],
+    prefix = "google_platform",
 )
 
 cc_library(
@@ -843,6 +855,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/random_shuffle_queue_test.py",
     "kernel_tests/save_restore_ops_test.py",
     "kernel_tests/segment_reduction_ops_test.py",
+    "kernel_tests/self_adjoint_eig_op_test.py",
     "kernel_tests/sparse_concat_op_test.py",
     "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_reorder_op_test.py",

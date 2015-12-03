@@ -3,7 +3,7 @@
 *This tutorial is intended for readers who are new to both machine learning and
 TensorFlow. If you already
 know what MNIST is, and what softmax (multinomial logistic) regression is,
-you might prefer this [faster paced tutorial](../../../tutorials/mnist/pros/index.md).*
+you might prefer this [faster paced tutorial](../pros/index.md).*
 
 When one learns how to program, there's a tradition that the first thing you do
 is print "Hello World." Just like programming has Hello World, machine learning
@@ -13,7 +13,7 @@ MNIST is a simple computer vision dataset. It consists of images of handwritten
 digits like these:
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/MNIST.png">
+<img style="width:100%" src="../../../images/MNIST.png">
 </div>
 
 It also includes labels for each image, telling us which digit it is. For
@@ -61,7 +61,7 @@ Each image is 28 pixels by 28 pixels. We can interpret this as a big array of
 numbers:
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/MNIST-Matrix.png">
+<img style="width:100%" src="../../../images/MNIST-Matrix.png">
 </div>
 
 We can flatten this array into a vector of 28x28 = 784 numbers. It doesn't
@@ -83,7 +83,7 @@ the pixel intensity between 0 and 1, for a particular pixel in a particular
 image.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/mnist-train-xs.png">
+<img style="width:100%" src="../../../images/mnist-train-xs.png">
 </div>
 
 The corresponding labels in MNIST are numbers between 0 and 9, describing
@@ -97,7 +97,7 @@ Consequently, `mnist.train.labels` is a
 `[55000, 10]` array of floats.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/mnist-train-ys.png">
+<img style="width:100%" src="../../../images/mnist-train-ys.png">
 </div>
 
 We're now ready to actually make our model!
@@ -128,7 +128,7 @@ classes. Red represents negative weights, while blue represents positive
 weights.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/softmax-weights.png">
+<img style="width:100%" src="../../../images/softmax-weights.png">
 </div>
 
 We also add some extra evidence called a bias. Basically, we want to be able
@@ -175,13 +175,13 @@ although with a lot more \\(x\\)s. For each output, we compute a weighted sum of
 the \\(x\\)s, add a bias, and then apply softmax.
 
 <div style="width:55%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/softmax-regression-scalargraph.png">
+<img style="width:100%" src="../../../images/softmax-regression-scalargraph.png">
 </div>
 
 If we write that out as equations, we get:
 
 <div style="width:52%; margin-left:25%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/softmax-regression-scalarequation.png">
+<img style="width:100%" src="../../../images/softmax-regression-scalarequation.png">
 </div>
 
 We can "vectorize" this procedure, turning it into a matrix multiplication
@@ -189,7 +189,7 @@ and vector addition. This is helpful for computational efficiency. (It's also
 a useful way to think.)
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="img/softmax-regression-vectorequation.png">
+<img style="width:100%" src="../../../images/softmax-regression-vectorequation.png">
 </div>
 
 More compactly, we can just write:

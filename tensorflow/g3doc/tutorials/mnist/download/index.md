@@ -19,7 +19,7 @@ MNIST is a classic problem in machine learning. The problem is to look at
 greyscale 28x28 pixel images of handwritten digits and determine which digit
 the image represents, for all the digits from zero to nine.
 
-![MNIST Digits](../tf/mnist_digits.png "MNIST Digits")
+![MNIST Digits](../../../images/mnist_digits.png "MNIST Digits")
 
 For more information, refer to [Yann LeCun's MNIST page](http://yann.lecun.com/exdb/mnist/)
 or [Chris Olah's visualizations of MNIST](http://colah.github.io/posts/2014-10-Visualizing-MNIST/).

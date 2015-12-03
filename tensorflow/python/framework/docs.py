@@ -98,12 +98,6 @@ class Index(Document):
           print("  * %s" % link, file=f)
         print("", file=f)
 
-    # actually include the files right here
-    print('<div class="sections-order" style="display: none;">\n<!--', file=f)
-    for filename, _ in self._filename_to_library_map:
-      print("<!-- %s -->" % filename, file=f)
-    print("-->\n</div>", file=f)
-
 def collect_members(module_to_name):
   """Collect all symbols from a list of modules.
 

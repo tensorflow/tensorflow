@@ -311,7 +311,7 @@ operations, so that our training loop can dequeue examples from the example
 queue.
 
 <div style="width:70%; margin-left:12%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="AnimatedFileQueues.gif">
+<img style="width:100%" src="../../images/AnimatedFileQueues.gif">
 </div>
 
 The helpers in `tf.train` that create these queues and enqueuing operations add

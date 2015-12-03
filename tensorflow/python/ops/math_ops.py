@@ -70,6 +70,9 @@ mathematical functions for matrices to your graph.
 @@cholesky
 @@batch_cholesky
 
+@@self_adjoint_eig
+@@batch_self_adjoint_eig
+
 ## Complex Number Functions
 
 TensorFlow provides several operations that you can use to add complex number

@@ -123,4 +123,41 @@ output: Shape is `[..., M, M]`.
 T: The type of values in the input and output.
 )doc");
 
+REGISTER_OP("SelfAdjointEig")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float}")
+    .Doc(R"doc(
+Calculates the Eigen Decomposition of a square Self-Adjoint matrix.
+
+Only the lower-triangular part of the input will be used in this case. The
+upper-triangular part will not be read.
+
+The result is a M+1 x M matrix whose first row is the eigenvalues, and
+subsequent rows are eigenvectors.
+
+input: Shape is `[M, M]`.
+output: Shape is `[M+1, M]`.
+T: The type of values in the input and output.
+)doc");
+
+REGISTER_OP("BatchSelfAdjointEig")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float}")
+    .Doc(R"doc(
+Calculates the Eigen Decomposition of a batch of square self-adjoint matrices.
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices, with the same constraints as the single matrix
+SelfAdjointEig.
+
+The result is a '[..., M+1, M] matrix with [..., 0,:] containing the
+eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+
+input: Shape is `[..., M, M]`.
+output: Shape is `[..., M+1, M]`.
+T: The type of values in the input and output.
+)doc");
+
 }  // namespace tensorflow

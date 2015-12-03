@@ -107,19 +107,3 @@ visual hallucination software.
 COMING SOON
 
 
-<div class='sections-order' style="display: none;">
-<!--
-<!-- mnist/beginners/index.md -->
-<!-- mnist/pros/index.md -->
-<!-- mnist/tf/index.md -->
-<!-- deep_cnn/index.md -->
-<!-- word2vec/index.md -->
-<!-- recurrent/index.md -->
-<!-- seq2seq/index.md -->
-<!-- mandelbrot/index.md -->
-<!-- pdes/index.md -->
-<!-- mnist/download/index.md -->
--->
-</div>
-
-

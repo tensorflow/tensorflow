@@ -1,0 +1,52 @@
+FROM ubuntu:14.04
+
+MAINTAINER Jan Prach <jendap@google.com>
+
+# Install dependencies for bazel.
+RUN apt-get update && apt-get install -y \
+        g++ \
+        pkg-config \
+        python-dev \
+        python-numpy \
+        python-pip \
+        software-properties-common \
+        swig \
+        unzip \
+        wget \
+        zip \
+        zlib1g-dev \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install openjdk 8 for bazel from PPA (it is not available in 14.04).
+RUN add-apt-repository -y ppa:openjdk-r/ppa && \
+    apt-get update && \
+    apt-get install -y openjdk-8-jdk openjdk-8-jre-headless && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install the most recent bazel release.
+ENV BAZEL_VERSION 0.1.1
+RUN mkdir /bazel && \
+    cd /bazel && \
+    wget https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    wget -O /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE.txt && \
+    chmod +x bazel-*.sh && \
+    ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
+
+# Enable bazel auto completion.
+RUN echo "source /usr/local/lib/bazel/bin/bazel-complete.bash" >> ~/.bashrc
+
+# Running bazel inside a `docker build` command causes trouble, cf:
+#   https://github.com/bazelbuild/bazel/issues/134
+# The easiest solution is to set up a bazelrc file forcing --batch.
+RUN echo "startup --batch" >>/root/.bazelrc
+# Similarly, we need to workaround sandboxing issues:
+#   https://github.com/bazelbuild/bazel/issues/418
+RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
+    >>/root/.bazelrc
+# Force bazel output to use colors (good for jenkins).
+RUN echo "common --color=yes" >>/root/.bazelrc
+ENV BAZELRC /root/.bazelrc

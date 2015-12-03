@@ -40,13 +40,13 @@ EventMgr::~EventMgr() {
     delete e;
   }
   while (!used_events_.empty()) {
-    InUse* ue = &used_events_[0];
-    delete ue->event;
-    delete ue->mem;
-    if (ue->bufrec.buf) {
-      ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
+    delete used_events_[0].event;
+    delete used_events_[0].mem;
+    if (used_events_[0].bufrec.buf) {
+      used_events_[0].bufrec.alloc->DeallocateRaw(used_events_[0].bufrec.buf);
     }
-    if (ue->func != nullptr) threadpool_.Schedule(ue->func);
+    if (used_events_[0].func != nullptr)
+      threadpool_.Schedule(used_events_[0].func);
     used_events_.pop_front();
   }
 }
@@ -60,17 +60,15 @@ EventMgr::~EventMgr() {
 void EventMgr::PollLoop() {
   while (!stop_polling_.HasBeenNotified()) {
     Env::Default()->SleepForMicroseconds(1 * 1000);
-    ToFreeVector to_free;
     {
       mutex_lock l(mu_);
-      PollEvents(true, &to_free);
+      PollEvents(true);
     }
-    FreeMemory(to_free);
   }
   polling_stopped_.Notify();
 }
 
-void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu, gpu::Event** e) {
+void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
   VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
           << " used_events_ " << used_events_.size();
   // Events are created on demand, and repeatedly reused.  There is no
@@ -79,9 +77,10 @@ void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu, gpu::Event** e) {
     free_events_.push_back(new gpu::Event(exec_));
     free_events_.back()->Init();
   }
-  *e = free_events_.back();
+  gpu::Event* e = free_events_.back();
   free_events_.pop_back();
-  iu.event = *e;
+  stream->ThenRecordEvent(e);
+  iu.event = e;
   used_events_.push_back(iu);
 }
 
@@ -104,8 +103,7 @@ void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu, gpu::Event** e) {
 // GPU memory use to spike needlessly.  An alternative strategy would
 // be to throttle new Op execution until the pending event queue
 // clears.
-void EventMgr::PollEvents(bool is_dedicated_poller,
-                          gtl::InlinedVector<InUse, 4>* to_free) {
+void EventMgr::PollEvents(bool is_dedicated_poller) {
   VLOG(2) << "PollEvents  free_events_ " << free_events_.size()
           << " used_events_ " << used_events_.size();
   // Sweep the remaining events in order.  If this is the dedicated
@@ -125,9 +123,11 @@ void EventMgr::PollEvents(bool is_dedicated_poller,
         if (!is_dedicated_poller) return;  // quit processing queue
         break;
       case gpu::Event::Status::kComplete:
-        // Make a copy of the InUse record so we can free it after releasing
-        // the lock
-        to_free->push_back(iu);
+        delete iu.mem;
+        if (iu.bufrec.buf) iu.bufrec.alloc->DeallocateRaw(iu.bufrec.buf);
+        // The function must be called in another thread, outside of
+        // the mutex held here.
+        if (iu.func != nullptr) threadpool_.Schedule(iu.func);
         free_events_.push_back(iu.event);
         // Mark this InUse record as completed.
         iu.event = nullptr;

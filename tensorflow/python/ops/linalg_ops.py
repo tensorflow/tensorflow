@@ -79,3 +79,24 @@ def _BatchMatrixInverseShape(op):
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   return [input_shape]
+
+
+@ops.RegisterShape("SelfAdjointEig")
+def _SelfAdjointEigShape(op):
+  input_shape = op.inputs[0].get_shape().with_rank(2)
+  # The matrix must be square.
+  input_shape[0].assert_is_compatible_with(input_shape[1])
+  d = input_shape.dims[0]
+  out_shape = tensor_shape.TensorShape([d+1, d])
+  return [out_shape]
+
+
+@ops.RegisterShape("BatchSelfAdjointEig")
+def _BatchSelfAdjointEigShape(op):
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  # The matrices in the batch must be square.
+  input_shape[-1].assert_is_compatible_with(input_shape[-2])
+  dlist = input_shape.dims
+  dlist[-2] += 1
+  out_shape = tensor_shape.TensorShape(dlist)
+  return [out_shape]

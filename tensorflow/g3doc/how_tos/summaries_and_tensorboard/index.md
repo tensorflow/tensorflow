@@ -8,7 +8,7 @@ your TensorFlow graph, plot quantitative metrics about the execution of your
 graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
-![MNIST TensorBoard](./mnist_tensorboard.png "MNIST TensorBoard")
+![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")
 
 
 ## Serializing the data

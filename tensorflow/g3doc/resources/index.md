@@ -55,14 +55,3 @@ https://github.com/tensorflow/tensorflow/issues) on GitHub.
 If you need help with using TensorFlow, please do not use the issue
 tracker for that. Instead, direct your questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).
 
-<div class='sections-order' style="display: none;">
-<!--
-<!-- bib.md -->
-<!-- uses.md -->
-<!-- faq.md -->
-<!-- glossary.md -->
-<!-- dims_types.md -->
--->
-</div>
-
-

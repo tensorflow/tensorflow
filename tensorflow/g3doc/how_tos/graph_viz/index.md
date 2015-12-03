@@ -2,7 +2,7 @@
 
 TensorFlow computation graphs are powerful but complicated. The graph visualization can help you understand and debug them. Here's an example of the visualization at work.
 
-![Visualization of a TensorFlow graph](./graph_vis_animation.gif "Visualization of a TensorFlow graph")
+![Visualization of a TensorFlow graph](../../images/graph_vis_animation.gif "Visualization of a TensorFlow graph")
 *Visualization of a TensorFlow graph.*
 
 To see your own graph, run TensorBoard pointing it to the log directory of the job, click on the graph tab on the top pane and select the appropriate run using the menu at the upper left corner. For in depth information on how to run TensorBoard and make sure you are logging all the necessary information, see [TensorBoard: Visualizing Learning](../../how_tos/summaries_and_tensorboard/index.md).
@@ -43,10 +43,10 @@ expanded states.
 <table width="100%;">
   <tr>
     <td style="width: 50%;">
-      <img src="./pool1_collapsed.png" alt="Unexpanded name scope" title="Unexpanded name scope" />
+      <img src="../../images/pool1_collapsed.png" alt="Unexpanded name scope" title="Unexpanded name scope" />
     </td>
     <td style="width: 50%;">
-      <img src="./pool1_expanded.png" alt="Expanded name scope" title="Expanded name scope" />
+      <img src="../../images/pool1_expanded.png" alt="Expanded name scope" title="Expanded name scope" />
     </td>
   </tr>
   <tr>
@@ -86,10 +86,10 @@ information since these nodes are usually related to bookkeeping functions.
 <table width="100%;">
   <tr>
     <td style="width: 50%;">
-      <img src="./conv_1.png" alt="conv_1 is part of the main graph" title="conv_1 is part of the main graph" />
+      <img src="../../images/conv_1.png" alt="conv_1 is part of the main graph" title="conv_1 is part of the main graph" />
     </td>
     <td style="width: 50%;">
-      <img src="./save.png" alt="save is extracted as auxiliary node" title="save is extracted as auxiliary node" />
+      <img src="../../images/save.png" alt="save is extracted as auxiliary node" title="save is extracted as auxiliary node" />
     </td>
   </tr>
   <tr>
@@ -111,10 +111,10 @@ with hierarchical nodes, double-clicking expands the series.
 <table width="100%;">
   <tr>
     <td style="width: 50%;">
-      <img src="./series.png" alt="Sequence of nodes" title="Sequence of nodes" />
+      <img src="../../images/series.png" alt="Sequence of nodes" title="Sequence of nodes" />
     </td>
     <td style="width: 50%;">
-      <img src="./series_expanded.png" alt="Expanded sequence of nodes" title="Expanded sequence of nodes" />
+      <img src="../../images/series_expanded.png" alt="Expanded sequence of nodes" title="Expanded sequence of nodes" />
     </td>
   </tr>
   <tr>
@@ -132,15 +132,15 @@ for constants and summary nodes. To summarize, here's a table of node symbols:
 
 Symbol | Meaning
 --- | ---
-![Name scope](./namespace_node.png "Name scope") | *High-level* node representing a name scope. Double-click to expand a high-level node.
-![Sequence of unconnected nodes](./horizontal_stack.png "Sequence of unconnected nodes") | Sequence of numbered nodes that are not connected to each other.
-![Sequence of connected nodes](./vertical_stack.png "Sequence of connected nodes") | Sequence of numbered nodes that are connected to each other.
-![Operation node](./op_node.png "Operation node") | An individual operation node.
-![Constant node](./constant.png "Constant node") | A constant.
-![Summary node](./summary.png "Summary node") | A summary node.
-![Data flow edge](./dataflow_edge.png "Data flow edge") | Edge showing the data flow between operations.
-![Control dependency edge](./control_edge.png "Control dependency edge") | Edge showing the control dependency between operations.
-![Reference edge](./reference_edge.png "Reference edge") | A reference edge showing that the outgoing operation node can mutate the incoming tensor.
+![Name scope](../../images/namespace_node.png "Name scope") | *High-level* node representing a name scope. Double-click to expand a high-level node.
+![Sequence of unconnected nodes](../../images/horizontal_stack.png "Sequence of unconnected nodes") | Sequence of numbered nodes that are not connected to each other.
+![Sequence of connected nodes](../../images/vertical_stack.png "Sequence of connected nodes") | Sequence of numbered nodes that are connected to each other.
+![Operation node](../../images/op_node.png "Operation node") | An individual operation node.
+![Constant node](../../images/constant.png "Constant node") | A constant.
+![Summary node](../../images/summary.png "Summary node") | A summary node.
+![Data flow edge](../../images/dataflow_edge.png "Data flow edge") | Edge showing the data flow between operations.
+![Control dependency edge](../../images/control_edge.png "Control dependency edge") | Edge showing the control dependency between operations.
+![Reference edge](../../images/reference_edge.png "Reference edge") | A reference edge showing that the outgoing operation node can mutate the incoming tensor.
 
 ## Interaction
 
@@ -158,10 +158,10 @@ right corner of the visualization.
 <table width="100%;">
   <tr>
     <td style="width: 50%;">
-      <img src="./infocard.png" alt="Info card of a name scope" title="Info card of a name scope" />
+      <img src="../../images/infocard.png" alt="Info card of a name scope" title="Info card of a name scope" />
     </td>
     <td style="width: 50%;">
-      <img src="./infocard_op.png" alt="Info card of operation node" title="Info card of operation node" />
+      <img src="../../images/infocard_op.png" alt="Info card of operation node" title="Info card of operation node" />
     </td>
   </tr>
   <tr>
@@ -194,10 +194,10 @@ The images below give an illustration for a piece of a real-life graph.
 <table width="100%;">
   <tr>
     <td style="width: 50%;">
-      <img src="./colorby_structure.png" alt="Color by structure" title="Color by structure" />
+      <img src="../../images/colorby_structure.png" alt="Color by structure" title="Color by structure" />
     </td>
     <td style="width: 50%;">
-      <img src="./colorby_device.png" alt="Color by device" title="Color by device" />
+      <img src="../../images/colorby_device.png" alt="Color by device" title="Color by device" />
     </td>
   </tr>
   <tr>

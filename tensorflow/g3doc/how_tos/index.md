@@ -84,19 +84,3 @@ different locations in the model construction code.
 The "Variable Scope" mechanism is designed to facilitate that.
 
 [View Tutorial](../how_tos/variable_scope/index.md)
-
-<div class='sections-order' style="display: none;">
-<!--
-<!-- variables/index.md -->
-<!-- ../tutorials/mnist/tf/index.md -->
-<!-- summaries_and_tensorboard/index.md -->
-<!-- graph_viz/index.md -->
-<!-- reading_data/index.md -->
-<!-- threading_and_queues/index.md -->
-<!-- adding_an_op/index.md -->
-<!-- new_data_formats/index.md -->
-<!-- using_gpu/index.md -->
-<!-- variable_scope/index.md -->
--->
-</div>
-

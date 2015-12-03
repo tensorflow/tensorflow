@@ -115,7 +115,7 @@ class SumReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [1, 2, 3, 4])
     self._compareAll(np_arr, [0, 1, 2, 3, 4])
 
-  # Simple tests for various tf.
+  # Simple tests for various types.
   def testDoubleReduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.float64)
     self._compare(np_arr, [], False)
@@ -123,6 +123,11 @@ class SumReductionTest(tf.test.TestCase):
 
   def testInt32Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.int32)
+    self._compare(np_arr, [], False)
+    self._compare(np_arr, [0], False)
+
+  def testComplex64Reduce1D(self):
+    np_arr = np.arange(1, 6).reshape([5]).astype(np.complex64)
     self._compare(np_arr, [], False)
     self._compare(np_arr, [0], False)
 

@@ -112,11 +112,6 @@ class ThreadedHTTPServer(SocketServer.ThreadingMixIn,
 
 
 def main(unused_argv=None):
-  # Change current working directory to tensorflow/'s parent directory.
-  server_root = os.path.join(os.path.dirname(__file__),
-                             os.pardir, os.pardir)
-  os.chdir(server_root)
-
   if FLAGS.debug:
     logging.set_verbosity(logging.DEBUG)
 

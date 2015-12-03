@@ -192,7 +192,7 @@ The convenience function [`resize_images()`](#resize_images) supports both 4-D
 and 3-D tensors as input and output.  4-D tensors are for batches of images,
 3-D tensors for individual images.
 
-Other resizing Ops only support 3-D individual images as input:
+Other resizing Ops only support 4-D batches of images as input:
 [`resize_area`](#resize_area), [`resize_bicubic`](#resize_bicubic),
 [`resize_bilinear`](#resize_bilinear),
 [`resize_nearest_neighbor`](#resize_nearest_neighbor).
@@ -200,9 +200,9 @@ Other resizing Ops only support 3-D individual images as input:
 Example:
 
 ```python
-# Decode a JPG image and resize it to 299 by 299.
+# Decode a JPG image and resize it to 299 by 299 using default method.
 image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_bilinear(image, [299, 299])
+resized_image = tf.image.resize_images(image, 299, 299)
 ```
 
 - - -
