@@ -28,6 +28,7 @@ import tensorflow as tf
 
 """
 
+import inspect
 import traceback
 
 try:
@@ -47,6 +48,7 @@ from tensorflow.core.util.event_pb2 import *
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework import errors
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -71,3 +73,11 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import test
+
+# Don't export modules except for the few we really want
+_whitelist = set([app, compat, errors, flags, image, logging, nn,
+                  python_io, test, train, user_ops])
+# TODO(b/25561952): tf.ops and tf.tensor_util are DEPRECATED.  Please avoid.
+_whitelist.update([ops, tensor_util])  # pylint: disable=undefined-variable
+__all__ = [name for name, x in locals().items() if not name.startswith('_') and
+           (not inspect.ismodule(x) or x in _whitelist)]

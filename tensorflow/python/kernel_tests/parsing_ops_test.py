@@ -488,8 +488,8 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             }),
         feature_lists=feature_lists({
             "repeated_feature_2_frames": feature_list([
-                bytes_feature(["a", "b", "c"]),
-                bytes_feature(["a", "d", "e"])]),
+                bytes_feature([b"a", b"b", b"c"]),
+                bytes_feature([b"a", b"d", b"e"])]),
             "repeated_feature_3_frames": feature_list([
                 int64_feature([3, 4, 5, 6, 7]),
                 int64_feature([-1, 0, 0, 0, 0]),

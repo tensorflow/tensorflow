@@ -64,26 +64,11 @@ gulp.task('compile.all', function() {
                      .pipe(ts(tsProject))
                      .on('error', onError);
   return merge([
-    // Send concatenated component code to build/component
-    tsResult.js
-            .pipe(isComponent)
-            .pipe(concat('components.js'))
-            .pipe(gulp.dest('build')),
-
     // Duplicate all component code to live next to the ts file
     // (makes polymer imports very clean)
     tsResult.js
             .pipe(isComponent)
-            .pipe(gulp.dest('.')),
-
-    tsResult.js
-            .pipe(isApp)
-            .pipe(gulp.dest('.')),
-
-    // Create a unified defintions file at build/all.d.ts
-    tsResult.dts
-            .pipe(concat('all.d.ts'))
-            .pipe(gulp.dest('build')),
+            .pipe(gulp.dest('.'))
   ]);
 });
 

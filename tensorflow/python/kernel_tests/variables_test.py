@@ -132,6 +132,22 @@ class VariablesTestCase(tf.test.TestCase):
   def testCountUpToInt64(self):
     self._countUpToTest(tf.int64)
 
+  def testControlDepsNone(self):
+    with self.test_session():
+      c = tf.constant(1.0)
+      with tf.control_dependencies([c]):
+        # d get the control dep.
+        d = tf.constant(2.0)
+        # variables do not.
+        var_x = tf.Variable(2.0)
+        # initialized_value do not either.
+        inited_x = var_x.initialized_value()
+      self.assertEqual([c.op], d.op.control_inputs)
+      self.assertEqual([], var_x.initializer.control_inputs)
+      self.assertEqual([], var_x.value().op.control_inputs)
+      self.assertEqual([], var_x.ref().op.control_inputs)
+      self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
+
   def testUseVariableAsTensor(self):
     with self.test_session():
       var_x = tf.Variable(2.0)

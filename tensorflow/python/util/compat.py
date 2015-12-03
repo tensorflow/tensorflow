@@ -70,6 +70,21 @@ else:
   as_str = as_text
 
 
+def as_str_any(value):
+  """Converts to `str` as `str(value)`, but use `as_str` for `bytes`.
+
+  Args:
+    value: A object that can be converted to `str`.
+
+  Returns:
+    A `str` object.
+  """
+  if isinstance(value, bytes):
+    return as_str(value)
+  else:
+    return str(value)
+
+
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we
 # need to check them specifically.  The same goes from Real and Complex.
 integral_types = (numbers.Integral, np.integer)

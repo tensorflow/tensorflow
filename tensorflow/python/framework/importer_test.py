@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import tensorflow.python.platform
 
+import numpy as np
 import tensorflow as tf
 
 from google.protobuf import text_format
@@ -604,7 +605,7 @@ class ImportGraphDefTest(tf.test.TestCase):
       # Adding a 150M entries float32 tensor should blow through the warning,
       # but not the hard limit.
       input_shape = [150, 1024, 1024]
-      tensor_input = tf.np.random.rand(*input_shape).astype(tf.np.float32)
+      tensor_input = np.random.rand(*input_shape).astype(np.float32)
       t = tf.constant(tensor_input, shape=input_shape)
       g = tf.identity(t)
       g.eval()

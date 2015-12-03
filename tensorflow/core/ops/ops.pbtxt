@@ -2039,7 +2039,7 @@ op {
     type: "type"
   }
   summary: "Partitions `data` into `num_partitions` tensors using indices from `partitions`."
-  description: "For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`\nbecomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`\nare placed in `outputs[i]` in lexicographic order of `js`, and the first\ndimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.\nIn detail,\n\n    outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]\n\n    outputs[i] = pack([data[js, ...] for js if partitions[js] == i])\n\n`data.shape` must start with `partitions.shape`.\n\nFor example:\n\n    # Scalar partitions\n    partitions = 1\n    num_partitions = 2\n    data = [10, 20]\n    outputs[0] = []  # Empty with shape [0, 2]\n    outputs[1] = [[10, 20]]\n\n    # Vector partitions\n    partitions = [0, 0, 1, 1, 0]\n    num_partitions = 2\n    data = [10, 20, 30, 40, 50]\n    outputs[0] = [10, 20, 50]\n    outputs[1] = [30, 40]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/DynamicPartition.png\" alt>\n</div>"
+  description: "For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`\nbecomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`\nare placed in `outputs[i]` in lexicographic order of `js`, and the first\ndimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.\nIn detail,\n\n    outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]\n\n    outputs[i] = pack([data[js, ...] for js if partitions[js] == i])\n\n`data.shape` must start with `partitions.shape`.\n\nFor example:\n\n    # Scalar partitions\n    partitions = 1\n    num_partitions = 2\n    data = [10, 20]\n    outputs[0] = []  # Empty with shape [0, 2]\n    outputs[1] = [[10, 20]]\n\n    # Vector partitions\n    partitions = [0, 0, 1, 1, 0]\n    num_partitions = 2\n    data = [10, 20, 30, 40, 50]\n    outputs[0] = [10, 20, 50]\n    outputs[1] = [30, 40]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicPartition.png\" alt>\n</div>"
 }
 op {
   name: "DynamicStitch"
@@ -2068,7 +2068,7 @@ op {
     type: "type"
   }
   summary: "Interleave the values from the `data` tensors into a single tensor."
-  description: "Builds a merged tensor such that\n\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n    # Scalar indices\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices\n    merged[indices[m][i], ...] = data[m][i, ...]\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/DynamicStitch.png\" alt>\n</div>"
+  description: "Builds a merged tensor such that\n\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n    # Scalar indices\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices\n    merged[indices[m][i], ...] = data[m][i, ...]\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
   name: "EditDistance"
@@ -2784,7 +2784,7 @@ op {
     }
   }
   summary: "Gather slices from `params` according to `indices`."
-  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/Gather.png\" alt>\n</div>"
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
 }
 op {
   name: "Greater"
@@ -6182,7 +6182,7 @@ op {
     description: "If True, the addition will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Adds sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/ScatterAdd.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterAdd.png\" alt>\n</div>"
 }
 op {
   name: "ScatterSub"
@@ -6246,7 +6246,7 @@ op {
     description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Subtracts sparse updates to a variable reference."
-  description: "    # Scalar indices\n    ref[indices, ...] -= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] -= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their (negated) contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/ScatterSub.png\" alt>\n</div>"
+  description: "    # Scalar indices\n    ref[indices, ...] -= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] -= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their (negated) contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterSub.png\" alt>\n</div>"
 }
 op {
   name: "ScatterUpdate"
@@ -6295,7 +6295,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf `indices` contains duplicate entries, lexicographically later entries\noverride earlier entries.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf `indices` contains duplicate entries, lexicographically later entries\noverride earlier entries.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMax"
@@ -6339,7 +6339,7 @@ op {
     }
   }
   summary: "Computes the maximum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/SegmentMax.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMax.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMean"
@@ -6383,7 +6383,7 @@ op {
     }
   }
   summary: "Computes the mean along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/SegmentMean.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMean.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMin"
@@ -6427,7 +6427,7 @@ op {
     }
   }
   summary: "Computes the minimum along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/SegmentMin.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMin.png\" alt>\n</div>"
 }
 op {
   name: "SegmentProd"
@@ -6471,7 +6471,7 @@ op {
     }
   }
   summary: "Computes the product along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/SegmentProd.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentProd.png\" alt>\n</div>"
 }
 op {
   name: "SegmentSum"
@@ -6515,7 +6515,7 @@ op {
     }
   }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/SegmentSum.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Select"
@@ -8321,7 +8321,7 @@ op {
     }
   }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\n  range of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../images/UnsortedSegmentSum.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\n  range of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Variable"

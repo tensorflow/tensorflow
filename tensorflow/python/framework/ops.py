@@ -2344,17 +2344,25 @@ class Graph(object):
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
 
-    def __init__(self, graph, control_inputs):
+    def __init__(self, graph, control_inputs, new_stack):
       self._graph = graph
       self._control_inputs = control_inputs
+      self._new_stack = new_stack
       self._seen_nodes = set()
+      self._old_stack = None
 
 # pylint: disable=protected-access
     def __enter__(self):
+      if self._new_stack:
+        self._old_stack = self._graph._control_dependencies_stack
+        self._graph._control_dependencies_stack = []
       self._graph._push_control_dependencies_controller(self)
 
     def __exit__(self, unused_type, unused_value, unused_traceback):
       self._graph._pop_control_dependencies_controller(self)
+      if self._new_stack:
+        self._graph._control_dependencies_stack = self._old_stack
+
 # pylint: enable=protected-access
 
     @property
@@ -2445,9 +2453,21 @@ class Graph(object):
 
     ```python
     with g.control_dependencies([a, b]):
-      # Ops declared here run after `a` and `b`.
+      # Ops constructed here run after `a` and `b`.
       with g.control_dependencies([c, d]):
-        # Ops declared here run after `a`, `b`, `c`, and `d`.
+        # Ops constructed here run after `a`, `b`, `c`, and `d`.
+    ```
+
+    You can pass None to clear the control dependencies:
+
+    ```python
+    with g.control_dependencies([a, b]):
+      # Ops constructed here run after `a` and `b`.
+      with g.control_dependencies(None):
+        # Ops constructed here run normally, not waiting for either `a` or `b`.
+        with g.control_dependencies([c, d]):
+          # Ops constructed here run after `c` and `d`, also not waiting
+          # for either `a` or `b`.
     ```
 
     *N.B.* The control dependencies context applies *only* to ops that
@@ -2473,9 +2493,10 @@ class Graph(object):
     ```
 
     Args:
-      control_inputs: A list of `Operation` or `Tensor` objects, which
+      control_inputs: A list of `Operation` or `Tensor` objects which
         must be executed or computed before running the operations
-        defined in the context.
+        defined in the context.  Can also be `None` to clear the control
+        dependencies.
 
     Returns:
      A context manager that specifies control dependencies for all
@@ -2485,6 +2506,8 @@ class Graph(object):
       TypeError: If `control_inputs` is not a list of `Operation` or
         `Tensor` objects.
     """
+    if control_inputs is None:
+      return self._ControlDependenciesController(self, [], True)
     # First convert the inputs to ops, and deduplicate them.
     # NOTE(mrry): Other than deduplication, we do not currently track direct
     #   or indirect dependencies between control_inputs, which may result in
@@ -2500,7 +2523,7 @@ class Graph(object):
       if c not in current:
         control_ops.append(c)
         current.add(c)
-    return self._ControlDependenciesController(self, control_ops)
+    return self._ControlDependenciesController(self, control_ops, False)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -2670,9 +2693,10 @@ def control_dependencies(control_inputs):
   for more details.
 
   Args:
-    control_inputs: A list of `Operation` or `Tensor` objects, which
+    control_inputs: A list of `Operation` or `Tensor` objects which
       must be executed or computed before running the operations
-      defined in the context.
+      defined in the context.  Can also be `None` to clear the control
+      dependencies.
 
   Returns:
    A context manager that specifies control dependencies for all

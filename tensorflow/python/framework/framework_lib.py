@@ -33,6 +33,7 @@
 @@name_scope
 @@control_dependencies
 @@convert_to_tensor
+@@convert_to_tensor_or_indexed_slices
 @@get_default_graph
 @@import_graph_def
 
@@ -75,6 +76,7 @@ from tensorflow.python.framework.ops import GraphKeys
 from tensorflow.python.framework.ops import add_to_collection
 from tensorflow.python.framework.ops import get_collection
 from tensorflow.python.framework.ops import convert_to_tensor
+from tensorflow.python.framework.ops import convert_to_tensor_or_indexed_slices
 from tensorflow.python.framework.random_seed import get_seed
 from tensorflow.python.framework.random_seed import set_random_seed
 from tensorflow.python.framework.importer import import_graph_def

@@ -1325,5 +1325,16 @@ class TupleTest(tf.test.TestCase):
           self.assertAllClose([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]],
                               v1.eval())
 
+  def testAcceptTensorsAsControlInputs(self):
+    with self.test_session():
+      var = tf.Variable(0)
+      assign = tf.assign(var, 1)
+      t, = tf.tuple([tf.constant(0)], control_inputs=[assign])
+
+      # Should trigger the assign.
+      t.eval()
+
+      self.assertEquals(1, var.eval())
+
 if __name__ == "__main__":
   tf.test.main()

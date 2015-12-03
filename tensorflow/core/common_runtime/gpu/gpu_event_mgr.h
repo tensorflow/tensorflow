@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <deque>
 #include <vector>
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/tensor.h"
@@ -47,9 +49,13 @@ class EventMgr {
   // currently enqueued on *stream have completed.
   inline void ThenDeleteTensors(perftools::gputools::Stream* stream,
                                 std::vector<Tensor>* tensors) {
-    mutex_lock l(mu_);
-    QueueTensors(stream, tensors);
-    PollEvents(false);
+    ToFreeVector to_free;
+    {
+      mutex_lock l(mu_);
+      QueueTensors(stream, tensors);
+      PollEvents(false, &to_free);
+    }
+    FreeMemory(to_free);
   }
 
   struct BufRec {
@@ -61,16 +67,24 @@ class EventMgr {
   // on it as soon as all events currently enqueued on *stream have completed.
   inline void ThenDeleteBuffer(perftools::gputools::Stream* stream,
                                BufRec bufrec) {
-    mutex_lock l(mu_);
-    QueueBuffer(stream, bufrec);
-    PollEvents(false);
+    ToFreeVector to_free;
+    {
+      mutex_lock l(mu_);
+      QueueBuffer(stream, bufrec);
+      PollEvents(false, &to_free);
+    }
+    FreeMemory(to_free);
   }
 
   inline void ThenExecute(perftools::gputools::Stream* stream,
                           std::function<void()> func) {
-    mutex_lock l(mu_);
-    QueueFunc(stream, func);
-    PollEvents(false);
+    ToFreeVector to_free;
+    {
+      mutex_lock l(mu_);
+      QueueFunc(stream, func);
+      PollEvents(false, &to_free);
+    }
+    FreeMemory(to_free);
   }
 
  private:
@@ -85,10 +99,22 @@ class EventMgr {
     std::function<void()> func;
   };
 
+  typedef gtl::InlinedVector<InUse, 4> ToFreeVector;
+
+  void FreeMemory(const ToFreeVector& to_free) {
+    for (const auto& iu : to_free) {
+      delete iu.mem;
+      if (iu.bufrec.buf) iu.bufrec.alloc->DeallocateRaw(iu.bufrec.buf);
+      // The function must be called in another thread.
+      if (iu.func != nullptr) threadpool_.Schedule(iu.func);
+    }
+  }
+
   // Stream-enqueue an unused Event and save with it a collection of
   // Tensors and/or a BufRec to be deleted only after the Event
   // records.
   void QueueInUse(perftools::gputools::Stream* stream, InUse in_use)
+
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void QueueTensors(perftools::gputools::Stream* stream,
@@ -109,8 +135,11 @@ class EventMgr {
 
   // This function should be called at roughly the same tempo as
   // QueueTensors() to check whether pending events have recorded,
-  // and then retire them.
-  void PollEvents(bool is_dedicated_poller) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // and then retire them.  It appends InUse elements that need cleanup
+  // to "*to_free".  The caller should call FreeMemory(to_free)
+  // when this returns.
+  void PollEvents(bool is_dedicated_poller, ToFreeVector* to_free)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // An internal polling loop that runs at a low frequency to clear
   // straggler Events.

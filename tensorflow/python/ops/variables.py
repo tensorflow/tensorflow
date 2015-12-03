@@ -187,30 +187,31 @@ class Variable(object):
       # modify the value of the variable, not the list.
       collections = collections + [ops.GraphKeys.TRAINABLE_VARIABLES]
       # pylint: enable=g-no-augmented-assignment
-    with ops.op_scope([initial_value], name, "Variable") as name:
-      self._initial_value = ops.convert_to_tensor(initial_value,
-                                                  name="initial_value")
-      if not self._initial_value.get_shape().is_fully_defined():
-        if validate_shape:
-          raise ValueError(
-              "initial_value must have a shape specified: %s"
-              % self._initial_value)
-        self._variable = state_ops.variable_op(
-            [], self._initial_value.dtype.base_dtype, set_shape=False,
-            name=name)
-        with ops.device(self._variable.device):
-          self._initializer_op = state_ops.assign(
-              self._variable, self._initial_value, validate_shape=False).op
-          self._snapshot = array_ops.identity(self._variable, name="read")
-      else:
-        self._variable = state_ops.variable_op(
-            self._initial_value.get_shape(),
-            self._initial_value.dtype.base_dtype,
-            name=name)
-        with ops.device(self._variable.device):
-          self._initializer_op = state_ops.assign(
-              self._variable, self._initial_value).op
-          self._snapshot = array_ops.identity(self._variable, name="read")
+    with ops.control_dependencies(None):
+      with ops.op_scope([initial_value], name, "Variable") as name:
+        self._initial_value = ops.convert_to_tensor(initial_value,
+                                                    name="initial_value")
+        if not self._initial_value.get_shape().is_fully_defined():
+          if validate_shape:
+            raise ValueError(
+                "initial_value must have a shape specified: %s"
+                % self._initial_value)
+          self._variable = state_ops.variable_op(
+              [], self._initial_value.dtype.base_dtype, set_shape=False,
+              name=name)
+          with ops.device(self._variable.device):
+            self._initializer_op = state_ops.assign(
+                self._variable, self._initial_value, validate_shape=False).op
+            self._snapshot = array_ops.identity(self._variable, name="read")
+        else:
+          self._variable = state_ops.variable_op(
+              self._initial_value.get_shape(),
+              self._initial_value.dtype.base_dtype,
+              name=name)
+          with ops.device(self._variable.device):
+            self._initializer_op = state_ops.assign(
+                self._variable, self._initial_value).op
+            self._snapshot = array_ops.identity(self._variable, name="read")
     for key in collections:
       ops.add_to_collection(key, self)
     self._save_slice_info = None
@@ -317,8 +318,9 @@ class Variable(object):
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    return control_flow_ops.with_dependencies(
-        [self._initializer_op], self._variable)
+    with ops.control_dependencies(None):
+      with ops.control_dependencies([self._initializer_op]):
+        return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
