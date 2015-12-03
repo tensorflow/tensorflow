@@ -1,0 +1,4 @@
+build:cuda --crosstool_top=//third_party/gpus/crosstool
+
+build --force_python=py$PYTHON_MAJOR_VERSION
+build --python$PYTHON_MAJOR_VERSION_path=$PYTHON_BINARY

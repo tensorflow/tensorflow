@@ -31,7 +31,7 @@ class LinearTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(1.0)):
         x = tf.zeros([1, 2])
         l = tf.nn.rnn_cell.linear([x], 2, False)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([l], {x.name: np.array([[1., 2.]])})
         self.assertAllClose(res[0], [[3.0, 3.0]])
 

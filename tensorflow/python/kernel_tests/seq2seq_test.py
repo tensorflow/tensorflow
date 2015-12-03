@@ -110,7 +110,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.BasicLSTMCell(2)
         dec, mem = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp, cell, 2, 5)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 5))
@@ -125,7 +125,7 @@ class Seq2SeqTest(tf.test.TestCase):
         with tf.variable_scope("proj_seq2seq"):
           dec, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
               enc_inp, dec_inp, cell, 2, 5, output_projection=(w, b))
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 2))
@@ -156,7 +156,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.BasicLSTMCell(2)
         dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp, cell, 5)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 5))
@@ -171,7 +171,7 @@ class Seq2SeqTest(tf.test.TestCase):
         with tf.variable_scope("proj_seq2seq"):
           dec, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
               enc_inp, dec_inp, cell, 5, output_projection=(w, b))
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 2))
@@ -281,7 +281,7 @@ class Seq2SeqTest(tf.test.TestCase):
         with tf.variable_scope("proj_seq2seq"):
           dec, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
               enc_inp, dec_inp, cell, 2, 5, output_projection=(w, b))
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 2))

@@ -136,11 +136,11 @@ class Coordinator(object):
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
             logging.info("Error reported to Coordinator: %s",
-                         compat.as_str(unicode(ex[1])))
+                         compat.as_str_any(ex[1]))
             self._exc_info_to_raise = ex
           else:
             logging.info("Error reported to Coordinator: %s",
-                         compat.as_str(unicode(ex)))
+                         compat.as_str_any(ex))
             self._exc_info_to_raise = sys.exc_info()
         self._stop_event.set()
 

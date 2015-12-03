@@ -1252,12 +1252,19 @@ def tuple(tensors, name=None, control_inputs=None):
 
   Raises:
     ValueError: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+    TypeError: If `control_inputs` is not a list of `Operation` or `Tensor`
+      objects.
 
   """
   with ops.op_scope(tensors, name, "tuple") as name:
     gating_ops = [t.op for t in tensors if t]
     if control_inputs:
-      gating_ops += control_inputs
+      for c in control_inputs:
+        if isinstance(c, ops.Tensor):
+          c = c.op
+        elif not isinstance(c, ops.Operation):
+          raise TypeError("Control input must be Operation or Tensor: %s" % c)
+        gating_ops.append(c)
     # Note that in order to ensure ordering in the pbtxt, we must take care to
     # ensure the order here.
     gating_ops = sorted(set(gating_ops), key=lambda op: op._id)  # Uniquify ops.

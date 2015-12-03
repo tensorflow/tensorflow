@@ -103,8 +103,12 @@ class AdamOptimizer(optimizer.Optimizer):
     # variable.
     if self._beta1_power is None:
       with ops.device(var_list[0].device):
-        self._beta1_power = variables.Variable(self._beta1, name="beta1_power", trainable=False)
-        self._beta2_power = variables.Variable(self._beta2, name="beta2_power", trainable=False)
+        self._beta1_power = variables.Variable(self._beta1,
+                                               name="beta1_power",
+                                               trainable=False)
+        self._beta2_power = variables.Variable(self._beta2,
+                                               name="beta2_power",
+                                               trainable=False)
     # Create slots for the first and second moments.
     for v in var_list:
       self._zeros_slot(v, "m", self._name)

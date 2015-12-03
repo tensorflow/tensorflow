@@ -37,7 +37,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         g, _ = rnn_cell.BasicRNNCell(2)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -48,7 +48,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         g, _ = rnn_cell.GRUCell(2)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         # Smoke test
@@ -60,7 +60,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 8])
         g, out_m = rnn_cell.MultiRNNCell([rnn_cell.BasicLSTMCell(2)] * 2)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g, out_m], {x.name: np.array([[1., 1.]]),
                                     m.name: 0.1 * np.ones([1, 8])})
         self.assertEqual(len(res), 2)
@@ -84,7 +84,7 @@ class RNNCellTest(tf.test.TestCase):
         m = tf.zeros([batch_size, state_size])
         output, state = rnn_cell.LSTMCell(
             num_units=num_units, input_size=input_size, num_proj=num_proj)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1.], [2., 2.], [3., 3.]]),
                         m.name: 0.1 * np.ones((batch_size, state_size))})
@@ -107,7 +107,7 @@ class RNNCellTest(tf.test.TestCase):
         m = tf.zeros([1, 3])
         cell = rnn_cell.OutputProjectionWrapper(rnn_cell.GRUCell(3), 2)
         g, new_m = cell(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -121,7 +121,7 @@ class RNNCellTest(tf.test.TestCase):
         m = tf.zeros([1, 3])
         cell = rnn_cell.InputProjectionWrapper(rnn_cell.GRUCell(3), 2)
         g, new_m = cell(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -136,7 +136,7 @@ class RNNCellTest(tf.test.TestCase):
         keep = tf.zeros([]) + 1
         g, new_m = rnn_cell.DropoutWrapper(rnn_cell.GRUCell(3),
                                            keep, keep)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -149,7 +149,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 1], dtype=tf.int32)
         m = tf.zeros([1, 2])
         g, new_m = rnn_cell.EmbeddingWrapper(rnn_cell.GRUCell(2), 3)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1]]),
                                     m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 2))
@@ -162,7 +162,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 4])
         _, ml = rnn_cell.MultiRNNCell([rnn_cell.GRUCell(2)] * 2)(x, m)
-        sess.run([tf.variables.initialize_all_variables()])
+        sess.run([tf.initialize_all_variables()])
         res = sess.run(ml, {x.name: np.array([[1., 1.]]),
                             m.name: np.array([[0.1, 0.1, 0.1, 0.1]])})
         # The numbers in results were not calculated, this is just a smoke test.
