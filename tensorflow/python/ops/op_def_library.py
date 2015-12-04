@@ -616,6 +616,10 @@ class OpDefLibrary(object):
         elif attr_def.type == "list(tensor)":
           attr_value.list.tensor.extend(
               [_MakeTensor(x, key) for x in value])
+        elif attr_def.type == "func":
+          if not isinstance(value, compat.bytes_or_text_types):
+            raise TypeError("Expects a string for the func name")
+          attr_value.func.name = value
         else:
           raise TypeError("Unrecognized Attr type " + attr_def.type)
 
