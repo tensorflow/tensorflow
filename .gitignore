@@ -1,0 +1,11 @@
+node_modules
+/bazel-bin
+/bazel-genfiles
+/bazel-out
+/bazel-tensorflow
+/bazel-testlogs
+/bazel-tf
+/third_party/py/numpy/numpy_include
+/tools/bazel.rc
+/util/python/python_include
+/util/python/python_lib

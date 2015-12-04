@@ -367,11 +367,14 @@ struct SelectFunctor<CPUDevice, T> {
                           OP<D##Device, F<T>>);
 
 // Macros to register kernels for multiple types (T0, T1, etc.)  on
-// device type "D" (CPU or GPU) for operatin "N" (e.g., sqrt) using
+// device type "D" (CPU or GPU) for operation "N" (e.g., sqrt) using
 // the functor "F" (e.g., functor:sqrt).
 
-#if defined(__ANDROID__)
-// On Android, only register the first type (float)
+#if defined(__ANDROID_TYPES_SLIM__)
+// Normally Android TensorFlow is built with a reduced number of types (float).
+// Override on the command-line "--define ANDROID_TYPES=__ANDROID_TYPES_FULL__"
+// to generate a library with full type support with a consequent increase in
+// code size.
 #define REGISTER2(OP, D, N, F, T0, T1) REGISTER(OP, D, N, F, T0)
 #define REGISTER3(OP, D, N, F, T0, T1, T2) REGISTER(OP, D, N, F, T0)
 #define REGISTER4(OP, D, N, F, T0, T1, T2, T3) REGISTER(OP, D, N, F, T0)
@@ -381,7 +384,7 @@ struct SelectFunctor<CPUDevice, T> {
   REGISTER(OP, D, N, F, T0)
 #define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
   REGISTER(OP, D, N, F, T0)
-#else  // !defined(__ANDROID__)
+#else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
   REGISTER(OP, D, N, F, T1)
@@ -403,7 +406,7 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
   REGISTER4(OP, D, N, F, T0, T1, T2, T3)                       \
   REGISTER4(OP, D, N, F, T4, T5, T6, T7)
-#endif  // defined(__ANDROID__)
+#endif  // defined(__ANDROID_TYPES_SLIM__)
 
 }  // end namespace tensorflow
 
