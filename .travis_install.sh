@@ -10,7 +10,7 @@ sudo pip install --upgrade pip
 sudo pip install numpy
 sudo pip install scipy
 sudo pip install pandas
-sudo pip install sklearn
+sudo pip install scikit-learn
 
 # Install TensorFlow
 if [ ${TRAVIS_OS_NAME} == "linux" ]; then

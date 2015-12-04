@@ -18,7 +18,6 @@ addons:
             - libatlas3gf-base
             - libatlas-dev
             - python-scipy
-            - python-sklearn
 
 python:
     - "2.7"
