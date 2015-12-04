@@ -187,10 +187,7 @@ cc_library(
         "graph/testlib.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        ":friends",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu",
         ":tensorflow",
@@ -213,11 +210,9 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "kernels",
+    name = "ops",
     srcs = glob(
         [
-            "kernels/**/*.h",
-            "kernels/**/*.cc",
             "ops/**/*.h",
             "ops/**/*.cc",
             "user_ops/**/*.h",
@@ -226,14 +221,38 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
-            "kernels/**/*.cu.cc",
             "user_ops/**/*.cu.cc",
+        ],
+    ),
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core",
+        ":lib",
+        ":protos_cc",
+        "//tensorflow/models/embedding:word2vec_ops",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "kernels",
+    srcs = glob(
+        [
+            "kernels/**/*.h",
+            "kernels/**/*.cc",
+        ],
+        exclude = [
+            "**/*test*",
+            "**/*main.cc",
+            "kernels/**/*.cu.cc",
         ],
     ),
     copts = tf_copts(),
     cuda_deps = [
         ":gpu_kernels",
-        ":cuda",
     ],
     linkstatic = 0,
     visibility = ["//visibility:public"],
@@ -241,10 +260,10 @@ tf_cuda_library(
         "@gemmlowp//:eight_bit_int_gemm",
         ":core",
         ":lib",
+        ":ops",
         ":protos_cc",
         ":stream_executor",
         "//tensorflow/models/embedding:word2vec_kernels",
-        "//tensorflow/models/embedding:word2vec_ops",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -262,6 +281,7 @@ tf_gpu_kernel_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda",
         "//third_party/eigen3",
     ],
 )
@@ -416,6 +436,7 @@ tf_cc_tests(
         ":direct_session",
         ":kernels",
         ":lib",
+        ":ops",
         ":strict_headers",
         ":test_main",
         ":testlib",

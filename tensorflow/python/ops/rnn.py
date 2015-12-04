@@ -148,3 +148,92 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
     outputs[-1] = array_ops.identity(outputs[-1])
 
   return (outputs, states)
+
+
+def _reverse_seq(input_seq, lengths):
+  """Reverse a list of Tensors up to specified lengths.
+
+  Args:
+    input_seq: Sequence of seq_len tensors of dimension (batch_size, depth)
+    lengths:   A tensor of dimension batch_size, containing lengths for each
+               sequence in the batch. If "None" is specified, simply reverses
+               the list.
+
+  Returns:
+    time-reversed sequence
+  """
+  if lengths is None:
+    return list(reversed(input_seq))
+
+  # Join into (time, batch_size, depth)
+  s_joined = array_ops.pack(input_seq)
+  # Reverse along dimension 0
+  s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
+  # Split again into list
+  result = array_ops.unpack(s_reversed)
+  return result
+
+
+def bidirectional_rnn(cell_fw, cell_bw, inputs,
+                      initial_state_fw=None, initial_state_bw=None,
+                      dtype=None, sequence_length=None, scope=None):
+  """Creates a bidirectional recurrent neural network.
+
+  Similar to the unidirectional case above (rnn) but takes input and builds
+  independent forward and backward RNNs with the final forward and backward
+  outputs depth-concatenated, such that the output will have the format
+  [time][batch][cell_fw.output_size + cell_bw.output_size]. The initial state
+  for both directions is zero by default (but can be set optionally) and no
+  intermediate states are ever returned -- the network is fully unrolled for
+  the given (passed in) length(s) of the sequence(s).
+
+  Args:
+    cell_fw: An instance of RNNCell, to be used for forward direction.
+    cell_bw: An instance of RNNCell, to be used for backward direction.
+    inputs: A length T list of inputs, each a vector with shape [batch_size].
+    initial_state_fw: (optional) An initial state for the forward RNN.
+      This must be a tensor of appropriate type and shape
+      [batch_size x cell.state_size].
+    initial_state_bw: (optional) Same as for initial_state_fw.
+    dtype: (optional) The data type for the initial state.  Required if either
+      of the initial states are not provided.
+    sequence_length: An int64 vector (tensor) of size [batch_size], containing
+      the actual lengths for each of the sequences.
+    scope: VariableScope for the created subgraph; defaults to "BiRNN"
+
+  Returns:
+    A set of output `Tensors` where:
+      outputs is a length T list of outputs (one for each input), which
+      are depth-concatenated forward and backward outputs
+
+  Raises:
+    TypeError: If "cell_fw" or "cell_bw" is not an instance of RNNCell.
+    ValueError: If inputs is None or an empty list.
+    ValueError: If sequence_length is not defined.
+  """
+
+  if not isinstance(cell_fw, rnn_cell.RNNCell):
+    raise TypeError("cell_fw must be an instance of RNNCell")
+  if not isinstance(cell_bw, rnn_cell.RNNCell):
+    raise TypeError("cell_bw must be an instance of RNNCell")
+  if not isinstance(inputs, list):
+    raise TypeError("inputs must be a list")
+  if not sequence_length:
+    raise ValueError("sequence_length has to be defined")
+  if not inputs:
+    raise ValueError("inputs must not be empty")
+
+  name = scope or "BiRNN"
+  # Forward direction
+  with vs.variable_scope(name + "_FW"):
+    output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype)
+  # Backward direction
+  with vs.variable_scope(name + "_BW"):
+    tmp, _ = rnn(
+        cell_bw, _reverse_seq(inputs, sequence_length), initial_state_bw, dtype)
+  output_bw = _reverse_seq(tmp, sequence_length)
+  # Concat each of the forward/backward outputs
+  outputs = [array_ops.concat(1, [fw, bw])
+             for fw, bw in zip(output_fw, output_bw)]
+
+  return outputs

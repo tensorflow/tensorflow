@@ -410,7 +410,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
     op = g.create_op("an_op", [], [dtypes.float32])
     self.assertEqual(None, op.device)
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op" }
     """, gd)
 
@@ -419,7 +419,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
     with g.device("/job:worker/replica:2"):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op" device: "/job:worker/replica:2" }
     """, gd)
 
@@ -430,7 +430,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
                                device_index=3)):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/job:worker/replica:2/task:0/device:CPU:3" }
     """, gd)
@@ -443,7 +443,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
         g.create_op("an_op", [], [dtypes.float32])
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/job:worker/replica:2" }
       node { name: "an_op_1" op: "an_op"
@@ -460,7 +460,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
         g.create_op("an_op", [], [dtypes.float32])
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/job:worker/replica:2" }
       node { name: "an_op_1" op: "an_op"
@@ -477,7 +477,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
         g.create_op("an_op", [], [dtypes.float32])
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/job:worker/replica:2/device:CPU:1"  }
       node { name: "an_op_1" op: "an_op"
@@ -501,7 +501,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
               g.create_op("an_op", [], [dtypes.float32])
 
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/device:GPU:0" }
       node { name: "an_op_1" op: "an_op"
@@ -522,7 +522,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
         g.create_op("an_op", [], [dtypes.float32])
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
-    self.assertProtoEquals("""
+    self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op"
              device: "/job:worker/replica:2/device:CPU:1" }
       node { name: "an_op_1" op: "an_op" }

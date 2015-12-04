@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace test {
@@ -27,6 +28,7 @@ typedef FunctionDefHelper FDH;
 GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
               gtl::ArraySlice<FunctionDef> funcs) {
   GraphDef g;
+  g.set_version(TF_GRAPH_DEF_VERSION);
   for (auto n : nodes) {
     *(g.add_node()) = n;
   }

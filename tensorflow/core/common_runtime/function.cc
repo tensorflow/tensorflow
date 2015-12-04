@@ -980,6 +980,7 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
   }
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
+  gdef->set_version(g->version());
   while (!ready.empty()) {
     const Node* n = ready.front();
     ready.pop_front();

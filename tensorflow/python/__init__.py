@@ -48,6 +48,7 @@ from tensorflow.core.util.event_pb2 import *
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
 
 # Session
@@ -81,3 +82,4 @@ _whitelist = set([app, compat, errors, flags, image, logging, nn,
 _whitelist.update([ops, tensor_util])  # pylint: disable=undefined-variable
 __all__ = [name for name, x in locals().items() if not name.startswith('_') and
            (not inspect.ismodule(x) or x in _whitelist)]
+__all__.append('__version__')

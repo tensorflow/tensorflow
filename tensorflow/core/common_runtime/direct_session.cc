@@ -164,6 +164,11 @@ Status DirectSession::Extend(const GraphDef& graph) {
 }
 
 Status DirectSession::ExtendLocked(const GraphDef& graph) {
+  if (graph_created_ && graph_def_.version() != graph.version()) {
+    return errors::InvalidArgument("Incompatible GraphDef versions in Extend: ",
+                                   graph_def_.version(), " != ",
+                                   graph.version());
+  }
   graph_created_ = true;  // In case this is first call
   graph_def_.MergeFrom(graph);
   return Status::OK();

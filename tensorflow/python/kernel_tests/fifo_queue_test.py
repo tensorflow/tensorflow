@@ -344,6 +344,42 @@ class FIFOQueueTest(tf.test.TestCase):
       self.assertAllEqual(dequeued_t.eval(), elems)
 
   def testEnqueueWrongShape(self):
+    q = tf.FIFOQueue(10, (tf.int32, tf.int32), ((), (2)))
+
+    with self.assertRaises(ValueError):
+      q.enqueue(([1, 2], [2, 2]))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many((7, [[1, 2], [3, 4], [5, 6]]))
+
+  def testBatchSizeMismatch(self):
+    q = tf.FIFOQueue(10, (tf.int32, tf.int32, tf.int32), ((), (), ()))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many(([1, 2, 3], [1, 2], [1, 2, 3]))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many(([1, 2, 3], [1, 2], tf.placeholder(tf.int32)))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many((tf.placeholder(tf.int32), [1, 2], [1, 2, 3]))
+
+  def testEnqueueManyEmptyTypeConversion(self):
+    q = tf.FIFOQueue(10, (tf.int32, tf.float32), ((), ()))
+    enq = q.enqueue_many(([], []))
+    self.assertEqual(tf.int32, enq.inputs[1].dtype)
+    self.assertEqual(tf.float32, enq.inputs[2].dtype)
+
+  def testEnqueueWrongType(self):
+    q = tf.FIFOQueue(10, (tf.int32, tf.float32), ((), ()))
+
+    with self.assertRaises(ValueError):
+      q.enqueue((tf.placeholder(tf.int32), tf.placeholder(tf.int32)))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many((tf.placeholder(tf.int32), tf.placeholder(tf.int32)))
+
+  def testEnqueueWrongShapeAtRuntime(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(10, (tf.int32, tf.int32), ((2, 2), (3, 3)))
       elems_ok = np.array([1] * 4).reshape((2, 2)).astype(np.int32)
@@ -351,8 +387,6 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op = q.enqueue((elems_ok, elems_bad))
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError, r"Expected \[3,3\], got \[3,4\]"):
-        sess.run([enqueue_op],
-                 feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
         sess.run([enqueue_op],
                  feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
 

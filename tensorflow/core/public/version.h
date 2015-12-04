@@ -36,4 +36,9 @@ limitations under the License.
 
 // TODO(josh11b): Public API functions for exporting the above.
 
+// Supported GraphDef versions (see graph.proto).
+#define TF_GRAPH_DEF_VERSION_MIN 0
+#define TF_GRAPH_DEF_VERSION_MAX 1
+#define TF_GRAPH_DEF_VERSION TF_GRAPH_DEF_VERSION_MAX
+
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_

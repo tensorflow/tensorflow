@@ -24,6 +24,7 @@ namespace tensorflow {
 
 string SummarizeGraphDef(const GraphDef& graph_def) {
   string ret;
+  strings::StrAppend(&ret, "version = ", graph_def.version(), ";\n");
   for (const NodeDef& node : graph_def.node()) {
     strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
   }

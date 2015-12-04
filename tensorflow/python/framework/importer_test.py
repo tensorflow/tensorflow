@@ -111,7 +111,8 @@ for op_def in _op_list.op:
 
 class ImportGraphDefTest(tf.test.TestCase):
 
-  def _MakeGraphDef(self, text):
+  def _MakeGraphDef(self, text, version=tf.GRAPH_DEF_VERSION):
+    text = "version: %d\n%s" % (version, text)
     ret = tf.GraphDef()
     text_format.Merge(text, ret)
     return ret
@@ -609,6 +610,28 @@ class ImportGraphDefTest(tf.test.TestCase):
       t = tf.constant(tensor_input, shape=input_shape)
       g = tf.identity(t)
       g.eval()
+
+  def testVersion(self):
+    for version in tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX:
+      with tf.Graph().as_default():
+        a, = tf.import_graph_def(
+            self._MakeGraphDef("node { name: 'A' op: 'Oii' }", version=version),
+            return_elements=['A'])
+        self.assertEqual(a.graph.graph_def_version, version)
+
+  def testVersionLow(self):
+    with tf.Graph().as_default():
+      pat = (r"^GraphDef version -1 is no longer supported: TensorFlow \S+ "
+             r"needs \d+ <= version <= \d+.  Please regenerate your graph.$")
+      with self.assertRaisesRegexp(ValueError, pat):
+        tf.import_graph_def(self._MakeGraphDef("", version=-1))
+
+  def testVersionHigh(self):
+    with tf.Graph().as_default():
+      pat = (r"^GraphDef version \d+ is not yet supported: TensorFlow \S+ "
+             r"needs \d+ <= version <= \d+.  Please upgrade TensorFlow.$")
+      with self.assertRaisesRegexp(ValueError, pat):
+        tf.import_graph_def(self._MakeGraphDef("", version=1 << 30))
 
 
 if __name__ == '__main__':
