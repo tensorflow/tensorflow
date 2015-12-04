@@ -155,7 +155,7 @@ typedef struct TF_Tensor TF_Tensor;
 //
 // The data will be deallocated by a subsequent call to TF_DeleteTensor via:
 //      (*deallocator_fn)(data, len, deallocator_arg)
-// Clients can provide a custom deallocator function so they can pass in
+// Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
 extern TF_Tensor* TF_NewTensor(TF_DataType, long long* dims, int num_dims,
                                void* data, size_t len,
