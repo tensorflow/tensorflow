@@ -138,6 +138,7 @@ py_library(
         "framework/tensor_shape.py",
         "framework/dtypes.py",
         "framework/tensor_util.py",
+        "framework/versions.py",
         "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
@@ -192,6 +193,18 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_versions_test",
+    srcs = ["framework/versions_test.py"],
+    main = "framework/versions_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

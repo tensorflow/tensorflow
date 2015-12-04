@@ -1051,6 +1051,11 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
+  // Set versions
+  for (auto& it : *partitions) {
+    it.second.set_version(g->version());
+  }
+
   // Set the start times for recvs at the very end.
   if (opts.scheduling_for_recvs) {
     for (auto& it : dup_recv) {

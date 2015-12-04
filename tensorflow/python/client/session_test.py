@@ -34,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
@@ -425,7 +426,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testGraphDef(self):
     with session.Session() as sess:
-      self.assertProtoEquals('', sess.graph_def)
+      self.assertProtoEquals('version: %d' % versions.GRAPH_DEF_VERSION,
+                             sess.graph_def)
       c = constant_op.constant(5.0, name='c')
       self.assertEquals(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')

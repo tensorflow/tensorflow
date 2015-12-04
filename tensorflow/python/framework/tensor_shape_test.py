@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow.python.platform
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -253,6 +254,19 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual((unknown // unknown).value, None)
     with self.assertRaisesRegexp(TypeError, r"unsupported operand type"):
       unknown / unknown  # pylint: disable=pointless-statement
+
+  def testConvertFromProto(self):
+    proto = tensor_util.MakeTensorShapeProto([])
+    self.assertEqual(tensor_shape.TensorShape([]),
+                     tensor_shape.TensorShape(proto))
+    self.assertEqual(tensor_shape.TensorShape([]),
+                     tensor_shape.as_shape(proto))
+
+    proto = tensor_util.MakeTensorShapeProto([1, 37, 42])
+    self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
+                     tensor_shape.TensorShape(proto))
+    self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
+                     tensor_shape.as_shape(proto))
 
 
 if __name__ == "__main__":

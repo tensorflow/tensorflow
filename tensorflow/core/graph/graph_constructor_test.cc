@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/version.h"
 
 // TODO(josh11b): Test InitCostModel().
 // TODO(josh11b): Test setting the "device" field of a NodeDef.
@@ -56,6 +57,12 @@ class GraphConstructorTest : public ::testing::Test {
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef_, g_.get()));
+  }
+
+  void ExpectVersion(int version) {
+    EXPECT_NE(nullptr, g_);
+    EXPECT_EQ(version, g_->version()) << "Expected version " << version
+                                      << ", got " << g_->version();
   }
 
   Node* FindNode(const string& name) {
@@ -160,7 +167,30 @@ TEST_F(GraphConstructorTest, TypeMismatch) {
       "expected int32.");
 }
 
-TEST_F(GraphConstructorTest, EmptyGraph) { ExpectOK(""); }
+TEST_F(GraphConstructorTest, EmptyGraph) {
+  ExpectOK("");
+  ExpectVersion(0);  // The default GraphDef version is 0
+}
+
+TEST_F(GraphConstructorTest, VersionGraph) {
+  ASSERT_LT(0, TF_GRAPH_DEF_VERSION);  // Verify the assertion is nontrivial
+  ExpectOK(strings::StrCat("version: ", TF_GRAPH_DEF_VERSION));
+  ExpectVersion(TF_GRAPH_DEF_VERSION);
+}
+
+TEST_F(GraphConstructorTest, LowVersion) {
+  ExpectError(strings::StrCat("version: ", -1),
+              R"(^GraphDef version -1 is no longer supported: TensorFlow \S+ )"
+              R"(needs \d+ <= version <= \d+\.  )"
+              R"(Please regenerate your graph\.$)");
+}
+
+TEST_F(GraphConstructorTest, HighVersion) {
+  ExpectError(strings::StrCat("version: ", TF_GRAPH_DEF_VERSION_MAX + 1),
+              R"(^GraphDef version \d+ is not yet supported: TensorFlow \S+ )"
+              R"(needs \d+ <= version <= \d+\.  )"
+              R"(Please upgrade TensorFlow\.$)");
+}
 
 TEST_F(GraphConstructorTest, SimpleModel) {
   ExpectOK(

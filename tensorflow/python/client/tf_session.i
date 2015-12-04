@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/status.h"
+#include "tensorflow/core/public/version.h"
 
 %}
 
@@ -31,6 +32,12 @@ limitations under the License.
 %init %{
 tensorflow::ImportNumpy();
 %}
+
+// TensorFlow version and GraphDef versions
+%constant const char* __version__ = TF_VERSION_STRING;
+%constant int GRAPH_DEF_VERSION = TF_GRAPH_DEF_VERSION;
+%constant int GRAPH_DEF_VERSION_MIN = TF_GRAPH_DEF_VERSION_MIN;
+%constant int GRAPH_DEF_VERSION_MAX = TF_GRAPH_DEF_VERSION_MAX;
 
 // Release the Python GIL for the duration of most methods.
 %exception {

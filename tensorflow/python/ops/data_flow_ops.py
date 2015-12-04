@@ -157,6 +157,26 @@ class QueueBase(object):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
 
+  def _check_enqueue_dtypes(self, vals):
+    """Returns `vals` as a list of `Tensor`s, having checked their dtypes.
+
+    Args:
+      vals: A tensor or a list of tensors, corresponding to an
+      enqueue(_many) tuple.
+
+    Returns:
+      A list of `Tensor` objects.
+    """
+    if not isinstance(vals, (list, tuple)):
+      vals = [vals]
+
+    tensors = []
+    for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
+      tensors.append(ops.convert_to_tensor(val, dtype=dtype,
+                                           name="component_%d" % i))
+
+    return tensors
+
   def enqueue(self, vals, name=None):
     """Enqueues one element to this queue.
 
@@ -170,16 +190,18 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    if name is None:
-      name = "%s_enqueue" % self._name
-    ret = gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=name)
+    if not isinstance(vals, (list, tuple)):
+      vals = [vals]
 
-    # NOTE(mrry): Not using a shape function because we need access to
-    # the Queue object.
-    for val, shape in zip(ret.inputs[1:], self._shapes):
-      val.get_shape().assert_is_compatible_with(shape)
+    with ops.op_scope(vals, name, "%s_enqueue" % self._name) as scope:
+      vals = self._check_enqueue_dtypes(vals)
 
-    return ret
+      # NOTE(mrry): Not using a shape function because we need access to
+      # the `QueueBase` object.
+      for val, shape in zip(vals, self._shapes):
+        val.get_shape().assert_is_compatible_with(shape)
+
+      return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
     """Enqueues zero or elements to this queue.
@@ -199,20 +221,22 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    if name is None:
-      name = "%s_EnqueueMany" % self._name
+    if not isinstance(vals, (list, tuple)):
+      vals = [vals]
 
-    ret = gen_data_flow_ops._queue_enqueue_many(
-        self._queue_ref, vals, name=name)
+    with ops.op_scope(vals, name, "%s_EnqueueMany" % self._name) as scope:
+      vals = self._check_enqueue_dtypes(vals)
 
-    # NOTE(mrry): Not using a shape function because we need access to
-    # the `QueueBase` object.
-    batch_dim = ret.inputs[1].get_shape()[0]
-    for val, shape in zip(ret.inputs[1:], self._shapes):
-      batch_dim.merge_with(val.get_shape()[0])
-      val.get_shape()[1:].assert_is_compatible_with(shape)
+      # NOTE(mrry): Not using a shape function because we need access to
+      # the `QueueBase` object.
+      batch_dim = vals[0].get_shape().with_rank_at_least(1)[0]
+      for val, shape in zip(vals, self._shapes):
+        batch_dim = batch_dim.merge_with(
+            val.get_shape().with_rank_at_least(1)[0])
+        val.get_shape()[1:].assert_is_compatible_with(shape)
 
-    return ret
+      return gen_data_flow_ops._queue_enqueue_many(
+          self._queue_ref, vals, name=scope)
 
   def dequeue(self, name=None):
     """Dequeues one element from this queue.

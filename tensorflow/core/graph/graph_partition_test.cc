@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -72,6 +73,12 @@ void Partition(const GraphDef& graph_def,
   popts.control_flow_added = false;
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
+
+  // Check versions
+  EXPECT_EQ(graph_def.version(), TF_GRAPH_DEF_VERSION);
+  for (auto& it : *partitions) {
+    EXPECT_EQ(graph_def.version(), it.second.version());
+  }
 }
 
 void CheckLoopConstruction(const GraphDef& graph_def) {

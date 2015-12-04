@@ -26,6 +26,14 @@ namespace tensorflow {
 
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
                    string* diff) {
+  if (actual.version() != expected.version()) {
+    if (diff != nullptr) {
+      *diff = strings::StrCat("Expected version ", expected.version(),
+                              ", got version ", actual.version());
+    }
+    return false;
+  }
+
   std::unordered_map<string, const NodeDef*> actual_index;
   for (const NodeDef& node : actual.node()) {
     actual_index[node.name()] = &node;

@@ -38,6 +38,7 @@ from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import logging
 from tensorflow.python.util.protobuf import compare
@@ -112,6 +113,11 @@ class TensorFlowTestCase(googletest.TestCase):
       assert False, ("Can't compare protos of type " +
                      type(expected_message_maybe_ascii) + " and " +
                      type(message))
+
+  def assertProtoEqualsVersion(self, expected, actual,
+                               version=versions.GRAPH_DEF_VERSION):
+    expected = "version: %d\n%s" % (version, expected)
+    self.assertProtoEquals(expected, actual)
 
   def assertStartsWith(self, actual, expected_start, msg=None):
     """Assert that actual.startswith(expected_start) is True.

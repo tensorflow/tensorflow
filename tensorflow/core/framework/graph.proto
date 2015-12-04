@@ -15,6 +15,17 @@ import "tensorflow/core/framework/function.proto";
 message GraphDef {
   repeated NodeDef node = 1;
 
+  // Compatibility version of the graph.  Newly created graphs use
+  // the most recent version.  Version history:
+  //
+  // 0. Graphs created before GraphDef versioning
+  // 1. First real version (2dec2015)
+  //
+  // The GraphDef version is distinct from the TensorFlow version.
+  // Each released version of TensorFlow will support a range of
+  // GraphDef versions.
+  int32 version = 3;
+
   // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
   //
   // "library" provides user-defined functions.

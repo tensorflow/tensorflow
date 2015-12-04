@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -45,6 +46,19 @@ class GraphConstructor {
   GraphConstructor(const GraphConstructorOptions& opts, const GraphDef* gdef,
                    Graph* g, Status* status)
       : opts_(opts), gdef_(gdef), g_(g), status_(status) {
+    const int version = gdef->version();
+    if (!(TF_GRAPH_DEF_VERSION_MIN <= version &&
+          version <= TF_GRAPH_DEF_VERSION_MAX)) {
+      bool low = version < TF_GRAPH_DEF_VERSION_MAX;
+      *status = errors::InvalidArgument(
+          "GraphDef version ", version, " is ", low ? "no longer" : "not yet",
+          " supported: TensorFlow ", TF_VERSION_STRING, " needs ",
+          TF_GRAPH_DEF_VERSION_MAX, " <= version <= ", TF_GRAPH_DEF_VERSION_MIN,
+          ".  ",
+          low ? "Please regenerate your graph." : "Please upgrade TensorFlow.");
+      return;
+    }
+    g->set_version(gdef->version());
     BuildNodeIndex();
     InitFromEdges();
     Convert();

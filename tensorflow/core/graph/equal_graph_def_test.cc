@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -88,10 +89,11 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   Input(a_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ(
-      "Found unexpected node 'B = Input[]()' not in expected graph:\n"
-      "A = Input[]();\n",
-      diff_);
+  EXPECT_EQ(strings::StrCat(
+                "Found unexpected node 'B = Input[]()' not in expected graph:\n"
+                "version = ",
+                TF_GRAPH_DEF_VERSION, ";\nA = Input[]();\n"),
+            diff_);
 }
 
 TEST_F(EqualGraphDefTest, NodeOrder) {

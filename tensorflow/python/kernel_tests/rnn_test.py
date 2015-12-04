@@ -485,5 +485,74 @@ class LSTMTest(tf.test.TestCase):
     self._testDoubleInputWithDropoutAndDynamicCalculation(True)
 
 
+class BidirectionalRNNTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._seed = 23489
+    np.random.seed(self._seed)
+
+  def _testBidirectionalRNN(self, use_gpu):
+    num_units = 3
+    input_size = 5
+    batch_size = 2
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+      sequence_length = tf.placeholder(tf.int64)
+      cell_fw = tf.nn.rnn_cell.LSTMCell(
+          num_units, input_size, initializer=initializer)
+      cell_bw = tf.nn.rnn_cell.LSTMCell(
+          num_units, input_size, initializer=initializer)
+      inputs = 10 * [
+          tf.placeholder(tf.float32, shape=(batch_size, input_size))]
+      outputs = tf.nn.bidirectional_rnn(
+          cell_fw, cell_bw, inputs, dtype=tf.float32,
+          sequence_length=sequence_length)
+
+      self.assertEqual(len(outputs), len(inputs))
+      for out in outputs:
+        self.assertEqual(out.get_shape().as_list(), [batch_size, 2 * num_units])
+
+      tf.initialize_all_variables().run()
+      input_value = np.random.randn(batch_size, input_size)
+      # Run with pre-specified sequence length of 2, 3
+      out = sess.run(outputs, feed_dict={inputs[0]: input_value,
+                                         sequence_length: [2, 3]})
+
+      # Since the forward and backward LSTM cells were initialized with the
+      # same parameters, the forward and backward output has to be the same,
+      # but reversed in time. The format is output[time][batch][depth], and
+      # due to depth concatenation (as num_units=3 for both RNNs):
+      # - forward output:  out[][][depth] for 0 <= depth < 3
+      # - backward output: out[][][depth] for 4 <= depth < 6
+      #
+      # First sequence in batch is length=2
+      # Check that the time=0 forward output is equal to time=1 backward output
+      self.assertEqual(out[0][0][0], out[1][0][3])
+      self.assertEqual(out[0][0][1], out[1][0][4])
+      self.assertEqual(out[0][0][2], out[1][0][5])
+      # Check that the time=1 forward output is equal to time=0 backward output
+      self.assertEqual(out[1][0][0], out[0][0][3])
+      self.assertEqual(out[1][0][1], out[0][0][4])
+      self.assertEqual(out[1][0][2], out[0][0][5])
+
+      # Second sequence in batch is length=3
+      # Check that the time=0 forward output is equal to time=2 backward output
+      self.assertEqual(out[0][1][0], out[2][1][3])
+      self.assertEqual(out[0][1][1], out[2][1][4])
+      self.assertEqual(out[0][1][2], out[2][1][5])
+      # Check that the time=1 forward output is equal to time=1 backward output
+      self.assertEqual(out[1][1][0], out[1][1][3])
+      self.assertEqual(out[1][1][1], out[1][1][4])
+      self.assertEqual(out[1][1][2], out[1][1][5])
+      # Check that the time=2 forward output is equal to time=0 backward output
+      self.assertEqual(out[2][1][0], out[0][1][3])
+      self.assertEqual(out[2][1][1], out[0][1][4])
+      self.assertEqual(out[2][1][2], out[0][1][5])
+
+  def testBidirectionalRNN(self):
+    self._testBidirectionalRNN(use_gpu=False)
+    self._testBidirectionalRNN(use_gpu=True)
+
+
 if __name__ == "__main__":
   tf.test.main()
