@@ -1,4 +1,5 @@
 sudo: true
+dist: trusty
 
 language: python
 
