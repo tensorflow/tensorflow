@@ -40,5 +40,4 @@ regressor = skflow.TensorFlowDNNRegressor(hidden_units=[10, 10],
 # Fit and predict.
 regressor.fit(X_train, y_train)
 score = metrics.mean_squared_error(regressor.predict(X_test), y_test)
-print("MSE: %f" % score)
-
+print('MSE: {0:f}'.format(score))

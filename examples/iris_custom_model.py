@@ -29,5 +29,4 @@ def my_model(X, y):
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
-print("Accuracy: %f" % score)
-
+print('Accuracy: {0:f}'.format(score))
