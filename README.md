@@ -1,3 +1,4 @@
+[![Travis-CI Build Status](https://travis-ci.org/google/skflow.svg?branch=master)](https://travis-ci.org/google/skflow)
 # Scikit Flow
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
