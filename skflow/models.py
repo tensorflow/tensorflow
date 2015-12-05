@@ -63,7 +63,7 @@ def get_dnn_model(hidden_units, target_predictor_fn):
         other model, that takes X, y and returns predictions and loss tensors.
 
     Returns:
-        A funcition that creates the subgraph.
+        A function that creates the subgraph.
     """
     def dnn_classifier(X, y):
         layers = dnn(X, hidden_units)

@@ -99,6 +99,7 @@ class TensorFlowTrainer(object):
           if step % print_steps == 0:
             avg_loss = np.mean(print_loss_buffer)
             print_loss_buffer = []
-            print "Step #%d, avg. loss: %.5f" % (global_step, avg_loss)
+            print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
+                                                               loss=avg_loss))
         return losses
 

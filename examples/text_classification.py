@@ -74,5 +74,4 @@ classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
 while True:
     classifier.fit(X_train, y_train)
     score = metrics.accuracy_score(classifier.predict(X_test), y_test)
-    print("Accuracy: %f" % score)
-
+    print('Accuracy: {0:f}'.format(score))

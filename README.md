@@ -11,12 +11,13 @@ Why Scikit Flow?
 more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable.
 * To provide a set of reference models that would be easy to integrate with existing code.
 
-
 ## Installation
 
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
-    pip install git+git://github.com/google/skflow.git
+```Bash
+pip install git+git://github.com/google/skflow.git
+```
 
 ## Tutorial
 
@@ -32,14 +33,13 @@ For more examples, please see [examples](https://github.com/google/skflow/tree/m
 ### General tips
 
 * It's useful to re-scale dataset before passing to estimator to 0 mean and unit standard deviation. 
-Stochastic Gradient Descent doesn't always do the right thing when variable are very differen scale.
+Stochastic Gradient Descent doesn't always do the right thing when variable are very different scale.
 
-* Categorical variables needed to be delt before passing input to the estimator.
-I'll write a tutorial in coming days how to handle categorical variables Deep Learning-style.
+* Categorical variables should be managed before passing input to the estimator. I'll write a tutorial in coming days on how to handle categorical variables Deep Learning-style.
 
 ### Linear Classifier
 
-Simple linear classification.
+Simple linear classification:
 
 ```Python
 import skflow
@@ -54,7 +54,7 @@ print("Accuracy: %f" % score)
 
 ### Linear Regressor
 
-Simple linear regression.
+Simple linear regression:
 
 ```Python
 import skflow
@@ -110,4 +110,3 @@ print("Accuracy: %f" % score)
 * Text categorization
 * Images (CNNs)
 * More & deeper
-
