@@ -148,6 +148,9 @@ class TensorFlowEstimator(BaseEstimator):
             y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
             iterator that returns array of targets. The training target values
             (class label in classification, real numbers in regression).
+
+        Returns:
+            Returns self.
         """
         return self.fit(X, y)
 
