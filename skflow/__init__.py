@@ -93,6 +93,14 @@ class TensorFlowEstimator(BaseEstimator):
             self._trainer = TensorFlowTrainer(self._model_loss,
                 self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master)
+    
+    def _setup_summary_writer(self):
+        # Create summary to monitor loss
+        tf.scalar_summary("loss", self._model_loss)
+        # Set up a single operator to merge all the summaries
+        summary_op = tf.merge_all_summaries()
+        # Set up summary writer to a tmp directory
+        self._summary_writer = tf.train.SummaryWriter('/tmp/tensorflow_logs', graph_def=sess.graph_def)
 
     def fit(self, X, y):
         """Builds a neural network model given provided `model_fn` and training
@@ -117,6 +125,8 @@ class TensorFlowEstimator(BaseEstimator):
             # Initialize model parameters.
             self._trainer.initialize(self._session)
             self._initialized = True
+            # Sets up summary writer for later optional visualization
+            self._setup_summary_writer()
 
         # Train model for given number of steps.
         self._trainer.train(self._session,
