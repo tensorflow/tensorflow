@@ -15,6 +15,8 @@
 import collections
 import random
 
+import os, datetime
+
 import numpy as np
 import tensorflow as tf
 
@@ -94,15 +96,17 @@ class TensorFlowEstimator(BaseEstimator):
                 self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master)
     
-    def _setup_summary_writer(self):
+    def _setup_summary_writer(self, logdir):
         # Create summary to monitor loss
         tf.scalar_summary("loss", self._model_loss)
         # Set up a single operator to merge all the summaries
         summary_op = tf.merge_all_summaries()
-        # Set up summary writer to a tmp directory
-        self._summary_writer = tf.train.SummaryWriter('/tmp/tensorflow_logs', graph_def=self._session.graph_def)
+        # Set up summary writer to the specified log directory
+        self._summary_writer = tf.train.SummaryWriter(os.path.join(logdir,
+         datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
+          graph_def=self._session.graph_def)
 
-    def fit(self, X, y):
+    def fit(self, X, y, logdir='/tmp/tensorflow_logs'):
         """Builds a neural network model given provided `model_fn` and training
         data X and y.
 
@@ -126,7 +130,7 @@ class TensorFlowEstimator(BaseEstimator):
             self._trainer.initialize(self._session)
             self._initialized = True
             # Sets up summary writer for later optional visualization
-            self._setup_summary_writer()
+            self._setup_summary_writer(logdir)
 
         # Train model for given number of steps.
         self._trainer.train(self._session,
