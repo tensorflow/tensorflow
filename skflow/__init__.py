@@ -124,6 +124,27 @@ class TensorFlowEstimator(BaseEstimator):
             self.steps)
         return self
 
+    def partial_fit(self, X, y):
+        """Incremental fit on a batch of samples.
+
+        This method is expected to be called several times consecutively
+        on different or the same chunks of the dataset. This either can
+        implement iterative training or out-of-core/online training.
+
+        This is especially useful when the whole dataset is too big to 
+        fit in memory at the same time. Or when model is taking long time
+        to converge, and you want to split up training into subparts.
+
+        Args:
+            X: matrix or tensor of shape [n_samples, n_features...]. Can be
+            iterator that returns arrays of features. The training input
+            samples for fitting the model.
+            y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+            iterator that returns array of targets. The training target values
+            (class label in classification, real numbers in regression).
+        """
+        return self.fit(X, y)
+
     def _predict(self, X):
         pred = self._session.run(self._model_predictions,
                                  feed_dict={
