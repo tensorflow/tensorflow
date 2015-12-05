@@ -98,6 +98,12 @@ class TensorFlowEstimator(BaseEstimator):
         """Builds a neural network model given provided `model_fn` and training
         data X and y.
 
+        Note: called first time constructs the graph and initializers
+        variables. Consecutives times it will continue training the same model.
+        This logic follows partial_fit() interface in scikit-learn.
+
+        To restart learning, create new estimator.
+
         Args:
             X: matrix or tensor of shape [n_samples, n_features...]. Can be
             iterator that returns arrays of features. The training input
