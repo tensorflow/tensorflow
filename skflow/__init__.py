@@ -97,6 +97,7 @@ class TensorFlowEstimator(BaseEstimator):
             self._session = tf.Session(self.tf_master)
     
     def _setup_summary_writer(self, logdir):
+        """Sets up the summary writer to prepare for later optional visualization."""
         # Create summary to monitor loss
         tf.scalar_summary("loss", self._model_loss)
         # Set up a single operator to merge all the summaries
@@ -117,6 +118,8 @@ class TensorFlowEstimator(BaseEstimator):
             y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
             iterator that returns array of targets. The training target values
             (class labels in classification, real numbers in regression).
+            logdir: the directory to save the log file that can be used for 
+            optional visualization (default: '/tmp/tensorflow_logs').
 
         Returns:
             Returns self.
