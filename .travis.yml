@@ -5,7 +5,6 @@ language: python
 
 os:
     - linux
-    - osx
 
 cache:
     apt: true
