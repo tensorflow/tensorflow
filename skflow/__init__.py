@@ -100,7 +100,7 @@ class TensorFlowEstimator(BaseEstimator):
         # Set up a single operator to merge all the summaries
         summary_op = tf.merge_all_summaries()
         # Set up summary writer to a tmp directory
-        self._summary_writer = tf.train.SummaryWriter('/tmp/tensorflow_logs', graph_def=sess.graph_def)
+        self._summary_writer = tf.train.SummaryWriter('/tmp/tensorflow_logs', graph_def=self._session.graph_def)
 
     def fit(self, X, y):
         """Builds a neural network model given provided `model_fn` and training
