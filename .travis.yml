@@ -27,7 +27,7 @@ python:
     - "2.7"
 
 install:
-    - source travis_install.sh
+    - source scripts/travis_install.sh
 
 script: source scripts/run_tests.sh
 
