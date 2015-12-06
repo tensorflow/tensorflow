@@ -494,7 +494,7 @@ class ExecutorState {
     int max_parallel_iterations = 1;
 
     // The iteration states of this frame.
-    std::vector<IterationState*> iterations;
+    gtl::InlinedVector<IterationState*, 12> iterations;
 
     // The NextIteration nodes to enter a new iteration. If the number of
     // outstanding iterations reaches the limit, we will defer the start of
@@ -672,6 +672,16 @@ class ExecutorState {
 
   // One thread of control finishes.
   void Finish();
+
+  // A standalone routine for this expression so that we can express
+  // that we don't want thread safety analysis on this reference (it's
+  // safe to do without the lock because the iterations array never
+  // resizes and this particular iteration's array element will not
+  // be changed out from under us because the iteration is still alive).
+  std::vector<Entry>* GetInputTensors(FrameState* input_frame, int64 input_iter)
+      const NO_THREAD_SAFETY_ANALYSIS {
+    return input_frame->GetIteration(input_iter)->input_tensors;
+  }
 };
 
 ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
@@ -891,13 +901,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
     VLOG(1) << "Process node: " << id << " " << SummarizeNodeDef(node->def());
 
-    std::vector<Entry>* input_tensors;
-    {
-      // Need the lock because the iterations vector could be resized by
-      // another thread.
-      mutex_lock l(mu_);
-      input_tensors = input_frame->GetIteration(input_iter)->input_tensors;
-    }
+    std::vector<Entry>* input_tensors =
+        GetInputTensors(input_frame, input_iter);
     Entry* first_input = input_tensors->data() + item.input_start;
     outputs.clear();
     outputs.resize(node->num_outputs());
@@ -1081,9 +1086,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
   for (int i = 0; i < node->num_outputs(); ++i) {
     TensorValue val = ctx->release_output(i);
-    // Only Switch and Recv can generate new dead outputs.
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
-      DCHECK(IsSwitch(node) || IsRecv(node));
+      DCHECK(IsSwitch(node) || IsRecv(node))
+          << "Only Switch and Recv can generate new dead outputs.";
     } else {
       Entry* out = &((*outputs)[i]);
       out->has_value = true;

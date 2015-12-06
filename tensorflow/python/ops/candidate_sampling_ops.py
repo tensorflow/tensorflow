@@ -193,7 +193,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
 
 def fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique,
-                                    range_max, vocab_file='', distortion=0.0,
+                                    range_max, vocab_file='', distortion=1.0,
                                     num_reserved_ids=0, num_shards=1, shard=0,
                                     unigrams=[], seed=None, name=None):
   """Samples a set of classes using the provided (fixed) base distribution.

@@ -103,6 +103,25 @@ class Node {
   // Anything other than the special Source & Sink nodes.
   bool IsOp() const { return id() > 1; }
 
+  // Node class helpers
+  bool IsSwitch() const { return (class_ == NC_SWITCH); }
+  bool IsMerge() const { return (class_ == NC_MERGE); }
+  bool IsEnter() const { return (class_ == NC_ENTER); }
+  bool IsExit() const { return (class_ == NC_EXIT); }
+  bool IsNextIteration() const { return (class_ == NC_NEXT_ITERATION); }
+  bool IsLoopCond() const { return (class_ == NC_LOOP_COND); }
+  bool IsControlTrigger() const { return (class_ == NC_CONTROL_TRIGGER); }
+  bool IsSend() const { return (class_ == NC_SEND); }
+  bool IsRecv() const { return (class_ == NC_RECV); }
+  bool IsConstant() const { return (class_ == NC_CONSTANT); }
+  bool IsVariable() const { return (class_ == NC_VARIABLE); }
+  bool IsIdentity() const { return (class_ == NC_IDENTITY); }
+  bool IsControlFlow() const {
+    return (class_ != NC_OTHER) &&  // Fast path
+           (IsSwitch() || IsMerge() || IsEnter() || IsExit() ||
+            IsNextIteration());
+  }
+
  private:
   friend class Graph;
   Node();
@@ -134,8 +153,29 @@ class Node {
   // uninitialized state.
   void Clear();
 
+  // A set of mutually exclusive classes for different kinds of nodes,
+  // class_ is initialized in the Node::Initialize routine based on the
+  // node's type_string().
+  enum NodeClass {
+    NC_UNINITIALIZED,
+    NC_SWITCH,
+    NC_MERGE,
+    NC_ENTER,
+    NC_EXIT,
+    NC_NEXT_ITERATION,
+    NC_LOOP_COND,
+    NC_CONTROL_TRIGGER,
+    NC_SEND,
+    NC_RECV,
+    NC_CONSTANT,
+    NC_VARIABLE,
+    NC_IDENTITY,
+    NC_OTHER  // Not a special kind of node
+  };
+
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
+  NodeClass class_;
 
   EdgeSet in_edges_;
   EdgeSet out_edges_;
@@ -313,59 +353,25 @@ class Graph {
 
 // Helper routines
 
-inline bool IsSwitch(const Node* node) {
-  return node->type_string() == "Switch" || node->type_string() == "RefSwitch";
-}
-
-inline bool IsMerge(const Node* node) { return node->type_string() == "Merge"; }
-
-inline bool IsEnter(const Node* node) {
-  return node->type_string() == "Enter" || node->type_string() == "RefEnter";
-}
-
-inline bool IsExit(const Node* node) { return node->type_string() == "Exit"; }
-
-inline bool IsNextIteration(const Node* node) {
-  return node->type_string() == "NextIteration";
-}
-
-inline bool IsLoopCond(const Node* node) {
-  return node->type_string() == "LoopCond";
-}
-
-inline bool IsControlTrigger(const Node* node) {
-  return node->type_string() == "ControlTrigger";
-}
-
-inline bool IsSend(const Node* node) {
-  return node->type_string() == "_Send" || node->type_string() == "_HostSend";
-}
-
-inline bool IsRecv(const Node* node) {
-  return node->type_string() == "_Recv" || node->type_string() == "_HostRecv";
-}
+inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
+inline bool IsMerge(const Node* node) { return node->IsMerge(); }
+inline bool IsEnter(const Node* node) { return node->IsEnter(); }
+inline bool IsExit(const Node* node) { return node->IsExit(); }
+inline bool IsNextIteration(const Node* n) { return n->IsNextIteration(); }
+inline bool IsLoopCond(const Node* node) { return node->IsLoopCond(); }
+inline bool IsControlTrigger(const Node* n) { return n->IsControlTrigger(); }
+inline bool IsSend(const Node* node) { return node->IsSend(); }
+inline bool IsRecv(const Node* node) { return node->IsRecv(); }
 
 // True for Nodes that mediate the transfer of values between processes.
 inline bool IsTransferNode(const Node* n) { return IsSend(n) || IsRecv(n); }
 
-inline bool IsConstant(const Node* node) {
-  return node->type_string() == "Const" || node->type_string() == "HostConst";
-}
-
-inline bool IsVariable(const Node* node) {
-  return node->type_string() == "Variable";
-}
-
-inline bool IsIdentity(const Node* node) {
-  return (node->type_string() == "Identity" ||
-          node->type_string() == "RefIdentity");
-}
+inline bool IsConstant(const Node* node) { return node->IsConstant(); }
+inline bool IsVariable(const Node* node) { return node->IsVariable(); }
+inline bool IsIdentity(const Node* node) { return node->IsIdentity(); }
 
 // Returns true iff 'n' is a control flow node.
-inline bool IsControlFlow(const Node* n) {
-  return IsSwitch(n) || IsMerge(n) || IsEnter(n) || IsExit(n) ||
-         IsNextIteration(n);
-}
+inline bool IsControlFlow(const Node* n) { return n->IsControlFlow(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);

@@ -9,6 +9,7 @@ filegroup(
         "dist/index.html",
         "dist/tf-tensorboard.html",
         "//tensorflow/tensorboard/bower:bower",
+        "TAG",
     ] + glob(["lib/**/*"]),
 )
 

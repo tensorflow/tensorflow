@@ -274,8 +274,8 @@ class Variable(object):
 
     This convenience method requires a session where the graph containing this
     variable has been launched. If no session is passed, the default session is
-    used.  See the [Session class](../../api_docs/python/client.md#Session) for more information on
-    launching a graph and on sessions.
+    used.  See the [Session class](../../api_docs/python/client.md#Session) for
+    more information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
@@ -511,21 +511,35 @@ class Variable(object):
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice."""
 
-    def  __init__(self, name, spec):
-      """Create a SliceInfo.
+    def __init__(self, full_name, full_shape, var_offset, var_shape):
+      """Create a `SaveSliceInfo`.
 
       Args:
-        name: Name of the larger Tensor that this variable is a slice of.
-        spec: Slice specification for the saver.
+        full_name: Name of the full variable of which this `Variable` is a
+            slice.
+        full_shape: Shape of the full variable, as a list of int.
+        var_offset: Offset of this `Variable` into the full variable, as a
+            list of int.
+        var_shape: Shape of this `Variable`, as a list of int.
       """
-      self.name = name
-      self.spec = spec
+      self.full_name = full_name
+      self.full_shape = full_shape
+      self.var_offset = var_offset
+      self.var_shape = var_shape
+
+    @property
+    def spec(self):
+      """Computes the spec string used for saving."""
+      full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
+      sl_spec = ":".join([
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+      return full_shape_str + sl_spec
 
   def _set_save_slice_info(self, save_slice_info):
-    """Sets the slice info for this Variable.
+    """Sets the slice info for this `Variable`.
 
     Args:
-      save_slice_info: A Variable.SliceInfo object.
+      save_slice_info: A `Variable.SaveSliceInfo` object.
     """
     self._save_slice_info = save_slice_info
 

@@ -180,7 +180,7 @@ def distorted_inputs():
   """
   filenames = [os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin',
                             'data_batch_%d.bin' % i)
-               for i in xrange(1, 5)]
+               for i in xrange(1, 6)]
   for f in filenames:
     if not gfile.Exists(f):
       raise ValueError('Failed to find file: ' + f)
@@ -245,7 +245,7 @@ def inputs(eval_data):
   if not eval_data:
     filenames = [os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin',
                               'data_batch_%d.bin' % i)
-                 for i in xrange(1, 5)]
+                 for i in xrange(1, 6)]
     num_examples_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN
   else:
     filenames = [os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin',

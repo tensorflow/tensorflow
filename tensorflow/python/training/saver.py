@@ -34,7 +34,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
@@ -77,6 +76,7 @@ class BaseSaverBuilder(object):
     Returns:
       An Operation that save the variables.
     """
+    # pylint: disable=protected-access
     return io_ops._save(
         filename=filename_tensor,
         tensor_names=[vs.name for vs in vars_to_save],
@@ -97,6 +97,7 @@ class BaseSaverBuilder(object):
     Returns:
       A Tensor resulting from reading 'var_to_save' from 'filename'.
     """
+    # pylint: disable=protected-access
     return io_ops._restore_slice(
         filename_tensor,
         var_to_save.name,
@@ -115,6 +116,7 @@ class BaseSaverBuilder(object):
     Returns:
       A string tensor.
     """
+    # pylint: disable=protected-access
     return gen_io_ops._sharded_filename(filename_tensor, shard, num_shards)
 
   def _AddSaveOps(self, filename_tensor, vars_to_save):
@@ -151,6 +153,7 @@ class BaseSaverBuilder(object):
         sharded_saves.append(self._AddSaveOps(sharded_filename, vars_to_save))
     # Return the sharded name for the save path.
     with ops.control_dependencies([x.op for x in sharded_saves]):
+      # pylint: disable=protected-access
       return gen_io_ops._sharded_filespec(filename_tensor, num_shards_tensor)
 
   def _AddRestoreOps(self,
@@ -275,7 +278,7 @@ class BaseSaverBuilder(object):
     for var in var_list:
       # pylint: disable=protected-access
       if isinstance(var, variables.Variable) and var._save_slice_info:
-        name = var._save_slice_info.name
+        name = var._save_slice_info.full_name
         if name in names_to_variables:
           if not isinstance(names_to_variables[name], list):
             raise ValueError("Mixing slices and non-slices with the same name: "
@@ -332,10 +335,10 @@ class BaseSaverBuilder(object):
           if not variable._save_slice_info:
             raise ValueError("Slices must all be slices: %s" % variable)
           if slice_name is None:
-            slice_name = variable._save_slice_info.name
-          elif slice_name != variable._save_slice_info.name:
+            slice_name = variable._save_slice_info.full_name
+          elif slice_name != variable._save_slice_info.full_name:
             raise variable("Slices must all be from the same tensor: %s != %s"
-                           % (slice_name, variable._save_slice_info.name))
+                           % (slice_name, variable._save_slice_info.full_name))
           self._AddVarToSave(vars_to_save, seen_variables,
                              variable, variable._save_slice_info.spec, name)
         # pylint: enable=protected-access
@@ -389,7 +392,7 @@ class BaseSaverBuilder(object):
         only needed when you try to restore from a Dist-Belief checkpoint,
         and only some times.
       sharded: If True, shard the checkpoints, one per device that has
-        Parameters nodes.
+        Variable nodes.
       max_to_keep: maximum number of checkpoints to keep.  As new checkpoints
         are created, old ones are deleted.  If None or 0, no checkpoints are
         deleted.  Presently the number is only roughly enforced.  For example
@@ -437,6 +440,7 @@ class BaseSaverBuilder(object):
         max_to_keep=max_to_keep,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         sharded=sharded)
+
 
 def _GetCheckpointFilename(save_dir, latest_filename):
   """Returns a filename for storing the CheckpointState.

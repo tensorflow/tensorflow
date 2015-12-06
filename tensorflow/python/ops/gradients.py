@@ -398,7 +398,10 @@ def gradients(ys,
     # Add the ops in 'to_ops' into the queue.
     to_ops_set = set()
     for op in to_ops:
-      if op._id not in to_ops_set:
+      # 'ready' handles the case where one output gradient relies on
+      # another output's gradient.
+      ready = (pending_count[op._id] == 0)
+      if ready and op._id not in to_ops_set:  # pylint: disable=protected-access
         to_ops_set.add(op._id)
         queue.append(op)
     # The set of 'from_ops'.

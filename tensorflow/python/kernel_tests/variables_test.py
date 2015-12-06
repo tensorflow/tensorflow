@@ -27,6 +27,7 @@ import numpy as np
 import tensorflow.python.platform
 
 import tensorflow as tf
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 
 
@@ -147,6 +148,40 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual([], var_x.value().op.control_inputs)
       self.assertEqual([], var_x.ref().op.control_inputs)
       self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
+
+  def testControlFlow(self):
+    with self.test_session() as sess:
+      v0 = tf.Variable(0, name="v0")
+      var_dict = {}
+      # Call get_variable in each of the cond clauses.
+      def var_in_then_clause():
+        v1 = tf.Variable(1, name="v1")
+        var_dict["v1"] = v1
+        return v1 + v0
+      def var_in_else_clause():
+        v2 = tf.Variable(2, name="v2")
+        var_dict["v2"] = v2
+        return v2 + v0
+      add = control_flow_ops.cond(tf.less(v0, 10),
+                                  var_in_then_clause,
+                                  var_in_else_clause)
+      v1 = var_dict["v1"]
+      v2 = var_dict["v2"]
+      # We should be able to initialize and run v1 and v2 without initializing
+      # v0, even if the variable was created with a control dep on v0.
+      sess.run(v1.initializer)
+      self.assertEqual([1], sess.run(v1))
+      sess.run(v2.initializer)
+      self.assertEqual([2], sess.run(v2))
+      # v0 should still be uninitialized.
+      with self.assertRaisesRegexp(tf.OpError, "uninitialized"):
+        sess.run(v0)
+      # We should not be able to run 'add' yet.
+      with self.assertRaisesRegexp(tf.OpError, "uninitialized"):
+        sess.run(add)
+      # If we initialize v0 we should be able to run 'add'.
+      sess.run(v0.initializer)
+      sess.run(add)
 
   def testUseVariableAsTensor(self):
     with self.test_session():

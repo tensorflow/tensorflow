@@ -165,9 +165,21 @@ of `control_inputs` from all active contexts.
 
 ```python
 with g.control_dependencies([a, b]):
-  # Ops declared here run after `a` and `b`.
+  # Ops constructed here run after `a` and `b`.
   with g.control_dependencies([c, d]):
-    # Ops declared here run after `a`, `b`, `c`, and `d`.
+    # Ops constructed here run after `a`, `b`, `c`, and `d`.
+```
+
+You can pass None to clear the control dependencies:
+
+```python
+with g.control_dependencies([a, b]):
+  # Ops constructed here run after `a` and `b`.
+  with g.control_dependencies(None):
+    # Ops constructed here run normally, not waiting for either `a` or `b`.
+    with g.control_dependencies([c, d]):
+      # Ops constructed here run after `c` and `d`, also not waiting
+      # for either `a` or `b`.
 ```
 
 *N.B.* The control dependencies context applies *only* to ops that
@@ -195,9 +207,10 @@ def my_func(pred, tensor):
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects, which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
-    defined in the context.
+    defined in the context.  Can also be `None` to clear the control
+    dependencies.
 
 ##### Returns:
 
@@ -545,6 +558,19 @@ TensorBoard.
 #### `tf.Graph.version` {#Graph.version}
 
 Returns a version number that increases as ops are added to the graph.
+
+Note that this is unrelated to the
+[GraphDef version](#Graph.graph_def_version).
+
+
+- - -
+
+#### `tf.Graph.graph_def_version` {#Graph.graph_def_version}
+
+The GraphDef version of this graph.
+
+For details on the meaning of each version, see [`GraphDef`]
+(https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto).
 
 
 
@@ -1343,9 +1369,10 @@ for more details.
 ##### Args:
 
 
-*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects, which
+*  <b>`control_inputs`</b>: A list of `Operation` or `Tensor` objects which
     must be executed or computed before running the operations
-    defined in the context.
+    defined in the context.  Can also be `None` to clear the control
+    dependencies.
 
 ##### Returns:
 
@@ -1401,6 +1428,36 @@ and scalars in addition to `Tensor` objects.
 
 *  <b>`TypeError`</b>: If no conversion function is registered for `value`.
 *  <b>`RuntimeError`</b>: If a registered conversion function returns an invalid value.
+
+
+- - -
+
+### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
+
+Converts the given object to a `Tensor` or an `IndexedSlices`.
+
+If `value` is an `IndexedSlices` it is returned
+unmodified. Otherwise, it is converted to a `Tensor` using
+`convert_to_tensor()`.
+
+##### Args:
+
+
+*  <b>`value`</b>: An `IndexedSlices` or an object that can be consumed by
+    `convert_to_tensor()`.
+*  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
+    `IndexedSlices`.
+*  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
+*  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
+
+##### Returns:
+
+  An `Tensor` or an `IndexedSlices` based on `value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `dtype` does not match the element type of `value`.
 
 
 - - -
@@ -2050,7 +2107,7 @@ The value of this dimension, or None if it is unknown.
 
 - - -
 
-### `tf.op_scope(values, name, default_name)` {#op_scope}
+### `tf.op_scope(values, name, default_name=None)` {#op_scope}
 
 Returns a context manager for use when defining a Python op.
 
@@ -2079,7 +2136,12 @@ def my_op(a, b, c, name=None):
 
 ##### Returns:
 
-  A context manager for use in defining a Python op.
+  A context manager for use in defining Python ops. Yields the name scope.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if neither `name` nor `default_name` is provided.
 
 
 - - -

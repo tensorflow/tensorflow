@@ -279,9 +279,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     context->SetStatus(errors::Internal(
         "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
   } else {
-    const string label =
-        strings::StrCat(op_kernel->name(), ":", op_kernel->type_string());
-    port::Tracing::ScopedAnnotation annotation(label);
+    port::Tracing::ScopedAnnotation annotation(op_kernel->name(),
+                                               op_kernel->type_string());
 
     const auto num_streams = streams_.size();
     if (num_streams > 1) {
@@ -320,18 +319,19 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     // Keep a copy of the inputs before Compute runs, in case they get
     // deleted. TODO(misard) this will be fixed when the tracking is
     // done right.
-    std::vector<Tensor>* tensor_refs = nullptr;
+    EventMgr::TensorReferenceVector* tensor_refs = nullptr;
     if (!FLAGS_brain_gpu_sync_every_op) {
-      tensor_refs = new std::vector<Tensor>;
-      tensor_refs->reserve(context->num_inputs() + context->num_outputs());
-      for (int ii = 0; ii < context->num_inputs(); ++ii) {
+      const int N_inputs = context->num_inputs();
+      tensor_refs = new EventMgr::TensorReferenceVector;
+      tensor_refs->reserve(N_inputs + context->num_outputs());
+      for (int ii = 0; ii < N_inputs; ++ii) {
         if (context->has_input(ii)) {
           if (IsRefType(context->input_dtype(ii))) {
             Tensor in = context->mutable_input(ii, false);
-            tensor_refs->push_back(in);
+            tensor_refs->push_back(TensorReference(in));
           } else {
             const Tensor& in = context->input(ii);
-            tensor_refs->push_back(in);
+            tensor_refs->push_back(TensorReference(in));
           }
         }
       }
@@ -353,12 +353,12 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
         for (int ii = 0; ii < context->num_temps(); ++ii) {
           Tensor* temp = context->temp(ii);
           VLOG(2) << "Saving ref to temp Tensor @ " << DMAHelper::base(temp);
-          tensor_refs->push_back(*temp);
+          tensor_refs->push_back(TensorReference(*temp));
         }
         for (int ii = 0; ii < context->num_outputs(); ++ii) {
           Tensor* temp = context->mutable_output(ii);
           if (nullptr != temp) {
-            tensor_refs->push_back(*temp);
+            tensor_refs->push_back(TensorReference(*temp));
           }
         }
         em_->ThenDeleteTensors(stream, tensor_refs);

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -91,7 +92,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
     DeviceMemoryBase gpu_src_ptr(const_cast<char*>(src_ptr), num_bytes);
     stream->ThenMemcpy(mb, gpu_src_ptr, num_bytes);
     // Use of tensor may outlive stack scope, so keep a ref.
-    Tensor* tensor_ref = new Tensor(tensor);
+    TensorReference tensor_ref(tensor);
     dev->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
         stream, [stream, done, proto, mb, num_bytes, alloc, tensor_ref]() {
           if (!stream->ok()) {
@@ -104,7 +105,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
             LOG(FATAL) << "SetProtoFromGPU: GPU Memcpy failed";
             return;
           }
-          delete tensor_ref;
+          tensor_ref.Unref();
           port::CopyFromArray(proto->mutable_tensor_content(), mb, num_bytes);
           alloc->Deallocate<char>(mb);
           done(Status::OK());
@@ -169,10 +170,10 @@ void GPUUtil::CopyViaDMA(const string& edge_name,
             total_bytes);
         if (dst_device_type == DeviceType(DEVICE_GPU).type()) {
           // Use of input may outlive stack scope, so keep a ref.
-          Tensor* input_ref = new Tensor(*input);
+          TensorReference input_ref(*input);
           src_dev_info->event_mgr->ThenExecute(
               stream, [done, stream, input_ref]() {
-                delete input_ref;
+                input_ref.Unref();
                 if (!stream->ok()) {
                   done(errors::Internal("GPU->GPU Memcpy failed"));
                 } else {
@@ -262,9 +263,9 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
     auto* dev_info = gpu_device->tensorflow_gpu_device_info();
     // Use of cpu_tensor may outlive stack scope, so keep a ref.
-    Tensor* input_ref = new Tensor(*cpu_tensor);
+    TensorReference input_ref(*cpu_tensor);
     dev_info->event_mgr->ThenExecute(stream, [stream, done, input_ref]() {
-      delete input_ref;
+      input_ref.Unref();
       if (!stream->ok()) {
         done(errors::Internal("CopyCPUTensorToGPU: GPU Memcpy failed"));
       } else {

@@ -121,7 +121,7 @@ class SaverTest(tf.test.TestCase):
       v0 = tf.Variable([10.0], name="v0")
       v1 = tf.Variable([20.0], name="v1")
       v2 = tf.Variable([20.0], name="v2")
-      v2._set_save_slice_info(tf.Variable.SaveSliceInfo("v1", ""))
+      v2._set_save_slice_info(tf.Variable.SaveSliceInfo("v1", [1], [0], [1]))
 
       # By default the name used for "v2" will be "v1" and raise an error.
       with self.assertRaisesRegexp(ValueError, "same name: v1"):
@@ -483,7 +483,7 @@ class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
       # seconds.
       start_time = time.time()
       save = tf.train.Saver({"v": v}, max_to_keep=2,
-                         keep_checkpoint_every_n_hours=0.7 / 3600)
+                            keep_checkpoint_every_n_hours=0.7 / 3600)
       self.assertEqual([], save.last_checkpoints)
 
       # Wait till 0.7 second have elapsed so s1 will be old enough to keep.

@@ -45,7 +45,11 @@ string Node::DebugString() const {
 }
 
 Node::Node()
-    : id_(-1), cost_id_(-1), props_(nullptr), assigned_device_name_() {}
+    : id_(-1),
+      cost_id_(-1),
+      class_(NC_UNINITIALIZED),
+      props_(nullptr),
+      assigned_device_name_() {}
 
 Node::~Node() {
   if (props_) {
@@ -65,6 +69,35 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
     props_->Unref();
   }
   props_ = props;
+  // Initialize the class_ based on the type string
+  const string& ts = this->type_string();
+  class_ = NC_UNINITIALIZED;
+
+#define SET_CLASS(enum_val, ts, str1, str2)        \
+  do {                                             \
+    if ((((ts) == (str1)) || ((ts) == (str2)))) {  \
+      /* Cannot be member of more than one class*/ \
+      CHECK(class_ == NC_UNINITIALIZED);           \
+      class_ = (enum_val);                         \
+    }                                              \
+  } while (0)
+
+  SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
+  SET_CLASS(NC_MERGE, ts, "Merge", "");
+  SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
+  SET_CLASS(NC_EXIT, ts, "Exit", "");
+  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "");
+  SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
+  SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
+  SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
+  SET_CLASS(NC_RECV, ts, "_Recv", "_HostRecv");
+  SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
+  SET_CLASS(NC_VARIABLE, ts, "Variable", "");
+  SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
+  if (class_ == NC_UNINITIALIZED) {
+    class_ = NC_OTHER;  // Catch all
+  }
+#undef SET_CLASS
 }
 
 void Node::Clear() {
@@ -72,6 +105,7 @@ void Node::Clear() {
   out_edges_.clear();
   id_ = -1;
   cost_id_ = -1;
+  class_ = NC_UNINITIALIZED;
 
   if (props_) {
     props_->Unref();

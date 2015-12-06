@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 #include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -45,10 +46,12 @@ class EventMgr {
 
   ~EventMgr();
 
+  typedef gtl::InlinedVector<TensorReference, 4> TensorReferenceVector;
+
   // Takes ownership of *tensors and deletes it as soon as all events
   // currently enqueued on *stream have completed.
   inline void ThenDeleteTensors(perftools::gputools::Stream* stream,
-                                std::vector<Tensor>* tensors) {
+                                TensorReferenceVector* tensors) {
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
@@ -94,7 +97,7 @@ class EventMgr {
 
   struct InUse {
     perftools::gputools::Event* event;
-    std::vector<Tensor>* mem;
+    TensorReferenceVector* mem;
     BufRec bufrec;
     std::function<void()> func;
   };
@@ -103,7 +106,12 @@ class EventMgr {
 
   void FreeMemory(const ToFreeVector& to_free) {
     for (const auto& iu : to_free) {
-      delete iu.mem;
+      if (iu.mem != nullptr) {
+        for (auto& t : *(iu.mem)) {
+          t.Unref();
+        }
+        delete iu.mem;
+      }
       if (iu.bufrec.buf) iu.bufrec.alloc->DeallocateRaw(iu.bufrec.buf);
       // The function must be called in another thread.
       if (iu.func != nullptr) threadpool_.Schedule(iu.func);
@@ -118,7 +126,7 @@ class EventMgr {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void QueueTensors(perftools::gputools::Stream* stream,
-                    std::vector<Tensor>* tensors)
+                    TensorReferenceVector* tensors)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, tensors, BufRec(), nullptr});
   }

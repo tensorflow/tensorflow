@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import fnmatch
 import os
+import sys
+
 from setuptools import find_packages, setup, Extension
 from setuptools.dist import Distribution
 
@@ -28,16 +30,18 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.8.2',
     'six >= 1.10.0',
     'protobuf == 3.0.0a3',
-    'wheel',
 ]
+
+# python3 requires wheel 0.26
+if sys.version_info.major == 3:
+  REQUIRED_PACKAGES.append('wheel >= 0.26')
+else:
+  REQUIRED_PACKAGES.append('wheel')
+
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'tensorboard = tensorflow.tensorboard.tensorboard:main',
-    'tensorflow_model_cifar10_train = tensorflow.models.image.cifar10.cifar10_train:main',
-    'tensorflow_model_cifar10_multi_gpu_train = tensorflow.models.image.cifar10.cifar10_multi_gpu_train:main',
-    'tensorflow_model_cifar10_eval = tensorflow.models.image.cifar10.cifar10_eval:main',
-    'tensorflow_model_mnist_convolutional = tensorflow.models.image.mnist.convolutional:main',
 ]
 # pylint: enable=line-too-long
 

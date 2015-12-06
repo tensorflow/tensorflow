@@ -73,12 +73,12 @@ TF_DEFINE_string(labels,
                  "imagenet_comp_graph_label_strings.txt",
                  "A text file containing the labels of all the categories, one"
                  " per line.");
-TF_DEFINE_int32(input_width, 224, "Width of the image the network expects.");
-TF_DEFINE_int32(input_height, 224, "Height of the image the network expects.");
-TF_DEFINE_int32(input_mean, 117, "How much to subtract from input values.");
-TF_DEFINE_int32(input_std, 1, "What to divide the input values by.");
-TF_DEFINE_string(input_layer, "input", "The name of the input node.");
-TF_DEFINE_string(output_layer, "softmax2", "The name of the output node.");
+TF_DEFINE_int32(input_width, 299, "Width of the image the network expects.");
+TF_DEFINE_int32(input_height, 299, "Height of the image the network expects.");
+TF_DEFINE_int32(input_mean, 128, "How much to subtract from input values.");
+TF_DEFINE_int32(input_std, 128, "What to divide the input values by.");
+TF_DEFINE_string(input_layer, "Mul", "The name of the input node.");
+TF_DEFINE_string(output_layer, "softmax", "The name of the output node.");
 TF_DEFINE_bool(self_test, false, "Whether to run a sanity check on the results.");
 TF_DEFINE_string(root_dir, "", "The directory at the root of the data files.");
 
