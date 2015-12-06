@@ -6,6 +6,11 @@ language: python
 os:
     - linux
 
+env:
+    matrix:
+        - TASK=lint
+        - TASK=python-test
+
 cache:
     apt: true
     directories:
