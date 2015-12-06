@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ ${TASK} == "lint" ]; then
-	sudo pip install pylint --user `whoami`
+	sudo pip install pylint
 fi
 
 if [ ${TASK} == "nosetests" ]; then
