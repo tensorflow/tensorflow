@@ -6,6 +6,6 @@ if [ ${TASK} == "lint" ]; then
     fi
 fi
 
-if [ ${TASK} == "python-test" ]; then
+if [ ${TASK} == "nosetests" ]; then
 	nosetests
 fi

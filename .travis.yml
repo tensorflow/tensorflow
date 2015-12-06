@@ -9,7 +9,7 @@ os:
 env:
     matrix:
         - TASK=lint
-        - TASK=python-test
+        - TASK=nosetests
 
 cache:
     apt: true
@@ -27,7 +27,7 @@ python:
     - "2.7"
 
 install:
-    - source .travis_install.sh
+    - source travis_install.sh
 
-script: nosetests
+script: source scripts/run_tests.sh
 

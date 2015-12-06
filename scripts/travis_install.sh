@@ -26,3 +26,6 @@ sudo pip install nose
 # Install skflow
 sudo python setup.py install
 
+if [ ${TASK} == "lint" ]; then
+	sudo pip install pylint --user `whoami`
+fi
