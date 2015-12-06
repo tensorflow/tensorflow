@@ -33,6 +33,7 @@ import tensorflow.python.platform
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import logging
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
@@ -114,6 +115,7 @@ class ThreadedHTTPServer(SocketServer.ThreadingMixIn,
 def main(unused_argv=None):
   if FLAGS.debug:
     logging.set_verbosity(logging.DEBUG)
+    logging.info('TensorBoard is in debug mode.')
 
   if not FLAGS.logdir:
     logging.error('A logdir must be specified. Run `tensorboard --help` for '
@@ -138,9 +140,15 @@ def main(unused_argv=None):
     logging.error('Tried to connect to port %d, but that address is in use.',
                   FLAGS.port)
     return -2
+  try:
+    tag = resource_loader.load_resource('tensorboard/TAG').strip()
+    logging.info('TensorBoard is tag: %s', tag)
+  except IOError:
+    logging.warning('Unable to read TensorBoard tag')
+    tag = ''
 
-  status_bar.SetupStatusBarInsideGoogle('TensorBoard', FLAGS.port)
-  print('Starting TensorBoard on port %d' % FLAGS.port)
+  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
+  print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
   print('(You can navigate to http://localhost:%d)' % FLAGS.port)
   server.serve_forever()
 

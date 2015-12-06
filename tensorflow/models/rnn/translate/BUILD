@@ -8,6 +8,18 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_library(
+    name = "package",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":data_utils",
+        ":seq2seq_model",
+    ],
+)
+
+py_library(
     name = "data_utils",
     srcs = [
         "data_utils.py",

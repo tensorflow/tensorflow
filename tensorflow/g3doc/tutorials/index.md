@@ -90,10 +90,14 @@ stuff.
 [View Tutorial](../tutorials/mnist/download/index.md)
 
 
-## Visual Object Recognition
+## Image Recognition
 
-We will be releasing our state-of-the-art Inception object recognition model,
-complete and already trained.
+How to run object recognition using a convolutional neural network
+trained on ImageNet Challenge data and label set.
+
+[View Tutorial](../tutorials/image_recognition/index.md)
+
+We will be releasing code for training a state-of-the-art Inception model.
 
 COMING SOON
 

@@ -64,6 +64,8 @@ See also `group` and `with_dependencies`.
 
 
 *  <b>`ValueError`</b>: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
+*  <b>`TypeError`</b>: If `control_inputs` is not a list of `Operation` or `Tensor`
+    objects.
 
 
 - - -

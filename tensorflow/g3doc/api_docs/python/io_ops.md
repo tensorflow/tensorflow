@@ -1215,8 +1215,8 @@ And the expected output is:
     The keys of the dict must match the dense_keys of the feature.
 *  <b>`dense_shapes`</b>: A list of tuples with the same length as `dense_keys`.
     The shape of the data for each dense feature referenced by `dense_keys`.
-    Required for any input tensors identified by dense_keys whose shapes are
-    anything other than [] or [1].
+    Required for any input tensors identified by `dense_keys` whose shapes are
+    anything other than `[]` or `[1]`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:

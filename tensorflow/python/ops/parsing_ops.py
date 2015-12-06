@@ -204,8 +204,8 @@ def parse_example(serialized,
       The keys of the dict must match the dense_keys of the feature.
     dense_shapes: A list of tuples with the same length as `dense_keys`.
       The shape of the data for each dense feature referenced by `dense_keys`.
-      Required for any input tensors identified by dense_keys whose shapes are
-      anything other than [] or [1].
+      Required for any input tensors identified by `dense_keys` whose shapes are
+      anything other than `[]` or `[1]`.
     name: A name for this operation (optional).
 
   Returns:
@@ -222,8 +222,8 @@ def parse_example(serialized,
     sparse_types = [] if sparse_types is None else sparse_types
     dense_keys = [] if dense_keys is None else dense_keys
     dense_types = [] if dense_types is None else dense_types
-    dense_shapes = [
-        []] * len(dense_keys) if dense_shapes is None else dense_shapes
+    dense_shapes = (
+        [[]] * len(dense_keys) if dense_shapes is None else dense_shapes)
 
     num_dense = len(dense_keys)
     num_sparse = len(sparse_keys)
@@ -381,6 +381,7 @@ def parse_single_example(serialized,  # pylint: disable=invalid-name
 def _ParseExampleShape(op):
   """Shape function for the ParseExample op."""
   input_shape = op.inputs[0].get_shape().with_rank(1)
+  op.inputs[1].get_shape().with_rank(1)  # names
   num_sparse = op.get_attr("Nsparse")
   num_dense = op.get_attr("Ndense")
   dense_shapes = op.get_attr("dense_shapes")
@@ -390,10 +391,284 @@ def _ParseExampleShape(op):
   sparse_shape_shapes = [tensor_shape.vector(2) for _ in range(num_sparse)]
   assert num_dense == len(dense_shapes)
   dense_shapes = [
-      input_shape.concatenate((d.size for d in dense_shape.dim))
+      input_shape.concatenate(dense_shape)
       for dense_shape in dense_shapes]
   return (sparse_index_shapes + sparse_value_shapes + sparse_shape_shapes +
           dense_shapes)
+
+
+def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
+                                  context_sparse_keys=None,
+                                  context_sparse_types=None,
+                                  context_dense_keys=None,
+                                  context_dense_types=None,
+                                  context_dense_defaults=None,
+                                  context_dense_shapes=None,
+                                  feature_list_dense_keys=None,
+                                  feature_list_dense_types=None,
+                                  feature_list_dense_shapes=None,
+                                  feature_list_dense_defaults=None,
+                                  debug_name=None,
+                                  name="ParseSingleSequenceExample"):
+# pylint: disable=line-too-long
+  """Parses a single `SequenceExample` proto.
+
+  Parses a single serialized [`SequenceExample`]
+  (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
+  proto given in `serialized`.
+
+  This op parses a serialize sequence example into a tuple of dictionaries
+  mapping keys to `Tensor` and `SparseTensor` objects respectively.
+  The first dictionary contains mappings for keys appearing in
+  `context_sparse_keys` or `context_dense_keys`, and the second dictionary
+  contains mappings for keys appearing in `feature_list_dense_keys`.
+
+  The `context` keys are associated with a `SequenceExample` as a whole,
+  independent of time / frame.  In contrast, the `feature_list` keys provide
+  a way to access variable-length data within the `FeatureList` section of the
+  `SequenceExample` proto.  While the shapes of `context` values are fixed
+  with respect to frame, the frame dimension (the first dimension)
+  of `feature_list` values may vary from `SequenceExample` to `SequenceExample`
+  and even between `feature_list` keys within the same `SequenceExample`.
+
+  The key `context_dense_keys[j]` is mapped to a `Tensor` of type
+  `context_dense_types[j]` and of shape `context_dense_shapes[j]`.
+
+  `context_dense_defaults` provides defaults for values referenced using
+  `context_dense_keys`.  If a key is not present in this dictionary, the
+  corresponding context_dense `Feature` is required in `serialized`.
+
+  `context_dense_shapes[j]` provides the shape of each context `Feature` entry
+  referenced by `context_dense_keys[j]`. The number of elements in the
+  `Feature` corresponding to `context_dense_key[j]` must always have
+  `np.prod(context_dense_shapes[j])` entries. The returned `Tensor` for
+  `context_dense_key[j]` has shape `context_dense_shape[j]`.
+
+  The key `context_sparse_keys[j]` is mapped to a `SparseTensor` of type
+  `context_sparse_types[j]`. This `SparseTensor` represents a ragged vector.
+  Its indices are `[index]`, where `index` is the value's index in the list of
+  values associated with that feature and example.
+
+  The key `feature_list_dense_keys[j]` is mapped to a `Tensor` of type
+  `feature_list_dense_types[j]` and of shape
+  `(T,) + feature_list_dense_shapes[j]`, where `T` is the length of the
+  associated `FeatureList` in the `SequenceExample`.
+
+  Note: every key declared in `feature_list_dense_keys` **must** be
+  provided in the `SequenceExample`'s `FeatureLists`, even if just empty.
+  Exceptions are allowed by adding the given key to the map
+  `feature_list_dense_defaults` with value None.  Any key with value None
+  map will be  treated as empty (zero length) if not found in the
+  `FeatureList` map.
+
+  `debug_name` may contain a descriptive name for the corresponding serialized
+  proto. This may be useful for debugging purposes, but it has no effect on the
+  output. If not `None`, `debug_name` must be a scalar.
+
+  Args:
+    serialized: A scalar (0-D Tensor) of type string, a single binary
+      serialized `SequenceExample` proto.
+    context_sparse_keys: A list of string keys in the `SequenceExample`'s
+      features.  The results for these keys will be returned as
+      `SparseTensor` objects.
+    context_sparse_types: A list of `DTypes`, the same length as `sparse_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    context_dense_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `Tensor`s
+    context_dense_types: A list of DTypes, same length as `context_dense_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    context_dense_defaults: A dict mapping string keys to `Tensor`s.
+      The keys of the dict must match the context_dense_keys of the feature.
+    context_dense_shapes: A list of tuples, same length as `context_dense_keys`.
+      The shape of the data for each context_dense feature referenced by
+      `context_dense_keys`.  Required for any input tensors identified by
+      `context_dense_keys` whose shapes are anything other than `[]` or `[1]`.
+    feature_list_dense_keys: A list of string keys in the `SequenceExample`'s
+      features_lists. The results for these keys will be returned as `Tensor`s.
+    feature_list_dense_types: A list of `DTypes`, same length as
+      `feature_list_dense_keys`.  Only `tf.float32` (`FloatList`),
+      `tf.int64` (`Int64List`), and `tf.string` (`BytesList`) are supported.
+    feature_list_dense_shapes: A list of tuples, same length as
+      `feature_list_dense_keys`.  The shape of the data for each
+      `FeatureList` feature referenced by `feature_list_dense_keys`.
+    feature_list_dense_defaults: A dict mapping key strings to values.
+      The only currently allowed value is `None`.  Any key appearing
+      in this dict with value `None` is allowed  to be missing from the
+      `SequenceExample`.  If missing, the key is treated as zero-length.
+    debug_name: A scalar (0-D Tensor) of strings (optional), the name of
+      the serialized proto.
+    name: A name for this operation (optional).
+
+  Returns:
+    A tuple of two `dict`s, each mapping keys to `Tensor`s and `SparseTensor`s.
+    The first dict contains the context key/values.
+    The second dict contains the feature_list key/values.
+
+  Raises:
+    ValueError: If context_sparse and context_dense key sets intersect,
+      if input lengths do not match up, or if a value in
+      feature_list_dense_defaults is not None.
+    TypeError: if feature_list_dense_defaults is not either None or a dict.
+  """
+# pylint: enable=line-too-long
+  with ops.op_scope(
+      [serialized, debug_name], name, "parse_single_sequence_example"):
+    context_dense_defaults = (
+        {} if context_dense_defaults is None else context_dense_defaults)
+    context_sparse_keys = (
+        [] if context_sparse_keys is None else context_sparse_keys)
+    context_sparse_types = (
+        [] if context_sparse_types is None else context_sparse_types)
+    context_dense_keys = (
+        [] if context_dense_keys is None else context_dense_keys)
+    context_dense_types = (
+        [] if context_dense_types is None else context_dense_types)
+    context_dense_shapes = (
+        [[]] * len(context_dense_keys)
+        if context_dense_shapes is None else context_dense_shapes)
+    feature_list_dense_keys = (
+        [] if feature_list_dense_keys is None else feature_list_dense_keys)
+    feature_list_dense_types = (
+        [] if feature_list_dense_types is None else feature_list_dense_types)
+    feature_list_dense_shapes = (
+        [[]] * len(feature_list_dense_keys)
+        if feature_list_dense_shapes is None else feature_list_dense_shapes)
+    feature_list_dense_defaults = (
+        dict() if feature_list_dense_defaults is None
+        else feature_list_dense_defaults)
+
+    # Internal
+    feature_list_dense_missing_assumed_empty = []
+
+    num_context_dense = len(context_dense_keys)
+    num_feature_list_dense = len(feature_list_dense_keys)
+    num_context_sparse = len(context_sparse_keys)
+
+    if len(context_dense_shapes) != num_context_dense:
+      raise ValueError(
+          "len(context_dense_shapes) != len(context_dense_keys): %d vs. %d"
+          % (len(context_dense_shapes), num_context_dense))
+    if len(context_dense_types) != num_context_dense:
+      raise ValueError(
+          "len(context_dense_types) != len(num_context_dense): %d vs. %d"
+          % (len(context_dense_types), num_context_dense))
+    if len(feature_list_dense_shapes) != num_feature_list_dense:
+      raise ValueError(
+          "len(feature_list_dense_shapes) != len(feature_list_dense_keys): "
+          "%d vs. %d" % (len(feature_list_dense_shapes),
+                         num_feature_list_dense))
+    if len(feature_list_dense_types) != num_feature_list_dense:
+      raise ValueError(
+          "len(feature_list_dense_types) != len(num_feature_list_dense):"
+          "%d vs. %d" % (len(feature_list_dense_types), num_feature_list_dense))
+    if len(context_sparse_types) != num_context_sparse:
+      raise ValueError(
+          "len(context_sparse_types) != len(context_sparse_keys): %d vs. %d"
+          % (len(context_sparse_types), num_context_sparse))
+    if num_context_dense + num_context_sparse + num_feature_list_dense == 0:
+      raise ValueError(
+          "Must provide at least one context_sparse key, context_dense key, "
+          "or feature_list_dense key")
+    if not set(context_dense_keys).isdisjoint(set(context_sparse_keys)):
+      raise ValueError(
+          "Context_Dense and context_sparse keys must not intersect; "
+          "intersection: %s" %
+          set(context_dense_keys).intersection(set(context_sparse_keys)))
+    if not isinstance(feature_list_dense_defaults, dict):
+      raise TypeError("feature_list_dense_defaults must be a dict")
+    for k, v in feature_list_dense_defaults.items():
+      if v is not None:
+        raise ValueError("Value feature_list_dense_defaults[%s] must be None"
+                         % k)
+      feature_list_dense_missing_assumed_empty.append(k)
+
+    context_dense_defaults_vec = []
+    for i, key in enumerate(context_dense_keys):
+      default_value = context_dense_defaults.get(key)
+      if default_value is None:
+        default_value = constant_op.constant([], dtype=context_dense_types[i])
+      elif not isinstance(default_value, ops.Tensor):
+        key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        default_value = ops.convert_to_tensor(
+            default_value, dtype=context_dense_types[i], name=key_name)
+        default_value = array_ops.reshape(
+            default_value, context_dense_shapes[i])
+
+      context_dense_defaults_vec.append(default_value)
+
+    context_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+                            if isinstance(shape, (list, tuple)) else shape
+                            for shape in context_dense_shapes]
+    feature_list_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+                                 if isinstance(shape, (list, tuple)) else shape
+                                 for shape in feature_list_dense_shapes]
+
+    outputs = gen_parsing_ops._parse_single_sequence_example(
+        serialized=serialized,
+        debug_name=debug_name,
+        context_dense_defaults=context_dense_defaults_vec,
+        context_sparse_keys=context_sparse_keys,
+        context_sparse_types=context_sparse_types,
+        context_dense_keys=context_dense_keys,
+        context_dense_shapes=context_dense_shapes,
+        feature_list_dense_keys=feature_list_dense_keys,
+        feature_list_dense_types=feature_list_dense_types,
+        feature_list_dense_shapes=feature_list_dense_shapes,
+        feature_list_dense_missing_assumed_empty=(
+            feature_list_dense_missing_assumed_empty),
+        name=name)
+
+    (context_sparse_indices, context_sparse_values,
+     context_sparse_shapes, context_dense_values,
+     feature_list_dense_values) = outputs
+
+    context_sparse_tensors = [
+        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        in zip(context_sparse_indices,
+               context_sparse_values,
+               context_sparse_shapes)]
+
+    context_output = dict(
+        zip(context_sparse_keys + context_dense_keys,
+            context_sparse_tensors + context_dense_values))
+    feature_list_output = dict(
+        zip(feature_list_dense_keys,
+            feature_list_dense_values))
+
+    return (context_output, feature_list_output)
+
+
+@ops.RegisterShape("ParseSingleSequenceExample")
+def _ParseSingleSequenceExampleShape(op):
+  """Shape function for the ParseExample op."""
+  op.inputs[0].get_shape().with_rank(0)  # input
+  op.inputs[-1].get_shape().with_rank(0)  # debug_name
+  # feature_list_dense_missing_assumed_empty
+  op.inputs[1].get_shape().with_rank(1)
+  num_context_sparse = op.get_attr("Ncontext_sparse")
+  num_context_dense = op.get_attr("Ncontext_dense")
+  num_feature_list_dense = op.get_attr("Nfeature_list_dense")
+  context_dense_shapes = op.get_attr("context_dense_shapes")
+  feature_list_dense_shapes = op.get_attr("feature_list_dense_shapes")
+  context_sparse_index_shapes = [
+      tensor_shape.matrix(None, 1) for _ in range(num_context_sparse)]
+  context_sparse_value_shapes = [
+      tensor_shape.vector(None) for _ in range(num_context_sparse)]
+  context_sparse_shape_shapes = [
+      tensor_shape.vector(1) for _ in range(num_context_sparse)]
+  context_dense_shapes = [
+      tensor_shape.TensorShape(dense_shape)
+      for dense_shape in context_dense_shapes]
+  feature_list_dense_shapes = [
+      tensor_shape.vector(None).concatenate(dense_shape)
+      for dense_shape in feature_list_dense_shapes]
+  assert num_context_dense == len(context_dense_shapes)
+  assert num_feature_list_dense == len(feature_list_dense_shapes)
+  return (context_sparse_index_shapes + context_sparse_value_shapes +
+          context_sparse_shape_shapes + context_dense_shapes +
+          feature_list_dense_shapes)
 
 
 ops.RegisterShape("StringToNumber")(

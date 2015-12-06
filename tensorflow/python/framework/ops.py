@@ -2377,25 +2377,55 @@ class Graph(object):
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
 
-    def __init__(self, graph, control_inputs, new_stack):
+    def __init__(self, graph, control_inputs):
+      """Create a new `_ControlDependenciesController`.
+
+      A `_ControlDependenciesController` is the context manager for
+      `with tf.control_dependencies()` blocks.  These normally nest,
+      as described in the documentation for `control_dependencies()`.
+
+      The `control_inputs` argument list control dependencies that must be
+      added to the current set of control dependencies.  Because of
+      uniquification the set can be empty even if the caller passed a list of
+      ops.  The special value `None` indicates that we want to start a new
+      empty set of control dependencies instead of extending the current set.
+
+      In that case we also clear the current control flow context, which is an
+      additional mechanism to add control dependencies.
+
+      Args:
+        graph: The graph that this controller is  managing.
+        control_inputs: List of ops to use as control inputs in addition
+          to the current control dependencies.  None to indicate that
+          the dependencies should be cleared.
+      """
       self._graph = graph
-      self._control_inputs = control_inputs
-      self._new_stack = new_stack
+      if control_inputs is None:
+        self._control_inputs = []
+        self._new_stack = True
+      else:
+        self._control_inputs = control_inputs
+        self._new_stack = False
       self._seen_nodes = set()
       self._old_stack = None
+      self._old_control_flow_context = None
 
 # pylint: disable=protected-access
     def __enter__(self):
       if self._new_stack:
+        # Clear the control_dependencies graph.
         self._old_stack = self._graph._control_dependencies_stack
         self._graph._control_dependencies_stack = []
+        # Clear the control_flow_context too.
+        self._old_control_flow_context = self._graph._get_control_flow_context()
+        self._graph._set_control_flow_context(None)
       self._graph._push_control_dependencies_controller(self)
 
     def __exit__(self, unused_type, unused_value, unused_traceback):
       self._graph._pop_control_dependencies_controller(self)
       if self._new_stack:
         self._graph._control_dependencies_stack = self._old_stack
-
+        self._graph._set_control_flow_context(self._old_control_flow_context)
 # pylint: enable=protected-access
 
     @property
@@ -2540,7 +2570,7 @@ class Graph(object):
         `Tensor` objects.
     """
     if control_inputs is None:
-      return self._ControlDependenciesController(self, [], True)
+      return self._ControlDependenciesController(self, None)
     # First convert the inputs to ops, and deduplicate them.
     # NOTE(mrry): Other than deduplication, we do not currently track direct
     #   or indirect dependencies between control_inputs, which may result in
@@ -2556,7 +2586,7 @@ class Graph(object):
       if c not in current:
         control_ops.append(c)
         current.add(c)
-    return self._ControlDependenciesController(self, control_ops, False)
+    return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

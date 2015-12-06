@@ -168,25 +168,17 @@ for i in range(len(num_steps)):
 final_state = state
 ```
 
-## Compile and Run the Code
+## Run the Code
 
-First, the library needs to be built. To compile it on CPU:
+We are assuming you have already installed via the pip package, have cloned the
+tensorflow git repository, and are in the root of the git tree. (If building
+from source, build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
+bazel).
 
+Next:
 ```
-bazel build -c opt tensorflow/models/rnn/ptb:ptb_word_lm
-```
-
-And if you have a fast GPU, run the following:
-
-```
-bazel build -c opt --config=cuda tensorflow/models/rnn/ptb:ptb_word_lm
-```
-
-Now we can run the model:
-
-```
-bazel-bin/tensorflow/models/rnn/ptb/ptb_word_lm \
-  --data_path=/tmp/simple-examples/data/ --model small
+cd tensorflow/models/rnn/ptb
+python ptb_word_lm --data_path=/tmp/simple-examples/data/ --model small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",

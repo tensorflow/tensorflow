@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -118,33 +119,15 @@ bool Tracing::ParseEventMask(const char* flagname, const string& value) {
   return true;
 }
 
-static std::atomic<Tracing::Engine*> tracing_engine;
+/*static*/ std::atomic<Tracing::Engine*> Tracing::tracing_engine_;
 
 void Tracing::RegisterEngine(Engine* e) {
-  tracing_engine.store(e, std::memory_order_release);
-}
-
-static Tracing::Engine* engine() {
-  return tracing_engine.load(std::memory_order_acquire);
+  tracing_engine_.store(e, std::memory_order_release);
 }
 
 Tracing::Engine::~Engine() {}
 Tracing::Engine::Annotation::~Annotation() {}
 Tracing::Engine::Tracer::~Tracer() {}
-
-Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
-  auto e = engine();
-  if (e) {
-    annotation_.reset(e->PushAnnotation(name));
-  }
-}
-
-Tracing::TraceMe::TraceMe(StringPiece name) {
-  auto e = engine();
-  if (e) {
-    tracer_.reset(e->StartTracing(name));
-  }
-}
 
 }  // namespace port
 }  // namespace tensorflow

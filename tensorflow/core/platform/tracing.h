@@ -18,10 +18,12 @@ limitations under the License.
 
 // Tracing interface
 
+#include <atomic>
 #include <map>
 #include <memory>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/port.h"  // Must be first
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -111,6 +113,13 @@ class Tracing {
 
  private:
   friend class TracingTest;
+  friend class ScopedAnnotation;
+  friend class TraceMe;
+
+  static std::atomic<Tracing::Engine*> tracing_engine_;
+  static Tracing::Engine* engine() {
+    return tracing_engine_.load(std::memory_order_acquire);
+  }
 
   static void RegisterEvent(EventCategory id, const char* name);
   static const char* EventCategoryString(EventCategory category);
@@ -192,6 +201,12 @@ class Tracing::ScopedAnnotation {
  public:
   explicit ScopedAnnotation(StringPiece name);
 
+  // If tracing is enabled, set up an annotation with a label of
+  // "<name_part1>:<name_part2>".  Can be cheaper than the
+  // single-argument constructor because the concatenation of the
+  // label string is only done if tracing is enabled.
+  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2);
+
  private:
   std::unique_ptr<Engine::Annotation> annotation_;
 };
@@ -207,6 +222,29 @@ class Tracing::TraceMe {
  private:
   std::unique_ptr<Engine::Tracer> tracer_;
 };
+
+inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
+  auto e = Tracing::engine();
+  if (e) {
+    annotation_.reset(e->PushAnnotation(name));
+  }
+}
+
+inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
+                                                   StringPiece name_part2) {
+  auto e = Tracing::engine();
+  if (e) {
+    annotation_.reset(
+        e->PushAnnotation(strings::StrCat(name_part1, ":", name_part2)));
+  }
+}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name) {
+  auto e = Tracing::engine();
+  if (e) {
+    tracer_.reset(e->StartTracing(name));
+  }
+}
 
 }  // namespace port
 }  // namespace tensorflow

@@ -111,10 +111,12 @@ class _VariableStore(object):
                        "but instead was %s." % (name, shape))
     if initializer is None:
       initializer = init_ops.uniform_unit_scaling_initializer()
-    with ops.name_scope(name + "/Initializer/"):
-      init_val = initializer(shape.as_list(), dtype=dtype)
-    v = variables.Variable(init_val, name=name, trainable=trainable,
-                           collections=collections)
+    # Clear control dependencies while creating the initializer ops.
+    with ops.control_dependencies(None):
+      with ops.name_scope(name + "/Initializer/"):
+        init_val = initializer(shape.as_list(), dtype=dtype)
+      v = variables.Variable(init_val, name=name, trainable=trainable,
+                             collections=collections)
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)

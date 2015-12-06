@@ -296,8 +296,8 @@ This is not a graph construction method, it does not add ops to the graph.
 
 This convenience method requires a session where the graph containing this
 variable has been launched. If no session is passed, the default session is
-used.  See the [Session class](../../api_docs/python/client.md#Session) for more information on
-launching a graph and on sessions.
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
@@ -1465,6 +1465,15 @@ The name of the device on which `values` will be produced, or `None`.
 #### `tf.IndexedSlices.op` {#IndexedSlices.op}
 
 The `Operation` that produces `values` as an output.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.IndexedSlices.graph` {#IndexedSlices.graph}
+
+The `Graph` that contains the values, indices, and shape tensors.
 
 
 

@@ -495,7 +495,10 @@ tf_gen_op_wrapper_py(
 
 tf_gen_op_wrapper_py(
     name = "parsing_ops",
-    hidden = ["ParseExample"],
+    hidden = [
+        "ParseExample",
+        "ParseSingleSequenceExample",
+    ],
     require_shape_functions = True,
 )
 

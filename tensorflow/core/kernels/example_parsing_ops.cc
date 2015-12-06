@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 
+#include <unordered_set>
+
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -58,19 +60,19 @@ Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
   return Status::OK();
 }
 
-Status FeatureDenseCopy(const std::size_t batch, const string& name,
+Status FeatureDenseCopy(const std::size_t out_index, const string& name,
                         const string& key, const DataType& dtype,
                         const TensorShape& shape, const Feature& feature,
                         Tensor* out) {
   const std::size_t num_elements = shape.num_elements();
-  const std::size_t offset = batch * num_elements;
+  const std::size_t offset = out_index * num_elements;
 
   switch (dtype) {
     case DT_INT64: {
       const Int64List& values = feature.int64_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
         return errors::InvalidArgument(
-            "Name: ", name, ", Key: ", key,
+            "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of int64 values != expected.  "
             "values size: ",
             values.value_size(), " but output shape: ",
@@ -84,7 +86,7 @@ Status FeatureDenseCopy(const std::size_t batch, const string& name,
       const FloatList& values = feature.float_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
         return errors::InvalidArgument(
-            "Name: ", name, ", Key: ", key,
+            "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of float values != expected.  "
             "values size: ",
             values.value_size(), " but output shape: ",
@@ -98,9 +100,9 @@ Status FeatureDenseCopy(const std::size_t batch, const string& name,
       const BytesList& values = feature.bytes_list();
       if (static_cast<size_t>(values.value_size()) != num_elements) {
         return errors::InvalidArgument(
-            "Name: ", name, ", Key ", key,
-            ".  number of bytes values != expected.  "
-            "values size: ",
+            "Name: ", name, ", Key ", key, ", Index: ", out_index,
+            ".  Number of bytes values != expected.  "
+            "Values size: ",
             values.value_size(), " but output shape: ",
             shape.ShortDebugString());
       }
@@ -455,5 +457,347 @@ class ExampleParserOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
                         ExampleParserOp);
+
+class SingleSequenceExampleParserOp : public OpKernel {
+ public:
+  explicit SingleSequenceExampleParserOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("context_sparse_types", &context_sparse_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Ncontext_dense", &num_context_dense_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Ncontext_sparse", &num_context_sparse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tcontext_dense", &context_dense_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_list_dense_types",
+                                     &feature_list_dense_types_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("context_dense_shapes", &context_dense_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_list_dense_shapes",
+                                     &feature_list_dense_shapes_));
+
+    OP_REQUIRES(ctx, static_cast<size_t>(num_context_sparse_) ==
+                         context_sparse_types_.size(),
+                errors::InvalidArgument(
+                    "len(context_sparse_keys) != len(context_sparse_types"));
+    OP_REQUIRES(ctx, static_cast<size_t>(num_context_dense_) ==
+                         context_dense_types_.size(),
+                errors::InvalidArgument(
+                    "len(context_dense_keys) != len(context_dense_types"));
+    OP_REQUIRES(ctx, static_cast<size_t>(num_context_dense_) ==
+                         context_dense_shapes_.size(),
+                errors::InvalidArgument(
+                    "len(context_dense_keys) != len(context_dense_shapes"));
+    OP_REQUIRES(ctx, static_cast<size_t>(num_feature_list_dense_) ==
+                         feature_list_dense_types_.size(),
+                errors::InvalidArgument("len(feature_list_dense_keys) != "
+                                        "len(feature_list_dense_types"));
+    for (const DataType& type : context_dense_types_) {
+      OP_REQUIRES_OK(ctx, CheckValidType(type));
+    }
+    for (const DataType& type : context_sparse_types_) {
+      OP_REQUIRES_OK(ctx, CheckValidType(type));
+    }
+    for (const DataType& type : feature_list_dense_types_) {
+      OP_REQUIRES_OK(ctx, CheckValidType(type));
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* debug_name;
+    const Tensor* serialized;
+    OpInputList context_dense_keys;
+    OpInputList context_sparse_keys;
+    OpInputList context_dense_defaults;
+    OpInputList feature_list_dense_keys;
+    const Tensor* feature_list_dense_missing_assumed_empty;
+
+    OP_REQUIRES_OK(ctx, ctx->input("debug_name", &debug_name));
+    OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
+    OP_REQUIRES_OK(ctx, ctx->input("feature_list_dense_missing_assumed_empty",
+                                   &feature_list_dense_missing_assumed_empty));
+    OP_REQUIRES_OK(ctx,
+                   ctx->input_list("context_dense_keys", &context_dense_keys));
+    OP_REQUIRES_OK(ctx, ctx->input_list("feature_list_dense_keys",
+                                        &feature_list_dense_keys));
+    OP_REQUIRES_OK(
+        ctx, ctx->input_list("context_sparse_keys", &context_sparse_keys));
+    OP_REQUIRES_OK(ctx, ctx->input_list("context_dense_defaults",
+                                        &context_dense_defaults));
+
+    std::vector<string> context_dense_keys_t(num_context_dense_);
+    std::vector<string> context_sparse_keys_t(num_context_sparse_);
+    std::vector<string> feature_list_dense_keys_t(num_feature_list_dense_);
+    std::unordered_set<string> feature_list_dense_missing_assumed_empty_set;
+    CHECK_EQ(context_dense_keys.size(), num_context_dense_);
+    CHECK_EQ(context_sparse_keys.size(), num_context_sparse_);
+    CHECK_EQ(feature_list_dense_keys.size(), num_feature_list_dense_);
+    for (int di = 0; di < num_context_dense_; ++di) {
+      OP_REQUIRES(ctx,
+                  TensorShapeUtils::IsScalar(context_dense_keys[di].shape()),
+                  errors::InvalidArgument(
+                      "Expected context_dense_keys[", di,
+                      "] to be a vector, got shape: ",
+                      context_dense_keys[di].shape().ShortDebugString()));
+      context_dense_keys_t[di] = context_dense_keys[di].scalar<string>()();
+    }
+    for (int di = 0; di < num_context_sparse_; ++di) {
+      OP_REQUIRES(ctx,
+                  TensorShapeUtils::IsScalar(context_sparse_keys[di].shape()),
+                  errors::InvalidArgument(
+                      "Expected context_sparse_keys[", di,
+                      "] to be a vector, got shape: ",
+                      context_sparse_keys[di].shape().ShortDebugString()));
+      context_sparse_keys_t[di] = context_sparse_keys[di].scalar<string>()();
+    }
+    for (int di = 0; di < num_feature_list_dense_; ++di) {
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsScalar(feature_list_dense_keys[di].shape()),
+          errors::InvalidArgument(
+              "Expected feature_list_dense_keys[", di,
+              "] to be a vector, got shape: ",
+              feature_list_dense_keys[di].shape().ShortDebugString()));
+      feature_list_dense_keys_t[di] =
+          feature_list_dense_keys[di].scalar<string>()();
+    }
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(
+                         feature_list_dense_missing_assumed_empty->shape()),
+                errors::InvalidArgument(
+                    "Expected feature_list_dense_missing_assumed_empty ",
+                    "to be a vector, got shape: ",
+                    feature_list_dense_missing_assumed_empty->shape()
+                        .ShortDebugString()));
+    auto feature_list_dense_missing_assumped_empty_t =
+        feature_list_dense_missing_assumed_empty->vec<string>();
+    for (int de = 0;
+         de < feature_list_dense_missing_assumed_empty->NumElements(); ++de) {
+      feature_list_dense_missing_assumed_empty_set.insert(
+          feature_list_dense_missing_assumped_empty_t(de));
+    }
+
+    bool has_debug_name = (debug_name->NumElements() > 0);
+    if (has_debug_name) {
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(debug_name->shape()),
+                  errors::InvalidArgument(
+                      "Expected debug_name to be a scalar, got shape: ",
+                      debug_name->shape().ShortDebugString()));
+    }
+    auto debug_name_t = debug_name->scalar<string>();
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(serialized->shape()),
+                errors::InvalidArgument(
+                    "Expected serialized to be a scalar, got shape: ",
+                    serialized->shape().ShortDebugString()));
+
+    OP_REQUIRES(ctx, context_dense_defaults.size() == num_context_dense_,
+                errors::InvalidArgument("Expected len(context_dense_defaults) "
+                                        "== len(context_dense_keys) but got: ",
+                                        context_dense_defaults.size(), " vs. ",
+                                        num_context_dense_));
+
+    std::vector<bool> required(num_context_dense_);
+    for (int d = 0; d < num_context_dense_; ++d) {
+      const Tensor& def_value = context_dense_defaults[d];
+      required[d] = (def_value.NumElements() == 0);  // No default provided.
+
+      if (def_value.NumElements() > 0) {
+        OP_REQUIRES(ctx, def_value.shape() == context_dense_shapes_[d],
+                    errors::InvalidArgument(
+                        "def_value[", d, "].shape() == ",
+                        def_value.shape().ShortDebugString(),
+                        " != context_dense_shapes_[", d, "] == ",
+                        context_dense_shapes_[d].ShortDebugString()));
+        OP_REQUIRES(
+            ctx, def_value.dtype() == context_dense_types_[d],
+            errors::InvalidArgument(
+                "context_dense_defaults[", d, "].dtype() == ",
+                DataTypeString(def_value.dtype()), " != context_dense_types_[",
+                d, "] == ", DataTypeString(context_dense_types_[d])));
+      }
+    }
+
+    auto serialized_t = serialized->scalar<string>();
+
+    OpOutputList context_sparse_indices;
+    OpOutputList context_sparse_values;
+    OpOutputList context_sparse_shapes;
+    OpOutputList context_dense_values;
+    OpOutputList feature_list_dense_values;
+
+    OP_REQUIRES_OK(ctx, ctx->output_list("context_sparse_indices",
+                                         &context_sparse_indices));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_sparse_values", &context_sparse_values));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_sparse_shapes", &context_sparse_shapes));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_dense_values", &context_dense_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
+                                         &feature_list_dense_values));
+
+    SequenceExample ex;
+    OP_REQUIRES(
+        ctx, ParseProtoUnlimited(&ex, serialized_t()),
+        errors::InvalidArgument("Could not parse example input, value: '",
+                                serialized_t(), "'"));
+
+    const string& name = (has_debug_name) ? debug_name_t() : "<unknown>";
+    const Features& context = ex.context();
+    const auto& context_dict = context.feature();
+
+    // Context Dense -----------------------------------------------------------
+
+    // Preallocate context_dense_values, since we know their sizes
+    for (int d = 0; d < num_context_dense_; ++d) {
+      TensorShape out_shape;
+      for (const int dim : context_dense_shapes_[d].dim_sizes())
+        out_shape.AddDim(dim);
+      Tensor* out = nullptr;
+      context_dense_values.allocate(d, out_shape, &out);
+    }
+
+    for (int d = 0; d < num_context_dense_; ++d) {
+      const string& key = context_dense_keys_t[d];
+      const DataType& dtype = context_dense_types_[d];
+      const TensorShape& shape = context_dense_shapes_[d];
+
+      const auto& feature_found = context_dict.find(key);
+      OP_REQUIRES(
+          ctx, (feature_found != context_dict.end()) || !required[d],
+          errors::InvalidArgument("Name: ", name, ", Context feature '", key,
+                                  "' is required but could not be found."));
+      if (feature_found != context_dict.end()) {
+        const Feature& f = feature_found->second;
+        bool types_match;
+        OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
+        OP_REQUIRES(
+            ctx, types_match,
+            errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
+                                    ".  Data types don't match. ",
+                                    "Expected type: ", DataTypeString(dtype),
+                                    "  Feature is: ", f.DebugString()));
+
+        OP_REQUIRES_OK(ctx, FeatureDenseCopy(0, name, key, dtype, shape, f,
+                                             context_dense_values[d]));
+      } else {
+        RowDenseCopy(0, dtype, context_dense_defaults[d],
+                     context_dense_values[d]);
+      }
+    }
+
+    // Context Sparse ----------------------------------------------------------
+    for (int d = 0; d < num_context_sparse_; ++d) {
+      const string& key = context_sparse_keys_t[d];
+      const DataType& dtype = context_sparse_types_[d];
+
+      const auto& feature_found = context_dict.find(key);
+      bool feature_has_data =  // Found key & data type is set
+          (feature_found != context_dict.end() &&
+           (feature_found->second.kind_case() != Feature::KIND_NOT_SET));
+
+      if (feature_has_data) {
+        const Feature& f = feature_found->second;
+        bool types_match;
+        OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
+        OP_REQUIRES(
+            ctx, types_match,
+            errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
+                                    ".  Data types don't match. ",
+                                    "Expected type: ", DataTypeString(dtype),
+                                    "  Feature is: ", f.DebugString()));
+
+        Tensor feature_values = FeatureSparseCopy(0, key, dtype, f);
+        const int64 num_elements = feature_values.NumElements();
+        TensorShape indices_shape({num_elements, 1});
+        Tensor* sp_indices_d = nullptr;
+        Tensor* sp_shape_d = nullptr;
+        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
+        context_sparse_values.set(d, feature_values);
+        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        auto shape_t = sp_shape_d->vec<int64>();
+        shape_t(0) = num_elements;
+        auto indices_t = sp_indices_d->matrix<int64>();
+        std::iota(indices_t.data(), indices_t.data() + num_elements, 0);
+      } else {
+        TensorShape indices_shape({0, 1});
+        TensorShape values_shape({0});
+        Tensor* sp_indices_d = nullptr;
+        Tensor* sp_values_d = nullptr;
+        Tensor* sp_shape_d = nullptr;
+        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
+        context_sparse_values.allocate(d, values_shape, &sp_values_d);
+        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        auto shape_t = sp_shape_d->vec<int64>();
+        shape_t(0) = 0;
+      }
+    }
+
+    // Feature List Dense ------------------------------------------------------
+
+    // Preallocate context_dense_values, since we can infer their
+    // sizes
+    const FeatureLists& feature_lists = ex.feature_lists();
+    const auto& feature_list_dict = feature_lists.feature_list();
+    FeatureList empty_feature_list;  // Placeholder for missing FLs
+
+    for (int d = 0; d < num_feature_list_dense_; ++d) {
+      const string& key = feature_list_dense_keys_t[d];
+      const DataType& dtype = feature_list_dense_types_[d];
+      const TensorShape& shape = feature_list_dense_shapes_[d];
+
+      const auto& feature_list_found = feature_list_dict.find(key);
+      bool feature_list_missing =
+          (feature_list_found == feature_list_dict.end());
+      bool feature_list_allowed_missing =
+          (feature_list_dense_missing_assumed_empty_set.count(key) > 0);
+
+      OP_REQUIRES(
+          ctx, !feature_list_missing || feature_list_allowed_missing,
+          errors::InvalidArgument("Name: ", name, ", Feature list '", key,
+                                  "' is required but could not be found.  "
+                                  "Did you mean to include it in "
+                                  "feature_list_dense_missing_assumed_empty or "
+                                  "feature_list_dense_defaults?"));
+
+      TensorShape out_shape;
+      const FeatureList& fl = (feature_list_missing)
+                                  ? empty_feature_list
+                                  : feature_list_found->second;
+      out_shape.AddDim(fl.feature_size());
+      for (const int dim : feature_list_dense_shapes_[d].dim_sizes()) {
+        out_shape.AddDim(dim);
+      }
+      Tensor* out = nullptr;
+      feature_list_dense_values.allocate(d, out_shape, &out);
+
+      for (int64 t = 0; t < fl.feature_size(); ++t) {
+        const Feature& f = fl.feature(t);
+        bool types_match;
+        OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
+        OP_REQUIRES(
+            ctx, types_match,
+            errors::InvalidArgument(
+                "Name: ", name, ", Feature list: ", key, ", Index: ", t,
+                ".  Data types don't match. ", "Expected type: ",
+                DataTypeString(dtype), "  Feature is: ", f.DebugString()));
+        OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
+                                             feature_list_dense_values[d]));
+      }
+    }
+  }
+
+ protected:
+  int64 num_context_sparse_;
+  int64 num_context_dense_;
+  int64 num_feature_list_dense_;
+  std::vector<DataType> context_sparse_types_;
+  std::vector<DataType> context_dense_types_;
+  std::vector<DataType> feature_list_dense_types_;
+  std::vector<TensorShape> context_dense_shapes_;
+  std::vector<TensorShape> feature_list_dense_shapes_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
+                        SingleSequenceExampleParserOp);
 
 }  // namespace tensorflow

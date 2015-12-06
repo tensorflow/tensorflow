@@ -9,16 +9,19 @@ a neural network to translate from English to French? It turns out that
 the answer is *yes*.
 
 This tutorial will show you how to build and train such a system end-to-end.
-You can start by running this binary.
+We are assuming you have already installed via the pip package, have cloned the
+tensorflow git repository, and are in the root of the git tree.
+
+You can then start by running the translate program:
 
 ```
-bazel run -c opt <...>/models/rnn/translate:translate
-  --data_dir [your_data_directory]
+cd tensorflow/models/rnn/translate
+python translate.py --data_dir [your_data_directory]
 ```
 
 It will download English-to-French translation data from the
 [WMT'15 Website](http://www.statmt.org/wmt15/translation-task.html)
-prepare it for training and train. It takes  about 20GB of disk space,
+prepare it for training and train. It takes about 20GB of disk space,
 and a while to download and prepare (see [later](#run_it) for details),
 so you can start and leave it running while reading this tutorial.
 
@@ -240,7 +243,7 @@ Both data-sets will be downloaded to `data_dir` and training will start,
 saving checkpoints in `train_dir`, when this command is run.
 
 ```
-bazel run -c opt <...>/models/rnn/translate:translate
+python translate.py
   --data_dir [your_data_directory] --train_dir [checkpoints_directory]
   --en_vocab_size=40000 --fr_vocab_size=40000
 ```
@@ -259,7 +262,7 @@ results, but it might take too long or use too much memory for your GPU.
 You can request to train a smaller model as in the following example.
 
 ```
-bazel run -c opt <...>/models/rnn/translate:translate
+python translate.py
   --data_dir [your_data_directory] --train_dir [checkpoints_directory]
   --size=256 --num_layers=2 --steps_per_checkpoint=50
 ```
@@ -296,7 +299,7 @@ point the model can be used for translating English sentences to French
 using the `--decode` option.
 
 ```
-bazel run -c opt <...>/models/rnn/translate:translate --decode
+python translate.py --decode
   --data_dir [your_data_directory] --train_dir [checkpoints_directory]
 
 Reading model parameters from /tmp/translate.ckpt-340000

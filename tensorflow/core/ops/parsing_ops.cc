@@ -82,6 +82,74 @@ sparse_types: A list of Nsparse types; the data types of data in each Feature
   DT_INT64 (Int64List), and DT_STRING (BytesList).
 )doc");
 
+REGISTER_OP("ParseSingleSequenceExample")
+    .Input("serialized: string")
+    .Input("feature_list_dense_missing_assumed_empty: string")
+    .Input("context_sparse_keys: Ncontext_sparse * string")
+    .Input("context_dense_keys: Ncontext_dense * string")
+    .Input("feature_list_dense_keys: Nfeature_list_dense * string")
+    .Input("context_dense_defaults: Tcontext_dense")
+    .Input("debug_name: string")
+    .Output("context_sparse_indices: Ncontext_sparse * int64")
+    .Output("context_sparse_values: context_sparse_types")
+    .Output("context_sparse_shapes: Ncontext_sparse * int64")
+    .Output("context_dense_values: Tcontext_dense")
+    .Output("feature_list_dense_values: feature_list_dense_types")
+    .Attr("Ncontext_sparse: int >= 0")  // Infer from context_sparse_keys
+    .Attr("Ncontext_dense: int >= 0")   // Infer from context_dense_keys
+    .Attr(
+        "Nfeature_list_dense: int >= 0")  // Infer from feature_list_dense_keys
+    .Attr("context_sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tcontext_dense: list({float,int64,string}) >= 0")
+    .Attr("feature_list_dense_types: list({float,int64,string}) >= 0")
+    .Attr("context_dense_shapes: list(shape) >= 0")
+    .Attr("feature_list_dense_shapes: list(shape) >= 0")
+    .Doc(R"doc(
+Transforms a scalar brain.SequenceExample proto (as strings) into typed tensors.
+
+serialized: A scalar containing a binary serialized SequenceExample proto.
+feature_list_dense_missing_assumed_empty: A vector listing the
+  FeatureList keys which may be missing from the SequenceExample.  If the
+  associated FeatureList is missing, it is treated as empty.  By default,
+  any FeatureList not listed in this vector must exist in the SequenceExample.
+context_dense_keys: A list of Ncontext_dense string Tensors (scalars).
+  The keys expected in the SequenceExamples' context features associated with
+  dense values.
+feature_list_dense_keys: A list of Nfeature_list_dense string Tensors (scalars).
+  The keys expected in the SequenceExamples' feature_lists associated
+  with lists of dense values.
+context_dense_defaults: A list of Ncontext_dense Tensors (some may be empty).
+  context_dense_defaults[j] provides default values
+  when the SequenceExample's context map lacks context_dense_key[j].
+  If an empty Tensor is provided for context_dense_defaults[j],
+  then the Feature context_dense_keys[j] is required.
+  The input type is inferred from context_dense_defaults[j], even when it's
+  empty.  If context_dense_defaults[j] is not empty, its shape must match
+  context_dense_shapes[j].
+debug_name: A scalar containing the name of the serialized proto.
+  May contain, for example, table key (descriptive) name for the
+  corresponding serialized proto.  This is purely useful for debugging
+  purposes, and the presence of values here has no effect on the output.
+  May also be an empty scalar if no name is available.
+context_dense_shapes: A list of Ncontext_dense shapes; the shapes of data in
+  each context Feature given in context_dense_keys.
+  The number of elements in the Feature corresponding to context_dense_key[j]
+  must always equal context_dense_shapes[j].NumEntries().
+  The shape of context_dense_values[j] will match context_dense_shapes[j].
+feature_list_dense_shapes: A list of Nfeature_list_dense shapes; the shapes of
+  data in each FeatureList given in feature_list_dense_keys.
+  The shape of each Feature in the FeatureList corresponding to
+  feature_list_dense_key[j] must always equal
+  feature_list_dense_shapes[j].NumEntries().
+context_sparse_keys: A list of Ncontext_sparse string Tensors (scalars).
+  The keys expected in the Examples' features associated with context_sparse
+  values.
+context_sparse_types: A list of Ncontext_sparse types; the data types of data in
+  each context Feature given in context_sparse_keys.
+  Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+  DT_INT64 (Int64List), and DT_STRING (BytesList).
+)doc");
+
 REGISTER_OP("DecodeCSV")
     .Input("records: string")
     .Input("record_defaults: OUT_TYPE")
