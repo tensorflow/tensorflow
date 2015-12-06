@@ -101,7 +101,7 @@ class TensorFlowEstimator(BaseEstimator):
         # Create summary to monitor loss
         tf.scalar_summary("loss", self._model_loss)
         # Set up a single operator to merge all the summaries
-        summary_op = tf.merge_all_summaries()
+        tf.merge_all_summaries()
         # Set up summary writer to the specified log directory
         self._summary_writer = tf.train.SummaryWriter(os.path.join(logdir,
          datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
