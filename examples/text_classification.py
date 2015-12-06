@@ -60,11 +60,25 @@ def average_model(X, y):
     return skflow.models.logistic_regression(features, y)
 
 def rnn_model(X, y):
+    """Recurrent neural network model to predict from sequence of words
+    to a class."""
+    # Convert indexes of words into embeddings.
+    # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
+    # maps word indexes of the sequence into [batch_size, sequence_length,
+    # EMBEDDING_SIZE].
     word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
         embedding_size=EMBEDDING_SIZE, name='words')
+    # Split sequence into list of embedding per word.
+    # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
     word_list = [tf.squeeze(w, [1]) for w in tf.split(1, MAX_DOCUMENT_LENGTH, word_vectors)]
+    # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
     cell = rnn_cell.GRUCell(EMBEDDING_SIZE)
+    # Create an unrolled Recurrent Neural Networks to length of
+    # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
     _, encoding = rnn.rnn(cell, word_list, dtype=tf.float32)
+    # Given encoding of RNN, take encoding of last step (e.g hidden size of the
+    # neural network of last step) and pass it as features for logistic
+    # regression over output classes.
     return skflow.models.logistic_regression(encoding[-1], y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
@@ -75,3 +89,4 @@ while True:
     classifier.fit(X_train, y_train)
     score = metrics.accuracy_score(classifier.predict(X_test), y_test)
     print('Accuracy: {0:f}'.format(score))
+
