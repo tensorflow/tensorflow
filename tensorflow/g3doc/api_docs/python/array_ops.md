@@ -544,7 +544,7 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 Pads a tensor with zeros.
 
 This operation pads a `input` with zeros according to the `paddings` you
-specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the
+specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is the
 rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
 how many zeros to add before the contents of `input` in that dimension, and
 `paddings[D, 1]` indicates how many zeros to add after the contents of `input`
@@ -558,7 +558,7 @@ For example:
 
 ```prettyprint
 # 't' is [[1, 1], [2, 2]]
-# 'paddings' is [[1, 1]], [2, 2]]
+# 'paddings' is [[2, 1], [1, 2]]
 # rank of 't' is 2
 pad(t, paddings) ==> [[0, 0, 0, 0, 0]
                       [0, 0, 0, 0, 0]
