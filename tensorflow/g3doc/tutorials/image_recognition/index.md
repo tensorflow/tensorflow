@@ -5,18 +5,23 @@ tell apart a lion and a jaguar, read a sign, or recognize a human's face.
 But these are actually hard problems to solve with a computer: they only
 seem easy because our brains are incredibly good at understanding images.
 
-In the last few years, we've made tremendous progress on solving these difficult
-problems with computers. We've found that a kind of model called a deep
+In the last few years the field of machine learning has made tremendous
+progress on addressing these difficult problems. In particular, we've
+found that a kind of model called a deep
 [convolutional neural network](http://colah.github.io/posts/2014-07-Conv-Nets-Modular/)
-can achieve remarkable performance on hard visual recognition tasks -- 
-matching or exceeding human performance on some problems.
+can achieve reasonable performance on hard visual recognition tasks --
+matching or exceeding human performance in some domains.
 
-Researchers at Google have gone through many models, repeatedly breaking records
-and setting new state-of-the-art results in computer vision: [QuocNet],
-[AlexNet], [Inception (GoogLeNet)], [BN-Inception-v2] and now [Inception-v3].
-We've published papers describing all these models but they're
-still hard to reproduce. We're now taking things a step further by releasing our
-latest model, Inception-v3.
+Researchers have demonstrated steady progress
+in computer vision by validating their work against
+[ImageNet](http://www.image-net.org) -- an academic benchmark for computer vision.
+Successive models continue to show improvements, each time achieving
+a new state-of-the-art result:
+[QuocNet], [AlexNet], [Inception (GoogLeNet)], [BN-Inception-v2].
+Researchers both internal and external to Google have published papers describing all
+these models but the results are still hard to reproduce.
+We're now taking the next step by releasing code for running image recognition
+on our latest model, [Inception-v3].
 
 [QuocNet]: http://static.googleusercontent.com/media/research.google.com/en//archive/unsupervised_icml2012.pdf
 [AlexNet]: http://www.cs.toronto.edu/~fritz/absps/imagenet.pdf
