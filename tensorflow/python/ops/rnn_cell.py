@@ -198,6 +198,24 @@ class BasicLSTMCell(RNNCell):
     return new_h, array_ops.concat(1, [new_c, new_h])
 
 
+def _get_sharded_variable(name, shape, initializer, dtype, num_shards):
+  """Get a list of sharded variables with the given dtype and initializer."""
+  unit_shard_size = int(math.ceil(shape[1] / num_shards))
+
+  shards = []
+  for i in range(num_shards):
+    current_size = min(unit_shard_size, shape[1] - unit_shard_size * i)
+    shards.append(vs.get_variable(name + "_%d" % i, [shape[0], current_size],
+                                  initializer=initializer, dtype=dtype))
+  return shards
+
+
+def _matmul_with_sharded_variable(tensor, sharded_tensor):
+  """Multiply tensor with each tensor in sharded_tensor and column-concat."""
+  return array_ops.concat(1, [math_ops.matmul(tensor, shard)
+                              for shard in sharded_tensor])
+
+
 class LSTMCell(RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -231,15 +249,8 @@ class LSTMCell(RNNCell):
         matrices.  If None, no projection is performed.
       num_unit_shards: How to split the weight matrix.  If >1, the weight
         matrix is stored across num_unit_shards.
-        Note that num_unit_shards must evenly divide num_units * 4.
       num_proj_shards: How to split the projection matrix.  If >1, the
         projection matrix is stored across num_proj_shards.
-        Note that num_proj_shards must evenly divide num_proj
-              (if num_proj is not None).
-
-    Raises:
-      ValueError: if num_unit_shards doesn't divide 4 * num_units or
-        num_proj_shards doesn't divide num_proj
     """
     self._num_units = num_units
     self._input_size = input_size
@@ -249,11 +260,6 @@ class LSTMCell(RNNCell):
     self._num_proj = num_proj
     self._num_unit_shards = num_unit_shards
     self._num_proj_shards = num_proj_shards
-
-    if (num_units * 4) % num_unit_shards != 0:
-      raise ValueError("num_unit_shards must evently divide 4 * num_units")
-    if num_proj and num_proj % num_proj_shards != 0:
-      raise ValueError("num_proj_shards must evently divide num_proj")
 
     if num_proj:
       self._state_size = num_units + num_proj
@@ -299,15 +305,10 @@ class LSTMCell(RNNCell):
 
     dtype = input_.dtype
 
-    unit_shard_size = (4 * self._num_units) // self._num_unit_shards
-
     with vs.variable_scope(scope or type(self).__name__):  # "LSTMCell"
-      w = array_ops.concat(
-          1,
-          [vs.get_variable("W_%d" % i,
-                           shape=[self.input_size + num_proj, unit_shard_size],
-                           initializer=self._initializer,
-                           dtype=dtype) for i in xrange(self._num_unit_shards)])
+      sharded_w = _get_sharded_variable(
+          "W", [self.input_size + num_proj, 4 * self._num_units],
+          self._initializer, dtype, self._num_unit_shards)
 
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
@@ -315,17 +316,24 @@ class LSTMCell(RNNCell):
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [input_, m_prev])
-      i, j, f, o = array_ops.split(
-          1, 4, nn_ops.bias_add(math_ops.matmul(cell_inputs, w), b))
+      lstm_matrix = nn_ops.bias_add(
+          _matmul_with_sharded_variable(cell_inputs, sharded_w), b)
+      i, j, f, o = array_ops.split(1, 4, lstm_matrix)
 
       # Diagonal connections
       if self._use_peepholes:
         w_f_diag = vs.get_variable(
-            "W_F_diag", shape=[self._num_units], dtype=dtype)
+            "W_F_diag", shape=[self._num_units],
+            initializer=self._initializer,
+            dtype=dtype)
         w_i_diag = vs.get_variable(
-            "W_I_diag", shape=[self._num_units], dtype=dtype)
+            "W_I_diag", shape=[self._num_units],
+            initializer=self._initializer,
+            dtype=dtype)
         w_o_diag = vs.get_variable(
-            "W_O_diag", shape=[self._num_units], dtype=dtype)
+            "W_O_diag", shape=[self._num_units],
+            initializer=self._initializer,
+            dtype=dtype)
 
       if self._use_peepholes:
         c = (sigmoid(f + 1 + w_f_diag * c_prev) * c_prev +
@@ -342,16 +350,11 @@ class LSTMCell(RNNCell):
         m = sigmoid(o) * tanh(c)
 
       if self._num_proj is not None:
-        proj_shard_size = self._num_proj // self._num_proj_shards
-        w_proj = array_ops.concat(
-            1,
-            [vs.get_variable("W_P_%d" % i,
-                             shape=[self._num_units, proj_shard_size],
-                             initializer=self._initializer,
-                             dtype=dtype)
-             for i in xrange(self._num_proj_shards)])
-        # TODO(ebrevdo), use matmulsum
-        m = math_ops.matmul(m, w_proj)
+        sharded_w_proj = _get_sharded_variable(
+            "W_P", [self._num_units, self._num_proj], self._initializer,
+            dtype, self._num_proj_shards)
+
+        m = _matmul_with_sharded_variable(m, sharded_w_proj)
 
     return m, array_ops.concat(1, [c, m])
 

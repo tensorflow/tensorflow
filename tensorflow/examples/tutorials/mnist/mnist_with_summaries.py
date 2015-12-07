@@ -30,7 +30,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow.python.platform
-from tensorflow.g3doc.tutorials.mnist import input_data
+from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 
 flags = tf.app.flags
@@ -54,28 +54,28 @@ def main(_):
   b = tf.Variable(tf.zeros([10], name='bias'))
 
   # use a name scope to organize nodes in the graph visualizer
-  with tf.name_scope('Wx_b') as scope:
+  with tf.name_scope('Wx_b'):
     y = tf.nn.softmax(tf.matmul(x, W) + b)
 
   # Add summary ops to collect data
-  w_hist = tf.histogram_summary('weights', W)
-  b_hist = tf.histogram_summary('biases', b)
-  y_hist = tf.histogram_summary('y', y)
+  _ = tf.histogram_summary('weights', W)
+  _ = tf.histogram_summary('biases', b)
+  _ = tf.histogram_summary('y', y)
 
   # Define loss and optimizer
   y_ = tf.placeholder('float', [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
-  with tf.name_scope('xent') as scope:
+  with tf.name_scope('xent'):
     cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
-    ce_summ = tf.scalar_summary('cross entropy', cross_entropy)
-  with tf.name_scope('train') as scope:
+    _ = tf.scalar_summary('cross entropy', cross_entropy)
+  with tf.name_scope('train'):
     train_step = tf.train.GradientDescentOptimizer(
         FLAGS.learning_rate).minimize(cross_entropy)
 
-  with tf.name_scope('test') as scope:
+  with tf.name_scope('test'):
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, 'float'))
-    accuracy_summary = tf.scalar_summary('accuracy', accuracy)
+    _ = tf.scalar_summary('accuracy', accuracy)
 
   # Merge all the summaries and write them out to /tmp/mnist_logs
   merged = tf.merge_all_summaries()

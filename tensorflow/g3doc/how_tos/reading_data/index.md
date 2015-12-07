@@ -35,7 +35,7 @@ it is executed without a feed, so you won't forget to feed it.
 
 An example using `placeholder` and feeding to train on MNIST data can be found
 in
-[`tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py),
+[`tensorflow/examples/tutorials/mnist/fully_connected_feed.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/fully_connected_feed.py),
 and is described in the [MNIST tutorial](../../tutorials/mnist/tf/index.md).
 
 ## Reading from files
@@ -154,7 +154,7 @@ as a field).  You write a little program that gets your data, stuffs it in an
 writes the string to a TFRecords file using the
 [`tf.python_io.TFRecordWriter` class](../../api_docs/python/python_io.md#TFRecordWriter).
 For example,
-[`tensorflow/g3doc/how_tos/reading_data/convert_to_records.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/how_tos/reading_data/convert_to_records.py)
+[`tensorflow/examples/how_tos/reading_data/convert_to_records.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/convert_to_records.py)
 converts MNIST data to this format.
 
 To read a file of TFRecords, use
@@ -163,7 +163,7 @@ the [`tf.parse_single_example`](../../api_docs/python/io_ops.md#parse_single_exa
 decoder. The `parse_single_example` op decodes the example protocol buffers into
 tensors. An MNIST example using the data produced by `convert_to_records` can be
 found in
-[`tensorflow/g3doc/how_tos/reading_data/fully_connected_reader.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/how_tos/reading_data/fully_connected_reader.py),
+[`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py),
 which you can compare with the `fully_connected_feed` version.
 
 ### Preprocessing
@@ -455,8 +455,8 @@ multiple preprocessing threads, set the `num_threads` parameter to a number
 bigger than 1.
 
 An MNIST example that preloads the data using constants can be found in
-[`tensorflow/g3doc/how_tos/reading_data/fully_connected_preloaded.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/how_tos/reading_data/fully_connected_preloaded.py), and one that preloads the data using variables can be found in
-[`tensorflow/g3doc/how_tos/reading_data/fully_connected_preloaded_var.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/how_tos/reading_data/fully_connected_preloaded_var.py),
+[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py), and one that preloads the data using variables can be found in
+[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py),
 You can compare these with the `fully_connected_feed` and
 `fully_connected_reader` versions above.
 

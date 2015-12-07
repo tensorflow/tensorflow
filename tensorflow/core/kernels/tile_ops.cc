@@ -132,9 +132,11 @@ template <DataType DT, int NDIM>
 inline void TileOp<Device>::HandleCase(
     OpKernelContext* context, const gtl::ArraySlice<int32>& multiples_array,
     Tensor* result) {
+  // TODO(vrv): print out the device name if useful. Currently disabled to avoid
+  // having to use RTTI.
   LOG(FATAL) << "TileOp: Invalid combination of Device, DT and NDIM: "
-             << typeid(Device).name() << ", " << DataTypeString(DT) << ", "
-             << NDIM;
+             // << typeid(Device).name() << ", "
+             << DataTypeString(DT) << ", " << NDIM;
 }
 
 #define HANDLE_CASE(device, dtype, ndim)                               \
@@ -353,7 +355,11 @@ inline void TileGradientOp<Device>::HandleCase(
     OpKernelContext* context, const std::vector<int32>& input_dims,
     const gtl::ArraySlice<int32>& multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
+#ifdef __ANDROID__
+             << "[Device not shown, no RTTI], " << DataTypeString(DT) << ", "
+#else   // __ANDROID__
              << typeid(Device).name() << ", " << DataTypeString(DT) << ", "
+#endif  // __ANDROID__
              << NDIM;
 }
 

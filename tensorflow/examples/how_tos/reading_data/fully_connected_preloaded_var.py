@@ -13,12 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Trains the MNIST network using preloaded data in a constant.
+"""Trains the MNIST network using preloaded data stored in a variable.
 
-Command to run this py_binary target:
+Run using bazel:
 
 bazel run -c opt \
-    <...>/tensorflow/g3doc/how_tos/reading_data:fully_connected_preloaded
+    <...>/tensorflow/examples/how_tos/reading_data:fully_connected_preloaded_var
+
+or, if installed via pip:
+
+cd tensorflow/examples/how_tos/reading_data
+python fully_connected_preloaded_var.py
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -31,8 +36,8 @@ import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 
-from tensorflow.g3doc.tutorials.mnist import input_data
-from tensorflow.g3doc.tutorials.mnist import mnist
+from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.examples.tutorials.mnist import mnist
 
 
 # Basic model parameters as external flags.
@@ -44,7 +49,8 @@ flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
                      'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
+flags.DEFINE_string('train_dir', '/tmp/data',
+                    'Directory to put the training data.')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                      'for unit testing.')
 
@@ -59,8 +65,16 @@ def run_training():
   with tf.Graph().as_default():
     with tf.name_scope('input'):
       # Input data
-      input_images = tf.constant(data_sets.train.images)
-      input_labels = tf.constant(data_sets.train.labels)
+      images_initializer = tf.placeholder(
+          dtype=data_sets.train.images.dtype,
+          shape=data_sets.train.images.shape)
+      labels_initializer = tf.placeholder(
+          dtype=data_sets.train.labels.dtype,
+          shape=data_sets.train.labels.shape)
+      input_images = tf.Variable(
+          images_initializer, trainable=False, collections=[])
+      input_labels = tf.Variable(
+          labels_initializer, trainable=False, collections=[])
 
       image, label = tf.train.slice_input_producer(
           [input_images, input_labels], num_epochs=FLAGS.num_epochs)
@@ -94,6 +108,10 @@ def run_training():
 
     # Run the Op to initialize the variables.
     sess.run(init_op)
+    sess.run(input_images.initializer,
+             feed_dict={images_initializer: data_sets.train.images})
+    sess.run(input_labels.initializer,
+             feed_dict={labels_initializer: data_sets.train.labels})
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,

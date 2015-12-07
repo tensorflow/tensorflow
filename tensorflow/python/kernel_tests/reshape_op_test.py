@@ -106,6 +106,11 @@ class ReshapeTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "isn't divisible by 17"):
       tf.reshape(y, [17, -1])
 
+    z = tf.constant(0.0, shape=[32, 128])
+    with self.assertRaisesRegexp(ValueError,
+                                 "Cannot reshape a tensor with 4096 elements"):
+      tf.reshape(z, [4095])
+
   def testPartialShapes(self):
     x = tf.placeholder(tf.float32)
 

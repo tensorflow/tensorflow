@@ -391,6 +391,16 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ## Check that we have discarded 200 and 300
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
 
+  def testFileVersionEventDoesntTriggerDiscard(self):
+    """Test that file version event doesnt trigger data purge."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddScalar('s1', wall_time=1, step=100, value=20)
+    ev = tf.Event(wall_time=2, step=0, file_version='0')
+    gen.AddEvent(ev)
+    acc.Reload()
+    self.assertEqual([x.step for x in acc.Scalars('s1')], [100])
+
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
 

@@ -34,7 +34,7 @@ import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 
-from tensorflow.g3doc.tutorials.mnist import mnist
+from tensorflow.examples.tutorials.mnist import mnist
 
 
 # Basic model parameters as external flags.
@@ -45,7 +45,8 @@ flags.DEFINE_integer('num_epochs', 2, 'Number of epochs to run trainer.')
 flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 100, 'Batch size.')
-flags.DEFINE_string('train_dir', 'data', 'Directory with the training data.')
+flags.DEFINE_string('train_dir', '/tmp/data',
+                    'Directory with the training data.')
 
 # Constants used for dealing with the files, matches convert_to_records.
 TRAIN_FILE = 'train.tfrecords'

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -114,7 +113,10 @@ DirectSession::DirectSession(const SessionOptions& options,
       cancellation_manager_(new CancellationManager()) {
   static bool init = InitModule(options);
   CHECK(init);  // Avoids compiler warning that init is unused.
-  session_handle_ = strings::FpToString(random::New64());
+  // NOTE(mrry): We do not need to use a unique string for the session
+  // handle, because DirectSession owns its devices. This may change
+  // in future versions.
+  session_handle_ = "direct";
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();

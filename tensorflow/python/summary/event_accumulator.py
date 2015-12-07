@@ -174,7 +174,10 @@ class EventAccumulator(object):
     with self._generator_mutex:
       for event in self._generator.Load():
         ## Check if the event happened after a crash
-        if event.step < self.most_recent_step:
+        ## file_version events always have step 0, ignore.
+        ## TODO(danmane): Have this check for restart events explicitly
+        if (event.step < self.most_recent_step and
+            not event.HasField('file_version')):
 
           ## Keep data in reservoirs that has a step less than event.step
           _NotExpired = lambda x: x.step < event.step

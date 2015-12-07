@@ -22,7 +22,7 @@ REGISTER_OP("Save")
     .Input("filename: string")
     .Input("tensor_names: string")
     .Input("data: T")
-    .Attr("T: list({float, double, int32, int64, quint8, qint8, qint32})")
+    .Attr("T: list({bool, float, double, int32, int64, quint8, qint8, qint32})")
     .Doc(R"doc(
 Saves the input tensors to disk.
 
@@ -42,7 +42,7 @@ REGISTER_OP("SaveSlices")
     .Input("tensor_names: string")
     .Input("shapes_and_slices: string")
     .Input("data: T")
-    .Attr("T: list({float, double, int32, int64, quint8, qint8, qint32})")
+    .Attr("T: list({bool, float, double, int32, int64, quint8, qint8, qint32})")
     .Doc(R"doc(
 Saves input tensors slices to disk.
 

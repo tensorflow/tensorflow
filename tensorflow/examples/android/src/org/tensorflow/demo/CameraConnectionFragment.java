@@ -180,9 +180,9 @@ public class CameraConnectionFragment extends Fragment {
   private Handler backgroundHandler;
 
   /**
-   * An {@link ImageReader} that handles still image capture.
+   * An {@link ImageReader} that handles preview frame capture.
    */
-  private ImageReader imageReader;
+  private ImageReader previewReader;
 
   /**
    * {@link android.hardware.camera2.CaptureRequest.Builder} for the camera preview
@@ -328,10 +328,6 @@ public class CameraConnectionFragment extends Fragment {
                 Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
                 new CompareSizesByArea());
 
-        imageReader =
-            ImageReader.newInstance(
-                largest.getWidth(), largest.getHeight(), ImageFormat.YUV_420_888, /*maxImages*/ 2);
-
         // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
         // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
         // garbage capture data.
@@ -393,9 +389,9 @@ public class CameraConnectionFragment extends Fragment {
         cameraDevice.close();
         cameraDevice = null;
       }
-      if (null != imageReader) {
-        imageReader.close();
-        imageReader = null;
+      if (null != previewReader) {
+        previewReader.close();
+        previewReader = null;
       }
     } catch (final InterruptedException e) {
       throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
@@ -465,7 +461,7 @@ public class CameraConnectionFragment extends Fragment {
       LOGGER.i("Opening camera preview: " + previewSize.getWidth() + "x" + previewSize.getHeight());
 
       // Create the reader for the preview frames.
-      final ImageReader previewReader =
+      previewReader =
           ImageReader.newInstance(
               previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
 
@@ -474,7 +470,7 @@ public class CameraConnectionFragment extends Fragment {
 
       // Here, we create a CameraCaptureSession for camera preview.
       cameraDevice.createCaptureSession(
-          Arrays.asList(surface, imageReader.getSurface(), previewReader.getSurface()),
+          Arrays.asList(surface, previewReader.getSurface()),
           new CameraCaptureSession.StateCallback() {
 
             @Override

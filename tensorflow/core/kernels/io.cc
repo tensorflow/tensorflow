@@ -148,6 +148,7 @@ void SaveTensors(
     break
 
     switch (input.dtype()) {
+      WRITER_ADD(DT_BOOL);
       WRITER_ADD(DT_FLOAT);
       WRITER_ADD(DT_DOUBLE);
       WRITER_ADD(DT_INT32);
@@ -269,6 +270,7 @@ void RestoreTensor(OpKernelContext* context,
     break
 
   switch (type) {
+    READER_COPY(DT_BOOL);
     READER_COPY(DT_FLOAT);
     READER_COPY(DT_DOUBLE);
     READER_COPY(DT_INT32);

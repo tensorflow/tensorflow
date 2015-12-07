@@ -44,8 +44,8 @@ class SaveOpTest : public OpsTestBase {
     ASSERT_OK(NodeDefBuilder("myop", "Save")
                   .Input(FakeInput())
                   .Input(FakeInput())
-                  .Input(FakeInput(
-                      {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8, DT_QINT32}))
+                  .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
+                                    DT_QINT8, DT_QINT32}))
                   .Finalize(node_def()));
     ASSERT_OK(InitOp());
   }
@@ -53,7 +53,8 @@ class SaveOpTest : public OpsTestBase {
 
 TEST_F(SaveOpTest, Simple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
-  const string tensornames[] = {"tensor_int", "tensor_float", "tensor_double",
+  const string tensornames[] = {"tensor_bool",  "tensor_int",
+                                "tensor_float", "tensor_double",
                                 "tensor_qint8", "tensor_qint32"};
 
   MakeOp();
@@ -62,8 +63,11 @@ TEST_F(SaveOpTest, Simple) {
                    [&filename](int x) -> string { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({5}),
+  AddInput<string>(TensorShape({6}),
                    [&tensornames](int x) -> string { return tensornames[x]; });
+
+  // Add a 1-d bool tensor
+  AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });
 
   // Add a 1-d integer tensor
   AddInput<int32>(TensorShape({10}), [](int x) -> int32 { return x + 1; });
@@ -93,6 +97,25 @@ TEST_F(SaveOpTest, Simple) {
   EXPECT_OK(reader.status());
 
   // We expect to find all saved tensors
+  {
+    // The 1-d bool tensor
+    TensorShape shape;
+    DataType type;
+    EXPECT_TRUE(reader.HasTensor("tensor_bool", &shape, &type));
+    TensorShape expected({2});
+    EXPECT_TRUE(shape.IsSameSize(expected));
+    EXPECT_EQ(DT_BOOL, type);
+
+    // We expect the tensor value to be correct.
+    TensorSlice s = TensorSlice::ParseOrDie("-");
+    bool data[2];
+    std::fill_n(data, 2, false);
+    EXPECT_TRUE(reader.CopySliceData("tensor_bool", s, data));
+    for (int i = 0; i < 2; ++i) {
+      EXPECT_EQ((i != 0), data[i]);
+    }
+  }
+
   {
     // The 1-d integer tensor
     TensorShape shape;

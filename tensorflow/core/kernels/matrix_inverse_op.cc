@@ -51,11 +51,10 @@ class MatrixInverseOp
     }
   }
 
-  using typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix;
-  using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
+  typedef UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> Base;
+  using Matrix = typename Base::Matrix;
+  using MatrixMap = typename Base::MatrixMap;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
                      MatrixMap* output) override {

@@ -19,6 +19,7 @@ sh_binary(
         "setup.py",
         ":simple_console",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
         "//tensorflow/models/image/cifar10:all_files",
         "//tensorflow/models/image/mnist:convolutional",

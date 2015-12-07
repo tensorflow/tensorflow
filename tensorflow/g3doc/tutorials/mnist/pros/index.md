@@ -9,7 +9,8 @@ while constructing a deep convolutional MNIST classifier.
 *This introduction assumes familiarity with neural networks and the MNIST
 dataset. If you don't have
 a background with them, check out the
-[introduction for beginners](../beginners/index.md).*
+[introduction for beginners](../beginners/index.md). Be sure to
+[install TensorFlow](../../../get_started/os_setup.md) before starting.*
 
 ## Setup
 
@@ -19,7 +20,7 @@ TensorFlow session.
 ### Load MNIST Data
 
 For your convenience, we've included
-[a script](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/input_data.py)
+[a script](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py)
 which automatically downloads and imports the MNIST dataset. It will create a
 directory `'MNIST_data'` in which to store the data files.
 

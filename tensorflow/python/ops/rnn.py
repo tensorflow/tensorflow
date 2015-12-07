@@ -55,7 +55,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Args:
     cell: An instance of RNNCell.
-    inputs: A length T list of inputs, each a vector with shape [batch_size].
+    inputs: A length T list of inputs, each a tensor of shape
+      [batch_size, cell.input_size].
     initial_state: (optional) An initial state for the RNN.  This must be
       a tensor of appropriate type and shape [batch_size x cell.state_size].
     dtype: (optional) The data type for the initial state.  Required if
@@ -124,7 +125,8 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
 
   Args:
     cell: An instance of RNNCell.
-    inputs: A length T list of inputs, each a vector with shape [batch_size].
+    inputs: A length T list of inputs, each a tensor of shape
+      [batch_size, cell.input_size].
     state_saver: A state saver object with methods `state` and `save_state`.
     state_name: The name to use with the state_saver.
     sequence_length: (optional) An int64 vector (tensor) size [batch_size].
@@ -182,15 +184,17 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   Similar to the unidirectional case above (rnn) but takes input and builds
   independent forward and backward RNNs with the final forward and backward
   outputs depth-concatenated, such that the output will have the format
-  [time][batch][cell_fw.output_size + cell_bw.output_size]. The initial state
-  for both directions is zero by default (but can be set optionally) and no
-  intermediate states are ever returned -- the network is fully unrolled for
-  the given (passed in) length(s) of the sequence(s).
+  [time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
+  forward and backward cell must match. The initial state for both directions
+  is zero by default (but can be set optionally) and no intermediate states are
+  ever returned -- the network is fully unrolled for the given (passed in)
+  length(s) of the sequence(s).
 
   Args:
     cell_fw: An instance of RNNCell, to be used for forward direction.
     cell_bw: An instance of RNNCell, to be used for backward direction.
-    inputs: A length T list of inputs, each a vector with shape [batch_size].
+    inputs: A length T list of inputs, each a tensor of shape
+      [batch_size, cell.input_size].
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
       [batch_size x cell.state_size].
