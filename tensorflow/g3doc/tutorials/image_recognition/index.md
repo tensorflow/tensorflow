@@ -49,9 +49,9 @@ Andrej Karpathy who attempted to measure his own performance. He reached
 [blog post]: http://karpathy.github.io/2014/09/02/what-i-learned-from-competing-against-a-convnet-on-imagenet/
 
 This tutorial will teach you how to use [Inception-v3]. You'll learn how to
-classify images into [1000 classes] in Python or C++. You'll learn how
-to run the model on mobile devices. You'll also learn how to extract higher
-level features from this model which may be reused for other vision tasks.
+classify images into [1000 classes] in Python or C++. We'll also discuss how to
+extract higher level features from this model which may be reused for other
+vision tasks.
 
 We're excited to see what the community will do with this model.
 
@@ -90,11 +90,10 @@ will need to point `--model_dir`  to the directory used.
 
 ## Usage with the C++ API
 
-You can run the same [Inception-v3] model in
-C++, though it's packaged in a slightly more compact file, because we don't need
-to keep some data that's only used for training. You can download the archive
-containing the GraphDef that defines the model like this (running from the root
-directory of the TensorFlow repository):
+You can run the same [Inception-v3] model in C++ for use in production
+environments. You can download the archive containing the GraphDef that defines
+the model like this (running from the root directory of the TensorFlow
+repository):
 
 ```bash
 wget https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip -O tensorflow/examples/label_image/data/inception_dec_2015.zip
