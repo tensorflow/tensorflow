@@ -97,9 +97,7 @@ trained on ImageNet Challenge data and label set.
 
 [View Tutorial](../tutorials/image_recognition/index.md)
 
-We will be releasing code for training a state-of-the-art Inception model.
-
-COMING SOON
+We will soon be releasing code for training a state-of-the-art Inception model.
 
 
 ## Deep Dream Visual Hallucinations
