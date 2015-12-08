@@ -16,7 +16,7 @@ import random
 
 import skflow
 import tensorflow as tf
-from sklearn import datasets, metrics
+from sklearn import datasets, metrics, cross_validation
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
