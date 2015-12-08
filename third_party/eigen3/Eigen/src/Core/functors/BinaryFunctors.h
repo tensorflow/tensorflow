@@ -156,6 +156,64 @@ struct functor_traits<scalar_max_op<Scalar> > {
   };
 };
 
+
+/** \internal
+  * \brief Template functors for comparison of two scalars
+  * \todo Implement packet-comparisons
+  */
+template<typename Scalar, ComparisonName cmp> struct scalar_cmp_op;
+
+template<typename Scalar, ComparisonName cmp>
+struct functor_traits<scalar_cmp_op<Scalar, cmp> > {
+  enum {
+    Cost = NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
+template<ComparisonName Cmp, typename Scalar>
+struct result_of<scalar_cmp_op<Scalar, Cmp>(Scalar,Scalar)> {
+  typedef bool type;
+};
+
+
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_EQ> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a==b;}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_LT> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a<b;}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_LE> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a<=b;}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_GT> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a>b;}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_GE> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a>=b;}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_UNORD> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return !(a<=b || b<=a);}
+};
+template<typename Scalar> struct scalar_cmp_op<Scalar, cmp_NEQ> {
+  typedef bool result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_cmp_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const Scalar& a, const Scalar& b) const {return a!=b;}
+};
+
+
 /** \internal
   * \brief Template functor to compute the hypot of two scalars
   *

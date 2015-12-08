@@ -769,7 +769,6 @@ struct functor_traits<scalar_sin_op<Scalar> >
   };
 };
 
-
 /** \internal
   * \brief Template functor to compute the tan of a scalar
   * \sa class CwiseUnaryOp, ArrayBase::tan()
@@ -826,6 +825,82 @@ struct functor_traits<scalar_asin_op<Scalar> >
     PacketAccess = packet_traits<Scalar>::HasASin
   };
 };
+
+/** \internal
+  * \brief Template functor to compute the lgamma of a scalar
+  * \sa class CwiseUnaryOp, ArrayBase::lgamma()
+  */
+template<typename Scalar> struct scalar_lgamma_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_lgamma_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar operator() (const Scalar& a) const {
+    using numext::lgamma; return lgamma(a);
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return internal::plgamma(a);
+  }
+};
+
+template<typename Scalar>
+struct functor_traits<scalar_lgamma_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasLGamma
+  };
+};
+
+/** \internal
+  * \brief Template functor to compute the erf of a scalar
+  * \sa class CwiseUnaryOp, ArrayBase::erf()
+  */
+template<typename Scalar> struct scalar_erf_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erf_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar operator() (const Scalar& a) const {
+    using numext::erf; return erf(a);
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return internal::perf(a);
+  }
+};
+
+template<typename Scalar>
+struct functor_traits<scalar_erf_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasErf
+  };
+};
+
+/** \internal
+  * \brief Template functor to compute the erfc of a scalar
+  * \sa class CwiseUnaryOp, ArrayBase::erfc()
+  */
+template<typename Scalar> struct scalar_erfc_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erfc_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar operator() (const Scalar& a) const {
+    using numext::erfc; return erfc(a);
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return internal::perfc(a);
+  }
+};
+
+template<typename Scalar>
+struct functor_traits<scalar_erfc_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasErfc
+  };
+};
+
 
 /** \internal
   * \brief Template functor to raise a scalar to a power

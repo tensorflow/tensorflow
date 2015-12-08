@@ -69,7 +69,10 @@ struct default_packet_traits
     HasASin   = 0,
     HasACos   = 0,
     HasATan   = 0,
-    HasTanH   = 0
+    HasTanH   = 0,
+    HasLGamma = 0,
+    HasErf = 0,
+    HasErfc = 0
   };
 };
 
@@ -452,6 +455,18 @@ Packet ptanh(const Packet& x)
   // threshold on my system!
   return pselect(med_approx, small_approx, ple(pabs(x), thresh));
 }
+
+/** \internal \returns the ln(|gamma(\a a)|) (coeff-wise) */
+template<typename Packet> EIGEN_DECLARE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
+Packet plgamma(const Packet& a) { return numext::lgamma(a); }
+
+/** \internal \returns the erf(\a a) (coeff-wise) */
+template<typename Packet> EIGEN_DECLARE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
+Packet perf(const Packet& a) { return numext::erf(a); }
+
+/** \internal \returns the erfc(\a a) (coeff-wise) */
+template<typename Packet> EIGEN_DECLARE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
+Packet perfc(const Packet& a) { return numext::erfc(a); }
 
 /***************************************************************************
 * The following functions might not have to be overwritten for vectorized types

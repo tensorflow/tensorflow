@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import tensorflow.python.platform
 
+import tensorflow as tf
+
 from tensorflow.python.client import graph_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -139,6 +141,34 @@ class DeviceFunctionsTest(googletest.TestCase):
     self.assertEqual(const_3.device, "/device:CPU:0")
     self.assertEqual(const_4.device, "/device:CPU:1")
     self.assertEqual(const_5.device, "/replica:0")
+
+  def testExtractSubGraph(self):
+    graph_def = tf.GraphDef()
+    n1 = graph_def.node.add()
+    n1.name = "n1"
+    n1.input.extend(["n5"])
+    n2 = graph_def.node.add()
+    n2.name = "n2"
+    # Take the first output of the n1 node as the input.
+    n2.input.extend(["n1:0"])
+    n3 = graph_def.node.add()
+    n3.name = "n3"
+    # Add a control input (which isn't really needed by the kernel, but
+    # rather to enforce execution order between nodes).
+    n3.input.extend(["^n2"])
+    n4 = graph_def.node.add()
+    n4.name = "n4"
+
+    # It is fine to have a loops in the graph as well.
+    n5 = graph_def.node.add()
+    n5.name = "n5"
+    n5.input.extend(["n1"])
+
+    sub_graph = graph_util.extract_sub_graph(graph_def, ["n3"])
+    self.assertEqual("n1", sub_graph.node[0].name)
+    self.assertEqual("n2", sub_graph.node[1].name)
+    self.assertEqual("n3", sub_graph.node[2].name)
+    self.assertEqual("n5", sub_graph.node[3].name)
 
 
 if __name__ == "__main__":

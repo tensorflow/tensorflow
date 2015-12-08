@@ -28,6 +28,12 @@ using std::asin;
 using std::atan;
 #endif
 
+#if defined(__CUDA_ARCH__)
+using std::lgamma;  // Supported by all cuda compilers
+using std::erf;  // Supported by all cuda compilers
+using std::erfc;  // Supported by all cuda compilers
+#endif
+
 /** \internal
   * \brief Template functor to compute the opposite of a scalar
   *
@@ -408,6 +414,85 @@ struct functor_traits<scalar_tanh_op<Scalar> >
     PacketAccess = packet_traits<Scalar>::HasTanH
   };
 };
+
+/** \internal
+  * \brief Template functor to compute the natural log of the absolute value of Gamma of a scalar
+  * \sa class CwiseUnaryOp, Cwise::lgamma()
+  */
+template<typename Scalar> struct scalar_lgamma_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_lgamma_op)
+  EIGEN_DEVICE_FUNC inline const Scalar operator() (const Scalar& a) const {
+#if defined(__CUDA_ARCH__)
+    return lgamma(a);
+#else
+    using numext::lgamma; return lgamma(a);
+#endif
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  inline Packet packetOp(const Packet& a) const { return internal::plgamma(a); }
+};
+template<typename Scalar>
+struct functor_traits<scalar_lgamma_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasLGamma
+  };
+};
+
+/** \internal
+  * \brief Template functor to compute the Gauss error function of a scalar
+  * \sa class CwiseUnaryOp, Cwise::erf()
+  */
+template<typename Scalar> struct scalar_erf_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erf_op)
+  EIGEN_DEVICE_FUNC inline const Scalar operator() (const Scalar& a) const {
+#if defined(__CUDA_ARCH__)
+    return erf(a);
+#else
+    using numext::erf; return erf(a);
+#endif
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  inline Packet packetOp(const Packet& a) const { return internal::perf(a); }
+};
+template<typename Scalar>
+struct functor_traits<scalar_erf_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasErf
+  };
+};
+
+/** \internal
+  * \brief Template functor to compute the Complementary Error Function of a scalar
+  * \sa class CwiseUnaryOp, Cwise::erfc()
+  */
+template<typename Scalar> struct scalar_erfc_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erfc_op)
+  EIGEN_DEVICE_FUNC inline const Scalar operator() (const Scalar& a) const {
+#if defined(__CUDA_ARCH__)
+    return erfc(a);
+#else
+    using numext::erfc; return erfc(a);
+#endif
+  }
+  typedef typename packet_traits<Scalar>::type Packet;
+  inline Packet packetOp(const Packet& a) const { return internal::perfc(a); }
+};
+template<typename Scalar>
+struct functor_traits<scalar_erfc_op<Scalar> >
+{
+  enum {
+    // Guesstimate
+    Cost = 10 * NumTraits<Scalar>::MulCost + 5 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasErfc
+  };
+};
+
 
  /** \internal
   * \brief Template functor to compute the sigmoid of a scalar

@@ -451,6 +451,8 @@ class StreamInterface {
 
 static cudaDeviceProp* m_deviceProperties;
 static bool m_devicePropInitialized = false;
+
+#ifndef __CUDA_ARCH__
 static tensorflow::mutex m_devicePropInitMutex(tensorflow::LINKER_INITIALIZED);
 
 static void initializeDeviceProp() {
@@ -469,6 +471,11 @@ static void initializeDeviceProp() {
     }
   }
 }
+#else
+static void initializeDeviceProp() {
+  assert(false && "This function should never be called from within a CUDA kernel");
+}
+#endif  // __CUDA_ARCH__
 
 static const cudaStream_t default_stream = cudaStreamDefault;
 

@@ -354,6 +354,10 @@ class Seq2SeqTest(tf.test.TestCase):
     # We learn to copy 10 symbols in 2 buckets: length 4 and length 8.
     classes = 10
     buckets = [(4, 4), (8, 8)]
+    perplexities = [[], []]  # Results for each bucket.
+    tf.set_random_seed(111)
+    random.seed(111)
+    np.random.seed(111)
 
     with self.test_session() as sess:
       # We use sampled softmax so we keep output projection separate.
@@ -378,8 +382,7 @@ class Seq2SeqTest(tf.test.TestCase):
             softmax_loss_function=SampledLoss)
 
       # Now we construct the copy model.
-      tf.set_random_seed(111)
-      batch_size = 32
+      batch_size = 8
       inp = [tf.placeholder(tf.int32, shape=[None]) for _ in xrange(8)]
       out = [tf.placeholder(tf.int32, shape=[None]) for _ in xrange(8)]
       weights = [tf.ones_like(inp[0], dtype=tf.float32) for _ in xrange(8)]
@@ -394,26 +397,26 @@ class Seq2SeqTest(tf.test.TestCase):
           update = optimizer.apply_gradients(zip(grads, params))
           updates.append(update)
         sess.run([tf.initialize_all_variables()])
-      for ep in xrange(3):
-        log_perp = 0.0
-        for _ in xrange(50):
-          bucket = random.choice(np.arange(len(buckets)))
-          length = buckets[bucket][0]
-          i = [np.array([np.random.randint(9) + 1 for _ in xrange(batch_size)],
-                        dtype=np.int32) for _ in xrange(length)]
-          # 0 is our "GO" symbol here.
-          o = [np.array([0 for _ in xrange(batch_size)], dtype=np.int32)] + i
-          feed = {}
-          for l in xrange(length):
-            feed[inp[l].name] = i[l]
-            feed[out[l].name] = o[l]
-          if length < 8:  # For the 4-bucket, we need the 5th as target.
-            feed[out[length].name] = o[length]
-          res = sess.run([updates[bucket], losses[bucket]], feed)
-          log_perp += float(res[1])
-        perp = math.exp(log_perp / 100)
-        print("step %d avg. perp %f" % ((ep + 1) * 50, perp))
-      self.assertLess(perp, 2.5)
+      steps = 6
+      for _ in xrange(steps):
+        bucket = random.choice(np.arange(len(buckets)))
+        length = buckets[bucket][0]
+        i = [np.array([np.random.randint(9) + 1 for _ in xrange(batch_size)],
+                      dtype=np.int32) for _ in xrange(length)]
+        # 0 is our "GO" symbol here.
+        o = [np.array([0 for _ in xrange(batch_size)], dtype=np.int32)] + i
+        feed = {}
+        for l in xrange(length):
+          feed[inp[l].name] = i[l]
+          feed[out[l].name] = o[l]
+        if length < 8:  # For the 4-bucket, we need the 5th as target.
+          feed[out[length].name] = o[length]
+        res = sess.run([updates[bucket], losses[bucket]], feed)
+        perplexities[bucket].append(math.exp(float(res[1])))
+      for bucket in xrange(len(buckets)):
+        if len(perplexities[bucket]) > 1:  # Assert that perplexity went down.
+          self.assertLess(perplexities[bucket][1], perplexities[bucket][0])
+
 
 if __name__ == "__main__":
   tf.test.main()

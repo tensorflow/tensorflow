@@ -22,11 +22,12 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-def embedding_lookup(params, ids, name=None):
+def embedding_lookup(params, ids, partition_strategy="mod", name=None):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -35,16 +36,32 @@ def embedding_lookup(params, ids, name=None):
   interpreted as a partition of a larger embedding tensor.
 
   If `len(params) > 1`, each element `id` of `ids` is partitioned between
-  the elements of `params` by computing `p = id % len(params)`, and is
-  then used to look up the slice `params[p][id // len(params), ...]`.
+  the elements of `params` according to the `partition_strategy`.
+  In all strategies, if the id space does not evenly divide the number of
+  partitions, each of the first `(max_id + 1) % len(params)` partitions will
+  be assigned one more id.
 
-  The results of the lookup are then concatenated into a dense
+  If `partition_strategy` is `"mod"`, we assign each id to partition
+  `p = id % len(params)`. For instance,
+  13 ids are split across 5 partitions as:
+  `[[0, 5, 10], [1, 6, 11], [2, 7, 12], [3, 8], [4, 9]]`
+
+  If `partition_strategy` is `"div"`, we assign ids to partitions in a
+  contiguous manner. In this case, 13 ids are split across 5 partitions as:
+  `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`
+
+  The results of the lookup are concatenated into a dense
   tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
   Args:
-    params: A list of tensors with the same shape and type.
+    params: A list of tensors with the same type and which can be concatenated
+      along dimension 0. Each `Tensor` must be appropriately sized for the given
+      `partition_strategy`.
     ids: A `Tensor` with type `int32` or `int64` containing the ids to be looked
       up in `params`.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+      if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+      is `"mod"`.
     name: A name for the operation (optional).
 
   Returns:
@@ -67,23 +84,59 @@ def embedding_lookup(params, ids, name=None):
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
       original_indices = math_ops.range(array_ops.size(flat_ids))
-      # Compute flat_ids % partitions for each id
-      ids_mod_p = flat_ids % np
-      if ids_mod_p.dtype != dtypes.int32:
-        ids_mod_p = math_ops.cast(ids_mod_p, dtypes.int32)
-      # Partition single list of ids based on ids % np into np separate lists
-      plist = data_flow_ops.dynamic_partition(flat_ids, ids_mod_p, np)
+
+      # Create p_assignments and set new_ids depending on the strategy.
+      if partition_strategy == "mod":
+        p_assignments = flat_ids % np
+        new_ids = flat_ids // np
+      elif partition_strategy == "div":
+        # Compute num_total_ids as the sum of dim-0 of params, then assign to
+        # partitions based on a constant number of ids per partition. Optimize
+        # if we already know the full shape statically.
+        dim_0_size = params[0].get_shape()[0]
+        for p in xrange(1, np):
+          dim_0_size += params[p].get_shape()[0]
+        if dim_0_size.value:
+          num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
+        else:
+          dim_0_sizes = []
+          for p in xrange(np):
+            with ops.device(params[p].device):
+              dim_0_sizes.append(array_ops.shape(params[p])[0])
+          num_total_ids = math_ops.reduce_sum(
+              math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
+        ids_per_partition = num_total_ids // np
+        extras = num_total_ids % np
+
+        p_assignments = math_ops.maximum(
+            flat_ids // (ids_per_partition + 1),
+            (flat_ids - extras) // ids_per_partition)
+
+        # Emulate a conditional using a boolean indicator tensor
+        is_in_first_extras_partitions = math_ops.cast(
+            p_assignments < extras, flat_ids.dtype)
+        new_ids = (
+            is_in_first_extras_partitions * (
+                flat_ids % (ids_per_partition + 1)) +
+            (1 - is_in_first_extras_partitions) * (
+                (flat_ids - extras) % ids_per_partition))
+      else:
+        raise ValueError("Unrecognized partition strategy: " +
+                         partition_strategy)
+
+      # Cast partition assignments to int32 for use in dynamic_partition.
+      # There really should not be more than 2^32 partitions.
+      p_assignments = math_ops.cast(p_assignments, dtypes.int32)
+      # Partition list of ids based on assignments into np separate lists
+      gather_ids = data_flow_ops.dynamic_partition(new_ids, p_assignments, np)
       # Similarly, partition the original indices.
-      pindices = data_flow_ops.dynamic_partition(original_indices, ids_mod_p,
-                                                 np)
+      pindices = data_flow_ops.dynamic_partition(original_indices,
+                                                 p_assignments, np)
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
       for p in xrange(np):
-        # TODO(agarwal): handle device allocations here and later in the
-        # colocate code.
-        gather_ids = plist[p] // np
         with ops.device(params[p].device):
-          partitioned_result.append(array_ops.gather(params[p], gather_ids))
+          partitioned_result.append(array_ops.gather(params[p], gather_ids[p]))
       # Stitch these back together
       ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
                                          name=name)
@@ -106,6 +159,7 @@ def embedding_lookup(params, ids, name=None):
 
 # TODO(lif): Add support for higher-rank SparseTensors
 def embedding_lookup_sparse(params, sp_ids, sp_weights,
+                            partition_strategy="mod",
                             name=None,
                             combiner="mean"):
   """Computes embeddings for the given ids and weights.
@@ -120,16 +174,15 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
   Args:
     params: A single tensor representing the complete embedding tensor,
       or a list of P tensors all of same shape except for the first dimension,
-      representing sharded embedding tensors. In the latter case, the ids are
-      partitioned by id % P, and we do separate lookups in params[p] for
-      0 <= p < P, and then stitch the results back together into a single
-      result tensor. The first dimension is allowed to vary as the vocab
-      size is not necessarily a multiple of P.
+      representing sharded embedding tensors.
     sp_ids: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
       where N is typically batch size and M is arbitrary.
     sp_weights: either a SparseTensor of float / double weights, or None to
       indicate all weights should be taken to be 1. If specified, sp_weights
       must have exactly the same shape and indices as sp_ids.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+      if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+      is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: Optional name for the op.
     combiner: A string specifying the reduction op. Currently "mean" and "sum"
       are supported.
@@ -187,7 +240,8 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
     else:
       idx = None
 
-    embeddings = embedding_lookup(params, ids)
+    embeddings = embedding_lookup(
+        params, ids, partition_strategy=partition_strategy)
     if not ignore_weights:
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
