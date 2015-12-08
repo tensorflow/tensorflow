@@ -28,6 +28,8 @@ namespace tensorflow {
 
 class SummaryImageOp : public OpKernel {
  public:
+  typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
+
   explicit SummaryImageOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_));
     const TensorProto* proto;
@@ -61,22 +63,56 @@ class SummaryImageOp : public OpKernel {
     const int w = tensor.dim_size(2);
     const int hw = h * w;  // Compact these two dims for simplicity
     const int depth = tensor.dim_size(3);
-    auto tensor_eigen = tensor.shaped<float, 3>({batch_size, hw, depth});
-
-    OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
-                errors::InvalidArgument(
-                    "expected depth <= bad_color.size, got depth = ", depth,
-                    ", bad_color.size = ", bad_color_.dim_size(0)));
-    auto bad_color_full = bad_color_.vec<uint8>();
-    typename TTypes<uint8>::Vec bad_color(bad_color_full.data(), depth);
-
-    // RGB (or gray or RGBA) is last dimension
-    Eigen::Tensor<uint8, 2, Eigen::RowMajor> image(hw, depth);
 
     Summary s;
+    if (tensor.dtype() == DT_UINT8) {
+      // For uint8 input, no normalization is necessary
+      auto ith_image = [&tensor, batch_size, hw, depth](int i) {
+        auto values = tensor.shaped<uint8, 3>({batch_size, hw, depth});
+        return typename TTypes<uint8>::ConstMatrix(
+            &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
+      };
+      AddImages(base_tag, batch_size, w, h, depth, ith_image, &s);
+    } else {  // tensor.dtype() == DT_FLOAT
+      // For float images, nans and infs are replaced with bad_color.
+      OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
+                  errors::InvalidArgument(
+                      "expected depth <= bad_color.size, got depth = ", depth,
+                      ", bad_color.size = ", bad_color_.dim_size(0)));
+      auto bad_color_full = bad_color_.vec<uint8>();
+      typename TTypes<uint8>::ConstVec bad_color(bad_color_full.data(), depth);
+
+      // Float images must be scaled and translated.
+      Uint8Image image(hw, depth);
+      auto ith_image = [&tensor, &image, bad_color, batch_size, hw,
+                        depth](int i) {
+        auto tensor_eigen = tensor.shaped<float, 3>({batch_size, hw, depth});
+        typename TTypes<float>::ConstMatrix values(
+            &tensor_eigen(i, 0, 0),
+            Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
+        NormalizeFloatImage(hw, depth, values, bad_color, &image);
+        return image;
+      };
+      AddImages(base_tag, batch_size, w, h, depth, ith_image, &s);
+    }
+
+    Tensor* summary_tensor = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
+    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+  }
+
+  // Add the sequence of images specified by ith_image to the summary.
+  //
+  // Factoring this loop out into a helper function lets ith_image behave
+  // differently in the float and uint8 cases: the float case needs a temporary
+  // buffer which can be shared across calls to ith_image, but the uint8 case
+  // does not.
+  Status AddImages(const string& tag, int batch_size, int w, int h, int depth,
+                   const std::function<Uint8Image(int)>& ith_image,
+                   Summary* s) {
     const int N = std::min<int>(max_images_, batch_size);
     for (int i = 0; i < N; ++i) {
-      Summary::Value* v = s.add_value();
+      Summary::Value* v = s->add_value();
       // The tag depends on the number of requested images (not the number
       // produced.)
       //
@@ -84,93 +120,94 @@ class SummaryImageOp : public OpKernel {
       // convention for display, so we append "/image" to guarantee that the
       // image(s) won't be displayed in the global scope with no name.
       if (max_images_ > 1) {
-        v->set_tag(strings::StrCat(base_tag, "/image/", i));
+        v->set_tag(strings::StrCat(tag, "/image/", i));
       } else {
-        v->set_tag(strings::StrCat(base_tag, "/image"));
+        v->set_tag(strings::StrCat(tag, "/image"));
       }
 
-      if (image.size()) {
-        typename TTypes<float>::ConstMatrix values(
-            &tensor_eigen(i, 0, 0),
-            Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
-
-        // Rescale the image to uint8 range.
-        //
-        // We are trying to generate an RCG image from a float tensor.  We do
-        // not have any info about the expected range of values in the tensor
-        // but the generated image needs to have all RGB values within [0, 255].
-        //
-        // We use two different algorithms to generate these values.  If the
-        // tensor has only positive values we scale them all by 255/max(values).
-        // If the tensor has both negative and positive values we scale them by
-        // the max of their absolute values and center them around 127.
-        //
-        // This works for most cases, but has the incovenient of not respecting
-        // the relative dynamic range across different instances of the tensor.
-
-        // Compute min and max ignoring nonfinite pixels
-        float image_min = std::numeric_limits<float>::infinity();
-        float image_max = -image_min;
-        for (int i = 0; i < hw; i++) {
-          bool finite = true;
-          for (int j = 0; j < depth; j++) {
-            if (!std::isfinite(values(i, j))) {
-              finite = false;
-              break;
-            }
-          }
-          if (finite) {
-            for (int j = 0; j < depth; j++) {
-              float value = values(i, j);
-              image_min = std::min(image_min, value);
-              image_max = std::max(image_max, value);
-            }
-          }
-        }
-
-        // Pick an affine transform into uint8
-        const float kZeroThreshold = 1e-6;
-        float scale, offset;
-        if (image_min < 0) {
-          float max_val = std::max(std::abs(image_min), std::abs(image_max));
-          scale = max_val < kZeroThreshold ? 0.0f : 127.0f / max_val;
-          offset = 128.0f;
-        } else {
-          scale = image_max < kZeroThreshold ? 0.0f : 255.0f / image_max;
-          offset = 0.0f;
-        }
-
-        // Transform image, turning nonfinite values to bad_color
-        for (int i = 0; i < hw; i++) {
-          bool finite = true;
-          for (int j = 0; j < depth; j++) {
-            if (!std::isfinite(values(i, j))) {
-              finite = false;
-              break;
-            }
-          }
-          if (finite) {
-            image.chip<0>(i) =
-                (values.chip<0>(i) * scale + offset).cast<uint8>();
-          } else {
-            image.chip<0>(i) = bad_color;
-          }
-        }
-      }
-
+      auto image = ith_image(i);
       Summary::Image* si = v->mutable_image();
       si->set_height(h);
       si->set_width(w);
       si->set_colorspace(depth);
-      OP_REQUIRES(c, png::WriteImageToBuffer(
-                         image.data(), w, h, w * depth, depth, 8, -1,
-                         si->mutable_encoded_image_string(), nullptr),
-                  errors::Internal("PNG encoding failed"));
+      const int channel_bits = 8;
+      const int compression = -1;  // Use zlib default
+      if (!png::WriteImageToBuffer(
+              image.data(), w, h, w * depth, depth, channel_bits, compression,
+              si->mutable_encoded_image_string(), nullptr)) {
+        return errors::Internal("PNG encoding failed");
+      }
+    }
+    return Status::OK();
+  }
+
+  static void NormalizeFloatImage(int hw, int depth,
+                                  typename TTypes<float>::ConstMatrix values,
+                                  typename TTypes<uint8>::ConstVec bad_color,
+                                  Uint8Image* image) {
+    if (!image->size()) return;  // Nothing to do for empty images
+
+    // Rescale the image to uint8 range.
+    //
+    // We are trying to generate an RGB image from a float tensor.  We do
+    // not have any info about the expected range of values in the tensor
+    // but the generated image needs to have all RGB values within [0, 255].
+    //
+    // We use two different algorithms to generate these values.  If the
+    // tensor has only positive values we scale them all by 255/max(values).
+    // If the tensor has both negative and positive values we scale them by
+    // the max of their absolute values and center them around 127.
+    //
+    // This works for most cases, but does not respect the relative dynamic
+    // range across different instances of the tensor.
+
+    // Compute min and max ignoring nonfinite pixels
+    float image_min = std::numeric_limits<float>::infinity();
+    float image_max = -image_min;
+    for (int i = 0; i < hw; i++) {
+      bool finite = true;
+      for (int j = 0; j < depth; j++) {
+        if (!std::isfinite(values(i, j))) {
+          finite = false;
+          break;
+        }
+      }
+      if (finite) {
+        for (int j = 0; j < depth; j++) {
+          float value = values(i, j);
+          image_min = std::min(image_min, value);
+          image_max = std::max(image_max, value);
+        }
+      }
     }
 
-    Tensor* summary_tensor = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    // Pick an affine transform into uint8
+    const float kZeroThreshold = 1e-6;
+    float scale, offset;
+    if (image_min < 0) {
+      float max_val = std::max(std::abs(image_min), std::abs(image_max));
+      scale = max_val < kZeroThreshold ? 0.0f : 127.0f / max_val;
+      offset = 128.0f;
+    } else {
+      scale = image_max < kZeroThreshold ? 0.0f : 255.0f / image_max;
+      offset = 0.0f;
+    }
+
+    // Transform image, turning nonfinite values to bad_color
+    for (int i = 0; i < hw; i++) {
+      bool finite = true;
+      for (int j = 0; j < depth; j++) {
+        if (!std::isfinite(values(i, j))) {
+          finite = false;
+          break;
+        }
+      }
+      if (finite) {
+        image->chip<0>(i) = (values.chip<0>(i) * scale + offset).cast<uint8>();
+      } else {
+        image->chip<0>(i) = bad_color;
+      }
+    }
   }
 
  private:

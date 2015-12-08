@@ -13,21 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-
-#include "tensorflow/core/lib/core/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/stream_executor/lib/status_macros.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace perftools {
 namespace gputools {
-namespace port {
 
-namespace error = tensorflow::error;
+ScratchAllocator::~ScratchAllocator() {}
 
-}  // namespace port
+OneTimeScratchAllocator::OneTimeScratchAllocator() {}
+OneTimeScratchAllocator::~OneTimeScratchAllocator() {}
+
+int64 OneTimeScratchAllocator::GetMemoryLimitInBytes(Stream* stream) {
+  return -1;
+}
+
+port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
+    Stream* stream, int64 byte_size) {
+  CHECK(temporary_ == nullptr);
+  SE_ASSIGN_OR_RETURN(temporary_,
+                      stream->AllocateTemporaryArray<uint8>(byte_size));
+  return temporary_->device_memory();
+}
+
 }  // namespace gputools
 }  // namespace perftools
-
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_

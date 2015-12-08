@@ -27,10 +27,177 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import googletest
+
+
+class RGBToHSVTest(test_util.TensorFlowTestCase):
+
+  def testBatch(self):
+    # Build an arbitrary RGB image
+    np.random.seed(7)
+    batch_size = 5
+    shape = (batch_size, 2, 7, 3)
+    inp = np.random.rand(*shape).astype(np.float32)
+
+    # Convert to HSV and back, as a batch and individually
+    with self.test_session() as sess:
+      batch0 = constant_op.constant(inp)
+      batch1 = image_ops.rgb_to_hsv(batch0)
+      batch2 = image_ops.hsv_to_rgb(batch1)
+      split0 = array_ops.unpack(batch0)
+      split1 = map(image_ops.rgb_to_hsv, split0)
+      split2 = map(image_ops.hsv_to_rgb, split1)
+      join1 = array_ops.pack(split1)
+      join2 = array_ops.pack(split2)
+      batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+
+    # Verify that processing batch elements together is the same as separate
+    self.assertAllClose(batch1, join1)
+    self.assertAllClose(batch2, join2)
+    self.assertAllClose(batch2, inp)
+
+  def testRGBToHSVRoundTrip(self):
+    data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    rgb_np = np.array(data, dtype=np.float32).reshape([2, 2, 3]) / 255.
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        hsv = image_ops.rgb_to_hsv(rgb_np)
+        rgb = image_ops.hsv_to_rgb(hsv)
+        rgb_tf = rgb.eval()
+    self.assertAllClose(rgb_tf, rgb_np)
+
+
+class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
+
+  def _RGBToGrayscale(self, images):
+    is_batch = True
+    if len(images.shape) == 3:
+      is_batch = False
+      images = np.expand_dims(images, axis=0)
+    out_shape = images.shape[0:3] + (1,)
+    out = np.zeros(shape=out_shape, dtype=np.uint8)
+    for batch in xrange(images.shape[0]):
+      for y in xrange(images.shape[1]):
+        for x in xrange(images.shape[2]):
+          red = images[batch, y, x, 0]
+          green = images[batch, y, x, 1]
+          blue = images[batch, y, x, 2]
+          gray = 0.2989 * red + 0.5870 * green + 0.1140 * blue
+          out[batch, y, x, 0] = int(gray)
+    if not is_batch:
+      out = np.squeeze(out, axis=0)
+    return out
+
+  def _TestRGBToGrayscale(self, x_np):
+    y_np = self._RGBToGrayscale(x_np)
+
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.rgb_to_grayscale(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testBasicRGBToGrayscale(self):
+    # 4-D input with batch dimension.
+    x_np = np.array([[1, 2, 3], [4, 10, 1]],
+                    dtype=np.uint8).reshape([1, 1, 2, 3])
+    self._TestRGBToGrayscale(x_np)
+
+    # 3-D input with no batch dimension.
+    x_np = np.array([[1, 2, 3], [4, 10, 1]], dtype=np.uint8).reshape([1, 2, 3])
+    self._TestRGBToGrayscale(x_np)
+
+  def testBasicGrayscaleToRGB(self):
+    # 4-D input with batch dimension.
+    x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 1, 2, 1])
+    y_np = np.array([[1, 1, 1], [2, 2, 2]],
+                    dtype=np.uint8).reshape([1, 1, 2, 3])
+
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.grayscale_to_rgb(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+    # 3-D input with no batch dimension.
+    x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2, 1])
+    y_np = np.array([[1, 1, 1], [2, 2, 2]], dtype=np.uint8).reshape([1, 2, 3])
+
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.grayscale_to_rgb(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+
+class AdjustHueTest(test_util.TensorFlowTestCase):
+
+  def testAdjustNegativeHue(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    delta = -0.25
+    y_data = [0, 13, 1, 54, 226, 59, 8, 234, 150, 255, 39, 1]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_hue(x, delta)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testAdjustPositiveHue(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    delta = 0.25
+    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_hue(x, delta)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+
+class AdjustSaturationTest(test_util.TensorFlowTestCase):
+
+  def testHalfSaturation(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    saturation_factor = 0.5
+    y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_saturation(x, saturation_factor)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testTwiceSaturation(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    saturation_factor = 2.0
+    y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_saturation(x, saturation_factor)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
 
 
 class FlipTest(test_util.TensorFlowTestCase):

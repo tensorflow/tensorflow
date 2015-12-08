@@ -43,7 +43,7 @@ def histogram_summary(tag, values, collections=None, name=None):
 
   Args:
     tag: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
-    values: A `float32` or `float64` `Tensor`. Any shape. Values to use to
+    values: A real numeric `Tensor`. Any shape. Values to use to
       build the histogram.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
@@ -71,9 +71,10 @@ def image_summary(tag, tensor, max_images=None, collections=None, name=None):
   *  3: `tensor` is interpreted as RGB.
   *  4: `tensor` is interpreted as RGBA.
 
-  The images have the same number of channels as the input tensor. Their values
-  are normalized, one image at a time, to fit in the range `[0, 255]`.  The
-  op uses two different normalization algorithms:
+  The images have the same number of channels as the input tensor. For float
+  input, the values are normalized one image at a time to fit in the range
+  `[0, 255]`.  `uint8` values are unchanged.  The op uses two different
+  normalization algorithms:
 
   *  If the input values are all positive, they are rescaled so the largest one
      is 255.
@@ -92,8 +93,8 @@ def image_summary(tag, tensor, max_images=None, collections=None, name=None):
   Args:
     tag: A scalar `Tensor` of type `string`. Used to build the `tag`
       of the summary values.
-    tensor: A 4-D `float32` `Tensor` of shape `[batch_size, height, width,
-     channels]` where `channels` is 1, 3, or 4.
+    tensor: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
+      width, channels]` where `channels` is 1, 3, or 4.
     max_images: Max number of batch elements to generate images for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [ops.GraphKeys.SUMMARIES]

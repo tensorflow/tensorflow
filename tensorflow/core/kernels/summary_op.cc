@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -105,14 +106,12 @@ class SummaryHistoOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("HistogramSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SummaryHistoOp<float>);
-REGISTER_KERNEL_BUILDER(Name("HistogramSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SummaryHistoOp<double>);
+#define REGISTER(T)                                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SummaryHistoOp<T>);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER)
+#undef REGISTER
 
 struct HistogramResource : public ResourceBase {
   histogram::ThreadSafeHistogram histogram;

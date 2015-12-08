@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/stream_executor/dso_loader.h"
@@ -88,20 +88,6 @@ static CUDAEvent *AsCUDAEvent(Event *event) {
   return static_cast<CUDAEvent *>(event->implementation());
 }
 
-// Given a platform-independent stream datatype, returns the internal CUDA
-// platform implementation pointer.
-static CUDAStream *AsCUDAStream(Stream *stream) {
-  DCHECK(stream != nullptr);
-  return static_cast<CUDAStream *>(stream->implementation());
-}
-
-// Given a platform-independent stream datatype, returns the platform
-// implementation's internal value, suitable for passing directly to libcuda
-// APIs.
-CUstream AsCUDAStreamValue(Stream *stream) {
-  DCHECK(stream != nullptr);
-  return AsCUDAStream(stream)->cuda_stream();
-}
 
 // Given a platform-independent timer datatype, returns the internal CUDA
 // platform implementation pointer.
@@ -861,6 +847,26 @@ bool CUDAExecutor::SupportsFft() const { return true; }
 
 bool CUDAExecutor::SupportsRng() const { return true; }
 
+std::unique_ptr<internal::EventInterface>
+CUDAExecutor::CreateEventImplementation() {
+  return std::unique_ptr<internal::EventInterface>(new CUDAEvent(this));
+}
+
+std::unique_ptr<internal::KernelInterface>
+CUDAExecutor::CreateKernelImplementation() {
+  return std::unique_ptr<internal::KernelInterface>(new CUDAKernel());
+}
+
+std::unique_ptr<internal::StreamInterface>
+CUDAExecutor::GetStreamImplementation() {
+  return std::unique_ptr<internal::StreamInterface>(new CUDAStream(this));
+}
+
+std::unique_ptr<internal::TimerInterface>
+CUDAExecutor::GetTimerImplementation() {
+  return std::unique_ptr<internal::TimerInterface>(new CUDATimer(this));
+}
+
 void *CUDAExecutor::CudaContextHack() { return context_; }
 
 CUcontext CUDAExecutor::cuda_context() { return context_; }
@@ -1063,30 +1069,6 @@ void initialize_cuda_gpu_executor() {
   *gpu::internal::MakeCUDAExecutorImplementation() = [](
       const gpu::PluginConfig &config) {
     return new gpu::cuda::CUDAExecutor{config};
-  };
-
-  *gpu::internal::MakeCUDAKernelImplementation() = []() {
-    return new gpu::cuda::CUDAKernel;
-  };
-
-  *gpu::internal::MakeCUDAEventImplementation() = [](
-      gpu::StreamExecutor *parent) {
-    gpu::cuda::CUDAExecutor *cuda_executor =
-        static_cast<gpu::cuda::CUDAExecutor *>(parent->implementation());
-    return new gpu::cuda::CUDAEvent{cuda_executor};
-  };
-
-  *gpu::internal::MakeCUDAStreamImplementation() = [](
-      gpu::StreamExecutor *parent) {
-    gpu::cuda::CUDAExecutor *cuda_executor =
-        static_cast<gpu::cuda::CUDAExecutor *>(parent->implementation());
-    return new gpu::cuda::CUDAStream{cuda_executor};
-  };
-  *gpu::internal::MakeCUDATimerImplementation() = [](
-      gpu::StreamExecutor *parent) {
-    gpu::cuda::CUDAExecutor *cuda_executor =
-        static_cast<gpu::cuda::CUDAExecutor *>(parent->implementation());
-    return new gpu::cuda::CUDATimer{cuda_executor};
   };
 }
 

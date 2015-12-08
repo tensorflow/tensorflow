@@ -60,4 +60,5 @@ typename MakeUniqueResult<T>::invalid MakeUnique(Args&&... /* args */) =
 }  // namespace gputools
 }  // namespace perftools
 
+
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_PTR_UTIL_H_

@@ -1140,7 +1140,7 @@ class BlasSupport {
 
 // Macro used to quickly declare overrides for abstract virtuals in the
 // BlasSupport base class.
-#define TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES                  \
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES                 \
   bool DoBlasAsum(Stream *stream, uint64 elem_count,                           \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *result) override;                       \

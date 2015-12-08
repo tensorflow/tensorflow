@@ -198,6 +198,8 @@
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)
   * [`adjust_contrast`](../../api_docs/python/image.md#adjust_contrast)
+  * [`adjust_hue`](../../api_docs/python/image.md#adjust_hue)
+  * [`adjust_saturation`](../../api_docs/python/image.md#adjust_saturation)
   * [`convert_image_dtype`](../../api_docs/python/image.md#convert_image_dtype)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
@@ -207,6 +209,8 @@
   * [`extract_glimpse`](../../api_docs/python/image.md#extract_glimpse)
   * [`flip_left_right`](../../api_docs/python/image.md#flip_left_right)
   * [`flip_up_down`](../../api_docs/python/image.md#flip_up_down)
+  * [`grayscale_to_rgb`](../../api_docs/python/image.md#grayscale_to_rgb)
+  * [`hsv_to_rgb`](../../api_docs/python/image.md#hsv_to_rgb)
   * [`pad_to_bounding_box`](../../api_docs/python/image.md#pad_to_bounding_box)
   * [`per_image_whitening`](../../api_docs/python/image.md#per_image_whitening)
   * [`random_brightness`](../../api_docs/python/image.md#random_brightness)
@@ -214,6 +218,8 @@
   * [`random_crop`](../../api_docs/python/image.md#random_crop)
   * [`random_flip_left_right`](../../api_docs/python/image.md#random_flip_left_right)
   * [`random_flip_up_down`](../../api_docs/python/image.md#random_flip_up_down)
+  * [`random_hue`](../../api_docs/python/image.md#random_hue)
+  * [`random_saturation`](../../api_docs/python/image.md#random_saturation)
   * [`resize_area`](../../api_docs/python/image.md#resize_area)
   * [`resize_bicubic`](../../api_docs/python/image.md#resize_bicubic)
   * [`resize_bilinear`](../../api_docs/python/image.md#resize_bilinear)
@@ -221,6 +227,8 @@
   * [`resize_images`](../../api_docs/python/image.md#resize_images)
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`resize_nearest_neighbor_grad`](../../api_docs/python/image.md#resize_nearest_neighbor_grad)
+  * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
+  * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:

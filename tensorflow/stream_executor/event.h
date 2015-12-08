@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/stream_executor/platform/port.h"
+
 namespace perftools {
 namespace gputools {
 
@@ -63,13 +65,15 @@ class Event {
  private:
   friend class Stream;
 
+  // Pointer to the StreamExecutor interface used to create this object.
+  // Not owned.
+  StreamExecutor* stream_exec_;
+
   // Pointer to the platform-specific EventInterface implementation underlying
   // the object. Owned.
   std::unique_ptr<internal::EventInterface> implementation_;
 
-  // Pointer to the StreamExecutor interface used to create this object.
-  // Not owned.
-  StreamExecutor* stream_exec_;
+  SE_DISALLOW_COPY_AND_ASSIGN(Event);
 };
 
 }  // namespace gputools

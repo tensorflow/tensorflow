@@ -40,7 +40,7 @@ REGISTER_OP("HistogramSummary")
     .Input("tag: string")
     .Input("values: T")
     .Output("summary: string")
-    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a histogram.
 
@@ -57,9 +57,10 @@ summary: Scalar. Serialized `Summary` protocol buffer.
 
 REGISTER_OP("ImageSummary")
     .Input("tag: string")
-    .Input("tensor: float")
+    .Input("tensor: T")
     .Output("summary: string")
     .Attr("max_images: int >= 1 = 3")
+    .Attr("T: {uint8, float} = DT_FLOAT")
     .Attr(
         "bad_color: tensor = { dtype: DT_UINT8 "
         "tensor_shape: { dim { size: 4 } } "
@@ -75,9 +76,10 @@ height, width, channels]` and where `channels` can be:
 *  3: `tensor` is interpreted as RGB.
 *  4: `tensor` is interpreted as RGBA.
 
-The images have the same number of channels as the input tensor. Their values
-are normalized, one image at a time, to fit in the range `[0, 255]`.  The
-op uses two different normalization algorithms:
+The images have the same number of channels as the input tensor. For float
+input, the values are normalized one image at a time to fit in the range
+`[0, 255]`.  `uint8` values are unchanged.  The op uses two different
+normalization algorithms:
 
 *  If the input values are all positive, they are rescaled so the largest one
    is 255.

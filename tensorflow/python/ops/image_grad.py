@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Contains Gradient functions for image ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -36,9 +36,31 @@ def _ResizeNearestNeighborGrad(op, grad):
   Returns:
     The gradients w.r.t. the input and the output.
   """
-  grads = gen_image_ops.resize_nearest_neighbor_grad(
+  # pylint: disable=protected-access
+  grads = gen_image_ops._resize_nearest_neighbor_grad(
       grad, op.inputs[0].get_shape()[1:3])
+  # pylint: enable=protected-access
   return [grads, None]
+
+
+@ops.RegisterGradient("ResizeBilinear")
+def _ResizeBilinearGrad(op, grad):
+  """The derivatives for bilinear resizing.
+
+  Args:
+    op: The ResizeBilinear op.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the input.
+  """
+  allowed_types = [dtypes.float32, dtypes.float64]
+  grad0 = None
+  if op.inputs[0].dtype in allowed_types:
+    # pylint: disable=protected-access
+    grad0 = gen_image_ops._resize_bilinear_grad(grad, op.inputs[0])
+    # pylint: enable=protected-access
+  return [grad0, None]
 
 
 @ops.RegisterShape("ResizeNearestNeighborGrad")
@@ -55,3 +77,10 @@ def _ResizeShape(op):
   return [
       tensor_shape.TensorShape([input_shape[0], height, width, input_shape[3]])
   ]
+
+
+@ops.RegisterShape("ResizeBilinearGrad")
+def _ResizeBilinearGradShape(op):
+  """Shape function for ResizeBilinearGrad."""
+  return [op.inputs[1].get_shape()]
+

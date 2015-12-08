@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace perftools {
 namespace gputools {
@@ -58,29 +57,13 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   has_shared_memory_bytes_ = true;
 }
 
-static internal::KernelInterface *KernelImplementationFromPlatformKind(
-    PlatformKind platform_kind) {
-  if (platform_kind == PlatformKind::kCuda) {
-    return (*internal::MakeCUDAKernelImplementation())();
-  } else if (platform_kind == PlatformKind::kOpenCL ||
-             platform_kind == PlatformKind::kOpenCLAltera) {
-    return (*internal::MakeOpenCLKernelImplementation())();
-  } else {
-    LOG(FATAL) << "cannot create kernel implementation for platform kind: "
-               << PlatformKindString(platform_kind);
-  }
-}
-
 KernelBase::KernelBase(StreamExecutor *parent)
-    : implementation_(
-          KernelImplementationFromPlatformKind(parent->platform_kind())),
-      parent_(parent) {
-  DCHECK(parent_ != nullptr);
-}
+    : parent_(parent),
+      implementation_(parent->implementation()->CreateKernelImplementation()) {}
 
 KernelBase::KernelBase(StreamExecutor *parent,
                        internal::KernelInterface *implementation)
-    : implementation_(implementation), parent_(parent) {}
+    : parent_(parent), implementation_(implementation) {}
 
 KernelBase::~KernelBase() {}
 

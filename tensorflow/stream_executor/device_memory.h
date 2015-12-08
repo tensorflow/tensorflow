@@ -111,6 +111,7 @@ class DeviceMemory final : public DeviceMemoryBase {
  public:
   // Default constructor instantiates a null-pointed, zero-sized memory region.
   DeviceMemory() : DeviceMemoryBase(nullptr, 0) {}
+  DeviceMemory(std::nullptr_t) : DeviceMemory() {}
 
   // Typed device memory regions may be constructed from untyped device memory
   // regions, this effectively amounts to a cast from a void*.

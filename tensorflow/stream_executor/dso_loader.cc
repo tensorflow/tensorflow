@@ -42,11 +42,12 @@ namespace internal {
 }
 
 /* static */ port::Status DsoLoader::GetCudnnDsoHandle(void** dso_handle) {
-  // libcudnn is versioned differently than the other libraries.  See b/22397368
-  // for some details about the complications surrounding this.
-  return GetDsoHandle(FindDsoPath("libcudnn.so.6.5",
-                                  "third_party/gpus/cuda/lib64"),
-                      dso_handle);
+  // libcudnn is versioned differently than the other libraries and may have a
+  // different version number than other CUDA libraries.  See b/22397368 for
+  // some details about the complications surrounding this.
+  return GetDsoHandle(
+      FindDsoPath("libcudnn.so.6.5", "third_party/gpus/cuda/lib64"),
+      dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
@@ -89,16 +90,16 @@ namespace internal {
   string path_string = path.ToString();
   *dso_handle = dlopen(path_string.c_str(), dynload_flags);
   if (*dso_handle == nullptr) {
-    LOG(INFO) << "LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
+    LOG(INFO) << "Couldn't open CUDA library " << path
+              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
     // TODO(b/22689637): Eliminate unnecessary ToString once StrCat has been
     // moved to the open-sourceable version.
     return port::Status(
         port::error::FAILED_PRECONDITION,
         port::StrCat("could not dlopen DSO: ", path, "; dlerror: ", dlerror()));
   }
-
-  VLOG(2) << "loaded path \"" << path << "\" "
-          << (load_kind == LoadKind::kLocal ? "locally" : "globally");
+  LOG(INFO) << "successfully opened CUDA library " << path
+            << (load_kind == LoadKind::kLocal ? " locally" : " globally");
   return port::Status::OK();
 }
 

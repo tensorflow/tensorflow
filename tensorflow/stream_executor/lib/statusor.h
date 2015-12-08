@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+//
 // StatusOr<T> is the union of a Status object and a T
 // object. StatusOr models the concept of an object that is either a
 // usable value, or an error Status explaining why such a value is

@@ -57,9 +57,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel.h"       // IWYU pragma: export
 #include "tensorflow/stream_executor/kernel_spec.h"  // IWYU pragma: export
 #include "tensorflow/stream_executor/launch_dim.h"   // IWYU pragma: export
+#include "tensorflow/stream_executor/multi_platform_manager.h"  // IWYU pragma: export
 #include "tensorflow/stream_executor/platform.h"     // IWYU pragma: export
 #include "tensorflow/stream_executor/stream.h"       // IWYU pragma: export
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/timer.h"            // IWYU pragma: export
+#include "tensorflow/stream_executor/timer.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_

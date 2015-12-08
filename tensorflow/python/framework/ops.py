@@ -3108,10 +3108,10 @@ class GraphKeys(object):
     for more details.
   """
 
-  # Key to collect variables.Variable objects that must be saved and restored
+  # Key to collect Variable objects that must be saved and restored
   # by the model.
   VARIABLES = "variables"
-  # Key to collect variables.Variable objects that will be trained by the
+  # Key to collect Variable objects that will be trained by the
   # optimizers.
   TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect summaries.

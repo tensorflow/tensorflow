@@ -141,7 +141,6 @@ class KernelBase {
   explicit KernelBase(StreamExecutor *parent);
 
   // Test-only constructor that can take a mock KernelInterface implementation.
-  // Takes ownership of implementation, it should not be null.
   KernelBase(StreamExecutor *parent, internal::KernelInterface *implementation);
 
   // Releases resources associated with the kernel instance (i.e.
@@ -181,11 +180,11 @@ class KernelBase {
   const string &demangled_name() const { return demangled_name_; }
 
  private:
-  // Implementation delegated to for platform-specific functionality.
-  std::unique_ptr<internal::KernelInterface> implementation_;
-
   // The StreamExecutor that loads this kernel object.
   StreamExecutor *parent_;
+
+  // Implementation delegated to for platform-specific functionality.
+  std::unique_ptr<internal::KernelInterface> implementation_;
 
   string name_;
   string demangled_name_;

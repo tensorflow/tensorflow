@@ -1930,6 +1930,33 @@ op {
   summary: "Reinterpret the bytes of a string as a vector of numbers."
 }
 op {
+  name: "DeserializeManySparse"
+  input_arg {
+    name: "serialized_sparse"
+    description: "2-D, The `N` serialized `SparseTensor` objects.\nMust have 3 columns."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the serialized `SparseTensor` objects."
+  }
+  summary: "Deserialize and concatenate `SparseTensors` from a serialized minibatch."
+  description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
+}
+op {
   name: "DestroyTemporaryVariable"
   input_arg {
     name: "ref"
@@ -2843,6 +2870,21 @@ op {
   summary: "Returns the truth value of (x >= y) element-wise."
 }
 op {
+  name: "HSVToRGB"
+  input_arg {
+    name: "images"
+    description: "1-D or higher rank. HSV data to convert. Last dimension must be size 3."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "`images` converted to RGB."
+    type: DT_FLOAT
+  }
+  summary: "Convert one or more images from HSV to RGB."
+  description: "Outputs a tensor of the same shape as the `images` tensor, containing the RGB\nvalue of the pixels. The output is only well defined if the value in `images`\nare in `[0,1]`.\n\nSee `rgb_to_hsv` for a description of the HSV encoding."
+}
+op {
   name: "HashTable"
   output_arg {
     name: "table_handle"
@@ -2906,6 +2948,11 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -2979,7 +3026,7 @@ op {
   input_arg {
     name: "tensor"
     description: "4-D of shape `[batch_size, height, width, channels]` where\n`channels` is 1, 3, or 4."
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "summary"
@@ -2995,6 +3042,19 @@ op {
     description: "Max number of batch elements to generate images for."
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_FLOAT
+      }
+    }
   }
   attr {
     name: "bad_color"
@@ -3016,7 +3076,7 @@ op {
     description: "Color to use for pixels with non-finite values."
   }
   summary: "Outputs a `Summary` protocol buffer with images."
-  description: "The summary has up to `max_images` summary values containing images. The\nimages are built from `tensor` which must be 4-D with shape `[batch_size,\nheight, width, channels]` and where `channels` can be:\n\n*  1: `tensor` is interpreted as Grayscale.\n*  3: `tensor` is interpreted as RGB.\n*  4: `tensor` is interpreted as RGBA.\n\nThe images have the same number of channels as the input tensor. Their values\nare normalized, one image at a time, to fit in the range `[0, 255]`.  The\nop uses two different normalization algorithms:\n\n*  If the input values are all positive, they are rescaled so the largest one\n   is 255.\n\n*  If any input value is negative, the values are shifted so input value 0.0\n   is at 127.  They are then rescaled so that either the smallest value is 0,\n   or the largest one is 255.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_images` is 1, the summary value tag is \'*tag*/image\'.\n*  If `max_images` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/image/0\', \'*tag*/image/1\', etc.\n\nThe `bad_color` argument is the color to use in the generated images for\nnon-finite input values.  It is a `unit8` 1-D tensor of length `channels`.\nEach element must be in the range `[0, 255]` (It represents the value of a\npixel in the output image).  Non-finite values in the input tensor are\nreplaced by this tensor in the output image.  The default value is the color\nred."
+  description: "The summary has up to `max_images` summary values containing images. The\nimages are built from `tensor` which must be 4-D with shape `[batch_size,\nheight, width, channels]` and where `channels` can be:\n\n*  1: `tensor` is interpreted as Grayscale.\n*  3: `tensor` is interpreted as RGB.\n*  4: `tensor` is interpreted as RGBA.\n\nThe images have the same number of channels as the input tensor. For float\ninput, the values are normalized one image at a time to fit in the range\n`[0, 255]`.  `uint8` values are unchanged.  The op uses two different\nnormalization algorithms:\n\n*  If the input values are all positive, they are rescaled so the largest one\n   is 255.\n\n*  If any input value is negative, the values are shifted so input value 0.0\n   is at 127.  They are then rescaled so that either the smallest value is 0,\n   or the largest one is 255.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_images` is 1, the summary value tag is \'*tag*/image\'.\n*  If `max_images` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/image/0\', \'*tag*/image/1\', etc.\n\nThe `bad_color` argument is the color to use in the generated images for\nnon-finite input values.  It is a `unit8` 1-D tensor of length `channels`.\nEach element must be in the range `[0, 255]` (It represents the value of a\npixel in the output image).  Non-finite values in the input tensor are\nreplaced by this tensor in the output image.  The default value is the color\nred."
 }
 op {
   name: "InTopK"
@@ -5044,6 +5104,21 @@ op {
   summary: "Computes the number of elements in the given queue."
 }
 op {
+  name: "RGBToHSV"
+  input_arg {
+    name: "images"
+    description: "1-D or higher rank. RGB data to convert. Last dimension must be size 3."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "`images` converted to HSV."
+    type: DT_FLOAT
+  }
+  summary: "Converts one or more images from RGB to HSV."
+  description: "Outputs a tensor of the same shape as the `images` tensor, containing the HSV\nvalue of the pixels. The output is only well defined if the value in `images`\nare in `[0,1]`.\n\n`output[..., 0]` contains hue, `output[..., 1]` contains saturation, and\n`output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0\ncorresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue."
+}
+op {
   name: "RandomCrop"
   input_arg {
     name: "image"
@@ -5907,6 +5982,35 @@ op {
   description: "Input images can be of different types but output images are always float."
 }
 op {
+  name: "ResizeBilinearGrad"
+  input_arg {
+    name: "grads"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "original_image"
+    description: "4-D with shape `[batch, orig_height, orig_width, channels]`,\nThe image tensor that was resized."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "4-D with shape `[batch, orig_height, orig_width, channels]`.\nGradients with respect to the input image. Input image must have been\nfloat or double."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes the gradient of bilinear interpolation."
+}
+op {
   name: "ResizeNearestNeighbor"
   input_arg {
     name: "images"
@@ -5937,7 +6041,6 @@ op {
     }
   }
   summary: "Resize `images` to `size` using nearest neighbor interpolation."
-  description: "Input images can be of different types but output images are always float."
 }
 op {
   name: "ResizeNearestNeighborGrad"
@@ -6700,6 +6803,61 @@ op {
   }
   summary: "Calculates the Eigen Decomposition of a square Self-Adjoint matrix."
   description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
+}
+op {
+  name: "SerializeManySparse"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the minibatch `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "serialized_sparse"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`."
+  description: "The `SparseTensor` must have rank `R` greater than 1, and the first dimension\nis treated as the minibatch dimension.  Elements of the `SparseTensor`\nmust be sorted in increasing order of this first dimension.  The serialized\n`SparseTensor` objects going into each row of `serialized_sparse` will have\nrank `R-1`.\n\nThe minibatch size `N` is extracted from `sparse_shape[0]`."
+}
+op {
+  name: "SerializeSparse"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "serialized_sparse"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
 }
 op {
   name: "Shape"

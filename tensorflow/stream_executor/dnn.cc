@@ -22,6 +22,20 @@ namespace perftools {
 namespace gputools {
 namespace dnn {
 
+string QuantizedActivationModeString(QuantizedActivationMode mode) {
+  switch (mode) {
+    case dnn::QuantizedActivationMode::k8Bit:
+      return "uint8";
+    case dnn::QuantizedActivationMode::k16Bit:
+      return "uint16";
+    case dnn::QuantizedActivationMode::k32Bit:
+      return "int32";
+    default:
+      LOG(FATAL) << "Unknown quantized_activation_mode "
+                 << static_cast<int32>(mode);
+  }
+}
+
 string ActivationModeString(ActivationMode mode) {
   switch (mode) {
     case ActivationMode::kSigmoid:
@@ -75,6 +89,17 @@ string FilterLayoutString(FilterLayout layout) {
       return "YXInputOutput";
     default:
       LOG(FATAL) << "Unknown filter layout " << static_cast<int32>(layout);
+  }
+}
+
+string ShortPoolingModeString(PoolingMode mode) {
+  switch (mode) {
+    case PoolingMode::kMaximum:
+      return "Max";
+    case PoolingMode::kAverage:
+      return "Avg";
+    default:
+      LOG(FATAL) << "Unknown filter layout " << static_cast<int32>(mode);
   }
 }
 
@@ -137,7 +162,6 @@ string BatchDescriptor::ToShortString() const {
       return port::StrCat(batch, depth, y, x, suffix);
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
-      return "";  // Avoid lack-of-return warning
   }
 }
 
@@ -158,6 +182,20 @@ int64 BatchDescriptor::FullyConnectedWeightCount(
 
 int64 BatchDescriptor::FullyConnectedBiasCount(const BatchDescriptor& output) {
   return output.NodesAcrossFeatureMaps();
+}
+
+BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
+    port::ArraySlice<dnn::BatchDescriptor> inputs) {
+  if (inputs.empty()) {
+    return BatchDescriptor();
+  }
+  int feature_map_count = 0;
+  for (const auto& dimensions : inputs) {
+    feature_map_count += dimensions.feature_map_count();
+  }
+  BatchDescriptor output = inputs[0];
+  output.set_feature_map_count(feature_map_count);
+  return output;
 }
 
 // -- FilterDescriptor
@@ -205,7 +243,6 @@ string FilterDescriptor::ToShortString() const {
       return port::StrCat(y, x, id, od);
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout_);
-      return "";  // Avoid lack-of-return warning
   }
 }
 

@@ -5,8 +5,8 @@ github source.
 
 ## Requirements
 
-The TensorFlow Python API currently requires Python 2.7.  We are
-[adding support for Python 3](https://github.com/tensorflow/tensorflow/issues/1).
+The TensorFlow Python API currently supports Python 2.7 and Python 3.3+ from
+source.  We are preparing Python 3 pip packages to go with the 0.6.0 release.
 
 The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
 6.5 V2.  Please see [Cuda installation](#install_cuda).

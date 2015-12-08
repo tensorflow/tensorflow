@@ -162,6 +162,43 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   delete tp;
 }
 
+TEST_F(DirectSessionMinusAXTest, TestPerSessionThreads) {
+  Initialize({1, 2, 3, 4});
+
+  SessionOptions options;
+  options.config.set_use_per_session_threads(true);
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  ASSERT_OK(session->Create(def_));
+
+  // Fill in the input and ask for the output
+  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
+
+  // Run the graph 1000 times in 4 different threads concurrently.
+  std::vector<string> output_names = {y_ + ":0"};
+  auto fn = [&session, output_names]() {
+    for (int i = 0; i < 1000; ++i) {
+      std::vector<std::pair<string, Tensor>> inputs;
+      std::vector<Tensor> outputs;
+      // Run the graph
+      Status s = session->Run(inputs, output_names, {}, &outputs);
+      ASSERT_TRUE(s.ok());
+      ASSERT_EQ(1, outputs.size());
+      auto mat = outputs[0].matrix<float>();
+      EXPECT_FLOAT_EQ(3.0, mat(0, 0));
+    }
+  };
+
+  for (int i = 0; i < 4; ++i) {
+    tp->Schedule(fn);
+  }
+
+  // Wait for the functions to finish.
+  delete tp;
+}
+
 TEST_F(DirectSessionMinusAXTest, TwoCreateCallsFails) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());

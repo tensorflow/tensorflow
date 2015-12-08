@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
 
+#include "tensorflow/stream_executor/platform/port.h"
 #include <tuple>
 
 #include "tensorflow/stream_executor/lib/statusor.h"

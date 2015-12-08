@@ -890,9 +890,9 @@ the constructor is used. If that one is `None` too, a
 *  <b>`dtype`</b>: type of the new or existing variable (defaults to `DT_FLOAT`).
 *  <b>`initializer`</b>: initializer for the variable if one is created.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see variables.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
-    Defaults to `[GraphKeys.VARIABLES]` (see variables.Variable).
+    Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
 
 ##### Returns:
 

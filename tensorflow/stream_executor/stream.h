@@ -69,6 +69,11 @@ struct ConvolutionDescriptor;
 }  // namespace dnn
 
 class StreamExecutor;
+class ScratchAllocator;
+
+// Convert a type to the corresponding QuantizedActivationMode.
+template <typename ElementType>
+struct Quantization;
 
 // Represents a stream of dependent computations on a GPU device.
 //
@@ -214,6 +219,15 @@ class Stream {
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
+  Stream &ThenConvolveWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
@@ -233,6 +247,16 @@ class Stream {
       const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<float> *backward_input_data);
 
+  Stream &ThenConvolveBackwardDataWithScratch(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<float> *backward_input_data,
+      ScratchAllocator *scratch_allocator);
+
   Stream &ThenConvolveBackwardFilter(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
@@ -242,6 +266,16 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<float> *backward_filter_data);
 
+  Stream &ThenConvolveBackwardFilterWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<float> *backward_filter_data,
+      ScratchAllocator *scratch_allocator);
+
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,
                      const dnn::BatchDescriptor &input_dimensions,
@@ -249,18 +283,18 @@ class Stream {
                      DeviceMemory<float> *output_data);
 
   Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                     const DeviceMemory<int8> &weights,
-                     const DeviceMemory<float> &weight_scales,
-                     const dnn::BatchDescriptor &input_dimensions,
-                     const dnn::BatchDescriptor &output_dimensions,
-                     DeviceMemory<float> *output_data);
+                              const DeviceMemory<int8> &weights,
+                              const DeviceMemory<float> &weight_scales,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<float> *output_data);
 
   Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                     const DeviceMemory<int16> &weights,
-                     const DeviceMemory<float> &weight_scales,
-                     const dnn::BatchDescriptor &input_dimensions,
-                     const dnn::BatchDescriptor &output_dimensions,
-                     DeviceMemory<float> *output_data);
+                              const DeviceMemory<int16> &weights,
+                              const DeviceMemory<float> &weight_scales,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<float> *output_data);
 
   Stream &ThenBiasAdd(const DeviceMemory<float> &input_data,
                       const DeviceMemory<float> &biases,
@@ -302,23 +336,48 @@ class Stream {
       const dnn::BatchDescriptor &output_dimensions,
       DeviceMemory<float> *output_data);
 
-  // See DnnSupport::DoMemcpyD2HQuantized.
-  // TODO(wgulland) Use a template to merge the versions of
-  // ThenMemcpyD2HQuantized.
-  Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
-                                 port::MutableArraySlice<uint8> host_dst);
+  Stream &ThenXYPad(const dnn::BatchDescriptor &dimensions,
+                    const DeviceMemory<float> &input_data, int64 left_pad,
+                    int64 right_pad, int64 top_pad, int64 bottom_pad,
+                    DeviceMemory<float> *output_data);
+
+  Stream &ThenXYSlice(const dnn::BatchDescriptor &dimensions,
+                      const DeviceMemory<float> &input_data, int64 left_trim,
+                      int64 right_trim, int64 top_trim, int64 bottom_trim,
+                      DeviceMemory<float> *output_data);
 
   // See DnnSupport::DoMemcpyD2HQuantized.
   Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
-                                 port::MutableArraySlice<uint16> host_dst);
+                                 dnn::QuantizedActivationMode mode,
+                                 void *host_dst, uint64 size);
 
-  // See DnnSupport::DoMemcpyD2HQuantized.
-  Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
-                                 port::MutableArraySlice<int32> host_dst);
+  // Template version of ThenMemcpyD2HQuantized that takes a MutableArraySlice
+  // and uses the Quantization trait to call the generic version of
+  // ThenMemcpyD2HQuantized with the correct QuantizedActivationMode.
+  template <typename ElementType>
+  Stream &ThenMemcpyD2HQuantized(
+      const DeviceMemory<float> &gpu_unquantized_src,
+      port::MutableArraySlice<ElementType> host_dst) {
+    return ThenMemcpyD2HQuantized(
+        gpu_unquantized_src, Quantization<ElementType>::kModeId,
+        host_dst.data(), host_dst.size() * sizeof(ElementType));
+  }
 
   // See DnnSupport::DoMemcpyH2DQuantized.
-  Stream &ThenMemcpyH2DQuantized(port::ArraySlice<uint8> host_src,
+  Stream &ThenMemcpyH2DQuantized(const void *host_src, uint64 size,
+                                 dnn::QuantizedActivationMode mode,
                                  DeviceMemory<float> *gpu_unquantized_dst);
+
+  // Template version of ThenMemcpyH2DQuantized that takes an ArraySlice
+  // and uses the Quantization trait to call the generic version of
+  // ThenMemcpyH2DQuantized with the correct QuantizedActivationMode.
+  template <typename ElementType>
+  Stream &ThenMemcpyH2DQuantized(port::ArraySlice<ElementType> host_src,
+                                 DeviceMemory<float> *gpu_unquantized_dst) {
+    return ThenMemcpyH2DQuantized(
+        host_src.data(), host_src.size() * sizeof(ElementType),
+        Quantization<ElementType>::kModeId, gpu_unquantized_dst);
+  }
 
   /////////////////
   // BLAS support
@@ -1143,9 +1202,11 @@ class Stream {
   Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
                        uint64 size);
 
-  // (Synchronously) block the host code waiting for the operations entrained
-  // on
-  // the stream (enqueued to this point in program execution) to complete.
+  // (Synchronously) block the host code waiting for the operations
+  // entrained on the stream (enqueued to this point in program
+  // execution) to complete.
+  //
+  // Returns true if the stream is ok().
   bool BlockHostUntilDone();
 
   // Warning! This method interacts with internal threads in
@@ -1195,9 +1256,9 @@ class Stream {
   internal::TemporaryMemoryManager *temporary_memory_manager();
 
  private:
-  friend class host::HostBlas;   // for parent_.
-  friend class host::HostFft;    // for parent_.
-  friend class host::HostRng;    // for parent_.
+  friend class host::HostBlas;  // for parent_.
+  friend class host::HostFft;   // for parent_.
+  friend class host::HostRng;   // for parent_.
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
@@ -1219,12 +1280,12 @@ class Stream {
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
+  // The StreamExecutor that supports the operation of this stream.
+  StreamExecutor *parent_;
+
   // The platform-dependent implementation that the StreamExecutor interface
   // delegates to.
   std::unique_ptr<internal::StreamInterface> implementation_;
-
-  // The StreamExecutor that supports the operation of this stream.
-  StreamExecutor *parent_;
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
@@ -1266,6 +1327,24 @@ Stream::AllocateTemporaryArray(uint64 element_count) {
 inline internal::TemporaryMemoryManager *Stream::temporary_memory_manager() {
   return &temporary_memory_manager_;
 }
+
+template <>
+struct Quantization<uint8> {
+  static constexpr dnn::QuantizedActivationMode kModeId =
+      dnn::QuantizedActivationMode::k8Bit;
+};
+
+template <>
+struct Quantization<uint16> {
+  static constexpr dnn::QuantizedActivationMode kModeId =
+      dnn::QuantizedActivationMode::k16Bit;
+};
+
+template <>
+struct Quantization<int32> {
+  static constexpr dnn::QuantizedActivationMode kModeId =
+      dnn::QuantizedActivationMode::k32Bit;
+};
 
 }  // namespace gputools
 }  // namespace perftools

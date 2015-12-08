@@ -161,7 +161,7 @@ class FftSupport {
 // Macro used to quickly declare overrides for abstract virtuals in the
 // fft::FftSupport base class. Assumes that it's emitted somewhere inside the
 // ::perftools::gputools namespace.
-#define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                 \
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                \
   std::unique_ptr<fft::Plan> Create1dPlan(Stream *stream, uint64 num_x,      \
                                           fft::Type type, bool in_place_fft) \
       override;                                                              \

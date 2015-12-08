@@ -211,7 +211,8 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       if (plugin_id == kNullPlugin) {                                         \
         return port::Status{port::error::FAILED_PRECONDITION,                 \
                             "No suitable " PLUGIN_STRING                      \
-                            " plugin registered, default or otherwise."};     \
+                            " plugin registered. Have you linked in a "       \
+                            PLUGIN_STRING "-providing plugin?"};              \
       } else {                                                                \
         VLOG(2) << "Selecting default " PLUGIN_STRING " plugin, "             \
                 << plugin_names_[plugin_id];                                  \

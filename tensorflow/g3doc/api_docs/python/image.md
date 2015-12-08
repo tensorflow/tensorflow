@@ -660,9 +660,127 @@ See also `transpose()`.
 
 ## Converting Between Colorspaces.
 
+Image ops work either on individual images or on batches of images, depending on
+the shape of their input Tensor.
+
+If 3-D, the shape is `[height, width, channels]`, and the Tensor represents one
+image. If 4-D, the shape is `[batch_size, height, width, channels]`, and the
+Tensor represents `batch_size` images.
+
+Currently, `channels` can usefully be 1, 2, 3, or 4. Single-channel images are
+grayscale, images with 3 channels are encoded as either RGB or HSV. Images
+with 2 or 4 channels include an alpha channel, which has to be stripped from the
+image before passing the image to most image processing functions (and can be
+re-attached later).
+
 Internally, images are either stored in as one `float32` per channel per pixel
 (implicitly, values are assumed to lie in `[0,1)`) or one `uint8` per channel
 per pixel (values are assumed to lie in `[0,255]`).
+
+Tensorflow can convert between images in RGB or HSV. The conversion functions
+work only on float images, so you need to convert images in other formats using
+[`convert_image_dtype`](#convert-image-dtype).
+
+Example:
+
+```python
+# Decode an image and convert it to HSV.
+rgb_image = tf.decode_png(...,  channels=3)
+rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.hsv_to_rgb(rgb_image)
+```
+
+- - -
+
+### `tf.image.rgb_to_grayscale(images)` {#rgb_to_grayscale}
+
+Converts one or more images from RGB to Grayscale.
+
+Outputs a tensor of the same `DType` and rank as `images`.  The size of the
+last dimension of the output is 1, containing the Grayscale value of the
+pixels.
+
+##### Args:
+
+
+*  <b>`images`</b>: The RGB tensor to convert. Last dimension must have size 3 and
+    should contain RGB values.
+
+##### Returns:
+
+  The converted grayscale image(s).
+
+
+- - -
+
+### `tf.image.grayscale_to_rgb(images)` {#grayscale_to_rgb}
+
+Converts one or more images from Grayscale to RGB.
+
+Outputs a tensor of the same `DType` and rank as `images`.  The size of the
+last dimension of the output is 3, containing the RGB value of the pixels.
+
+##### Args:
+
+
+*  <b>`images`</b>: The Grayscale tensor to convert. Last dimension must be size 1.
+
+##### Returns:
+
+  The converted grayscale image(s).
+
+
+
+- - -
+
+### `tf.image.hsv_to_rgb(images, name=None)` {#hsv_to_rgb}
+
+Convert one or more images from HSV to RGB.
+
+Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+value of the pixels. The output is only well defined if the value in `images`
+are in `[0,1]`.
+
+See `rgb_to_hsv` for a description of the HSV encoding.
+
+##### Args:
+
+
+*  <b>`images`</b>: A `Tensor` of type `float32`.
+    1-D or higher rank. HSV data to convert. Last dimension must be size 3.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`. `images` converted to RGB.
+
+
+- - -
+
+### `tf.image.rgb_to_hsv(images, name=None)` {#rgb_to_hsv}
+
+Converts one or more images from RGB to HSV.
+
+Outputs a tensor of the same shape as the `images` tensor, containing the HSV
+value of the pixels. The output is only well defined if the value in `images`
+are in `[0,1]`.
+
+`output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
+`output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
+corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+
+##### Args:
+
+
+*  <b>`images`</b>: A `Tensor` of type `float32`.
+    1-D or higher rank. RGB data to convert. Last dimension must be size 3.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`. `images` converted to HSV.
+
+
 
 - - -
 
@@ -699,8 +817,12 @@ overflow errors when converted to integer `Dtype`s.
 
 TensorFlow provides functions to adjust images in various ways: brightness,
 contrast, hue, and saturation.  Each adjustment can be done with predefined
-parameters or with random parameters picked from predefined intervals.  Random
+parameters or with random parameters picked from predefined intervals. Random
 adjustments are often useful to expand a training set and reduce overfitting.
+
+If several adjustments are chained it is advisable to minimize the number of
+redundant conversions by first converting the images to the most natural data
+type and representation (RGB or HSV).
 
 - - -
 
@@ -825,6 +947,126 @@ picked in the interval `[lower, upper]`.
 ##### Returns:
 
   3-D tensor of shape `[height, width, channels]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `upper <= lower` or if `lower < 0`.
+
+
+
+- - -
+
+### `tf.image.adjust_hue(image, delta, name=None)` {#adjust_hue}
+
+Adjust hue of an RGB image.
+
+This is a convenience method that converts an RGB image to float
+representation, converts it to HSV, add an offset to the hue channel, converts
+back to RGB and then back to the original data type. If several adjustments
+are chained it is advisable to minimize the number of redundant conversions.
+
+`image` is an RGB image.  The image hue is adjusted by converting the
+image to HSV and rotating the hue channel (H) by
+`delta`.  The image is then converted back to RGB.
+
+`delta` must be in the interval `[-1, 1]`.
+
+##### Args:
+
+
+*  <b>`image`</b>: RGB image or images. Size of the last dimension must be 3.
+*  <b>`delta`</b>: float.  How much to add to the hue channel.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  Adjusted image(s), same shape and DType as `image`.
+
+
+- - -
+
+### `tf.image.random_hue(image, max_delta, seed=None)` {#random_hue}
+
+Adjust the hue of an RGB image by a random factor.
+
+Equivalent to `adjust_hue()` but uses a `delta` randomly
+picked in the interval `[-max_delta, max_delta]`.
+
+`max_delta` must be in the interval `[0, 0.5]`.
+
+##### Args:
+
+
+*  <b>`image`</b>: RGB image or images. Size of the last dimension must be 3.
+*  <b>`max_delta`</b>: float.  Maximum value for the random delta.
+*  <b>`seed`</b>: An operation-specific seed. It will be used in conjunction
+    with the graph-level seed to determine the real seeds that will be
+    used in this operation. Please see the documentation of
+    set_random_seed for its interaction with the graph-level random seed.
+
+##### Returns:
+
+  3-D float tensor of shape `[height, width, channels]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `max_delta` is invalid.
+
+
+
+- - -
+
+### `tf.image.adjust_saturation(image, saturation_factor, name=None)` {#adjust_saturation}
+
+Adjust staturation of an RGB image.
+
+This is a convenience method that converts an RGB image to float
+representation, converts it to HSV, add an offset to the saturation channel,
+converts back to RGB and then back to the original data type. If several
+adjustments are chained it is advisable to minimize the number of redundant
+conversions.
+
+`image` is an RGB image.  The image saturation is adjusted by converting the
+image to HSV and multiplying the saturation (S) channel by
+`saturation_factor` and clipping. The image is then converted back to RGB.
+
+##### Args:
+
+
+*  <b>`image`</b>: RGB image or images. Size of the last dimension must be 3.
+*  <b>`saturation_factor`</b>: float. Factor to multiply the saturation by.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  Adjusted image(s), same shape and DType as `image`.
+
+
+- - -
+
+### `tf.image.random_saturation(image, lower, upper, seed=None)` {#random_saturation}
+
+Adjust the saturation of an RGB image by a random factor.
+
+Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
+picked in the interval `[lower, upper]`.
+
+##### Args:
+
+
+*  <b>`image`</b>: RGB image or images. Size of the last dimension must be 3.
+*  <b>`lower`</b>: float.  Lower bound for the random saturation factor.
+*  <b>`upper`</b>: float.  Upper bound for the random saturation factor.
+*  <b>`seed`</b>: An operation-specific seed. It will be used in conjunction
+    with the graph-level seed to determine the real seeds that will be
+    used in this operation. Please see the documentation of
+    set_random_seed for its interaction with the graph-level random seed.
+
+##### Returns:
+
+  Adjusted image(s), same shape and DType as `image`.
 
 ##### Raises:
 
