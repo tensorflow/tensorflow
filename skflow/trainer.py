@@ -14,6 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import math
 import numpy as np
 
 import tensorflow as tf
@@ -88,7 +89,8 @@ class TensorFlowTrainer(object):
             List of losses for each step.
         """
         losses, print_loss_buffer = [], []
-        print_steps = print_steps if print_steps else (steps / 10)
+        print_steps = (print_steps if print_steps else
+            math.ceil(float(steps) / 10))
         for step in xrange(steps):
           feed_dict = feed_dict_fn()
           global_step, loss, _ = sess.run(

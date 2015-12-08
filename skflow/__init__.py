@@ -72,7 +72,8 @@ class TensorFlowEstimator(BaseEstimator):
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
-        with tf.Graph().as_default() as graph:
+        self._graph = tf.Graph()
+        with self._graph.as_default():
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(0, name="global_step", trainable=False)
 
