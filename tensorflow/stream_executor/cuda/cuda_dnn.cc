@@ -18,6 +18,12 @@ limitations under the License.
 #include <dlfcn.h>
 #include <functional>
 
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -27,13 +33,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform.h"
 #include "third_party/gpus/cuda/include/cudnn.h"
 
 namespace {
@@ -61,8 +63,6 @@ using dnn::PoolingDescriptor;
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuDnnPlugin);
-
-extern CUstream AsCUDAStreamValue(Stream* stream);
 
 string ToString(cudnnStatus_t status) {
   switch (status) {
@@ -117,14 +117,34 @@ static port::ThreadPool* GetCudaThreadpool() {
   return cudnn_threadpool;
 }
 
+// Retrieves the CUDNN DSO, dies on failure.
+void* GetDsoHandle() {
+  static auto result = internal::CachedDsoLoader::GetCudnnDsoHandle();
+  return result.ValueOrDie();
+}
+
+// Calls cudnnGetVersion in the loaded DSO.
+size_t cudnnGetVersion() {
+  static void* f = dlsym(GetDsoHandle(), "cudnnGetVersion");
+  if (f == nullptr) {
+    LOG(FATAL) << "could not find cudnnGetVersion in cudnn DSO; dlerror: "
+               << dlerror();
+  }
+  auto callable = reinterpret_cast<size_t (*)(void)>(f);
+  return callable();
+}
+
+// Returns whether the currently loaded cuDNN version is R2.
+bool IsCudnnR2() {
+  static auto version = cudnnGetVersion();
+  DCHECK_GE(version, 2000);
+  return version < 3000;
+}
+
 #define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                              \
   struct DynLoadShim__##__name {                                           \
     static const char* kName;                                              \
     typedef std::add_pointer<decltype(::__name)>::type FuncPointerT;       \
-    static void* GetDsoHandle() {                                          \
-      static auto result = internal::CachedDsoLoader::GetCudnnDsoHandle(); \
-      return result.ValueOrDie();                                          \
-    }                                                                      \
     static FuncPointerT DynLoad() {                                        \
       static void* f = dlsym(GetDsoHandle(), kName);                       \
       if (f == nullptr) {                                                  \
@@ -154,41 +174,53 @@ static port::ThreadPool* GetCudaThreadpool() {
   } __name;                                                                \
   const char* DynLoadShim__##__name::kName = #__name;
 
-#define CUDNN_DNN_ROUTINE_EACH(__macro)                                      \
-  __macro(cudnnSetTensor4dDescriptor) __macro(                               \
-      cudnnGetConvolutionNdForwardOutputDim)                                 \
-      __macro(cudnnGetConvolutionForwardAlgorithm) __macro(                  \
-          cudnnCreateTensorDescriptor) __macro(cudnnDestroyTensorDescriptor) \
-          __macro(cudnnCreateFilterDescriptor)                               \
-              __macro(cudnnSetFilter4dDescriptor)                            \
-                  __macro(cudnnSetPooling2dDescriptor)                       \
-                      __macro(cudnnDestroyFilterDescriptor)                  \
-                          __macro(cudnnCreateConvolutionDescriptor)          \
-                              __macro(cudnnCreatePoolingDescriptor)          \
-                                  __macro(cudnnAddTensor)                    \
-                                      __macro(cudnnDestroyPoolingDescriptor)
-
-CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
-#undef CUDNN_DNN_ROUTINE_EACH
-
 // clang-format off
-#define CUDNN_DNN_ROUTINE_EACH(__macro)            \
-  __macro(cudnnSetConvolution2dDescriptor)         \
-  __macro(cudnnDestroyConvolutionDescriptor)       \
-  __macro(cudnnCreate)                             \
-  __macro(cudnnDestroy)                            \
-  __macro(cudnnSetStream)                          \
-  __macro(cudnnActivationForward)                  \
-  __macro(cudnnConvolutionForward)                 \
-  __macro(cudnnConvolutionBackwardData)            \
-  __macro(cudnnConvolutionBackwardFilter)          \
-  __macro(cudnnGetConvolutionForwardWorkspaceSize) \
-  __macro(cudnnTransformTensor)                    \
-  __macro(cudnnPoolingForward)                     \
+#define CUDNN_DNN_ROUTINE_EACH(__macro)                   \
+  __macro(cudnnSetTensor4dDescriptor)                     \
+  __macro(cudnnGetConvolutionNdForwardOutputDim)          \
+  __macro(cudnnGetConvolutionForwardAlgorithm)            \
+  __macro(cudnnCreateTensorDescriptor)                    \
+  __macro(cudnnDestroyTensorDescriptor)                   \
+  __macro(cudnnCreateFilterDescriptor)                    \
+  __macro(cudnnSetFilter4dDescriptor)                     \
+  __macro(cudnnSetPooling2dDescriptor)                    \
+  __macro(cudnnDestroyFilterDescriptor)                   \
+  __macro(cudnnCreateConvolutionDescriptor)               \
+  __macro(cudnnCreatePoolingDescriptor)                   \
+  __macro(cudnnAddTensor)                                 \
+  __macro(cudnnDestroyPoolingDescriptor)                  \
+  __macro(cudnnSetConvolution2dDescriptor)                \
+  __macro(cudnnDestroyConvolutionDescriptor)              \
+  __macro(cudnnCreate)                                    \
+  __macro(cudnnDestroy)                                   \
+  __macro(cudnnSetStream)                                 \
+  __macro(cudnnActivationForward)                         \
+  __macro(cudnnConvolutionForward)                        \
+  __macro(cudnnConvolutionBackwardData)                   \
+  __macro(cudnnConvolutionBackwardFilter)                 \
+  __macro(cudnnGetConvolutionForwardWorkspaceSize)        \
+  __macro(cudnnTransformTensor)                           \
+  __macro(cudnnPoolingForward)                            \
   __macro(cudnnPoolingBackward)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+
+// clang-format off
+#if CUDNN_VERSION >= 3000
+#define CUDNN_DNN_ROUTINE_EACH_R3(__macro)                    \
+  __macro(cudnnGetConvolutionBackwardFilterWorkspaceSize)     \
+  __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
+  __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
+  __macro(cudnnAddTensor_v3)                                  \
+  __macro(cudnnConvolutionBackwardData_v3)                    \
+  __macro(cudnnConvolutionBackwardFilter_v3)                  \
+  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
+// clang-format on
+
+CUDNN_DNN_ROUTINE_EACH_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+#undef CUDNN_DNN_ROUTINE_EACH_R3
+#endif
 #undef CUDNN_DNN_ROUTINE_EACH
 
 }  // namespace dynload
@@ -467,8 +499,8 @@ bool CudnnSupport::DoConvolve(
     const FilterDescriptor& filter_descriptor,
     const DeviceMemory<float>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data) {
+    const BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
+    ScratchAllocator* scratch_allocator) {
   ScopedTensorDescriptor input_4d{parent_, batch_descriptor, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor output_4d{parent_, output_descriptor,
                                    CUDNN_DATA_FLOAT};
@@ -486,23 +518,62 @@ bool CudnnSupport::DoConvolve(
   // Beta is the scaling factor for output.
   float beta = 0.0;
 
-  // The NO_WORKSPACE versions are possibly slower for certain shapes, but
-  // not so for the shapes currently used by Brain. Also, it seems prudent to
-  // keep cuMemAlloc off the critical path.
-  cudnnConvolutionFwdAlgo_t algo;
-  status = dynload::cudnnGetConvolutionForwardAlgorithm(
-      parent_, ToHandle(dnn_handle_), input_4d.handle(), filter.handle(),
-      conv.handle(), output_4d.handle(), CUDNN_CONVOLUTION_FWD_NO_WORKSPACE, 0,
-      &algo);
+  auto get_algorithm = [&](bool specify_limit)
+      SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
+        cudnnConvolutionFwdPreference_t preference =
+            specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
+                          : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
 
-  CHECK_EQ(status, CUDNN_STATUS_SUCCESS)
-      << "Unable to find a suitable algorithm for doing forward convolution";
+        auto memory_limit_bytes =
+            scratch_allocator == nullptr
+                ? 0
+                : scratch_allocator->GetMemoryLimitInBytes(stream);
+        if (memory_limit_bytes < 0) {
+          memory_limit_bytes = 0;
+        }
+
+        cudnnConvolutionFwdAlgo_t algo;
+        status = dynload::cudnnGetConvolutionForwardAlgorithm(
+            parent_, ToHandle(dnn_handle_), input_4d.handle(), filter.handle(),
+            conv.handle(), output_4d.handle(),
+            /*preference=*/preference,
+            /*memoryLimitInBytes=*/memory_limit_bytes, /*algo=*/&algo);
+        CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                                  "algorithm for doing forward "
+                                                  "convolution";
+        return algo;
+      };
+
+  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+  DeviceMemory<uint8> scratch;
+  if (scratch_allocator != nullptr) {
+    size_t size_in_bytes;
+    status = dynload::cudnnGetConvolutionForwardWorkspaceSize(
+        parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_4d.handle(),
+        /*filterDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
+        /*destDesc=*/output_4d.handle(), /*algo=*/algo,
+        /*sizeInBytes=*/&size_in_bytes);
+    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+      scratch =
+          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    }
+  }
+
+  // If we didn't allocate any scratch space (perhaps because of failed
+  // allocation), we force a switch back to the "no workspace" algorithm.
+  if (scratch == nullptr) {
+    algo = get_algorithm(/*specify_limit=*/false);
+  }
 
   status = dynload::cudnnConvolutionForward(
-      parent_, ToHandle(dnn_handle_), &alpha, input_4d.handle(),
-      input_data.opaque(), filter.handle(), filter_data.opaque(), conv.handle(),
-      algo, nullptr /* workspace ptr */, 0 /* workspace size */, &beta,
-      output_4d.handle(), output_data->opaque());
+      parent_, ToHandle(dnn_handle_),
+      /*alpha=*/&alpha, /*srcDesc=*/input_4d.handle(),
+      /*srcData=*/input_data.opaque(), /*filterDesc=*/filter.handle(),
+      /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
+      /*algo=*/algo, /*workSpace=*/scratch.opaque(),
+      /*workSpaceSizeInBytes=*/scratch.size(), /*beta=*/&beta,
+      /*destDesc=*/output_4d.handle(), /*destData=*/output_data->opaque());
 
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(FATAL) << "failed to enqueue convolution on stream: "
@@ -565,7 +636,8 @@ bool CudnnSupport::DoConvolveBackwardData(
     DeviceMemory<float> backward_output_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
-    DeviceMemory<float>* backward_input_data) {
+    DeviceMemory<float>* backward_input_data,
+    ScratchAllocator* scratch_allocator) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
@@ -592,16 +664,101 @@ bool CudnnSupport::DoConvolveBackwardData(
   ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
-  status = dynload::cudnnConvolutionBackwardData(
-      parent_, ToHandle(dnn_handle_), &alpha, filter.handle(),
-      filter_data.opaque(), out_back_4d.handle(), backward_output_data.opaque(),
-      conv.handle(), &beta, in_back_4d.handle(), backward_input_data->opaque());
+#if CUDNN_VERSION >= 3000
+  if (dynload::IsCudnnR2()) {
+#endif
+    status = dynload::cudnnConvolutionBackwardData(
+        parent_, ToHandle(dnn_handle_), &alpha, filter.handle(),
+        filter_data.opaque(), out_back_4d.handle(),
+        backward_output_data.opaque(), conv.handle(), &beta,
+        in_back_4d.handle(), backward_input_data->opaque());
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "failed to enqueue convolution on stream: "
+                 << ToString(status);
+      return false;
+    }
+    return true;
+#if CUDNN_VERSION >= 3000
+  }
+#endif
+
+#if CUDNN_VERSION >= 3000
+  auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+      dnn_handle_mutex_) -> cudnnConvolutionBwdDataAlgo_t {
+    cudnnConvolutionBwdDataPreference_t preference =
+        specify_limit ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
+                      : CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE;
+
+    auto memory_limit_bytes =
+        scratch_allocator == nullptr
+            ? 0
+            : scratch_allocator->GetMemoryLimitInBytes(stream);
+    if (memory_limit_bytes < 0) {
+      memory_limit_bytes = 0;
+    }
+
+    cudnnConvolutionBwdDataAlgo_t algo;
+    cudnnStatus_t status = dynload::cudnnGetConvolutionBackwardDataAlgorithm(
+        parent_, ToHandle(dnn_handle_),
+        /*filterDesc=*/filter.handle(),
+        /*diffDesc=*/out_back_4d.handle(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/in_back_4d.handle(),
+        /*preference=*/preference,
+        /*memoryLimitInBytes=*/memory_limit_bytes,
+        /*algo=*/&algo);
+    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                              "algorithm for doing backward "
+                                              "filter convolution";
+    return algo;
+  };
+
+  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+  DeviceMemory<uint8> scratch;
+  if (scratch_allocator != nullptr) {
+    size_t size_in_bytes;
+    status = dynload::cudnnGetConvolutionBackwardDataWorkspaceSize(
+        parent_, ToHandle(dnn_handle_),
+        /*filterDesc=*/filter.handle(),
+        /*diffDesc=*/out_back_4d.handle(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/in_back_4d.handle(),
+        /*algo=*/algo,
+        /*sizeInBytes=*/&size_in_bytes);
+    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+      scratch =
+          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    }
+  }
+
+  // If we didn't allocate any scratch space (perhaps because of failed
+  // allocation), we force a switch back to the "no workspace" algorithm.
+  if (scratch == nullptr) {
+    algo = get_algorithm(/*specify_limit=*/false);
+  }
+
+  status = dynload::cudnnConvolutionBackwardData_v3(
+      parent_, ToHandle(dnn_handle_),
+      /*alpha=*/&alpha,
+      /*filterDesc=*/filter.handle(),
+      /*filterData=*/filter_data.opaque(),
+      /*diffDesc=*/out_back_4d.handle(),
+      /*diffData=*/backward_output_data.opaque(),
+      /*convDesc=*/conv.handle(),
+      /*algo=*/algo,
+      /*workSpace=*/scratch.opaque(),
+      /*workSpaceSizeInBytes=*/scratch.size(),
+      /*beta=*/&beta,
+      /*gradDesc=*/in_back_4d.handle(),
+      /*gradData=*/backward_input_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(FATAL) << "failed to enqueue convolution on stream: "
                << ToString(status);
     return false;
   }
   return true;
+#endif
 }
 
 bool CudnnSupport::DoConvolveBackwardFilter(
@@ -611,7 +768,8 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     DeviceMemory<float> backward_output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemory<float>* backward_filter_data) {
+    DeviceMemory<float>* backward_filter_data,
+    ScratchAllocator* scratch_allocator) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
@@ -637,16 +795,100 @@ bool CudnnSupport::DoConvolveBackwardFilter(
   ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
-  status = dynload::cudnnConvolutionBackwardFilter(
-      parent_, ToHandle(dnn_handle_), &alpha, input_4d.handle(),
-      input_data.opaque(), out_back_4d.handle(), backward_output_data.opaque(),
-      conv.handle(), &beta, filter.handle(), backward_filter_data->opaque());
+#if CUDNN_VERSION >= 3000
+  if (dynload::IsCudnnR2()) {
+#endif
+    status = dynload::cudnnConvolutionBackwardFilter(
+        parent_, ToHandle(dnn_handle_), &alpha, input_4d.handle(),
+        input_data.opaque(), out_back_4d.handle(),
+        backward_output_data.opaque(), conv.handle(), &beta, filter.handle(),
+        backward_filter_data->opaque());
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "failed to enqueue convolution on stream: "
+                 << ToString(status);
+      return false;
+    }
+    return true;
+#if CUDNN_VERSION >= 3000
+  }
+#endif
+
+#if CUDNN_VERSION >= 3000
+  // Lambda that retrieves the algorithm.
+  // specify_limit will occur when we have a scratch allocator and it succeeds
+  // in allocating; otherwise, we'll fall back to the "no workspace" version.
+  auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+      dnn_handle_mutex_) {
+    cudnnConvolutionBwdFilterPreference_t preference =
+        specify_limit ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
+                      : CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE;
+
+    auto memory_limit_bytes =
+        scratch_allocator == nullptr
+            ? 0
+            : scratch_allocator->GetMemoryLimitInBytes(stream);
+    if (memory_limit_bytes < 0) {
+      memory_limit_bytes = 0;
+    }
+
+    cudnnConvolutionBwdFilterAlgo_t algo;
+    cudnnStatus_t status = dynload::cudnnGetConvolutionBackwardFilterAlgorithm(
+        parent_, ToHandle(dnn_handle_),
+        /*srcDesc=*/input_4d.handle(),
+        /*diffDesc=*/out_back_4d.handle(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/filter.handle(),
+        /*preference=*/preference,
+        /*memoryLimitInBytes=*/memory_limit_bytes,
+        /*algo=*/&algo);
+    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                              "algorithm for doing backward "
+                                              "filter convolution";
+    return algo;
+  };
+
+  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+  DeviceMemory<uint8> scratch;
+  if (scratch_allocator != nullptr) {
+    size_t size_in_bytes;
+    status = dynload::cudnnGetConvolutionBackwardFilterWorkspaceSize(
+        parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_4d.handle(),
+        /*diffDesc=*/out_back_4d.handle(), /*convDesc=*/conv.handle(),
+        /*gradDesc=*/filter.handle(), /*algo=*/algo,
+        /*sizeInBytes=*/&size_in_bytes);
+    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+      scratch =
+          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    }
+  }
+
+  // If we didn't allocate any scratch space (perhaps because of failed
+  // allocation), we force a switch back to the "no workspace" algorithm.
+  if (scratch == nullptr) {
+    algo = get_algorithm(/*specify_limit=*/false);
+  }
+
+  status = dynload::cudnnConvolutionBackwardFilter_v3(
+      parent_, ToHandle(dnn_handle_), /*alpha=*/&alpha,
+      /*srcDesc=*/input_4d.handle(),
+      /*srcData=*/input_data.opaque(),
+      /*diffDesc=*/out_back_4d.handle(),
+      /*diffData=*/backward_output_data.opaque(),
+      /*convDesc=*/conv.handle(),
+      /*algo=*/algo,
+      /*workSpace=*/scratch.opaque(),
+      /*workSpaceSizeInBytes=*/scratch.size(),
+      /*beta=*/&beta,
+      /*gradDesc=*/filter.handle(),
+      /*gradData=*/backward_filter_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(FATAL) << "failed to enqueue convolution on stream: "
                << ToString(status);
     return false;
   }
   return true;
+#endif
 }
 
 bool CudnnSupport::DoMatMul(Stream* stream,
@@ -800,7 +1042,7 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
   ScopedTensorDescriptor bias_descriptor{parent_, bias_dimensions,
                                          CUDNN_DATA_FLOAT};
 
-  // cudnnAddTensor is in-place, so we need to copy input_data to
+  // cudnnAddTensor_v3 is in-place, so we need to copy input_data to
   // output_data before doing the addition, unless the input and
   // output are at the same address.
   if (input_data.opaque() != output_data->opaque()) {
@@ -815,13 +1057,30 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
   }
 
   mutex_lock lock{dnn_handle_mutex_};
+  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                        AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
 
   const float alpha = 1.0f;
   const float beta = 1.0f;
-  auto status = dynload::cudnnAddTensor(
-      parent_, ToHandle(dnn_handle_), CUDNN_ADD_SAME_C, &alpha,
-      bias_descriptor.handle(), biases.opaque(), &beta,
-      input_descriptor.handle(), output_data->opaque());
+#if CUDNN_VERSION >= 3000
+  if (dynload::IsCudnnR2()) {
+#endif
+    status = dynload::cudnnAddTensor(
+        parent_, ToHandle(dnn_handle_), CUDNN_ADD_SAME_C, &alpha,
+        bias_descriptor.handle(), biases.opaque(), &beta,
+        input_descriptor.handle(), output_data->opaque());
+#if CUDNN_VERSION >= 3000
+  } else {
+    status = dynload::cudnnAddTensor_v3(
+        parent_, ToHandle(dnn_handle_), &alpha, bias_descriptor.handle(),
+        biases.opaque(), &beta, input_descriptor.handle(),
+        output_data->opaque());
+  }
+#endif
 
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "stream " << stream << " could not enqueue bias addition.";
@@ -970,7 +1229,52 @@ bool CudnnSupport::DoDepthConcatenate(
     Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
     port::ArraySlice<const DeviceMemory<float>*> input_data,
     DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  CHECK_EQ(input_dimensions.size(), input_data.size());
+
+  for (const auto& dimensions : input_dimensions) {
+    if (dimensions.layout() != dnn::DataLayout::kBatchDepthYX) {
+      LOG(ERROR) << "CudnnSupport::DoDepthConcatenate currently only "
+                    "supports the kBatchDepthYX layout.";
+      return false;
+    }
+  }
+
+  if (input_dimensions.empty()) {
+    return true;  // Nothing to do.
+  }
+
+  dnn::BatchDescriptor output_dimensions =
+      dnn::BatchDescriptor::DepthConcatenateOutputDescriptor(input_dimensions);
+
+  const int64 area = output_dimensions.width() * output_dimensions.height();
+  const auto index = [area](int64 batch, int64 depth, int64 yx,
+                            int64 max_depth) {
+    return (batch * max_depth + depth) * area + yx;
+  };
+
+  std::vector<float> output_host(output_dimensions.ElementCount());
+  std::vector<float> tmp;
+  int64 depth_sum = 0;
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    const auto& dimensions = input_dimensions[i];
+    tmp.resize(dimensions.ElementCount());
+    stream->ThenMemcpyD2H<float>(*input_data[i], &tmp).BlockHostUntilDone();
+
+    for (int64 batch = 0; batch < output_dimensions.count(); ++batch) {
+      for (int64 yx = 0; yx < area; ++yx) {
+        for (int64 depth = 0; depth < dimensions.feature_map_count(); ++depth) {
+          LOG(INFO) << output_dimensions.ElementCount() << ' ' << batch << ' '
+                    << yx << ' ' << depth;
+          output_host[index(batch, depth + depth_sum, yx,
+                            output_dimensions.feature_map_count())] =
+              tmp[index(batch, depth, yx, dimensions.feature_map_count())];
+        }
+      }
+    }
+    depth_sum += dimensions.feature_map_count();
+  }
+  stream->ThenMemcpyH2D<float>(output_host, output_data);
+  return true;
 }
 
 bool CudnnSupport::DoElementwiseOperate(
@@ -982,29 +1286,30 @@ bool CudnnSupport::DoElementwiseOperate(
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
 }
 
+bool CudnnSupport::DoXYPad(
+    Stream* stream, const dnn::BatchDescriptor &dimensions,
+    const DeviceMemory<float> &input_data, int64 left_pad, int64 right_pad,
+    int64 top_pad, int64 bottom_pad, DeviceMemory<float> *output_data) {
+  LOG(FATAL) << "not yet implemented";  // TODO(leary)
+}
+
+bool CudnnSupport::DoXYSlice(
+    Stream* stream, const dnn::BatchDescriptor &dimensions,
+    const DeviceMemory<float> &input_data, int64 left_trim, int64 right_trim,
+    int64 top_trim, int64 bottom_trim, DeviceMemory<float> *output_data) {
+  LOG(FATAL) << "not yet implemented";  // TODO(leary)
+}
+
 bool CudnnSupport::DoMemcpyD2HQuantized(
     Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-    port::MutableArraySlice<uint8> host_dst) {
-  LOG(ERROR) << "quantized memcpy not supported by cuDNN";
-  return false;
-}
-
-bool CudnnSupport::DoMemcpyD2HQuantized(
-    Stream* stream, const DeviceMemory<float>& device_unquantized_src,
-    port::MutableArraySlice<uint16> host_dst) {
-  LOG(ERROR) << "quantized memcpy not supported by cuDNN";
-  return false;
-}
-
-bool CudnnSupport::DoMemcpyD2HQuantized(
-    Stream* stream, const DeviceMemory<float>& device_unquantized_src,
-    port::MutableArraySlice<int32> host_dst) {
+    dnn::QuantizedActivationMode mode, void* host_dst, int64 size) {
   LOG(ERROR) << "quantized memcpy not supported by cuDNN";
   return false;
 }
 
 bool CudnnSupport::DoMemcpyH2DQuantized(
-    Stream* stream, port::ArraySlice<uint8> host_src,
+    Stream* stream, const void* host_src, int64 size,
+      dnn::QuantizedActivationMode mode,
     DeviceMemory<float>* gpu_unquantized_dst) {
   LOG(ERROR) << "quantized memcpy not supported by cuDNN";
   return false;
@@ -1074,7 +1379,7 @@ void initialize_cudnn() {
   // Prime the cuDNN DSO. The loader will log more information.
   auto statusor = gpu::internal::CachedDsoLoader::GetCudnnDsoHandle();
   if (!statusor.ok()) {
-    LOG(INFO) << "Unable to load cuDNN DSO.";
+    LOG(INFO) << "Unable to load cuDNN DSO";
   }
 
   gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,

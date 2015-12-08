@@ -41,8 +41,15 @@ message ConfigProto {
   // 0 means the system picks an appropriate number.
   //
   // Note that the first Session created in the process sets the
-  // number of threads for all future sessions.
+  // number of threads for all future sessions unless use_per_session_threads is
+  // true.
   int32 inter_op_parallelism_threads = 5;
+
+  // If true, use a new set of threads for this session rather than the global
+  // pool of threads. Only supported by direct sessions.
+  //
+  // If false, use the global threads created by the first session.
+  bool use_per_session_threads = 9;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
   // steps until the system warms up (at which point the recomputation

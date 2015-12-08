@@ -30,7 +30,6 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
-class Stream;
 template <typename ElemT>
 class DeviceMemory;
 
@@ -50,8 +49,6 @@ template <typename T>
 T *CUDAMemoryMutable(DeviceMemory<T> *mem) {
   return static_cast<T *>(mem->opaque());
 }
-
-CUstream AsCUDAStreamValue(Stream *stream);
 
 static_assert(sizeof(std::complex<float>) == sizeof(cuComplex),
               "std::complex<float> and cuComplex should have the same size");

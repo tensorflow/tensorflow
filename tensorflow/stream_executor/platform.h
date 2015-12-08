@@ -42,9 +42,6 @@ enum class PlatformKind {
   kInvalid,
   kCuda,
   kOpenCL,
-  kOpenCLAltera,  // Altera FPGA OpenCL platform.
-                  // See documentation: go/fpgaopencl
-                  // (StreamExecutor integration)
   kHost,
   kMock,
   kSize,

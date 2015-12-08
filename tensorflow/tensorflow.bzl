@@ -152,8 +152,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
                     srcs_version="PY2AND3",
                     visibility=visibility,
                     deps=[
-                        "//tensorflow/core:protos_all_py",
-                        "//tensorflow/python:framework",
+                        "//tensorflow/python:framework_for_generated_wrappers",
                     ],)
 
 

@@ -22,21 +22,10 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
-internal::EventInterface* CreateEventImplementation(
-    StreamExecutor* stream_exec) {
-  PlatformKind platform_kind = stream_exec->platform_kind();
-  switch (platform_kind) {
-    case PlatformKind::kCuda:
-      return (*internal::MakeCUDAEventImplementation())(stream_exec);
-    default:
-      LOG(FATAL) << "Cannot create event implementation for platform kind: "
-                 << PlatformKindString(platform_kind);
-  }
-}
-
 Event::Event(StreamExecutor* stream_exec)
-    : implementation_(CreateEventImplementation(stream_exec)),
-      stream_exec_(stream_exec) {}
+    : stream_exec_(stream_exec),
+      implementation_(
+          stream_exec_->implementation()->CreateEventImplementation()) {}
 
 Event::~Event() {
   auto status = stream_exec_->DeallocateEvent(this);

@@ -13,21 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+#if GOOGLE_CUDA
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
+#define EIGEN_USE_GPU
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/core/kernels/colorspace_op.h"
+#include "tensorflow/core/framework/register_types.h"
 
-namespace perftools {
-namespace gputools {
-namespace port {
+namespace tensorflow {
 
-namespace error = tensorflow::error;
+typedef Eigen::GpuDevice GPUDevice;
 
-}  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+template class functor::RGBToHSV<GPUDevice>;
+template class functor::HSVToRGB<GPUDevice>;
+}
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
+#endif  // GOOGLE_CUDA

@@ -58,13 +58,13 @@ class Timer {
   internal::TimerInterface *implementation() { return implementation_.get(); }
 
  private:
-  // Platform-dependent implementation of the timer internals for the underlying
-  // platform. This class just delegates to this opaque instance.
-  std::unique_ptr<internal::TimerInterface> implementation_;
-
   // The StreamExecutor that manages the platform-specific internals for this
   // timer.
   StreamExecutor *parent_;
+
+  // Platform-dependent implementation of the timer internals for the underlying
+  // platform. This class just delegates to this opaque instance.
+  std::unique_ptr<internal::TimerInterface> implementation_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(Timer);
 };

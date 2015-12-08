@@ -85,9 +85,41 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 ## Converting Between Colorspaces.
 
+Image ops work either on individual images or on batches of images, depending on
+the shape of their input Tensor.
+
+If 3-D, the shape is `[height, width, channels]`, and the Tensor represents one
+image. If 4-D, the shape is `[batch_size, height, width, channels]`, and the
+Tensor represents `batch_size` images.
+
+Currently, `channels` can usefully be 1, 2, 3, or 4. Single-channel images are
+grayscale, images with 3 channels are encoded as either RGB or HSV. Images
+with 2 or 4 channels include an alpha channel, which has to be stripped from the
+image before passing the image to most image processing functions (and can be
+re-attached later).
+
 Internally, images are either stored in as one `float32` per channel per pixel
 (implicitly, values are assumed to lie in `[0,1)`) or one `uint8` per channel
 per pixel (values are assumed to lie in `[0,255]`).
+
+Tensorflow can convert between images in RGB or HSV. The conversion functions
+work only on float images, so you need to convert images in other formats using
+[`convert_image_dtype`](#convert-image-dtype).
+
+Example:
+
+```python
+# Decode an image and convert it to HSV.
+rgb_image = tf.decode_png(...,  channels=3)
+rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.hsv_to_rgb(rgb_image)
+```
+
+@@rgb_to_grayscale
+@@grayscale_to_rgb
+
+@@hsv_to_rgb
+@@rgb_to_hsv
 
 @@convert_image_dtype
 
@@ -95,14 +127,24 @@ per pixel (values are assumed to lie in `[0,255]`).
 
 TensorFlow provides functions to adjust images in various ways: brightness,
 contrast, hue, and saturation.  Each adjustment can be done with predefined
-parameters or with random parameters picked from predefined intervals.  Random
+parameters or with random parameters picked from predefined intervals. Random
 adjustments are often useful to expand a training set and reduce overfitting.
+
+If several adjustments are chained it is advisable to minimize the number of
+redundant conversions by first converting the images to the most natural data
+type and representation (RGB or HSV).
 
 @@adjust_brightness
 @@random_brightness
 
 @@adjust_contrast
 @@random_contrast
+
+@@adjust_hue
+@@random_hue
+
+@@adjust_saturation
+@@random_saturation
 
 @@per_image_whitening
 """
@@ -133,8 +175,9 @@ from tensorflow.python.ops.gen_image_ops import *
 from tensorflow.python.ops.gen_attention_ops import *
 # pylint: enable=wildcard-import
 
-ops.NoGradient('ResizeBilinear')
 ops.NoGradient('RandomCrop')
+ops.NoGradient('RGBToHSV')
+ops.NoGradient('HSVToRGB')
 
 
 def _ImageDimensions(images):
@@ -875,3 +918,215 @@ def convert_image_dtype(image, dtype, name=None):
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
         scaled = math_ops.mul(image, scale)
         return math_ops.cast(scaled, dtype)
+
+
+def rgb_to_grayscale(images):
+  """Converts one or more images from RGB to Grayscale.
+
+  Outputs a tensor of the same `DType` and rank as `images`.  The size of the
+  last dimension of the output is 1, containing the Grayscale value of the
+  pixels.
+
+  Args:
+    images: The RGB tensor to convert. Last dimension must have size 3 and
+      should contain RGB values.
+
+  Returns:
+    The converted grayscale image(s).
+  """
+  with ops.op_scope([images], None, 'rgb_to_grayscale'):
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = images.dtype
+    flt_image = convert_image_dtype(images, dtypes.float32)
+
+    # Reference for converting between RGB and grayscale.
+    # https://en.wikipedia.org/wiki/Luma_%28video%29
+    rgb_weights = [0.2989, 0.5870, 0.1140]
+    rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
+    gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
+                                     rank_1,
+                                     keep_dims=True)
+
+    return convert_image_dtype(gray_float, orig_dtype)
+
+
+def grayscale_to_rgb(images):
+  """Converts one or more images from Grayscale to RGB.
+
+  Outputs a tensor of the same `DType` and rank as `images`.  The size of the
+  last dimension of the output is 3, containing the RGB value of the pixels.
+
+  Args:
+    images: The Grayscale tensor to convert. Last dimension must be size 1.
+
+  Returns:
+    The converted grayscale image(s).
+  """
+  with ops.op_scope([images], None, 'grayscale_to_rgb'):
+    rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
+    shape_list = (
+        [array_ops.ones(rank_1,
+                        dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
+    multiples = array_ops.concat(0, shape_list)
+    return array_ops.tile(images, multiples)
+
+
+# pylint: disable=invalid-name
+@ops.RegisterShape('HSVToRGB')
+@ops.RegisterShape('RGBToHSV')
+def _ColorspaceShape(op):
+  """Shape function for colorspace ops."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
+  input_rank = input_shape.ndims
+  if input_rank is not None:
+    input_shape = input_shape.merge_with([None] * (input_rank - 1) + [3])
+  return [input_shape]
+# pylint: enable=invalid-name
+
+
+def random_hue(image, max_delta, seed=None):
+  """Adjust the hue of an RGB image by a random factor.
+
+  Equivalent to `adjust_hue()` but uses a `delta` randomly
+  picked in the interval `[-max_delta, max_delta]`.
+
+  `max_delta` must be in the interval `[0, 0.5]`.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    max_delta: float.  Maximum value for the random delta.
+    seed: An operation-specific seed. It will be used in conjunction
+      with the graph-level seed to determine the real seeds that will be
+      used in this operation. Please see the documentation of
+      set_random_seed for its interaction with the graph-level random seed.
+
+  Returns:
+    3-D float tensor of shape `[height, width, channels]`.
+
+  Raises:
+    ValueError: if `max_delta` is invalid.
+  """
+  if max_delta > 0.5:
+    raise ValueError('max_delta must be <= 0.5.')
+
+  if max_delta < 0:
+    raise ValueError('max_delta must be non-negative.')
+
+  delta = random_ops.random_uniform([], -max_delta, max_delta, seed=seed)
+  return adjust_hue(image, delta)
+
+
+def adjust_hue(image, delta, name=None):
+  """Adjust hue of an RGB image.
+
+  This is a convenience method that converts an RGB image to float
+  representation, converts it to HSV, add an offset to the hue channel, converts
+  back to RGB and then back to the original data type. If several adjustments
+  are chained it is advisable to minimize the number of redundant conversions.
+
+  `image` is an RGB image.  The image hue is adjusted by converting the
+  image to HSV and rotating the hue channel (H) by
+  `delta`.  The image is then converted back to RGB.
+
+  `delta` must be in the interval `[-1, 1]`.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    delta: float.  How much to add to the hue channel.
+    name: A name for this operation (optional).
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+  """
+  with ops.op_scope([image], name, 'adjust_hue') as name:
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    hsv = gen_image_ops.rgb_to_hsv(flt_image)
+
+    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
+    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
+    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+
+    # Note that we add 2*pi to guarantee that the resulting hue is a positive
+    # floating point number since delta is [-0.5, 0.5].
+    hue = math_ops.mod(hue + (delta + 1.), 1.)
+
+    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
+
+    return convert_image_dtype(rgb_altered, orig_dtype)
+
+
+def random_saturation(image, lower, upper, seed=None):
+  """Adjust the saturation of an RGB image by a random factor.
+
+  Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
+  picked in the interval `[lower, upper]`.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    lower: float.  Lower bound for the random saturation factor.
+    upper: float.  Upper bound for the random saturation factor.
+    seed: An operation-specific seed. It will be used in conjunction
+      with the graph-level seed to determine the real seeds that will be
+      used in this operation. Please see the documentation of
+      set_random_seed for its interaction with the graph-level random seed.
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    ValueError: if `upper <= lower` or if `lower < 0`.
+  """
+  if upper <= lower:
+    raise ValueError('upper must be > lower.')
+
+  if lower < 0:
+    raise ValueError('lower must be non-negative.')
+
+  # Pick a float in [lower, upper]
+  saturation_factor = random_ops.random_uniform([], lower, upper, seed=seed)
+  return adjust_saturation(image, saturation_factor)
+
+
+def adjust_saturation(image, saturation_factor, name=None):
+  """Adjust staturation of an RGB image.
+
+  This is a convenience method that converts an RGB image to float
+  representation, converts it to HSV, add an offset to the saturation channel,
+  converts back to RGB and then back to the original data type. If several
+  adjustments are chained it is advisable to minimize the number of redundant
+  conversions.
+
+  `image` is an RGB image.  The image saturation is adjusted by converting the
+  image to HSV and multiplying the saturation (S) channel by
+  `saturation_factor` and clipping. The image is then converted back to RGB.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    saturation_factor: float. Factor to multiply the saturation by.
+    name: A name for this operation (optional).
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+  """
+  with ops.op_scope([image], name, 'adjust_saturation') as name:
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    hsv = gen_image_ops.rgb_to_hsv(flt_image)
+
+    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
+    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
+    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+
+    saturation *= saturation_factor
+    saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
+
+    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
+
+    return convert_image_dtype(rgb_altered, orig_dtype)

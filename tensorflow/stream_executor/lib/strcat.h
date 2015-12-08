@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 

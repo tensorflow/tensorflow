@@ -31,9 +31,7 @@ installing from source, GPU-enabled support, etc., see
 
 ## Binary Installation
 
-The TensorFlow Python API currently requires Python 2.7: we are
-[working](https://github.com/tensorflow/tensorflow/issues/1) on adding support
-for Python 3.
+The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
 The simplest way to install TensorFlow is using
 [pip](https://pypi.python.org/pypi/pip) for both Linux and Mac.

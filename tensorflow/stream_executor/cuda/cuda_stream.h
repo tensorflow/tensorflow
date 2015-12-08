@@ -20,7 +20,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
+#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace perftools {
@@ -81,6 +81,13 @@ class CUDAStream : public internal::StreamInterface {
   // Event that indicates this stream has completed.
   CUevent completed_event_ GUARDED_BY(mu_);
 };
+
+// Helper functions to simplify extremely common flows.
+// Converts a Stream to the underlying CUDAStream implementation.
+CUDAStream *AsCUDAStream(Stream *stream);
+
+// Extracts a CUstream from a CUDAStream-backed Stream object.
+CUstream AsCUDAStreamValue(Stream *stream);
 
 }  // namespace cuda
 }  // namespace gputools

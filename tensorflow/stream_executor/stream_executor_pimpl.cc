@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/notification.h"
+#include "tensorflow/stream_executor/lib/stacktrace.h"
+#include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -39,6 +41,14 @@ bool FLAGS_check_gpu_leaks = false;
 namespace perftools {
 namespace gputools {
 namespace {
+
+string StackTraceIfVLOG10() {
+  if (VLOG_IS_ON(10)) {
+    return port::StrCat(" ", port::CurrentStackTrace(), "\n");
+  } else {
+    return "";
+  }
+}
 
 // Maximum stack depth to report when generating backtrace on mem allocation
 // (for GPU memory leak checker)
@@ -65,9 +75,6 @@ internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
       break;
     case PlatformKind::kOpenCL:
       factory = *internal::MakeOpenCLExecutorImplementation();
-      break;
-    case PlatformKind::kOpenCLAltera:
-      factory = *internal::MakeOpenCLAlteraExecutorImplementation();
       break;
     case PlatformKind::kHost:
       factory = internal::MakeHostExecutorImplementation;
@@ -148,7 +155,8 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
 
 StreamExecutor::StreamExecutor(PlatformKind platform_kind,
                                const PluginConfig &plugin_config)
-    : implementation_(StreamExecutorImplementationFromPlatformKind(
+    : platform_(nullptr),
+      implementation_(StreamExecutorImplementationFromPlatformKind(
           platform_kind, plugin_config)),
       platform_kind_(platform_kind),
       device_ordinal_(-1),
@@ -160,16 +168,21 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
 }
 
 StreamExecutor::StreamExecutor(
-    PlatformKind platform_kind,
-    internal::StreamExecutorInterface *implementation)
-    : implementation_(implementation),
-      platform_kind_(platform_kind),
+    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    : platform_(platform),
+      implementation_(implementation),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false) {
-  CheckPlatformKindIsValid(platform_kind);
+  if (port::Lowercase(platform_->Name()) == "cuda") {
+    platform_kind_ = PlatformKind::kCuda;
+  } else if (port::Lowercase(platform_->Name()) == "opencl") {
+    platform_kind_ = PlatformKind::kOpenCL;
+  } else if (port::Lowercase(platform_->Name()) == "host") {
+    platform_kind_ = PlatformKind::kHost;
+  }
 }
 
 StreamExecutor::~StreamExecutor() {
@@ -208,7 +221,7 @@ bool StreamExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
 
 void StreamExecutor::Deallocate(DeviceMemoryBase *mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
-          << ") mem->size()=" << mem->size();
+          << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();
 
   if (mem->opaque() != nullptr) {
     EraseAllocRecord(mem->opaque());
@@ -333,8 +346,8 @@ bool StreamExecutor::BlockHostUntilDone(Stream *stream) {
 
 void *StreamExecutor::Allocate(uint64 size) {
   void *buf = implementation_->Allocate(size);
-  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
-          << ") returns " << buf;
+  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size << ") returns "
+          << buf << StackTraceIfVLOG10();
   CreateAllocRecord(buf, size);
 
   return buf;
@@ -348,20 +361,20 @@ bool StreamExecutor::GetSymbol(const string &symbol_name, void **mem,
 void *StreamExecutor::HostMemoryAllocate(uint64 size) {
   void *buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
-          << ") returns " << buffer;
+          << ") returns " << buffer << StackTraceIfVLOG10();
   return buffer;
 }
 
 void StreamExecutor::HostMemoryDeallocate(void *location) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(location="
-          << location << ")";
+  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(location=" << location
+          << ")" << StackTraceIfVLOG10();
 
   return implementation_->HostMemoryDeallocate(location);
 }
 
 bool StreamExecutor::HostMemoryRegister(void *location, uint64 size) {
   VLOG(1) << "Called StreamExecutor::HostMemoryRegister(location=" << location
-          << ", size=" << size << ")";
+          << ", size=" << size << ")" << StackTraceIfVLOG10();
   if (location == nullptr || size == 0) {
     LOG(WARNING) << "attempting to register null or zero-sized memory: "
                  << location << "; size " << size;
@@ -371,12 +384,13 @@ bool StreamExecutor::HostMemoryRegister(void *location, uint64 size) {
 
 bool StreamExecutor::HostMemoryUnregister(void *location) {
   VLOG(1) << "Called StreamExecutor::HostMemoryUnregister(location=" << location
-          << ")";
+          << ")" << StackTraceIfVLOG10();
   return implementation_->HostMemoryUnregister(location);
 }
 
 bool StreamExecutor::SynchronizeAllActivity() {
-  VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()";
+  VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()"
+          << StackTraceIfVLOG10();
   bool ok = implementation_->SynchronizeAllActivity();
 
   // This should all be quick and infallible work, so we can perform the
@@ -388,16 +402,17 @@ bool StreamExecutor::SynchronizeAllActivity() {
 
 bool StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
                                         uint64 size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location="
-          << location << ", size=" << size << ")";
+  VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
+          << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
 }
 
 bool StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
                                        uint64 size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location="
-          << location << ", value=" << value << ", size=" << size << ")";
+  VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
+          << ", value=" << value << ", size=" << size << ")"
+          << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemSet(location, value, size);
 }
@@ -406,7 +421,7 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                        const void *host_src, uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(gpu_dst="
           << gpu_dst->opaque() << ", host_src=" << host_src << ", size=" << size
-          << ") H2D";
+          << ") H2D" << StackTraceIfVLOG10();
 
   // Tracing overloaded methods is very difficult due to issues with type
   // inference on template args. Since use of these overloaded methods is
@@ -417,9 +432,9 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
 bool StreamExecutor::SynchronousMemcpy(void *host_dst,
                                        const DeviceMemoryBase &gpu_src,
                                        uint64 size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst="
-          << host_dst << ", gpu_src=" << gpu_src.opaque() << ", size=" << size
-          << ") D2H";
+  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst=" << host_dst
+          << ", gpu_src=" << gpu_src.opaque() << ", size=" << size << ") D2H"
+          << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
 }
@@ -428,8 +443,8 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                        const DeviceMemoryBase &gpu_src,
                                        uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(gpu_dst="
-          << gpu_dst->opaque() << ", gpu_src=" << gpu_src.opaque() << ", size=" << size
-          << ") D2D";
+          << gpu_dst->opaque() << ", gpu_src=" << gpu_src.opaque()
+          << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src,
                                                           size);
@@ -438,7 +453,8 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
 port::Status StreamExecutor::SynchronousMemcpyD2H(
     const DeviceMemoryBase &gpu_src, int64 size, void *host_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(gpu_src="
-          << gpu_src.opaque() << ", size=" << size << ", host_dst=" << host_dst << ")";
+          << gpu_src.opaque() << ", size=" << size << ", host_dst=" << host_dst
+          << ")" << StackTraceIfVLOG10();
 
   port::Status result{port::Status::OK()};
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H,
@@ -459,8 +475,9 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 port::Status StreamExecutor::SynchronousMemcpyH2D(const void *host_src,
                                                   int64 size,
                                                   DeviceMemoryBase *gpu_dst) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src="
-          << host_src << ", size=" << size << ", gpu_dst" << gpu_dst->opaque() << ")";
+  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
+          << ", size=" << size << ", gpu_dst" << gpu_dst->opaque() << ")"
+          << StackTraceIfVLOG10();
 
   port::Status result{port::Status::OK()};
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D,

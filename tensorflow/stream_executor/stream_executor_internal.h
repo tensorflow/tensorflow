@@ -71,6 +71,94 @@ namespace perftools {
 namespace gputools {
 namespace internal {
 
+// Platform-dependent interface class for the generic Events interface, in
+// the PIMPL style.
+class EventInterface {
+ public:
+  EventInterface() {}
+  virtual ~EventInterface() {}
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
+};
+
+// Pointer-to-implementation object type (i.e. the KernelBase class delegates to
+// this interface) with virtual destruction. This class exists for the
+// platform-dependent code to hang any kernel data/resource info/functionality
+// off of.
+class KernelInterface {
+ public:
+  // Default constructor for the abstract interface.
+  KernelInterface() {}
+
+  // Default destructor for the abstract interface.
+  virtual ~KernelInterface() {}
+
+  // Returns the number of formal parameters that this kernel accepts.
+  virtual unsigned Arity() const = 0;
+
+  // Sets the preferred cache configuration.
+  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
+
+  // Gets the preferred cache configuration.
+  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
+};
+
+// Pointer-to-implementation object type (i.e. the Stream class delegates to
+// this interface) with virtual destruction. This class exists for the
+// platform-dependent code to hang any kernel data/resource info/functionality
+// off of.
+class StreamInterface {
+ public:
+  // Default constructor for the abstract interface.
+  StreamInterface() {}
+
+  // Default destructor for the abstract interface.
+  virtual ~StreamInterface() {}
+
+  // Returns the CUDA stream associated with this platform's stream
+  // implementation.
+  //
+  // WARNING: checks that the underlying platform is, in fact, CUDA, causing a
+  // fatal error if it is not. This hack is made available solely for use from
+  // distbelief code, which temporarily has strong ties to CUDA as a platform.
+  virtual void *CudaStreamHack() { return nullptr; }
+
+  // See the above comment on CudaStreamHack -- this further breaks abstraction
+  // for Eigen within distbelief, which has strong ties to CUDA as a platform,
+  // and a historical attachment to a programming model which takes a
+  // stream-slot rather than a stream-value.
+  virtual void **CudaStreamMemberHack() { return nullptr; }
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
+};
+
+// Pointer-to-implementation object type (i.e. the Timer class delegates to
+// this interface) with virtual destruction. This class exists for the
+// platform-dependent code to hang any timer data/resource info/functionality
+// off of.
+class TimerInterface {
+ public:
+  // Default constructor for the abstract interface.
+  TimerInterface() {}
+
+  // Default destructor for the abstract interface.
+  virtual ~TimerInterface() {}
+
+  // Returns the number of microseconds elapsed in a completed timer.
+  virtual uint64 Microseconds() const = 0;
+
+  // Returns the number of nanoseconds elapsed in a completed timer.
+  virtual uint64 Nanoseconds() const = 0;
+
+ private:
+  SE_DISALLOW_COPY_AND_ASSIGN(TimerInterface);
+};
+
 // Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
 //
 // Various platforms will provide an implementation that satisfy this interface.
@@ -89,6 +177,7 @@ class StreamExecutorInterface {
   // See the StreamExecutor interface for comments on the same-named methods.
   virtual port::Status Init(int device_ordinal,
                             DeviceOptions device_options) = 0;
+
   virtual bool GetKernel(const MultiKernelLoaderSpec &spec,
                          KernelBase *kernel) {
     return false;
@@ -233,9 +322,13 @@ class StreamExecutorInterface {
   // initialization fails.
   virtual dnn::DnnSupport *CreateDnn() { return nullptr; }
 
-  // Please read the warning below. This method is only temporary. See
-  // http://b/15759750
-  //
+  // Each call creates a new instance of the platform-specific implementation of
+  // the corresponding interface type.
+  virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
+  virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
+  virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
+  virtual std::unique_ptr<TimerInterface> GetTimerImplementation() = 0;
+
   // Returns the CUDA context associated with this StreamExecutor platform
   // implementation.
   //
@@ -248,106 +341,6 @@ class StreamExecutorInterface {
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
 
-// Pointer-to-implementation object type (i.e. the KernelBase class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any kernel data/resource info/functionality
-// off of.
-class KernelInterface {
- public:
-  // Default constructor for the abstract interface.
-  KernelInterface() {}
-
-  // Default destructor for the abstract interface.
-  virtual ~KernelInterface() {}
-
-  // Returns the number of formal parameters that this kernel accepts.
-  virtual unsigned Arity() const = 0;
-
-  // Sets the preferred cache configuration.
-  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
-
-  // Gets the preferred cache configuration.
-  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
-};
-
-// Platform-dependent interface class for the generic Events interface, in
-// the PIMPL style.
-class EventInterface {
- public:
-  EventInterface() {}
-  virtual ~EventInterface() {}
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
-};
-
-// Pointer-to-implementation object type (i.e. the Stream class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any kernel data/resource info/functionality
-// off of.
-class StreamInterface {
- public:
-  // Default constructor for the abstract interface.
-  StreamInterface() {}
-
-  // Default destructor for the abstract interface.
-  virtual ~StreamInterface() {}
-
-  // Please read the warning below. This method is only temporary. See
-  // http://b/15759750
-  //
-  // Returns the CUDA stream associated with this platform's stream
-  // implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA, causing a
-  // fatal error if it is not. This hack is made available solely for use from
-  // distbelief code, which temporarily has strong ties to CUDA as a platform.
-  virtual void *CudaStreamHack() { return nullptr; }
-
-  // Please read the warning above. This method is only temporary. See
-  // http://b/15759750
-  //
-  // See the above comment on CudaStreamHack -- this further breaks abstraction
-  // for Eigen within distbelief, which has strong ties to CUDA as a platform,
-  // and a historical attachment to a programming model which takes a
-  // stream-slot rather than a stream-value.
-  virtual void **CudaStreamMemberHack() { return nullptr; }
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
-};
-
-// Pointer-to-implementation object type (i.e. the Timer class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any timer data/resource info/functionality
-// off of.
-class TimerInterface {
- public:
-  // Default constructor for the abstract interface.
-  TimerInterface() {}
-
-  // Default destructor for the abstract interface.
-  virtual ~TimerInterface() {}
-
-  // Returns the number of microseconds elapsed in a completed timer.
-  virtual uint64 Microseconds() const = 0;
-
-  // Returns the number of nanoseconds elapsed in a completed timer.
-  virtual uint64 Nanoseconds() const = 0;
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(TimerInterface);
-};
-
-// Extern functions for constructing platform-specific instances that conform to
-// the StreamExecutor interface. (Defining constructor functions extern in this
-// way prevents CUDA/OpenCL headers from leaking into any shared header files.)
-//
-// TODO(leary) switch this all over to registries.
-
 using StreamExecutorFactory =
     std::function<StreamExecutorInterface *(const PluginConfig &)>;
 using EventFactory = std::function<EventInterface *(StreamExecutor *)>;
@@ -355,21 +348,11 @@ using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
 using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
 using KernelFactory = std::function<KernelInterface*()>;
 
-EventFactory* MakeCUDAEventImplementation();
 StreamExecutorFactory* MakeCUDAExecutorImplementation();
-StreamFactory* MakeCUDAStreamImplementation();
-TimerFactory* MakeCUDATimerImplementation();
-KernelFactory* MakeCUDAKernelImplementation();
 
 StreamExecutorFactory* MakeOpenCLExecutorImplementation();
-StreamExecutorFactory* MakeOpenCLAlteraExecutorImplementation();
-StreamFactory* MakeOpenCLStreamImplementation();
-TimerFactory* MakeOpenCLTimerImplementation();
-KernelFactory* MakeOpenCLKernelImplementation();
 
 extern StreamExecutorFactory MakeHostExecutorImplementation;
-extern StreamFactory MakeHostStreamImplementation;
-extern TimerFactory MakeHostTimerImplementation;
 
 
 }  // namespace internal

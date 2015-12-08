@@ -13,21 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
+#define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-
-#include "tensorflow/core/lib/core/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/stream_executor/platform.h"
 
 namespace perftools {
 namespace gputools {
-namespace port {
+namespace cuda {
 
-namespace error = tensorflow::error;
+// Opaque and unique identifier for the cuda platform.
+// This is needed so that plugins can refer to/identify this platform without
+// instantiating a CudaPlatform object.
+// This is broken out here to avoid a circular dependency between CudaPlatform
+// and CudaExecutor.
+extern const Platform::Id kCudaPlatformId;
 
-}  // namespace port
+}  // namespace cuda
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_

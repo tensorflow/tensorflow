@@ -31,8 +31,6 @@ string PlatformKindString(PlatformKind kind) {
       return "CUDA";
     case PlatformKind::kOpenCL:
       return "OpenCL";
-    case PlatformKind::kOpenCLAltera:
-      return "OpenCL+Altera";
     case PlatformKind::kHost:
       return "Host";
     case PlatformKind::kMock:

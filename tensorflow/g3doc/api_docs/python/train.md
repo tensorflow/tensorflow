@@ -30,7 +30,7 @@ class directly, but instead instantiate one of its subclasses such as
 # Create an optimizer with the desired parameters.
 opt = GradientDescentOptimizer(learning_rate=0.1)
 # Add Ops to the graph to minimize a cost by updating a list of variables.
-# "cost" is a Tensor, and the list of variables contains variables.Variable
+# "cost" is a Tensor, and the list of variables contains tf.Variable
 # objects.
 opt_op = opt.minimize(cost, <list of variables>)
 ```
@@ -145,7 +145,7 @@ given variable.
 
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`var_list`</b>: Optional list of variables.Variable to update to minimize
+*  <b>`var_list`</b>: Optional list of tf.Variable to update to minimize
     `loss`.  Defaults to the list of variables collected in the graph
     under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
@@ -1412,9 +1412,10 @@ height, width, channels]` and where `channels` can be:
 *  3: `tensor` is interpreted as RGB.
 *  4: `tensor` is interpreted as RGBA.
 
-The images have the same number of channels as the input tensor. Their values
-are normalized, one image at a time, to fit in the range `[0, 255]`.  The
-op uses two different normalization algorithms:
+The images have the same number of channels as the input tensor. For float
+input, the values are normalized one image at a time to fit in the range
+`[0, 255]`.  `uint8` values are unchanged.  The op uses two different
+normalization algorithms:
 
 *  If the input values are all positive, they are rescaled so the largest one
    is 255.
@@ -1435,8 +1436,8 @@ build the `tag` of the summary values:
 
 *  <b>`tag`</b>: A scalar `Tensor` of type `string`. Used to build the `tag`
     of the summary values.
-*  <b>`tensor`</b>: A 4-D `float32` `Tensor` of shape `[batch_size, height, width,
-   channels]` where `channels` is 1, 3, or 4.
+*  <b>`tensor`</b>: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
+    width, channels]` where `channels` is 1, 3, or 4.
 *  <b>`max_images`</b>: Max number of batch elements to generate images for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
     summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
@@ -1464,7 +1465,7 @@ This op reports an `OutOfRange` error if any value is not finite.
 
 
 *  <b>`tag`</b>: A `string` `Tensor`. 0-D.  Tag to use for the summary value.
-*  <b>`values`</b>: A `float32` or `float64` `Tensor`. Any shape. Values to use to
+*  <b>`values`</b>: A real numeric `Tensor`. Any shape. Values to use to
     build the histogram.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.

@@ -144,6 +144,12 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
   } else if (!arg_->type_attr().empty()) {
     Status status = GetNodeAttr(*node_def_, arg_->type_attr(), dt);
     if (!status.ok()) {
+      // Check if the type attr has a default
+      const OpDef::AttrDef* attr = FindAttr(arg_->type_attr(), *op_def_);
+      if (attr && attr->has_default_value()) {
+        *dt = attr->default_value().type();
+        return Status::OK();
+      }
       return errors::InvalidArgument("Could not infer type for input '",
                                      arg_->name(), "': ",
                                      status.error_message());

@@ -97,6 +97,13 @@ class SummaryOpsTest(tf.test.TestCase):
       self.assertEqual(summ2, merge.op.inputs[0])
       self.assertTrue(tf.merge_all_summaries("bar_key") is None)
 
+  def testHistogramSummaryTypes(self):
+    with tf.Graph().as_default():
+      for dtype in (tf.int8, tf.uint8, tf.int16, tf.int32,
+                    tf.float32, tf.float64):
+        const = tf.constant(10, dtype=dtype)
+        tf.histogram_summary("h", const, name="histo")
+
 
 if __name__ == "__main__":
   tf.test.main()

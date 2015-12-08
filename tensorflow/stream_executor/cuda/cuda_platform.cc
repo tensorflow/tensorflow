@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform.h"
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
@@ -25,8 +27,6 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 namespace cuda {
-
-PLATFORM_DEFINE_ID(kCudaPlatformId);
 
 CudaPlatform::CudaPlatform()
     : name_("CUDA"), min_numa_node_(0), limit_numa_node_(0) {}
@@ -147,8 +147,8 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(PlatformKind::kCuda,
-                                                   config.plugin_config);
+  auto executor = port::MakeUnique<StreamExecutor>(
+      this, new CUDAExecutor(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{

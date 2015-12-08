@@ -69,9 +69,9 @@ class _VariableStore(object):
       initializer: initializer for the variable.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see variables.Variable).
+        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
       collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see variables.Variable).
+        Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
 
     Returns:
       The created or existing variable.
@@ -225,9 +225,9 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
     dtype: type of the new or existing variable (defaults to `DT_FLOAT`).
     initializer: initializer for the variable if one is created.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see variables.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see variables.Variable).
+      Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
 
   Returns:
     The created or existing variable.

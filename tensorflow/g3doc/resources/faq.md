@@ -6,6 +6,20 @@ answer on one of the TensorFlow [community resources](../resources/index.md).
 
 [TOC]
 
+## Features and Compatibility
+
+#### Can I run distributed training on multiple computers?
+
+The initial open-source release of TensorFlow supports multiple devices (CPUs
+and GPUs) in a single computer. We are actively working on an open-source
+multi-machine version, and plan to release it as soon as it's ready. You can
+follow progress at the [GitHub issue](https://github.com/tensorflow/tensorflow/issues/23).
+
+#### Does TensorFlow work with Python 3?
+
+As of the 0.6.0 release timeframe (Early December 2015), we do support Python
+3.3+.
+
 ## Building a TensorFlow graph
 
 See also the
@@ -106,12 +120,6 @@ released when the session is closed, by calling
 The intermediate tensors that are created as part of a call to
 [`Session.run()`](../api_docs/python/client.md) will be freed at or before the
 end of the call.
-
-#### Can I run distributed training on multiple computers?
-
-The initial open-source release of TensorFlow supports multiple devices (CPUs
-and GPUs) in a single computer. We are working on a distributed version as well:
-if you are interested, please let us know so we can prioritize accordingly.
 
 #### Does the runtime parallelize parts of graph execution?
 
@@ -294,12 +302,6 @@ how-to documentation for
 for more details of how to define these different input types.
 
 ## Miscellaneous
-
-#### Does TensorFlow work with Python 3?
-
-We have only tested TensorFlow using Python 2.7. We are aware of some changes
-that will be required for Python 3 compatibility, and welcome contributions
-towards this effort.
 
 #### What is TensorFlow's coding style convention?
 

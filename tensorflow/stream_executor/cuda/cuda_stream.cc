@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 
+#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace perftools {
 namespace gputools {
@@ -59,6 +61,16 @@ bool CUDAStream::GetOrCreateCompletedEvent(CUevent *completed_event) {
 
   *completed_event = completed_event_;
   return true;
+}
+
+CUDAStream *AsCUDAStream(Stream *stream) {
+  DCHECK(stream != nullptr);
+  return static_cast<CUDAStream *>(stream->implementation());
+}
+
+CUstream AsCUDAStreamValue(Stream *stream) {
+  DCHECK(stream != nullptr);
+  return AsCUDAStream(stream)->cuda_stream();
 }
 
 }  // namespace cuda

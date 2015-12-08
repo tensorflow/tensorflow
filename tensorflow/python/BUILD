@@ -122,30 +122,44 @@ cc_library(
     ],
 )
 
+# What is needed for tf_gen_op_wrapper_py.
+py_library(
+    name = "framework_for_generated_wrappers",
+    srcs = [
+        "framework/device.py",
+        "framework/dtypes.py",
+        "framework/op_def_registry.py",
+        "framework/ops.py",
+        "framework/registry.py",
+        "framework/tensor_shape.py",
+        "framework/versions.py",
+        # TODO(josh11b): Move this to the framework directory
+        "ops/op_def_library.py",
+        "ops/constant_op.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":platform",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 py_library(
     name = "framework",
     srcs = [
-        # TODO(mrry): Move this to framework.
+        # TODO(mrry): Move this to the framework directory.
         "client/graph_util.py",
-        "framework/device.py",
         "framework/errors.py",
         "framework/framework_lib.py",
         "framework/importer.py",
-        "framework/op_def_registry.py",
-        "framework/ops.py",
         "framework/random_seed.py",
-        "framework/registry.py",
-        "framework/tensor_shape.py",
-        "framework/dtypes.py",
         "framework/tensor_util.py",
-        "framework/versions.py",
+        # TODO(josh11b): Move this to the framework directory
         "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [
-        ":platform",
-        "//tensorflow/core:protos_all_py",
-    ],
+    deps = [":framework_for_generated_wrappers"],
 )
 
 # subinclude("//third_party/py/cython:build_defs")
@@ -402,6 +416,8 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "image_ops",
     hidden = [
+        "ResizeBilinearGrad",
+        "ResizeNearestNeighborGrad",
         "ScaleImageGrad",
     ],
     require_shape_functions = True,
@@ -527,6 +543,9 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "sparse_ops",
     hidden = [
+        "DeserializeManySparse",
+        "SerializeManySparse",
+        "SerializeSparse",
         "SparseConcat",
         "SparseSelectLastK",
         "SparseReorder",
@@ -574,7 +593,6 @@ py_library(
         "ops/attention_ops.py",
         "ops/candidate_sampling_ops.py",
         "ops/clip_ops.py",
-        "ops/constant_op.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
         "ops/data_flow_grad.py",
@@ -608,7 +626,6 @@ py_library(
         "ops/nn_grad.py",
         "ops/nn_ops.py",
         "ops/numerics.py",
-        "ops/op_def_library.py",
         "ops/parsing_ops.py",
         "ops/random_ops.py",
         "ops/rnn.py",

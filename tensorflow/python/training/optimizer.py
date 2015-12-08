@@ -42,7 +42,7 @@ class Optimizer(object):
   # Create an optimizer with the desired parameters.
   opt = GradientDescentOptimizer(learning_rate=0.1)
   # Add Ops to the graph to minimize a cost by updating a list of variables.
-  # "cost" is a Tensor, and the list of variables contains variables.Variable
+  # "cost" is a Tensor, and the list of variables contains tf.Variable
   # objects.
   opt_op = opt.minimize(cost, <list of variables>)
   ```
@@ -199,7 +199,7 @@ class Optimizer(object):
 
     Args:
       loss: A Tensor containing the value to minimize.
-      var_list: Optional list of variables.Variable to update to minimize
+      var_list: Optional list of tf.Variable to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
@@ -224,7 +224,7 @@ class Optimizer(object):
       var_list = variables.trainable_variables()
     for var in var_list:
       if not isinstance(var, variables.Variable):
-        raise TypeError("Argument is not a variables.Variable: %s" % var)
+        raise TypeError("Argument is not a tf.Variable: %s" % var)
     if not var_list:
       raise ValueError("No variables to optimize")
     grads = gradients.gradients(
@@ -268,13 +268,13 @@ class Optimizer(object):
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       if not isinstance(v, variables.Variable):
         raise TypeError(
-            "Variable must be a variables.Variable: %s" % v)
+            "Variable must be a tf.Variable: %s" % v)
       if g is not None:
         self._assert_valid_dtypes([g, v])
     var_list = [v for g, v in grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s" %
-                       grads_and_vars)
+                       (grads_and_vars,))
     self._create_slots(var_list)
     update_ops = []
     with ops.op_scope([], name, self._name) as name:
@@ -339,7 +339,7 @@ class Optimizer(object):
       dtype = t.dtype.base_dtype
       if dtype not in valid_dtypes:
         raise ValueError(
-            "Invalid type %s for %s, expected: %s." % (
+            "Invalid type %r for %s, expected: %s." % (
                 dtype, t.name, [v for v in valid_dtypes]))
 
   # --------------

@@ -1205,6 +1205,13 @@ Returns a reference `DType` based on this `DType`.
 
 - - -
 
+#### `tf.DType.is_floating` {#DType.is_floating}
+
+Returns whether this is a (real) floating point type.
+
+
+- - -
+
 #### `tf.DType.is_integer` {#DType.is_integer}
 
 Returns whether this is a (non-quantized) integer type.
@@ -1215,6 +1222,20 @@ Returns whether this is a (non-quantized) integer type.
 #### `tf.DType.is_quantized` {#DType.is_quantized}
 
 Returns whether this is a quantized data type.
+
+
+- - -
+
+#### `tf.DType.is_unsigned` {#DType.is_unsigned}
+
+Returns whether this type is unsigned.
+
+Non-numeric, unordered, and quantized types are not considered unsigned, and
+this function returns `False`.
+
+##### Returns:
+
+  Whether a `DType` is unsigned.
 
 
 
@@ -1253,13 +1274,6 @@ construct a `DataType` object directly. Instead, use the
 
 
 *  <b>`TypeError`</b>: If `type_enum` is not a value `types_pb2.DataType`.
-
-
-- - -
-
-#### `tf.DType.is_floating` {#DType.is_floating}
-
-Returns whether this is a (real) floating point type.
 
 
 - - -

@@ -59,6 +59,8 @@ class SparseTensor {
 
   std::size_t num_entries() const { return ix_.dim_size(0); }
 
+  int dims() const { return shape_.dims(); }
+
   const Tensor& indices() const { return ix_; }
 
   const Tensor& values() const { return vals_; }

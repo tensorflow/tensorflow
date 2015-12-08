@@ -203,6 +203,16 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   dnn::DnnSupport *CreateDnn() override;
 
+  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
+      override;
+
+  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
+      override;
+
+  std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+
+  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
+
   void *CudaContextHack() override;
 
   CUcontext cuda_context();

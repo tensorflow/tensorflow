@@ -13,21 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
-
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
-
-#include "tensorflow/core/lib/core/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 namespace perftools {
 namespace gputools {
-namespace port {
+namespace cuda {
 
-namespace error = tensorflow::error;
+PLATFORM_DEFINE_ID(kCudaPlatformId);
 
-}  // namespace port
+}  // namespace cuda
 }  // namespace gputools
 }  // namespace perftools
-
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_

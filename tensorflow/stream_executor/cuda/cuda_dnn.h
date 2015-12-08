@@ -50,7 +50,8 @@ class CudnnSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& filter_data,
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<float>* output_data) override;
+                  DeviceMemory<float>* output_data,
+                  ScratchAllocator* scratch_allocator) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<double>& input_data,
@@ -80,7 +81,8 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float> backward_output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<float>* backward_input_data) override;
+      DeviceMemory<float>* backward_input_data,
+      ScratchAllocator* scratch_allocator) override;
 
   bool DoConvolveBackwardFilter(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -89,7 +91,8 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float> backward_output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemory<float>* backward_filter_data) override;
+      DeviceMemory<float>* backward_filter_data,
+      ScratchAllocator* scratch_allocator) override;
 
   bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
                 const DeviceMemory<float>& weights,
@@ -160,20 +163,24 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) override;
 
-  bool DoMemcpyD2HQuantized(Stream* stream,
-                            const DeviceMemory<float>& device_unquantized_src,
-                            port::MutableArraySlice<uint8> host_dst) override;
+  bool DoXYPad(Stream* stream, const dnn::BatchDescriptor &dimensions,
+               const DeviceMemory<float> &input_data,
+               int64 left_pad, int64 right_pad, int64 top_pad,
+               int64 bottom_pad, DeviceMemory<float> *output_data) override;
+
+  bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor &dimensions,
+                 const DeviceMemory<float> &input_data,
+                 int64 left_trim, int64 right_trim, int64 top_trim,
+                 int64 bottom_trim, DeviceMemory<float> *output_data) override;
 
   bool DoMemcpyD2HQuantized(Stream* stream,
                             const DeviceMemory<float>& device_unquantized_src,
-                            port::MutableArraySlice<uint16> host_dst) override;
-
-  bool DoMemcpyD2HQuantized(Stream* stream,
-                            const DeviceMemory<float>& device_unquantized_src,
-                            port::MutableArraySlice<int32> host_dst) override;
+                            dnn::QuantizedActivationMode mode, void* host_dst,
+                            int64 size) override;
 
   bool DoMemcpyH2DQuantized(
-      Stream* stream, port::ArraySlice<uint8> host_src,
+      Stream* stream, const void* host_src, int64 size,
+      dnn::QuantizedActivationMode mode,
       DeviceMemory<float>* device_unquantized_dst) override;
 
   // Derives an output batch descriptor from an input batch and convolution

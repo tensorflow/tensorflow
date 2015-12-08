@@ -107,6 +107,102 @@ class ResizeBilinearOp : public OpKernel {
   }
 };
 
+template <typename Device, typename T>
+class ResizeBilinearOpGrad : public OpKernel {
+ public:
+  explicit ResizeBilinearOpGrad(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Validate input.
+    // First argument is gradient with respect to resized image.
+    const Tensor& input = context->input(0);
+    OP_REQUIRES(context, input.dims() == 4,
+                errors::InvalidArgument("input_grad must be 4-dimensional",
+                                        input.shape().ShortDebugString()));
+    // ResizeBilinear always produces float images, so the input gradient is
+    // always a float.
+    OP_REQUIRES(context, input.dtype() == DT_FLOAT,
+                errors::InvalidArgument("input_grad must be of type float",
+                                        input.dtype()));
+
+    // The second argument is the original input to resize_bilinear.
+    const Tensor& original_image = context->input(1);
+    OP_REQUIRES(
+        context, original_image.dims() == 4,
+        errors::InvalidArgument("original_image must be 4-dimensional",
+                                original_image.shape().ShortDebugString()));
+
+    // Allocate output and initialize to zeros.
+    const int64 batch_size = input.dim_size(0);
+    const int64 channels = input.dim_size(3);
+    const int64 resized_height = input.dim_size(1);
+    const int64 resized_width = input.dim_size(2);
+    const int64 original_height = original_image.dim_size(1);
+    const int64 original_width = original_image.dim_size(2);
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({batch_size, original_height,
+                                                original_width, channels}),
+                                &output));
+
+    typename TTypes<float, 4>::ConstTensor input_grad =
+        input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad = output->tensor<T, 4>();
+
+    for (int c = 0; c < channels; ++c) {
+      for (int y = 0; y < original_height; ++y) {
+        for (int x = 0; x < original_width; ++x) {
+          for (int b = 0; b < batch_size; ++b) {
+            output_grad(b, y, x, c) = 0;
+          }
+        }
+      }
+    }
+
+    const float height_scale =
+        original_height / static_cast<float>(resized_height);
+    const float width_scale =
+        original_width / static_cast<float>(resized_width);
+
+    // Each resized pixel was computed as a weighted average of four input
+    // pixels. Here we find the pixels that contributed to each output pixel
+    // and add the corresponding coefficient to the gradient.
+    // resized(b, y, x, c) = top_left * (1 - y) * (1 - x)
+    //                       +  top_right * (1 - y) * x
+    //                       +  bottom_left * y * (1 - x)
+    //                       +  bottom_right * y * x
+    for (int b = 0; b < batch_size; ++b) {
+      for (int y = 0; y < resized_height; ++y) {
+        const float in_y = y * height_scale;
+        const int top_y_index = static_cast<int>(floorf(in_y));
+        const int bottom_y_index =
+            std::min(static_cast<int64>(ceilf(in_y)), (original_height - 1));
+        const float y_lerp = in_y - top_y_index;
+        const float inverse_y_lerp = (1.0f - y_lerp);
+        for (int x = 0; x < resized_width; ++x) {
+          const float in_x = x * width_scale;
+          const int left_x_index = static_cast<int>(floorf(in_x));
+          const int right_x_index =
+              std::min(static_cast<int64>(ceilf(in_x)), (original_width - 1));
+          const float x_lerp = in_x - left_x_index;
+          const float inverse_x_lerp = (1.0f - x_lerp);
+          for (int c = 0; c < channels; ++c) {
+            output_grad(b, top_y_index, left_x_index, c) +=
+                input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp;
+            output_grad(b, top_y_index, right_x_index, c) +=
+                input_grad(b, y, x, c) * inverse_y_lerp * x_lerp;
+            output_grad(b, bottom_y_index, left_x_index, c) +=
+                input_grad(b, y, x, c) * y_lerp * inverse_x_lerp;
+            output_grad(b, bottom_y_index, right_x_index, c) +=
+                input_grad(b, y, x, c) * y_lerp * x_lerp;
+          }
+        }
+      }
+    }
+  }
+};
+
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
                               .Device(DEVICE_CPU)     \
@@ -121,4 +217,12 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 
+REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<float>("T"),
+                        ResizeBilinearOpGrad<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<double>("T"),
+                        ResizeBilinearOpGrad<CPUDevice, double>);
 }  // namespace tensorflow

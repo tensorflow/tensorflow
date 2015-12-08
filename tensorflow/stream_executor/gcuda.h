@@ -87,6 +87,8 @@ enum SharedMemConfig {
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/machine_manager.h"
+#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/shared_memory_config.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
