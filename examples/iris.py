@@ -14,7 +14,7 @@
 
 import random
 
-from sklearn import datasets, metrics
+from sklearn import datasets, metrics, cross_validation
 
 import skflow
 
