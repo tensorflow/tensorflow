@@ -6163,6 +6163,7 @@ op {
     minimum: 1
     allowed_values {
       list {
+        type: DT_BOOL
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -6205,6 +6206,7 @@ op {
     minimum: 1
     allowed_values {
       list {
+        type: DT_BOOL
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32

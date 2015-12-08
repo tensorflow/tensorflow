@@ -255,6 +255,11 @@ these summaries to a log directory.  Then, start TensorBoard using
 For more details, see the [Summaries and TensorBoard tutorial]
 (../how_tos/summaries_and_tensorboard/index.md).
 
+#### Every time I launch TensorBoard, I get a network security popup!
+
+You can change TensorBoard to serve on localhost rather than '0.0.0.0' by
+the flag --host=localhost. This should quiet any security warnings.
+
 ## Extending TensorFlow
 
 See also the how-to documentation for

@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace random {
 
 std::mt19937_64* InitRng() {
-  std::random_device device("/dev/random");
+  std::random_device device("/dev/urandom");
   return new std::mt19937_64(device());
 }
 

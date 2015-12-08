@@ -13,15 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Trains and Evaluates the MNIST network using a feed dictionary.
-
-TensorFlow install instructions:
-https://tensorflow.org/get_started/os_setup.html
-
-MNIST tutorial:
-https://tensorflow.org/tutorials/mnist/tf/index.html
-
-"""
+"""Trains and Evaluates the MNIST network using a feed dictionary."""
 # pylint: disable=missing-docstring
 from __future__ import absolute_import
 from __future__ import division
@@ -35,8 +27,8 @@ import numpy
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.g3doc.tutorials.mnist import input_data
-from tensorflow.g3doc.tutorials.mnist import mnist
+from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.examples.tutorials.mnist import mnist
 
 
 # Basic model parameters as external flags.

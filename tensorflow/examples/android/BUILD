@@ -11,7 +11,7 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorflow_native_libs",
-    srcs = glob(["jni/**/*.cc"]),
+    srcs = glob(["jni/**/*.cc"]) + [":libpthread.so"],
     hdrs = glob(["jni/**/*.h"]),
     copts = [
         "-std=c++11",
@@ -23,18 +23,20 @@ cc_library(
         "manual",
         "notap",
     ],
-    deps = [
-        ":dummy_pthread",
-        "//tensorflow/core:android_tensorflow_lib",
-    ],
+    deps = ["//tensorflow/core:android_tensorflow_lib"],
 )
 
 # This library only exists as a workaround to satisfy dependencies
 # that declare -lpthread in their linkopts. Although Android supports
 # pthreads, it does not provide it as a separate library.
-cc_library(
-    name = "dummy_pthread",
-    srcs = ["jni/libpthread.so"],
+cc_binary(
+    name = "libpthread.so",
+    srcs = [],
+    linkopts = ["-shared"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 android_binary(

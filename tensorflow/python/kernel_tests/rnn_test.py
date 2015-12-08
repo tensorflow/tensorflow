@@ -64,7 +64,10 @@ class RNNTest(tf.test.TestCase):
   def testRNN(self):
     cell = Plus1RNNCell()
     batch_size = 2
-    inputs = [tf.placeholder(tf.float32, shape=(batch_size, 5))] * 10
+    input_size = 5
+    max_length = 8  # unrolled up to this length
+    inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
     outputs, states = tf.nn.rnn(cell, inputs, dtype=tf.float32)
     self.assertEqual(len(outputs), len(inputs))
     for out, inp in zip(outputs, inputs):
@@ -72,7 +75,7 @@ class RNNTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session(use_gpu=False) as sess:
-      input_value = np.random.randn(batch_size, 5)
+      input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [states[-1]],
                         feed_dict={inputs[0]: input_value})
 
@@ -82,14 +85,18 @@ class RNNTest(tf.test.TestCase):
 
       # Final state
       self.assertAllClose(
-          values[-1], 10.0*np.ones((batch_size, 5), dtype=np.float32))
+          values[-1],
+          max_length * np.ones((batch_size, input_size), dtype=np.float32))
 
   def testDropout(self):
     cell = Plus1RNNCell()
     full_dropout_cell = tf.nn.rnn_cell.DropoutWrapper(
         cell, input_keep_prob=1e-12, seed=0)
     batch_size = 2
-    inputs = [tf.placeholder(tf.float32, shape=(batch_size, 5))] * 10
+    input_size = 5
+    max_length = 8
+    inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
     with tf.variable_scope("share_scope"):
       outputs, states = tf.nn.rnn(cell, inputs, dtype=tf.float32)
     with tf.variable_scope("drop_scope"):
@@ -101,7 +108,7 @@ class RNNTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session(use_gpu=False) as sess:
-      input_value = np.random.randn(batch_size, 5)
+      input_value = np.random.randn(batch_size, input_size)
       values = sess.run(outputs + [states[-1]],
                         feed_dict={inputs[0]: input_value})
       full_dropout_values = sess.run(dropped_outputs,
@@ -116,7 +123,10 @@ class RNNTest(tf.test.TestCase):
     cell = Plus1RNNCell()
     sequence_length = tf.placeholder(tf.int64)
     batch_size = 2
-    inputs = [tf.placeholder(tf.float32, shape=(batch_size, 5))] * 10
+    input_size = 5
+    max_length = 8
+    inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
     with tf.variable_scope("drop_scope"):
       dynamic_outputs, dynamic_states = tf.nn.rnn(
           cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
@@ -124,7 +134,7 @@ class RNNTest(tf.test.TestCase):
     self.assertEqual(len(dynamic_states), len(inputs))
 
     with self.test_session(use_gpu=False) as sess:
-      input_value = np.random.randn(batch_size, 5)
+      input_value = np.random.randn(batch_size, input_size)
       dynamic_values = sess.run(dynamic_outputs,
                                 feed_dict={inputs[0]: input_value,
                                            sequence_length: [2, 3]})
@@ -136,7 +146,8 @@ class RNNTest(tf.test.TestCase):
       for v in dynamic_values[:3]:
         self.assertAllClose(v, input_value + 1.0)
       for vi, v in enumerate(dynamic_state_values[:3]):
-        self.assertAllEqual(v, 1.0 * (vi + 1) * np.ones((batch_size, 5)))
+        self.assertAllEqual(v, 1.0 * (vi + 1) *
+                            np.ones((batch_size, input_size)))
       # zeros for t = 3+
       for v in dynamic_values[3:]:
         self.assertAllEqual(v, np.zeros_like(input_value))
@@ -154,11 +165,12 @@ class LSTMTest(tf.test.TestCase):
     num_units = 3
     input_size = 5
     batch_size = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, initializer=initializer)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
       outputs, _ = tf.nn.rnn(cell, inputs, dtype=tf.float32)
       self.assertEqual(len(outputs), len(inputs))
@@ -173,12 +185,13 @@ class LSTMTest(tf.test.TestCase):
     num_units = 3
     input_size = 5
     batch_size = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, use_peepholes=True,
           cell_clip=0.0, initializer=initializer)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
       outputs, _ = tf.nn.rnn(cell, inputs, dtype=tf.float32)
       self.assertEqual(len(outputs), len(inputs))
@@ -197,12 +210,13 @@ class LSTMTest(tf.test.TestCase):
     num_units = 3
     input_size = 5
     batch_size = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      state_saver = TestStateSaver(batch_size, 2*num_units)
+      state_saver = TestStateSaver(batch_size, 2 * num_units)
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, use_peepholes=False, initializer=initializer)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
       with tf.variable_scope("share_scope"):
         outputs, states = tf.nn.state_saving_rnn(
@@ -223,9 +237,10 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, use_peepholes=True,
@@ -244,10 +259,11 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     num_proj_shards = 4
     num_unit_shards = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
 
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
 
       cell = tf.nn.rnn_cell.LSTMCell(
@@ -274,9 +290,10 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     num_proj_shards = 4
     num_unit_shards = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
-      inputs = 10 * [tf.placeholder(tf.float64)]
+      inputs = max_length * [tf.placeholder(tf.float64)]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -305,8 +322,9 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     num_proj_shards = 4
     num_unit_shards = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      inputs = 10 * [tf.placeholder(tf.float32)]
+      inputs = max_length * [tf.placeholder(tf.float32)]
       initializer = tf.constant_initializer(0.001)
 
       cell_noshard = tf.nn.rnn_cell.LSTMCell(
@@ -355,10 +373,11 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     num_proj_shards = 4
     num_unit_shards = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       sequence_length = tf.placeholder(tf.int64)
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      inputs = 10 * [tf.placeholder(tf.float64)]
+      inputs = max_length * [tf.placeholder(tf.float64)]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -392,28 +411,33 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
+    max_length = 8
     with self.test_session(graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
-      inputs = 10 * [
+      initializer_d = tf.random_uniform_initializer(-1, 1, seed=self._seed+1)
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, use_peepholes=True,
           num_proj=num_proj, initializer=initializer)
+      cell_d = tf.nn.rnn_cell.LSTMCell(
+          num_units, input_size, use_peepholes=True,
+          num_proj=num_proj, initializer=initializer_d)
 
       with tf.variable_scope("share_scope"):
         outputs0, _ = tf.nn.rnn(cell, inputs, dtype=tf.float32)
       with tf.variable_scope("share_scope", reuse=True):
         outputs1, _ = tf.nn.rnn(cell, inputs, dtype=tf.float32)
       with tf.variable_scope("diff_scope"):
-        outputs2, _ = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+        outputs2, _ = tf.nn.rnn(cell_d, inputs, dtype=tf.float32)
 
       tf.initialize_all_variables().run()
       input_value = np.random.randn(batch_size, input_size)
       output_values = sess.run(
           outputs0 + outputs1 + outputs2, feed_dict={inputs[0]: input_value})
-      outputs0_values = output_values[:10]
-      outputs1_values = output_values[10:20]
-      outputs2_values = output_values[20:]
+      outputs0_values = output_values[:max_length]
+      outputs1_values = output_values[max_length:2*max_length]
+      outputs2_values = output_values[2*max_length:]
       self.assertEqual(len(outputs0_values), len(outputs1_values))
       self.assertEqual(len(outputs0_values), len(outputs2_values))
       for o1, o2, o3 in zip(outputs0_values, outputs1_values, outputs2_values):
@@ -427,9 +451,10 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
+    max_length = 8
     with self.test_session(graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, use_peepholes=True,
@@ -446,43 +471,43 @@ class LSTMTest(tf.test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       output_values = sess.run(
           outputs0 + outputs1, feed_dict={inputs[0]: input_value})
-      outputs0_values = output_values[:10]
-      outputs1_values = output_values[10:]
+      outputs0_values = output_values[:max_length]
+      outputs1_values = output_values[max_length:]
       self.assertEqual(len(outputs0_values), len(outputs1_values))
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
   def testNoProjNoShardingSimpleStateSaver(self):
-    self._testNoProjNoShardingSimpleStateSaver(False)
-    self._testNoProjNoShardingSimpleStateSaver(True)
+    self._testNoProjNoShardingSimpleStateSaver(use_gpu=False)
+    self._testNoProjNoShardingSimpleStateSaver(use_gpu=True)
 
   def testNoProjNoSharding(self):
-    self._testNoProjNoSharding(False)
-    self._testNoProjNoSharding(True)
+    self._testNoProjNoSharding(use_gpu=False)
+    self._testNoProjNoSharding(use_gpu=True)
 
   def testCellClipping(self):
-    self._testCellClipping(False)
-    self._testCellClipping(True)
+    self._testCellClipping(use_gpu=False)
+    self._testCellClipping(use_gpu=True)
 
   def testProjNoSharding(self):
-    self._testProjNoSharding(False)
-    self._testProjNoSharding(True)
+    self._testProjNoSharding(use_gpu=False)
+    self._testProjNoSharding(use_gpu=True)
 
   def testProjSharding(self):
-    self._testProjSharding(False)
-    self._testProjSharding(True)
+    self._testProjSharding(use_gpu=False)
+    self._testProjSharding(use_gpu=True)
 
   def testShardNoShardEquivalentOutput(self):
-    self._testShardNoShardEquivalentOutput(False)
-    self._testShardNoShardEquivalentOutput(True)
+    self._testShardNoShardEquivalentOutput(use_gpu=False)
+    self._testShardNoShardEquivalentOutput(use_gpu=True)
 
   def testDoubleInput(self):
-    self._testDoubleInput(False)
-    self._testDoubleInput(True)
+    self._testDoubleInput(use_gpu=False)
+    self._testDoubleInput(use_gpu=True)
 
   def testDoubleInputWithDropoutAndDynamicCalculation(self):
-    self._testDoubleInputWithDropoutAndDynamicCalculation(False)
-    self._testDoubleInputWithDropoutAndDynamicCalculation(True)
+    self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=False)
+    self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=True)
 
 
 class BidirectionalRNNTest(tf.test.TestCase):
@@ -495,6 +520,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
     num_units = 3
     input_size = 5
     batch_size = 2
+    max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       sequence_length = tf.placeholder(tf.int64)
@@ -502,7 +528,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
           num_units, input_size, initializer=initializer)
       cell_bw = tf.nn.rnn_cell.LSTMCell(
           num_units, input_size, initializer=initializer)
-      inputs = 10 * [
+      inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
       outputs = tf.nn.bidirectional_rnn(
           cell_fw, cell_bw, inputs, dtype=tf.float32,

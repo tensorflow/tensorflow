@@ -23,7 +23,7 @@ import tensorflow.python.platform
 
 import numpy
 import tensorflow as tf
-from tensorflow.g3doc.tutorials.mnist import input_data
+from tensorflow.examples.tutorials.mnist import input_data
 
 
 TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'  # MNIST filenames
@@ -32,7 +32,7 @@ TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
 TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
 
-tf.app.flags.DEFINE_string('directory', 'data',
+tf.app.flags.DEFINE_string('directory', '/tmp/data',
                            'Directory to download data files and write the '
                            'converted result')
 tf.app.flags.DEFINE_integer('validation_size', 5000,

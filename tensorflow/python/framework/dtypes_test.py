@@ -145,6 +145,18 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("string").is_floating, False)
     self.assertEqual(tf.as_dtype("bool").is_floating, False)
 
+  def testIsUnsigned(self):
+    self.assertEqual(tf.as_dtype("int8").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("int16").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("int32").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("int64").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("uint8").is_unsigned, True)
+    self.assertEqual(tf.as_dtype("float32").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("float64").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("bool").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("string").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("complex64").is_unsigned, False)
+
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
     for datatype_enum in types_pb2.DataType.values():

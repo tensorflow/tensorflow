@@ -90,6 +90,7 @@ void Fill(T* data, size_t n, TensorProto* t);
     t->mutable_##FIELD##_val()->Swap(&copy);                             \
   }
 
+TENSOR_PROTO_EXTRACT_TYPE(bool, bool, bool);
 TENSOR_PROTO_EXTRACT_TYPE(float, float, float);
 TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);

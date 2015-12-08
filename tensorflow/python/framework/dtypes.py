@@ -59,8 +59,10 @@ class DType(object):
   @@base_dtype
   @@is_ref_dtype
   @@as_ref
+  @@is_floating
   @@is_integer
   @@is_quantized
+  @@is_unsigned
 
   @@as_numpy_dtype
   @@as_datatype_enum
@@ -135,6 +137,21 @@ class DType(object):
   def is_quantized(self):
     """Returns whether this is a quantized data type."""
     return self.base_dtype in [qint8, quint8, qint32, bfloat16]
+
+  @property
+  def is_unsigned(self):
+    """Returns whether this type is unsigned.
+
+    Non-numeric, unordered, and quantized types are not considered unsigned, and
+    this function returns `False`.
+
+    Returns:
+      Whether a `DType` is unsigned.
+    """
+    try:
+      return self.min == 0
+    except TypeError:
+      return False
 
   @property
   def min(self):

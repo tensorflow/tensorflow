@@ -52,11 +52,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     t = ops.convert_to_tensor(t, name="t")
 
     # Go through list of tensors, for each value in each tensor clip
-    t_min = math_ops.minimum(
-        t, array_ops.fill(array_ops.shape(t), clip_value_max))
-    t_max = math_ops.maximum(
-        t_min, array_ops.fill(array_ops.shape(t), clip_value_min),
-        name=name)
+    t_min = math_ops.minimum(t, clip_value_max)
+    t_max = math_ops.maximum(t_min, clip_value_min, name=name)
 
   return t_max
 

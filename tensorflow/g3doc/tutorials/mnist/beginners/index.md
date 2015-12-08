@@ -3,7 +3,9 @@
 *This tutorial is intended for readers who are new to both machine learning and
 TensorFlow. If you already
 know what MNIST is, and what softmax (multinomial logistic) regression is,
-you might prefer this [faster paced tutorial](../pros/index.md).*
+you might prefer this [faster paced tutorial](../pros/index.md).
+Be sure to [install TensorFlow](../../../get_started/os_setup.md) before
+starting either tutorial.*
 
 When one learns how to program, there's a tradition that the first thing you do
 is print "Hello World." Just like programming has Hello World, machine learning
@@ -37,11 +39,11 @@ The MNIST data is hosted on
 [Yann LeCun's website](http://yann.lecun.com/exdb/mnist/).  For your
 convenience, we've included some python code to download and install the data
 automatically. You can either download
-[the code](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/g3doc/tutorials/mnist/input_data.py)
+[the code](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py)
 and import it as below, or simply copy and paste it in.
 
 ```python
-import input_data
+import tensorflow.examples.tutorials.mnist.input_data
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 ```
 

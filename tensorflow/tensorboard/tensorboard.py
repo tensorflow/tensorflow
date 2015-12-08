@@ -55,8 +55,9 @@ flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
                      'This increases log verbosity to DEBUG.')
 
 
-flags.DEFINE_string('host', '127.0.0.1', 'What host to listen to. Defaults to '
-                    'serving on localhost, set to 0.0.0.0 for remote access.')
+flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
+                    'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
+                    'disable remote access (also quiets security warnings).')
 
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
@@ -66,7 +67,7 @@ FLAGS = flags.FLAGS
 TENSORBOARD_SIZE_GUIDANCE = {
     event_accumulator.COMPRESSED_HISTOGRAMS: 500,
     event_accumulator.IMAGES: 4,
-    event_accumulator.SCALARS: 10000,
+    event_accumulator.SCALARS: 1000,
     event_accumulator.HISTOGRAMS: 1,
 }
 
