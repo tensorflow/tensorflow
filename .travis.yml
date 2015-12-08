@@ -6,6 +6,11 @@ language: python
 os:
     - linux
 
+env:
+    matrix:
+        - TASK=lint
+        - TASK=nosetests
+
 cache:
     apt: true
     directories:
@@ -22,7 +27,7 @@ python:
     - "2.7"
 
 install:
-    - source .travis_install.sh
+    - source scripts/travis_install.sh
 
-script: nosetests
+script: source scripts/run_tests.sh
 
