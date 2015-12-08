@@ -158,12 +158,13 @@ class VocabularyProcessor(object):
         else:
             self._tokenizer = tokenizer
 
-    def fit(self, raw_documents, y=None):
+    def fit(self, raw_documents, unused_y=None):
         """Learn a vocabulary dictionary of all tokens in the raw documents.
 
         Args:
             raw_documents: iterable
                 An iterable which yield either str or unicode.
+            unused_y: to match fit format signature of estimators.
 
         Returns:
             self
@@ -176,12 +177,13 @@ class VocabularyProcessor(object):
         self.vocabulary_.freeze()
         return self
 
-    def fit_transform(self, raw_documents, y=None):
+    def fit_transform(self, raw_documents, unused_y=None):
         """Learn the vocabulary dictionary and return indexies of words.
 
         Args:
             raw_documents: iterable
                 An iterable which yield either str or unicode.
+            unused_y: to match fit_transform signature of estimators.
 
         Returns:
             X: iterable, [n_samples, max_document_length]
