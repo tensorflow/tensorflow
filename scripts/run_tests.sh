@@ -2,7 +2,7 @@
 
 if [ ${TASK} == "lint" ]; then
     if [ ${TRAVIS_OS_NAME} != "osx" ]; then
-        pylint skflow/* || exit -1
+        pylint skflow/* --rcfile pylint.rc || exit -1
     fi
 fi
 
