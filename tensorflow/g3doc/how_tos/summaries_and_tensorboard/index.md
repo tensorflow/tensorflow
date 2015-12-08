@@ -67,7 +67,7 @@ every `n` steps.
 The code example below is a modification of the [simple MNIST tutorial]
 (http://tensorflow.org/tutorials/mnist/beginners/index.md), in which we have
 added some summary ops, and run them every ten steps. If you run this and then
-launch `tensorboard --logdir=/tmp/mnist_data`, you'll be able to visualize
+launch `tensorboard --logdir=/tmp/mnist_logs`, you'll be able to visualize
 statistics, such as how the weights or accuracy varied during training.
 The code below is an exerpt; full source is [here](../../tutorials/mnist/mnist_with_summaries.py).
 
