@@ -553,6 +553,7 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
                             sampled_values=None,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
+                            partition_strategy="mod",
                             name=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
@@ -567,7 +568,7 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
-        `[num_classes, dim]`.  The (possibly-sharded) class embeddings.
+        `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
@@ -586,6 +587,9 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  Default is
         False.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+        if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+        Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
   Returns:
     out_logits, out_labels: `Tensor` objects each with shape
@@ -624,7 +628,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     all_ids = array_ops.concat(0, [labels_flat, sampled])
 
     # weights shape is [num_classes, dim]
-    all_w = embedding_ops.embedding_lookup(weights, all_ids)
+    all_w = embedding_ops.embedding_lookup(
+        weights, all_ids, partition_strategy=partition_strategy)
     all_b = embedding_ops.embedding_lookup(biases, all_ids)
     # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
@@ -704,6 +709,7 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
              num_true=1,
              sampled_values=None,
              remove_accidental_hits=False,
+             partition_strategy="mod",
              name="nce_loss"):
   """Computes and returns the noise-contrastive estimation training loss.
 
@@ -726,7 +732,7 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
-        [num_classes, dim].  The (possibly-sharded) class embeddings.
+        [num_classes, dim].  The (possibly-partitioned) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
@@ -745,6 +751,9 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
         our [Candidate Sampling Algorithms Reference]
         (../../extras/candidate_sampling.pdf).
         Default is False.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+        if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+        Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
 
   Returns:
@@ -756,6 +765,7 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
       sampled_values=sampled_values,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
+      partition_strategy=partition_strategy,
       name=name)
   sampled_losses = sigmoid_cross_entropy_with_logits(logits,
                                                      labels,
@@ -769,6 +779,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
                          num_classes, num_true=1,
                          sampled_values=None,
                          remove_accidental_hits=True,
+                         partition_strategy="mod",
                          name="sampled_softmax_loss"):
   """Computes and returns the sampled softmax training loss.
 
@@ -805,6 +816,9 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
     remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  Default is
         True.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+        if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+        Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
 
   Returns:
@@ -817,6 +831,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
       sampled_values=sampled_values,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
+      partition_strategy=partition_strategy,
       name=name)
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.

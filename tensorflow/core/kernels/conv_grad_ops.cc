@@ -35,6 +35,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -756,17 +757,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
 
 // GPU definitions of both ops.
 #if GOOGLE_CUDA
-namespace {
-template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                    uint64 size) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
-                                                size * sizeof(T));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // namespace
-
 // The slow version (but compiles for GPU)
 
 // Backprop for input.
@@ -929,10 +919,15 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                          pre_transformed_in_backprop.template flat<T>().size());
 
+      static int64 ConvolveBackwardDataScratchSize = GetCudnnWorkspaceLimit(
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          );
+      CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                              context);
       bool cudnn_launch_status =
-          stream->ThenConvolveBackwardData(filter_desc, filter_ptr, output_desc,
-                                           out_backprop_ptr, conv_desc,
-                                           input_desc, &in_backprop_ptr)
+          stream->ThenConvolveBackwardDataWithScratch(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator)
               .ok();
 
       if (!cudnn_launch_status) {
@@ -1185,7 +1180,6 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           context->eigen_device<Device>(),
           const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
           transformed_input.tensor<T, 4>());
-
       auto out_backprop_ptr =
           AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
                          transformed_out_backprop.template flat<T>().size());
@@ -1196,10 +1190,16 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           AsDeviceMemory(transformed_input.template flat<T>().data(),
                          transformed_input.template flat<T>().size());
 
+      static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          );
+      CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                              context);
       bool cudnn_launch_status =
-          stream->ThenConvolveBackwardFilter(input_desc, input_ptr, output_desc,
-                                             out_backprop_ptr, conv_desc,
-                                             filter_desc, &filter_backprop_ptr)
+          stream->ThenConvolveBackwardFilterWithScratch(
+                    input_desc, input_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, filter_desc, &filter_backprop_ptr,
+                    &scratch_allocator)
               .ok();
 
       if (!cudnn_launch_status) {

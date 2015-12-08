@@ -115,26 +115,34 @@ def _PName(param_id):
 
 def _EmbeddingParams(num_shards, vocab_size,
                      dtype=tf.float32,
-                     shape=None):
+                     shape=None,
+                     use_shapeless_placeholder=False):
   p = []
   params = {}
   feed_dict = {}
   if not shape: shape = [10]
-  assert not vocab_size % num_shards
-  shape = [vocab_size // num_shards] + shape
   for i in range(num_shards):
+    shard_shape = [vocab_size // num_shards] + shape
+    if i < vocab_size % num_shards:  # Excess goes evenly on the first shards
+      shard_shape[0] += 1
+
     param_name = _PName(i)
-    constant_t = tf.constant(1.0, shape=shape, dtype=dtype,
-                                      name=param_name)
-    p.append(constant_t)
+
+    if use_shapeless_placeholder:
+      param = tf.placeholder(dtype, shape=None, name=param_name)
+    else:
+      param = tf.constant(1.0, shape=shard_shape, dtype=dtype, name=param_name)
+    p.append(param)
     np_type = "f" if dtype == tf.float32 else "d"
-    val = (np.random.rand(*shape).astype(np_type)) + 1
+    val = (np.random.rand(*shard_shape).astype(np_type)) + 1
     params[param_name + ":0"] = val
-    feed_dict[constant_t.name] = val
+    feed_dict[param.name] = val
   return p, params, feed_dict
 
 
-def _EmbeddingResult(params, id_vals, num_shards, weight_vals=None):
+def _EmbeddingResult(params, id_vals, num_shards, vocab_size,
+                     partition_strategy="mod",
+                     weight_vals=None):
   if weight_vals is None:
     weight_vals = np.copy(id_vals)
     weight_vals.fill(1)
@@ -147,8 +155,22 @@ def _EmbeddingResult(params, id_vals, num_shards, weight_vals=None):
       ids = [ids]
       wts = [wts]
     for i, wt_val in zip(ids, wts):
-      val = np.copy(params[_PName(i % num_shards) + ":0"][
-          i // num_shards, :]) * wt_val
+      if partition_strategy == "mod":
+        val = np.copy(params[_PName(i % num_shards) + ":0"][
+            i // num_shards, :]) * wt_val
+      elif partition_strategy == "div":
+        ids_per_partition, extras = divmod(vocab_size, num_shards)
+        threshold = extras * (ids_per_partition + 1)
+        if i < threshold:
+          partition = i // (ids_per_partition + 1)
+          offset = i % (ids_per_partition + 1)
+        else:
+          partition = extras + (i - threshold) // ids_per_partition
+          offset = (i - threshold) % ids_per_partition
+        val = np.copy(
+            params[_PName(partition) + ":0"][offset, :]) * wt_val
+      else:
+        assert False
       if val_aggr is None:
         assert wt_aggr is None
         val_aggr = val
@@ -182,17 +204,17 @@ class EmbeddingLookupTest(tf.test.TestCase):
       embedding = tf.nn.embedding_lookup(p, ids)
 
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(params, id_vals, num_shards)
+    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
-  def testSharded(self):
+  def testShardedModPartitioningInt32Ids(self):
     with self.test_session():
       num_shards = 5
-      vocab_size = 25
-      # Embedding dimensions is 10. The 10 x vocab_size embedding
-      # parameters are spread in num_shards matrices, so each
-      # matrix is 10 x (vocab_size / num_shards)
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
       p, params, feed_dict = _EmbeddingParams(num_shards, vocab_size)
 
       num_vals = 30
@@ -204,9 +226,102 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids)
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(params, id_vals, num_shards)
+    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
+
+  def testShardedModPartitioningInt64Ids(self):
+    with self.test_session():
+      num_shards = 5
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
+      p, params, feed_dict = _EmbeddingParams(num_shards, vocab_size)
+
+      num_vals = 30
+      # Fetch num_vals embeddings for random word ids. Since
+      # num_vals > vocab_size, this ought to have repetitions, so
+      # will test that aspect.
+      id_vals = np.random.randint(vocab_size, size=num_vals)
+      ids = tf.constant(list(id_vals), dtype=tf.int64)
+
+      embedding = tf.nn.embedding_lookup(p, ids)
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
+  def testShardedDivPartitioningInt32Ids(self):
+    with self.test_session():
+      num_shards = 5
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
+      p, params, feed_dict = _EmbeddingParams(num_shards, vocab_size)
+
+      num_vals = 30
+      # Fetch num_vals embeddings for random word ids. Since
+      # num_vals > vocab_size, this ought to have repetitions, so
+      # will test that aspect.
+      id_vals = np.random.randint(vocab_size, size=num_vals)
+      ids = tf.constant(list(id_vals), dtype=tf.int32)
+
+      embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _ = _EmbeddingResult(
+        params, id_vals, num_shards, vocab_size, partition_strategy="div")
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
+  def testShardedDivPartitioningInt64Ids(self):
+    with self.test_session():
+      num_shards = 5
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
+      p, params, feed_dict = _EmbeddingParams(num_shards, vocab_size)
+
+      num_vals = 30
+      # Fetch num_vals embeddings for random word ids. Since
+      # num_vals > vocab_size, this ought to have repetitions, so
+      # will test that aspect.
+      id_vals = np.random.randint(vocab_size, size=num_vals)
+      ids = tf.constant(list(id_vals), dtype=tf.int64)
+
+      embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _ = _EmbeddingResult(
+        params, id_vals, num_shards, vocab_size, partition_strategy="div")
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
+  def testShardedDivPartitioningUnknownParamShape(self):
+    with self.test_session():
+      num_shards = 5
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
+
+      # We clear parameter shapes, to test when shape is not statically known.
+      p, params, feed_dict = _EmbeddingParams(
+          num_shards, vocab_size, use_shapeless_placeholder=True)
+
+      num_vals = 30
+      # Fetch num_vals embeddings for random word ids. Since
+      # num_vals > vocab_size, this ought to have repetitions, so
+      # will test that aspect.
+      id_vals = np.random.randint(vocab_size, size=num_vals)
+      ids = tf.constant(list(id_vals), dtype=tf.int64)
+
+      embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _ = _EmbeddingResult(
+        params, id_vals, num_shards, vocab_size, partition_strategy="div")
+    self.assertAllEqual(np_result, tf_result)
 
   def testGradientsEmbeddingLookup(self):
     vocab_size = 9
@@ -326,7 +441,7 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
     return grouped_vals
 
   def testEmbeddingLookupSparse(self):
-    vocab_size = 25
+    vocab_size = 13
     batch_size = 10
     param_shape = [2, 5]
 
@@ -354,7 +469,7 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 
         np_embedding_sum, np_weight_sum = _EmbeddingResult(
-            params, grouped_ids, num_shards,
+            params, grouped_ids, num_shards, vocab_size,
             weight_vals=grouped_ignored_weights
             if ignore_weights else grouped_weights)
         if combiner == "mean":
