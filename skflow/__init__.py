@@ -46,7 +46,7 @@ class TensorFlowEstimator(BaseEstimator):
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False, log_device_placement=True):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -56,6 +56,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.tf_random_seed = tf_random_seed
         self.model_fn = model_fn
         self.continue_training = continue_training
+        self.log_device_placement = log_device_placement
         self._initialized = False
 
     def _setup_data_feeder(self, X, y):
@@ -93,7 +94,8 @@ class TensorFlowEstimator(BaseEstimator):
             # Create trainer and augment graph with gradients and optimizer.
             self._trainer = TensorFlowTrainer(self._model_loss,
                 self._global_step, self.optimizer, self.learning_rate)
-            self._session = tf.Session(self.tf_master)
+            self._session = tf.Session(self.tf_master,
+             config=tf.ConfigProto(log_device_placement=self.log_device_placement))
 
     def fit(self, X, y):
         """Builds a neural network model given provided `model_fn` and training

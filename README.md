@@ -106,6 +106,27 @@ score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
 print("Accuracy: %f" % score)
 ```
 
+### Custom model with multiple GPUs
+
+To use multiple GPUs to build a custom model, everything else is the same as the example above
+except that in the definition of custom model you'll need to specify the device:
+
+```Python
+import tensorflow as tf
+
+def my_model(X, y):
+    """
+    This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
+
+    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and 
+    CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
+    """
+    with tf.device('/gpu:1'):
+    	layers = skflow.ops.dnn(X, [10, 20, 10], keep_prob=0.5)
+    with tf.device('/gpu:2'):
+    	return skflow.models.logistic_regression(layers, y)
+```
+
 ## Coming soon
 
 * Easy way to handle categorical variables
