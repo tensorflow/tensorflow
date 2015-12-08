@@ -1,3 +1,4 @@
+"""Various high level TF models."""
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +20,7 @@ from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 def linear_regression(X, y):
     """Creates linear regression TensorFlow subgraph.
-    
+
     Args:
         X: tensor or placeholder for input features.
         y: tensor or placeholder for target.
@@ -47,7 +48,7 @@ def logistic_regression(X, y):
     """
     with tf.variable_scope('logistic_regression'):
         weights = tf.get_variable('weights', [X.get_shape()[1],
-            y.get_shape()[-1]])
+                                              y.get_shape()[-1]])
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
         return softmax_classifier(X, y, weights, bias)
 
@@ -59,14 +60,15 @@ def get_dnn_model(hidden_units, target_predictor_fn):
     Args:
         hidden_units: List of values of hidden units for layers.
         target_predictor_fn: Function that will predict target from input
-        features. This can be logistic regression, linear regression or any
-        other model, that takes X, y and returns predictions and loss tensors.
+                             features. This can be logistic regression,
+                             linear regression or any other model,
+                             that takes X, y and returns predictions and loss tensors.
 
     Returns:
         A function that creates the subgraph.
     """
-    def dnn_classifier(X, y):
+    def dnn_estimator(X, y):
+        """DNN estimator with target predictor function on top."""
         layers = dnn(X, hidden_units)
         return target_predictor_fn(layers, y)
-    return dnn_classifier
-
+    return dnn_estimator

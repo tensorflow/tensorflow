@@ -20,10 +20,12 @@ import tensorflow as tf
 
 from skflow import data_feeder
 
+
 class MockPlaceholder(object):
-    
+
     def __init__(self, name):
         self.name = name
+
 
 class DataFeederTest(tf.test.TestCase):
 
@@ -61,9 +63,9 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
         self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0], 
-                                                   [0, 0, 0, 1, 0], 
-                                                   [0, 0, 0, 0, 1]], 
+        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0],
+                                                   [0, 0, 0, 1, 0],
+                                                   [0, 0, 0, 0, 1]],
                                                   [[1, 0, 0, 0, 0],
                                                    [0, 1, 0, 0, 0],
                                                    [0, 0, 1, 0, 0]]])
@@ -72,11 +74,12 @@ class DataFeederTest(tf.test.TestCase):
         def X_iter():
             yield np.array([1, 2])
             yield np.array([3, 4])
+
         def y_iter():
             yield np.array([1])
             yield np.array([2])
         df = data_feeder.StreamingDataFeeder(X_iter(), y_iter(), n_classes=0,
-            batch_size=2)
+                                             batch_size=2)
         feed_dict_fn = df.get_feed_dict_fn(
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
@@ -84,6 +87,6 @@ class DataFeederTest(tf.test.TestCase):
         self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
         self.assertAllClose(feed_dict['output'], [1, 2])
 
- 
+
 if __name__ == '__main__':
     tf.test.main()

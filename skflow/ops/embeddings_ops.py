@@ -36,8 +36,8 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
         name: Optional name for the op.
 
     Returns:
-        A tensor of size B0 x B1 x .. x Bn-2 x Bn-1 x D1 x ... x Dn-2 x Dn-1 containing the values from
-        the params tensor(s) for indecies in ids.
+        A tensor of size B0 x B1 x .. x Bn-2 x Bn-1 x D1 x ... x Dn-2 x Dn-1
+        containing the values from the params tensor(s) for indecies in ids.
 
     Raises:
         ValueError: if some parameters are invalid.
@@ -72,6 +72,6 @@ def categorical_variable(tensor_in, n_classes, embedding_size, name):
         tensor, where each row is representation of the class.
     """
     with tf.variable_scope(name):
-        embeddings = tf.get_variable(name + "_embeddings", [n_classes, embedding_size])
+        embeddings = tf.get_variable(
+            name + "_embeddings", [n_classes, embedding_size])
         return embedding_lookup(embeddings, tensor_in)
-

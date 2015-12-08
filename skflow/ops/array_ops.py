@@ -1,4 +1,5 @@
-"""Various TensorFlow Ops."""
+"""TensorFlow ops for array / tensor manipulation."""
+
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +15,14 @@
 #  limitations under the License.
 
 
-from skflow.ops.conv_ops import *
-from skflow.ops.dnn_ops import *
-from skflow.ops.embeddings_ops import *
-from skflow.ops.losses_ops import *
+import tensorflow as tf
+
+
+def split_squeeze(inp, dim):
+    """Splits input on given dimenstion and then squeezes that dimension."""
+    return [tf.squeeze_dim(t, dim) for t in tf.split(inp, dim)]
+
+
+def expand_concat(inputs, dim):
+    """Expands inputs on given dimension and then concats them."""
+    return tf.concat(dim, [tf.expand_dim(t, dim) for t in inputs])

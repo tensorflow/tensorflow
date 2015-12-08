@@ -16,7 +16,6 @@
 
 
 import tensorflow as tf
-from tensorflow.models.rnn import linear
 
 
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
@@ -38,4 +37,3 @@ def softmax_classifier(tensor_in, labels, weights, biases, name=None):
         loss = tf.reduce_mean(xent, name="xent")
         predictions = tf.nn.softmax(logits, name=name)
         return predictions, loss
-

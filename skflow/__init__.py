@@ -1,3 +1,4 @@
+"""Main Scikit Flow module."""
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +16,8 @@
 import collections
 import random
 
-import os, datetime
+import os
+import datetime
 
 import numpy as np
 import tensorflow as tf
@@ -30,7 +32,7 @@ from skflow import preprocessing
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
-  
+
     Parameters:
         model_fn: Model function, that takes input X, y tensors and outputs
                   prediction and loss tensors.
@@ -48,7 +50,8 @@ class TensorFlowEstimator(BaseEstimator):
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False, log_device_placement=True):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False,
+                 log_device_placement=True):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -65,20 +68,19 @@ class TensorFlowEstimator(BaseEstimator):
         """Create data feeder, to sample inputs from dataset.
         If X and y are iterators, use StreamingDataFeeder.
         """
+        data_feeder_cls = data_feeder.DataFeeder
         if hasattr(X, 'next'):
             assert hasattr(y, 'next')
-            self._data_feeder = data_feeder.StreamingDataFeeder(X, y,
-                self.n_classes, self.batch_size)
-        else:
-            self._data_feeder = data_feeder.DataFeeder(X, y,
-                self.n_classes, self.batch_size)
+            data_feeder_cls = data_feeder.StreamingDataFeeder
+        self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
         self._graph = tf.Graph()
         with self._graph.as_default():
             tf.set_random_seed(self.tf_random_seed)
-            self._global_step = tf.Variable(0, name="global_step", trainable=False)
+            self._global_step = tf.Variable(
+                0, name="global_step", trainable=False)
 
             # Setting up input and output placeholders.
             input_shape = [None] + self._data_feeder.input_shape[1:]
@@ -91,13 +93,15 @@ class TensorFlowEstimator(BaseEstimator):
                 name="output")
 
             # Create model's graph.
-            self._model_predictions, self._model_loss = self.model_fn(self._inp, self._out)
+            self._model_predictions, self._model_loss = self.model_fn(
+                self._inp, self._out)
 
             # Create trainer and augment graph with gradients and optimizer.
             self._trainer = TensorFlowTrainer(self._model_loss,
-                self._global_step, self.optimizer, self.learning_rate)
+                                              self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master,
-             config=tf.ConfigProto(log_device_placement=self.log_device_placement))
+                                       config=tf.ConfigProto(
+                                           log_device_placement=self.log_device_placement))
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -106,9 +110,9 @@ class TensorFlowEstimator(BaseEstimator):
         # Set up a single operator to merge all the summaries
         tf.merge_all_summaries()
         # Set up summary writer to the specified log directory
-        self._summary_writer = tf.train.SummaryWriter(os.path.join(logdir,
-         datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
-          graph_def=self._session.graph_def)
+        self._summary_writer = tf.train.SummaryWriter(
+            os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
+            graph_def=self._session.graph_def)
 
     def fit(self, X, y, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
@@ -127,7 +131,7 @@ class TensorFlowEstimator(BaseEstimator):
             y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
             iterator that returns array of targets. The training target values
             (class labels in classification, real numbers in regression).
-            logdir: the directory to save the log file that can be used for 
+            logdir: the directory to save the log file that can be used for
             optional visualization.
 
         Returns:
@@ -147,8 +151,9 @@ class TensorFlowEstimator(BaseEstimator):
 
         # Train model for given number of steps.
         self._trainer.train(self._session,
-            self._data_feeder.get_feed_dict_fn(self._inp, self._out),
-            self.steps)
+                            self._data_feeder.get_feed_dict_fn(
+                                self._inp, self._out),
+                            self.steps)
         return self
 
     def partial_fit(self, X, y):
@@ -158,7 +163,7 @@ class TensorFlowEstimator(BaseEstimator):
         on different or the same chunks of the dataset. This either can
         implement iterative training or out-of-core/online training.
 
-        This is especially useful when the whole dataset is too big to 
+        This is especially useful when the whole dataset is too big to
         fit in memory at the same time. Or when model is taking long time
         to converge, and you want to split up training into subparts.
 
@@ -216,7 +221,7 @@ class TensorFlowEstimator(BaseEstimator):
 
 class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow Linear Regression model."""
-  
+
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False):
         super(TensorFlowLinearRegressor, self).__init__(
@@ -229,7 +234,7 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
-   
+
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False):
         super(TensorFlowLinearClassifier, self).__init__(
@@ -246,7 +251,7 @@ TensorFlowClassifier = TensorFlowLinearClassifier
 
 class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow DNN Classifier model.
-    
+
     Parameters:
         hidden_units: List of hidden units per layer.
         n_classes: Number of classes in the target.
@@ -261,14 +266,14 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
      """
-    
-    def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32, 
+
+    def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.logistic_regression)
         super(TensorFlowDNNClassifier, self).__init__(
-            model_fn=model_fn, 
+            model_fn=model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
@@ -277,7 +282,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow DNN Regressor model.
-    
+
     Parameters:
         hidden_units: List of hidden units per layer.
         tf_master: TensorFlow master. Empty string is default for local.
@@ -291,16 +296,15 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
     """
-    
-    def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32, 
+
+    def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.linear_regression)
         super(TensorFlowDNNRegressor, self).__init__(
-            model_fn=model_fn, 
+            model_fn=model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training)
-

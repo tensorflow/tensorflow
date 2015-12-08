@@ -29,7 +29,7 @@ OPTIMIZER_CLS_NAMES = {
 
 class TensorFlowTrainer(object):
     """General trainer class.
-      
+
     Attributes:
       model: Model object.
       gradients: Gradients tensor.
@@ -37,7 +37,7 @@ class TensorFlowTrainer(object):
 
     def __init__(self, loss, global_step, optimizer, learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
-        
+
         Args:
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
@@ -52,13 +52,14 @@ class TensorFlowTrainer(object):
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
-          self.gradients, self.gradients_norm = tf.clip_by_global_norm(
-              self.gradients, clip_gradients)
+            self.gradients, self.gradients_norm = tf.clip_by_global_norm(
+                self.gradients, clip_gradients)
         grads_and_vars = zip(self.gradients, params)
         if isinstance(optimizer, str):
-          self._optimizer = OPTIMIZER_CLS_NAMES[optimizer](self._learning_rate)
+            self._optimizer = OPTIMIZER_CLS_NAMES[
+                optimizer](self._learning_rate)
         else:
-          self._optimizer = optimizer(self.learning_rate)
+            self._optimizer = optimizer(self.learning_rate)
         self.trainer = self._optimizer.apply_gradients(grads_and_vars,
                                                        global_step=global_step,
                                                        name="train")
@@ -67,7 +68,7 @@ class TensorFlowTrainer(object):
 
     def initialize(self, sess):
         """Initalizes all variables.
-        
+
         Args:
             sess: Session object.
 
@@ -78,30 +79,29 @@ class TensorFlowTrainer(object):
 
     def train(self, sess, feed_dict_fn, steps, print_steps=0):
         """Trains a model for given number of steps, given feed_dict function.
-        
+
         Args:
             sess: Session object.
             feed_dict_fn: Function that will return a feed dictionary.
             steps: Number of steps to run.
             print_steps: Number of steps in between printing cost.
-        
+
         Returns:
             List of losses for each step.
         """
         losses, print_loss_buffer = [], []
         print_steps = (print_steps if print_steps else
-            math.ceil(float(steps) / 10))
+                       math.ceil(float(steps) / 10))
         for step in xrange(steps):
-          feed_dict = feed_dict_fn()
-          global_step, loss, _ = sess.run(
-              [self.global_step, self.loss, self.trainer],
-              feed_dict=feed_dict)
-          losses.append(loss)
-          print_loss_buffer.append(loss)
-          if step % print_steps == 0:
-            avg_loss = np.mean(print_loss_buffer)
-            print_loss_buffer = []
-            print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                               loss=avg_loss))
+            feed_dict = feed_dict_fn()
+            global_step, loss, _ = sess.run(
+                [self.global_step, self.loss, self.trainer],
+                feed_dict=feed_dict)
+            losses.append(loss)
+            print_loss_buffer.append(loss)
+            if step % print_steps == 0:
+                avg_loss = np.mean(print_loss_buffer)
+                print_loss_buffer = []
+                print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
+                                                                   loss=avg_loss))
         return losses
-
