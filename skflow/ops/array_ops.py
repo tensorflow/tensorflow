@@ -18,11 +18,29 @@
 import tensorflow as tf
 
 
-def split_squeeze(inp, dim):
-    """Splits input on given dimenstion and then squeezes that dimension."""
-    return [tf.squeeze_dim(t, dim) for t in tf.split(inp, dim)]
+def split_squeeze(dim, num_split, tensor_in):
+    """Splits input on given dimenstion and then squeezes that dimension.
+
+    Args:
+        dim: Dimension to split and squeeze on.
+        num_split: integer, the number of ways to split.
+        tensor_in: Input tensor of shape [N1, N2, .. Ndim, .. Nx].
+
+    Returns:
+        List of tensors [N1, N2, .. Ndim-1, Ndim+1, .. Nx].
+    """
+    return [tf.squeeze(t, squeeze_dims=[dim]) for t in tf.split(dim, num_split, tensor_in)]
 
 
-def expand_concat(inputs, dim):
-    """Expands inputs on given dimension and then concats them."""
-    return tf.concat(dim, [tf.expand_dim(t, dim) for t in inputs])
+def expand_concat(dim, inputs):
+    """Expands inputs on given dimension and then concats them.
+
+    Args:
+        dim: Dimension to expand and concatenate on.
+        inputs: List of tensors of the same shape [N1, ... Nx].
+
+    Returns:
+        A tensor of shape [N1, .. Ndim, ... Nx]
+    """
+    return tf.concat(dim, [tf.expand_dims(t, dim) for t in inputs])
+
