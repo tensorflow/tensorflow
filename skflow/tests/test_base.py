@@ -17,10 +17,11 @@ import random
 from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
-import skflow
-
 import tensorflow as tf
 from tensorflow.python.platform import googletest
+
+import skflow
+
 
 class BaseTest(googletest.TestCase):
 
@@ -36,20 +37,22 @@ class BaseTest(googletest.TestCase):
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
-            continue_training=True)
+                                                       continue_training=True)
         classifier.fit(iris.data, iris.target)
         score1 = accuracy_score(classifier.predict(iris.data), iris.target)
         classifier.fit(iris.data, iris.target)
         score2 = accuracy_score(classifier.predict(iris.data), iris.target)
         self.assertGreater(score2, score1,
-            "Failed with score = {0}".format(score2))
+                           "Failed with score = {0}".format(score2))
 
     def testIrisStreaming(self):
         iris = datasets.load_iris()
+
         def iris_data():
             while True:
                 for x in iris.data:
                     yield x
+
         def iris_target():
             while True:
                 for y in iris.target:
@@ -58,7 +61,7 @@ class BaseTest(googletest.TestCase):
         classifier.fit(iris_data(), iris_target())
         score = accuracy_score(classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-    
+
     def testIris_proba(self):
         random.seed(42)
         iris = datasets.load_iris()
@@ -71,11 +74,12 @@ class BaseTest(googletest.TestCase):
         random.seed(42)
         boston = datasets.load_boston()
         regressor = skflow.TensorFlowLinearRegressor(
-                                               batch_size=boston.data.shape[0],
-                                               steps=500,
-                                               learning_rate=0.001)
+            batch_size=boston.data.shape[0],
+            steps=500,
+            learning_rate=0.001)
         regressor.fit(boston.data, boston.target)
-        score = mean_squared_error(boston.target, regressor.predict(boston.data))
+        score = mean_squared_error(
+            boston.target, regressor.predict(boston.data))
         self.assertLess(score, 150, "Failed with score = {0}".format(score))
 
 

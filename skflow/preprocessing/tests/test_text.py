@@ -14,28 +14,28 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import random
 import tensorflow as tf
 
-from skflow.preprocessing import text 
+from skflow.preprocessing import text
+
 
 class TextTest(tf.test.TestCase):
 
     def testTokenizer(self):
-        words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c", 
-            u"фыв выф", u"你好 怎么样"])
-        self.assertEqual(list(words), 
-            [["a", "b", "c"], 
-             ["a", "b", "c"], 
-             ["a", "b", "-", "c"],
-             [u"фыв", u"выф"],
-             [u"你好", u"怎么样"]])
+        words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c",
+                                u"фыв выф", u"你好 怎么样"])
+        self.assertEqual(list(words),
+                         [["a", "b", "c"],
+                          ["a", "b", "c"],
+                          ["a", "b", "-", "c"],
+                          [u"фыв", u"выф"],
+                          [u"你好", u"怎么样"]])
 
     def testByteProcessor(self):
         processor = text.ByteProcessor(max_document_length=8)
         res = processor.transform(["abc", "фыва"])
         self.assertAllClose(list(res),
-            [[97, 98, 99, 0, 0, 0, 0, 0], [209, 132, 209, 139, 208, 178, 208, 176]])
+                            [[97, 98, 99, 0, 0, 0, 0, 0], [209, 132, 209, 139, 208, 178, 208, 176]])
 
     def testWordVocabulary(self):
         vocab = text.WordVocabulary()
@@ -44,15 +44,14 @@ class TextTest(tf.test.TestCase):
         self.assertEqual(vocab.get('a'), 1)
         self.assertEqual(vocab.get('b'), 2)
 
-
     def testVocabularyProcessor(self):
         vocab_processor = text.VocabularyProcessor(
             max_document_length=4,
             min_frequency=1)
-        tokens = vocab_processor.fit_transform(["a b c", "a\nb\nc", "a, b - c"])
+        tokens = vocab_processor.fit_transform(
+            ["a b c", "a\nb\nc", "a, b - c"])
         self.assertAllClose(list(tokens),
-            [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
+                            [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
 
 if __name__ == "__main__":
     tf.test.main()
-

@@ -1,3 +1,4 @@
+"""Various TensorFlow Ops."""
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +14,7 @@
 #  limitations under the License.
 
 
-from conv_ops import *
-from dnn_ops import *
-from embeddings_ops import *
-from losses_ops import *
+from skflow.ops.conv_ops import *
+from skflow.ops.dnn_ops import *
+from skflow.ops.embeddings_ops import *
+from skflow.ops.losses_ops import *

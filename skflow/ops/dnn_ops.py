@@ -27,7 +27,7 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
         hidden_units: list of counts of hidden units in each layer.
         activation: activation function between layers.
         keep_proba: if not None, will add a dropout layer with given
-                    probability. 
+                    probability.
 
     Returns:
         A tensor which would be a deep neural network.
@@ -40,4 +40,3 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
             if keep_prob:
                 tensor_in = tf.nn.dropout(tensor_in, keep_prob)
         return tensor_in
-

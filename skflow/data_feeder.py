@@ -110,7 +110,7 @@ class StreamingDataFeeder(object):
            regression values.
         n_classes: indicator of how many classes the target has.
         batch_size: Mini batch size to accumulate.
- 
+
     Attributes:
         X: input features.
         y: input target.
@@ -168,4 +168,3 @@ class StreamingDataFeeder(object):
                     out[i] = y
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
-

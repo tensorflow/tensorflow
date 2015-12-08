@@ -28,7 +28,7 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
     and applies it to the input tensor.
 
     Args:
-        tensor_in: input Tensor, 4D shape: 
+        tensor_in: input Tensor, 4D shape:
                    [batch, in_height, in_width, in_depth].
         n_filters: number of filters in the bank.
         filter_shape: Shape of filters, a list of ints, 1-D of length 2.
@@ -41,7 +41,8 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
         A Tensor with resuling convolution.
     """
     with tf.variable_scope('convolution'):
-        if strides is None: strides = [1, 1, 1, 1]
+        if strides is None:
+            strides = [1, 1, 1, 1]
         input_shape = tensor_in.get_shape()
         filter_shape = list(filter_shape) + [input_shape[3], n_filters]
         filters = tf.get_variable('filters', filter_shape, tf.float32)
@@ -51,4 +52,3 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
                                        tf.float32)
             output = output + bias_var
         return output
-

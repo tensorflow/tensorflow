@@ -21,6 +21,7 @@ import numpy as np
 TOKENIZER_RE = re.compile(
     ur"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
 
+
 def tokenizer(iterator):
     """Tokenizer generator.
 
@@ -80,9 +81,24 @@ class WordVocabulary(object):
         return len(self._mapping)
 
     def freeze(self, freeze=True):
+        """Freezes the vocabulary, after which new words return unknown token id.
+
+        Args:
+            freeze: True to freeze, False to unfreeze.
+        """
         self._freeze = freeze
 
     def get(self, word):
+        """Returns word's id in the vocabulary.
+
+        If word is new, creates a new id for it.
+
+        Args:
+            word: string to lookup in vocabulary.
+
+        Returns:
+            interger, id in the vocabulary.
+        """
         if word not in self._mapping:
             if self._freeze:
                 return 0
@@ -90,8 +106,15 @@ class WordVocabulary(object):
         return self._mapping[word]
 
     def add(self, word, count=1):
+        """Adds count of the word to the frequency table.
+
+        Args:
+            word: string, word to add frequency to.
+            count: optional integer, how many to add.
+        """
         word_id = self.get(word)
-        if word_id <= 0: return
+        if word_id <= 0:
+            return
         self._freq[word] += count
 
     def trim(self, min_frequency, max_frequency=-1):
@@ -103,9 +126,9 @@ class WordVocabulary(object):
                 Useful to remove stop words.
         """
         for word, count in self._freq.iteritems():
-            if count <= min_frequency and (max_frequency < 0 or 
-               count >= max_frequency):
-               self._mapping.pop(word)
+            if count <= min_frequency and (max_frequency < 0 or
+                                           count >= max_frequency):
+                self._mapping.pop(word)
 
 
 class VocabularyProcessor(object):
@@ -120,7 +143,7 @@ class VocabularyProcessor(object):
     Attributes:
         vocabulary_: WordVocabulary object.
     """
-    
+
     def __init__(self, max_document_length,
                  min_frequency=0, vocabulary=None,
                  tokenizer_fn=None):
@@ -135,12 +158,13 @@ class VocabularyProcessor(object):
         else:
             self._tokenizer = tokenizer
 
-    def fit(self, raw_documents, y=None):
+    def fit(self, raw_documents, unused_y=None):
         """Learn a vocabulary dictionary of all tokens in the raw documents.
-        
+
         Args:
             raw_documents: iterable
                 An iterable which yield either str or unicode.
+            unused_y: to match fit format signature of estimators.
 
         Returns:
             self
@@ -153,12 +177,13 @@ class VocabularyProcessor(object):
         self.vocabulary_.freeze()
         return self
 
-    def fit_transform(self, raw_documents, y=None):
+    def fit_transform(self, raw_documents, unused_y=None):
         """Learn the vocabulary dictionary and return indexies of words.
-        
+
         Args:
             raw_documents: iterable
                 An iterable which yield either str or unicode.
+            unused_y: to match fit_transform signature of estimators.
 
         Returns:
             X: iterable, [n_samples, max_document_length]
@@ -188,4 +213,3 @@ class VocabularyProcessor(object):
                     break
                 word_ids[idx] = self.vocabulary_.get(token)
             yield word_ids
-
