@@ -66,6 +66,43 @@ double2 prsqrt<double2>(const double2& a)
   return make_double2(rsqrt(a.x), rsqrt(a.y));
 }
 
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+float4 plgamma<float4>(const float4& a)
+{
+  return make_float4(lgammaf(a.x), lgammaf(a.y), lgammaf(a.z), lgammaf(a.w));
+}
+
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+double2 plgamma<double2>(const double2& a)
+{
+  return make_double2(lgamma(a.x), lgamma(a.y));
+}
+
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+float4 perf<float4>(const float4& a)
+{
+  return make_float4(erf(a.x), erf(a.y), erf(a.z), erf(a.w));
+}
+
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+double2 perf<double2>(const double2& a)
+{
+  return make_double2(erf(a.x), erf(a.y));
+}
+
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+float4 perfc<float4>(const float4& a)
+{
+  return make_float4(erfc(a.x), erfc(a.y), erfc(a.z), erfc(a.w));
+}
+
+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+double2 perfc<double2>(const double2& a)
+{
+  return make_double2(erfc(a.x), erfc(a.y));
+}
+
+
 #endif
 
 } // end namespace internal

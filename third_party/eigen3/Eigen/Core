@@ -333,6 +333,7 @@ using std::ptrdiff_t;
 
 #include "src/Core/NumTraits.h"
 #include "src/Core/MathFunctions.h"
+#include "src/Core/SpecialFunctions.h"
 #include "src/Core/GenericPacketMath.h"
 
 #if defined EIGEN_VECTORIZE_AVX

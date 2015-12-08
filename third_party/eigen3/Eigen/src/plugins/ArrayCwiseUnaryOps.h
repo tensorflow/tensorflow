@@ -166,6 +166,45 @@ atan() const
   return derived();
 }
 
+/** \returns an expression of the coefficient-wise ln(|gamma(*this)|).
+  *
+  * Example: \include Cwise_lgamma.cpp
+  * Output: \verbinclude Cwise_lgamma.out
+  *
+  * \sa cos(), sin(), tan()
+  */
+inline const CwiseUnaryOp<internal::scalar_lgamma_op<Scalar>, Derived>
+lgamma() const
+{
+  return derived();
+}
+
+/** \returns an expression of the coefficient-wise Gauss error function of *this.
+  *
+  * Example: \include Cwise_erf.cpp
+  * Output: \verbinclude Cwise_erf.out
+  *
+  * \sa cos(), sin(), tan()
+  */
+inline const CwiseUnaryOp<internal::scalar_erf_op<Scalar>, Derived>
+erf() const
+{
+  return derived();
+}
+
+/** \returns an expression of the coefficient-wise Complementary error function of *this.
+  *
+  * Example: \include Cwise_erfc.cpp
+  * Output: \verbinclude Cwise_erfc.out
+  *
+  * \sa cos(), sin(), tan()
+  */
+inline const CwiseUnaryOp<internal::scalar_erfc_op<Scalar>, Derived>
+erfc() const
+{
+  return derived();
+}
+
 /** \returns an expression of the coefficient-wise power of *this to the given exponent.
   *
   * Example: \include Cwise_pow.cpp
@@ -180,7 +219,6 @@ pow(const Scalar& exponent) const
   return CwiseUnaryOp<internal::scalar_pow_op<Scalar>, const Derived>
           (derived(), internal::scalar_pow_op<Scalar>(exponent));
 }
-
 
 /** \returns an expression of the coefficient-wise inverse of *this.
   *
