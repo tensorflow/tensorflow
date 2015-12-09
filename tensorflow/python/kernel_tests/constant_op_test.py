@@ -538,6 +538,13 @@ class PlaceholderTest(tf.test.TestCase):
                                      " must be nonnegative"):
           tf.fill(shape, 7).eval()
 
+  def testBadShape(self):
+    with self.test_session():
+      a = tf.placeholder(tf.float32, shape=(-1, 10))
+      s = tf.shape(a)
+      with self.assertRaisesOpError(r"Shape \[-1,10\] has negative dimensions"):
+        s.eval()
+
 
 if __name__ == "__main__":
   tf.test.main()

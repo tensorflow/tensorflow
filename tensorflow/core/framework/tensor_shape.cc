@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/tensor_shape.h"
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -32,6 +33,23 @@ bool TensorShape::IsValid(const TensorShapeProto& proto) {
     if (num_elements > kMaxElements) return false;
   }
   return true;
+}
+
+Status TensorShape::IsValidShape(const TensorShapeProto& proto) {
+  int64 num_elements = 1;
+  for (const auto& d : proto.dim()) {
+    if (d.size() < 0) {
+      return errors::InvalidArgument("Shape ", ShortDebugString(proto),
+                                     " has negative dimensions");
+    }
+    num_elements *= d.size();
+    if (num_elements > kMaxElements) {
+      return errors::InvalidArgument("Shape ", ShortDebugString(proto),
+                                     " is too large (more than ", kMaxElements,
+                                     " entries)");
+    }
+  }
+  return Status::OK();
 }
 
 TensorShape::TensorShape(const TensorShapeProto& proto) {
@@ -139,6 +157,17 @@ string TensorShape::DebugString() const {
 string TensorShape::ShortDebugString() const {
   return strings::StrCat(
       "[", str_util::Join(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
+}
+
+string TensorShape::ShortDebugString(const TensorShapeProto& proto) {
+  string s = "[";
+  bool first = true;
+  for (const auto& d : proto.dim()) {
+    strings::StrAppend(&s, first ? "" : ",", d.size());
+    first = false;
+  }
+  strings::StrAppend(&s, "]");
+  return s;
 }
 
 bool TensorShapeUtils::StartsWith(const TensorShape& shape,

@@ -251,6 +251,10 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 
 ## Installing from sources {#source}
 
+When installing from source you will build a pip wheel that you then install
+using pip. You'll need pip for that, so install it as described
+[above](#pip_install).
+
 ### Clone the TensorFlow repository
 
 ```bash
@@ -263,7 +267,6 @@ depends on.
 ### Installation for Linux
 
 #### Install Bazel
-
 
 Follow instructions [here](http://bazel.io/docs/install.html) to install the
 dependencies for Bazel. Then download bazel version 0.1.1 using the
@@ -278,8 +281,8 @@ $ ./PATH_TO_INSTALL.SH --user
 Remember to replace `PATH_TO_INSTALL.SH` with the location where you
 downloaded the installer.
 
-Finally, follow the instructions in that script to place `bazel` into your binary
-path.
+Finally, follow the instructions in that script to place `bazel` into your
+binary path.
 
 #### Install other dependencies
 
@@ -416,25 +419,33 @@ given necessary bazel new feature support.
 
 ### Installation for Mac OS X
 
-Mac needs the same set of dependencies as Linux, but the installation
-process for those dependencies is different. Here is a set of useful links
-to help with installing the dependencies on Mac OS X :
+We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
+dependencies, and installing python dependencies using easy_install or pip.
 
-#### Bazel
+#### Dependencies
 
-Look for installation instructions for Mac OS X on
-[this](http://bazel.io/docs/install.html) page.
+Follow instructions [here](http://bazel.io/docs/install.html) to install the
+dependencies for Bazel. You can then use homebrew to install bazel and SWIG:
 
-#### SWIG
+```bash
+$ brew install bazel swig
+```
 
-[Mac OS X installation](http://www.swig.org/Doc3.0/Preface.html#Preface_osx_installation).
+You can install the python dependencies using easy_install or pip. Using
+easy_install, run
 
-Notes : You need to install
-[PCRE](ftp://ftp.csx.cam.ac.uk/pub/software/programming/pcre/) and *NOT* PCRE2.
+```bash
+$ sudo easy_install -U six
+$ sudo easy_install -U numpy
+$ sudo easy_install wheel
+```
 
-#### Numpy
+We also recommend the [ipython](https://ipython.org) enhanced python shell, so
+best install that too:
 
-Follow installation instructions [here](http://docs.scipy.org/doc/numpy/user/install.html).
+```bash
+$ sudo easy_install ipython
+```
 
 #### Configure the installation {#configure_osx}
 
@@ -514,13 +525,13 @@ If, during `pip install`, you encounter an error like:
 IOError: [Errno 2] No such file or directory: '/tmp/pip-o6Tpui-build/setup.py'
 ```
 
-Solution: upgrade your version of `pip`:
+Solution: upgrade your version of pip:
 
 ```bash
 pip install --upgrade pip
 ```
 
-This may require `sudo`, depending on how `pip` is installed.
+This may require `sudo`, depending on how pip is installed.
 
 #### SSLError: SSL_VERIFY_FAILED
 

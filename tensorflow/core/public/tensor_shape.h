@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -48,6 +49,10 @@ class TensorShape {
 
   /// Returns `true` iff `proto` is a valid tensor shape.
   static bool IsValid(const TensorShapeProto& proto);
+
+  /// Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error
+  /// status otherwise.
+  static Status IsValidShape(const TensorShapeProto& proto);
 
   /// Clear a tensor shape
   void Clear();
@@ -118,8 +123,13 @@ class TensorShape {
 
   /// For error messages.
   string DebugString() const;
-  // TODO(vrv): Remove this, this is the same as DebugString().
   string ShortDebugString() const;
+  // TODO(vrv): Consolidate DebugString() and ShortDebugString() into one
+  // function that is not verbose and works for scalars.
+
+  /// Same as `TensorShape(proto).ShortDebugString()` but doesn't crash for
+  /// invalid protos.
+  static string ShortDebugString(const TensorShapeProto& proto);
 
  private:
   // Recalculates the dimensions of this tensor after they are modified.

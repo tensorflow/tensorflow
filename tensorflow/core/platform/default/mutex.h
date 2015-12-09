@@ -20,13 +20,15 @@ limitations under the License.
 #include <condition_variable>
 #include <mutex>
 
+#include "tensorflow/core/platform/default/thread_annotations.h"
+
 namespace tensorflow {
 
 enum LinkerInitialized { LINKER_INITIALIZED };
 
 // A class that wraps around the std::mutex implementation, only adding an
 // additional LinkerInitialized constructor interface.
-class mutex : public std::mutex {
+class LOCKABLE mutex : public std::mutex {
  public:
   mutex() {}
   // The default implementation of std::mutex is safe to use after the linker

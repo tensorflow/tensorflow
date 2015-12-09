@@ -30,11 +30,6 @@ string SummarizeString(const string& str) {
   return strings::StrCat("\"", str_util::CEscape(str), "\"");
 }
 
-string SummarizeShape(const TensorShapeProto& proto) {
-  TensorShape shape(proto);
-  return shape.ShortDebugString();
-}
-
 string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
@@ -59,7 +54,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kType:
       return DataType_Name(attr_value.type());
     case AttrValue::kShape:
-      return SummarizeShape(attr_value.shape());
+      return TensorShape::ShortDebugString(attr_value.shape());
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
@@ -92,7 +87,8 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, SummarizeShape(attr_value.list().shape(i)));
+          strings::StrAppend(
+              &ret, TensorShape::ShortDebugString(attr_value.list().shape(i)));
         }
       } else if (attr_value.list().tensor_size() > 0) {
         for (int i = 0; i < attr_value.list().tensor_size(); ++i) {

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
 #define TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
 
+#include <numeric>
+
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 

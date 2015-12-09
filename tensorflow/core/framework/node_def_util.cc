@@ -129,7 +129,8 @@ DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
 DEFINE_GET_ATTR(TensorShapeProto, shape, "shape", emplace_back, v, ;)
-DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v), ;)
+DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v),
+                TF_RETURN_IF_ERROR(TensorShape::IsValidShape(v));)
 DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                 if (!t.FromProto(v)) {
                   return errors::InvalidArgument(
