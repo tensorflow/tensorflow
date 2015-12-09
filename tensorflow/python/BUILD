@@ -137,6 +137,7 @@ py_library(
         "ops/op_def_library.py",
         "ops/constant_op.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":platform",
