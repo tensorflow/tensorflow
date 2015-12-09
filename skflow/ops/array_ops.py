@@ -19,7 +19,7 @@ import tensorflow as tf
 
 
 def split_squeeze(dim, num_split, tensor_in):
-    """Splits input on given dimenstion and then squeezes that dimension.
+    """Splits input on given dimension and then squeezes that dimension.
 
     Args:
         dim: Dimension to split and squeeze on.
@@ -33,7 +33,7 @@ def split_squeeze(dim, num_split, tensor_in):
 
 
 def expand_concat(dim, inputs):
-    """Expands inputs on given dimension and then concats them.
+    """Expands inputs on given dimension and then concatenates them.
 
     Args:
         dim: Dimension to expand and concatenate on.
