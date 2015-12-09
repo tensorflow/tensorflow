@@ -28,8 +28,8 @@ namespace tensorflow {
 
 class RandomAccessFile;
 class Thread;
-class ThreadOptions;
 class WritableFile;
+struct ThreadOptions;
 
 /// \brief An interface used by the tensorflow implementation to
 /// access operating system functionality like the filesystem etc.
