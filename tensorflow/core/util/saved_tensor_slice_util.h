@@ -58,23 +58,24 @@ const typename SaveTypeTraits<T>::SavedType* TensorProtoData(
     const TensorProto& t);
 
 template <typename T>
-protobuf::RepeatedField<typename SaveTypeTraits<T>::SavedType>*
-MutableTensorProtoData(TensorProto* t);
+typename SaveTypeTraits<T>::RepeatedField* MutableTensorProtoData(
+    TensorProto* t);
 
 template <typename T>
 void Fill(T* data, size_t n, TensorProto* t);
 
-#define TENSOR_PROTO_EXTRACT_TYPE(TYPE, FIELD, FTYPE)                    \
+#define TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, STYPE)      \
   template <>                                                            \
   struct SaveTypeTraits<TYPE> {                                          \
     static constexpr bool supported = true;                              \
-    typedef FTYPE SavedType;                                             \
+    typedef STYPE SavedType;                                             \
+    typedef protobuf::RepeatedField<FTYPE> RepeatedField;                \
   };                                                                     \
   template <>                                                            \
-  inline const FTYPE* TensorProtoData<TYPE>(const TensorProto& t) {      \
+  inline const STYPE* TensorProtoData<TYPE>(const TensorProto& t) {      \
     static_assert(SaveTypeTraits<TYPE>::supported,                       \
                   "Specified type " #TYPE " not supported for Restore"); \
-    return reinterpret_cast<const FTYPE*>(t.FIELD##_val().data());       \
+    return reinterpret_cast<const STYPE*>(t.FIELD##_val().data());       \
   }                                                                      \
   template <>                                                            \
   inline protobuf::RepeatedField<FTYPE>* MutableTensorProtoData<TYPE>(   \
@@ -83,16 +84,30 @@ void Fill(T* data, size_t n, TensorProto* t);
                   "Specified type " #TYPE " not supported for Save");    \
     return reinterpret_cast<protobuf::RepeatedField<FTYPE>*>(            \
         t->mutable_##FIELD##_val());                                     \
-  }                                                                      \
-  template <>                                                            \
-  inline void Fill(const TYPE* data, size_t n, TensorProto* t) {         \
-    typename protobuf::RepeatedField<FTYPE> copy(data, data + n);        \
-    t->mutable_##FIELD##_val()->Swap(&copy);                             \
+  }
+
+#define TENSOR_PROTO_EXTRACT_TYPE(TYPE, FIELD, FTYPE)             \
+  TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, FTYPE)     \
+  template <>                                                     \
+  inline void Fill(const TYPE* data, size_t n, TensorProto* t) {  \
+    typename protobuf::RepeatedField<FTYPE> copy(data, data + n); \
+    t->mutable_##FIELD##_val()->Swap(&copy);                      \
+  }
+
+// Complex needs special treatment since proto doesn't have native complex
+#define TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(TYPE, FIELD, FTYPE)       \
+  TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, TYPE)        \
+  template <>                                                       \
+  inline void Fill(const TYPE* data, size_t n, TensorProto* t) {    \
+    const FTYPE* sub = reinterpret_cast<const FTYPE*>(data);        \
+    typename protobuf::RepeatedField<FTYPE> copy(sub, sub + 2 * n); \
+    t->mutable_##FIELD##_val()->Swap(&copy);                        \
   }
 
 TENSOR_PROTO_EXTRACT_TYPE(bool, bool, bool);
 TENSOR_PROTO_EXTRACT_TYPE(float, float, float);
 TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
+TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int64, int64, int64);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
@@ -101,6 +116,8 @@ TENSOR_PROTO_EXTRACT_TYPE(int16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(qint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32);
 
+#undef TENSOR_PROTO_EXTRACT_TYPE_COMPLEX
+#undef TENSOR_PROTO_EXTRACT_TYPE_HELPER
 #undef TENSOR_PROTO_EXTRACT_TYPE
 
 template <>
@@ -117,6 +134,34 @@ inline void Fill(const qint32* data, size_t n, TensorProto* t) {
   const int32* p = reinterpret_cast<const int32*>(data);
   typename protobuf::RepeatedField<int32> copy(p, p + n);
   t->mutable_int_val()->Swap(&copy);
+}
+
+template <>
+struct SaveTypeTraits<string> {
+  static constexpr bool supported = true;
+  typedef const string* SavedType;
+  typedef protobuf::RepeatedPtrField<string> RepeatedField;
+};
+
+template <>
+inline const string* const* TensorProtoData<string>(const TensorProto& t) {
+  static_assert(SaveTypeTraits<string>::supported,
+                "Specified type string not supported for Restore");
+  return t.string_val().data();
+}
+
+template <>
+inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<string>(
+    TensorProto* t) {
+  static_assert(SaveTypeTraits<string>::supported,
+                "Specified type string not supported for Save");
+  return t->mutable_string_val();
+}
+
+template <>
+inline void Fill(const string* data, size_t n, TensorProto* t) {
+  typename protobuf::RepeatedPtrField<string> copy(data, data + n);
+  t->mutable_string_val()->Swap(&copy);
 }
 
 }  // namespace checkpoint

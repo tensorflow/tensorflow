@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/io.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -141,24 +142,14 @@ void SaveTensors(
                                           input.shape().DebugString()));
     }
 
-#define WRITER_ADD(dt)                                             \
-  case dt:                                                         \
-    s = writer.Add(name, shape, slice,                             \
-                   input.flat<EnumToDataType<dt>::Type>().data()); \
-    break
+#define WRITER_ADD(T)                                           \
+  case DataTypeToEnum<T>::value:                                \
+    s = writer.Add(name, shape, slice, input.flat<T>().data()); \
+    break;
 
     switch (input.dtype()) {
-      WRITER_ADD(DT_BOOL);
-      WRITER_ADD(DT_FLOAT);
-      WRITER_ADD(DT_DOUBLE);
-      WRITER_ADD(DT_INT32);
-      WRITER_ADD(DT_UINT8);
-      WRITER_ADD(DT_INT16);
-      WRITER_ADD(DT_INT8);
-      WRITER_ADD(DT_INT64);
-      WRITER_ADD(DT_QUINT8);
-      WRITER_ADD(DT_QINT8);
-      WRITER_ADD(DT_QINT32);
+      TF_CALL_ALL_TYPES(WRITER_ADD)
+      TF_CALL_QUANTIZED_TYPES(WRITER_ADD)
       default:
         context->SetStatus(errors::Unimplemented("Saving data type ",
                                                  DataTypeString(input.dtype()),

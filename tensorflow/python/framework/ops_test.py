@@ -42,6 +42,15 @@ class TensorTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3], t.get_shape())
 
 
+class SparseTensorTest(test_util.TensorFlowTestCase):
+
+  def testPythonConstruction(self):
+    sp = ops.SparseTensor([[1, 2], [2, 0], [3, 4]], ["a", "b", "c"], [4, 5])
+    self.assertEqual(sp.indices.dtype, dtypes.int64)
+    self.assertEqual(sp.values.dtype, dtypes.string)
+    self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
 
   def testNoArgs(self):

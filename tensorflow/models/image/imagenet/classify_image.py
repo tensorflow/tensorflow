@@ -119,7 +119,7 @@ class NodeLookup(object):
 
     # Loads the final mapping of integer node ID to human-readable string
     node_id_to_name = {}
-    for key, val in node_id_to_uid.iteritems():
+    for key, val in node_id_to_uid.items():
       if val not in uid_to_human:
         tf.logging.fatal('Failed to locate: %s', val)
       name = uid_to_human[val]
@@ -137,7 +137,7 @@ def create_graph():
   """"Creates a graph from saved GraphDef file and returns a saver."""
   # Creates graph from saved graph_def.pb.
   with gfile.FastGFile(os.path.join(
-      FLAGS.model_dir, 'classify_image_graph_def.pb'), 'r') as f:
+      FLAGS.model_dir, 'classify_image_graph_def.pb'), 'rb') as f:
     graph_def = tf.GraphDef()
     graph_def.ParseFromString(f.read())
     _ = tf.import_graph_def(graph_def, name='')
@@ -154,7 +154,7 @@ def run_inference_on_image(image):
   """
   if not gfile.Exists(image):
     tf.logging.fatal('File does not exist %s', image)
-  image_data = gfile.FastGFile(image).read()
+  image_data = gfile.FastGFile(image, 'rb').read()
 
   # Creates graph from saved GraphDef.
   create_graph()

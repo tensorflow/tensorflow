@@ -6264,18 +6264,6 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
-    allowed_values {
-      list {
-        type: DT_BOOL
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_QUINT8
-        type: DT_QINT8
-        type: DT_QINT32
-      }
-    }
   }
   summary: "Saves the input tensors to disk."
   description: "The size of `tensor_names` must match the number of tensors in `data`. `data[i]`\nis written to `filename` with name `tensor_names[i]`.\n\nSee also `SaveSlices`."
@@ -6307,18 +6295,6 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
-    allowed_values {
-      list {
-        type: DT_BOOL
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_QUINT8
-        type: DT_QINT8
-        type: DT_QINT32
-      }
-    }
   }
   summary: "Saves input tensors slices to disk."
   description: "This is like `Save` except that tensors can be listed in the saved file as being\na slice of a larger tensor.  `shapes_and_slices` specifies the shape of the\nlarger tensor and the slice that this tensor covers. `shapes_and_slices` must\nhave as many elements as `tensor_names`.\n\nElements of the `shapes_and_slices` input must either be:\n\n*  The empty string, in which case the corresponding tensor is\n   saved normally.\n*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the\n   `dimI` are the dimensions of the larger tensor and `slice-spec`\n   specifies what part is covered by the tensor to save.\n\n`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`\nwhere each `sliceI` is either:\n\n*  The string `-` meaning that the slice covers all indices of this dimension\n*  `start,length` where `start` and `length` are integers.  In that\n   case the slice covers `length` indices starting at `start`.\n\nSee also `Save`."
