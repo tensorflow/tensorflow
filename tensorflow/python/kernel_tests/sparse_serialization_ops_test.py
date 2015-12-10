@@ -95,7 +95,7 @@ class SerializeSparseTest(tf.test.TestCase):
     with self.test_session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
-      values_value = np.array(["a", "b", "c"])
+      values_value = np.array([b"a", b"b", b"c"])
       shape_value = np.array([4, 5], dtype=np.int64)
       sparse_tensor = self._SparseTensorPlaceholder(dtype=tf.string)
       serialized = tf.serialize_many_sparse(sparse_tensor)
