@@ -36,5 +36,3 @@ pipeline.fit(X_train, y_train)
 score = accuracy_score(pipeline.predict(X_test), y_test)
 
 print('Accuracy: {0:f}'.format(score))
-
-

@@ -6,4 +6,4 @@ Examples of Using skflow
 * [Building A Custom Model](iris_custom_model.py)
 * [Building A Custom Model Using Multiple GPUs](multiple_gpu.py)
 * [Text Classification Using Recurrent Neural Networks](text_classification.py)
-* [Using skflow with Pipeline](with_pipeline.py)
+* [Using skflow with Pipeline](iris_with_pipeline.py)
