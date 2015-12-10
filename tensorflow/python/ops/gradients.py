@@ -444,7 +444,7 @@ def gradients(ys,
                 op_wrapper = control_flow_ops.MakeWrapper(op)
               in_grads = _AsList(grad_fn(op_wrapper, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
-              if gate_gradients and len(filter(None, in_grads)) > 1:
+              if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
           logging.vlog(1, "Gradient for '" + op.name + "'")
           logging.vlog(1, "  in  --> %s",

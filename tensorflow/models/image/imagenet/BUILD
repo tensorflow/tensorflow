@@ -10,6 +10,7 @@ py_binary(
     srcs = [
         "classify_image.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow:tensorflow_py",
