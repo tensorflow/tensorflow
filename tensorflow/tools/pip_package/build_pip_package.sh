@@ -42,7 +42,8 @@ function main() {
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  python setup.py bdist_wheel >/dev/null
+  source tensorflow/tools/python_bin_path.sh
+  ${PYTHON_BIN_PATH} setup.py bdist_wheel >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd
