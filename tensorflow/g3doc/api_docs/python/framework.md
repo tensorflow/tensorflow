@@ -1627,7 +1627,7 @@ The following standard keys are defined:
 A decorator for registering the gradient function for an op type.
 
 This decorator is only used when defining a new op type. For an op
-with `m` inputs and `n` inputs, the gradient function is a function
+with `m` inputs and `n` outputs, the gradient function is a function
 that takes the original `Operation` and `n` `Tensor` objects
 (representing the gradients with respect to each output of the op),
 and returns `m` `Tensor` objects (representing the partial gradients
@@ -1640,7 +1640,7 @@ following gradient function would be registered:
 ```python
 @tf.RegisterGradient("Sub")
 def _sub_grad(unused_op, grad):
-  return grad, tf.Neg(grad)
+  return grad, tf.neg(grad)
 ```
 
 The decorator argument `op_type` is the string type of an
