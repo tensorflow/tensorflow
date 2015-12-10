@@ -169,6 +169,12 @@ def _AbsGrad(op, grad):
   x = op.inputs[0]
   return grad * math_ops.sign(x)
 
+@ops.RegisterGradient("ComplexAbs")
+def _ComplexAbsGrad(op, grad):
+  x = op.inputs[0]
+  zero = constant_op.constant(0, dtype=grad.dtype)
+  return math_ops.complex( grad,zero ) * math_ops.sign(x)
+
 
 @ops.RegisterGradient("Neg")
 def _NegGrad(_, grad):
@@ -378,21 +384,25 @@ def _SelectGrad(op, grad):
 def _MatMulGrad(op, grad):
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
+  A = op.inputs[0]
+  B = op.inputs[1]
+  if A.dtype.base_dtype == dtypes.complex64:
+      A = math_ops.conj(A)
+      B = math_ops.conj(B)
   if not t_a and not t_b:
-    return (math_ops.matmul(grad, op.inputs[1], transpose_b=True),
-            math_ops.matmul(op.inputs[0], grad, transpose_a=True))
+    return (math_ops.matmul(grad, B, transpose_b=True),
+            math_ops.matmul(A, grad, transpose_a=True))
   elif not t_a and t_b:
-    return (math_ops.matmul(grad, op.inputs[1]),
-            math_ops.matmul(grad, op.inputs[0], transpose_a=True))
+    return (math_ops.matmul(grad, B),
+            math_ops.matmul(grad, A, transpose_a=True))
   elif t_a and not t_b:
-    return (math_ops.matmul(op.inputs[1], grad, transpose_b=True),
-            math_ops.matmul(op.inputs[0], grad))
+    return (math_ops.matmul(B, grad, transpose_b=True),
+            math_ops.matmul(A, grad))
   elif t_a and t_b:
-    return (math_ops.matmul(op.inputs[1], grad, transpose_a=True,
+    return (math_ops.matmul(B, grad, transpose_a=True,
                             transpose_b=True),
-            math_ops.matmul(grad, op.inputs[0], transpose_a=True,
+            math_ops.matmul(grad, A, transpose_a=True,
                             transpose_b=True))
-
 
 @ops.RegisterGradient("SparseMatMul")
 def _SparseMatMulGrad(op, grad):

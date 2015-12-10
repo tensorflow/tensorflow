@@ -49,6 +49,18 @@ Status AbsGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Abs", AbsGrad);
 
+Status ComplexAbsGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"sign_x"}, "Sign", {"x"}},
+     FDH::Const("zero", 0.f),
+     {{"cdy"}, "Complex", {"dy", "zero"}},
+    {{"dx"}, "Mul", {"cdy", "sign_x"}}
+    });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("ComplexAbs", ComplexAbsGrad);
+
 Status NegGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
