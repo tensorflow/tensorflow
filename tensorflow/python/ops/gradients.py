@@ -575,7 +575,8 @@ def _AggregatedGrads(grads, op, has_control_flow, aggregation_method=None):
   if aggregation_method not in [AggregationMethod.ADD_N,
                                 AggregationMethod.EXPERIMENTAL_TREE,
                                 AggregationMethod.EXPERIMENTAL_ACCUMULATE_N]:
-    raise ValueError("Invalid aggregation_method specified.")
+    raise ValueError(
+        "Invalid aggregation_method specified %s." % aggregation_method)
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if has_control_flow:

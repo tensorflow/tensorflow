@@ -737,7 +737,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, name=None)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -747,18 +747,34 @@ tensors in `params`.  It is a generalization of
 interpreted as a partition of a larger embedding tensor.
 
 If `len(params) > 1`, each element `id` of `ids` is partitioned between
-the elements of `params` by computing `p = id % len(params)`, and is
-then used to look up the slice `params[p][id // len(params), ...]`.
+the elements of `params` according to the `partition_strategy`.
+In all strategies, if the id space does not evenly divide the number of
+partitions, each of the first `(max_id + 1) % len(params)` partitions will
+be assigned one more id.
 
-The results of the lookup are then concatenated into a dense
+If `partition_strategy` is `"mod"`, we assign each id to partition
+`p = id % len(params)`. For instance,
+13 ids are split across 5 partitions as:
+`[[0, 5, 10], [1, 6, 11], [2, 7, 12], [3, 8], [4, 9]]`
+
+If `partition_strategy` is `"div"`, we assign ids to partitions in a
+contiguous manner. In this case, 13 ids are split across 5 partitions as:
+`[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`
+
+The results of the lookup are concatenated into a dense
 tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 ##### Args:
 
 
-*  <b>`params`</b>: A list of tensors with the same shape and type.
+*  <b>`params`</b>: A list of tensors with the same type and which can be concatenated
+    along dimension 0. Each `Tensor` must be appropriately sized for the given
+    `partition_strategy`.
 *  <b>`ids`</b>: A `Tensor` with type `int32` or `int64` containing the ids to be looked
     up in `params`.
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
+    if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+    is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -864,7 +880,7 @@ TensorFlow provides the following sampled loss functions for faster training.
 
 - - -
 
-### `tf.nn.nce_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=False, name='nce_loss')` {#nce_loss}
+### `tf.nn.nce_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=False, partition_strategy='mod', name='nce_loss')` {#nce_loss}
 
 Computes and returns the noise-contrastive estimation training loss.
 
@@ -889,7 +905,7 @@ with an otherwise unused class.
 
 *  <b>`weights`</b>: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
       objects whose concatenation along dimension 0 has shape
-      [num_classes, dim].  The (possibly-sharded) class embeddings.
+      [num_classes, dim].  The (possibly-partitioned) class embeddings.
 *  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
 *  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
       activations of the input network.
@@ -908,6 +924,9 @@ with an otherwise unused class.
       our [Candidate Sampling Algorithms Reference]
       (../../extras/candidate_sampling.pdf).
       Default is False.
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
+      if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+      Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -917,7 +936,7 @@ with an otherwise unused class.
 
 - - -
 
-### `tf.nn.sampled_softmax_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, name='sampled_softmax_loss')` {#sampled_softmax_loss}
+### `tf.nn.sampled_softmax_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, partition_strategy='mod', name='sampled_softmax_loss')` {#sampled_softmax_loss}
 
 Computes and returns the sampled softmax training loss.
 
@@ -956,6 +975,9 @@ Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
 *  <b>`remove_accidental_hits`</b>: A `bool`.  whether to remove "accidental hits"
       where a sampled class equals one of the target classes.  Default is
       True.
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
+      if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+      Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

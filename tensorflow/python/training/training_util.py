@@ -33,7 +33,7 @@ def global_step(sess, global_step_tensor):
   sess = tf.Session()
   # Initializes the variable.
   sess.run(global_step_tensor.initializer)
-  print 'global_step:', tf.train.global_step(sess, global_step_tensor)
+  print('global_step:', tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
   ```

@@ -30,7 +30,7 @@ c = a * b
 sess = tf.Session()
 
 # Evaluate the tensor `c`.
-print sess.run(c)
+print(sess.run(c))
 ```
 
 A session may own resources, such as
@@ -196,7 +196,7 @@ sess = tf.Session()
 
 with sess.as_default():
   assert tf.get_default_session() is sess
-  print c.eval()
+  print(c.eval())
 ```
 
 To get the current default session, use
@@ -211,10 +211,10 @@ explicitly.
 c = tf.constant(...)
 sess = tf.Session()
 with sess.as_default():
-  print c.eval()
+  print(c.eval())
 # ...
 with sess.as_default():
-  print c.eval()
+  print(c.eval())
 
 sess.close()
 ```
@@ -258,7 +258,7 @@ a = tf.constant(5.0)
 b = tf.constant(6.0)
 c = a * b
 # We can just use 'c.eval()' without passing 'sess'
-print c.eval()
+print(c.eval())
 sess.close()
 ```
 
@@ -272,7 +272,7 @@ b = tf.constant(6.0)
 c = a * b
 with tf.Session():
   # We can also use 'c.eval()' here.
-  print c.eval()
+  print(c.eval())
 ```
 
 - - -

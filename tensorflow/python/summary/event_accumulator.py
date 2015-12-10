@@ -177,7 +177,7 @@ class EventAccumulator(object):
         ## file_version events always have step 0, ignore.
         ## TODO(danmane): Have this check for restart events explicitly
         if (event.step < self.most_recent_step and
-            not event.HasField('file_version')):
+            event.HasField('summary')):
 
           ## Keep data in reservoirs that has a step less than event.step
           _NotExpired = lambda x: x.step < event.step

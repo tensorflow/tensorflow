@@ -12,8 +12,8 @@ tutorials. Brief instructions are below.
 To download the example text and evaluation data:
 
 ```shell
-wget http://mattmahoney.net/dc/text8.zip -O text8.gz
-gzip -d text8.gz -f
+wget http://mattmahoney.net/dc/text8.zip -O text8.zip
+unzip text8.zip
 wget https://word2vec.googlecode.com/svn/trunk/questions-words.txt
 ```
 

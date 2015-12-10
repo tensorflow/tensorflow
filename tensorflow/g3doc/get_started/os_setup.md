@@ -6,7 +6,7 @@ github source.
 ## Requirements
 
 The TensorFlow Python API currently supports Python 2.7 and Python 3.3+ from
-source.  We are preparing Python 3 pip packages to go with the 0.6.0 release.
+source.
 
 The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
 6.5 V2.  Please see [Cuda installation](#install_cuda).
@@ -39,7 +39,7 @@ Python.
 The packages that will be installed or upgraded during the pip install are listed in the
 [REQUIRED_PACKAGES section of setup.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/pip_package/setup.py)
 
-Install pip if it is not already installed:
+Install pip (or pip3 for python3) if it is not already installed:
 
 ```bash
 # Ubuntu/Linux 64-bit
@@ -53,15 +53,30 @@ Install TensorFlow:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl
 ```
+
+For python3:
+
+```bash
+# Ubuntu/Linux 64-bit, CPU only:
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU enabled:
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+
+# Mac OS X, CPU only:
+$ sudo easy_install --upgrade six
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py3-none-any.whl
+```
+
 
 You can now [test your installation](#test_install).
 
@@ -113,6 +128,23 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 
 # Mac OS X, CPU only:
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
+```
+
+and again for python3:
+
+```bash
+$ source ~/tensorflow/bin/activate  # If using bash
+$ source ~/tensorflow/bin/activate.csh  # If using csh
+(tensorflow)$  # Your prompt should change
+
+# Ubuntu/Linux 64-bit, CPU only:
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU enabled:
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+
+# Mac OS X, CPU only:
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py3-none-any.whl
 ```
 
 With the Virtualenv environment activated, you can now
@@ -206,11 +238,11 @@ $ python
 >>> import tensorflow as tf
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> sess = tf.Session()
->>> print sess.run(hello)
+>>> print(sess.run(hello))
 Hello, TensorFlow!
 >>> a = tf.constant(10)
 >>> b = tf.constant(32)
->>> print sess.run(a + b)
+>>> print(sess.run(a + b))
 42
 >>>
 ```
@@ -228,7 +260,7 @@ The exact location of the Python library depends on your system, but is usually 
 You can find out the directory with the following command:
 
 ```bash
-$ python -c 'import site; print "\n".join(site.getsitepackages())'
+$ python -c 'import site; print("\n".join(site.getsitepackages()))'
 ```
 
 The simple demo model for classifying handwritten digits from the MNIST dataset

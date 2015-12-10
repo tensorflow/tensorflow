@@ -1400,7 +1400,7 @@ summary has a summary value for each tag-value pair in `tags` and `values`.
 
 - - -
 
-### `tf.image_summary(tag, tensor, max_images=None, collections=None, name=None)` {#image_summary}
+### `tf.image_summary(tag, tensor, max_images=3, collections=None, name=None)` {#image_summary}
 
 Outputs a `Summary` protocol buffer with images.
 
@@ -1701,7 +1701,7 @@ Example: Print the contents of an events file.
 
 ```python
 for e in tf.summary_iterator(path to events file):
-    print e
+    print(e)
 ```
 
 Example: Print selected summary values.
@@ -1714,7 +1714,7 @@ Example: Print selected summary values.
 for e in tf.summary_iterator(path to events file):
     for v in e.summary.value:
         if v.tag == 'loss':
-            print v.simple_value
+            print(v.simple_value)
 ```
 
 See the protocol buffer definitions of
@@ -1749,7 +1749,7 @@ global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
 sess = tf.Session()
 # Initializes the variable.
 sess.run(global_step_tensor.initializer)
-print 'global_step:', tf.train.global_step(sess, global_step_tensor)
+print('global_step:', tf.train.global_step(sess, global_step_tensor))
 
 global_step: 10
 ```

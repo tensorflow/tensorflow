@@ -24,6 +24,7 @@ import tensorflow.python.platform
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary import event_accumulator as ea
 
@@ -391,13 +392,15 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ## Check that we have discarded 200 and 300
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
 
-  def testFileVersionEventDoesntTriggerDiscard(self):
+  def testOnlySummaryEventsTriggerDiscards(self):
     """Test that file version event doesnt trigger data purge."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
-    ev = tf.Event(wall_time=2, step=0, file_version='0')
-    gen.AddEvent(ev)
+    ev1 = tf.Event(wall_time=2, step=0, file_version='0')
+    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_pb2.GraphDef())
+    gen.AddEvent(ev1)
+    gen.AddEvent(ev2)
     acc.Reload()
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100])
 

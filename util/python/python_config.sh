@@ -82,6 +82,8 @@ function setup_python {
   sed -e "s/\$PYTHON_MAJOR_VERSION/$python_major_version/g" \
       -e "s[\$PYTHON_BINARY[$PYTHON_BIN_PATH[g" \
       tools/bazel.rc.template >> tools/bazel.rc
+  # Write tools/python_bin_path.sh
+  echo "export PYTHON_BIN_PATH=$PYTHON_BIN_PATH" > tools/python_bin_path.sh
 }
 
 function check_python {

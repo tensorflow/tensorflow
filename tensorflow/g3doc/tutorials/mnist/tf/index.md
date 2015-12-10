@@ -145,8 +145,8 @@ of units in the layer to which they connect.
 The graph's three primary ops -- two [`tf.nn.relu`](../../../api_docs/python/nn.md#relu)
 ops wrapping [`tf.matmul`](../../../api_docs/python/math_ops.md#matmul)
 for the hidden layers and one extra `tf.matmul` for the logits -- are then
-created, each in turn, with their `tf.Variable` instances connected to the
-input placeholder or the output tensor of the layer beneath each.
+created, each in turn, with separate `tf.Variable` instances connected to each
+of the input placeholders or the output tensors of the previous layer.
 
 ```python
 hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)

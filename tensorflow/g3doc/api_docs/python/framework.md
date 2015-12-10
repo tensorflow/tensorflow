@@ -1017,12 +1017,12 @@ example:
 ```python
 c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-print c.get_shape()
+print(c.get_shape())
 ==> TensorShape([Dimension(2), Dimension(3)])
 
 d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-print d.get_shape()
+print(d.get_shape())
 ==> TensorShape([Dimension(4), Dimension(2)])
 
 # Raises a ValueError, because `c` and `d` do not have compatible
@@ -1031,7 +1031,7 @@ e = tf.matmul(c, d)
 
 f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-print f.get_shape()
+print(f.get_shape())
 ==> TensorShape([Dimension(3), Dimension(4)])
 ```
 
@@ -1063,12 +1063,12 @@ image = tf.image.decode_png(image_data, channels=3)
 
 # The height and width dimensions of `image` are data dependent, and
 # cannot be computed without executing the op.
-print image.get_shape()
+print(image.get_shape())
 ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
 # We know that each image in this dataset is 28 x 28 pixels.
 image.set_shape([28, 28, 3])
-print image.get_shape()
+print(image.get_shape())
 ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
 ```
 

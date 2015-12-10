@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/tensor.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
+struct ThreadPoolDevice;
 }  // end namespace Eigen
 
 namespace perftools {
