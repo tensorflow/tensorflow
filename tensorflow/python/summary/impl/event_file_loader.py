@@ -49,7 +49,6 @@ class EventFileLoader(object):
       All values that were written to disk that have not been yielded yet.
     """
     while self._reader.GetNext():
-      logging.debug('Got an event from %s', self._file_path)
       event = event_pb2.Event()
       event.ParseFromString(self._reader.record())
       yield event

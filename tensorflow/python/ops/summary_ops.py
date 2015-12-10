@@ -60,7 +60,7 @@ def histogram_summary(tag, values, collections=None, name=None):
   return val
 
 
-def image_summary(tag, tensor, max_images=None, collections=None, name=None):
+def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   """Outputs a `Summary` protocol buffer with images.
 
   The summary has up to `max_images` summary values containing images. The

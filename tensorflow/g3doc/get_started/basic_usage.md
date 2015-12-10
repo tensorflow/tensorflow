@@ -101,7 +101,7 @@ sess = tf.Session()
 #
 # The output of the op is returned in 'result' as a numpy `ndarray` object.
 result = sess.run(product)
-print result
+print(result)
 # ==> [[ 12.]]
 
 # Close the Session when we're done.
@@ -115,7 +115,7 @@ with a "with" block. The `Session` closes automatically at the end of the
 ```python
 with tf.Session() as sess:
   result = sess.run([product])
-  print result
+  print(result)
 ```
 
 The TensorFlow implementation translates the graph definition into executable
@@ -173,7 +173,7 @@ x.initializer.run()
 
 # Add an op to subtract 'a' from 'x'.  Run it and print the result
 sub = tf.sub(x, a)
-print sub.eval()
+print(sub.eval())
 # ==> [-2. -1.]
 ```
 
@@ -212,11 +212,11 @@ with tf.Session() as sess:
   # Run the 'init' op
   sess.run(init_op)
   # Print the initial value of 'state'
-  print sess.run(state)
+  print(sess.run(state))
   # Run the op that updates 'state' and print 'state'.
   for _ in range(3):
     sess.run(update)
-    print sess.run(state)
+    print(sess.run(state))
 
 # output:
 
@@ -251,7 +251,7 @@ mul = tf.mul(input1, intermed)
 
 with tf.Session() as sess:
   result = sess.run([mul, intermed])
-  print result
+  print(result)
 
 # output:
 # [array([ 21.], dtype=float32), array([ 7.], dtype=float32)]
@@ -279,7 +279,7 @@ input2 = tf.placeholder(tf.float32)
 output = tf.mul(input1, input2)
 
 with tf.Session() as sess:
-  print sess.run([output], feed_dict={input1:[7.], input2:[2.]})
+  print(sess.run([output], feed_dict={input1:[7.], input2:[2.]}))
 
 # output:
 # [array([ 14.], dtype=float32)]

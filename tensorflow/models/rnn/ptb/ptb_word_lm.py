@@ -19,11 +19,6 @@ Trains the model described in:
 (Zaremba, et. al.) Recurrent Neural Network Regularization
 http://arxiv.org/abs/1409.2329
 
-The data required for this example is in the data/ dir of the
-PTB dataset from Tomas Mikolov's webpage:
-
-http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
-
 There are 3 supported model configurations:
 ===========================================
 | config | epochs | train | valid  | test
@@ -46,13 +41,15 @@ The hyperparameters used in the model:
 - lr_decay - the decay of the learning rate for each epoch after "max_epoch"
 - batch_size - the batch size
 
-To compile on CPU:
-  bazel build -c opt tensorflow/models/rnn/ptb:ptb_word_lm
-To compile on GPU:
-  bazel build -c opt tensorflow --config=cuda \
-    tensorflow/models/rnn/ptb:ptb_word_lm
+The data required for this example is in the data/ dir of the
+PTB dataset from Tomas Mikolov's webpage:
+
+$ wget http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
+$ tar xvf simple-examples.tgz
+
 To run:
-  ./bazel-bin/.../ptb_word_lm --data_path=/tmp/simple-examples/data/
+
+$ python ptb_word_lm.py --data_path=simple-examples/data/
 
 """
 from __future__ import absolute_import

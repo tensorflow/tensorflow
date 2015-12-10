@@ -444,7 +444,7 @@ def gradients(ys,
                 op_wrapper = control_flow_ops.MakeWrapper(op)
               in_grads = _AsList(grad_fn(op_wrapper, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
-              if gate_gradients and len(filter(None, in_grads)) > 1:
+              if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
           logging.vlog(1, "Gradient for '" + op.name + "'")
           logging.vlog(1, "  in  --> %s",
@@ -575,7 +575,8 @@ def _AggregatedGrads(grads, op, has_control_flow, aggregation_method=None):
   if aggregation_method not in [AggregationMethod.ADD_N,
                                 AggregationMethod.EXPERIMENTAL_TREE,
                                 AggregationMethod.EXPERIMENTAL_ACCUMULATE_N]:
-    raise ValueError("Invalid aggregation_method specified.")
+    raise ValueError(
+        "Invalid aggregation_method specified %s." % aggregation_method)
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if has_control_flow:

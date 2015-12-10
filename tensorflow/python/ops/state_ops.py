@@ -45,6 +45,7 @@ create variables contingent on certain conditions.
 
 @@get_variable
 @@get_variable_scope
+@@make_template
 @@variable_op_scope
 @@variable_scope
 

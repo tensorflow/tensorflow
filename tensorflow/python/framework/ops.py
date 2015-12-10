@@ -269,12 +269,12 @@ class Tensor(object):
     ```python
     c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-    print c.get_shape()
+    print(c.get_shape())
     ==> TensorShape([Dimension(2), Dimension(3)])
 
     d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-    print d.get_shape()
+    print(d.get_shape())
     ==> TensorShape([Dimension(4), Dimension(2)])
 
     # Raises a ValueError, because `c` and `d` do not have compatible
@@ -283,7 +283,7 @@ class Tensor(object):
 
     f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-    print f.get_shape()
+    print(f.get_shape())
     ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
@@ -312,12 +312,12 @@ class Tensor(object):
 
     # The height and width dimensions of `image` are data dependent, and
     # cannot be computed without executing the op.
-    print image.get_shape()
+    print(image.get_shape())
     ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
     # We know that each image in this dataset is 28 x 28 pixels.
     image.set_shape([28, 28, 3])
-    print image.get_shape()
+    print(image.get_shape())
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
@@ -1332,7 +1332,7 @@ class RegisterGradient(object):
   """A decorator for registering the gradient function for an op type.
 
   This decorator is only used when defining a new op type. For an op
-  with `m` inputs and `n` inputs, the gradient function is a function
+  with `m` inputs and `n` outputs, the gradient function is a function
   that takes the original `Operation` and `n` `Tensor` objects
   (representing the gradients with respect to each output of the op),
   and returns `m` `Tensor` objects (representing the partial gradients
@@ -1345,7 +1345,7 @@ class RegisterGradient(object):
   ```python
   @tf.RegisterGradient("Sub")
   def _sub_grad(unused_op, grad):
-    return grad, tf.Neg(grad)
+    return grad, tf.neg(grad)
   ```
 
   The decorator argument `op_type` is the string type of an

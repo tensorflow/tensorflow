@@ -47,6 +47,8 @@ Manages the dimensions of a Tensor and their sizes.
 * [`string tensorflow::TensorShape::ShortDebugString() const`](#string_tensorflow_TensorShape_ShortDebugString)
 * [`static bool tensorflow::TensorShape::IsValid(const TensorShapeProto &proto)`](#static_bool_tensorflow_TensorShape_IsValid)
   * Returns `true` iff `proto` is a valid tensor shape.
+* [`static Status tensorflow::TensorShape::IsValidShape(const TensorShapeProto &proto)`](#static_Status_tensorflow_TensorShape_IsValidShape)
+* [`static string tensorflow::TensorShape::ShortDebugString(const TensorShapeProto &proto)`](#static_string_tensorflow_TensorShape_ShortDebugString)
 
 ##Member Details
 
@@ -193,3 +195,15 @@ For error messages.
 Returns `true` iff `proto` is a valid tensor shape.
 
 
+
+#### `static Status tensorflow::TensorShape::IsValidShape(const TensorShapeProto &proto)` {#static_Status_tensorflow_TensorShape_IsValidShape}
+
+
+
+Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error status otherwise.
+
+#### `static string tensorflow::TensorShape::ShortDebugString(const TensorShapeProto &proto)` {#static_string_tensorflow_TensorShape_ShortDebugString}
+
+
+
+Same as `TensorShape(proto).ShortDebugString()` but doesn&apos;t crash for invalid protos.

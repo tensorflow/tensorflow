@@ -163,7 +163,7 @@ class BaseSession(SessionInterface):
 
     with sess.as_default():
       assert tf.get_default_session() is sess
-      print c.eval()
+      print(c.eval())
     ```
 
     To get the current default session, use
@@ -178,10 +178,10 @@ class BaseSession(SessionInterface):
     c = tf.constant(...)
     sess = tf.Session()
     with sess.as_default():
-      print c.eval()
+      print(c.eval())
     # ...
     with sess.as_default():
-      print c.eval()
+      print(c.eval())
 
     sess.close()
     ```
@@ -463,7 +463,7 @@ class Session(BaseSession):
   sess = tf.Session()
 
   # Evaluate the tensor `c`.
-  print sess.run(c)
+  print(sess.run(c))
   ```
 
   A session may own resources, such as
@@ -568,7 +568,7 @@ class InteractiveSession(BaseSession):
   b = tf.constant(6.0)
   c = a * b
   # We can just use 'c.eval()' without passing 'sess'
-  print c.eval()
+  print(c.eval())
   sess.close()
   ```
 
@@ -582,7 +582,7 @@ class InteractiveSession(BaseSession):
   c = a * b
   with tf.Session():
     # We can also use 'c.eval()' here.
-    print c.eval()
+    print(c.eval())
   ```
 
   @@__init__

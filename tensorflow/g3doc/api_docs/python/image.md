@@ -325,8 +325,6 @@ Input images can be of different types but output images are always float.
 
 Resize `images` to `size` using nearest neighbor interpolation.
 
-Input images can be of different types but output images are always float.
-
 ##### Args:
 
 
@@ -1105,29 +1103,5 @@ Note that this implementation is limited:
 
 
 *  <b>`ValueError`</b>: if the shape of 'image' is incompatible with this function.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.image.resize_nearest_neighbor_grad(grads, size, name=None)` {#resize_nearest_neighbor_grad}
-
-Computes the gradient of nearest neighbor interpolation.
-
-##### Args:
-
-
-*  <b>`grads`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
-    4-D with shape `[batch, height, width, channels]`.
-*  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
-    original input size.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `grads`.
-  4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
-  with respect to the input image.
 
 

@@ -166,6 +166,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -607,6 +608,7 @@ def per_image_whitening(image):
 
   variance = (math_ops.reduce_mean(math_ops.square(image)) -
               math_ops.square(image_mean))
+  variance = gen_nn_ops.relu(variance)
   stddev = math_ops.sqrt(variance)
 
   # Apply a minimum normalization that protects us against uniform images.

@@ -24,6 +24,30 @@ namespace tensorflow {
 
 enum class UpdateOp { ASSIGN, ADD, SUB };
 
+template <UpdateOp Op>
+struct Assign {};
+template <>
+struct Assign<UpdateOp::ASSIGN> {
+  template <typename Params, typename Update>
+  static void Run(Params p, Update u) {
+    p = u;
+  }
+};
+template <>
+struct Assign<UpdateOp::ADD> {
+  template <typename Params, typename Update>
+  static void Run(Params p, Update u) {
+    p += u;
+  }
+};
+template <>
+struct Assign<UpdateOp::SUB> {
+  template <typename Params, typename Update>
+  static void Run(Params p, Update u) {
+    p -= u;
+  }
+};
+
 template <class T, typename Index, UpdateOp op>
 class ScatterUpdateOp : public OpKernel {
  public:
@@ -105,23 +129,8 @@ class ScatterUpdateOp : public OpKernel {
       for (Index i = 0; i < N; i++) {
         // Copy last Ndim-1 dimensions of Tupdates[i] to
         // Tparams[Tindices[i]]
-        switch (op) {
-          case UpdateOp::ASSIGN: {
-            Tparams_flat.template chip<0>(Tindices_vec(i)) =
-                Tupdates_flat.template chip<0>(i);
-            break;
-          }
-          case UpdateOp::ADD: {
-            Tparams_flat.template chip<0>(Tindices_vec(i)) +=
-                Tupdates_flat.template chip<0>(i);
-            break;
-          }
-          case UpdateOp::SUB: {
-            Tparams_flat.template chip<0>(Tindices_vec(i)) -=
-                Tupdates_flat.template chip<0>(i);
-            break;
-          }
-        }
+        Assign<op>::Run(Tparams_flat.template chip<0>(Tindices_vec(i)),
+                        Tupdates_flat.template chip<0>(i));
       }
     }
   }

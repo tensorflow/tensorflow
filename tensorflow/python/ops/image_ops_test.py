@@ -489,6 +489,14 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
+  def testUniformImage(self):
+    im_np = np.ones([19, 19, 3]).astype(np.float32) * 249
+    im = constant_op.constant(im_np)
+    whiten = image_ops.per_image_whitening(im)
+    with self.test_session():
+      whiten_np = whiten.eval()
+      self.assertFalse(np.any(np.isnan(whiten_np)))
+
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 

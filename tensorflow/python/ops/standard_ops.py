@@ -56,5 +56,6 @@ from tensorflow.python.ops.summary_ops import image_summary
 from tensorflow.python.ops.summary_ops import merge_all_summaries
 from tensorflow.python.ops.summary_ops import merge_summary
 from tensorflow.python.ops.summary_ops import scalar_summary
+from tensorflow.python.ops.template import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *

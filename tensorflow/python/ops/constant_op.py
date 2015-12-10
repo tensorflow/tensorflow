@@ -62,15 +62,15 @@ shuff = tf.random_shuffle(c)
 
 # Each time we run these ops, different results are generated
 sess = tf.Session()
-print sess.run(norm)
-print sess.run(norm)
+print(sess.run(norm))
+print(sess.run(norm))
 
 # Set an op-level seed to generate repeatable sequences across sessions.
 c = tf.constant([[1, 2], [3, 4], [5, 6]])
 sess = tf.Session()
 norm = tf.random_normal(c, seed=1234)
-print sess.run(norm)
-print sess.run(norm)
+print(sess.run(norm))
+print(sess.run(norm))
 ```
 
 Another common use of random values is the initialization of variables. Also see
@@ -84,7 +84,7 @@ init = tf.initialize_all_variables()
 
 sess = tf.Session()
 sess.run(init)
-print sess.run(var)
+print(sess.run(var))
 ```
 
 @@random_normal

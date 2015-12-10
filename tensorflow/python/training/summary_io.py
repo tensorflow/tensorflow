@@ -217,7 +217,7 @@ def summary_iterator(path):
 
   ```python
   for e in tf.summary_iterator(path to events file):
-      print e
+      print(e)
   ```
 
   Example: Print selected summary values.
@@ -230,7 +230,7 @@ def summary_iterator(path):
   for e in tf.summary_iterator(path to events file):
       for v in e.summary.value:
           if v.tag == 'loss':
-              print v.simple_value
+              print(v.simple_value)
   ```
 
   See the protocol buffer definitions of

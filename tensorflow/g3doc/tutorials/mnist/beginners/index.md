@@ -409,7 +409,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 Finally, we ask for our accuracy on our test data.
 
 ```python
-print sess.run(accuracy, feed_dict={x: mnist.test.images, y_: mnist.test.labels})
+print(sess.run(accuracy, feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
 ```
 
 This should be about 91%.
