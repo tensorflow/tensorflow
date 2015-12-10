@@ -813,13 +813,13 @@ class SparseTensor(object):
       A `SparseTensor`
     """
     with op_scope([indices, values, shape], None, "SparseTensor"):
-      indices = convert_to_tensor(indices, name="indices")
+      indices = convert_to_tensor(indices, name="indices", dtype=dtypes.int64)
       # Always pass as_ref=True because we want to be able to update
       # values later if it is a VariableOp.
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
       values = convert_to_tensor(values, name="values", as_ref=True)
-      shape = convert_to_tensor(shape, name="shape")
+      shape = convert_to_tensor(shape, name="shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values
     self._shape = shape

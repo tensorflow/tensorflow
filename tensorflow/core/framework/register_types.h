@@ -83,6 +83,12 @@ limitations under the License.
   m(float);                         \
   m(double)
 
+// Call "m" on all quantized types.
+#define TF_CALL_QUANTIZED_TYPES(m) \
+  m(qint8);                        \
+  m(quint8);                       \
+  m(qint32)
+
 #else  // defined(__ANDROID__)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \

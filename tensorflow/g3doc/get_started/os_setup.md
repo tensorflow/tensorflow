@@ -177,10 +177,16 @@ Linux operating system running on your machine.  When you install and run
 TensorFlow via Docker it completely isolates the installation from pre-existing
 packages on your machine.
 
-We provide 2 Docker images:
+We provide 4 Docker images:
 
-*  `b.gcr.io/tensorflow/tensorflow`: TensorFlow CPU binary image.
-*  `b.gcr.io/tensorflow/tensorflow-full`: CPU Binary image plus source code.
+* `b.gcr.io/tensorflow/tensorflow`: TensorFlow CPU binary image.
+* `b.gcr.io/tensorflow/tensorflow:latest-devel`: CPU Binary image plus source
+code.
+* `b.gcr.io/tensorflow/tensorflow:latest-gpu`: TensorFlow GPU binary image.
+* `b.gcr.io/tensorflow/tensorflow:latest-devel-gpu`: GPU Binary image plus source
+code.
+
+We also have tags with `latest` replaced by a released version (eg `0.6.0-gpu`).
 
 With Docker the installation is as follows:
 
@@ -201,14 +207,17 @@ image as follows.
 $ docker run -it b.gcr.io/tensorflow/tensorflow
 ```
 
-You can now [test your installation](#test_install) within the Docker container.
-
-You can alternatively launch the TensorFlow source image, for example if you want
-to experiment directly with the source.
+If you're using a container with GPU support, some additional flags must be
+passed to expose the GPU device to the container. For the default config, we
+include a
+[script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/docker_run_gpu.sh)
+in the repo with these flags, so the command-line would look like
 
 ```bash
-$ docker run -it b.gcr.io/tensorflow/tensorflow-full
+$ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh b.gcr.io/tensorflow/tensorflow:gpu
 ```
+
+You can now [test your installation](#test_install) within the Docker container.
 
 ## Test the TensorFlow installation {#test_install}
 

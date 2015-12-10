@@ -22,7 +22,7 @@ REGISTER_OP("Save")
     .Input("filename: string")
     .Input("tensor_names: string")
     .Input("data: T")
-    .Attr("T: list({bool, float, double, int32, int64, quint8, qint8, qint32})")
+    .Attr("T: list(type)")
     .Doc(R"doc(
 Saves the input tensors to disk.
 
@@ -32,7 +32,7 @@ is written to `filename` with name `tensor_names[i]`.
 See also `SaveSlices`.
 
 filename: Must have a single element. The name of the file to which we write
-the tensor.
+  the tensor.
 tensor_names: Shape `[N]`. The names of the tensors to be saved.
 data: `N` tensors to save.
 )doc");
@@ -42,7 +42,7 @@ REGISTER_OP("SaveSlices")
     .Input("tensor_names: string")
     .Input("shapes_and_slices: string")
     .Input("data: T")
-    .Attr("T: list({bool, float, double, int32, int64, quint8, qint8, qint32})")
+    .Attr("T: list(type)")
     .Doc(R"doc(
 Saves input tensors slices to disk.
 
@@ -69,10 +69,10 @@ where each `sliceI` is either:
 See also `Save`.
 
 filename: Must have a single element. The name of the file to which we write the
-tensor.
+  tensor.
 tensor_names: Shape `[N]`. The names of the tensors to be saved.
 shapes_and_slices: Shape `[N]`.  The shapes and slice specifications to use when
-saving the tensors.
+  saving the tensors.
 data: `N` tensors to save.
 )doc");
 
