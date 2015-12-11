@@ -39,10 +39,13 @@ function main() {
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
+
+  # Before we leave the top-level directory, make sure we know how to call python.
+  source tools/python_bin_path.sh
+
   pushd ${TMPDIR}
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  source tools/python_bin_path.sh
   ${PYTHON_BIN_PATH:-python} setup.py bdist_wheel >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
