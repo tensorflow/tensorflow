@@ -2,6 +2,6 @@
 
 ignore=tests
 
-disable=invalid-name,wildcard-import,too-many-arguments,attribute-defined-outside-init,no-member,too-many-instance-attributes,too-few-public-methods
+disable=invalid-name,wildcard-import,too-many-arguments,attribute-defined-outside-init,no-member,too-many-instance-attributes,too-few-public-methods,import-error
 
 dummy-variables-rgx=(unused|)_.*
