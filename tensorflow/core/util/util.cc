@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 StringPiece NodeNamePrefix(const StringPiece& op_name) {
@@ -91,6 +94,30 @@ string PrintMemory(const char* ptr, int n) {
     ret[i * 3 + 2] = hex_char[ptr[i] & 0xf];
   }
   return ret;
+}
+
+string SliceDebugString(const TensorShape& shape, const int64 flat) {
+  // Special case rank 0 and 1
+  const int dims = shape.dims();
+  if (dims == 0) return "";
+  if (dims == 1) return strings::StrCat("[", flat, "]");
+
+  // Compute strides
+  gtl::InlinedVector<int64, 32> strides(dims);
+  strides.back() = 1;
+  for (int i = dims - 2; i >= 0; i--) {
+    strides[i] = strides[i + 1] * shape.dim_size(i + 1);
+  }
+
+  // Unflatten index
+  int64 left = flat;
+  string result;
+  for (int i = 0; i < dims; i++) {
+    strings::StrAppend(&result, i ? "," : "[", left / strides[i]);
+    left %= strides[i];
+  }
+  strings::StrAppend(&result, "]");
+  return result;
 }
 
 }  // namespace tensorflow

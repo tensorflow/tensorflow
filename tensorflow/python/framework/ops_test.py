@@ -24,8 +24,9 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_kernel_label_op
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -927,21 +928,21 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
   def testNoLabel(self):
     with self.test_session():
       self.assertAllEqual(b"My label is: default",
-                          test_kernel_label_op.kernel_label().eval())
+                          test_ops.kernel_label().eval())
 
   def testLabelMap(self):
     with self.test_session() as sess:
-      default_1 = test_kernel_label_op.kernel_label()
+      default_1 = test_ops.kernel_label()
       # pylint: disable=protected-access
       with sess.graph._kernel_label_map({"KernelLabel": "overload_1"}):
-        overload_1_1 = test_kernel_label_op.kernel_label()
+        overload_1_1 = test_ops.kernel_label()
         with sess.graph._kernel_label_map({"KernelLabel": "overload_2"}):
-          overload_2 = test_kernel_label_op.kernel_label()
+          overload_2 = test_ops.kernel_label()
           with sess.graph._kernel_label_map({"KernelLabel": ""}):
-            default_2 = test_kernel_label_op.kernel_label()
-        overload_1_2 = test_kernel_label_op.kernel_label()
+            default_2 = test_ops.kernel_label()
+        overload_1_2 = test_ops.kernel_label()
       # pylint: enable=protected-access
-      default_3 = test_kernel_label_op.kernel_label()
+      default_3 = test_ops.kernel_label()
 
       self.assertAllEqual(b"My label is: default", default_1.eval())
       self.assertAllEqual(b"My label is: default", default_2.eval())
@@ -949,6 +950,19 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b"My label is: overload_1", overload_1_1.eval())
       self.assertAllEqual(b"My label is: overload_1", overload_1_2.eval())
       self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
+
+
+class GraphDefVersionTest(test_util.TensorFlowTestCase):
+
+  def testGraphDefVersion(self):
+    """Test that the graphdef version is plumbed through to kernels."""
+    for version in range(versions.GRAPH_DEF_VERSION_MIN,
+                         versions.GRAPH_DEF_VERSION_MAX + 1):
+      with ops.Graph().as_default() as g:
+        g.graph_def_version = version
+        with self.test_session(graph=g):
+          v = test_ops.graph_def_version().eval()
+          self.assertEqual(version, v)
 
 
 if __name__ == "__main__":

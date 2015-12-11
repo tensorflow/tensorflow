@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/public/version.h"
 
 class DummyKernel : public tensorflow::OpKernel {
  public:
@@ -131,9 +132,9 @@ class OpKernelTest : public ::testing::Test {
                      const DataTypeVector& inputs,
                      const DataTypeVector& outputs) {
     Status status;
-    std::unique_ptr<OpKernel> op(
-        CreateOpKernel(device_type, &device_, cpu_allocator(),
-                       CreateNodeDef(op_type, inputs), &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(
+        device_type, &device_, cpu_allocator(), CreateNodeDef(op_type, inputs),
+        TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_TRUE(op != nullptr);
     if (op != nullptr) {
@@ -147,8 +148,9 @@ class OpKernelTest : public ::testing::Test {
     NodeDef node_def;
     protobuf::TextFormat::ParseFromString(ascii_node_def, &node_def);
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(
-        device_type, &device_, cpu_allocator(), node_def, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device_,
+                                                cpu_allocator(), node_def,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
@@ -286,7 +288,8 @@ TEST_F(OpKernelTest, SaveTempFalse) {
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}), &status));
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
   OpKernelContext* ctx = new OpKernelContext(params);
@@ -307,7 +310,8 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}), &status));
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
   OpKernelContext* ctx = new OpKernelContext(params);
@@ -354,8 +358,9 @@ class OpKernelBuilderTest : public ::testing::Test {
     DeviceBase device(env);
 
     // Test CreateOpKernel()
-    std::unique_ptr<OpKernel> op(
-        CreateOpKernel(device_type, &device, cpu_allocator(), def, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device,
+                                                cpu_allocator(), def,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_TRUE(op != nullptr);
     if (op != nullptr) {
@@ -387,8 +392,9 @@ class OpKernelBuilderTest : public ::testing::Test {
     DeviceBase device(env);
 
     // Test CreateOpKernel().
-    std::unique_ptr<OpKernel> op(
-        CreateOpKernel(device_type, &device, cpu_allocator(), def, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device,
+                                                cpu_allocator(), def,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {

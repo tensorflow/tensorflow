@@ -217,6 +217,14 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     self.assertAllClose(unsorted_jacob_t, sorted_jacob_t, rtol=1e-3, atol=1e-3)
     self.assertAllClose(unsorted_jacob_n, sorted_jacob_n, rtol=1e-3, atol=1e-3)
 
+  def testBadIndices(self):
+    with self.test_session():
+      for bad in [[-1]], [[7]]:
+        unsorted = tf.unsorted_segment_sum([[17]], bad, num_segments=2)
+        with self.assertRaisesOpError(
+            r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
+          unsorted.eval()
+
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
 

@@ -33,7 +33,8 @@ namespace tensorflow {
 typedef std::function<void()> Closure;
 typedef std::function<void(Closure)> Runner;
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    Device* device, Runner runner, const FunctionLibraryDefinition* lib_def);
+    Device* device, Runner runner, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
 // instantiated function that is represented as a Graph with arg/ret

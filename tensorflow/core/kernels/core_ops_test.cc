@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
 
@@ -432,8 +433,9 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
                   .Finalize(&lrn_node_def));
 
   Status status;
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), lrn_node_def, &status));
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), lrn_node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
 
   OpKernelContext::Params params;
@@ -516,8 +518,9 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
                       .Finalize(&avgpool_node_def);
   TF_CHECK_OK(status);
 
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), avgpool_node_def, &status));
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), avgpool_node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
   OpKernelContext::Params params;
   params.device = device.get();
@@ -623,8 +626,9 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
                .Attr("padding", padding == VALID ? "VALID" : "SAME")
                .Finalize(&avgpool_grad_node_def);
   TF_CHECK_OK(status);
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, nullptr, cpu_allocator(), avgpool_grad_node_def, &status));
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, nullptr, cpu_allocator(),
+                     avgpool_grad_node_def, TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
   OpKernelContext::Params params;
   params.device = device.get();
@@ -712,8 +716,9 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(&maxpool_node_def);
   TF_CHECK_OK(status);
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), maxpool_node_def, &status));
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), maxpool_node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
   OpKernelContext::Params params;
   params.device = device.get();
@@ -889,8 +894,9 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
                       .Input(FakeInput(DT_FLOAT))
                       .Finalize(&relu_node_def);
   TF_CHECK_OK(status);
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), relu_node_def, &status));
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), relu_node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
   OpKernelContext::Params params;
   params.device = device.get();
@@ -960,8 +966,9 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
                   .Input("input", 0, DT_FLOAT)
                   .Finalize(&softmax_node_def));
   Status status;
-  std::unique_ptr<OpKernel> op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), softmax_node_def, &status));
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), softmax_node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
   TF_CHECK_OK(status);
   OpKernelContext::Params params;
   params.device = device.get();

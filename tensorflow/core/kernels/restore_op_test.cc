@@ -72,8 +72,9 @@ TEST_F(RestoreOpTest, RestoreInt) {
     gtl::InlinedVector<TensorValue, 4> inputs;
 
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(
-        DEVICE_CPU, device.get(), cpu_allocator(), save, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                                cpu_allocator(), save,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_OK(status);
 
     // Run it
@@ -153,8 +154,9 @@ TEST_F(RestoreOpTest, RestoreFloat) {
     gtl::InlinedVector<TensorValue, 4> inputs;
 
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(
-        DEVICE_CPU, device.get(), cpu_allocator(), save, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                                cpu_allocator(), save,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_OK(status);
 
     // Run it
@@ -249,8 +251,9 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     gtl::InlinedVector<TensorValue, 4> inputs;
 
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(
-        DEVICE_CPU, device.get(), cpu_allocator(), save, &status));
+    std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                                cpu_allocator(), save,
+                                                TF_GRAPH_DEF_VERSION, &status));
     EXPECT_OK(status);
 
     // Run it

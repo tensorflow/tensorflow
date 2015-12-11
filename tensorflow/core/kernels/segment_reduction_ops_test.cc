@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -63,8 +64,9 @@ static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
                   .Input(FakeInput(DataTypeToEnum<Index>::v()))
                   .Finalize(&reduction_node_def));
   Status status;
-  std::unique_ptr<OpKernel> reduction_op(CreateOpKernel(
-      DEVICE_CPU, device.get(), cpu_allocator(), reduction_node_def, &status));
+  std::unique_ptr<OpKernel> reduction_op(
+      CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(),
+                     reduction_node_def, TF_GRAPH_DEF_VERSION, &status));
   OpKernelContext::Params params;
   params.device = device.get();
   params.frame_iter = FrameAndIter(0, 0);

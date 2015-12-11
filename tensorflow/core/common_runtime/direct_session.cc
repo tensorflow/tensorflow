@@ -337,6 +337,7 @@ Status DirectSession::GetOrCreateExecutors(
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
+    const int graph_def_version = partition_graph->version();
 
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
@@ -347,8 +348,10 @@ Status DirectSession::GetOrCreateExecutors(
     LocalExecutorParams params;
     params.has_control_flow = has_control_flow;
     params.device = d;
-    params.create_kernel = [this, d](const NodeDef& ndef, OpKernel** kernel) {
-      return CreateCachedKernel(d, session_handle_, nullptr, ndef, kernel);
+    params.create_kernel = [this, d, graph_def_version](const NodeDef& ndef,
+                                                        OpKernel** kernel) {
+      return CreateCachedKernel(d, session_handle_, nullptr, ndef,
+                                graph_def_version, kernel);
     };
     params.delete_kernel = [this, d](OpKernel* kernel) {
       DeleteCachedKernel(d, session_handle_, kernel);

@@ -241,6 +241,7 @@ static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
   FunctionLibraryRuntimeImpl(Device* device, Runner runner,
+                             int graph_def_version,
                              const FunctionLibraryDefinition* lib_def);
 
   ~FunctionLibraryRuntimeImpl() override;
@@ -263,6 +264,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Device* const device_;
   Runner runner_ = nullptr;
+  const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
@@ -298,8 +300,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    Device* device, Runner runner, const FunctionLibraryDefinition* lib_def)
-    : device_(device), runner_(runner), lib_def_(lib_def) {
+    Device* device, Runner runner, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def)
+    : device_(device),
+      runner_(runner),
+      graph_def_version_(graph_def_version),
+      lib_def_(lib_def) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     Status s;
     *sig = lib_def_->LookUp(op, &s);
@@ -368,7 +374,8 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
   if (ndef.op() != kGradientOp && (lib_def_->Find(ndef.op()) == nullptr)) {
-    return CreateNonCachedKernel(device_, this, ndef, kernel);
+    return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
+                                 kernel);
   }
 
   // Try to instantiate this function for the func/attr. Maybe its
@@ -384,7 +391,8 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
-      &fbody->fdef.signature(), this, fbody->arg_types, fbody->ret_types, &s);
+      &fbody->fdef.signature(), this, fbody->arg_types, fbody->ret_types,
+      graph_def_version_, &s);
   *kernel = new CallOp(handle, &construction);
   if (!s.ok()) {
     delete kernel;
@@ -628,8 +636,10 @@ bool FunctionLibraryRuntimeImpl::IsDefined(const string& function_name) {
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    Device* device, Runner runner, const FunctionLibraryDefinition* lib_def) {
-  return new FunctionLibraryRuntimeImpl(device, runner, lib_def);
+    Device* device, Runner runner, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def) {
+  return new FunctionLibraryRuntimeImpl(device, runner, graph_def_version,
+                                        lib_def);
 }
 
 bool RemoveDeadNodes(Graph* g) {

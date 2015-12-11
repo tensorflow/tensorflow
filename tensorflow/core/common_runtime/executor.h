@@ -202,7 +202,8 @@ class ExecutorBarrier {
 // access the functions in the "flib". The caller takes ownership of
 // returned "*kernel".
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, OpKernel** kernel);
+                             const NodeDef& ndef, int graph_def_version,
+                             OpKernel** kernel);
 
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);
@@ -213,7 +214,7 @@ void DeleteNonCachedKernel(OpKernel* kernel);
 // ndef.name(), returns the same kernel instance.
 Status CreateCachedKernel(Device* device, const string& session,
                           FunctionLibraryRuntime* flib, const NodeDef& ndef,
-                          OpKernel** kernel);
+                          int graph_def_version, OpKernel** kernel);
 
 // Deletes "kernel" returned by CreateCachedKernel.
 void DeleteCachedKernel(Device* device, const string& session,
