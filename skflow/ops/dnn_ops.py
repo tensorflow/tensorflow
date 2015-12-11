@@ -16,7 +16,12 @@
 
 
 import tensorflow as tf
-from tensorflow.models.rnn import linear
+
+# TODO(ilblackdragon@): Fix this in TensorFlow v0.6.
+try:
+    from tensorflow.models.rnn import linear
+except AttributeError:
+    from tensorflow.python.ops.rnn_cell import linear
 
 
 def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
