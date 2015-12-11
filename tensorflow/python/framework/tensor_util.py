@@ -529,14 +529,13 @@ def ConstantValue(tensor):
   elif tensor.op.type == "Size":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.is_fully_defined():
-      return np.array([np.prod([dim.value for dim in input_shape.dims])],
-                      dtype=tensor.dtype.as_numpy_dtype)
+      return np.prod([dim.value for dim in input_shape.dims], dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.array([input_shape.ndims], dtype=tensor.dtype.as_numpy_dtype)
+      return input_shape.ndims
     else:
       return None
   elif tensor.op.type == "Range":
@@ -550,5 +549,11 @@ def ConstantValue(tensor):
     if delta is None:
       return None
     return np.arange(start, limit, delta, dtype=tensor.dtype.as_numpy_dtype)
+  elif tensor.op.type == "Cast":
+    pre_cast = ConstantValue(tensor.op.inputs[0])
+    if pre_cast is None:
+      return None
+    cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
+    return pre_cast.astype(cast_dtype.as_numpy_dtype)
   else:
     return None

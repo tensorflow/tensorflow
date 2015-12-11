@@ -52,7 +52,8 @@ class SlotCreatorTest(tf.test.TestCase):
   def testCreateZerosSlotFromVariable(self):
     with self.test_session():
       v = tf.Variable([1.0, 2.5], name="var")
-      slot = slot_creator.create_zeros_slot(v, name="slot", dtype=tf.float64)
+      with tf.control_dependencies(None):
+        slot = slot_creator.create_zeros_slot(v, name="slot", dtype=tf.float64)
 
       tf.initialize_all_variables().run()
 
@@ -64,8 +65,8 @@ class SlotCreatorTest(tf.test.TestCase):
   def testCreateZerosSlotFromTensor(self):
     with self.test_session():
       v = tf.constant([1.0, 2.5], name="const")
-
-      slot = slot_creator.create_zeros_slot(v, name="slot")
+      with tf.control_dependencies(None):
+        slot = slot_creator.create_zeros_slot(v, name="slot")
 
       tf.initialize_all_variables().run()
 

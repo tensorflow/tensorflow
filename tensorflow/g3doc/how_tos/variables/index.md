@@ -146,7 +146,7 @@ with tf.Session() as sess:
   ..
   # Save the variables to disk.
   save_path = saver.save(sess, "/tmp/model.ckpt")
-  print("Model saved in file: ", save_path)
+  print("Model saved in file: %s" % save_path)
 ```
 
 ### Restoring Variables
