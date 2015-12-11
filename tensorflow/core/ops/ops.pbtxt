@@ -7675,6 +7675,59 @@ op {
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
+  name: "SparseSplit"
+  input_arg {
+    name: "split_dim"
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(shape))`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    description: "2-D tensor represents the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D tensor represents the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    description: "1-D. tensor represents the shape of the sparse tensor.\noutput indices: A list of 1-D tensors represents the indices of the output\nsparse tensors."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+    number_attr: "num_split"
+  }
+  output_arg {
+    name: "output_values"
+    description: "A list of 1-D tensors represents the values of the output sparse\ntensors."
+    type_attr: "T"
+    number_attr: "num_split"
+  }
+  output_arg {
+    name: "output_shape"
+    description: "A list of 1-D tensors represents the shape of the output sparse\ntensors."
+    type: DT_INT64
+    number_attr: "num_split"
+  }
+  attr {
+    name: "num_split"
+    type: "int"
+    description: "The number of ways to split."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Split a `SparseTensor` into `num_split` tensors along one dimension."
+  description: "If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices\n`[0 : shape[split_dim] % num_split]` gets one extra dimension.\nFor example, if `split_dim = 1` and `num_split = 2` and the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    output_tensor[0] = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    output_tensor[1] = shape = [2, 3]\n    [ d e  ]\n    [      ]"
+}
+op {
   name: "SparseToDense"
   input_arg {
     name: "sparse_indices"
