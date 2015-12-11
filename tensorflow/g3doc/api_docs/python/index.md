@@ -237,6 +237,7 @@
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
+  * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
   * [`sparse_to_dense`](../../api_docs/python/sparse_ops.md#sparse_to_dense)
   * [`sparse_to_indicator`](../../api_docs/python/sparse_ops.md#sparse_to_indicator)

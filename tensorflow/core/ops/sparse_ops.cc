@@ -210,6 +210,51 @@ output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
 concat_dim: Dimension to concatenate along.
 )doc");
 
+REGISTER_OP("SparseSplit")
+    .Input("split_dim: int64")
+    .Input("indices: int64")
+    .Input("values: T")
+    .Input("shape: int64")
+    .Output("output_indices: num_split * int64")
+    .Output("output_values:  num_split * T")
+    .Output("output_shape:   num_split * int64")
+    .Attr("num_split: int >= 1")
+    .Attr("T: type")
+    .Doc(R"doc(
+Split a `SparseTensor` into `num_split` tensors along one dimension.
+
+If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices
+`[0 : shape[split_dim] % num_split]` gets one extra dimension.
+For example, if `split_dim = 1` and `num_split = 2` and the input is
+
+    input_tensor = shape = [2, 7]
+    [    a   d e  ]
+    [b c          ]
+
+Graphically the output tensors are:
+
+    output_tensor[0] = shape = [2, 4]
+    [    a  ]
+    [b c    ]
+
+    output_tensor[1] = shape = [2, 3]
+    [ d e  ]
+    [      ]
+
+split_dim: 0-D.  The dimension along which to split.  Must be in the range
+  `[0, rank(shape))`.
+num_split: The number of ways to split.
+indices: 2-D tensor represents the indices of the sparse tensor.
+values: 1-D tensor represents the values of the sparse tensor.
+shape: 1-D. tensor represents the shape of the sparse tensor.
+output indices: A list of 1-D tensors represents the indices of the output
+sparse tensors.
+output_values: A list of 1-D tensors represents the values of the output sparse
+  tensors.
+output_shape: A list of 1-D tensors represents the shape of the output sparse
+  tensors.
+)doc");
+
 REGISTER_OP("SparseReorder")
     .Input("input_indices: int64")
     .Input("input_values: T")

@@ -34,6 +34,7 @@ dimension, and dense along all other dimensions.
 
 @@sparse_concat
 @@sparse_reorder
+@@sparse_split
 @@sparse_retain
 @@sparse_fill_empty_rows
 """
@@ -51,11 +52,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
+
 # pylint: enable=wildcard-import
 # pylint: disable=protected-access
 
@@ -129,12 +130,11 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
   shapes = [sp_input.shape for sp_input in sp_inputs]
 
   output_ind, output_val, output_shape = (
-      gen_sparse_ops._sparse_concat(
-          inds,
-          vals,
-          shapes,
-          concat_dim,
-          name=name))
+      gen_sparse_ops._sparse_concat(inds,
+                                    vals,
+                                    shapes,
+                                    concat_dim,
+                                    name=name))
 
   return ops.SparseTensor(output_ind, output_val, output_shape)
 
@@ -208,14 +208,13 @@ def sparse_reorder(sp_input, name=None):
     raise TypeError("Input must be a SparseTensor")
 
   reordered_ind, reordered_val = (
-      gen_sparse_ops._sparse_reorder(
-          sp_input.indices,
-          sp_input.values,
-          sp_input.shape,
-          name=name))
+      gen_sparse_ops._sparse_reorder(sp_input.indices,
+                                     sp_input.values,
+                                     sp_input.shape,
+                                     name=name))
 
-  return ops.SparseTensor(
-      reordered_ind, reordered_val, array_ops.identity(sp_input.shape))
+  return ops.SparseTensor(reordered_ind, reordered_val,
+                          array_ops.identity(sp_input.shape))
 
 
 @ops.RegisterShape("SparseReorder")
@@ -226,6 +225,73 @@ def _SparseReorderShape(op):
   unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
 
   return [input_indices_shape, input_values_shape]
+
+
+def sparse_split(split_dim, num_split, sp_input, name=None):
+  """Split a `SparseTensor` into `num_split` tensors along `split_dim`.
+
+  If the `sp_input.shape[split_dim]` is not an integer multiple of `num_split`
+  each slice starting from 0:`shape[split_dim] % num_split` gets extra one
+  dimension. For example, if `split_dim = 1` and `num_split = 2` and the
+  input is:
+
+      input_tensor = shape = [2, 7]
+      [    a   d e  ]
+      [b c          ]
+
+  Graphically the output tensors are:
+
+      output_tensor[0] =
+      [    a ]
+      [b c   ]
+
+      output_tensor[1] =
+      [ d e  ]
+      [      ]
+
+  Args:
+    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    num_split: A Python integer. The number of ways to split.
+    sp_input: The `SparseTensor` to split.
+    name: A name for the operation (optional).
+
+  Returns:
+    `num_split` `SparseTensor` objects resulting from splitting `value`.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  if not isinstance(sp_input, ops.SparseTensor):
+    raise TypeError("Input must be a SparseTensor")
+
+  output_inds, output_vals, output_shapes = (
+      gen_sparse_ops._sparse_split(split_dim,
+                                   sp_input.indices,
+                                   sp_input.values,
+                                   sp_input.shape,
+                                   num_split,
+                                   name=name))
+  sparse_tensors = []
+  for i in range(0, num_split):
+    sparse_tensors.append(ops.SparseTensor(output_inds[i], output_vals[i],
+                                           output_shapes[i]))
+  return sparse_tensors
+
+
+# pylint: disable=invalid-name
+@ops.RegisterShape("SparseSplit")
+def _SparseSplitShape(op):
+  """Shape function for SparseSplit op."""
+  num_split = int(op.get_attr("num_split"))
+  input_shape_shape = op.inputs[3].get_shape()
+  dim = input_shape_shape.num_elements()
+  output_indices_shape = tensor_shape.TensorShape([None, dim])
+  output_values_shape = tensor_shape.unknown_shape(1)
+  output_indices_shape = [output_indices_shape] * num_split
+  output_values_shape = [output_values_shape] * num_split
+  output_shape_shape = [input_shape_shape] * num_split
+  return output_indices_shape + output_values_shape + output_shape_shape
+# pylint: enable=invalid-name
 
 
 @ops.RegisterShape("SparseToDense")
@@ -240,8 +306,11 @@ def _SparseToDenseShape(op):
     return [tensor_shape.unknown_shape(ndims=input_shape_shape.num_elements())]
 
 
-def sparse_to_dense(sparse_indices, output_shape, sparse_values,
-                    default_value=0, name=None):
+def sparse_to_dense(sparse_indices,
+                    output_shape,
+                    sparse_values,
+                    default_value=0,
+                    name=None):
   """Converts a sparse representation into a dense tensor.
 
   Builds an array `dense` with shape `output_shape` such that
@@ -276,8 +345,10 @@ def sparse_to_dense(sparse_indices, output_shape, sparse_values,
     Dense `Tensor` of shape `output_shape`.  Has the same type as
     `sparse_values`.
   """
-  return gen_sparse_ops._sparse_to_dense(sparse_indices, output_shape,
-                                         sparse_values, default_value,
+  return gen_sparse_ops._sparse_to_dense(sparse_indices,
+                                         output_shape,
+                                         sparse_values,
+                                         default_value,
                                          name=name)
 
 
@@ -316,8 +387,11 @@ def sparse_tensor_to_dense(sp_input, default_value=0, name=None):
   if not isinstance(sp_input, ops.SparseTensor):
     raise TypeError("Input must be a SparseTensor")
 
-  return sparse_to_dense(sp_input.indices, sp_input.shape, sp_input.values,
-                         default_value, name=name)
+  return sparse_to_dense(sp_input.indices,
+                         sp_input.shape,
+                         sp_input.values,
+                         default_value,
+                         name=name)
 
 
 def sparse_to_indicator(sp_input, vocab_size, name=None):
@@ -377,13 +451,12 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
     # Slice off the last dimension of indices, then then tack on the ids
     indices_columns_to_preserve = array_ops.slice(
         sp_input.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(
-        1, [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])])
+    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
+                                       array_ops.reshape(ids, [-1, 1])])
 
     new_values = array_ops.fill(array_ops.expand_dims(num_entries, 0), True)
-    new_shape = array_ops.concat(
-        0, [array_ops.slice(sp_input.shape, [0],
-                            array_ops.expand_dims(rank - 1, 0)), [vocab_size]])
+    new_shape = array_ops.concat(0, [array_ops.slice(
+        sp_input.shape, [0], array_ops.expand_dims(rank - 1, 0)), [vocab_size]])
 
     sp_new = ops.SparseTensor(new_indices, new_values, new_shape)
 
@@ -430,8 +503,8 @@ def sparse_retain(sp_input, to_retain):
   where_true = array_ops.reshape(array_ops.where(to_retain), [-1])
   new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
-  return ops.SparseTensor(
-      new_indices, new_values, array_ops.identity(sp_input.shape))
+  return ops.SparseTensor(new_indices, new_values,
+                          array_ops.identity(sp_input.shape))
 
 
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
@@ -485,31 +558,30 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     raise TypeError("Input must be a SparseTensor")
 
   with ops.op_scope([sp_input], name, "SparseFillEmptyRows"):
-    default_value = ops.convert_to_tensor(
-        default_value, dtype=sp_input.values.dtype)
+    default_value = ops.convert_to_tensor(default_value,
+                                          dtype=sp_input.values.dtype)
 
     num_rows = math_ops.cast(sp_input.shape[0], dtypes.int32)
     all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-    empty_row_indices, _ = array_ops.list_diff(
-        all_row_indices, sp_input.indices[:, 0])
+    empty_row_indices, _ = array_ops.list_diff(all_row_indices,
+                                               sp_input.indices[:, 0])
     empty_row_indicator = sparse_to_dense(
         empty_row_indices, array_ops.expand_dims(sp_input.shape[0], -1), True,
         False)
 
     empty_row_indices_as_column = array_ops.reshape(empty_row_indices, [-1, 1])
     additional_indices = array_ops.concat(
-        1,
-        [empty_row_indices_as_column,
-         array_ops.zeros_like(empty_row_indices_as_column)])
-    additional_values = array_ops.fill(array_ops.shape(empty_row_indices),
-                                       default_value)
+        1, [empty_row_indices_as_column,
+            array_ops.zeros_like(empty_row_indices_as_column)])
+    additional_values = array_ops.fill(
+        array_ops.shape(empty_row_indices), default_value)
 
-    all_indices_unordered = array_ops.concat(
-        0, [sp_input.indices, additional_indices])
-    all_values_unordered = array_ops.concat(
-        0, [sp_input.values, additional_values])
-    sp_unordered_output = ops.SparseTensor(
-        all_indices_unordered, all_values_unordered, sp_input.shape)
+    all_indices_unordered = array_ops.concat(0, [sp_input.indices,
+                                                 additional_indices])
+    all_values_unordered = array_ops.concat(0, [sp_input.values,
+                                                additional_values])
+    sp_unordered_output = ops.SparseTensor(all_indices_unordered,
+                                           all_values_unordered, sp_input.shape)
     sp_ordered_output = sparse_reorder(sp_unordered_output)
 
     return sp_ordered_output, empty_row_indicator

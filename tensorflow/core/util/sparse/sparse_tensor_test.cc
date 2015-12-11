@@ -477,6 +477,53 @@ TEST(SparseTensorTest, Concat) {
 // reduce_fn sees slices of resorted values based on generator (dim: DDIMS), and
 // slices of resorted indices on generator.
 
+TEST(SparseTensorTest, Split) {
+  const int N = 4;
+  const int DIM = 2;
+
+  Tensor ids(DT_INT64, TensorShape({N, DIM}));
+  Tensor vals(DT_INT64, TensorShape({N}));
+
+  ids.matrix<int64>()(0, 0) = 0;
+  ids.matrix<int64>()(0, 1) = 0;
+  ids.matrix<int64>()(1, 0) = 1;
+  ids.matrix<int64>()(1, 1) = 1;
+  ids.matrix<int64>()(2, 0) = 1;
+  ids.matrix<int64>()(2, 1) = 2;
+  ids.matrix<int64>()(3, 0) = 3;
+  ids.matrix<int64>()(3, 1) = 0;
+
+  vals.vec<int64>()(0) = 1;
+  vals.vec<int64>()(1) = 2;
+  vals.vec<int64>()(2) = 3;
+  vals.vec<int64>()(3) = 4;
+
+  SparseTensor st(ids, vals, TensorShape({4, 3}));
+
+  std::vector<SparseTensor> st_list = SparseTensor::Split<int64>(st, 0, 2);
+
+  EXPECT_EQ(st_list.size(), 2);
+  EXPECT_EQ(st_list[0].shape(), TensorShape({2, 3}));
+  EXPECT_EQ(st_list[0].values().NumElements(), 3);
+  EXPECT_EQ(st_list[0].values().vec<int64>()(0), 1);
+  EXPECT_EQ(st_list[0].values().vec<int64>()(1), 2);
+  EXPECT_EQ(st_list[0].values().vec<int64>()(2), 3);
+  EXPECT_EQ(st_list[0].indices().NumElements(), 6);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(0, 0), 0);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(0, 1), 0);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(1, 0), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(1, 1), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 0), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 1), 2);
+
+  EXPECT_EQ(st_list[1].shape(), TensorShape({2, 3}));
+  EXPECT_EQ(st_list[1].values().NumElements(), 1);
+  EXPECT_EQ(st_list[1].values().vec<int64>()(0), 4);
+  EXPECT_EQ(st_list[1].indices().NumElements(), 2);
+  EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 0), 1);
+  EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
+}
+
 }  // namespace
 }  // namespace sparse
 }  // namespace tensorflow
