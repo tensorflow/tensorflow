@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -198,11 +199,12 @@ class UnsortedSegmentSumOp : public OpKernel {
     const int32 N = segment_flat.dimension(0);
     const int32 output_rows = num_segments.scalar<int32>()();
 
-    if (N > 0) {
-      Eigen::Tensor<Index, 0, Eigen::RowMajor> m = segment_flat.maximum();
-      OP_REQUIRES(
-          context, m() < output_rows,
-          errors::InvalidArgument("More segments found than output size"));
+    for (int i = 0; i < N; i++) {
+      int j = segment_flat(i);
+      OP_REQUIRES(context, 0 <= j && j < output_rows,
+                  errors::InvalidArgument(
+                      "segment_ids", SliceDebugString(segment_ids.shape(), i),
+                      " = ", j, " is out of range [0, ", output_rows, ")"));
     }
 
     TensorShape output_shape;

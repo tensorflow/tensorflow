@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -57,7 +58,7 @@ class DynamicPartitionOp_Shared : public OpKernel {
       const int32 p = e_partitions(i);
       OP_REQUIRES(c, p >= 0 && p < num_partitions_,
                   errors::InvalidArgument(
-                      "partitions", SliceString((*partitions)->shape(), i),
+                      "partitions", SliceDebugString((*partitions)->shape(), i),
                       " = ", p, " is not in [0, ", num_partitions_, ")"));
       partition_count[p]++;
     }
@@ -77,30 +78,6 @@ class DynamicPartitionOp_Shared : public OpKernel {
 
  protected:
   int num_partitions_;
-
-  static string SliceString(const TensorShape& shape, const int64 flat) {
-    // Special case rank 0 and 1
-    const int dims = shape.dims();
-    if (dims == 0) return "";
-    if (dims == 1) return strings::StrCat("[", flat, "]");
-
-    // Compute strides
-    gtl::InlinedVector<int64, 32> strides(dims);
-    strides.back() = 1;
-    for (int i = dims - 2; i >= 0; i--) {
-      strides[i] = strides[i + 1] * shape.dim_size(i + 1);
-    }
-
-    // Unflatten index
-    int64 left = flat;
-    string result;
-    for (int i = 0; i < dims; i++) {
-      strings::StrAppend(&result, i ? "," : "[", left / strides[i]);
-      left %= strides[i];
-    }
-    strings::StrAppend(&result, "]");
-    return result;
-  }
 };
 
 template <class T>

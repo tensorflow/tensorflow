@@ -237,14 +237,14 @@ py_test(
 )
 
 tf_gen_op_wrapper_py(
-    name = "test_kernel_label_op",
-    out = "framework/test_kernel_label_op.py",
-    deps = [":test_kernel_label_op_kernel"],
+    name = "test_ops",
+    out = "framework/test_ops.py",
+    deps = [":test_ops_kernels"],
 )
 
 cc_library(
-    name = "test_kernel_label_op_kernel",
-    srcs = ["framework/test_kernel_label_op.cc"],
+    name = "test_ops_kernels",
+    srcs = ["framework/test_ops.cc"],
     linkstatic = 1,
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
@@ -260,7 +260,7 @@ py_test(
         ":ops",
         ":platform_test",
         ":session",
-        ":test_kernel_label_op",
+        ":test_ops",
     ],
 )
 
@@ -752,7 +752,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
-        ":test_kernel_label_op_kernel",
+        ":test_ops_kernels",
         "//tensorflow/core",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:kernels",

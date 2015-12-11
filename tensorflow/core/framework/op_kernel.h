@@ -179,7 +179,8 @@ class OpKernelConstruction {
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
                        const DataTypeSlice& input_types,
-                       const DataTypeSlice& output_types, Status* status)
+                       const DataTypeSlice& output_types, int graph_def_version,
+                       Status* status)
       : device_type_(device_type),
         device_(device),
         allocator_(allocator),
@@ -188,6 +189,7 @@ class OpKernelConstruction {
         flib_(flib),
         input_types_(input_types),
         output_types_(output_types),
+        graph_def_version_(graph_def_version),
         status_(status) {}
 
   Env* env() const { return device_->env(); }
@@ -270,6 +272,9 @@ class OpKernelConstruction {
   // CHECK_NOTNULL(function_library())->Instantiate("Foo", ...).
   FunctionLibraryRuntime* function_library() const { return flib_; }
 
+  // The GraphDef version whose behavior we should follow.
+  const int graph_def_version() const { return graph_def_version_; }
+
  private:
   const DeviceType device_type_;
   DeviceBase* const device_;
@@ -279,6 +284,7 @@ class OpKernelConstruction {
   FunctionLibraryRuntime* flib_;
   DataTypeSlice input_types_;
   DataTypeSlice output_types_;
+  const int graph_def_version_;
   Status* status_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
@@ -903,10 +909,12 @@ class OpKernelContext {
 std::unique_ptr<OpKernel> CreateOpKernel(DeviceType device_type,
                                          DeviceBase* device,
                                          Allocator* allocator,
-                                         const NodeDef& def, Status* status);
+                                         const NodeDef& def,
+                                         int graph_def_version, Status* status);
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const NodeDef& def, OpKernel** kernel);
+                      const NodeDef& def, int graph_def_version,
+                      OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
 // binary has registered for the given NodeDef.

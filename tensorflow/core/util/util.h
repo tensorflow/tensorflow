@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_UTIL_UTIL_H_
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -49,6 +50,11 @@ class MovingAverage {
 // Returns a string printing bytes in ptr[0..n).  The output looks
 // like "00 01 ef cd cd ef".
 string PrintMemory(const char* ptr, int n);
+
+// Given a flattened index into a tensor, computes a string s so that
+// StrAppend("tensor", s) is a Python indexing expression.  E.g.,
+// "tensor", "tensor[i]", "tensor[i, j]", etc.
+string SliceDebugString(const TensorShape& shape, const int64 flat);
 
 }  // namespace tensorflow
 

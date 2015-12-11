@@ -578,20 +578,19 @@ Status SupportedDeviceTypesForNode(
   return Status::OK();
 }
 
-std::unique_ptr<OpKernel> CreateOpKernel(DeviceType device_type,
-                                         DeviceBase* device,
-                                         Allocator* allocator,
-                                         const NodeDef& node_def,
-                                         Status* status) {
+std::unique_ptr<OpKernel> CreateOpKernel(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const NodeDef& node_def, int graph_def_version, Status* status) {
   OpKernel* kernel = nullptr;
   *status = CreateOpKernel(device_type, device, allocator, nullptr, node_def,
-                           &kernel);
+                           graph_def_version, &kernel);
   return std::unique_ptr<OpKernel>(kernel);
 }
 
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const NodeDef& node_def, OpKernel** kernel) {
+                      const NodeDef& node_def, int graph_def_version,
+                      OpKernel** kernel) {
   VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
   // Look up the Op registered for this op name.
@@ -629,7 +628,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
   // Everything needed for OpKernel construction.
   OpKernelConstruction context(device_type, device, allocator, &node_def,
-                               op_def, flib, inputs, outputs, &s);
+                               op_def, flib, inputs, outputs, graph_def_version,
+                               &s);
   *kernel = (*registration->factory)(&context);
   if (!s.ok()) {
     delete *kernel;

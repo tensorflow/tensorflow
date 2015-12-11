@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -80,7 +81,7 @@ class OpsTestBase : public ::testing::Test {
   Status InitOp() {
     Status status;
     kernel_ = CreateOpKernel(device_type_, device_.get(), allocator(),
-                             node_def_, &status);
+                             node_def_, TF_GRAPH_DEF_VERSION, &status);
     if (kernel_ != nullptr) input_types_ = kernel_->input_types();
     return status;
   }

@@ -808,13 +808,13 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     // TODO(keveman): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
     // supporting different padding.
-    bool padding_compatible =
-        (padding_rows % 2 == 0) && (padding_cols % 2 == 0);
+    bool rows_odd = (padding_rows % 2 != 0);
+    bool cols_odd = (padding_cols % 2 != 0);
 
     auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-    if (use_cudnn_ && padding_compatible) {
+    if (use_cudnn_) {
       if (filter_rows == 1 && filter_cols == 1 && stride == 1) {
         // 1x1 filter, so call cublas directly.
         const uint64 m = batch * input_rows * input_cols;
@@ -842,10 +842,22 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         return;
       }
 
+      TensorShape compatible_input_shape;
+      if (rows_odd || cols_odd) {
+        // If a padding dimension is odd, we have one more element on the right
+        // side or the bottom side. This is unsupported in cudnn. Therefore,
+        // we pad that extra element and make it compatible.
+        compatible_input_shape = TensorShape(
+            {input_shape.dim_size(0), input_shape.dim_size(1) + rows_odd,
+             input_shape.dim_size(2) + cols_odd, input_shape.dim_size(3)});
+      } else {
+        compatible_input_shape = input_shape;
+      }
+
       perftools::gputools::dnn::BatchDescriptor input_desc;
       input_desc.set_count(batch)
-          .set_height(input_rows)
-          .set_width(input_cols)
+          .set_height(compatible_input_shape.dim_size(1))
+          .set_width(compatible_input_shape.dim_size(2))
           .set_feature_map_count(in_depth)
           .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
       perftools::gputools::dnn::BatchDescriptor output_desc;
@@ -903,11 +915,15 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                        transformed_out_backprop.tensor<T, 4>());
 
       Tensor pre_transformed_in_backprop;
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         TensorShape({batch, in_depth, input_rows, input_cols}),
-                         &pre_transformed_in_backprop));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  TensorShape({
+                                      compatible_input_shape.dim_size(0),
+                                      compatible_input_shape.dim_size(3),
+                                      compatible_input_shape.dim_size(1),
+                                      compatible_input_shape.dim_size(2),
+                                  }),
+                                  &pre_transformed_in_backprop));
 
       auto out_backprop_ptr =
           AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -935,6 +951,28 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
             "cuDNN Backward Data function launch failure : input shape(",
             input_shape.DebugString(), ") filter shape(",
             filter_shape.DebugString(), ")"));
+      }
+
+      if (rows_odd || cols_odd) {
+        Tensor in_backprop_remove_padding;
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(
+                           DataTypeToEnum<T>::value,
+                           TensorShape({
+                               input_shape.dim_size(0), input_shape.dim_size(3),
+                               input_shape.dim_size(1), input_shape.dim_size(2),
+                           }),
+                           &in_backprop_remove_padding));
+
+        // Remove the padding for odd rows or cols.
+        functor::PadInput<GPUDevice, T, int>()(
+            context->template eigen_device<GPUDevice>(),
+            To32Bit(const_cast<const Tensor&>(pre_transformed_in_backprop)
+                        .tensor<T, 4>()),
+            0, -rows_odd, 0, -cols_odd,
+            To32Bit(in_backprop_remove_padding.tensor<T, 4>()));
+
+        pre_transformed_in_backprop = in_backprop_remove_padding;
       }
 
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

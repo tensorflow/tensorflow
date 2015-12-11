@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if defined(PLATFORM_GOOGLE)
@@ -66,13 +67,16 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   rendez_ = NewLocalRendezvous();
 
+  const int graph_def_version = g->version();
+
   if (init) {
     Executor* init_exec;
     TF_CHECK_OK(NewLocalExecutor(
         {
             device_, nullptr, false,
-            [this](const NodeDef& ndef, OpKernel** kernel) {
-              return CreateNonCachedKernel(device_, nullptr, ndef, kernel);
+            [this, graph_def_version](const NodeDef& ndef, OpKernel** kernel) {
+              return CreateNonCachedKernel(device_, nullptr, ndef,
+                                           graph_def_version, kernel);
             },
             [](OpKernel* kernel) { DeleteNonCachedKernel(kernel); },
         },
@@ -87,8 +91,9 @@ Benchmark::Benchmark(const string& device, Graph* g,
   TF_CHECK_OK(NewLocalExecutor(
       {
           device_, nullptr, false,
-          [this](const NodeDef& ndef, OpKernel** kernel) {
-            return CreateNonCachedKernel(device_, nullptr, ndef, kernel);
+          [this, graph_def_version](const NodeDef& ndef, OpKernel** kernel) {
+            return CreateNonCachedKernel(device_, nullptr, ndef,
+                                         graph_def_version, kernel);
           },
           [](OpKernel* kernel) { DeleteNonCachedKernel(kernel); },
       },

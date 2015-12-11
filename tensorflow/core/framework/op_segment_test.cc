@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -64,8 +65,8 @@ class OpSegmentTest : public ::testing::Test {
   OpSegment::CreateKernelFn GetFn(const NodeDef* ndef) {
     return [this, ndef](OpKernel** kernel) {
       Status s;
-      auto created =
-          CreateOpKernel(DEVICE_CPU, &device_, cpu_allocator(), *ndef, &s);
+      auto created = CreateOpKernel(DEVICE_CPU, &device_, cpu_allocator(),
+                                    *ndef, TF_GRAPH_DEF_VERSION, &s);
       if (s.ok()) {
         *kernel = created.release();
       }

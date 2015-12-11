@@ -21,6 +21,8 @@ namespace tensorflow {
 
 REGISTER_OP("KernelLabel").Output("result: string");
 
+REGISTER_OP("GraphDefVersion").Output("version: int32");
+
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
 }  // namespace
@@ -58,5 +60,23 @@ REGISTER_KERNEL_BUILDER(Name("KernelLabel")
                             .Device(DEVICE_CPU)
                             .Label("overload_2"),
                         KernelLabelOp<OVERLOAD_2_LABEL>);
+
+class GraphDefVersionOp : public OpKernel {
+ public:
+  GraphDefVersionOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<int>()() = graph_def_version_;
+  }
+
+ private:
+  const int graph_def_version_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("GraphDefVersion").Device(DEVICE_CPU),
+                        GraphDefVersionOp);
 
 }  // end namespace tensorflow
