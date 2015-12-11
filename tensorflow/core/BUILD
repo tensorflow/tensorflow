@@ -282,6 +282,7 @@ tf_gpu_kernel_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cuda",
+        ":framework",
         "//third_party/eigen3",
     ],
 )

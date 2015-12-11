@@ -19,6 +19,7 @@ cc_library(
     ),
     hdrs = glob([
         "*.h",
+        "cuda/*.h",
         "lib/*.h",
         "platform/**/*.h",
     ]),
