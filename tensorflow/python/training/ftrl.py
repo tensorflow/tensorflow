@@ -277,12 +277,9 @@ class FtrlOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
-      self._get_or_make_slot(
-          v,
-          constant_op.constant(self._initial_accumulator_value,
-                               dtype=v.dtype, shape=v.get_shape()),
-          "accum",
-          self._name)
+      val = constant_op.constant(self._initial_accumulator_value,
+                                 dtype=v.dtype, shape=v.get_shape())
+      self._get_or_make_slot(v, val, "accum", self._name)
       self._zeros_slot(v, "linear", self._name)
 
   def _apply_dense(self, grad, var):

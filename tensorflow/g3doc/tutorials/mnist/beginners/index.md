@@ -47,11 +47,12 @@ import tensorflow.examples.tutorials.mnist.input_data
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 ```
 
-The downloaded data is split into two parts, 60,000 data points of training
-data (`mnist.train`) and 10,000 points of test data (`mnist.test`).  This
-split is very important: it's essential in machine learning that we
-have separate data which we don't learn from so that we can make sure
-that what we've learned actually generalizes!
+The downloaded data is split into three parts, 55,000 data points of training
+data (`mnist.train`), 10,000 points of test data (`mnist.test`), and 5,000
+points of validation data (`mnist.validation`). This split is very important:
+it's essential in machine learning that we have separate data which we don't
+learn from so that we can make sure that what we've learned actually
+generalizes!
 
 As mentioned earlier, every MNIST data point has two parts: an image of a
 handwritten digit and a corresponding label. We will call the images "xs" and

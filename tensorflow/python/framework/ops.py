@@ -1058,12 +1058,20 @@ class Operation(object):
     return tuple(self.outputs)
 
   def _get_control_flow_context(self):
-    """Returns the current control flow context.
+    """Returns the control flow context of this op.
 
     Returns:
       A context object.
     """
     return self._control_flow_context
+
+  def _set_control_flow_context(self, context):
+    """Sets the current control flow context of this op.
+
+    Args:
+      context: a context object.
+    """
+    self._control_flow_context = context
 
   @property
   def name(self):

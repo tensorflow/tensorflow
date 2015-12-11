@@ -180,7 +180,7 @@ def run_inference_on_image(image):
     for node_id in top_k:
       human_string = node_lookup.id_to_string(node_id)
       score = predictions[node_id]
-      print '%s (score = %.5f)' % (human_string, score)
+      print('%s (score = %.5f)' % (human_string, score))
 
 
 def maybe_download_and_extract():

@@ -24,7 +24,7 @@ import sys
 from setuptools import find_packages, setup, Extension
 from setuptools.dist import Distribution
 
-_VERSION = '0.5.0'
+_VERSION = '0.6.0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.8.2',

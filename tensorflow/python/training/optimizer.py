@@ -275,7 +275,8 @@ class Optimizer(object):
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s" %
                        (grads_and_vars,))
-    self._create_slots(var_list)
+    with ops.control_dependencies(None):
+      self._create_slots(var_list)
     update_ops = []
     with ops.op_scope([], name, self._name) as name:
       self._prepare()

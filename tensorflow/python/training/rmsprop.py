@@ -71,9 +71,8 @@ class RMSPropOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      self._get_or_make_slot(
-          v, constant_op.constant(1.0, dtype=v.dtype, shape=v.get_shape()),
-          "rms", self._name)
+      val = constant_op.constant(1.0, dtype=v.dtype, shape=v.get_shape())
+      self._get_or_make_slot(v, val, "rms", self._name)
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):

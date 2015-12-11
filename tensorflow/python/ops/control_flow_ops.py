@@ -754,9 +754,19 @@ class WhileContext(ControlFlowContext):
       self._values.add(val.name)
       if self._outer_context is not None:
         result = self._outer_context.AddValue(val)
+
       # Create an Enter that makes 'result' known to this context.
-      enter = _Enter(result, self._name, is_constant=True,
-                     parallel_iterations=self._parallel_iterations)
+      with ops.control_dependencies(None):
+        enter = _Enter(result, self._name, is_constant=True,
+                       parallel_iterations=self._parallel_iterations)
+
+      # Set manually since 'enter' is created without a control flow context.
+      # pylint: disable=protected-access
+      enter.op._set_control_flow_context(self)
+      # pylint: enable=protected-access
+      self.AddOp(enter.op)
+
+      # Add 'enter' in this context.
       self._values.add(enter.name)
       self._external_values[val.name] = enter
       result = enter
@@ -998,13 +1008,17 @@ class WhileContext(ControlFlowContext):
     # Let the context know the loop variabes so the _Enter nodes below
     # would be added into the context correctly.
     self._values = set([x.name for x in loop_vars])
+    real_vars = loop_vars
     if self._outer_context is not None:
       real_vars = [self._outer_context.AddValue(x) for x in loop_vars]
-    else:
-      real_vars = loop_vars
-    enter_vars = [_Enter(x, self._name, is_constant=False,
-                         parallel_iterations=self._parallel_iterations)
-                  for x in real_vars]
+    with ops.control_dependencies(None):
+      enter_vars = [_Enter(x, self._name, is_constant=False,
+                           parallel_iterations=self._parallel_iterations)
+                    for x in real_vars]
+    for x in enter_vars:
+      # pylint: disable=protected-access
+      x.op._set_control_flow_context(self)
+      # pylint: enable=protected-access
     self._values = set([x.name for x in enter_vars])
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]

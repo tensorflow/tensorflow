@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import googletest
 
@@ -385,19 +386,31 @@ class ConstantValueTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.int32, c_val.dtype)
 
   def testSize(self):
-    np_val = np.array([6], dtype=np.int32)
     tf_val = array_ops.size(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.ConstantValue(tf_val)
-    self.assertAllEqual(np_val, c_val)
-    self.assertEqual(np.int32, c_val.dtype)
+    self.assertEqual(6, c_val)
+
+  def testSizeOfScalar(self):
+    tf_val = array_ops.size(constant_op.constant(0.0))
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertEqual(1, c_val)
+    self.assertEqual(np.int32, type(c_val))
 
   def testRank(self):
-    np_val = np.array([3], dtype=np.int32)
     tf_val = array_ops.rank(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.ConstantValue(tf_val)
-    self.assertAllEqual(np_val, c_val)
-    self.assertEqual(np.int32, c_val.dtype)
+    self.assertEqual(3, c_val)
 
+  def testCast(self):
+    np_val = np.random.rand(3, 4, 7).astype(np.float32)
+    tf_val = math_ops.cast(constant_op.constant(np_val), dtypes.float64)
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllClose(np_val.astype(np.float64), c_val)
+
+    np_val = np.random.rand(3, 0, 7).astype(np.float32)
+    tf_val = math_ops.cast(constant_op.constant(np_val), dtypes.float64)
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllClose(np_val.astype(np.float64), c_val)
 
 if __name__ == "__main__":
   googletest.main()

@@ -213,13 +213,15 @@ class ExponentialMovingAverage(object):
       # For variables: to lower communication bandwidth across devices we keep
       # the moving averages on the same device as the variables. For other
       # tensors, we rely on the existing device allocation mechanism.
-      if isinstance(var, variables.Variable):
-        avg = slot_creator.create_slot(
-            var, var.initialized_value(), self._name,
-            colocate_with_primary=True)
-      else:
-        avg = slot_creator.create_zeros_slot(
-            var, self._name, colocate_with_primary=(var.op.type == "Variable"))
+      with ops.control_dependencies(None):
+        if isinstance(var, variables.Variable):
+          avg = slot_creator.create_slot(
+              var, var.initialized_value(), self._name,
+              colocate_with_primary=True)
+        else:
+          avg = slot_creator.create_zeros_slot(
+              var, self._name,
+              colocate_with_primary=(var.op.type == "Variable"))
       self._averages[var] = avg
 
     with ops.name_scope(self._name) as scope:

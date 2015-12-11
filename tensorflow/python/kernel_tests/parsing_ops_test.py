@@ -610,7 +610,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             int64_feature([5, 6, 7]),
             int64_feature([8, 9, 10]),]),
         "b": feature_list([
-            bytes_feature(["r00", "r01", "r10", "r11"])]),
+            bytes_feature([b"r00", b"r01", b"r10", b"r11"])]),
         "c": feature_list([
             float_feature([3, 4]),
             float_feature([-1, 2])]),
@@ -625,7 +625,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             [[5, 6, 7]],
             [[8, 9, 10]]], dtype=np.int64),
         "b": np.array([  # outer dimension is time, inside are 2x2 matrices
-            [["r00", "r01"], ["r10", "r11"]]], dtype=np.str),
+            [[b"r00", b"r01"], [b"r10", b"r11"]]], dtype=np.str),
         "c": np.array([  # outer dimension is time, inside are 2-vectors
             [3, 4],
             [-1, 2]], dtype=np.float32),

@@ -364,7 +364,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
           const string& parent_name = (*info)[out_parent->id()].frame_name;
           if (parent_name != frame_name || iter_level != out_info->iter_level) {
             return errors::InvalidArgument(
-                "All inputs to Enter must be from the same frame and level.");
+                "All inputs to Enter must be from the same frame.");
           }
         } else {
           out_info->frame = out;
@@ -382,8 +382,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
           if (out_info->frame_name != frame_name ||
               out_info->iter_level != (iter_level + 1)) {
             return errors::InvalidArgument(
-                "All inputs to NextIteration must be from the same frame "
-                "and level.");
+                "All inputs to NextIteration must be from the same frame.");
           }
         } else {
           out_info->frame = frame;
@@ -394,8 +393,9 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
       } else {
         if (is_visited) {
           if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument(
-                "All inputs to a node must be from the same frame.");
+            return errors::InvalidArgument("All inputs to the node ",
+                                           out->name(),
+                                           " must be from the same frame.");
           }
         } else {
           out_info->frame = frame;

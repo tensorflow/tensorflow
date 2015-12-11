@@ -957,6 +957,35 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertEqual(10, var_a.eval())
       self.assertEqual(10, var_b.eval())
 
+  # b/24814668
+  def testWhileUpdateVariable_6(self):
+    with self.test_session():
+      # Create some variables.
+      var_a = tf.Variable(0, name="a")
+      var_b = tf.Variable(0, name="b")
+      c = tf.constant(0)
+      tf.initialize_all_variables().run()
+
+      # Loop condition
+      def pred(i):
+        return tf.less(i, 10)
+
+      # Loop body
+      def loop_body(i):
+        asn1 = tf.assign_add(var_a, 1, name="a_add")
+        with tf.control_dependencies([asn1]):
+          asn2 = tf.assign_add(var_b, var_a, name="b_add")
+        with tf.control_dependencies([asn2]):
+          ni = tf.add(i, 1, name="i_add")
+          return ni
+
+      lpa = control_flow_ops.While(pred, loop_body, [c], 1, name="loop")
+
+      self.assertEqual(0, var_b.eval())
+      lpa.eval()  # Run the loop
+      self.assertEqual(55, var_b.eval())
+      self.assertEqual(10, var_a.eval())
+
   def testWhileQueue_1(self):
     with self.test_session():
       q = tf.FIFOQueue(-1, tf.int32)
