@@ -16,6 +16,9 @@
 
 set -e
 
-bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
-rm -rf /root/.cache/tensorflow-pip
-bazel-bin/tensorflow/tools/pip_package/build_pip_package /root/.cache/tensorflow-pip
+# Install openjdk 8 for bazel from PPA (it is not available in 14.04).
+add-apt-repository -y ppa:openjdk-r/ppa
+apt-get update
+apt-get install -y openjdk-8-jdk openjdk-8-jre-headless
+apt-get clean
+rm -rf /var/lib/apt/lists/*

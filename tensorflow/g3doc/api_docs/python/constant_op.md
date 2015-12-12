@@ -140,10 +140,9 @@ This operation creates a tensor of shape `dims` and fills it with `value`.
 For example:
 
 ```prettyprint
-# output tensor shape needs to be [2, 3]
-# so 'dims' is [2, 3]
-fill(dims, 9) ==> [[9, 9, 9]
-                   [9, 9, 9]]
+# Output tensor has shape [2, 3].
+fill([2, 3], 9) ==> [[9, 9, 9]
+                     [9, 9, 9]]
 ```
 
 ##### Args:

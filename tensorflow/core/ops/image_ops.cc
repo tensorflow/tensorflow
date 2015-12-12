@@ -244,6 +244,15 @@ REGISTER_OP("AdjustContrast")
     .Output("output: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Doc(R"Doc(
+Deprecated. Disallowed in GraphDef version >= 2.
+)Doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("AdjustContrastv2")
+    .Input("images: float")
+    .Input("contrast_factor: float")
+    .Output("output: float")
+    .Doc(R"Doc(
 Adjust the contrast of one or more images.
 
 `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
@@ -256,13 +265,8 @@ For each channel, the Op first computes the mean of the image pixels in the
 channel and then adjusts each component of each pixel to
 `(x - mean) * contrast_factor + mean`.
 
-These adjusted values are then clipped to fit in the `[min_value, max_value]`
-interval.
-
-`images: Images to adjust.  At least 3-D.
+images: Images to adjust.  At least 3-D.
 contrast_factor: A float multiplier for adjusting contrast.
-min_value: Minimum value for clipping the adjusted pixels.
-max_value: Maximum value for clipping the adjusted pixels.
 output: The constrast-adjusted image or images.
 )Doc");
 

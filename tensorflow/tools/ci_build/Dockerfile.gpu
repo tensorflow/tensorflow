@@ -1,23 +1,23 @@
-FROM tensorflow:ci_build.cpu
+FROM nvidia/cuda:7.0-cudnn2-devel
 
 MAINTAINER Jan Prach <jendap@google.com>
 
-# Install Cuda.
-RUN cd /tmp && \
-    wget http://developer.download.nvidia.com/compute/cuda/7_0/Prod/local_installers/cuda_7.0.28_linux.run && \
-    chmod +x *.run && ./cuda_*_linux.run -extract=`pwd` && \
-    ./NVIDIA-Linux-x86_64-*.run -s --no-kernel-module && \
-    ./cuda-linux64-rel-*.run -noprompt && \
-    rm -rf *
+# Copy ci_build install scripts into the container.
+COPY install /install
 
-# Set up CUDA variables in .bashrc
-RUN echo "CUDA_PATH=/usr/local/cuda" >>~/.bash_profile && \
-    echo "LD_LIBRARY_PATH=/usr/local/cuda/lib64:/tensorflow_extra_deps/cudnn-6.5-linux-x64-v2" >>~/.bash_profile
+# Run the install scripts.
+RUN install/install_deb_packages.sh
+RUN install/install_openjdk8_from_ppa.sh
+RUN install/install_bazel.sh
 
-# Set up cuda variables.
+# Set up BAZELRC environment variable.
+ENV BAZELRC /root/.bazelrc
+
+# Set up CUDA variables
 ENV CUDA_PATH /usr/local/cuda
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:/tensorflow_extra_deps/cudnn-6.5-linux-x64-v2
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64
 
-# Set up variables fo tensorflow to use cuda.
+# Configure the build for our CUDA configuration.
 ENV CUDA_TOOLKIT_PATH /usr/local/cuda
-ENV CUDNN_INSTALL_PATH /tensorflow_extra_deps/cudnn-6.5-linux-x64-v2
+ENV CUDNN_INSTALL_PATH /usr/local/cuda
+ENV TF_NEED_CUDA 1

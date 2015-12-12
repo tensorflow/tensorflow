@@ -47,10 +47,6 @@ function upsearch () {
 WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
-# Additional configuration. You can customize it by modifying
-# env variable.
-EXTRA_DEPS_DIR="${EXTRA_DEPS_DIR:-${HOME}/.tensorflow_extra_deps}"
-
 
 # Print arguments.
 echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
@@ -58,31 +54,21 @@ echo "COMMAND: ${COMMAND[@]}"
 echo "WORKSAPCE: ${WORKSPACE}"
 echo "BUILD_TAG: ${BUILD_TAG}"
 echo "  (docker container name will be ${BUILD_TAG}.${CONTAINER_TYPE})"
-echo "EXTRA_DEPS_DIR: ${EXTRA_DEPS_DIR}"
 echo ""
 
-# Build the docker containers.
-echo "Building CPU container (${BUILD_TAG}.cpu)..."
-docker build -t ${BUILD_TAG}.cpu -f ${SCRIPT_DIR}/Dockerfile.cpu ${SCRIPT_DIR}
-if [ "${CONTAINER_TYPE}" != "cpu" ]; then
-  echo "Building container ${BUILD_TAG}.${CONTAINER_TYPE}..."
-  tmp_dockerfile="${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}.${BUILD_TAG}"
-  # we need to generate temporary dockerfile with overwritten FROM directive
-  sed "s/^FROM .*/FROM ${BUILD_TAG}.cpu/" \
-      ${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE} > ${tmp_dockerfile}
-  docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
-      -f ${tmp_dockerfile} ${SCRIPT_DIR}
-  rm ${tmp_dockerfile}
-fi
+
+# Build the docker container.
+echo "Building container (${BUILD_TAG}.${CONTAINER_TYPE})..."
+docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
+    -f ${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE} ${SCRIPT_DIR}
 
 
 # Run the command inside the container.
 echo "Running '${COMMAND[@]}' inside ${BUILD_TAG}.${CONTAINER_TYPE}..."
-mkdir -p ${WORKSPACE}/bazel-user-cache-for-docker
+mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
-    -v ${WORKSPACE}/bazel-user-cache-for-docker:/root/.cache \
+    -v ${WORKSPACE}/bazel-ci_build-cache:/root/.cache \
     -v ${WORKSPACE}:/tensorflow \
-    -v ${EXTRA_DEPS_DIR}:/tensorflow_extra_deps \
     -w /tensorflow \
     ${BUILD_TAG}.${CONTAINER_TYPE} \
-    "${COMMAND[@]}"
+    "tensorflow/tools/ci_build/builds/configured" "${CONTAINER_TYPE}" "${COMMAND[@]}"
