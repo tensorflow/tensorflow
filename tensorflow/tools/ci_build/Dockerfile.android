@@ -1,6 +1,17 @@
-FROM tensorflow:ci_build.cpu
+FROM ubuntu:14.04
 
 MAINTAINER Jan Prach <jendap@google.com>
+
+# Copy ci_build install scripts into the container.
+COPY install /install
+
+# Run the install scripts.
+RUN install/install_deb_packages.sh
+RUN install/install_openjdk8_from_ppa.sh
+RUN install/install_bazel.sh
+
+# Set up BAZELRC environment variable.
+ENV BAZELRC /root/.bazelrc
 
 # Install Android SDK.
 ENV ANDROID_SDK_FILENAME android-sdk_r24.4.1-linux.tgz

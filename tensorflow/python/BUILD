@@ -419,6 +419,7 @@ tf_gen_op_wrapper_py(
     hidden = [
         "ResizeBilinearGrad",
         "ResizeNearestNeighborGrad",
+        "AdjustContrastv2",
         "ScaleImageGrad",
     ],
     require_shape_functions = True,

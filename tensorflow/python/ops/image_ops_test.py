@@ -302,85 +302,64 @@ class RandomFlipTest(test_util.TensorFlowTestCase):
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
-  def _testContrast(self, x_np, y_np, contrast_factor, min_value, max_value):
+  def _testContrast(self, x_np, y_np, contrast_factor):
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):
         x = constant_op.constant(x_np, shape=x_np.shape)
-        y = image_ops.adjust_contrast(x,
-                                      contrast_factor,
-                                      min_value=min_value,
-                                      max_value=max_value)
+        y = image_ops.adjust_contrast(x, contrast_factor)
         y_tf = y.eval()
-        self.assertAllEqual(y_tf, y_np)
+        self.assertAllClose(y_tf, y_np, 1e-6)
 
   def testDoubleContrastUint8(self):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [0, 0, 0, 63, 169, 255, 29, 0, 255, 135, 255, 0]
+    y_data = [0, 0, 0, 62, 169, 255, 28, 0, 255, 135, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    self._testContrast(x_np,
-                       y_np,
-                       contrast_factor=2.0,
-                       min_value=None,
-                       max_value=None)
+    self._testContrast(x_np, y_np, contrast_factor=2.0)
 
   def testDoubleContrastFloat(self):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.float).reshape(x_shape)
+    x_np = np.array(x_data, dtype=np.float).reshape(x_shape) / 255.
 
-    y_data = [0, 0, 0, 62.75, 169.25, 255, 28.75, 0, 255, 134.75, 255, 0]
-    y_np = np.array(y_data, dtype=np.float).reshape(x_shape)
+    y_data = [-45.25, -90.75, -92.5, 62.75, 169.25, 333.5, 28.75, -84.75, 349.5,
+              134.75, 409.25, -116.5]
+    y_np = np.array(y_data, dtype=np.float).reshape(x_shape) / 255.
 
-    self._testContrast(x_np,
-                       y_np,
-                       contrast_factor=2.0,
-                       min_value=0,
-                       max_value=255)
+    self._testContrast(x_np, y_np, contrast_factor=2.0)
 
   def testHalfContrastUint8(self):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [23, 53, 66, 50, 118, 172, 41, 54, 176, 68, 178, 60]
+    y_data = [22, 52, 65, 49, 118, 172, 41, 54, 176, 67, 178, 59]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    self._testContrast(x_np,
-                       y_np,
-                       contrast_factor=0.5,
-                       min_value=None,
-                       max_value=None)
+    self._testContrast(x_np, y_np, contrast_factor=0.5)
 
   def testBatchDoubleContrast(self):
     x_shape = [2, 1, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [0, 0, 0, 81, 200, 255, 11, 0, 255, 117, 255, 0]
+    y_data = [0, 0, 0, 81, 200, 255, 10, 0, 255, 116, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    self._testContrast(x_np,
-                       y_np,
-                       contrast_factor=2.0,
-                       min_value=None,
-                       max_value=None)
+    self._testContrast(x_np, y_np, contrast_factor=2.0)
 
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
-  def _testBrightness(self, x_np, y_np, delta, min_value, max_value):
+  def _testBrightness(self, x_np, y_np, delta):
     with self.test_session():
       x = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.adjust_brightness(x,
-                                      delta,
-                                      min_value=min_value,
-                                      max_value=max_value)
+      y = image_ops.adjust_brightness(x, delta)
       y_tf = y.eval()
-      self.assertAllEqual(y_tf, y_np)
+      self.assertAllClose(y_tf, y_np, 1e-6)
 
   def testPositiveDeltaUint8(self):
     x_shape = [2, 2, 3]
@@ -390,27 +369,27 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     y_data = [10, 15, 23, 64, 145, 236, 47, 18, 244, 100, 255, 11]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    self._testBrightness(x_np, y_np, delta=10.0, min_value=None, max_value=None)
+    self._testBrightness(x_np, y_np, delta=10. / 255.)
 
   def testPositiveDeltaFloat(self):
     x_shape = [2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.float32).reshape(x_shape)
+    x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
 
     y_data = [10, 15, 23, 64, 145, 236, 47, 18, 244, 100, 265, 11]
-    y_np = np.array(y_data, dtype=np.float32).reshape(x_shape)
+    y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
 
-    self._testBrightness(x_np, y_np, delta=10.0, min_value=None, max_value=None)
+    self._testBrightness(x_np, y_np, delta=10. / 255.)
 
   def testNegativeDelta(self):
     x_shape = [2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [5, 5, 5, 44, 125, 216, 27, 5, 224, 80, 245, 5]
+    y_data = [0, 0, 3, 44, 125, 216, 27, 0, 224, 80, 245, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    self._testBrightness(x_np, y_np, delta=-10.0, min_value=5, max_value=None)
+    self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
 
 class RandomCropTest(test_util.TensorFlowTestCase):
@@ -955,7 +934,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(png0), 750)
 
   def testShape(self):
-    with self.test_session() as sess:
+    with self.test_session():
       png = constant_op.constant('nonsense')
       for channels in 0, 1, 3:
         image = image_ops.decode_png(png, channels=channels)

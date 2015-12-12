@@ -24,6 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+
+// this is for v2
+template struct functor::AdjustContrastv2<GPUDevice>;
+
+// these are for v1
 template struct functor::AdjustContrast<GPUDevice, uint8>;
 template struct functor::AdjustContrast<GPUDevice, int8>;
 template struct functor::AdjustContrast<GPUDevice, int16>;

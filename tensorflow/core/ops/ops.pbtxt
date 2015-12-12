@@ -106,22 +106,18 @@ op {
   }
   input_arg {
     name: "contrast_factor"
-    description: "A float multiplier for adjusting contrast."
     type: DT_FLOAT
   }
   input_arg {
     name: "min_value"
-    description: "Minimum value for clipping the adjusted pixels."
     type: DT_FLOAT
   }
   input_arg {
     name: "max_value"
-    description: "Maximum value for clipping the adjusted pixels."
     type: DT_FLOAT
   }
   output_arg {
     name: "output"
-    description: "The constrast-adjusted image or images."
     type: DT_FLOAT
   }
   attr {
@@ -139,8 +135,27 @@ op {
       }
     }
   }
+  summary: "Deprecated. Disallowed in GraphDef version >= 2."
+}
+op {
+  name: "AdjustContrastv2"
+  input_arg {
+    name: "images"
+    description: "Images to adjust.  At least 3-D."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "contrast_factor"
+    description: "A float multiplier for adjusting contrast."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "The constrast-adjusted image or images."
+    type: DT_FLOAT
+  }
   summary: "Adjust the contrast of one or more images."
-  description: "`images` is a tensor of at least 3 dimensions.  The last 3 dimensions are\ninterpreted as `[height, width, channels]`.  The other dimensions only\nrepresent a collection of images, such as `[batch, height, width, channels].`\n\nContrast is adjusted independently for each channel of each image.\n\nFor each channel, the Op first computes the mean of the image pixels in the\nchannel and then adjusts each component of each pixel to\n`(x - mean) * contrast_factor + mean`.\n\nThese adjusted values are then clipped to fit in the `[min_value, max_value]`\ninterval.\n\n`images: Images to adjust.  At least 3-D."
+  description: "`images` is a tensor of at least 3 dimensions.  The last 3 dimensions are\ninterpreted as `[height, width, channels]`.  The other dimensions only\nrepresent a collection of images, such as `[batch, height, width, channels].`\n\nContrast is adjusted independently for each channel of each image.\n\nFor each channel, the Op first computes the mean of the image pixels in the\nchannel and then adjusts each component of each pixel to\n`(x - mean) * contrast_factor + mean`."
 }
 op {
   name: "All"
@@ -2594,7 +2609,7 @@ op {
     type: "type"
   }
   summary: "Creates a tensor filled with a scalar value."
-  description: "This operation creates a tensor of shape `dims` and fills it with `value`.\n\nFor example:\n\n```prettyprint\n# output tensor shape needs to be [2, 3]\n# so \'dims\' is [2, 3]\nfill(dims, 9) ==> [[9, 9, 9]\n                   [9, 9, 9]]\n```"
+  description: "This operation creates a tensor of shape `dims` and fills it with `value`.\n\nFor example:\n\n```prettyprint\n# Output tensor has shape [2, 3].\nfill([2, 3], 9) ==> [[9, 9, 9]\n                     [9, 9, 9]]\n```"
 }
 op {
   name: "FixedLengthRecordReader"

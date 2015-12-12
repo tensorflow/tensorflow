@@ -16,6 +16,21 @@
 
 set -e
 
-export TF_NEED_CUDA=1
-./configure
-bazel build -c opt --config=cuda //tensorflow/...
+# Install dependencies from ubuntu deb repository.
+apt-get update
+apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    pkg-config \
+    python-dev \
+    python-numpy \
+    python-pip \
+    software-properties-common \
+    swig \
+    unzip \
+    wget \
+    zip \
+    zlib1g-dev
+apt-get clean
+rm -rf /var/lib/apt/lists/*

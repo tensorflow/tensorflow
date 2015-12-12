@@ -627,25 +627,19 @@ def random_brightness(image, max_delta, seed=None):
   Equivalent to `adjust_brightness()` using a `delta` randomly picked in the
   interval `[-max_delta, max_delta)`.
 
-  Note that `delta` is picked as a float. Because for integer type images,
-  the brightness adjusted result is rounded before casting, integer images may
-  have modifications in the range `[-max_delta,max_delta]`.
-
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    image: An image.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
       for behavior.
 
   Returns:
-    3-D tensor of images of shape `[height, width, channels]`
+    The brightness-adjusted image.
 
   Raises:
     ValueError: if `max_delta` is negative.
   """
-  _Check3DImage(image)
-
   if max_delta < 0:
     raise ValueError('max_delta must be non-negative.')
 
@@ -660,7 +654,7 @@ def random_contrast(image, lower, upper, seed=None):
   picked in the interval `[lower, upper]`.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    image: An image tensor with 3 or more dimensions.
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
@@ -668,13 +662,11 @@ def random_contrast(image, lower, upper, seed=None):
       for behavior.
 
   Returns:
-    3-D tensor of shape `[height, width, channels]`.
+    The contrast-adjusted tensor.
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
   """
-  _Check3DImage(image)
-
   if upper <= lower:
     raise ValueError('upper must be > lower.')
 
@@ -686,49 +678,46 @@ def random_contrast(image, lower, upper, seed=None):
   return adjust_contrast(image, contrast_factor)
 
 
-def adjust_brightness(image, delta, min_value=None, max_value=None):
+def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
-  The value `delta` is added to all components of the tensor `image`. `image`
-  and `delta` are cast to `float` before adding, and the resulting values are
-  clamped to `[min_value, max_value]`. Finally, the result is cast back to
-  `images.dtype`.
+  This is a convenience method that converts an RGB image to float
+  representation, adjusts its brightness, and then converts it back to the
+  original data type. If several adjustments are chained it is advisable to
+  minimize the number of redundant conversions.
 
-  If `min_value` or `max_value` are not given, they are set to the minimum and
-  maximum allowed values for `image.dtype` respectively.
+  The value `delta` is added to all components of the tensor `image`. Both
+  `image` and `delta` are converted to `float` before adding (and `image` is
+  scaled appropriately if it is in fixed-point representation). For regular
+  images, `delta` should be in the range `[0,1)`, as it is added to the image in
+  floating point representation, where pixel values are in the `[0,1)` range.
 
   Args:
     image: A tensor.
     delta: A scalar. Amount to add to the pixel values.
-    min_value: Minimum value for output.
-    max_value: Maximum value for output.
 
   Returns:
-    A tensor of the same shape and type as `image`.
+    A brightness-adjusted tensor of the same shape and type as `image`.
   """
-  if min_value is None:
-    min_value = image.dtype.min
-  if max_value is None:
-    max_value = image.dtype.max
+  with ops.op_scope([image, delta], None, 'adjust_brightness') as name:
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    flt_image = convert_image_dtype(image, dtypes.float32)
 
-  with ops.op_scope([image, delta, min_value, max_value], None,
-                    'adjust_brightness') as name:
-    adjusted = math_ops.add(
-        math_ops.cast(image, dtypes.float32),
-        math_ops.cast(delta, dtypes.float32),
-        name=name)
-    if image.dtype.is_integer:
-      rounded = math_ops.round(adjusted)
-    else:
-      rounded = adjusted
-    clipped = clip_ops.clip_by_value(rounded, float(min_value),
-                                     float(max_value))
-    output = math_ops.cast(clipped, image.dtype)
-    return output
+    adjusted = math_ops.add(flt_image,
+                            math_ops.cast(delta, dtypes.float32),
+                            name=name)
+
+    return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
-def adjust_contrast(images, contrast_factor, min_value=None, max_value=None):
+def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
+
+  This is a convenience method that converts an RGB image to float
+  representation, adjusts its contrast, and then converts it back to the
+  original data type. If several adjustments are chained it is advisable to
+  minimize the number of redundant conversions.
 
   `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
   interpreted as `[height, width, channels]`.  The other dimensions only
@@ -736,53 +725,34 @@ def adjust_contrast(images, contrast_factor, min_value=None, max_value=None):
 
   Contrast is adjusted independently for each channel of each image.
 
-  For each channel, this Op first computes the mean of the image pixels in the
+  For each channel, this Op computes the mean of the image pixels in the
   channel and then adjusts each component `x` of each pixel to
   `(x - mean) * contrast_factor + mean`.
-
-  The adjusted values are then clipped to fit in the `[min_value, max_value]`
-  interval. If `min_value` or `max_value` is not given, it is replaced with the
-  minimum and maximum values for the data type of `images` respectively.
-
-  The contrast-adjusted image is always computed as `float`, and it is
-  cast back to its original type after clipping.
 
   Args:
     images: Images to adjust.  At least 3-D.
     contrast_factor: A float multiplier for adjusting contrast.
-    min_value: Minimum value for clipping the adjusted pixels.
-    max_value: Maximum value for clipping the adjusted pixels.
 
   Returns:
     The constrast-adjusted image or images.
-
-  Raises:
-    ValueError: if the arguments are invalid.
   """
-  _CheckAtLeast3DImage(images)
+  with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = images.dtype
+    flt_images = convert_image_dtype(images, dtypes.float32)
 
-  # If these are None, the min/max should be a nop, but still prevent overflows
-  # from the cast back to images.dtype at the end of adjust_contrast.
-  if min_value is None:
-    min_value = images.dtype.min
-  if max_value is None:
-    max_value = images.dtype.max
+    # pylint: disable=protected-access
+    adjusted = gen_image_ops._adjust_contrastv2(flt_images,
+                                                contrast_factor=contrast_factor,
+                                                name=name)
+    # pylint: enable=protected-access
 
-  with ops.op_scope(
-      [images, contrast_factor, min_value,
-       max_value], None, 'adjust_contrast') as name:
-    adjusted = gen_image_ops.adjust_contrast(images,
-                                             contrast_factor=contrast_factor,
-                                             min_value=min_value,
-                                             max_value=max_value,
-                                             name=name)
-    if images.dtype.is_integer:
-      return math_ops.cast(math_ops.round(adjusted), images.dtype)
-    else:
-      return math_ops.cast(adjusted, images.dtype)
+    return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
 ops.RegisterShape('AdjustContrast')(
+    common_shapes.unchanged_shape_with_rank_at_least(3))
+ops.RegisterShape('AdjustContrastv2')(
     common_shapes.unchanged_shape_with_rank_at_least(3))
 
 
@@ -861,7 +831,37 @@ def random_crop(image, size, seed=None, name=None):
                                    name=name)
 
 
-def convert_image_dtype(image, dtype, name=None):
+def saturate_cast(image, dtype):
+  """Performs a safe cast of image data to `dtype`.
+
+  This function casts the data in image to `dtype`, without applying any
+  scaling. If there is a danger that image data would over or underflow in the
+  cast, this op applies the appropriate clamping before the cast.
+
+  Args:
+    image: An image to cast to a different data type.
+    dtype: A `DType` to cast `image` to.
+
+  Returns:
+    `image`, safely cast to `dtype`.
+  """
+  clamped = image
+
+  # When casting to a type with smaller representable range, clamp.
+  # Note that this covers casting to unsigned types as well.
+  if image.dtype.min < dtype.min and image.dtype.max > dtype.max:
+    clamped = clip_ops.clip_by_value(clamped,
+                                     math_ops.cast(dtype.min, image.dtype),
+                                     math_ops.cast(dtype.max, image.dtype))
+  elif image.dtype.min < dtype.min:
+    clamped = math_ops.maximum(clamped, math_ops.cast(dtype.min, image.dtype))
+  elif image.dtype.max > dtype.max:
+    clamped = math_ops.minimum(clamped, math_ops.cast(dtype.max, image.dtype))
+
+  return math_ops.cast(clamped, dtype)
+
+
+def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
   Images that are represented using floating point values are expected to have
@@ -872,13 +872,17 @@ def convert_image_dtype(image, dtype, name=None):
   This op converts between data types, scaling the values appropriately before
   casting.
 
-  Note that for floating point inputs, this op expects values to lie in [0,1).
-  Conversion of an image containing values outside that range may lead to
-  overflow errors when converted to integer `Dtype`s.
+  Note that converting from floating point inputs to integer types may lead to
+  over/underflow problems. Set saturate to `True` to avoid such problem in
+  problematic conversions. Saturation will clip the output into the allowed
+  range before performing a potentially dangerous cast (i.e. when casting from
+  a floating point to an integer type, or when casting from an signed to an
+  unsigned type).
 
   Args:
     image: An image.
     dtype: A `DType` to convert `image` to.
+    saturate: If `True`, clip the input before casting (if necessary).
     name: A name for this operation (optional).
 
   Returns:
@@ -899,19 +903,28 @@ def convert_image_dtype(image, dtype, name=None):
         # so that the output is safely in the supported range.
         scale = (scale_in + 1) // (scale_out + 1)
         scaled = math_ops.div(image, scale)
-        return math_ops.cast(scaled, dtype)
+
+        if saturate:
+          return saturate_cast(scaled, dtype)
+        else:
+          return math_ops.cast(scaled, dtype)
       else:
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
-        cast = math_ops.cast(image, dtype)
+        if saturate:
+          cast = saturate_cast(scaled, dtype)
+        else:
+          cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
         return math_ops.mul(cast, scale)
     elif image.dtype.is_floating and dtype.is_floating:
       # Both float: Just cast, no possible overflows in the allowed ranges.
+      # Note: We're ignoreing float overflows. If your image dynamic range
+      # exceeds float range you're on your own.
       return math_ops.cast(image, dtype)
     else:
       if image.dtype.is_integer:
-        # Converting to float: first cast, then scale
+        # Converting to float: first cast, then scale. No saturation possible.
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
         return math_ops.mul(cast, scale)
@@ -919,7 +932,10 @@ def convert_image_dtype(image, dtype, name=None):
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
         scaled = math_ops.mul(image, scale)
-        return math_ops.cast(scaled, dtype)
+        if saturate:
+          return saturate_cast(scaled, dtype)
+        else:
+          return math_ops.cast(scaled, dtype)
 
 
 def rgb_to_grayscale(images):

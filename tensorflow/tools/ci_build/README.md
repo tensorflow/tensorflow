@@ -24,15 +24,11 @@ to docker caching. Individual builds are fast thanks to bazel caching.
 
 ## Implementation Details
 
-* The unusual `bazel-user-cache-for-docker` directory is mapped to docker
+* The unusual `bazel-ci_build-cache` directory is mapped to docker
   container performing the build using docker's --volume parameter.
   This way we cache bazel output between builds.
 
-* The `$HOME/.tensorflow_extra_deps` directory contains
-  [cudnn](https://developer.nvidia.com/cudnn).
-  Unfortunatelly this require you to agree a license to download.
-
-* The builds directory hithin this folder contains shell scripts to run within
+* The `builds` directory within this folder contains shell scripts to run within
   the container. They essentially contains workarounds for current limitations
   of bazel.
 
@@ -61,21 +57,6 @@ cd tensorflow
 tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 ```
 
-**Note**: For GPU you have to create `$HOME/.tensorflow_extra_deps` and manually
-install there required dependencies (i.e. cudnn) for which you have to agree
-to licences manually.
-
-
-#### CUDNN
-
-For GPU download the [cudnn](https://developer.nvidia.com/cudnn).
-You will download `cudnn-6.5-linux-x64-v2.tgz`. Run
-
-```bash
-mkdir -p $HOME/.tensorflow_extra_deps
-tar xzf cudnn-6.5-linux-x64-v2.tgz -C $HOME/.tensorflow_extra_deps
-```
-
 
 
 ## Jobs
@@ -86,10 +67,10 @@ The jobs run by [ci.tensorflow.org](http://ci.tensorflow.org) include following:
 # Note: You can run the following one-liners yourself if you have Docker.
 
 # build and run cpu tests
-tensorflow/tools/ci_build/ci_build.sh CPU bazel test  --test_timeout=1800 //tensorflow/...
+tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 
 # build gpu
-tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/gpu.sh
+tensorflow/tools/ci_build/ci_build.sh GPU bazel build -c opt --config=cuda //tensorflow/...
 
 # build pip with gpu support
 tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/gpu_pip.sh
