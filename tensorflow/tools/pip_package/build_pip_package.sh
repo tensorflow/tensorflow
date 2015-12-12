@@ -40,7 +40,8 @@ function main() {
   cp tensorflow/tools/pip_package/README ${TMPDIR}
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
 
-  # Before we leave the top-level directory, make sure we know how to call python.
+  # Before we leave the top-level directory, make sure we know how to
+  # call python.
   source tools/python_bin_path.sh
 
   pushd ${TMPDIR}
