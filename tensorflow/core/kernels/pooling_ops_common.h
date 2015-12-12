@@ -67,9 +67,9 @@ struct PoolParameters {
 
 // An implementation of MaxPooling (forward).
 template <typename Device, typename T>
-class MaxPoolingOp : public UnaryOp<T> {
+class MaxPoolingOp : public OpKernel {
  public:
-  explicit MaxPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+  explicit MaxPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
