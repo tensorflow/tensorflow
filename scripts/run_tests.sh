@@ -7,5 +7,5 @@ if [ ${TASK} == "lint" ]; then
 fi
 
 if [ ${TASK} == "nosetests" ]; then
-	nosetests
+	nosetests --with-cov
 fi
