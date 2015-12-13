@@ -14,6 +14,7 @@
 #  limitations under the License.
 
 
+from skflow.ops.array_ops import *
 from skflow.ops.conv_ops import *
 from skflow.ops.dnn_ops import *
 from skflow.ops.embeddings_ops import *
