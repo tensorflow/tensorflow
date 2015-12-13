@@ -77,7 +77,7 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
-    def train(self, sess, feed_dict_fn, steps, print_steps=0):
+    def train(self, sess, feed_dict_fn, steps, print_steps=0, verbose=1):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -85,6 +85,7 @@ class TensorFlowTrainer(object):
             feed_dict_fn: Function that will return a feed dictionary.
             steps: Number of steps to run.
             print_steps: Number of steps in between printing cost.
+            verbose: Controls the verbosity. If set to 0, the algorithm is muted.
 
         Returns:
             List of losses for each step.
@@ -99,9 +100,10 @@ class TensorFlowTrainer(object):
                 feed_dict=feed_dict)
             losses.append(loss)
             print_loss_buffer.append(loss)
-            if step % print_steps == 0:
-                avg_loss = np.mean(print_loss_buffer)
-                print_loss_buffer = []
-                print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                                   loss=avg_loss))
+            if verbose > 0:
+                if step % print_steps == 0:
+                    avg_loss = np.mean(print_loss_buffer)
+                    print_loss_buffer = []
+                    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
+                                                                       loss=avg_loss))
         return losses
