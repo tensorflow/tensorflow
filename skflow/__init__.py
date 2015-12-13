@@ -47,11 +47,13 @@ class TensorFlowEstimator(BaseEstimator):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
+        log_device_placement: Whether to print out device placement information. (default: True)
+        num_cores: Number of cores to be used. (default: 4)
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 log_device_placement=True):
+                 log_device_placement=True, num_cores=4):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -62,6 +64,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.model_fn = model_fn
         self.continue_training = continue_training
         self.log_device_placement = log_device_placement
+        self.num_cores = num_cores
         self._initialized = False
 
     def _setup_data_feeder(self, X, y):
@@ -101,7 +104,9 @@ class TensorFlowEstimator(BaseEstimator):
                                               self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master,
                                        config=tf.ConfigProto(
-                                           log_device_placement=self.log_device_placement))
+                                           log_device_placement=self.log_device_placement,
+                                           inter_op_parallelism_threads=self.num_cores,
+                                           intra_op_parallelism_threads=self.num_cores))
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
