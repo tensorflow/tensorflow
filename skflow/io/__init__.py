@@ -13,4 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from skflow.io.io import *
+from skflow.io.pandas_io import *
