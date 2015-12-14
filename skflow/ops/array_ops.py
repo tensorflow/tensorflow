@@ -16,7 +16,7 @@
 
 
 import tensorflow as tf
-    
+
 
 def split_squeeze(dim, num_split, tensor_in):
     """Splits input on given dimension and then squeezes that dimension.
@@ -60,12 +60,12 @@ def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
         Tensor of shape [N1, N2, num_classes] with 1.0 for each id in original
         tensor.
     """
-    sparse_values = tf.reshape(tensor_in, [-1, 1])
+    sparse_values = tf.to_int64(tf.reshape(tensor_in, [-1, 1]))
     size = tf.shape(sparse_values)[0]
     dims = tf.shape(tensor_in)
-    indices = tf.reshape(tf.range(0, size), [-1, 1])
+    indices = tf.to_int64(tf.reshape(tf.range(0, size), [-1, 1]))
     indices_values = tf.concat(1, [indices, sparse_values])
-    outshape = expand_concat(0, [size, num_classes])
+    outshape = tf.to_int64(expand_concat(0, [size, num_classes]))
     one_hot_vector = tf.sparse_to_dense(indices_values, outshape, on_value, off_value)
     return tf.reshape(one_hot_vector, tf.concat(0, [dims, [num_classes]]))
 
