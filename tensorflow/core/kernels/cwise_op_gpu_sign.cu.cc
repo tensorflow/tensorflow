@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_UNARY4(sign, float, double, int64, complex64);
+DEFINE_UNARY3(sign, float, double, int64);
 }  // namespace functor
 }  // namespace tensorflow
 

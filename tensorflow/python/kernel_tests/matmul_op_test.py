@@ -79,11 +79,6 @@ class MatMulTest(tf.test.TestCase):
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
     self._testCpuMatmul(x, y)
 
-  def testSComplexBasic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex64)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
-    self._testCpuMatmul(x, y)
-
   # Tests testing random sized matrices.
   def testFloatRandom(self):
     for _ in range(10):
@@ -153,15 +148,16 @@ class MatMulTest(tf.test.TestCase):
     self._testCpuMatmul(x, y)
     self._testGpuMatmul(x, y)
 
+
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.
 class MatMulGradientTest(tf.test.TestCase):
 
   def testGradientInput0(self):
     with self.test_session(use_gpu=False):
       x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                      dtype=tf.float64, name="x")
+                   dtype=tf.float64, name="x")
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                      shape=[2, 4], dtype=tf.float64, name="y")
+                   shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
       err = tf.test.compute_gradient_error(x, [3, 2], m, [3, 4])
     print("matmul input0 gradient err = ", err)
@@ -170,9 +166,9 @@ class MatMulGradientTest(tf.test.TestCase):
   def testGradientInput1(self):
     with self.test_session(use_gpu=False):
       x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                      dtype=tf.float64, name="x")
+                   dtype=tf.float64, name="x")
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                      shape=[2, 4], dtype=tf.float64, name="y")
+                   shape=[2, 4], dtype=tf.float64, name="y")
       m = tf.matmul(x, y, name="matmul")
       err = tf.test.compute_gradient_error(y, [2, 4], m, [3, 4])
     print("matmul input1 gradient err = ", err)
@@ -187,9 +183,9 @@ class MatMulGradientTest(tf.test.TestCase):
       shape_y = list(reversed(shape_y))
     with self.test_session(use_gpu=False):
       x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=shape_x,
-                      dtype=tf.float64, name="x")
+                   dtype=tf.float64, name="x")
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                      shape=shape_y, dtype=tf.float64, name="y")
+                   shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
       err = tf.test.compute_gradient_error(x, shape_x, m, [3, 4])
     print("matmul input0 gradient err = ", err)
@@ -209,9 +205,9 @@ class MatMulGradientTest(tf.test.TestCase):
       shape_y = list(reversed(shape_y))
     with self.test_session(use_gpu=False):
       x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=shape_x,
-                      dtype=tf.float64, name="x")
+                   dtype=tf.float64, name="x")
       y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                      shape=shape_y, dtype=tf.float64, name="y")
+                   shape=shape_y, dtype=tf.float64, name="y")
       m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
       err = tf.test.compute_gradient_error(y, shape_y, m, [3, 4])
     print("matmul input1 gradient err = ", err)
@@ -222,100 +218,6 @@ class MatMulGradientTest(tf.test.TestCase):
     self._VerifyInput1(transpose_a=False, transpose_b=True)
     self._VerifyInput1(transpose_a=True, transpose_b=True)
 
-def randGauss(shape, dtype):
-  """Generate a Gaussian i.i.d. numpy matrix of the given shape and type"""
-  if dtype is tf.complex64:
-    return np.random.normal(size=shape).astype('float32')
-      +1j * np.random.normal(size=shape).astype('float32')
-  else:
-    return np.random.normal(size=shape).astype('float32')
-
-def FrobeniusNormSquared(Z):
-  """Frobenius norm of the given tensor, squared"""
-  if Z.dtype is tf.complex64:
-    return tf.reduce_sum(tf.square(tf.real(Z)) + tf.square(tf.imag(Z)))
-  else:
-    return tf.reduce_sum(tf.square(Z))
-
-
-def numGrad(sess, func, var, feed_dict, eps=1e-2):
-  """Calculate the numerical gradient estimate for scalar-valued function
-  tensorflow node func with respect to a tensorflow node var.
-  Note: feed_dict[var] must exist and indicates the point at which
-  the numerical gradient is estimated."""
-  shp = var.get_shape()
-  grad = np.zeros(shp)
-  dx = np.zeros(shp)
-  if var.dtype is tf.complex64:
-    grad = np.complex64(np.zeros(shp))
-    dx = np.complex64(np.zeros(shp))
-
-  varval = feed_dict[var]
-  for k0 in range(shp[0]):
-    for k1 in range(shp[1]):
-      # implement a two-sided gradient estimate
-      dx[k0][k1] = eps * .5
-      fd = dict(feed_dict)
-      fd[var] = varval + dx
-      zHi = sess.run(func, feed_dict=fd)
-      fd[var] = varval - dx
-      zLo = sess.run(func, feed_dict=fd)
-      derivReal = (zHi - zLo) / eps
-      if var.dtype is tf.complex64:
-        dx = 1j * dx
-        fd[var] = varval + dx
-        zHi = sess.run(func, feed_dict=fd)
-        fd[var] = varval - dx
-        zLo = sess.run(func, feed_dict=fd)
-        derivImag = 1j * (zHi - zLo) / eps
-      else:
-        derivImag = 0
-      dx[k0][k1] = 0  # clear
-      grad[k0][k1] = derivReal + derivImag
-  return grad
-
-class CpxMatMulGradientTest(tf.test.TestCase):
-  """
-  Testing autogradient of quadratic loss = .5*FrobeniusNorm(X*Y - B)^2
-  for matrices (X, Y, B), with respect to (X, Y)
-  """
-
-  def testAll(self):
-        # dimensions of left, middle, right of matrix product X*Y
-    leftN = 3
-    middleN = 4
-    rightN = 5
-
-    for dtype in (tf.float32, tf.complex64):
-      for transX in (False, True):
-        for transY in (False, True):
-          print('Testing TranX=%s TranY=%s %s' % (transX, transY, dtype))
-
-          # use a common quadratic loss function
-          # and check the gradients wrt (X, Y)
-          X = tf.placeholder(dtype, shape=(middleN, leftN)
-                             if transX else (leftN, middleN))
-          Y = tf.placeholder(dtype, shape=(rightN, middleN)
-                             if transY else(middleN, rightN))
-          C = tf.constant(randGauss((leftN, rightN), dtype))
-          loss = .5 * FrobeniusNormSquared(
-              tf.matmul(X, Y, transpose_a=transX, transpose_b=transY) - C)
-          (gX, gY) = tf.gradients(loss, [X, Y])
-
-          init = tf.initialize_all_variables()
-          with tf.Session() as sess:
-            sess.run(init)
-            # Populate the feed_dict with random (X, Y) tensors to evaluate the
-            # autogradients and numerical gradient estimates
-            feed_dict = {}
-            for node in (X, Y):
-              feed_dict[node] = randGauss(node.get_shape(), node.dtype)
-
-            for func, gfunc in ((X, gX), (Y, gY)):
-              gAuto = sess.run(gfunc, feed_dict)
-              gNum = numGrad(sess, loss, func, feed_dict)
-              self.assertLess(
-                  (np.linalg.norm(gAuto - gNum) / np.linalg.norm(gNum)), 1e-3)
 
 if __name__ == "__main__":
   tf.test.main()
