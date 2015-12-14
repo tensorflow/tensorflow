@@ -52,7 +52,7 @@ X_test, y_test = load_dataset('dbpedia_csv/test.csv')
 
 ### Process vocabulary
 
-MAX_DOCUMENT_LENGTH = 10
+MAX_DOCUMENT_LENGTH = 100
 
 char_processor = skflow.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(char_processor.fit_transform(X_train)))
