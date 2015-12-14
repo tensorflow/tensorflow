@@ -28,7 +28,7 @@ from sklearn.utils import check_array
 from skflow.trainer import TensorFlowTrainer
 from skflow import models, data_feeder
 from skflow import preprocessing
-
+from skflow.io import *
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
@@ -66,6 +66,14 @@ class TensorFlowEstimator(BaseEstimator):
         self.log_device_placement = log_device_placement
         self.num_cores = num_cores
         self._initialized = False
+
+    @staticmethod
+    def _data_type_filter(X, y):
+        """Filter data types into acceptable format"""
+        if HAS_PANDAS:
+            X = extract_pandas_data(X)
+            y = extract_pandas_labels(y)
+        return X, y
 
     def _setup_data_feeder(self, X, y):
         """Create data feeder, to sample inputs from dataset.
@@ -142,6 +150,7 @@ class TensorFlowEstimator(BaseEstimator):
         Returns:
             Returns self.
         """
+        X, y = self._data_type_filter(X, y)
         # Sets up data feeder.
         self._setup_data_feeder(X, y)
         if not self.continue_training or not self._initialized:
@@ -186,6 +195,8 @@ class TensorFlowEstimator(BaseEstimator):
         return self.fit(X, y)
 
     def _predict(self, X):
+        if HAS_PANDAS:
+            X = extract_pandas_data(X)
         pred = self._session.run(self._model_predictions,
                                  feed_dict={
                                      self._inp.name: X
