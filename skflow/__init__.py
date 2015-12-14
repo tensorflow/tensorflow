@@ -28,7 +28,7 @@ from sklearn.utils import check_array
 from skflow.trainer import TensorFlowTrainer
 from skflow import models, data_feeder
 from skflow import preprocessing
-from skflow.io.pandas_io import *
+from skflow.io import *
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
@@ -67,7 +67,8 @@ class TensorFlowEstimator(BaseEstimator):
         self.num_cores = num_cores
         self._initialized = False
 
-    def _data_type_filter(self, X, y):
+    @staticmethod
+    def _data_type_filter(X, y):
         """Filter data types into acceptable format"""
         if HAS_PANDAS:
             X = extract_pandas_data(X)
