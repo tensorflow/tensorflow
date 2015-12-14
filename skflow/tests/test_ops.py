@@ -65,7 +65,10 @@ class OpsTest(tf.test.TestCase):
 
     def test_one_hot_matrix(self):
         with self.test_session() as sess:
+            tensor_in = tf.placeholder(tf.int64, [10, 2])
+            one_hot_tensor = ops.one_hot_matrix(tensor_in, 3)
             res = sess.run(ops.one_hot_matrix([[0, 1], [2, 1]], 3))
+        self.assertAllEqual(one_hot_tensor.get_shape(), [10, 2, 3])
         self.assertAllEqual(res, [[[1.0, 0, 0], [0, 1.0, 0]], 
                                   [[0, 0, 1.0], [0, 1.0, 0]]])
 
