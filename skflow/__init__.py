@@ -195,6 +195,8 @@ class TensorFlowEstimator(BaseEstimator):
         return self.fit(X, y)
 
     def _predict(self, X):
+        if HAS_PANDAS:
+            X = extract_pandas_data(X)
         pred = self._session.run(self._model_predictions,
                                  feed_dict={
                                      self._inp.name: X
@@ -215,8 +217,6 @@ class TensorFlowEstimator(BaseEstimator):
             y: array of shape [n_samples]. The predicted classes or predicted
             value.
         """
-        if HAS_PANDAS:
-            X = extract_pandas_data(X)
         pred = self._predict(X)
         if self.n_classes < 2:
             return pred
