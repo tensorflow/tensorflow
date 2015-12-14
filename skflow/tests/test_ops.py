@@ -45,7 +45,7 @@ class OpsTest(tf.test.TestCase):
             emb2 = sess.run(embeddings, feed_dict={cat_var_idx.name: [[0, 2],
                                                                       [1, 3]]})
         self.assertEqual(emb1.shape, emb2.shape)
-        self.assertAllClose(np.transpose(emb2, axes=[1, 0, 2]), emb1)
+        self.assertAllEqual(np.transpose(emb2, axes=[1, 0, 2]), emb1)
 
     def test_conv2d(self):
         tf.set_random_seed(42)
@@ -63,6 +63,11 @@ class OpsTest(tf.test.TestCase):
         self.assertEqual(conv.shape, (batch_size, input_shape[0],
                                       input_shape[1], n_filters))
 
+    def test_one_hot_matrix(self):
+        with self.test_session() as sess:
+            res = sess.run(ops.one_hot_matrix([[0, 1], [2, 1]], 3))
+        self.assertAllEqual(res, [[[1.0, 0, 0], [0, 1.0, 0]], 
+                                  [[0, 0, 1.0], [0, 1.0, 0]]])
 
 if __name__ == '__main__':
     tf.test.main()
