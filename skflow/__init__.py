@@ -28,6 +28,7 @@ from sklearn.utils import check_array
 from skflow.trainer import TensorFlowTrainer
 from skflow import models, data_feeder
 from skflow import preprocessing
+from skflow import io
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -68,7 +69,7 @@ class TensorFlowEstimator(BaseEstimator):
         self._initialized = False
 
     def _data_type_filter(self, X, y):
-        from skflow import io
+        """Filter data types into acceptable format"""
         if HAS_PANDAS:
             X = extract_pandas_data(X)
             y = extract_pandas_labels(y)
@@ -214,6 +215,8 @@ class TensorFlowEstimator(BaseEstimator):
             y: array of shape [n_samples]. The predicted classes or predicted
             value.
         """
+        if HAS_PANDAS:
+            X = extract_pandas_data(X)
         pred = self._predict(X)
         if self.n_classes < 2:
             return pred
