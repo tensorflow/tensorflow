@@ -1,4 +1,4 @@
-"""Various TensorFlow Ops."""
+"""Tools to allow different io formats."""
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-
-from skflow.ops.array_ops import *
-from skflow.ops.conv_ops import *
-from skflow.ops.dnn_ops import *
-from skflow.ops.embeddings_ops import *
-from skflow.ops.losses_ops import *
+from skflow.io.pandas_io import *

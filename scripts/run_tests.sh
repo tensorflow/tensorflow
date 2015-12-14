@@ -7,5 +7,6 @@ if [ ${TASK} == "lint" ]; then
 fi
 
 if [ ${TASK} == "nosetests" ]; then
-	nosetests --with-cov
+    nosetests --with-coverage --cover-erase --cover-package=skflow
+    codecov
 fi

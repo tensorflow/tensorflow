@@ -26,14 +26,8 @@ addons:
 python:
     - "2.7"
 
-before_install:
-   - pip install codecov
-
 install:
     - source scripts/travis_install.sh
-
-after_install:
-    - codecov
 
 script: source scripts/run_tests.sh
 
