@@ -68,9 +68,9 @@ def rnn_model(X, y):
     # EMBEDDING_SIZE].
     word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
         embedding_size=EMBEDDING_SIZE, name='words')
-    # Split sequence into list of embedding per word.
+    # Split into list of embedding per word, while removing doc length dim.
     # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-    word_list = [tf.squeeze(w, [1]) for w in tf.split(1, MAX_DOCUMENT_LENGTH, word_vectors)]
+    word_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
     # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
     cell = rnn_cell.GRUCell(EMBEDDING_SIZE)
     # Create an unrolled Recurrent Neural Networks to length of
