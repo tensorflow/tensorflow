@@ -28,8 +28,7 @@ from sklearn.utils import check_array
 from skflow.trainer import TensorFlowTrainer
 from skflow import models, data_feeder
 from skflow import preprocessing
-from skflow import io
-
+from skflow.io.pandas_io import *
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
