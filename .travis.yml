@@ -32,8 +32,8 @@ before_install:
 install:
     - source scripts/travis_install.sh
 
-after_install:
-    - codecov
-
 script: source scripts/run_tests.sh
+
+after_success:
+    - codecov
 
