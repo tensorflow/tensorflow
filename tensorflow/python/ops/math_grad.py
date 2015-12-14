@@ -173,7 +173,7 @@ def _AbsGrad(op, grad):
 def _ComplexAbsGrad(op, grad):
   x = op.inputs[0]
   zero = constant_op.constant(0, dtype=grad.dtype)
-  return math_ops.complex( grad,zero ) * math_ops.sign(x)
+  return math_ops.complex(grad, zero) * math_ops.sign(x)
 
 
 @ops.RegisterGradient("Neg")

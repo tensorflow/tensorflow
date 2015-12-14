@@ -225,8 +225,8 @@ class MatMulGradientTest(tf.test.TestCase):
 def randGauss(shape, dtype):
   """Generate a Gaussian i.i.d. numpy matrix of the given shape and type"""
   if dtype is tf.complex64:
-    return np.random.normal(size=shape).astype('float32')
-      +1j * np.random.normal(size=shape).astype('float32')
+    return (np.random.normal(size=shape).astype('float32') +
+            1j * np.random.normal(size=shape).astype('float32'))
   else:
     return np.random.normal(size=shape).astype('float32')
 
