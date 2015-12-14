@@ -12,6 +12,13 @@ def extract_pandas_data(data):
 	else:
 		raise ValueError('Data types for data must be int, float, or bool.')
 
+def extract_pandas_labels(labels):
+	if isinstance(labels, DataFrame):
+		if all(dtype.name in PANDAS_DTYPES for dtype in labels.dtypes):
+			return labels.values.astype('float')
+		else:
+			raise ValueError('Data types for labels must be int, float, or bool.')
+
 
 
 
