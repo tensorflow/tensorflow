@@ -8,4 +8,5 @@ fi
 
 if [ ${TASK} == "nosetests" ]; then
     nosetests --with-coverage --cover-erase --cover-package=skflow
+    codecov
 fi

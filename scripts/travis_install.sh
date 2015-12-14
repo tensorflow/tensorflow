@@ -26,6 +26,7 @@ if [ ${TASK} == "nosetests" ]; then
 	fi
 
 	# Install test tools
+    sudo pip install codecov
     sudo pip install coverage
 	sudo pip install nose
 
