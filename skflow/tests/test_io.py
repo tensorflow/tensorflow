@@ -15,7 +15,7 @@
 import random
 
 from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
+from sklearn.metrics import accuracy_score
 
 import tensorflow as tf
 from tensorflow.python.platform import googletest
@@ -34,6 +34,8 @@ class BaseTest(googletest.TestCase):
             classifier.fit(data, labels)
             score = accuracy_score(classifier.predict(data), labels)
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        else:
+            print("No pandas installed. test_pandas_data_classification skipped.")
 
 if __name__ == '__main__':
     tf.test.main()
