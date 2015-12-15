@@ -231,10 +231,12 @@ void QueueBase::CloseAndCancel() {
     mutex_lock lock(mu_);
     closed_ = true;
     for (Attempt& attempt : enqueue_attempts_) {
-      attempt.is_cancelled = true;
-      attempt.context->SetStatus(
-          errors::Cancelled("Enqueue operation was cancelled"));
-      callbacks.emplace_back(std::move(attempt.done_callback));
+      if (!attempt.is_cancelled) {
+        attempt.is_cancelled = true;
+        attempt.context->SetStatus(
+            errors::Cancelled("Enqueue operation was cancelled"));
+        callbacks.emplace_back(std::move(attempt.done_callback));
+      }
     }
   }
   for (const DoneCallback& callback : callbacks) {
