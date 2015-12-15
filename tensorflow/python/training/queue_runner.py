@@ -93,6 +93,11 @@ class QueueRunner(object):
     """
     return self._exceptions_raised
 
+  @property
+  def name(self):
+    """The string name of the underlying Queue."""
+    return self._queue.name
+
   # pylint: disable=broad-except
   def _run(self, sess, enqueue_op, coord=None):
     """Execute the enqueue op in a loop, close the queue in case of error.

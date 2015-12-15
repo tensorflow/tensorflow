@@ -200,6 +200,14 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertEqual(1, len(exceptions))
       self.assertTrue("Operation not in the graph" in str(exceptions[0]))
 
+  def testName(self):
+    with tf.name_scope("scope"):
+      queue = tf.FIFOQueue(10, tf.float32, name="queue")
+    qr = tf.train.QueueRunner(queue, [tf.no_op()])
+    self.assertEqual("scope/queue", qr.name)
+    tf.train.add_queue_runner(qr)
+    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS,
+                                              "scope")))
 
 if __name__ == "__main__":
   tf.test.main()

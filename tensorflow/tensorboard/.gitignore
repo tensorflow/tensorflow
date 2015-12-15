@@ -1,16 +1,25 @@
-bower_components/*
 node_modules/*
 typings/*
 build/*
 dist/tf-tensorboard-demo.html
 
+# Since bower components are stored in the same directory as
+# tensorboard components, we ignore everything under components
+# except our own components which start with tf-.
+components/*
+# This rule should always be in sync with TF_COMPONENTS_TYPESCRIPT_GLOB
+# in gulpfile.js
+!components/tf-*
+!components/index.html
+# Ignore the sample graph files since they are too large to
+# be in the repo.
 components/tf-graph/demo/tf_model_zoo/*
 
-# Js files in the graph visualizer migrated to typescript. These files
-# are produced by the compiler and should not be submitted to the repo.
+# Js files in the graph visualizer produces by the typescript
+# compiler and should not be submitted to the repo.
 components/tf-graph-common/lib/*.js
 components/tf-graph-common/lib/scene/*.js
 components/tf-event-dashboard/*.js
 components/tf-categorizer/*.js
 components/tf-dashboard-common/*.js
-components/**/test/*.js
+components/**/tf-test/*.js

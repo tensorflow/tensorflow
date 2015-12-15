@@ -13,6 +13,15 @@ RUN install/install_bazel.sh
 # Set up BAZELRC environment variable.
 ENV BAZELRC /root/.bazelrc
 
+# Install extra libraries for android sdk.
+# (see http://stackoverflow.com/questions/33427893/can-not-run-android-sdk-build-tools-23-0-2-aapt)
+RUN apt-get update && apt-get install -y \
+        lib32stdc++6 \
+        lib32z1 \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install Android SDK.
 ENV ANDROID_SDK_FILENAME android-sdk_r24.4.1-linux.tgz
 ENV ANDROID_SDK_URL http://dl.google.com/android/${ANDROID_SDK_FILENAME}

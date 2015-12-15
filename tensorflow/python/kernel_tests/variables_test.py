@@ -276,6 +276,16 @@ class VariablesTestCase(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertAllClose([1, 12], sess.run(var))
 
+  def testDevicePlacement(self):
+    with self.test_session() as sess:
+      with tf.device("/cpu:0"):
+        var = tf.Variable([1, 12])
+      init_value = var.initialized_value()
+      init_op = tf.initialize_all_variables()
+      self.assertEqual(var.op.device, init_value.device)
+      self.assertEqual(var.op.device, init_op.device)
+      sess.run(init_op)
+
 
 class IsInitializedTest(tf.test.TestCase):
 

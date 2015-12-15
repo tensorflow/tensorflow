@@ -169,13 +169,16 @@ Polymer({
     _progress: Object
   },
   _getDatasets: function() {
+    if(typeof DEMO_DIR_PREFIX === 'undefined') {
+      DEMO_DIR_PREFIX = '';
+    }
     return _.map(datasets, function(dataset) {
       var result = {
         name: dataset.name,
-        path: this.resolveUrl('tf_model_zoo/' + dataset.path)
+        path: this.resolveUrl('tf_model_zoo/' + dataset.path).replace("tf_model_zoo", DEMO_DIR_PREFIX + 'tf_model_zoo')
       };
       if (dataset.statsPath != null) {
-        result.statsPath = this.resolveUrl('tf_model_zoo/' + dataset.statsPath);
+        result.statsPath = this.resolveUrl('tf_model_zoo/' + dataset.statsPath).replace("tf_model_zoo", DEMO_DIR_PREFIX + 'tf_model_zoo');
       }
       return result;
     }, this);
