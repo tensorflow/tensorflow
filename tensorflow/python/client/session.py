@@ -360,8 +360,7 @@ class BaseSession(SessionInterface):
               raise ValueError(
                   'Cannot feed value of shape %r for Tensor %r, '
                   'which has shape %r'
-                  % (np_val.shape, subfeed_t.name,
-                     tuple(subfeed_t.get_shape().dims)))
+                  % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
           feed_dict_string[compat.as_bytes(subfeed_t.name)] = np_val
 
     # Run request and get response.

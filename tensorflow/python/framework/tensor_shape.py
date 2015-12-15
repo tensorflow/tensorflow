@@ -424,6 +424,16 @@ class TensorShape(object):
   def __repr__(self):
     return "TensorShape(%s)" % self._dims
 
+  def __str__(self):
+    if self.ndims is None:
+      return "<unknown>"
+    elif self.ndims == 1:
+      length = self._dims[0].value
+      return "(%s,)" % (str(length) if length is not None else "?")
+    else:
+      return "(%s)" % ", ".join(str(d.value) if d.value is not None else "?"
+                                for d in self._dims)
+
   @property
   def dims(self):
     """Returns a list of Dimensions, or None if the shape is unspecified."""
