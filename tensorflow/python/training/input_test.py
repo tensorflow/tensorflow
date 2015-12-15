@@ -364,14 +364,14 @@ class BatchJoinTest(tf.test.TestCase):
 
   def testTwoThreads(self):
     with self.test_session() as sess:
-      # Two threads, the first generates (0..34, "a").
-      num_a = 35
+      # Two threads, the first generates (0..69, "a").
+      num_a = 70
       zero64 = tf.constant(0, dtype=tf.int64)
       examples = tf.Variable(zero64)
       counter = examples.count_up_to(num_a)
 
-      # The second generates (99, "b") 45 times and then stops.
-      num_b = 45
+      # The second generates (99, "b") 90 times and then stops.
+      num_b = 90
       ninety_nine = tf.train.limit_epochs(
           tf.constant(99, dtype=tf.int64), num_b)
 
