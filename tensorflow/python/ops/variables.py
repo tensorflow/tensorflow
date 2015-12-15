@@ -320,7 +320,8 @@ class Variable(object):
     """
     with ops.control_dependencies(None):
       with ops.control_dependencies([self._initializer_op]):
-        return array_ops.identity(self._variable)
+        with ops.device(self._variable.device):
+          return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
