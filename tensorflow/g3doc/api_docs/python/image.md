@@ -782,7 +782,7 @@ corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
 
 - - -
 
-### `tf.image.convert_image_dtype(image, dtype, name=None)` {#convert_image_dtype}
+### `tf.image.convert_image_dtype(image, dtype, saturate=False, name=None)` {#convert_image_dtype}
 
 Convert `image` to `dtype`, scaling its values if needed.
 
@@ -794,15 +794,19 @@ positive representable number for the data type.
 This op converts between data types, scaling the values appropriately before
 casting.
 
-Note that for floating point inputs, this op expects values to lie in [0,1).
-Conversion of an image containing values outside that range may lead to
-overflow errors when converted to integer `Dtype`s.
+Note that converting from floating point inputs to integer types may lead to
+over/underflow problems. Set saturate to `True` to avoid such problem in
+problematic conversions. Saturation will clip the output into the allowed
+range before performing a potentially dangerous cast (i.e. when casting from
+a floating point to an integer type, or when casting from an signed to an
+unsigned type).
 
 ##### Args:
 
 
 *  <b>`image`</b>: An image.
 *  <b>`dtype`</b>: A `DType` to convert `image` to.
+*  <b>`saturate`</b>: If `True`, clip the input before casting (if necessary).
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -824,29 +828,30 @@ type and representation (RGB or HSV).
 
 - - -
 
-### `tf.image.adjust_brightness(image, delta, min_value=None, max_value=None)` {#adjust_brightness}
+### `tf.image.adjust_brightness(image, delta)` {#adjust_brightness}
 
 Adjust the brightness of RGB or Grayscale images.
 
-The value `delta` is added to all components of the tensor `image`. `image`
-and `delta` are cast to `float` before adding, and the resulting values are
-clamped to `[min_value, max_value]`. Finally, the result is cast back to
-`images.dtype`.
+This is a convenience method that converts an RGB image to float
+representation, adjusts its brightness, and then converts it back to the
+original data type. If several adjustments are chained it is advisable to
+minimize the number of redundant conversions.
 
-If `min_value` or `max_value` are not given, they are set to the minimum and
-maximum allowed values for `image.dtype` respectively.
+The value `delta` is added to all components of the tensor `image`. Both
+`image` and `delta` are converted to `float` before adding (and `image` is
+scaled appropriately if it is in fixed-point representation). For regular
+images, `delta` should be in the range `[0,1)`, as it is added to the image in
+floating point representation, where pixel values are in the `[0,1)` range.
 
 ##### Args:
 
 
 *  <b>`image`</b>: A tensor.
 *  <b>`delta`</b>: A scalar. Amount to add to the pixel values.
-*  <b>`min_value`</b>: Minimum value for output.
-*  <b>`max_value`</b>: Maximum value for output.
 
 ##### Returns:
 
-  A tensor of the same shape and type as `image`.
+  A brightness-adjusted tensor of the same shape and type as `image`.
 
 
 - - -
@@ -858,14 +863,10 @@ Adjust the brightness of images by a random factor.
 Equivalent to `adjust_brightness()` using a `delta` randomly picked in the
 interval `[-max_delta, max_delta)`.
 
-Note that `delta` is picked as a float. Because for integer type images,
-the brightness adjusted result is rounded before casting, integer images may
-have modifications in the range `[-max_delta,max_delta]`.
-
 ##### Args:
 
 
-*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`.
+*  <b>`image`</b>: An image.
 *  <b>`max_delta`</b>: float, must be non-negative.
 *  <b>`seed`</b>: A Python integer. Used to create a random seed. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
@@ -873,7 +874,7 @@ have modifications in the range `[-max_delta,max_delta]`.
 
 ##### Returns:
 
-  3-D tensor of images of shape `[height, width, channels]`
+  The brightness-adjusted image.
 
 ##### Raises:
 
@@ -884,9 +885,14 @@ have modifications in the range `[-max_delta,max_delta]`.
 
 - - -
 
-### `tf.image.adjust_contrast(images, contrast_factor, min_value=None, max_value=None)` {#adjust_contrast}
+### `tf.image.adjust_contrast(images, contrast_factor)` {#adjust_contrast}
 
 Adjust contrast of RGB or grayscale images.
+
+This is a convenience method that converts an RGB image to float
+representation, adjusts its contrast, and then converts it back to the
+original data type. If several adjustments are chained it is advisable to
+minimize the number of redundant conversions.
 
 `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
 interpreted as `[height, width, channels]`.  The other dimensions only
@@ -894,33 +900,19 @@ represent a collection of images, such as `[batch, height, width, channels].`
 
 Contrast is adjusted independently for each channel of each image.
 
-For each channel, this Op first computes the mean of the image pixels in the
+For each channel, this Op computes the mean of the image pixels in the
 channel and then adjusts each component `x` of each pixel to
 `(x - mean) * contrast_factor + mean`.
-
-The adjusted values are then clipped to fit in the `[min_value, max_value]`
-interval. If `min_value` or `max_value` is not given, it is replaced with the
-minimum and maximum values for the data type of `images` respectively.
-
-The contrast-adjusted image is always computed as `float`, and it is
-cast back to its original type after clipping.
 
 ##### Args:
 
 
 *  <b>`images`</b>: Images to adjust.  At least 3-D.
 *  <b>`contrast_factor`</b>: A float multiplier for adjusting contrast.
-*  <b>`min_value`</b>: Minimum value for clipping the adjusted pixels.
-*  <b>`max_value`</b>: Maximum value for clipping the adjusted pixels.
 
 ##### Returns:
 
   The constrast-adjusted image or images.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the arguments are invalid.
 
 
 - - -
@@ -935,7 +927,7 @@ picked in the interval `[lower, upper]`.
 ##### Args:
 
 
-*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`.
+*  <b>`image`</b>: An image tensor with 3 or more dimensions.
 *  <b>`lower`</b>: float.  Lower bound for the random contrast factor.
 *  <b>`upper`</b>: float.  Upper bound for the random contrast factor.
 *  <b>`seed`</b>: A Python integer. Used to create a random seed. See
@@ -944,7 +936,7 @@ picked in the interval `[lower, upper]`.
 
 ##### Returns:
 
-  3-D tensor of shape `[height, width, channels]`.
+  The contrast-adjusted tensor.
 
 ##### Raises:
 
@@ -1103,5 +1095,28 @@ Note that this implementation is limited:
 
 
 *  <b>`ValueError`</b>: if the shape of 'image' is incompatible with this function.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.image.saturate_cast(image, dtype)` {#saturate_cast}
+
+Performs a safe cast of image data to `dtype`.
+
+This function casts the data in image to `dtype`, without applying any
+scaling. If there is a danger that image data would over or underflow in the
+cast, this op applies the appropriate clamping before the cast.
+
+##### Args:
+
+
+*  <b>`image`</b>: An image to cast to a different data type.
+*  <b>`dtype`</b>: A `DType` to cast `image` to.
+
+##### Returns:
+
+  `image`, safely cast to `dtype`.
 
 

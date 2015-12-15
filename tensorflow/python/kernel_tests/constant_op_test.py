@@ -545,6 +545,19 @@ class PlaceholderTest(tf.test.TestCase):
       with self.assertRaisesOpError(r"Shape \[-1,10\] has negative dimensions"):
         s.eval()
 
+  def testTensorStr(self):
+    a = tf.placeholder(tf.float32, name="a")
+    self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
+
+    b = tf.placeholder(tf.int32, shape=(32, 40), name="b")
+    self.assertEqual(
+        "<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>",
+        repr(b))
+
+    c = tf.placeholder(tf.qint32, shape=(32, None, 2), name="c")
+    self.assertEqual(
+        "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>",
+        repr(c))
 
 if __name__ == "__main__":
   tf.test.main()

@@ -38,12 +38,14 @@ from the TensorBoard server. Here is an example:
 {
   "train_run": {
     "histograms": ["foo_histogram", "bar_histogram"],
+    "compressedHistograms": ["foo_histogram", "bar_histogram"],
     "scalars": ["xent", "loss", "learning_rate"],
     "images": ["input"],
     "graph": true
   },
   "eval": {
     "histograms": ["foo_histogram", "bar_histogram"],
+    "compressedHistograms": ["foo_histogram", "bar_histogram"],
     "scalars": ["precision", "recall"],
     "images": ["input"],
     "graph": false

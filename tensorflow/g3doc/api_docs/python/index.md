@@ -229,6 +229,7 @@
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
+  * [`saturate_cast`](../../api_docs/python/image.md#saturate_cast)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:

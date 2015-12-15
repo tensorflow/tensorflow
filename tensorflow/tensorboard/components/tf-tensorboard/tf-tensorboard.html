@@ -1,4 +1,5 @@
 <link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/paper-tabs/paper-tabs.html">
 <link rel="import" href="../../bower_components/paper-toolbar/paper-toolbar.html">
 <link rel="import" href="../../bower_components/paper-button/paper-button.html">
 <link rel="import" href="../../bower_components/paper-header-panel/paper-header-panel.html">
@@ -18,35 +19,13 @@ allows the user to toggle between various dashboards.
     <paper-header-panel>
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
-          <div class="toolbar-title">
-            TensorBoard
-          </div>
-          <div class="right-buttons">
-            <paper-button
-              class="link-button"
-              on-click="chooseEvents"
-              active$="[[eventDashboard(mode)]]"
-              noink
-            >Events</paper-button>
-            <paper-button
-              class="link-button"
-              on-click="chooseImages"
-              active$="[[imageDashboard(mode)]]"
-              noink
-            >Images</paper-button>
-            <paper-button
-              class="link-button"
-              on-click="chooseGraphs"
-              active$="[[graphDashboard(mode)]]"
-              noink
-            >Graph</paper-button>
-            <paper-button
-              class="link-button"
-              on-click="chooseHistograms"
-              active$="[[histogramDashboard(mode)]]"
-              noink
-            >Histograms</paper-button>
-          </div>
+          <div class="toolbar-title">TensorBoard</div>
+          <paper-tabs selected="0" noink class="tabs">
+            <paper-tab on-click="chooseEvents">Events</paper-tab>
+            <paper-tab on-click="chooseImages">Images</paper-tab>
+            <paper-tab on-click="chooseGraphs">Graph</paper-tab>
+            <paper-tab on-click="chooseHistograms">Histograms</paper-tab>
+          </paper-tabs>
         </div>
       </paper-toolbar>
       <div id="content" class="fit">
@@ -70,9 +49,11 @@ allows the user to toggle between various dashboards.
     <style>
       #toolbar {
         background-color: var(--tb-orange-strong);
+        -webkit-font-smoothing: antialiased;
       }
       #toolbar-content {
         width: 100%;
+        height: 100%;
         display: flex;
         flex-direction: row;
         justify-content: space-between;
@@ -82,15 +63,15 @@ allows the user to toggle between various dashboards.
         font-size: 20px;
         margin-left: 6px;
         text-rendering: optimizeLegibility;
+        letter-spacing: -0.025em;
       }
       #content {
         height: 100%;
       }
-      .link-button {
-        height: 30px;
-      }
-      [active] {
-        font-weight: bold;
+      .tabs {
+        width: 400px;
+        text-transform: uppercase;
+        height: 100%;
       }
       :host {
         height: 100%;

@@ -463,6 +463,9 @@ given necessary bazel new feature support.
 We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
 dependencies, and installing python dependencies using easy_install or pip.
 
+Of course you can also install Swig from source without using homebrew. In that
+case, be sure to install its dependency [PCRE](from www.pcre.org) and not PCRE2.
+
 #### Dependencies
 
 Follow instructions [here](http://bazel.io/docs/install.html) to install the
@@ -627,6 +630,15 @@ $ sudo easy_install -U six
 * Install a separate copy of Python via [Homebrew](http://brew.sh/) or
 [MacPorts](https://www.macports.org/) and re-install TensorFlow in that
 copy of Python.
+
+### Mac OS X: OSError: [Errno 1] Operation not permitted:
+
+On El Capitan, "six" is a special package that can't be modified, and this
+error is reported when "pip install" tried to modify this package. To fix use
+"ignore_installed" flag, ie
+
+sudo pip install --ignore-installed six https://storage.googleapis.com/....
+
 
 ### Mac OS X: TypeError: `__init__()` got an unexpected keyword argument 'syntax'
 

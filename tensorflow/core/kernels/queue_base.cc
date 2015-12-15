@@ -204,15 +204,17 @@ void QueueBase::Cancel(Action action, CancellationToken token) {
 
     for (Attempt& attempt : *attempts) {
       if (attempt.cancellation_token == token) {
-        attempt.is_cancelled = true;
-        if (action == kEnqueue) {
-          attempt.context->SetStatus(
-              errors::Cancelled("Enqueue operation was cancelled"));
-        } else {
-          attempt.context->SetStatus(
-              errors::Cancelled("Dequeue operation was cancelled"));
+        if (!attempt.is_cancelled) {
+          attempt.is_cancelled = true;
+          if (action == kEnqueue) {
+            attempt.context->SetStatus(
+                errors::Cancelled("Enqueue operation was cancelled"));
+          } else {
+            attempt.context->SetStatus(
+                errors::Cancelled("Dequeue operation was cancelled"));
+          }
+          std::swap(callback, attempt.done_callback);
         }
-        std::swap(callback, attempt.done_callback);
         break;
       }
     }
@@ -229,10 +231,12 @@ void QueueBase::CloseAndCancel() {
     mutex_lock lock(mu_);
     closed_ = true;
     for (Attempt& attempt : enqueue_attempts_) {
-      attempt.is_cancelled = true;
-      attempt.context->SetStatus(
-          errors::Cancelled("Enqueue operation was cancelled"));
-      callbacks.emplace_back(std::move(attempt.done_callback));
+      if (!attempt.is_cancelled) {
+        attempt.is_cancelled = true;
+        attempt.context->SetStatus(
+            errors::Cancelled("Enqueue operation was cancelled"));
+        callbacks.emplace_back(std::move(attempt.done_callback));
+      }
     }
   }
   for (const DoneCallback& callback : callbacks) {

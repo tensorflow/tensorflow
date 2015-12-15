@@ -41,7 +41,8 @@
     "paper-toggle-button": "PolymerElements/paper-toggle-button#1.0.11",
     "paper-toolbar": "PolymerElements/paper-toolbar#1.0.4",
     "plottable": "1.16.2",
-    "polymer": "1.1.5"
+    "polymer": "1.1.5",
+    "paper-tabs": "PolymerElements/paper-tabs#1.0"
   },
   "devDependencies": {
     "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",

@@ -2,9 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
+package(default_visibility = ["//tensorflow:internal"])
 
 package_group(name = "friends")
 
@@ -313,6 +311,10 @@ cc_library(
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
     linkopts = ["-lm"],
+    visibility = [
+        ":friends",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":test",
         "//tensorflow/core/platform/default/build_config:test_main",

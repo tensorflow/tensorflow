@@ -1308,6 +1308,13 @@ depending on whether or not a `Coordinator` was passed to
   was captured.  (No exceptions are captured when using a Coordinator.)
 
 
+- - -
+
+#### `tf.train.QueueRunner.name` {#QueueRunner.name}
+
+The string name of the underlying Queue.
+
+
 
 - - -
 
