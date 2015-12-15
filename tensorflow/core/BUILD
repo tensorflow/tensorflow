@@ -310,6 +310,10 @@ cc_library(
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
     linkopts = ["-lm"],
+    visibility = [
+        ":friends",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":test",
         "//tensorflow/core/platform/default/build_config:test_main",
