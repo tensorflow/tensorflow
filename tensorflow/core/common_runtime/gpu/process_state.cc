@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/port.h"
 
 #if defined(PLATFORM_GOOGLE)
+// TODO(vrv): Remove these flags and add them as options to config.proto
+//#include "base/commandlineflags.h"
 DEFINE_bool(record_mem_types, false,
             "If true, record attributes of memory allocations and "
             "dyanmically check for appropriate use of registered memory."
