@@ -52,3 +52,5 @@ for i in range(1000):
 correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 print(accuracy.eval({x: mnist.test.images, y_: mnist.test.labels}))
+
+sess.close()
