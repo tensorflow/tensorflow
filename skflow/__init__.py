@@ -49,15 +49,17 @@ class TensorFlowEstimator(BaseEstimator):
             model will be continuely trained on every call of fit.
         log_device_placement: Whether to print out device placement information. (default: True)
         num_cores: Number of cores to be used. (default: 4)
+        verbose: Controls the verbosity. If set to 0, the algorithm is muted.
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 log_device_placement=True, num_cores=4):
+                 log_device_placement=True, num_cores=4, verbose=1):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
         self.steps = steps
+        self.verbose = verbose
         self.optimizer = optimizer
         self.learning_rate = learning_rate
         self.tf_random_seed = tf_random_seed
@@ -167,7 +169,8 @@ class TensorFlowEstimator(BaseEstimator):
         self._trainer.train(self._session,
                             self._data_feeder.get_feed_dict_fn(
                                 self._inp, self._out),
-                            self.steps)
+                            self.steps,
+                            verbose=self.verbose)
         return self
 
     def partial_fit(self, X, y):
