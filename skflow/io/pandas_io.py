@@ -1,6 +1,6 @@
 """Methods to allow pandas.DataFrame."""
 try:
-    from pandas import DataFrame
+    from pandas import DataFrame, Series
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
@@ -21,7 +21,7 @@ def extract_pandas_data(data):
 
 def extract_pandas_labels(labels):
     """Extract data from pandas.DataFrame for labels"""
-    if isinstance(labels, DataFrame):
+    if isinstance(labels, DataFrame): # pandas.Series also belongs to DataFrame
         if len(labels.columns) > 1:
             raise ValueError('Only one column for labels is allowed.')
 

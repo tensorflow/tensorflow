@@ -24,7 +24,7 @@ from skflow.io import *
 import skflow
 
 class BaseTest(googletest.TestCase):
-    def test_pandas_data_classification(self):
+    def test_pandas_dataframe(self):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
@@ -35,7 +35,20 @@ class BaseTest(googletest.TestCase):
             score = accuracy_score(classifier.predict(data), labels)
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
         else:
-            print("No pandas installed. test_pandas_data_classification skipped.")
+            print("No pandas installed. test_pandas_dataframe skipped.")
+
+    def test_pandas_series(self):
+        if HAS_PANDAS:
+            random.seed(42)
+            iris = datasets.load_iris()
+            data = DataFrame(iris.data)
+            labels = Series(iris.target)
+            classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
+            classifier.fit(data, labels)
+            score = accuracy_score(classifier.predict(data), labels)
+            self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        else:
+            print("No pandas installed. test_pandas_series skipped.")
 
 if __name__ == '__main__':
     tf.test.main()
