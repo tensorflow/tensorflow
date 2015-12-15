@@ -1,6 +1,7 @@
 """Methods to allow pandas.DataFrame."""
+# pylint: disable=unused-import
 try:
-    from pandas import DataFrame
+    import pandas as pd
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
@@ -11,7 +12,7 @@ PANDAS_DTYPES = {'int8': 'int', 'int16': 'int', 'int32': 'int', 'int64': 'int',\
 
 def extract_pandas_data(data):
     """Extract data from pandas.DataFrame for predictors"""
-    if not isinstance(data, DataFrame):
+    if not isinstance(data, pd.DataFrame):
         return data
 
     if all(dtype.name in PANDAS_DTYPES for dtype in data.dtypes):
@@ -21,7 +22,7 @@ def extract_pandas_data(data):
 
 def extract_pandas_labels(labels):
     """Extract data from pandas.DataFrame for labels"""
-    if isinstance(labels, DataFrame):
+    if isinstance(labels, pd.DataFrame): # pandas.Series also belongs to DataFrame
         if len(labels.columns) > 1:
             raise ValueError('Only one column for labels is allowed.')
 
