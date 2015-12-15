@@ -628,6 +628,15 @@ $ sudo easy_install -U six
 [MacPorts](https://www.macports.org/) and re-install TensorFlow in that
 copy of Python.
 
+### Mac OS X: OSError: [Errno 1] Operation not permitted:
+
+On El Capitan, "six" is a special package that can't be modified, and this
+error is reported when "pip install" tried to modify this package. To fix use
+"ignore_installed" flag, ie
+
+sudo pip install --ignore-installed six https://storage.googleapis.com/....
+
+
 ### Mac OS X: TypeError: `__init__()` got an unexpected keyword argument 'syntax'
 
 On Mac OS X, you may encounter the following when importing tensorflow.
