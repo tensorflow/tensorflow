@@ -28,8 +28,8 @@ class BaseTest(googletest.TestCase):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
-            data = DataFrame(iris.data)
-            labels = DataFrame(iris.target)
+            data = pd.DataFrame(iris.data)
+            labels = pd.DataFrame(iris.target)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
             score = accuracy_score(classifier.predict(data), labels)
@@ -41,8 +41,8 @@ class BaseTest(googletest.TestCase):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
-            data = DataFrame(iris.data)
-            labels = Series(iris.target)
+            data = pd.DataFrame(iris.data)
+            labels = pd.Series(iris.target)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
             score = accuracy_score(classifier.predict(data), labels)
