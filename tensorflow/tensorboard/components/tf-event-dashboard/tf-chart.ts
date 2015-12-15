@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 /// <reference path="../../typings/tsd.d.ts" />
-/// <reference path="../../bower_components/plottable/plottable.d.ts" />
+/// <reference path="../plottable/plottable.d.ts" />
 
 module TF {
   type TFDatum = [number, number, number];
