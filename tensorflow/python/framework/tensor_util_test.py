@@ -412,5 +412,26 @@ class ConstantValueTest(test_util.TensorFlowTestCase):
     c_val = tensor_util.ConstantValue(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
+  def testConcat(self):
+    np_val = np.random.rand(3, 4, 7).astype(np.float32)
+    tf_val = array_ops.concat(
+        0, [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]])
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertAllClose(np_val, c_val)
+
+    tf_val = array_ops.concat(
+        array_ops.placeholder(dtypes.int32),
+        [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]])
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertIs(None, c_val)
+
+    tf_val = array_ops.concat(
+        1,
+        [np_val[0, :, :], array_ops.placeholder(dtypes.float32),
+         np_val[2, :, :]])
+    c_val = tensor_util.ConstantValue(tf_val)
+    self.assertIs(None, c_val)
+
+
 if __name__ == "__main__":
   googletest.main()

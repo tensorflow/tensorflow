@@ -555,5 +555,16 @@ def ConstantValue(tensor):
       return None
     cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
     return pre_cast.astype(cast_dtype.as_numpy_dtype)
+  elif tensor.op.type == "Concat":
+    dim = ConstantValue(tensor.op.inputs[0])
+    if dim is None:
+      return None
+    values = []
+    for x in tensor.op.inputs[1:]:
+      value = ConstantValue(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.concatenate(values, axis=dim)
   else:
     return None
