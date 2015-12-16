@@ -221,6 +221,20 @@ class BaseSession(SessionInterface):
            lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
        lambda feed, feed_val: list(zip(
            [feed.indices, feed.values, feed.shape], feed_val))),
+      # IndexedSlices are fetched as IndexedSlicesValues or
+      # IndexedSlicesWithoutDenseShapeValues. They can be fed
+      # IndexedSlicesValues or IndexedSlicesWithoutDenseShapeValues or normal
+      # tuples.
+      (ops.IndexedSlices,
+       lambda fetch: (
+           [fetch.values, fetch.indices] if fetch.dense_shape is None
+           else [fetch.values, fetch.indices, fetch.dense_shape],
+           lambda fetched_vals:
+             ops.IndexedSlicesValue(*fetched_vals) if len(fetched_vals) == 3
+             else ops.IndexedSlicesWithoutDenseShapeValue(*fetched_vals)),
+       lambda feed, feed_val: list(zip(
+           [feed.values, feed.indices] if feed.dense_shape is None
+           else [feed.values, feed.indices, feed.dense_shape], feed_val))),
       # The default catches all types and performs no expansions.
       (object,
        lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
