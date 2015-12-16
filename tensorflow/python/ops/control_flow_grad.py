@@ -33,17 +33,23 @@ def _SwitchGrad(op, *grad):
   if isinstance(ctxt, WhileContext):
     merge_op = ctxt.switch_map.get(op)
     if merge_op:
+      # This is the second time this Switch is visited. Update the second
+      # input to the Merge.
       merge_op._update_input(1, next_iteration(grad[1]))
       return None, None
     else:
-      merge_op = merge(grad, name="b_switch")[0]
+      # This is the first time this Switch is visited. grad[1] is empty
+      # at this point. Use grad[0] for both inputs to merge, but update
+      # the second input of merge when we see this Switch the second time.
+      merge_op = merge([grad[0], grad[0]], name="b_switch")[0]
       ctxt.switch_map[op] = merge_op.op
       return merge_op, None
   elif isinstance(ctxt, CondContext):
     good_grad = grad[ctxt.branch]
     zero_grad = grad[1 - ctxt.branch]
-    zero_grad = switch(zero_grad, ctxt.pred, name="grad_0")[1 - ctxt.branch]
-    return merge([good_grad, zero_grad], name="switch_grad")[0], None
+    dtype = good_grad.dtype
+    zero_grad = switch(zero_grad, ctxt.pred, dtype=dtype)[1 - ctxt.branch]
+    return merge([good_grad, zero_grad], name="cond_grad")[0], None
   else:
     false_grad = switch(grad[0], op.inputs[1])[0]
     true_grad = switch(grad[1], op.inputs[1])[1]
@@ -66,7 +72,7 @@ def _MergeGrad(op, grad, _):
     grad_ctxt = ctxt.grad_context
     return switch(grad, grad_ctxt.pivot)
   elif isinstance(ctxt, CondContext):
-    return switch(grad, ctxt.pred, name="merge_grad")
+    return switch(grad, ctxt.pred, name="cond_grad")
   else:
     num_inputs = len(op.inputs)
     cond = [math_ops.equal(op.outputs[1], i) for i in xrange(num_inputs)]

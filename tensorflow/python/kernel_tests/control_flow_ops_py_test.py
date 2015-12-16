@@ -83,7 +83,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       v = tf.Variable(7)
 
-      enter_v = control_flow_ops._Enter(v, "foo_1")
+      enter_v = control_flow_ops._Enter(v, "foo_1", is_constant=True)
       nine = tf.constant(9)
       enter_nine = control_flow_ops.enter(nine, "foo_1")
       op = tf.assign(enter_v, enter_nine)
@@ -269,21 +269,6 @@ class ControlFlowTest(tf.test.TestCase):
       enter_false = control_flow_ops.enter(false, "foo_1", False)
       enter_n = control_flow_ops.enter(n, "foo_1", False)
 
-      merge_n = control_flow_ops.merge([enter_n], name="merge_n")[0]
-      switch_n = control_flow_ops.switch(merge_n, enter_false)
-      exit_n = control_flow_ops.exit(switch_n[0])
-
-      result = exit_n.eval()
-    self.assertAllEqual(10, result)
-
-  def testLoop_false_1(self):
-    with self.test_session():
-      false = tf.convert_to_tensor(False)
-      n = tf.constant(10)
-
-      enter_false = control_flow_ops.enter(false, "foo_1", False)
-      enter_n = control_flow_ops.enter(n, "foo_1", False)
-
       merge_n = control_flow_ops.merge([enter_n, enter_n], name="merge_n")[0]
       switch_n = control_flow_ops.switch(merge_n, enter_false)
       exit_n = control_flow_ops.exit(switch_n[0])
@@ -295,32 +280,54 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testLoop_1(self):
     with self.test_session():
-      zero = tf.convert_to_tensor(0)
-      one = tf.convert_to_tensor(1)
+      zero = tf.constant(0)
+      one = tf.constant(1)
       n = tf.constant(10)
 
-      enter_zero = control_flow_ops.enter(zero, "foo_1", False)
-      enter_one = control_flow_ops.enter(one, "foo_1", False)
-      enter_n = control_flow_ops.enter(n, "foo_1", False)
-      merge_zero = control_flow_ops.merge([enter_zero, enter_zero],
-                                          name="merge_zero")[0]
-      merge_one = control_flow_ops.merge([enter_one, enter_one],
-                                         name="merge_one")[0]
-      merge_n = control_flow_ops.merge([enter_n, enter_n], name="merge_n")[0]
-      less_op = tf.less(merge_n, merge_n)
-      cond_op = control_flow_ops.loop_cond(less_op)
-      switch_zero = control_flow_ops.switch(merge_zero, cond_op)
-      switch_one = control_flow_ops.switch(merge_one, cond_op)
-      switch_n = control_flow_ops.switch(merge_n, cond_op)
-      next_zero = control_flow_ops.next_iteration(switch_zero[1])
-      next_one = control_flow_ops.next_iteration(switch_one[1])
-      next_n = control_flow_ops.next_iteration(switch_n[1])
-      merge_zero.op._update_input(1, next_zero)
-      merge_one.op._update_input(1, next_one)
-      merge_n.op._update_input(1, next_n)
-      exit_n = control_flow_ops.exit(switch_n[0])
+      enter_i = control_flow_ops.enter(zero, "foo", False)
+      enter_one = control_flow_ops.enter(one, "foo", True)
+      enter_n = control_flow_ops.enter(n, "foo", True)
 
-      result = exit_n.eval()
+      with tf.device("/gpu:0"):
+        merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
+
+      less_op = tf.less(merge_i, enter_n)
+      cond_op = control_flow_ops.loop_cond(less_op)
+      switch_i = control_flow_ops.switch(merge_i, cond_op)
+
+      add_i = tf.add(switch_i[1], enter_one)
+
+      next_i = control_flow_ops.next_iteration(add_i)
+      merge_i.op._update_input(1, next_i)
+
+      exit_i = control_flow_ops.exit(switch_i[0])
+      result = exit_i.eval()
+    self.assertAllEqual(10, result)
+
+  def testLoop_2(self):
+    with self.test_session():
+      zero = tf.constant(0)
+      one = tf.constant(1)
+      n = tf.constant(10)
+
+      enter_i = control_flow_ops.enter(zero, "foo", False)
+      enter_one = control_flow_ops.enter(one, "foo", True)
+      enter_n = control_flow_ops.enter(n, "foo", True)
+
+      merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
+
+      less_op = tf.less(merge_i, enter_n)
+      cond_op = control_flow_ops.loop_cond(less_op)
+      switch_i = control_flow_ops.switch(merge_i, cond_op)
+
+      add_i = tf.add(switch_i[1], enter_one)
+
+      with tf.device("/gpu:0"):
+        next_i = control_flow_ops.next_iteration(add_i)
+      merge_i.op._update_input(1, next_i)
+
+      exit_i = control_flow_ops.exit(switch_i[0])
+      result = exit_i.eval()
     self.assertAllEqual(10, result)
 
   def testCondIndexedSlices(self):
