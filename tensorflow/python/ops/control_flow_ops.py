@@ -571,18 +571,20 @@ class CondContext(ControlFlowContext):
       if not isinstance(r, list) and not isinstance(r, _basetuple):
         r = [r]
       for v in r:
+        real_v = v
         if isinstance(v, ops.Operation):
-          v = with_dependencies([v], self._pivot)
+          real_v = with_dependencies([v], self._pivot)
         elif v.name not in self._values:
           self._values.add(v.name)
           if self._outer_context is not None:
-            v = self._outer_context.AddValue(v)
-          v = _SwitchRefOrTensor(v, self._pred)[self._branch]
+            real_v = self._outer_context.AddValue(v)
+          real_v = _SwitchRefOrTensor(real_v, self._pred)[self._branch]
+          self._external_values[v.name] = real_v
         else:
           external_v = self._external_values.get(v.name)
           if external_v is not None:
-            v = external_v
-        result.append(v)
+            real_v = external_v
+        result.append(real_v)
     return result
 
 

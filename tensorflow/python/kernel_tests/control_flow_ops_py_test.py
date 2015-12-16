@@ -445,6 +445,17 @@ class ControlFlowTest(tf.test.TestCase):
       result = r.eval()
       self.assertAllEqual(np.array([7]), result)
 
+  def testCond_7(self):
+    with self.test_session() as sess:
+      x = tf.constant(10)
+      y = tf.constant(200)
+      pred = tf.less(1, 2)
+      fn1 = lambda: [tf.add(x, 1), tf.add(x, 2)]
+      fn2 = lambda: [y, y]
+      r = control_flow_ops.cond(pred, fn1, fn2)
+
+      self.assertAllEqual([11, 12], sess.run(r))
+
   def testCondGrad_1(self):
     with self.test_session():
       x = tf.constant(10.0, name="x")
@@ -1364,6 +1375,7 @@ class TupleTest(tf.test.TestCase):
       t.eval()
 
       self.assertEquals(1, var.eval())
+
 
 if __name__ == "__main__":
   tf.test.main()
