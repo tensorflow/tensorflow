@@ -324,10 +324,10 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
   src_info.iter_level = 0;
 
   string frame_name;
-  std::deque<const Node*> ready;
+  std::deque<Node*> ready;
   ready.push_back(src_node);
   while (!ready.empty()) {
-    const Node* curr_node = ready.front();
+    Node* curr_node = ready.front();
     ready.pop_front();
     const ControlFlowInfo& curr_info = (*info)[curr_node->id()];
     const Node* frame = curr_info.frame;
@@ -335,16 +335,49 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
     frame_name = curr_info.frame_name;
     int iter_level = curr_info.iter_level;
 
+    // Force colocation for control flow nodes. This may reduce the number
+    // of devices involved in a loop.
+    // TODO(yuanbyu): In this case, we don't respect the requested device in
+    // the GraphDef for these nodes. Ideally, the placer would enforce the
+    // colocation to render this unnecessary.
     if (IsExit(curr_node)) {
+      // Exit to the parent frame.
       const ControlFlowInfo& parent_info = (*info)[parent->id()];
       frame = parent_info.frame;
       parent = parent_info.parent_frame;
       frame_name = parent_info.frame_name;
       iter_level = parent_info.iter_level;
+      for (const Edge* in_edge : curr_node->in_edges()) {
+        if (!in_edge->IsControlEdge()) {
+          // Colocate with upstream node.
+          curr_node->set_assigned_device_name(
+              in_edge->src()->assigned_device_name());
+          break;
+        }
+      }
+    } else {
+      if ((IsEnter(curr_node) && !IsRefType(curr_node->input_type(0))) ||
+          IsNextIteration(curr_node)) {
+        const Edge* data_edge = nullptr;
+        for (const Edge* out_edge : curr_node->out_edges()) {
+          if (!out_edge->IsControlEdge()) {
+            if (data_edge) {
+              data_edge = nullptr;
+              break;
+            }
+            data_edge = out_edge;
+          }
+        }
+        // Colocate if there is only one downstream data node.
+        if (data_edge) {
+          curr_node->set_assigned_device_name(
+              data_edge->dst()->assigned_device_name());
+        }
+      }
     }
 
     for (const Edge* out_edge : curr_node->out_edges()) {
-      const Node* out = out_edge->dst();
+      Node* out = out_edge->dst();
       int out_id = out->id();
       ControlFlowInfo* out_info = &(*info)[out_id];
       const Node* out_parent = out_info->parent_frame;
