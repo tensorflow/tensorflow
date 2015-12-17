@@ -25,6 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Number of examples to precalculate.
+const int kPrecalc = 3000;
+// Number of words to read into a sentence before processing.
+const int kSentenceSize = 1000;
+
 class SkipgramOp : public OpKernel {
  public:
   explicit SkipgramOp(OpKernelConstruction* ctx)
@@ -41,6 +46,10 @@ class SkipgramOp : public OpKernel {
     example_pos_ = corpus_size_;
     label_pos_ = corpus_size_;
     label_limit_ = corpus_size_;
+    sentence_index_ = kSentenceSize;
+    for (int i = 0; i < kPrecalc; ++i) {
+      NextExample(&precalc_examples_[i].input, &precalc_examples_[i].label);
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -54,7 +63,16 @@ class SkipgramOp : public OpKernel {
     {
       mutex_lock l(mu_);
       for (int i = 0; i < batch_size_; ++i) {
-        NextExample(&Texamples(i), &Tlabels(i));
+        Texamples(i) = precalc_examples_[precalc_index_].input;
+        Tlabels(i) = precalc_examples_[precalc_index_].label;
+        precalc_index_++;
+        if (precalc_index_ >= kPrecalc) {
+          precalc_index_ = 0;
+          for (int j = 0; j < kPrecalc; ++j) {
+            NextExample(&precalc_examples_[j].input,
+                        &precalc_examples_[j].label);
+          }
+        }
       }
       words_per_epoch.scalar<int64>()() = corpus_size_;
       current_epoch.scalar<int32>()() = current_epoch_;
@@ -70,6 +88,11 @@ class SkipgramOp : public OpKernel {
   }
 
  private:
+  struct Example {
+    int32 input;
+    int32 label;
+  };
+
   int32 batch_size_ = 0;
   int32 window_size_ = 5;
   float subsample_ = 1e-3;
@@ -79,6 +102,10 @@ class SkipgramOp : public OpKernel {
   Tensor freq_;
   int32 corpus_size_ = 0;
   std::vector<int32> corpus_;
+  std::vector<Example> precalc_examples_;
+  int precalc_index_ = 0;
+  std::vector<int32> sentence_;
+  int sentence_index_ = 0;
 
   mutex mu_;
   random::PhiloxRandom philox_ GUARDED_BY(mu_);
@@ -96,32 +123,41 @@ class SkipgramOp : public OpKernel {
   void NextExample(int32* example, int32* label) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     while (true) {
       if (label_pos_ >= label_limit_) {
-        if (example_pos_ + 1 >= corpus_size_) {
-          ++current_epoch_;
-          example_pos_ = 0;
-        } else {
-          ++example_pos_;
-        }
         ++total_words_processed_;
-        int32 word_freq = freq_.flat<int32>()(corpus_[example_pos_]);
-        if (subsample_ > 0) {
-          // See Eq. 5 in http://arxiv.org/abs/1310.4546
-          float keep_prob =
-              (std::sqrt(word_freq / (subsample_ * corpus_size_)) + 1) *
-              (subsample_ * corpus_size_) / word_freq;
-          if (rng_.RandFloat() > keep_prob) continue;
+        ++sentence_index_;
+        if (sentence_index_ >= kSentenceSize) {
+          sentence_index_ = 0;
+          for (int i = 0; i < kSentenceSize; ++i, ++example_pos_) {
+            if (example_pos_ >= corpus_size_) {
+              ++current_epoch_;
+              example_pos_ = 0;
+            }
+            if (subsample_ > 0) {
+              int32 word_freq = freq_.flat<int32>()(corpus_[example_pos_]);
+              // See Eq. 5 in http://arxiv.org/abs/1310.4546
+              float keep_prob =
+                  (std::sqrt(word_freq / (subsample_ * corpus_size_)) + 1) *
+                  (subsample_ * corpus_size_) / word_freq;
+              if (rng_.RandFloat() > keep_prob) {
+                i--;
+                continue;
+              }
+            }
+            sentence_[i] = corpus_[example_pos_];
+          }
         }
         const int32 skip = 1 + rng_.Uniform(window_size_);
-        label_pos_ = std::max<int32>(0, example_pos_ - skip);
-        label_limit_ = std::min<int32>(corpus_size_, example_pos_ + skip + 1);
+        label_pos_ = std::max<int32>(0, sentence_index_ - skip);
+        label_limit_ =
+            std::min<int32>(kSentenceSize, sentence_index_ + skip + 1);
       }
-      if (example_pos_ != label_pos_) {
+      if (sentence_index_ != label_pos_) {
         break;
       }
       ++label_pos_;
     }
-    *example = corpus_[example_pos_];
-    *label = corpus_[label_pos_++];
+    *example = sentence_[sentence_index_];
+    *label = sentence_[label_pos_++];
   }
 
   Status Init(Env* env, const string& filename) {
@@ -179,6 +215,8 @@ class SkipgramOp : public OpKernel {
     while (RE2::Consume(&input, kWord, &w)) {
       corpus_.push_back(gtl::FindWithDefault(word_id, w, kUnkId));
     }
+    precalc_examples_.resize(kPrecalc);
+    sentence_.resize(kSentenceSize);
     return Status::OK();
   }
 };
