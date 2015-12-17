@@ -35,9 +35,9 @@ Properties out:
         </div>
       </template>
       <template is="dom-if" if="[[!xValue]]">
-        <div id="tooltip-help" class="tooltip-container">
-          Selected Runs:
-        </div>
+        <h3 id="tooltip-help" class="tooltip-container">
+          Selected Runs
+        </h3>
       </template>
     </div>
     <tf-multi-checkbox
@@ -78,7 +78,6 @@ Properties out:
         height: 0px; /* hackhack So the flex-grow takes over and gives it space */
       }
       .x-button {
-        width: calc(50% - .9em);
         font-size: 14px;
         background-color: var(--paper-grey-500);
         margin-top: 5px;
@@ -94,6 +93,16 @@ Properties out:
       }
       .x-tooltip-value {
         align-self: flex-end;
+      }
+      #tooltip-help {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
+      }
+      paper-button {
+        margin-left: 0;
       }
     </style>
   </template>

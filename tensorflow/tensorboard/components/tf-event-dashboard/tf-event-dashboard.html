@@ -75,32 +75,35 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <tf-categorizer
-          id="categorizer"
-          tags="[[_visibleTags]]"
-          categories="{{categories}}"
-        ></tf-categorizer>
-        <span id="download-option">
-          Show Data Download Links:
-          <paper-toggle-button checked="{{_show_download_links}}"></paper-toggle-button>
-        </span>
-
-        <tf-x-type-selector
-          id="xTypeSelector"
-          out-x-type="{{xType}}"
-        ></tf-x-type-selector>
-
-        <tf-run-selector
-          id="runSelector"
-          runs="[[_runs]]"
-          class-scale="[[classScale]]"
-          out-selected="{{selectedRuns}}"
-          tooltips="[[tooltipMap]]"
-          closest-run="[[closestRun]]"
-          x-value="[[tooltipXValue]]"
-          x-type="[[xType]]"
-        ></tf-run-selector>
-
+        <div class="sidebar-section">
+          <tf-categorizer
+            id="categorizer"
+            tags="[[_visibleTags]]"
+            categories="{{categories}}"
+          ></tf-categorizer>
+          <paper-checkbox
+            id="download-option"
+            checked$="{{_show_download_links}}"
+          >Data download links</paper-checkbox>
+        </div>
+        <div class="sidebar-section">
+          <tf-x-type-selector
+            id="xTypeSelector"
+            out-x-type="{{xType}}"
+          ></tf-x-type-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-run-selector
+            id="runSelector"
+            runs="[[_runs]]"
+            class-scale="[[classScale]]"
+            out-selected="{{selectedRuns}}"
+            tooltips="[[tooltipMap]]"
+            closest-run="[[closestRun]]"
+            x-value="[[tooltipXValue]]"
+            x-type="[[xType]]"
+          ></tf-run-selector>
+        </div>
       </div>
       <div class="center">
         <template is="dom-if" if="[[!categories.length]]">

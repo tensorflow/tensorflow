@@ -81,17 +81,26 @@
         flex-grow: 1;
       }
 
-      #download-option {
-        padding-left: 55px;
-        color: var(--paper-grey-700);
+      .sidebar-section {
+        border-top: solid 1px rgba(0, 0, 0, 0.12);
+        padding: 20px 30px;
+      }
+
+      .sidebar-section:first-child {
+        border: none;
+      }
+
+      .sidebar-section:last-child {
+        flex-grow: 1;
+        display: flex;
+      }
+
+      paper-checkbox {
+        --paper-checkbox-checked-color: var(--paper-grey-700);
+        --paper-checkbox-unchecked-color: var(--paper-grey-700);
         font-size: 14px;
       }
 
-      #download-option paper-toggle-button {
-        --paper-toggle-button-checked-button-color: var(--tb-orange-strong);
-        --paper-toggle-button-checked-bar-color: var(--tb-orange-weak);
-
-      }
     </style>
   </template>
 </dom-module>
