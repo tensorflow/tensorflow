@@ -63,7 +63,8 @@ class OpRegistry : public OpRegistryInterface {
   // Calls func() and registers the returned OpDef.  Since Register()
   // is normally called during program initialization (before main()),
   // we defer calling func() until the first call to LookUp() or
-  // Export().
+  // Export() (if one of those has already been called, func() is
+  // called immediately).
   void Register(std::function<OpDef(void)> func);
 
   const OpDef* LookUp(const string& op_type_name,
@@ -120,16 +121,20 @@ class OpRegistry : public OpRegistryInterface {
 // For details, see the OpDefBuilder class in op_def_builder.h.
 
 namespace register_op {
-// To call OpRegistry::Global()->Register(...), used by the
-// REGISTER_OP macro below.
-OpDefBuilder& RegisterOp(StringPiece name);
+struct OpDefBuilderReceiver {
+  // To call OpRegistry::Global()->Register(...), used by the
+  // REGISTER_OP macro below.
+  // Note: This is an implicitly converting constructor.
+  OpDefBuilderReceiver(
+      const OpDefBuilder& builder);  // NOLINT(runtime/explicit)
+};
 }  // namespace register_op
 
 #define REGISTER_OP(name) REGISTER_OP_UNIQ_HELPER(__COUNTER__, name)
 #define REGISTER_OP_UNIQ_HELPER(ctr, name) REGISTER_OP_UNIQ(ctr, name)
-#define REGISTER_OP_UNIQ(ctr, name)                                         \
-  static ::tensorflow::OpDefBuilder& register_op##ctr TF_ATTRIBUTE_UNUSED = \
-      ::tensorflow::register_op::RegisterOp(name)
+#define REGISTER_OP_UNIQ(ctr, name)                                       \
+  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
+      TF_ATTRIBUTE_UNUSED = ::tensorflow::OpDefBuilder(name)
 
 }  // namespace tensorflow
 
