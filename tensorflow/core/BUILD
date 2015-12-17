@@ -796,10 +796,6 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = [
-        "platform/google/cord_coding.h",
-        "platform/google/mutex.h",
-        "platform/google/stream_executor_util.h",
-        "platform/google/tracing_impl.h",
         "//tensorflow/core:android_core_ops",
         "//tensorflow/core:android_extended_ops",
         "//tensorflow/core:android_srcs",
