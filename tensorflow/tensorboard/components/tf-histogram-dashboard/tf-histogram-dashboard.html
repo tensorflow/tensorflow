@@ -1,4 +1,4 @@
-<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-event-dashboard/tf-data-coordinator.html">
 <link rel="import" href="../tf-event-dashboard/tf-tooltip-coordinator.html">
 <link rel="import" href="../tf-event-dashboard/tf-run-selector.html">
@@ -12,8 +12,8 @@
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
 <link rel="import" href="../tf-event-dashboard/tf-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
-<link rel="import" href="../../bower_components/iron-collapse/iron-collapse.html">
-<link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../tf-imports/lodash.html">
 
 <!--
@@ -72,29 +72,31 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
 
     <tf-dashboard-layout>
       <div class="sidebar">
-
-        <tf-categorizer
-          id="categorizer"
-          tags="[[_visibleTags]]"
-          categories="{{categories}}"
-        ></tf-categorizer>
-
-        <tf-x-type-selector
-          id="xTypeSelector"
-          out-x-type="{{xType}}"
-        ></tf-x-type-selector>
-
-        <tf-run-selector
-          id="runSelector"
-          runs="[[_runs]]"
-          class-scale="[[classScale]]"
-          out-selected="{{selectedRuns}}"
-          tooltips="[[tooltipMap]]"
-          closest-run="[[closestRun]]"
-          x-value="[[tooltipXValue]]"
-          x-type="[[xType]]"
-        ></tf-run-selector>
-
+        <div class="sidebar-section">
+          <tf-categorizer
+            id="categorizer"
+            tags="[[_visibleTags]]"
+            categories="{{categories}}"
+          ></tf-categorizer>
+        </div>
+        <div class="sidebar-section">
+          <tf-x-type-selector
+            id="xTypeSelector"
+            out-x-type="{{xType}}"
+          ></tf-x-type-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-run-selector
+            id="runSelector"
+            runs="[[_runs]]"
+            class-scale="[[classScale]]"
+            out-selected="{{selectedRuns}}"
+            tooltips="[[tooltipMap]]"
+            closest-run="[[closestRun]]"
+            x-value="[[tooltipXValue]]"
+            x-type="[[xType]]"
+          ></tf-run-selector>
+          </div>
       </div>
 
       <div class="center">
