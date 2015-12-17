@@ -30,20 +30,3 @@ rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
 # Enable bazel auto completion.
 echo "source /usr/local/lib/bazel/bin/bazel-complete.bash" >> ~/.bashrc
-
-# Running bazel inside a `docker build` command causes trouble, cf:
-#   https://github.com/bazelbuild/bazel/issues/134
-# The easiest solution is to set up a bazelrc file forcing --batch.
-echo "startup --batch" >>/root/.bazelrc
-# Similarly, we need to workaround sandboxing issues:
-#   https://github.com/bazelbuild/bazel/issues/418
-echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
-    >>/root/.bazelrc
-# Force bazel output to use colors (good for jenkins).
-echo "common --color=yes" >>/root/.bazelrc
-# Configure tests - increase timeout, print errors and timeout warnings
-echo "test" \
-    " --test_timeout=3600" \
-    " --test_output=errors" \
-    " --test_verbose_timeout_warnings" \
-    >>/root/.bazelrc
