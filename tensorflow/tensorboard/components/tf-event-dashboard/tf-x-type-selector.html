@@ -1,5 +1,5 @@
-<link rel="import" href="../../bower_components/polymer/polymer.html">
-<link rel="import" href="../../bower_components/paper-button/paper-button.html">
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <!--
@@ -9,7 +9,7 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
 <dom-module id="tf-x-type-selector">
   <template>
     <div id="buttons">
-      <p>X Type: </p>
+      <h3>Horizontal Axis</h3>
       <paper-button
         class="x-button selected"
         id="step"
@@ -35,11 +35,15 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
     </div>
     <style>
       .x-button {
-        width: 29%;
+        width: 30%;
         font-size: 14px;
         background-color: var(--paper-grey-500);
         margin-top: 5px;
         color: white;
+      }
+
+      .x-button:first-of-type {
+        margin-left: 0;
       }
 
       .x-button.selected {
@@ -47,9 +51,12 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
         background-color: var(--tb-orange-strong) !important;
       }
 
-      #buttons p {
+      #buttons h3 {
         color: var(--paper-grey-800);
         margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
       }
     </style>
   </template>

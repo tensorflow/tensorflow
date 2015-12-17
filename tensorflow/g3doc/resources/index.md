@@ -4,7 +4,7 @@
 ## TensorFlow WhitePaper
 
 Additional details about the TensorFlow programming model and the underlying
-implementation can be found in out white paper:
+implementation can be found in our white paper:
 
 * [TensorFlow: Large-scale machine learning on heterogeneous systems](http://download.tensorflow.org/paper/whitepaper2015.pdf)
 
