@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -50,13 +49,13 @@ def assign_moving_average(variable, value, decay, name=None):
     An Operation that updates 'variable' with the newly computed
     moving average.
   """
-  with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as name:
+  with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as scope:
     with ops.device(variable.device):
       decay = ops.convert_to_tensor(1.0 - decay, name="decay")
       if decay.dtype != variable.dtype.base_dtype:
         decay = math_ops.cast(decay, variable.dtype.base_dtype)
       return state_ops.assign_sub(variable, (variable - value) * decay,
-                                  name=name)
+                                  name=scope)
 
 
 class ExponentialMovingAverage(object):
