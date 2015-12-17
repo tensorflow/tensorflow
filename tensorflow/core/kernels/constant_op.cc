@@ -153,13 +153,12 @@ class FillOp : public OpKernel {
                   errors::InvalidArgument("dims[", i, "] = ", dims(i),
                                           " must be nonnegative."));
     }
+    TensorShape shape;
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                reinterpret_cast<const int32*>(dims.data()),
+                                dims.size(), &shape));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShapeUtils::MakeShape(
-                   reinterpret_cast<const int32*>(dims.data()), dims.size()),
-            &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;
     functor(context->eigen_device<Device>(), out->flat<T>(),
             Tvalue.scalar<T>());

@@ -32,6 +32,8 @@ class Dimension(object):
       self._value = None
     else:
       self._value = int(value)
+      if self._value < 0:
+        raise ValueError("Dimension %d must be >= 0" % self._value)
 
   def __repr__(self):
     return "Dimension(%s)" % repr(self._value)

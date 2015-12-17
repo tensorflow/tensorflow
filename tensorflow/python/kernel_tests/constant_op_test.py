@@ -465,6 +465,19 @@ class FillTest(tf.test.TestCase):
       tf_ans = tf.fill([2, 3], np_ans[0][0], name="fill").eval()
     self.assertAllEqual(np_ans, tf_ans)
 
+  def testFillNegative(self):
+    with self.test_session():
+      for shape in (-1,), (2, -1), (-1, 2):
+        with self.assertRaises(ValueError):
+          tf.fill(shape, 7)
+
+      # Using a placeholder so this won't be caught in Python.
+      dims = tf.placeholder(tf.int32)
+      fill_t = tf.fill(dims, 3.0)
+      for shape in (-1,), (2, -1), (-1, 2):
+        with self.assertRaises(tf.errors.InvalidArgumentError):
+          fill_t.eval({dims: shape})
+
   def testShapeFunctionEdgeCases(self):
     # Non-vector dimensions.
     with self.assertRaises(ValueError):
@@ -531,19 +544,9 @@ class PlaceholderTest(tf.test.TestCase):
       d = tf.mul(p, c)
       self.assertEqual(10, d.eval(feed_dict={p: 2}))
 
-  def testFillNegative(self):
-    with self.test_session():
-      for shape in (-1,), (2, -1), (-1, 2):
-        with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                     " must be nonnegative"):
-          tf.fill(shape, 7).eval()
-
   def testBadShape(self):
-    with self.test_session():
-      a = tf.placeholder(tf.float32, shape=(-1, 10))
-      s = tf.shape(a)
-      with self.assertRaisesOpError(r"Shape \[-1,10\] has negative dimensions"):
-        s.eval()
+    with self.assertRaises(ValueError):
+      tf.placeholder(tf.float32, shape=(-1, 10))
 
   def testTensorStr(self):
     a = tf.placeholder(tf.float32, name="a")
