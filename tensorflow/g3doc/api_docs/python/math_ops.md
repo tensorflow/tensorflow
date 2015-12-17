@@ -1092,7 +1092,7 @@ tensor with a single element is returned.
 For example:
 
 ```python
-# 'x' is [[1, 1, 1]]
+# 'x' is [[1, 1, 1]
 #         [1, 1, 1]]
 tf.reduce_sum(x) ==> 6
 tf.reduce_sum(x, 0) ==> [2, 2, 2]
@@ -1216,7 +1216,7 @@ tensor with a single element is returned.
 For example:
 
 ```python
-# 'x' is [[1., 1. ]]
+# 'x' is [[1., 1.]
 #         [2., 2.]]
 tf.reduce_mean(x) ==> 1.5
 tf.reduce_mean(x, 0) ==> [1.5, 1.5]
@@ -1254,7 +1254,7 @@ tensor with a single element is returned.
 For example:
 
 ```python
-# 'x' is [[True,  True]]
+# 'x' is [[True,  True]
 #         [False, False]]
 tf.reduce_all(x) ==> False
 tf.reduce_all(x, 0) ==> [False, False]
@@ -1292,7 +1292,7 @@ tensor with a single element is returned.
 For example:
 
 ```python
-# 'x' is [[True,  True]]
+# 'x' is [[True,  True]
 #         [False, False]]
 tf.reduce_any(x) ==> True
 tf.reduce_any(x, 0) ==> [True, True]

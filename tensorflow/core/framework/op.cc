@@ -135,16 +135,12 @@ OpRegistry* OpRegistry::Global() {
 }
 
 namespace register_op {
-OpDefBuilder& RegisterOp(StringPiece name) {
-  VLOG(1) << "RegisterOp: " << name;
-  OpDefBuilder* b = new OpDefBuilder(name);
-  OpRegistry::Global()->Register([b]() -> ::tensorflow::OpDef {
+OpDefBuilderReceiver::OpDefBuilderReceiver(const OpDefBuilder& builder) {
+  OpRegistry::Global()->Register([builder]() {
     OpDef op_def;
-    TF_QCHECK_OK(b->Finalize(&op_def));
-    delete b;
+    TF_QCHECK_OK(builder.Finalize(&op_def));
     return op_def;
   });
-  return *b;
 }
 }  // namespace register_op
 

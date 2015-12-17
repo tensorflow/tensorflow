@@ -648,7 +648,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrase of an image by a random factor.
+  """Adjust the contrast of an image by a random factor.
 
   Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.

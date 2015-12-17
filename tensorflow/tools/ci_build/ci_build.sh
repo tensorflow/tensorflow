@@ -67,8 +67,15 @@ docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
 echo "Running '${COMMAND[@]}' inside ${BUILD_TAG}.${CONTAINER_TYPE}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
-    -v ${WORKSPACE}/bazel-ci_build-cache:/root/.cache \
+    -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
+    -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
+    -e "CI_BUILD_USER=${USER}" \
+    -e "CI_BUILD_UID=$(id -u $USER)" \
+    -e "CI_BUILD_GROUP=$(id -g --name $USER)" \
+    -e "CI_BUILD_GID=$(id -g $USER)" \
     -v ${WORKSPACE}:/tensorflow \
     -w /tensorflow \
     ${BUILD_TAG}.${CONTAINER_TYPE} \
-    "tensorflow/tools/ci_build/builds/configured" "${CONTAINER_TYPE}" "${COMMAND[@]}"
+    "tensorflow/tools/ci_build/builds/with_the_same_user" \
+        "tensorflow/tools/ci_build/builds/configured" \
+        "${CONTAINER_TYPE}" "${COMMAND[@]}"

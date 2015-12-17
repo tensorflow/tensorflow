@@ -919,7 +919,7 @@ channel and then adjusts each component `x` of each pixel to
 
 ### `tf.image.random_contrast(image, lower, upper, seed=None)` {#random_contrast}
 
-Adjust the contrase of an image by a random factor.
+Adjust the contrast of an image by a random factor.
 
 Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
 picked in the interval `[lower, upper]`.

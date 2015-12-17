@@ -165,9 +165,11 @@ ops.NoGradient("Fill")
 
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
-  return [
-      ops.IndexedSlices(grad, op.inputs[1], array_ops.shape(op.inputs[0])), None
-  ]
+  values_shape = array_ops.concat(0, [[-1], array_ops.shape(op.inputs[0])[1:]])
+  values = array_ops.reshape(grad, values_shape)
+  indices = array_ops.reshape(op.inputs[1], [-1])
+  return [ops.IndexedSlices(values, indices, array_ops.shape(op.inputs[0])),
+          None]
 
 
 @ops.RegisterGradient("Identity")

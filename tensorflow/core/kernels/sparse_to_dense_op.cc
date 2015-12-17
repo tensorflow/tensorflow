@@ -81,11 +81,12 @@ class SparseToDense : public OpKernel {
                 errors::InvalidArgument("default_value should be a scalar."));
 
     auto output_shape_vec = output_shape.flat<Index>();
+    TensorShape output_tensor_shape;
+    OP_REQUIRES_OK(c, TensorShapeUtils::MakeShape(output_shape_vec.data(),
+                                                  output_shape_vec.size(),
+                                                  &output_tensor_shape));
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShapeUtils::MakeShape(
-                                                output_shape_vec.data(),
-                                                output_shape_vec.size()),
-                                         &output));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_tensor_shape, &output));
 
     TensorShape ix_shape({num_elems, num_dims});
     Tensor indices_shaped(DT_INT64, ix_shape);

@@ -1,0 +1,14 @@
+# Running bazel inside a `docker build` command causes trouble, cf:
+#   https://github.com/bazelbuild/bazel/issues/134
+# The easiest solution is to set up a bazelrc file forcing --batch.
+startup --batch
+
+# Similarly, we need to workaround sandboxing issues:
+#   https://github.com/bazelbuild/bazel/issues/418
+build --spawn_strategy=standalone --genrule_strategy=standalone
+
+# Force bazel output to use colors (good for jenkins) and print useful errors.
+common --color=yes --verbose_failures
+
+# Configure tests - increase timeout, print errors and timeout warnings
+test --test_timeout=3600 --test_output=errors --test_verbose_timeout_warnings
