@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import sys
 import threading
 import time
@@ -88,6 +89,17 @@ class Coordinator(object):
     ...exception that was passed to coord.request_stop()
   ```
 
+  To make thread implementatoin easier to write, the Coordinator provides a
+  context handler `stop_on_exception()` that automatically requests a stop if
+  an exception is raised.  Using the context handler the thread code above
+  can be written as:
+
+  ```python
+  with coord.stop_on_exception():
+    while not coord.should_stop():
+      ...do some work...
+  ```
+
   #### Grace period for stopping:
 
   After a thread has called `coord.request_stop()` the other threads have a
@@ -151,6 +163,44 @@ class Coordinator(object):
       True if a stop was requested.
     """
     return self._stop_event.is_set()
+
+  @contextlib.contextmanager
+  def stop_on_exception(self):
+    """Context manager to request stop when an Exception is raised.
+
+    Code that uses a coordinator must catch exceptions and pass
+    them to the `request_stop()` method to stop the other threads
+    managed by the coordinator.
+
+    This context handler simplifies the exception handling.
+    Use it as follows:
+
+    ```python
+    with coord.stop_on_exception():
+      # Any exception raised in the body of the with
+      # clause is reported to the coordinator before terminating
+      # the execution of the body.
+      ...body...
+    ```
+
+    This is completely equivalent to the slightly longer code:
+
+    ```python
+    try:
+      ...body...
+    exception Exception, ex:
+      coord.request_stop(ex)
+    ```
+
+    Yields:
+      nothing.
+    """
+    # pylint: disable=broad-except
+    try:
+      yield
+    except Exception, ex:
+      self.request_stop(ex)
+    # pylint: enable=broad-except
 
   def wait_for_stop(self, timeout=None):
     """Wait till the Coordinator is told to stop.
