@@ -46,3 +46,6 @@ RUN cd /opt && \
     ./${ANDROID_NDK_FILENAME} -o/opt && \
     rm ${ANDROID_NDK_FILENAME} && \
     bash -c 'ln -s /opt/android-ndk-* /opt/android-ndk'
+
+# Make android ndk executable to all users.
+RUN chmod -R a+rx /opt
