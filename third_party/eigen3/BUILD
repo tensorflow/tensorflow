@@ -6,6 +6,7 @@ cc_library(
         "Eigen/Core",
         "Eigen/LU",
         "Eigen/Cholesky",
+        "Eigen/Eigenvalues",
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",
