@@ -6,7 +6,7 @@ cc_library(
         "Eigen/Core",
         "Eigen/LU",
         "Eigen/Cholesky",
-        "unsupported/Eigen/CXX11/FixedPoint/Tensor",
+        "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",
         "unsupported/Eigen/CXX11/NeuralNetworks",
