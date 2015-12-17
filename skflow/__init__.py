@@ -49,12 +49,15 @@ class TensorFlowEstimator(BaseEstimator):
             model will be continuely trained on every call of fit.
         log_device_placement: Whether to print out device placement information. (default: True)
         num_cores: Number of cores to be used. (default: 4)
-        verbose: Controls the verbosity. If set to 0, the algorithm is muted.
+        verbose: Controls the verbosity, possible values:
+                 0: the algorithm and debug information is muted.
+                 1: trainer prints the progress.
+                 2: log device placement is printed.
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 log_device_placement=True, num_cores=4, verbose=1):
+                 num_cores=4, verbose=1):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -65,7 +68,6 @@ class TensorFlowEstimator(BaseEstimator):
         self.tf_random_seed = tf_random_seed
         self.model_fn = model_fn
         self.continue_training = continue_training
-        self.log_device_placement = log_device_placement
         self.num_cores = num_cores
         self._initialized = False
 
@@ -114,7 +116,7 @@ class TensorFlowEstimator(BaseEstimator):
                                               self._global_step, self.optimizer, self.learning_rate)
             self._session = tf.Session(self.tf_master,
                                        config=tf.ConfigProto(
-                                           log_device_placement=self.log_device_placement,
+                                           log_device_placement=self.verbose > 1,
                                            inter_op_parallelism_threads=self.num_cores,
                                            intra_op_parallelism_threads=self.num_cores))
 
@@ -242,26 +244,30 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow Linear Regression model."""
 
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False,
+                 verbose=1):
         super(TensorFlowLinearRegressor, self).__init__(
             model_fn=models.linear_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training)
+            continue_training=continue_training,
+            verbose=verbose)
 
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
 
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False):
+                 learning_rate=0.1, tf_random_seed=42, continue_training=False,
+                 verbose=1):
         super(TensorFlowLinearClassifier, self).__init__(
             model_fn=models.logistic_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training)
+            continue_training=continue_training,
+            verbose=verbose)
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor
@@ -288,7 +294,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
-                 tf_random_seed=42, continue_training=False):
+                 tf_random_seed=42, continue_training=False,
+                 verbose=1):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.logistic_regression)
         super(TensorFlowDNNClassifier, self).__init__(
@@ -296,7 +303,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training)
+            continue_training=continue_training,
+            verbose=verbose)
 
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
@@ -318,7 +326,8 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
-                 tf_random_seed=42, continue_training=False):
+                 tf_random_seed=42, continue_training=False,
+                 verbose=1):
         model_fn = models.get_dnn_model(hidden_units,
                                         models.linear_regression)
         super(TensorFlowDNNRegressor, self).__init__(
@@ -326,4 +335,5 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training)
+            continue_training=continue_training,
+            verbose=verbose)
