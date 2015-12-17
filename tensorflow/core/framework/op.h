@@ -63,8 +63,7 @@ class OpRegistry : public OpRegistryInterface {
   // Calls func() and registers the returned OpDef.  Since Register()
   // is normally called during program initialization (before main()),
   // we defer calling func() until the first call to LookUp() or
-  // Export() (if one of those has already been called, func() is
-  // called immediately).
+  // Export().
   void Register(std::function<OpDef(void)> func);
 
   const OpDef* LookUp(const string& op_type_name,

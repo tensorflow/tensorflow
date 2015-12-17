@@ -36,9 +36,7 @@ OpRegistry::OpRegistry() : initialized_(false) {}
 void OpRegistry::Register(std::function<OpDef(void)> func) {
   mutex_lock lock(mu_);
   if (initialized_) {
-    OpDef def = func();
-    TF_QCHECK_OK(RegisterAlreadyLocked(def)) << "Attempting to register: "
-                                             << SummarizeOpDef(def);
+    LOG(QFATAL) << "Attempting to register an Op after initialization.";
   } else {
     deferred_.push_back(func);
   }
