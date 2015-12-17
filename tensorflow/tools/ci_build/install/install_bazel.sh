@@ -23,7 +23,6 @@ BAZEL_VERSION="0.1.1"
 mkdir /bazel
 cd /bazel
 curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
-curl -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE.txt
 chmod +x /bazel/bazel-*.sh
 /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
