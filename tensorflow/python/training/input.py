@@ -73,7 +73,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.op_scope([tensor], name, "limit_epochs") as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    epochs = variables.Variable(zero64, name="epochs")
+    epochs = variables.Variable(zero64, name="epochs", trainable=False)
     counter = epochs.count_up_to(num_epochs)
     with ops.control_dependencies([counter]):
       return array_ops.identity(tensor, name=name)
