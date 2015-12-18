@@ -130,9 +130,30 @@ def my_model(X, y):
     	return skflow.models.logistic_regression(layers, y)
 ```
 
-## Coming soon
+### Saving / Restoring models
 
-* Easy way to handle categorical variables
-* Text categorization
-* Images (CNNs)
-* More & deeper
+Each estimator has a `save` method which takes folder path where all model information will be saved. 
+For restoring you can just call `skflow.TensorFlowEstimator.restore(path)` and it will return object of your class.
+
+Some example code:
+
+```Python
+import skflow
+
+classifier = skflow.TensorFlowLinearRegression()
+classifier.fit(...)
+classifier.save('/tmp/tf_examples/my_model_1/')
+
+new_classifier = TensorFlowEstimator.restore('/tmp/tf_examples/my_model_2')
+new_classifier.predict(...)
+```
+
+## More examples
+
+See examples folder for:
+
+* Easy way to handle categorical variables - words are just an example of categorical variable.
+* Text Classification - see examples for RNN, CNN on word and characters.
+* Images (CNNs) - see example for digit recognition. 
+* More & deeper - different examples showing DNNs and CNNs
+
