@@ -40,6 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+#if !defined(EIGEN_HAS_INDEX_LIST)
 template <typename Device>
 struct Constants {
   // Derive Index type. int (32-bit) or long (64-bit) depending on the
@@ -58,9 +59,10 @@ struct Constants {
   }
 };
 
-#if defined(EIGEN_HAS_INDEX_LIST)
-template <>
-struct Constants<CPUDevice> {
+#else
+
+template <typename Device>
+struct Constants {
   const Eigen::IndexList<Eigen::type2index<0>> kZero;
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
   const Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2>> kZeroTwo;
