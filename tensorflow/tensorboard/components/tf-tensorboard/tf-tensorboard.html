@@ -47,10 +47,17 @@ allows the user to toggle between various dashboards.
       </div>
     </paper-header-panel>
     <style>
+      :host {
+        height: 100%;
+        display: block;
+        background-color: var(--paper-grey-100);
+      }
+
       #toolbar {
         background-color: var(--tb-orange-strong);
         -webkit-font-smoothing: antialiased;
       }
+
       #toolbar-content {
         width: 100%;
         height: 100%;
@@ -59,27 +66,29 @@ allows the user to toggle between various dashboards.
         justify-content: space-between;
         align-items: center;
       }
+
       .toolbar-title {
         font-size: 20px;
         margin-left: 10px;
         text-rendering: optimizeLegibility;
         letter-spacing: -0.025em;
+        font-weight: 500;
       }
+
       #content {
         height: 100%;
       }
+
       .tabs {
         width: 400px;
         text-transform: uppercase;
         height: 100%;
       }
+
       paper-tabs {
         --paper-tabs-selection-bar-color: white;
       }
-      :host {
-        height: 100%;
-        display: block;
-      }
+
     </style>
   </template>
   <script>
