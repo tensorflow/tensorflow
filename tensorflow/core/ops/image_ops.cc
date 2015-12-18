@@ -22,7 +22,7 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Doc(R"doc(
 Resize `images` to `size` using area interpolation.
 
@@ -40,7 +40,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Doc(R"doc(
 Resize `images` to `size` using bicubic interpolation.
 
@@ -58,7 +58,7 @@ REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Doc(R"doc(
 Resize `images` to `size` using bilinear interpolation.
 
@@ -93,7 +93,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Doc(R"doc(
 Resize `images` to `size` using nearest neighbor interpolation.
 
