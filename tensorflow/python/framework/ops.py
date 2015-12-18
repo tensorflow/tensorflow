@@ -3132,6 +3132,9 @@ class GraphKeys(object):
   QUEUE_RUNNERS = "queue_runners"
   # Key to collect table initializers.
   TABLE_INITIALIZERS = "table_initializer"
+  # Key to collect asset filepaths. An asset represents an external resource
+  # like a vocabulary file.
+  ASSET_FILEPATHS = "asset_filepaths"
 
 
 def add_to_collection(name, value):
