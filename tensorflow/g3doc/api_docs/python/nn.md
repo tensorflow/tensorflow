@@ -465,7 +465,7 @@ Performs the max pooling on the input.
 
 
 *  <b>`value`</b>: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
-    type `float32`, `float64`, `qint8`, `quint8`, `qint32`.
+    type `tf.float32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.  The size of the window for
     each dimension of the input tensor.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
@@ -475,7 +475,7 @@ Performs the max pooling on the input.
 
 ##### Returns:
 
-  A `Tensor` with the same type as `value`.  The max pooled output tensor.
+  A `Tensor` with type `tf.float32`.  The max pooled output tensor.
 
 
 - - -
