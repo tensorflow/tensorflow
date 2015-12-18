@@ -948,7 +948,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                          pre_transformed_in_backprop.template flat<T>().size());
 
       static int64 ConvolveBackwardDataScratchSize = GetCudnnWorkspaceLimit(
-          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
           );
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
@@ -1243,7 +1243,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                          transformed_input.template flat<T>().size());
 
       static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
-          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
           );
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);
