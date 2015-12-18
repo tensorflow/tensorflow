@@ -172,8 +172,8 @@ from tensorflow.python.ops import random_ops
 
 
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.attention_ops import *
 from tensorflow.python.ops.gen_image_ops import *
-from tensorflow.python.ops.gen_attention_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient('RandomCrop')

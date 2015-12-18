@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for tensorflow.ops.attention_ops."""
+"""Tests for tensorflow.python.ops.attention_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,8 +22,6 @@ from __future__ import print_function
 import tensorflow.python.platform
 
 import tensorflow as tf
-
-from tensorflow.python.ops import attention_ops
 
 
 class ExtractGlimpseTest(tf.test.TestCase):
@@ -82,9 +80,9 @@ class ExtractGlimpseTest(tf.test.TestCase):
     t1 = tf.constant([glimpse_sizes[1], glimpse_sizes[0]], shape=[2])
     t2 = tf.constant([offsets[1], offsets[0]], shape=[1, 2])
     glimpse_rows = (tf.transpose(
-        attention_ops.extract_glimpse(t_rows_4d, t1, t2), [0, 2, 1, 3]))
+        tf.image.extract_glimpse(t_rows_4d, t1, t2), [0, 2, 1, 3]))
     glimpse_cols = (tf.transpose(
-        attention_ops.extract_glimpse(t_cols_4d, t1, t2), [0, 2, 1, 3]))
+        tf.image.extract_glimpse(t_cols_4d, t1, t2), [0, 2, 1, 3]))
 
     # Evaluate the Tensorflow Graph.
     with self.test_session() as sess:
