@@ -22,11 +22,15 @@ import datetime
 import numpy as np
 import tensorflow as tf
 
+from google.protobuf import text_format
+
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from sklearn.utils import check_array
+from sklearn.utils.validation import NotFittedError
 
 from skflow.trainer import TensorFlowTrainer
-from skflow import models, data_feeder
+from skflow import models
+from skflow import data_feeder
 from skflow import preprocessing
 from skflow import ops
 from skflow.io import *
@@ -113,8 +117,14 @@ class TensorFlowEstimator(BaseEstimator):
                 self._inp, self._out)
 
             # Create trainer and augment graph with gradients and optimizer.
+            # Additionally creates initialization ops.
             self._trainer = TensorFlowTrainer(self._model_loss,
                                               self._global_step, self.optimizer, self.learning_rate)
+
+            # Create model's saver capturing all the nodes created up until now.
+            self._saver = tf.train.Saver()
+
+            # Create session to run model with.
             self._session = tf.Session(self.tf_master,
                                        config=tf.ConfigProto(
                                            log_device_placement=self.verbose > 1,
@@ -201,6 +211,8 @@ class TensorFlowEstimator(BaseEstimator):
         return self.fit(X, y)
 
     def _predict(self, X):
+        if not self._initialized:
+            raise NotFittedError()
         if HAS_PANDAS:
             X = extract_pandas_data(X)
         pred = self._session.run(self._model_predictions,
@@ -239,6 +251,72 @@ class TensorFlowEstimator(BaseEstimator):
             probabilities for each class.
         """
         return self._predict(X)
+
+    def save(self, path):
+        """Saves checkpoints and graph to given path.
+        
+        Args:
+            path: Folder to save model to.
+        """
+        if not self._initialized:
+            raise NotFittedError()
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if not os.path.isdir(path):
+            raise ValueError("Path %s should be a directory to save"
+                "checkpoints and graph." % path)
+        with open(os.path.join(path, 'model.def'), 'w') as fmodel:
+            fmodel.write(str(self))
+        with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
+            foutputs.write('%s\n%s\n%s\n%s' % (
+                self._inp.name,
+                self._out.name,
+                self._model_predictions.name, 
+                self._model_loss.name))
+        with open(os.path.join(path, 'graph.pbtxt'), 'w') as fgraph:
+            fgraph.write(str(self._graph.as_graph_def()))
+        with open(os.path.join(path, 'saver.pbtxt'), 'w') as fsaver:
+            fsaver.write(str(self._saver.as_saver_def()))
+        self._saver.save(self._session, os.path.join(path, 'model'), global_step=self._global_step)
+
+    def _restore(self, path):
+        self._graph = tf.Graph()
+        with self._graph.as_default():
+            with open(os.path.join(path, 'endpoints')) as foutputs:
+                inp_name, out_name, model_predictions_name, model_loss_name = foutputs.read().split('\n')
+            with open(os.path.join(path, 'graph.pbtxt')) as fgraph:
+                graph_def = tf.GraphDef()
+                text_format.Merge(fgraph.read(), graph_def)
+                self._inp, self._out, self._model_predictions, self._model_loss = tf.import_graph_def(graph_def,
+                    return_elements=[inp_name, out_name, model_predictions_name, model_loss_name])
+            with open(os.path.join(path, 'saver.pbtxt')) as fsaver:
+                from tensorflow.python.training import saver_pb2
+                saver_def = saver_pb2.SaverDef()
+                text_format.Merge(fsaver.read(), saver_def)
+                # ??? For some reason the saver def doesn't have import/ prefix.
+                saver_def.filename_tensor_name = 'import/' + saver_def.filename_tensor_name
+                saver_def.restore_op_name = 'import/' + saver_def.restore_op_name
+                self._saver = tf.train.Saver(saver_def=saver_def)
+            self._session = tf.Session(self.tf_master,
+                                       config=tf.ConfigProto(
+                                          log_device_placement=self.verbose > 1,
+                                          inter_op_parallelism_threads=self.num_cores,
+                                          intra_op_parallelism_threads=self.num_cores))
+            #print self._graph.as_graph_def()
+            self._graph.get_operation_by_name('import/save/restore_all')
+            checkpoint_path = tf.train.latest_checkpoint(path)
+            self._saver.restore(self._session, checkpoint_path)
+        # Set to be initialized.
+        self._initialized = True
+ 
+    @classmethod
+    def restore(cls, path):
+        with open(os.path.join(path, 'model.def')) as fmodel:
+            model_def = fmodel.read()
+        # XXX(ilblackdragon): REALLY BAD WAY TO DO THIS!!!!
+        estimator = eval(model_def) 
+        estimator._restore(path)
+        return estimator
 
 
 class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
