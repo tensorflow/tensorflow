@@ -165,11 +165,14 @@ ops.NoGradient("Fill")
 
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
-  values_shape = array_ops.concat(0, [[-1], array_ops.shape(op.inputs[0])[1:]])
+  # op.inputs[0] can be large, so colocate the shape calculation with it.
+  with ops.device(op.inputs[0].device):
+    dense_shape = array_ops.shape(op.inputs[0])
+    values_shape = array_ops.concat(0, [[-1], dense_shape[1:]])
+
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(op.inputs[1], [-1])
-  return [ops.IndexedSlices(values, indices, array_ops.shape(op.inputs[0])),
-          None]
+  return [ops.IndexedSlices(values, indices, dense_shape), None]
 
 
 @ops.RegisterGradient("Identity")
