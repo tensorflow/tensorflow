@@ -896,7 +896,9 @@ def _NodeDef(op_type, name, device=None, attrs=None):
     name: Value for the "name" attribute of the NodeDef proto.
     device: string, device, or function from NodeDef to string.
       Value for the "device" attribute of the NodeDef proto.
-    attrs: optional list for the "attr" attribute of the NodeDef proto.
+    attrs: Optional dictionary where the key is the attribute name (a string)
+      and the value is the respective "attr" attribute of the NodeDef proto (an
+      AttrValue).
 
   Returns:
     A graph_pb2.NodeDef protocol buffer.
@@ -1488,8 +1490,8 @@ def set_shapes_for_outputs(op):
   shapes = shape_func(op)
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
-        "Shape function for op %s returned %g shapes but expecting %g" %
-        (op, len(op.outputs), len(shapes)))
+        "Shape function for op %s returned %d shapes but expected %d" %
+        (op, len(shapes), len(op.outputs)))
   for output, s in zip(op.outputs, shapes):
     output.set_shape(s)
 
@@ -1793,8 +1795,10 @@ class Graph(object):
         reference-typed inputs must specify `input_types` explicitly.
       name: (Optional.) A string name for the operation. If not specified, a
         name is generated based on `op_type`.
-      attrs: (Optional.) A list of `AttrValue` protos for the `attr` field of
-        the `NodeDef` proto that will represent the operation.
+      attrs: (Optional.) A dictionary where the key is the attribute name (a
+        string) and the value is the respective `attr` attribute of the
+        `NodeDef` proto that will represent the operation (an `AttrValue`
+        proto).
       op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
         the operation will have.
       compute_shapes: (Optional.) If True, shape inference will be performed
