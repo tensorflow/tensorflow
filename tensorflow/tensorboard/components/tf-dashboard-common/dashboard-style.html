@@ -9,10 +9,8 @@
         width: 300px;
         display: flex;
         flex-direction: column;
-        margin: 5px 5px;
-        padding: 5px;
-        border: 1px solid var(--paper-grey-500);
-        border-radius: 3px;
+        margin: 5px;
+        padding: 0 30px 30px 0;
         -webkit-user-select: none;
         -moz-user-select: none;
         position: relative;
@@ -21,9 +19,8 @@
       .card .card-title {
         flex-grow: 0;
         flex-shrink: 0;
-        margin-bottom: 2px;
+        margin-bottom: 10px;
         font-size: 14px;
-        font-weight: bold;
         text-overflow: ellipsis;
         overflow: hidden;
       }
@@ -52,7 +49,7 @@
       .expand-button {
         position: absolute;
         left: 0px;
-        bottom: 0px;
+        bottom: 20px;
         color: #2196F3;
         display: block;
       }
@@ -65,6 +62,7 @@
         display: flex;
         flex-direction: column;
         height: 100%;
+        margin-right: 20px;
       }
 
       #categorizer {
@@ -83,7 +81,7 @@
 
       .sidebar-section {
         border-top: solid 1px rgba(0, 0, 0, 0.12);
-        padding: 20px 30px;
+        padding: 20px 0px 20px 30px;
       }
 
       .sidebar-section:first-child {
@@ -96,8 +94,8 @@
       }
 
       paper-checkbox {
-        --paper-checkbox-checked-color: var(--paper-grey-700);
-        --paper-checkbox-unchecked-color: var(--paper-grey-700);
+        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
+        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
         font-size: 14px;
       }
 
