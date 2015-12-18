@@ -557,6 +557,8 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
   _, height, width, depth = _ImageDimensions(images)
 
   if width == new_width and height == new_height:
+    if not is_batch:
+      images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
 
   if method == ResizeMethod.BILINEAR:

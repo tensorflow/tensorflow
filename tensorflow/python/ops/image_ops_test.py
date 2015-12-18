@@ -566,6 +566,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
+    single_shape = [6, 4, 1]
     data = [128, 128, 64, 64,
             128, 128, 64, 64,
             64, 64, 128, 128,
@@ -578,11 +579,23 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     target_width = 4
 
     for opt in self.OPTIONS:
-      with self.test_session():
+      with self.test_session() as sess:
         image = constant_op.constant(img_np, shape=img_shape)
         y = image_ops.resize_images(image, target_height, target_width, opt)
-        resized = y.eval()
+        yshape = array_ops.shape(y)
+        resized, newshape = sess.run([y, yshape])
+        self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
+
+    # Resizing with a single image must leave the shape unchanged also.
+    with self.test_session():
+      img_single = img_np.reshape(single_shape)
+      image = constant_op.constant(img_single, shape=single_shape)
+      y = image_ops.resize_images(image, target_height, target_width,
+                                  self.OPTIONS[0])
+      yshape = array_ops.shape(y)
+      newshape = yshape.eval()
+      self.assertAllEqual(single_shape, newshape)
 
   def testResizeDown(self):
 
