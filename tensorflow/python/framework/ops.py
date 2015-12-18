@@ -1488,8 +1488,8 @@ def set_shapes_for_outputs(op):
   shapes = shape_func(op)
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
-        "Shape function for op %s returned %g shapes but expecting %g" %
-        (op, len(op.outputs), len(shapes)))
+        "Shape function for op %s returned %d shapes but expected %d" %
+        (op, len(shapes), len(op.outputs)))
   for output, s in zip(op.outputs, shapes):
     output.set_shape(s)
 
