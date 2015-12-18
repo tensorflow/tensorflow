@@ -16,11 +16,8 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
-
-**Note: Currently we do not accept pull requests on github -- see
-[CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute code
-changes to TensorFlow through
-[tensorflow.googlesource.com](https://tensorflow.googlesource.com/tensorflow)**
+**If you'd like to contribute to tensorflow, be sure to review the [contribution
+guidelines](CONTRIBUTING.md).**
 
 **We use [github issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, but please see
