@@ -445,6 +445,7 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
     vocab_size = 13
     batch_size = 10
     param_shape = [2, 5]
+    expected_lookup_result_shape = [None] + param_shape
 
     sp_ids, sp_weights, ids, weights, vals_per_batch_entry = (
         self._RandomIdsAndWeights(batch_size, vocab_size))
@@ -467,6 +468,10 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
         embedding_sum = tf.nn.embedding_lookup_sparse(
             p, sp_ids, None if ignore_weights else sp_weights,
             combiner=combiner)
+
+        self.assertEqual(embedding_sum.get_shape().as_list(),
+                         expected_lookup_result_shape)
+
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 
         np_embedding_sum, np_weight_sum = _EmbeddingResult(
@@ -507,6 +512,21 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
                                              y_shape,
                                              x_init_value=x_init_value)
       self.assertLess(err, 1e-5 if dtype == tf.float64 else 2e-3)
+
+  def testIncompatibleShapes(self):
+    with self.test_session():
+      x, _, _ = _EmbeddingParams(1, 10, dtype=tf.float32)
+      sp_ids = tf.SparseTensor(
+          tf.constant([[0, 0], [0, 1], [1, 0]], tf.int64),
+          tf.constant([0, 1, 2], tf.int32),
+          tf.constant([2, 2], tf.int64))
+      sp_weights = tf.SparseTensor(
+          tf.constant([[0, 0], [0, 1]], tf.int64),
+          tf.constant([12.0, 5.0], tf.float32),
+          tf.constant([1, 2], tf.int64))
+
+      with self.assertRaises(ValueError):
+        tf.nn.embedding_lookup_sparse(x, sp_ids, sp_weights, combiner="mean")
 
 
 class DynamicStitchOpTest(tf.test.TestCase):
