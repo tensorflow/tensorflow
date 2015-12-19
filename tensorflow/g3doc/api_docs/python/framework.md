@@ -1408,7 +1408,7 @@ and Python scalars. For example:
 
 ```python
 import numpy as np
-array = np.random.rand((32, 100, 100))
+array = np.random.rand(32, 100, 100)
 
 def my_func(arg):
   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
