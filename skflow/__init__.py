@@ -255,7 +255,7 @@ class TensorFlowEstimator(BaseEstimator):
 
     def save(self, path):
         """Saves checkpoints and graph to given path.
-        
+
         Args:
             path: Folder to save model to.
         """
@@ -265,7 +265,7 @@ class TensorFlowEstimator(BaseEstimator):
             os.makedirs(path)
         if not os.path.isdir(path):
             raise ValueError("Path %s should be a directory to save"
-                "checkpoints and graph." % path)
+                             "checkpoints and graph." % path)
         with open(os.path.join(path, 'model.def'), 'w') as fmodel:
             params = self.get_params()
             for key, value in params.items():
@@ -277,24 +277,36 @@ class TensorFlowEstimator(BaseEstimator):
             foutputs.write('%s\n%s\n%s\n%s' % (
                 self._inp.name,
                 self._out.name,
-                self._model_predictions.name, 
+                self._model_predictions.name,
                 self._model_loss.name))
         with open(os.path.join(path, 'graph.pbtxt'), 'w') as fgraph:
             fgraph.write(str(self._graph.as_graph_def()))
         with open(os.path.join(path, 'saver.pbtxt'), 'w') as fsaver:
             fsaver.write(str(self._saver.as_saver_def()))
-        self._saver.save(self._session, os.path.join(path, 'model'), global_step=self._global_step)
+        self._saver.save(self._session, os.path.join(path, 'model'),
+                         global_step=self._global_step)
 
     def _restore(self, path):
+        """Restores this estimator from given path.
+
+        Note: will rebuild the graph and initialize all parameters,
+        and will ignore provided model.
+
+        Args:
+            path: Path to checkpoints and other information.
+        """
         self._graph = tf.Graph()
         with self._graph.as_default():
             with open(os.path.join(path, 'endpoints')) as foutputs:
-                inp_name, out_name, model_predictions_name, model_loss_name = foutputs.read().split('\n')
+                (inp_name, out_name, model_predictions_name,
+                 model_loss_name) = foutputs.read().split('\n')
             with open(os.path.join(path, 'graph.pbtxt')) as fgraph:
                 graph_def = tf.GraphDef()
                 text_format.Merge(fgraph.read(), graph_def)
-                self._inp, self._out, self._model_predictions, self._model_loss = tf.import_graph_def(graph_def,
-                    return_elements=[inp_name, out_name, model_predictions_name, model_loss_name])
+                (self._inp, self._out,
+                 self._model_predictions, self._model_loss) = tf.import_graph_def(
+                     graph_def,
+                     return_elements=[inp_name, out_name, model_predictions_name, model_loss_name])
             with open(os.path.join(path, 'saver.pbtxt')) as fsaver:
                 from tensorflow.python.training import saver_pb2
                 saver_def = saver_pb2.SaverDef()
@@ -305,30 +317,39 @@ class TensorFlowEstimator(BaseEstimator):
                 self._saver = tf.train.Saver(saver_def=saver_def)
             self._session = tf.Session(self.tf_master,
                                        config=tf.ConfigProto(
-                                          log_device_placement=self.verbose > 1,
-                                          inter_op_parallelism_threads=self.num_cores,
-                                          intra_op_parallelism_threads=self.num_cores))
-            #print self._graph.as_graph_def()
+                                           log_device_placement=self.verbose > 1,
+                                           inter_op_parallelism_threads=self.num_cores,
+                                           intra_op_parallelism_threads=self.num_cores))
             self._graph.get_operation_by_name('import/save/restore_all')
             checkpoint_path = tf.train.latest_checkpoint(path)
             self._saver.restore(self._session, checkpoint_path)
         # Set to be initialized.
         self._initialized = True
- 
+
     @classmethod
     def restore(cls, path):
+        """Restores model from give path.
+
+        Args:
+            path: Path to the checkpoints and other model information.
+
+        Returns:
+            Estiamator, object of the subclass of TensorFlowEstimator.
+        """
         with open(os.path.join(path, 'model.def')) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
             for key, value in model_def.items():
                 if isinstance(value, unicode):
                     model_def[key] = str(value)
-        # XXX(ilblackdragon): Using eval here is bad, should use lookup!!!!
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
-            estimator = TensorFlowEstimator(model_fn=None, **model_def)
-        else:
-            estimator = TensorFlowLinearClassifier(**model_def)
+            custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
+            custom_estimator._restore(path)
+            return custom_estimator
+
+        # XXX(ilblackdragon): Using eval here is bad, should use lookup!!!!
+        estimator = eval(class_name)(**model_def) # pylint: disable=eval-used
         estimator._restore(path)
         return estimator
 
