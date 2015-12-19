@@ -12,6 +12,7 @@ RUN /install/install_bazel.sh
 
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
+RUN chmod 0644 /root/.bazelrc
 ENV BAZELRC /root/.bazelrc
 
 # Set up CUDA variables
