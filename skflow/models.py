@@ -29,7 +29,11 @@ def linear_regression(X, y):
         Predictions and loss tensors.
     """
     with tf.variable_scope('linear_regression'):
-        output_shape = y.get_shape()[1]
+        y_shape = y.get_shape()
+        if len(y_shape) == 1:
+            output_shape = 1
+        else:
+            output_shape = y_shape[1]
         weights = tf.get_variable('weights', [X.get_shape()[1], output_shape])
         bias = tf.get_variable('bias', [output_shape])
         return mean_squared_error_regressor(X, y, weights, bias)
