@@ -16,6 +16,7 @@
 import collections
 import random
 
+import json
 import os
 import datetime
 
@@ -266,7 +267,12 @@ class TensorFlowEstimator(BaseEstimator):
             raise ValueError("Path %s should be a directory to save"
                 "checkpoints and graph." % path)
         with open(os.path.join(path, 'model.def'), 'w') as fmodel:
-            fmodel.write(str(self))
+            params = self.get_params()
+            for key, value in params.items():
+                if callable(value):
+                    params.pop(key)
+            params['class_name'] = type(self).__name__
+            fmodel.write(json.dumps(params))
         with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
             foutputs.write('%s\n%s\n%s\n%s' % (
                 self._inp.name,
@@ -312,9 +318,17 @@ class TensorFlowEstimator(BaseEstimator):
     @classmethod
     def restore(cls, path):
         with open(os.path.join(path, 'model.def')) as fmodel:
-            model_def = fmodel.read()
-        # XXX(ilblackdragon): REALLY BAD WAY TO DO THIS!!!!
-        estimator = eval(model_def) 
+            model_def = json.loads(fmodel.read())
+            # TensorFlow binding requires parameters to be strings not unicode.
+            for key, value in model_def.items():
+                if isinstance(value, unicode):
+                    model_def[key] = str(value)
+        # XXX(ilblackdragon): Using eval here is bad, should use lookup!!!!
+        class_name = model_def.pop('class_name')
+        if class_name == 'TensorFlowEstimator':
+            estimator = TensorFlowEstimator(model_fn=None, **model_def)
+        else:
+            estimator = TensorFlowLinearClassifier(**model_def)
         estimator._restore(path)
         return estimator
 

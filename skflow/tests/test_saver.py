@@ -26,16 +26,32 @@ import skflow
 class SaverTest(googletest.TestCase):
 
     def testIris(self):
+        path = '/tmp/tmp.saver'
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
-        path = '/tmp/tmp.saver'
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
         score = accuracy_score(new_classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+
+    def testCustomModel(self):
+        path = '/tmp/tmp.saver2'
+        random.seed(42)
+        iris = datasets.load_iris()
+        def custom_model(X, y):
+            return skflow.models.logistic_regression(X, y)
+        classifier = skflow.TensorFlowEstimator(model_fn=custom_model,
+            n_classes=3)
+        classifier.fit(iris.data, iris.target)
+        classifier.save(path)
+        new_classifier = skflow.TensorFlowEstimator.restore(path)
+        self.assertEqual(type(new_classifier), type(classifier))
+        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+
 
 if __name__ == "__main__":
     googletest.main()
