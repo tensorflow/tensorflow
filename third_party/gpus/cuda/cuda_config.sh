@@ -16,8 +16,10 @@
 
 
 # A simple script to configure the Cuda tree needed for the TensorFlow GPU
-# build. We need both Cuda toolkit 7.0 and Cudnn 6.5.
-# Useage:
+# build. We need both Cuda toolkit and Cudnn.
+CUDA_VERSION='7.0'
+CUDNN_VERSION='6.5'
+# Usage:
 #    * User edit cuda.config to point both Cuda toolkit and Cudnn libraries to their local path
 #    * run cuda_config.sh to generate symbolic links in the source tree to reflect
 #    * the file organizations needed by TensorFlow.
@@ -62,8 +64,8 @@ function CudaError {
 cat << EOF
 ##############################################################################
 ##############################################################################
-Cuda 7.0 toolkit is missing.
-1. Download and install the CUDA 7.0 toolkit and CUDNN 6.5 library;
+Cuda ${CUDA_VERSION} toolkit is missing.
+1. Download and install the CUDA ${CUDA_VERSION} toolkit and CUDNN ${CUDNN_VERSION} library;
 2. Run configure from the root of the source tree, before rerunning bazel;
 Please refer to README.md for more details.
 ##############################################################################
@@ -78,8 +80,8 @@ function CudnnError {
 cat << EOF
 ##############################################################################
 ##############################################################################
-Cudnn 6.5 is missing.
-1. Download and install the CUDA 7.0 toolkit and CUDNN 6.5 library;
+Cudnn ${CUDNN_VERSION} is missing.
+1. Download and install the CUDA ${CUDA_VERSION} toolkit and CUDNN ${CUDNN_VERSION} library;
 2. Run configure from the root of the source tree, before rerunning bazel;
 Please refer to README.md for more details.
 ##############################################################################
@@ -105,22 +107,40 @@ function CheckAndLinkToSrcTree {
   fi
 }
 
+osname=`uname -s`
+
+if [ "$osname" == "Linux" ]; then
+  CUDA_LIB_PATH="lib64"
+  CUDA_RT_LIB_PATH="lib64/libcudart.so.${CUDA_VERSION}"
+  CUDA_RT_LIB_STATIC_PATH="lib64/libcudart_static.a"
+  CUDA_BLAS_LIB_PATH="lib64/libcublas.so.${CUDA_VERSION}"
+  CUDA_DNN_LIB_PATH="lib64/libcudnn.so.${CUDNN_VERSION}"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn.so.${CUDNN_VERSION}"
+elif [ "$osname" == "Darwin" ]; then
+  CUDA_LIB_PATH="lib"
+  CUDA_RT_LIB_PATH="lib/libcudart.${CUDA_VERSION}.dylib"
+  CUDA_RT_LIB_STATIC_PATH="lib/libcudart_static.a"
+  CUDA_BLAS_LIB_PATH="lib/libcublas.${CUDA_VERSION}.dylib"
+  CUDA_DNN_LIB_PATH="lib/libcudnn.${CUDNN_VERSION}.dylib"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn.${CUDNN_VERSION}.dylib"
+fi
+
 if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cuda.h
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
-  CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
-  CheckAndLinkToSrcTree CudaError lib64/libcublas.so.7.0
-  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.6.5
-  CheckAndLinkToSrcTree CudaError lib64/libcudart.so.7.0
+  CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_STATIC_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_BLAS_LIB_PATH
+  CheckAndLinkToSrcTree CudnnError $CUDA_DNN_LIB_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_PATH
   exit 0
 fi
 
 # Actually configure the source tree for TensorFlow's canonical view of Cuda
 # libraries.
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0"
+if test ! -e ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -129,20 +149,20 @@ fi
 
 # Locate cudnn.h
 if test -e ${CUDNN_INSTALL_PATH}/cudnn.h; then
-  CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}
+  CUDNN_HEADER_DIR=${CUDNN_INSTALL_PATH}
 elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
-  CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}/include
+  CUDNN_HEADER_DIR=${CUDNN_INSTALL_PATH}/include
 else
   CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}"
 fi
 
-# Locate libcudnn.so.6.5
-if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so.6.5; then
-  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so.6.5; then
-  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/lib64
+# Locate libcudnn
+if test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}; then
+  CUDNN_LIB_DIR=${CUDNN_INSTALL_PATH}
+elif test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}; then
+  CUDNN_LIB_DIR=${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}
 else
-  CudnnError "cannot find libcudnn.so.6.5 under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find ${CUDA_DNN_LIB_PATH} under: ${CUDNN_INSTALL_PATH}"
 fi
 
 # Helper function to build symbolic links for all files under a directory.
@@ -172,13 +192,13 @@ function LinkAllFiles {
 mkdir -p $OUTPUTDIR/third_party/gpus/cuda
 echo "Setting up Cuda include"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/include $OUTPUTDIR/third_party/gpus/cuda/include || exit -1
-echo "Setting up Cuda lib64"
-LinkAllFiles ${CUDA_TOOLKIT_PATH}/lib64 $OUTPUTDIR/third_party/gpus/cuda/lib64 || exit -1
+echo "Setting up Cuda ${CUDA_LIB_PATH}"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/${CUDA_LIB_PATH} $OUTPUTDIR/third_party/gpus/cuda/${CUDA_LIB_PATH} || exit -1
 echo "Setting up Cuda bin"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/bin $OUTPUTDIR/third_party/gpus/cuda/bin || exit -1
 echo "Setting up Cuda nvvm"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || exit -1
 
 # Set up symbolic link for cudnn
-ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/libcudnn.so.6.5 $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so.6.5 || exit -1
+ln -sf $CUDNN_HEADER_DIR/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
+ln -sf $CUDNN_LIB_DIR/$CUDA_DNN_LIB_PATH $OUTPUTDIR/third_party/gpus/cuda/$CUDA_DNN_LIB_PATH || exit -1
