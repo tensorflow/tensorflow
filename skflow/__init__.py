@@ -308,8 +308,7 @@ class TensorFlowEstimator(BaseEstimator):
             if not os.path.exists(endpoints_filename):
                 raise ValueError("Restore folder doesn't contain endpoints.")
             with open(endpoints_filename) as foutputs:
-                (inp_name, out_name, model_predictions_name,
-                 model_loss_name) = foutputs.read().split('\n')
+                endpoints = foutputs.read().split('\n')
             graph_filename = os.path.join(path, 'graph.pbtxt')
             if not os.path.exists(graph_filename):
                 raise ValueError("Restore folder doesn't contain graph definition.")
@@ -318,8 +317,7 @@ class TensorFlowEstimator(BaseEstimator):
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
                  self._model_predictions, self._model_loss) = tf.import_graph_def(
-                     graph_def,
-                     return_elements=[inp_name, out_name, model_predictions_name, model_loss_name])
+                     graph_def, return_elements=endpoints)
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
@@ -340,10 +338,10 @@ class TensorFlowEstimator(BaseEstimator):
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
-                "make sure you are you have checkpoint file that describes "
-                "latest checkpoints and appropriate checkpoints are there. "
-                "If you have moved the folder, you at this point need to "
-                "update manually update the paths in the checkpoint file." % path)
+                                 "make sure you are you have checkpoint file that describes "
+                                 "latest checkpoints and appropriate checkpoints are there. "
+                                 "If you have moved the folder, you at this point need to "
+                                 "update manually update the paths in the checkpoint file." % path)
             self._saver.restore(self._session, checkpoint_path)
         # Set to be initialized.
         self._initialized = True
