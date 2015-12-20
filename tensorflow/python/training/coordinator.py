@@ -188,7 +188,7 @@ class Coordinator(object):
     ```python
     try:
       ...body...
-    exception Exception, ex:
+    exception Exception as ex:
       coord.request_stop(ex)
     ```
 
@@ -198,7 +198,7 @@ class Coordinator(object):
     # pylint: disable=broad-except
     try:
       yield
-    except Exception, ex:
+    except Exception as ex:
       self.request_stop(ex)
     # pylint: enable=broad-except
 
