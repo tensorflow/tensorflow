@@ -19,6 +19,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
+TEST(CPUAllocatorTest, DO_NOT_MERGE_PullRequestBuilderTest) {
+  CHECK_EQ("DO_NOT_MERGE", "PullRequestBuilderTest");
+}
+
 TEST(CPUAllocatorTest, Simple) {
   Allocator* a = cpu_allocator();
   std::vector<void*> ptrs;
