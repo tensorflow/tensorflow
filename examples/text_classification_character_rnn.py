@@ -27,6 +27,7 @@ and is somewhat alternative to the Lua code from here:
 import csv
 import numpy as np
 from sklearn import metrics
+import pandas
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn, rnn_cell
@@ -38,17 +39,10 @@ import skflow
 # https://drive.google.com/folderview?id=0Bz8a_Dbh9Qhbfll6bVpmNUtUcFdjYmF2SEpmZUZUcVNiMUw1TWN6RDV3a0JHT3kxLVhVR2M
 # Unpack: tar -xvf dbpedia_csv.tar.gz
 
-def load_dataset(filename):
-    target = []
-    data = []
-    reader = csv.reader(open(filename), delimiter=',')
-    for line in reader:
-        target.append(int(line[0]))
-        data.append(line[2])
-    return data, np.array(target, np.float32)
-
-X_train, y_train = load_dataset('dbpedia_csv/train.csv')
-X_test, y_test = load_dataset('dbpedia_csv/test.csv')
+train = pandas.read_csv('dbpedia_csv/train.csv', header=None)
+X_train, y_train = train[2], train[0]
+test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
+X_test, y_test = test[2], test[0]
 
 ### Process vocabulary
 
@@ -70,8 +64,7 @@ def char_rnn_model(X, y):
     return skflow.models.logistic_regression(encoding[-1], y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
-    steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True,
-    log_device_placement=False)
+    steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continuesly train for 1000 steps & predict on test set.
 while True:
