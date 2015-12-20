@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import os
 import random
 
 from sklearn import datasets
@@ -51,7 +52,34 @@ class SaverTest(googletest.TestCase):
         self.assertEqual(type(new_classifier), type(classifier))
         score = accuracy_score(new_classifier.predict(iris.data), iris.target)
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+    
+    def testDNN(self):
+        path = 'tmp_saver3'
+        random.seed(42)
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
+        classifier.fit(iris.data, iris.target)
+        classifier.save(path)
+        new_classifier = skflow.TensorFlowEstimator.restore(path)
+        self.assertEqual(type(new_classifier), type(classifier))
+        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
+    def testNoFolder(self):
+        with self.assertRaises(ValueError):
+            skflow.TensorFlowEstimator.restore('no_model_path')
+
+    def testNoCheckpoints(self):
+        path = '/tmp/tmp.saver4'
+        random.seed(42)
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
+        classifier.fit(iris.data, iris.target)
+        classifier.save(path)
+        os.remove(os.path.join(path, 'checkpoint'))
+        with self.assertRaises(ValueError):
+            skflow.TensorFlowEstimator.restore(path)
+        
 
 if __name__ == "__main__":
     googletest.main()

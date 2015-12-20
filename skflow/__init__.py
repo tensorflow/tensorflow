@@ -261,6 +261,10 @@ class TensorFlowEstimator(BaseEstimator):
         """
         if not self._initialized:
             raise NotFittedError()
+
+        # Currently Saver requires absolute path to work correctly.
+        path = os.path.abspath(path)
+
         if not os.path.exists(path):
             os.makedirs(path)
         if not os.path.isdir(path):
@@ -295,19 +299,31 @@ class TensorFlowEstimator(BaseEstimator):
         Args:
             path: Path to checkpoints and other information.
         """
+        # Currently Saver requires absolute path to work correctly.
+        path = os.path.abspath(path)
+
         self._graph = tf.Graph()
         with self._graph.as_default():
-            with open(os.path.join(path, 'endpoints')) as foutputs:
+            endpoints_filename = os.path.join(path, 'endpoints')
+            if not os.path.exists(endpoints_filename):
+                raise ValueError("Restore folder doesn't contain endpoints.")
+            with open(endpoints_filename) as foutputs:
                 (inp_name, out_name, model_predictions_name,
                  model_loss_name) = foutputs.read().split('\n')
-            with open(os.path.join(path, 'graph.pbtxt')) as fgraph:
+            graph_filename = os.path.join(path, 'graph.pbtxt')
+            if not os.path.exists(graph_filename):
+                raise ValueError("Restore folder doesn't contain graph definition.")
+            with open(graph_filename) as fgraph:
                 graph_def = tf.GraphDef()
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
                  self._model_predictions, self._model_loss) = tf.import_graph_def(
                      graph_def,
                      return_elements=[inp_name, out_name, model_predictions_name, model_loss_name])
-            with open(os.path.join(path, 'saver.pbtxt')) as fsaver:
+            saver_filename = os.path.join(path, 'saver.pbtxt')
+            if not os.path.exists(saver_filename):
+                raise ValueError("Restore folder doesn't contain saver defintion.")
+            with open(saver_filename) as fsaver:
                 from tensorflow.python.training import saver_pb2
                 saver_def = saver_pb2.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
@@ -322,6 +338,12 @@ class TensorFlowEstimator(BaseEstimator):
                                            intra_op_parallelism_threads=self.num_cores))
             self._graph.get_operation_by_name('import/save/restore_all')
             checkpoint_path = tf.train.latest_checkpoint(path)
+            if checkpoint_path is None:
+                raise ValueError("Missing checkpoint files in the %s. Please "
+                "make sure you are you have checkpoint file that describes "
+                "latest checkpoints and appropriate checkpoints are there. "
+                "If you have moved the folder, you at this point need to "
+                "update manually update the paths in the checkpoint file." % path)
             self._saver.restore(self._session, checkpoint_path)
         # Set to be initialized.
         self._initialized = True
@@ -336,7 +358,10 @@ class TensorFlowEstimator(BaseEstimator):
         Returns:
             Estiamator, object of the subclass of TensorFlowEstimator.
         """
-        with open(os.path.join(path, 'model.def')) as fmodel:
+        model_def_filename = os.path.join(path, 'model.def')
+        if not os.path.exists(model_def_filename):
+            raise ValueError("Restore folder doesn't contain model definition.")
+        with open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
             for key, value in model_def.items():
