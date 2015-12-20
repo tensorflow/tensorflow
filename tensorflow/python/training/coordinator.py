@@ -70,7 +70,7 @@ class Coordinator(object):
   try:
     while not coord.should_stop():
       ...do some work...
-  except Exception, e:
+  except Exception as e:
     coord.request_stop(e)
   ```
 
@@ -85,7 +85,7 @@ class Coordinator(object):
     ...start thread N...(coord, ...)
     # Wait for all the threads to terminate.
     coord.join(threads)
-  except Exception, e:
+  except Exception as e:
     ...exception that was passed to coord.request_stop()
   ```
 
@@ -188,7 +188,7 @@ class Coordinator(object):
     ```python
     try:
       ...body...
-    exception Exception, ex:
+    exception Exception as ex:
       coord.request_stop(ex)
     ```
 
@@ -198,7 +198,7 @@ class Coordinator(object):
     # pylint: disable=broad-except
     try:
       yield
-    except Exception, ex:
+    except Exception as ex:
       self.request_stop(ex)
     # pylint: enable=broad-except
 
