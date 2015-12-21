@@ -2529,6 +2529,20 @@ op {
   description: "Returns a set of windows called glimpses extracted at location `offsets`\nfrom the input tensor. If the windows only partially overlaps the inputs, the\nnon overlapping areas will be filled with random noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the same as that\nof the input tensor. The height and width of the output windows are\nspecified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are built:\n* If the coordinates are normalized but not centered, 0.0 and 1.0\n  correspond to the minimum and maximum of each height and width dimension.\n* If the coordinates are both normalized and centered, they range from -1.0 to\n  1.0. The coordinates (-1.0, -1.0) correspond to the upper left corner, the\n  lower right corner is located at  (1.0, 1.0) and the center is at (0, 0).\n* If the coordinates are not normalized they are interpreted as numbers of pixels."
 }
 op {
+  name: "FFT2D"
+  input_arg {
+    name: "in"
+    description: "A complex64 matrix."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The 2D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 2-dimensional discrete Fourier Transform."
+}
+op {
   name: "FIFOQueue"
   output_arg {
     name: "handle"
@@ -2973,6 +2987,20 @@ op {
   }
   summary: "Outputs a `Summary` protocol buffer with a histogram."
   description: "The generated\n[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
+}
+op {
+  name: "IFFT2D"
+  input_arg {
+    name: "in"
+    description: "A complex64 matrix."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The inverse 2D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform."
 }
 op {
   name: "Identity"

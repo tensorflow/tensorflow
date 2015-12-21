@@ -90,12 +90,26 @@ cc_library(
 )
 
 cc_library(
+    name = "cufft",
+    srcs = [
+        "lib64/libcufft.so.7.0",
+    ],
+    data = [
+        "lib64/libcufft.so.7.0",
+    ],
+    includes = ["include/"],
+    visibility = ["//visibility:public"],
+    linkstatic = 1,
+)
+
+cc_library(
     name = "cuda",
     deps = [
         ":cuda_headers",
         ":cudart",
         ":cublas",
         ":cudnn",
+		":cufft",
     ],
     visibility = ["//visibility:public"],
 )
