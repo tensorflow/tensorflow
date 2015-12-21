@@ -74,16 +74,18 @@ class FFT2DOpsTest(tf.test.TestCase):
       self._Compare(gen(shape))
 
   def testEmpty(self):
-    x = np.zeros([40, 0]).astype(np.complex64)
-    self.assertEqual(x.shape, self._tfFFT2D(x).shape)
-    self.assertEqual(x.shape, self._tfIFFT2D(x).shape)
+    if tf.test.IsBuiltWithCuda():
+      x = np.zeros([40, 0]).astype(np.complex64)
+      self.assertEqual(x.shape, self._tfFFT2D(x).shape)
+      self.assertEqual(x.shape, self._tfIFFT2D(x).shape)
 
   def testError(self):
-    x = np.zeros([1, 2, 3]).astype(np.complex64)
-    with self.assertRaisesOpError("Input is not a matrix"):
-      self._tfFFT2D(x)
-    with self.assertRaisesOpError("Input is not a matrix"):
-      self._tfIFFT2D(x)
+    if tf.test.IsBuiltWithCuda():
+      x = np.zeros([1, 2, 3]).astype(np.complex64)
+      with self.assertRaisesOpError("Input is not a matrix"):
+        self._tfFFT2D(x)
+      with self.assertRaisesOpError("Input is not a matrix"):
+        self._tfIFFT2D(x)
 
 
 if __name__ == "__main__":
