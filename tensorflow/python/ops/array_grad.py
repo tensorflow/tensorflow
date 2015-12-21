@@ -265,3 +265,9 @@ def _ReverseSequenceGrad(op, grad):
                                      seq_dim=op.get_attr("seq_dim"),
                                      seq_lengths=seq_lengths),
           None]
+
+
+@ops.RegisterGradient("Reverse")
+def _ReverseGrad(op, grad):
+  reverse_dims = op.inputs[1]
+  return array_ops.reverse(grad, reverse_dims), None
