@@ -53,7 +53,6 @@ class TensorFlowEstimator(BaseEstimator):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        log_device_placement: Whether to print out device placement information. (default: True)
         num_cores: Number of cores to be used. (default: 4)
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
