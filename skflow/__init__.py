@@ -478,5 +478,4 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
-                                    models.linear_regression)(X, y)
- 
+                                    models.linear_regression)(X, y) 
