@@ -69,6 +69,10 @@ string DataTypeString(DataType dtype) {
       return "qint8";
     case DT_QUINT8:
       return "quint8";
+    case DT_QUINT16:
+      return "quint16";
+    case DT_QINT16:
+      return "qint16";
     case DT_QINT32:
       return "qint32";
     case DT_BFLOAT16:
@@ -127,6 +131,12 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "quint8") {
     *dt = DT_QUINT8;
     return true;
+  } else if (sp == "qint16") {
+    *dt = DT_QINT16;
+    return true;
+  } else if (sp == "quint16") {
+    *dt = DT_QUINT16;
+    return true;
   } else if (sp == "qint32") {
     *dt = DT_QINT32;
     return true;
@@ -149,9 +159,9 @@ string DataTypeSliceString(const DataTypeSlice types) {
 }
 
 DataTypeVector AllTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32,     DT_UINT8, DT_INT16,
-          DT_INT8,  DT_STRING, DT_COMPLEX64, DT_INT64, DT_BOOL,
-          DT_QINT8, DT_QUINT8, DT_QINT32};
+  return {DT_FLOAT, DT_DOUBLE, DT_INT32,     DT_UINT8,   DT_INT16,
+          DT_INT8,  DT_STRING, DT_COMPLEX64, DT_INT64,   DT_BOOL,
+          DT_QINT8, DT_QUINT8, DT_QINT16,    DT_QUINT16, DT_QINT32};
 }
 
 #if !defined(__ANDROID__)
@@ -160,11 +170,13 @@ DataTypeVector RealNumberTypes() {
   return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64, DT_UINT8, DT_INT16, DT_INT8};
 }
 
-DataTypeVector QuantizedTypes() { return {DT_QINT8, DT_QUINT8, DT_QINT32}; }
+DataTypeVector QuantizedTypes() {
+  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
+}
 
 DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,  DT_UINT8,
-          DT_INT16, DT_INT8,   DT_QINT8, DT_QUINT8, DT_QINT32};
+  return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64,  DT_UINT8,   DT_INT16,
+          DT_INT8,  DT_QINT8,  DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
 }
 
 DataTypeVector NumberTypes() {
@@ -180,10 +192,13 @@ DataTypeVector NumberTypes() {
   return {DT_FLOAT, DT_INT32, DT_QINT8, DT_QUINT8, DT_QINT32};
 }
 
-DataTypeVector QuantizedTypes() { return {DT_QINT8, DT_QUINT8, DT_QINT32}; }
+DataTypeVector QuantizedTypes() {
+  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
+}
 
 DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT, DT_INT32, DT_QINT8, DT_QUINT8, DT_QINT32};
+  return {DT_FLOAT,  DT_INT32,   DT_QINT8, DT_QUINT8,
+          DT_QINT16, DT_QUINT16, DT_QINT32};
 }
 
 #endif  // defined(__ANDROID__)
@@ -203,6 +218,8 @@ bool DataTypeCanUseMemcpy(DataType dt) {
     case DT_BOOL:
     case DT_QINT8:
     case DT_QUINT8:
+    case DT_QINT16:
+    case DT_QUINT16:
     case DT_QINT32:
     case DT_BFLOAT16:
       return true;
@@ -215,6 +232,8 @@ bool DataTypeIsQuantized(DataType dt) {
   switch (dt) {
     case DT_QINT8:
     case DT_QUINT8:
+    case DT_QINT16:
+    case DT_QUINT16:
     case DT_QINT32:
       return true;
     default:

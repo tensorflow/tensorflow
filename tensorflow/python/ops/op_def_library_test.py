@@ -103,7 +103,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNoRegisteredOpFails(self):
     with self.assertRaises(RuntimeError) as cm:
-      self._lib.apply_op("unknown", g=self._g)
+      self._lib.apply_op("unknown")
     self.assertEqual(str(cm.exception), "Unrecognized Op name unknown")
 
   def testAddOpValidation(self):
@@ -1394,29 +1394,15 @@ class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
       out = self._lib.apply_op("Simple", a=3)
       self.assertEqual(out.graph, self._g)
 
-  def testIgnoreDefaultGraphWithGraphArgument(self):
-    default_g = ops.Graph()
-    with default_g.as_default():
-      out = self._lib.apply_op("Simple", a=3, g=self._g)
-      self.assertEqual(ops.get_default_graph(), default_g)
-      self.assertEqual(out.graph, self._g)
-
   def testDifferentGraphFails(self):
-    a = self._lib.apply_op("Simple", a=3, g=self._g)
+    with self._g.as_default():
+      a = self._lib.apply_op("Simple", a=3)
     other_g = ops.Graph()
-    b = self._lib.apply_op("Simple", a=4, g=other_g)
+    with other_g.as_default():
+      b = self._lib.apply_op("Simple", a=4)
     with self.assertRaises(ValueError) as cm:
       self._lib.apply_op("Binary", a=a, b=b)
     self.assertTrue("must be from the same graph" in str(cm.exception))
-
-  def testDifferentGraphFailsWithGraphArgument(self):
-    other_g = ops.Graph()
-    a = self._lib.apply_op("Simple", a=3, g=other_g)
-    b = self._lib.apply_op("Simple", a=4, g=other_g)
-    with self.assertRaises(ValueError) as cm:
-      self._lib.apply_op("Binary", a=a, b=b, g=self._g)
-    self.assertTrue(
-        "not from the passed-in graph" in str(cm.exception))
 
 
 if __name__ == "__main__":

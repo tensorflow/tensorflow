@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow/core:cuda",
         "//third_party/gpus/cuda:cublas",
         "//third_party/gpus/cuda:cudnn",
+        "//third_party/gpus/cuda:cufft",
     ],
     linkopts = [
         "-ldl",

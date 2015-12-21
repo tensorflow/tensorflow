@@ -119,7 +119,7 @@ these like additional inputs, but TensorFlow has an even better way to handle
 them: `Variable`.
 A `Variable` is a value that lives in TensorFlow's computation graph.
 It can be used and even modified by the computation. In machine
-learning applications, one generally has the model paramaters be `Variable`s.
+learning applications, one generally has the model parameters be `Variable`s.
 
 ```python
 W = tf.Variable(tf.zeros([784,10]))
