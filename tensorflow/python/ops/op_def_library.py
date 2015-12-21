@@ -267,7 +267,7 @@ class OpDefLibrary(object):
     for op_def in op_list.op:
       self.add_op(op_def)
 
-  def apply_op(self, op_type_name, g=None, name=None, **keywords):
+  def apply_op(self, op_type_name, name=None, **keywords):
     # pylint: disable=g-doc-args
     """Add a node invoking a registered Op to a graph.
 
@@ -276,9 +276,6 @@ class OpDefLibrary(object):
        # input1 and input2 can be Tensors or anything ops.convert_to_tensor()
        # will convert to a Tensor.
        op_def_library.apply_op("op", input1=input1, input2=input2)
-       # If none of the inputs are Tensors and your session doesn't have a
-       # default graph, you will have to specify the graph.
-       op_def_library.apply_op("op", input1=input1, g=g)
        # Can specify a node name.
        op_def_library.apply_op("op", input1=input1, name="node_name")
        # Must use keyword arguments, with the names specified in the OpDef.
@@ -291,7 +288,6 @@ class OpDefLibrary(object):
 
     Args:
       op_type_name: string. Must match the name field of a registered Op.
-      g: The graph context (optional)
       name: string. Optional name of the created op.
       **keywords: input Tensor and attr arguments specified by name,
         and optional parameters to pass when constructing the Operation.
@@ -314,12 +310,12 @@ class OpDefLibrary(object):
     try:
       # Need to flatten all the arguments into a list.
       # pylint: disable=protected-access
-      g = ops._get_graph_from_inputs(_Flatten(keywords.values()), graph=g)
+      g = ops._get_graph_from_inputs(_Flatten(keywords.values()))
       # pyline: enable=protected-access
     except AssertionError as e:
       raise RuntimeError(
-          "Need to specify g=graph to Op '%s' (could not determine graph due "
-          "to: %s)" % (op_type_name, e.message))
+          "Cannot determine graph for Op '%s' due to: %s"
+          % (op_type_name, e.message))
 
     # Default name if not specified.
     if name is None:
