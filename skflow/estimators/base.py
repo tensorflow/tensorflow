@@ -13,25 +13,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import collections
-
 import json
 import os
 import datetime
 
-import numpy as np
 import tensorflow as tf
 
 from google.protobuf import text_format
 
 from sklearn.base import BaseEstimator
-from sklearn.utils import check_array
 from sklearn.utils.validation import NotFittedError
 
 from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
-from skflow import preprocessing
-from skflow.io import *
+from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
