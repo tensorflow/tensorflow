@@ -507,3 +507,15 @@ def _CastGrad(op, grad):
     return math_ops.cast(grad, src_type)
   else:
     return None
+
+
+@ops.RegisterGradient("FFT2D")
+def _FFT2DGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft2d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT2D")
+def _IFFT2DGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
