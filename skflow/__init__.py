@@ -13,27 +13,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import collections
-import random
-
-import json
-import os
-import datetime
-
 import numpy as np
 import tensorflow as tf
 
-from google.protobuf import text_format
-
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
-from sklearn.utils import check_array
-from sklearn.utils.validation import NotFittedError
-
-from skflow.trainer import TensorFlowTrainer
-from skflow import models
-from skflow import data_feeder
-from skflow import preprocessing
-from skflow import ops
 from skflow.io import *
 from skflow.estimators import *
-
+from skflow import ops
+from skflow import preprocessing
+from skflow import data_feeder
+from skflow import models
+from skflow.trainer import TensorFlowTrainer

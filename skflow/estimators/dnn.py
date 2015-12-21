@@ -1,4 +1,4 @@
-"""Main Scikit Flow module."""
+"""Deep Neural Network estimators."""
 #  Copyright 2015 Google Inc. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,29 +13,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import collections
-import random
-
-import json
-import os
-import datetime
-
-import numpy as np
-import tensorflow as tf
-
-from google.protobuf import text_format
-
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
-from sklearn.utils import check_array
-from sklearn.utils.validation import NotFittedError
 
-from skflow.trainer import TensorFlowTrainer
 from skflow.estimators.base import TensorFlowEstimator
 from skflow import models
-from skflow import data_feeder
-from skflow import preprocessing
-from skflow import ops
-from skflow.io import *
 
 
 class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
