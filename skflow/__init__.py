@@ -432,15 +432,18 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1):
-        model_fn = models.get_dnn_model(hidden_units,
-                                        models.logistic_regression)
+        self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
-            model_fn=model_fn,
+            model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             verbose=verbose)
+
+    def _model_fn(self, X, y):
+        return models.get_dnn_model(self.hidden_units,
+                                    models.logistic_regression)(X, y)
 
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
@@ -464,12 +467,16 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, ClassifierMixin):
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1):
-        model_fn = models.get_dnn_model(hidden_units,
-                                        models.linear_regression)
+        self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
-            model_fn=model_fn,
+            model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             verbose=verbose)
+
+    def _model_fn(self, X, y):
+        return models.get_dnn_model(self.hidden_units,
+                                    models.linear_regression)(X, y)
+ 
