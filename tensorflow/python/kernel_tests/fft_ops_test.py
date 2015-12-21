@@ -87,6 +87,40 @@ class FFT2DOpsTest(tf.test.TestCase):
       with self.assertRaisesOpError("Input is not a matrix"):
         self._tfIFFT2D(x)
 
+  def _checkGrad(self, func, x, y, use_gpu=False):
+    with self.test_session(use_gpu=use_gpu):
+      inx = tf.convert_to_tensor(x)
+      iny = tf.convert_to_tensor(y)
+      # func = fft2d or ifft2d
+      z = func(tf.complex(inx, iny))
+      # loss = sum(|z|^2)
+      loss = tf.reduce_sum(tf.real(z * tf.conj(z)))
+      ((x_jacob_t, x_jacob_n),
+       (y_jacob_t, y_jacob_n)) = tf.test.compute_gradient(
+           [inx, iny],
+           [list(x.shape), list(y.shape)],
+           loss,
+           [1],
+           x_init_value=[x, y],
+           delta=1e-2)
+    self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=1e-2)
+    self.assertAllClose(y_jacob_t, y_jacob_n, rtol=1e-2, atol=1e-2)
+
+  def testGrad_Simple(self):
+    if tf.test.IsBuiltWithCuda():
+      re = np.array([[1., 0.], [0., 1.]]).astype(np.float32)
+      im = np.array([[0., 0.], [0., 0.]]).astype(np.float32)
+      self._checkGrad(tf.fft2d, re, im, use_gpu=True)
+      self._checkGrad(tf.ifft2d, re, im, use_gpu=True)
+
+  def testGrad_Random(self):
+    if tf.test.IsBuiltWithCuda():
+      shape = (4, 8)
+      np.random.seed(54321)
+      re = np.random.rand(*shape).astype(np.float32) * 2 - 1
+      im = np.random.rand(*shape).astype(np.float32) * 2 - 1
+      self._checkGrad(tf.fft2d, re, im, use_gpu=True)
+      self._checkGrad(tf.ifft2d, re, im, use_gpu=True)
 
 if __name__ == "__main__":
   tf.test.main()
