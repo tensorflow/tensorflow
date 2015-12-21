@@ -172,6 +172,12 @@ class TransposeTest(tf.test.TestCase):
     self.assertEqual(tf.TensorShape(None), tf.transpose(
         tf.placeholder(tf.int32)).get_shape())
 
+  def testNullTensor(self):
+    with self.test_session():
+      x = tf.constant([], dtype=tf.float32, shape=[1, 4, 0])
+      xt = tf.transpose(x, [0, 2, 1]).eval()
+      self.assertAllEqual(xt.shape, (1, 0, 4))
+
   def _testError(self, x, p, err):
     with self.test_session():
       with self.assertRaisesOpError(err):

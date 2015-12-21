@@ -127,6 +127,9 @@ void TransposeOp<Device, T>::Compute(OpKernelContext* context) {
 
   Tensor* output = nullptr;
   OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
+  if (input.NumElements() == 0) {
+    return;
+  }
   switch (dims) {
 #define EXPAND_DIM(N)                                             \
   case N: {                                                       \
