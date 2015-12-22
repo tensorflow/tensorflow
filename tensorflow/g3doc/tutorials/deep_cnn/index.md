@@ -126,7 +126,7 @@ artificially increase the data set size:
 
 * [Randomly flip](../../api_docs/python/image.md#random_flip_left_right) the image from left to right.
 * Randomly distort the [image brightness](../../api_docs/python/image.md#random_brightness).
-* Randomly distort the [image contrast](../../api_docs/python/image.md#tf_image_random_contrast).
+* Randomly distort the [image contrast](../../api_docs/python/image.md#random_contrast).
 
 Please see the [Images](../../api_docs/python/image.md) page for the list of
 available distortions. We also attach an

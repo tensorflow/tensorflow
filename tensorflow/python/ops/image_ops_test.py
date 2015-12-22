@@ -564,36 +564,54 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
              image_ops.ResizeMethod.BICUBIC,
              image_ops.ResizeMethod.AREA]
 
+  TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
+           np.float, np.double]
+
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
-    data = [128, 128, 64, 64,
-            128, 128, 64, 64,
-            64, 64, 128, 128,
-            64, 64, 128, 128,
+    single_shape = [6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum value that can be used.
+    data = [127, 127, 64, 64,
+            127, 127, 64, 64,
+            64, 64, 127, 127,
+            64, 64, 127, 127,
             50, 50, 100, 100,
             50, 50, 100, 100]
-    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
-
     target_height = 6
     target_width = 4
 
-    for opt in self.OPTIONS:
+    for type in self.TYPES:
+      img_np = np.array(data, dtype=type).reshape(img_shape)
+
+      for opt in self.OPTIONS:
+        with self.test_session() as sess:
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(image, target_height, target_width, opt)
+          yshape = array_ops.shape(y)
+          resized, newshape = sess.run([y, yshape])
+          self.assertAllEqual(img_shape, newshape)
+          self.assertAllClose(resized, img_np, atol=1e-5)
+
+      # Resizing with a single image must leave the shape unchanged also.
       with self.test_session():
-        image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images(image, target_height, target_width, opt)
-        resized = y.eval()
-        self.assertAllClose(resized, img_np, atol=1e-5)
+        img_single = img_np.reshape(single_shape)
+        image = constant_op.constant(img_single, shape=single_shape)
+        y = image_ops.resize_images(image, target_height, target_width,
+                                    self.OPTIONS[0])
+        yshape = array_ops.shape(y)
+        newshape = yshape.eval()
+        self.assertAllEqual(single_shape, newshape)
 
   def testResizeDown(self):
-
-    data = [128, 128, 64, 64,
-            128, 128, 64, 64,
-            64, 64, 128, 128,
-            64, 64, 128, 128,
+    # This test is also conducted with int8, so 127 is the maximum value that can be used.
+    data = [127, 127, 64, 64,
+            127, 127, 64, 64,
+            64, 64, 127, 127,
+            64, 64, 127, 127,
             50, 50, 100, 100,
             50, 50, 100, 100]
-    expected_data = [128, 64,
-                     64, 128,
+    expected_data = [127, 64,
+                     64, 127,
                      50, 100]
     target_height = 3
     target_width = 2
@@ -604,59 +622,61 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                      [target_height, target_width, 1]]
 
     for target_shape, img_shape in zip(target_shapes, img_shapes):
-      img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
-      for opt in self.OPTIONS:
-        with self.test_session():
-          image = constant_op.constant(img_np, shape=img_shape)
-          y = image_ops.resize_images(image, target_height, target_width, opt)
-          expected = np.array(expected_data).reshape(target_shape)
-          resized = y.eval()
-          self.assertAllClose(resized, expected, atol=1e-5)
+      for type in self.TYPES:
+        img_np = np.array(data, dtype=type).reshape(img_shape)
+
+        for opt in self.OPTIONS:
+          with self.test_session():
+            image = constant_op.constant(img_np, shape=img_shape)
+            y = image_ops.resize_images(image, target_height, target_width, opt)
+            expected = np.array(expected_data).reshape(target_shape)
+            resized = y.eval()
+            self.assertAllClose(resized, expected, atol=1e-5)
 
   def testResizeUp(self):
     img_shape = [1, 3, 2, 1]
-    data = [128, 64,
-            64, 128,
+    data = [64, 32,
+            32, 64,
             50, 100]
-    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
-
     target_height = 6
     target_width = 4
     expected_data = {}
     expected_data[image_ops.ResizeMethod.BILINEAR] = [
-        128.0, 96.0, 64.0, 64.0,
-        96.0, 96.0, 96.0, 96.0,
-        64.0, 96.0, 128.0, 128.0,
-        57.0, 85.5, 114.0, 114.0,
+        64.0, 48.0, 32.0, 32.0,
+        48.0, 48.0, 48.0, 48.0,
+        32.0, 48.0, 64.0, 64.0,
+        41.0, 61.5, 82.0, 82.0,
         50.0, 75.0, 100.0, 100.0,
         50.0, 75.0, 100.0, 100.0]
     expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
-        128.0, 128.0, 64.0, 64.0,
-        128.0, 128.0, 64.0, 64.0,
-        64.0, 64.0, 128.0, 128.0,
-        64.0, 64.0, 128.0, 128.0,
+        64.0, 64.0, 32.0, 32.0,
+        64.0, 64.0, 32.0, 32.0,
+        32.0, 32.0, 64.0, 64.0,
+        32.0, 32.0, 64.0, 64.0,
         50.0, 50.0, 100.0, 100.0,
         50.0, 50.0, 100.0, 100.0]
     expected_data[image_ops.ResizeMethod.AREA] = [
-        128.0, 128.0, 64.0, 64.0,
-        128.0, 128.0, 64.0, 64.0,
-        64.0, 64.0, 128.0, 128.0,
-        64.0, 64.0, 128.0, 128.0,
+        64.0, 64.0, 32.0, 32.0,
+        64.0, 64.0, 32.0, 32.0,
+        32.0, 32.0, 64.0, 64.0,
+        32.0, 32.0, 64.0, 64.0,
         50.0, 50.0, 100.0, 100.0,
         50.0, 50.0, 100.0, 100.0]
 
-    for opt in [
-        image_ops.ResizeMethod.BILINEAR,
-        image_ops.ResizeMethod.NEAREST_NEIGHBOR,
-        image_ops.ResizeMethod.AREA]:
-      with self.test_session():
-        image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images(image, target_height, target_width, opt)
-        resized = y.eval()
-        expected = np.array(expected_data[opt]).reshape(
-            [1, target_height, target_width, 1])
-        self.assertAllClose(resized, expected, atol=1e-05)
+    for type in self.TYPES:
+      for opt in [
+          image_ops.ResizeMethod.BILINEAR,
+          image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+          image_ops.ResizeMethod.AREA]:
+        with self.test_session():
+          img_np = np.array(data, dtype=type).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(image, target_height, target_width, opt)
+          resized = y.eval()
+          expected = np.array(expected_data[opt]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-05)
 
   def testResizeUpBicubic(self):
     img_shape = [1, 6, 6, 1]

@@ -172,8 +172,8 @@ from tensorflow.python.ops import random_ops
 
 
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.attention_ops import *
 from tensorflow.python.ops.gen_image_ops import *
-from tensorflow.python.ops.gen_attention_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient('RandomCrop')
@@ -557,6 +557,8 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
   _, height, width, depth = _ImageDimensions(images)
 
   if width == new_width and height == new_height:
+    if not is_batch:
+      images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
 
   if method == ResizeMethod.BILINEAR:

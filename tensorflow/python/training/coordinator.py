@@ -51,16 +51,16 @@ class Coordinator(object):
   `coord.should_stop()` on a regular basis.  `coord.should_stop()` returns
   `True` as soon as `coord.request_stop()` has been called.
 
-  A typical thread running with a Coordinator will do something like:
+  A typical thread running with a coordinator will do something like:
 
   ```python
   while not coord.should_stop():
-     ...do some work...
+    ...do some work...
   ```
 
   #### Exception handling:
 
-  A thread can report an exception to the Coordinator as part of the
+  A thread can report an exception to the coordinator as part of the
   `should_stop()` call.  The exception will be re-raised from the
   `coord.join()` call.
 
@@ -70,7 +70,7 @@ class Coordinator(object):
   try:
     while not coord.should_stop():
       ...do some work...
-  except Exception, e:
+  except Exception as e:
     coord.request_stop(e)
   ```
 
@@ -85,11 +85,11 @@ class Coordinator(object):
     ...start thread N...(coord, ...)
     # Wait for all the threads to terminate.
     coord.join(threads)
-  except Exception, e:
+  except Exception as e:
     ...exception that was passed to coord.request_stop()
   ```
 
-  To make thread implementatoin easier to write, the Coordinator provides a
+  To simplify the thread implementation, the Coordinator provides a
   context handler `stop_on_exception()` that automatically requests a stop if
   an exception is raised.  Using the context handler the thread code above
   can be written as:
@@ -107,7 +107,7 @@ class Coordinator(object):
   minutes.  If any of the threads is still alive after the grace period expires
   `coord.join()` raises a RuntimeException reporting the laggards.
 
-  ```
+  ```python
   try:
     ...
     coord = Coordinator()
@@ -188,7 +188,7 @@ class Coordinator(object):
     ```python
     try:
       ...body...
-    exception Exception, ex:
+    exception Exception as ex:
       coord.request_stop(ex)
     ```
 
@@ -198,7 +198,7 @@ class Coordinator(object):
     # pylint: disable=broad-except
     try:
       yield
-    except Exception, ex:
+    except Exception as ex:
       self.request_stop(ex)
     # pylint: enable=broad-except
 

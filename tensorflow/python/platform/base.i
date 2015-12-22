@@ -24,7 +24,7 @@ limitations under the License.
   template<class T>
       bool _PyObjAs(PyObject *pystr, T* cstr) {
     T::undefined;  // You need to define specialization _PyObjAs<T>
-    return NULL;
+    return false;
   }
 
   template<class T>

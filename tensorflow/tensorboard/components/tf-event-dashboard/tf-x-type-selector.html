@@ -14,7 +14,6 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
         class="x-button selected"
         id="step"
         on-tap="_select"
-        raised
       >
       step
       </paper-button>
@@ -36,10 +35,10 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
     <style>
       .x-button {
         width: 30%;
-        font-size: 14px;
-        background-color: var(--paper-grey-500);
-        margin-top: 5px;
-        color: white;
+        font-size: 13px;
+        background: none;
+        margin-top: 10px;
+        color: var(--tb-ui-dark-accent);
       }
 
       .x-button:first-of-type {
@@ -47,8 +46,8 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
       }
 
       .x-button.selected {
-        font-weight: bold;
-        background-color: var(--tb-orange-strong) !important;
+        background-color: var(--tb-ui-dark-accent);
+        color: white!important;
       }
 
       #buttons h3 {
@@ -69,10 +68,8 @@ tf-x-type-selector is a simple component that creates buttons labeled "step" and
       _select: function(e) {
         var _this = this;
         ["step", "wall_time", "relative"].forEach(function(id) {
-          _this.$[id].raised = false;
           _this.$[id].classList.remove("selected");
         });
-        e.currentTarget.raised = true;
         this._setOutXType(e.currentTarget.id);
         e.currentTarget.classList.add("selected");
       },

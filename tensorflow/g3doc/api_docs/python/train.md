@@ -1065,16 +1065,16 @@ to stop.  To cooperate with the requests, each thread must check for
 `coord.should_stop()` on a regular basis.  `coord.should_stop()` returns
 `True` as soon as `coord.request_stop()` has been called.
 
-A typical thread running with a Coordinator will do something like:
+A typical thread running with a coordinator will do something like:
 
 ```python
 while not coord.should_stop():
-   ...do some work...
+  ...do some work...
 ```
 
 #### Exception handling:
 
-A thread can report an exception to the Coordinator as part of the
+A thread can report an exception to the coordinator as part of the
 `should_stop()` call.  The exception will be re-raised from the
 `coord.join()` call.
 
@@ -1103,6 +1103,17 @@ except Exception, e:
   ...exception that was passed to coord.request_stop()
 ```
 
+To simplify the thread implementation, the Coordinator provides a
+context handler `stop_on_exception()` that automatically requests a stop if
+an exception is raised.  Using the context handler the thread code above
+can be written as:
+
+```python
+with coord.stop_on_exception():
+  while not coord.should_stop():
+    ...do some work...
+```
+
 #### Grace period for stopping:
 
 After a thread has called `coord.request_stop()` the other threads have a
@@ -1110,7 +1121,7 @@ fixed time to stop, this is called the 'stop grace period' and defaults to 2
 minutes.  If any of the threads is still alive after the grace period expires
 `coord.join()` raises a RuntimeException reporting the laggards.
 
-```
+```python
 try:
   ...
   coord = Coordinator()
@@ -1188,6 +1199,41 @@ Check if stop was requested.
 ##### Returns:
 
   True if a stop was requested.
+
+
+- - -
+
+#### `tf.train.Coordinator.stop_on_exception()` {#Coordinator.stop_on_exception}
+
+Context manager to request stop when an Exception is raised.
+
+Code that uses a coordinator must catch exceptions and pass
+them to the `request_stop()` method to stop the other threads
+managed by the coordinator.
+
+This context handler simplifies the exception handling.
+Use it as follows:
+
+```python
+with coord.stop_on_exception():
+  # Any exception raised in the body of the with
+  # clause is reported to the coordinator before terminating
+  # the execution of the body.
+  ...body...
+```
+
+This is completely equivalent to the slightly longer code:
+
+```python
+try:
+  ...body...
+exception Exception, ex:
+  coord.request_stop(ex)
+```
+
+##### Yields:
+
+  nothing.
 
 
 - - -

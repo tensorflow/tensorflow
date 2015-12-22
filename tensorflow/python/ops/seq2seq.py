@@ -765,20 +765,20 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
   outputs = []
   with ops.op_scope(all_inputs, name, "model_with_buckets"):
     for j in xrange(len(buckets)):
-      if j > 0:
-        vs.get_variable_scope().reuse_variables()
-      bucket_encoder_inputs = [encoder_inputs[i]
-                               for i in xrange(buckets[j][0])]
-      bucket_decoder_inputs = [decoder_inputs[i]
-                               for i in xrange(buckets[j][1])]
-      bucket_outputs, _ = seq2seq(bucket_encoder_inputs,
-                                  bucket_decoder_inputs)
-      outputs.append(bucket_outputs)
+      with vs.variable_scope(vs.get_variable_scope(),
+                             reuse=True if j > 0 else None):
+        bucket_encoder_inputs = [encoder_inputs[i]
+                                 for i in xrange(buckets[j][0])]
+        bucket_decoder_inputs = [decoder_inputs[i]
+                                 for i in xrange(buckets[j][1])]
+        bucket_outputs, _ = seq2seq(bucket_encoder_inputs,
+                                    bucket_decoder_inputs)
+        outputs.append(bucket_outputs)
 
-      bucket_targets = [targets[i] for i in xrange(buckets[j][1])]
-      bucket_weights = [weights[i] for i in xrange(buckets[j][1])]
-      losses.append(sequence_loss(
-          outputs[-1], bucket_targets, bucket_weights, num_decoder_symbols,
-          softmax_loss_function=softmax_loss_function))
+        bucket_targets = [targets[i] for i in xrange(buckets[j][1])]
+        bucket_weights = [weights[i] for i in xrange(buckets[j][1])]
+        losses.append(sequence_loss(
+            outputs[-1], bucket_targets, bucket_weights, num_decoder_symbols,
+            softmax_loss_function=softmax_loss_function))
 
   return outputs, losses

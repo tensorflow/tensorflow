@@ -83,6 +83,8 @@ functions to your graph.
 @@conj
 @@imag
 @@real
+@@fft2d
+@@ifft2d
 
 ## Reduction
 
@@ -1119,6 +1121,8 @@ ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
 ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
+ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)
+ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("Add")

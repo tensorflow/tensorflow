@@ -599,8 +599,10 @@ the default graph.
     reference-typed inputs must specify `input_types` explicitly.
 *  <b>`name`</b>: (Optional.) A string name for the operation. If not specified, a
     name is generated based on `op_type`.
-*  <b>`attrs`</b>: (Optional.) A list of `AttrValue` protos for the `attr` field of
-    the `NodeDef` proto that will represent the operation.
+*  <b>`attrs`</b>: (Optional.) A dictionary where the key is the attribute name (a
+    string) and the value is the respective `attr` attribute of the
+    `NodeDef` proto that will represent the operation (an `AttrValue`
+    proto).
 *  <b>`op_def`</b>: (Optional.) The `OpDef` proto that describes the `op_type` that
     the operation will have.
 *  <b>`compute_shapes`</b>: (Optional.) If True, shape inference will be performed
@@ -1406,7 +1408,7 @@ and Python scalars. For example:
 
 ```python
 import numpy as np
-array = np.random.rand((32, 100, 100))
+array = np.random.rand(32, 100, 100)
 
 def my_func(arg):
   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
