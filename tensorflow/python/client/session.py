@@ -354,6 +354,12 @@ class BaseSession(SessionInterface):
                          + e.message)
             e.args = (e.message,)
             raise e
+
+          if isinstance(subfeed_val, ops.Tensor):
+            raise TypeError('The value of a feed cannot be a tf.Tensor object. '
+                            'Acceptible feed values include Python scalars, '
+                            'strings, lists, or numpy ndarrays.')
+
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
           if subfeed_t.op.type == 'Placeholder':
             if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
