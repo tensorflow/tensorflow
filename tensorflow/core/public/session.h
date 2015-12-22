@@ -68,7 +68,7 @@ namespace tensorflow {
 ///
 ///     // Close the session to release the resources associated with
 ///     // this session.
-///     session->Close()
+///     session->Close();
 ///
 /// ```
 ///
