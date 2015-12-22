@@ -1069,6 +1069,40 @@ tf.real(in) ==> [-2.25, 3.25]
   A `Tensor` of type `float32`.
 
 
+- - -
+
+### `tf.fft2d(in_, name=None)` {#fft2d}
+
+Compute the 2-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The 2D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.ifft2d(in_, name=None)` {#ifft2d}
+
+Compute the inverse 2-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The inverse 2D Fourier Transform of `in`.
+
+
 
 ## Reduction
 

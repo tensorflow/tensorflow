@@ -956,6 +956,7 @@ Maintains moving averages of variables.
 `var_list` must be a list of `Variable` or `Tensor` objects.  This method
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
+They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
 For `Tensor` objects, the shadow variables are initialized to 0.
 
 shadow variables are created with `trainable=False` and added to the
@@ -1031,6 +1032,37 @@ Returns the `Variable` holding the average of `var`.
   is not maintained..
 
 
+- - -
+
+#### `tf.train.ExponentialMovingAverage.variables_to_restore()` {#ExponentialMovingAverage.variables_to_restore}
+
+Returns a map of names to `Variables` to restore.
+
+If a variable has a moving average, use the moving average variable name as
+the restore name; otherwise, use the variable name.
+
+For example,
+
+```python
+  variables_to_restore = ema.variables_to_restore()
+  saver = tf.train.Saver(variables_to_restore)
+```
+
+Below is an example of such mapping:
+
+```
+  conv/batchnorm/gamma/ExponentialMovingAverage: conv/batchnorm/gamma,
+  conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
+  global_step: global_step
+```
+
+##### Returns:
+
+  A map from restore_names to variables. The restore_name can be the
+  moving_average version of the variable name if it exist, or the original
+  variable name.
+
+
 
 
 ## Coordinator and QueueRunner
@@ -1084,7 +1116,7 @@ Thread code:
 try:
   while not coord.should_stop():
     ...do some work...
-except Exception, e:
+except Exception as e:
   coord.request_stop(e)
 ```
 
@@ -1099,7 +1131,7 @@ try:
   ...start thread N...(coord, ...)
   # Wait for all the threads to terminate.
   coord.join(threads)
-except Exception, e:
+except Exception as e:
   ...exception that was passed to coord.request_stop()
 ```
 
@@ -1227,7 +1259,7 @@ This is completely equivalent to the slightly longer code:
 ```python
 try:
   ...body...
-exception Exception, ex:
+exception Exception as ex:
   coord.request_stop(ex)
 ```
 
