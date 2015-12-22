@@ -187,7 +187,7 @@ class Template(object):
                        "meant tf.get_variable: %s",
                        variables[vars_at_start:])
       return result
-    except Exception, exc:
+    except Exception as exc:
       # Reraise the exception, but append the original definition to the
       # trace.
       args = exc.args
