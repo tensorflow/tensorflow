@@ -22,7 +22,11 @@ import tensorflow as tf
 from google.protobuf import text_format
 
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import NotFittedError
+try:
+    from sklearn.exceptions import NotFittedError
+except ImportError:
+    from sklearn.utils.validation import NotFittedError
+    
 
 from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
