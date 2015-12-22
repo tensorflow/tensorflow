@@ -134,6 +134,17 @@ class Env {
                               const string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
 
+  // \brief Schedules the given closure on a thread-pool.
+  //
+  // NOTE(mrry): This closure must not block.
+  virtual void SchedClosure(std::function<void()> closure) = 0;
+
+  // \brief Schedules the given closure on a thread-pool after the given number
+  // of microseconds.
+  //
+  // NOTE(mrry): This closure must not block.
+  virtual void SchedClosureAfter(int micros, std::function<void()> closure) = 0;
+
  private:
   /// No copying allowed
   Env(const Env&);
@@ -233,6 +244,12 @@ class EnvWrapper : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
+  }
+  void SchedClosure(std::function<void()> closure) override {
+    target_->SchedClosure(closure);
+  }
+  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+    target_->SchedClosureAfter(micros, closure);
   }
 
  private:

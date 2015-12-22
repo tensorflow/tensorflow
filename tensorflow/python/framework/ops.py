@@ -3122,6 +3122,10 @@ class GraphKeys(object):
     produce input for a computation. See
     [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
     for more details.
+  * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
+    keep moving averages.  See
+    [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
+    for more details.
   """
 
   # Key to collect Variable objects that must be saved and restored
@@ -3139,6 +3143,8 @@ class GraphKeys(object):
   # Key to collect asset filepaths. An asset represents an external resource
   # like a vocabulary file.
   ASSET_FILEPATHS = "asset_filepaths"
+  # Key to collect Variable objects that keep moving averages.
+  MOVING_AVERAGE_VARIABLES = "moving_average_variables"
 
 
 def add_to_collection(name, value):

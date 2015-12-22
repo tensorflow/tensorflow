@@ -387,6 +387,16 @@ class PosixEnv : public Env {
                       std::function<void()> fn) override {
     return new StdThread(thread_options, name, fn);
   }
+
+  void SchedClosure(std::function<void()> closure) override {
+    // TODO(mrry): Replace with a threadpool.
+    CHECK(false) << "PosixEnv::SchedClosure not implemented.";
+  }
+
+  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+    // TODO(mrry): Replace with a non-blocking timer mechanism and threadpool.
+    CHECK(false) << "PosixEnv::SchedClosureAfter not implemented.";
+  }
 };
 
 }  // namespace

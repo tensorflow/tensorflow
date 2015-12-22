@@ -1143,6 +1143,8 @@ The following `DType` objects are defined:
 
 * `tf.qint8`: Quantized 8-bit signed integer.
 * `tf.quint8`: Quantized 8-bit unsigned integer.
+* `tf.qint16`: Quantized 16-bit signed integer.
+* `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
 
 In addition, variants of these types with the `_ref` suffix are
@@ -1617,6 +1619,10 @@ The following standard keys are defined:
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See
   [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
+  for more details.
+* `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
+  keep moving averages.  See
+  [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
   for more details.
 
 
