@@ -143,6 +143,7 @@ class ExponentialMovingAverage(object):
   @@apply
   @@average_name
   @@average
+  @@variables_to_restore
   """
 
   def __init__(self, decay, num_updates=None,
@@ -177,6 +178,7 @@ class ExponentialMovingAverage(object):
     `var_list` must be a list of `Variable` or `Tensor` objects.  This method
     creates shadow variables for all elements of `var_list`.  Shadow variables
     for `Variable` objects are initialized to the variable's initial value.
+    They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
     For `Tensor` objects, the shadow variables are initialized to 0.
 
     shadow variables are created with `trainable=False` and added to the
@@ -222,6 +224,7 @@ class ExponentialMovingAverage(object):
               var, self._name,
               colocate_with_primary=(var.op.type == "Variable"))
       self._averages[var] = avg
+      ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
 
     with ops.name_scope(self._name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
@@ -270,3 +273,39 @@ class ExponentialMovingAverage(object):
       `var`.
     """
     return var.op.name + "/" + self._name
+
+  def variables_to_restore(self):
+    """Returns a map of names to `Variables` to restore.
+
+    If a variable has a moving average, use the moving average variable name as
+    the restore name; otherwise, use the variable name.
+
+    For example,
+
+    ```python
+      variables_to_restore = ema.variables_to_restore()
+      saver = tf.train.Saver(variables_to_restore)
+    ```
+
+    Below is an example of such mapping:
+
+    ```
+      conv/batchnorm/gamma/ExponentialMovingAverage: conv/batchnorm/gamma,
+      conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
+      global_step: global_step
+    ```
+
+    Returns:
+      A map from restore_names to variables. The restore_name can be the
+      moving_average version of the variable name if it exist, or the original
+      variable name.
+    """
+    name_map = {}
+    for v in variables.moving_average_variables():
+      name_map[self.average_name(v)] = v
+    # Make sure we restore variables without moving average as well.
+    for v in list(set(variables.all_variables()) -
+                  set(variables.moving_average_variables())):
+      if v.op.name not in name_map:
+        name_map[v.op.name] = v
+    return name_map
