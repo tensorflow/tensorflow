@@ -51,7 +51,7 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def);
 // REQUIRES: 'graph_def' and 'op_registry' are not nullptr.
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface* op_registry,
-                                 std::size_t node_offset);
+                                 int node_offset);
 
 }  // namespace tensorflow
 
