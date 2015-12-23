@@ -1,12 +1,22 @@
-#!/bin/bash
+#!/bin/sh
 
-if [ ${TASK} == "lint" ]; then
-    if [ ${TRAVIS_OS_NAME} != "osx" ]; then
-        pylint skflow || exit -1
-    fi
-fi
+# Fail on the first error
+set -e
 
-if [ ${TASK} == "nosetests" ]; then
-    nosetests --with-coverage --cover-erase --cover-package=skflow
-    codecov
-fi
+# Show every execution step
+set -x
+
+
+case "$TASK" in
+    "lint")
+        if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+            pylint skflow || exit -1
+        fi
+    ;;
+
+    "nosetests")
+        nosetests --with-coverage --cover-erase --cover-package=skflow
+        codecov
+    ;;
+
+esac
