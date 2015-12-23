@@ -40,7 +40,7 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
 
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface* op_registry,
-                                 std::size_t node_offset) {
+                                 int node_offset) {
   if (node_offset > graph_def->node_size()) {
     return errors::InvalidArgument(
         "Tried to add default attrs to GraphDef "
@@ -49,7 +49,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   }
 
   Status s;
-  for (std::size_t i = node_offset; i < graph_def->node_size(); ++i) {
+  for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
     const OpDef* op_def = op_registry->LookUp(node_def->op(), &s);
     if (!s.ok()) {

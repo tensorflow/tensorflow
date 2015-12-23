@@ -185,7 +185,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
                                    graph.version());
   }
 
-  const std::size_t node_size_before_merge = graph_def_.node_size();
+  const int node_size_before_merge = graph_def_.node_size();
   graph_def_.MergeFrom(graph);
 
   FunctionLibraryDefinition fdefs(graph_def_.library());
@@ -195,8 +195,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   if (!s.ok()) {
     // One of the nodes was invalid, return the state of graph_def_
     // to what it was before this function.
-    const std::size_t nodes_added =
-        graph_def_.node_size() - node_size_before_merge;
+    const int nodes_added = graph_def_.node_size() - node_size_before_merge;
     graph_def_.mutable_node()->DeleteSubrange(node_size_before_merge,
                                               nodes_added);
     return s;
