@@ -20,9 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -230,7 +232,7 @@ Status DirectSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 
   // Start parallel Executors.
   Notification executors_done;
-  const int num_executors = executors_and_keys->device_executors.size();
+  const int num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, rendez, [&executors_done, &s](const Status& ret) {
         s = ret;
@@ -242,9 +244,8 @@ Status DirectSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
 
-  for (auto device_executor : executors_and_keys->device_executors) {
-    Executor* exec = device_executor.second;
-    exec->RunAsync(args, barrier->Get());
+  for (const auto& item : executors_and_keys->items) {
+    item.executor->RunAsync(args, barrier->Get());
   }
 
   executors_done.WaitForNotification();
@@ -315,8 +316,9 @@ Status DirectSession::GetOrCreateExecutors(
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
+  FunctionLibraryDefinition* fdefs;
   std::unordered_map<string, Graph*> graphs;
-  Status s = CreateGraphs(inputs, outputs, target_nodes, &graphs);
+  Status s = CreateGraphs(inputs, outputs, target_nodes, &fdefs, &graphs);
   if (!s.ok()) {
     return s;
   }
@@ -333,36 +335,50 @@ Status DirectSession::GetOrCreateExecutors(
   }
 
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
-
+  ek->func_defs = fdefs;
+  ek->items.reserve(graphs.size());
+  auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
     const int graph_def_version = partition_graph->version();
 
-    Device* d;
-    s = device_mgr_->LookupDevice(partition_name, &d);
+    Device* device;
+    s = device_mgr_->LookupDevice(partition_name, &device);
     if (!s.ok()) {
       return s;
     }
+
+    ek->items.resize(ek->items.size() + 1);
+    auto* item = &(ek->items.back());
+    item->flib =
+        NewFunctionLibraryRuntime(device, runner, graph_def_version, fdefs);
 
     LocalExecutorParams params;
     params.has_control_flow = has_control_flow;
-    params.device = d;
-    params.create_kernel = [this, d, graph_def_version](const NodeDef& ndef,
-                                                        OpKernel** kernel) {
-      return CreateCachedKernel(d, session_handle_, nullptr, ndef,
-                                graph_def_version, kernel);
+    params.device = device;
+    params.function_library = item->flib;
+    auto lib = item->flib;
+    auto opseg = device->op_segment();
+    params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
+                                              OpKernel** kernel) {
+      auto create_fn = [lib, &ndef](OpKernel** kernel) {
+        return lib->CreateKernel(ndef, kernel);
+      };
+      // Kernels created for subgraph nodes need to be cached.  On
+      // cache miss, create_fn() is invoked to create a kernel based
+      // on the function library here + global op registry.
+      return opseg->FindOrCreate(session_handle_, ndef.name(), kernel,
+                                 create_fn);
     };
-    params.delete_kernel = [this, d](OpKernel* kernel) {
-      DeleteCachedKernel(d, session_handle_, kernel);
+    params.delete_kernel = [](OpKernel* kernel) {
+      // Do nothing because 'kernel' is owned by opseg above.
     };
 
-    Executor* tmp_exec;
-    s = NewLocalExecutor(params, partition_graph, &tmp_exec);
+    s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
       return s;
     }
-    ek->device_executors.insert(std::make_pair(graph.first, tmp_exec));
   }
 
   // Compute the rendezvous keys to avoid recomputing them every time.
@@ -416,34 +432,37 @@ void DirectSession::RestoreStatefulNodes(Graph* graph) {
 
 Status DirectSession::CreateGraphs(
     gtl::ArraySlice<string> feeds, gtl::ArraySlice<string> fetches,
-    gtl::ArraySlice<string> target_nodes,
+    gtl::ArraySlice<string> target_nodes, FunctionLibraryDefinition** func_defs,
     std::unordered_map<string, Graph*>* outputs) {
-  Graph graph(OpRegistry::Global());
+  std::unique_ptr<FunctionLibraryDefinition> fdefs;
+  std::unique_ptr<Graph> graph;
   GraphConstructorOptions opts;
-
   {
     mutex_lock l(graph_def_lock_);
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def_, &graph));
+    fdefs.reset(new FunctionLibraryDefinition(graph_def_.library()));
+    graph.reset(new Graph(fdefs.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def_, graph.get()));
   }
 
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-      &graph, feeds, fetches, target_nodes,
+      graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
 
   // Run the simple placer after rewriting the graph.
   std::unordered_map<string, int32> node_name_to_cost_map;
-  for (Node* n : graph.nodes()) {
+  for (Node* n : graph->nodes()) {
     node_name_to_cost_map[n->name()] = n->cost_id();
   }
-  SimplePlacer placer(&graph, &device_set_, &node_name_to_cost_map, &options_);
+  SimplePlacer placer(graph.get(), &device_set_, &node_name_to_cost_map,
+                      &options_);
 
   {
     mutex_lock l(mu_);
     // Restore stateful nodes.
-    RestoreStatefulNodes(&graph);
+    RestoreStatefulNodes(graph.get());
     TF_RETURN_IF_ERROR(placer.Run());
     // Save stateful nodes.
-    SaveStatefulNodes(&graph);
+    SaveStatefulNodes(graph.get());
   }
 
   // Partition the graph across devices.
@@ -462,7 +481,7 @@ Status DirectSession::CreateGraphs(
     return 1;
   };
   popts.control_flow_added = false;
-  TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));
+  TF_RETURN_IF_ERROR(Partition(popts, graph.get(), &partitions));
 
   std::vector<string> device_names;
   for (auto device : devices_) {
@@ -491,7 +510,7 @@ Status DirectSession::CreateGraphs(
     VLOG(2) << "Created " << graph_def.DebugString() << " for "
             << partition_name;
 
-    Graph* device_graph = new Graph(OpRegistry::Global());
+    Graph* device_graph = new Graph(fdefs.get());
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now
     // allow.
@@ -506,7 +525,7 @@ Status DirectSession::CreateGraphs(
     }
     outputs->insert(std::make_pair(partition_name, device_graph));
   }
-
+  *func_defs = fdefs.release();
   return Status::OK();
 }
 
