@@ -22,7 +22,8 @@ addons:
             - libatlas3gf-base
             - libatlas-dev
             - libblas-dev
-            - liblapack-dev 
+            - liblapack-dev
+            - gfortran
             - python-numpy
             - python-scipy
             - python3-numpy
