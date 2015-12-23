@@ -1,36 +1,48 @@
-#!/bin/bash
+#!/bin/sh
 
-if [ ${TASK} == "lint" ]; then
-	sudo pip install pylint
-fi
+# Fail on the first error
+set -e
 
-if [ ${TASK} == "nosetests" ]; then
-	# Create virtual env using system numpy and scipy
-	deactivate
-	virtualenv --system-site-packages testenv
-	source testenv/bin/activate
+# Show every execution step
+set -x
 
-	# Install dependencies
-	sudo pip install --upgrade pip
-	sudo pip install numpy
-	sudo pip install scipy
-	sudo pip install pandas
-	sudo pip install scikit-learn
 
-	# Install TensorFlow
-	if [ ${TRAVIS_OS_NAME} == "linux" ]; then
-	    sudo pip install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-	fi
-	if [ ${TRAVIS_OS_NAME} == "osx" ]; then
-	    sudo pip install https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
-	fi
+case "$TASK" in
+    "lint")
+        pip install pylint
+    ;;
 
-	# Install test tools
-    sudo pip install codecov
-    sudo pip install coverage
-	sudo pip install nose
+    "nosetests")
+        # Create virtual env using system numpy and scipy
+        deactivate || true
+        virtualenv --system-site-packages testenv
+        source testenv/bin/activate
 
-	# Install skflow
-	sudo python setup.py install
-fi
+        # Install dependencies
+        pip install --upgrade pip
+        pip install numpy
+        pip install scipy
+        pip install pandas
+        pip install scikit-learn
 
+        # Install TensorFlow
+        case "$TRAVIS_OS_NAME" in
+            "linux")
+                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl"
+            ;;
+            "osx")
+                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl"
+            ;;
+        esac
+        pip install "$TENSORFLOW_PACKAGE_URL"
+
+        # Install test tools
+        pip install codecov
+        pip install coverage
+        pip install nose
+
+        # Install skflow
+        python setup.py install
+    ;;
+
+esac

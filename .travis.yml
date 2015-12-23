@@ -30,4 +30,3 @@ install:
     - source scripts/travis_install.sh
 
 script: source scripts/run_tests.sh
-
