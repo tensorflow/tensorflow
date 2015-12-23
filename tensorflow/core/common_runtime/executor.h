@@ -208,18 +208,6 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);
 
-// Creates a kernel based on "ndef" on device "device". The kernel can
-// access the functions in the "flib". The caller does not take
-// ownership of returned "*kernel". If a kernel has been created for
-// ndef.name(), returns the same kernel instance.
-Status CreateCachedKernel(Device* device, const string& session,
-                          FunctionLibraryRuntime* flib, const NodeDef& ndef,
-                          int graph_def_version, OpKernel** kernel);
-
-// Deletes "kernel" returned by CreateCachedKernel.
-void DeleteCachedKernel(Device* device, const string& session,
-                        OpKernel* kernel);
-
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
