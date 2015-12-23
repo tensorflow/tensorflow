@@ -21,7 +21,7 @@ import collections
 import numpy as np
 
 TOKENIZER_RE = re.compile(
-    ur"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
+    r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
 
 
 def tokenizer(iterator):

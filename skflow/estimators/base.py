@@ -14,6 +14,7 @@
 #  limitations under the License.
 
 from __future__ import division, print_function, absolute_import
+from six import string_types
 
 import json
 import os
@@ -358,8 +359,10 @@ class TensorFlowEstimator(BaseEstimator):
         with open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
+            # Only issue in Python2.
             for key, value in model_def.items():
-                if isinstance(value, unicode):
+                if (isinstance(value, string_types) and 
+                    not isinstance(value, str)):
                     model_def[key] = str(value)
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':

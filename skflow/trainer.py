@@ -15,6 +15,7 @@
 #  limitations under the License.
 
 from __future__ import division, print_function, absolute_import
+from six.moves import xrange   # pylint: disable=redefined-builtin
 
 import math
 import numpy as np
