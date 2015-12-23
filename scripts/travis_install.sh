@@ -20,7 +20,7 @@ case "$TASK" in
                 virtualenv --system-site-packages testenv
             ;;
             "3.5")
-                virtualenv3 --system-site-packages testenv
+                virtualenv -p python3 --system-site-packages testenv
             ;;
         esac
         source testenv/bin/activate
