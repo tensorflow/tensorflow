@@ -22,7 +22,6 @@ addons:
             - libatlas3gf-base
             - libatlas-dev
             - python-scipy
-            - python3-virtualenv
             - python3-scipy
 
 python:
