@@ -342,6 +342,8 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
     (*gnode->mutable_attr())[p.first] = p.second;
   }
 
+  AddDefaultsToNodeDef(*fnode_sig, gnode);
+
   return Status::OK();
 }
 

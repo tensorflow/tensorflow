@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -183,8 +184,25 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
                                    graph_def_.version(), " != ",
                                    graph.version());
   }
-  graph_created_ = true;  // In case this is first call
+
+  const std::size_t node_size_before_merge = graph_def_.node_size();
   graph_def_.MergeFrom(graph);
+
+  FunctionLibraryDefinition fdefs(graph_def_.library());
+  // Add default attributes to all new nodes in the graph.
+  Status s =
+      AddDefaultAttrsToGraphDef(&graph_def_, &fdefs, node_size_before_merge);
+  if (!s.ok()) {
+    // One of the nodes was invalid, return the state of graph_def_
+    // to what it was before this function.
+    const std::size_t nodes_added =
+        graph_def_.node_size() - node_size_before_merge;
+    graph_def_.mutable_node()->DeleteSubrange(node_size_before_merge,
+                                              nodes_added);
+    return s;
+  }
+
+  graph_created_ = true;  // In case this is first call
   return Status::OK();
 }
 
