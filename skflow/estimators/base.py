@@ -365,8 +365,11 @@ class TensorFlowEstimator(BaseEstimator):
             custom_estimator._restore(path)
             return custom_estimator
 
-        # XXX(ilblackdragon): Using eval here is bad, should use lookup!!!!
-        estimator = eval(class_name)(**model_def) # pylint: disable=eval-used
+        # To avoid cyclical dependencies, import inside the function instead of
+        # the beginning of the file.
+        from skflow import estimators
+        # Estimator must be one of the defined estimators in the __init__ file.
+        estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)
         return estimator
 
