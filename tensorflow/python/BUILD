@@ -714,10 +714,23 @@ tf_proto_library_py(
     ),
 )
 
+py_proto_library(
+    name = "protos_all_py_pb2",
+    api_version = 2,
+    deps = [":protos_all_py"],
+)
+
 tf_proto_library_py(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["util/protobuf/compare_test.proto"],
+)
+
+py_proto_library(
+    name = "compare_test_py_pb2",
+    testonly = 1,
+    api_version = 2,
+    deps = [":compare_test_proto"],
 )
 
 py_test(
