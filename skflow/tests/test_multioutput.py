@@ -28,6 +28,7 @@ from tensorflow.python.platform import googletest
 class MultiOutputTest(googletest.TestCase):
 
     def testMultiRegression(self):
+        random.seed(42)
         rng = np.random.RandomState(1)
         X = np.sort(200 * rng.rand(100, 1) - 100, axis=0)
         y = np.array([np.pi * np.sin(X).ravel(), np.pi * np.cos(X).ravel()]).T

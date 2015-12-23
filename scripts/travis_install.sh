@@ -28,10 +28,10 @@ case "$TASK" in
         # Install TensorFlow
         case "$TRAVIS_OS_NAME" in
             "linux")
-                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl"
+                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl"
             ;;
             "osx")
-                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl"
+                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl"
             ;;
         esac
         pip install "$TENSORFLOW_PACKAGE_URL"
