@@ -14,15 +14,16 @@ case "$TASK" in
 
     "nosetests")
         # Create virtual env using system numpy and scipy
+        deactivate || true
         case "$TRAVIS_PYTHON_VERSION" in
             "2.7")
-                deactivate || true
                 virtualenv --system-site-packages testenv
-                source testenv/bin/activate
             ;;
             "3.5")
+                virtualenv3 --system-site-packages testenv
             ;;
         esac
+        source testenv/bin/activate
 
         # Install dependencies
         pip install --upgrade pip
