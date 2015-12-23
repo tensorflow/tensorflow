@@ -18,6 +18,7 @@ For example, in case of words.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
 
