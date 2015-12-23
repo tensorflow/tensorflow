@@ -25,8 +25,7 @@ from sklearn.base import BaseEstimator
 try:
     from sklearn.exceptions import NotFittedError
 except ImportError:
-    from sklearn.utils.validation import NotFittedError
-    
+    from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
 from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
