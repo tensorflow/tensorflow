@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
@@ -38,6 +39,19 @@ string SummarizeGraphDef(const GraphDef& graph_def);
 // ControlInput = "^", NodeName
 // NodeName     = [A-Za-z0-9.], [A-Za-z0-9_./] *
 Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def);
+
+// Adds default attributes to NodeDefs in 'graph_def' starting
+// from the 'node_offset' node in 'graph_def'.
+//
+// Default attributes are defined by 'op_registry'.
+//
+// Returns OK on success, an error if 'graph_def' has a NodeDef
+// that cannot be found in 'op_registry'.
+//
+// REQUIRES: 'graph_def' and 'op_registry' are not nullptr.
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface* op_registry,
+                                 std::size_t node_offset);
 
 }  // namespace tensorflow
 
