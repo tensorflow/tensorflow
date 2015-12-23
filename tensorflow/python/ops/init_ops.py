@@ -54,7 +54,9 @@ def identity_initializer(x):
     An initializer that generates tensors with same shape and contents.
   """
   def _initializer(shape, dtype):
-    return gen_array_ops.identity(x)
+    x_ = gen_array_ops.identity(x)
+    x_.get_shape().assert_is_compatible_with(shape)
+    return x_
   return _initializer
 
 def random_uniform_initializer(minval=0.0, maxval=1.0, seed=None):
