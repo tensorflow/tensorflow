@@ -15,12 +15,12 @@
 #  limitations under the License.
 
 from __future__ import division, print_function, absolute_import
-from six.moves import xrange   # pylint: disable=redefined-builtin
 
 import itertools
 import random
-import numpy as np
+from six.moves import xrange   # pylint: disable=redefined-builtin
 
+import numpy as np
 from sklearn.utils import check_array
 
 

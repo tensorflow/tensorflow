@@ -14,11 +14,11 @@
 #  limitations under the License.
 
 from __future__ import division, print_function, absolute_import
-from six import string_types
 
 import json
 import os
 import datetime
+from six import string_types
 
 import tensorflow as tf
 
@@ -361,8 +361,8 @@ class TensorFlowEstimator(BaseEstimator):
             # TensorFlow binding requires parameters to be strings not unicode.
             # Only issue in Python2.
             for key, value in model_def.items():
-                if (isinstance(value, string_types) and 
-                    not isinstance(value, str)):
+                if (isinstance(value, string_types) and
+                        not isinstance(value, str)):
                     model_def[key] = str(value)
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
