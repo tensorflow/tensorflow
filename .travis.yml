@@ -21,7 +21,11 @@ addons:
         packages:
             - libatlas3gf-base
             - libatlas-dev
+            - libblas-dev
+            - liblapack-dev 
+            - python-numpy
             - python-scipy
+            - python3-numpy
             - python3-scipy
 
 python:
