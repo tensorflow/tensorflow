@@ -253,7 +253,7 @@ class ApplyAdagradOp : public OpKernel {
                                 accum.shape().DebugString()));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
+        errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
   }
@@ -457,7 +457,7 @@ class ApplyMomentumOp : public OpKernel {
                                 accum.shape().DebugString()));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
+        errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 
