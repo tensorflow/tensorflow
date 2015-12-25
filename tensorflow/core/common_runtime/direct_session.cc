@@ -58,8 +58,8 @@ thread::ThreadPool* NewThreadPool(const SessionOptions& options) {
     // Default to using the number of cores available in the process.
     inter_op_parallelism_threads = port::NumSchedulableCPUs();
   }
-  LOG(INFO) << "Direct session inter op parallelism threads: "
-            << inter_op_parallelism_threads;
+  VLOG(1) << "Direct session inter op parallelism threads: "
+          << inter_op_parallelism_threads;
   return new thread::ThreadPool(options.env, "Compute",
                                 inter_op_parallelism_threads);
 }
