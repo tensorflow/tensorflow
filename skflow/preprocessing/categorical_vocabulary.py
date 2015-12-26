@@ -1,3 +1,8 @@
+"""Categorical vocabulary classes to map categories to indexes.
+
+Can be used for categorical variables, sparse variables and words.
+"""
+
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");

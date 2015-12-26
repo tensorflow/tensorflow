@@ -52,7 +52,7 @@ class CategoricalProcessor(object):
         """
         for row in X:
             # Nans are handled as unknowns.
-            if (type(row) == float and math.isnan(row)) or row == np.nan:
+            if (isinstance(row, float) and math.isnan(row)) or row == np.nan:
                 continue
             self.vocabulary_.add(row)
         if self.min_frequency > 0:
@@ -87,7 +87,8 @@ class CategoricalProcessor(object):
         """
         for row in X:
             # Return <UNK> when it's Nan.
-            if (row is float and math.isnan(row)) or row == np.nan:
+            if (isinstance(row, float) and math.isnan(row)) or row == np.nan:
                 yield 0
+                continue
             yield self.vocabulary_.get(row)
 

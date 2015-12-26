@@ -14,7 +14,6 @@
 #  limitations under the License.
 
 import re
-import collections
 import numpy as np
 
 from skflow.preprocessing.categorical_vocabulary import CategoricalVocabulary
