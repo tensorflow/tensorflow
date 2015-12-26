@@ -167,10 +167,10 @@ tensorboard --logdir=/tmp/tf_examples/my_model_1
 and follow reported url.
 
 Graph visualization:
-<img style="width: 100%" src="https://github.com/google/skflow/tree/master/docs/images/text_classification_rnn_graph.png">
+![Text classification RNN Graph](https://github.com/google/skflow/tree/master/docs/images/text_classification_rnn_graph.png)
 
 Loss visualization:
-<img style="width: 100%" src="https://github.com/google/skflow/tree/master/docs/images/text_classification_rnn_loss.png">
+![Text classification RNN Loss](https://github.com/google/skflow/tree/master/docs/images/text_classification_rnn_loss.png)
 
 ## More examples
 
