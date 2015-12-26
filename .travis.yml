@@ -31,7 +31,7 @@ addons:
 
 python:
     - "2.7"
-    - "3.5"
+    - "3.4"
 
 install:
     - source scripts/travis_install.sh

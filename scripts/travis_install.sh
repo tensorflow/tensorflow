@@ -19,7 +19,7 @@ case "$TASK" in
             "2.7")
                 virtualenv --system-site-packages testenv
             ;;
-            "3.5")
+            "3.4")
                 virtualenv -p python3 --system-site-packages testenv
             ;;
         esac
@@ -39,7 +39,7 @@ case "$TASK" in
                     "2.7")
                         TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl"
                     ;;
-                    "3.5")
+                    "3.4")
                         TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl"
                     ;;
                 esac
