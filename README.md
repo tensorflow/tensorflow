@@ -121,7 +121,7 @@ def my_model(X, y):
     """
     This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
 
-    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and 
+    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and
     CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
     """
     with tf.device('/gpu:1'):
@@ -147,6 +147,30 @@ classifier.save('/tmp/tf_examples/my_model_1/')
 new_classifier = TensorFlowEstimator.restore('/tmp/tf_examples/my_model_2')
 new_classifier.predict(...)
 ```
+
+### Summaries
+
+To get nice visualizations and summaries you can use `logdir` parameter on `fit`.
+It will start writing summaries for `loss` and histograms for variables in your model.
+You can also add custom summaries in your custom model function by calling `tf.summary` and
+passing Tensors to report.
+
+```Python
+classifier = skflow.TensorFlowLinearRegression()
+classifier.fit(X, y, logdir='/tmp/tf_examples/my_model_1/')
+```
+
+Then run next command in commandline:
+```bash
+tensorboard --logdir=/tmp/tf_examples/my_model_1
+```
+and follow reported url.
+
+Graph visualization:
+![Text classification RNN Graph](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_graph.png)
+
+Loss visualization:
+![Text classification RNN Loss](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_loss.png)
 
 ## More examples
 

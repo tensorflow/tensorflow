@@ -1,5 +1,5 @@
 """Various high level TF models."""
-#  Copyright 2015 Google Inc. All Rights Reserved.
+#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ def linear_regression(X, y):
         Predictions and loss tensors.
     """
     with tf.variable_scope('linear_regression'):
+        tf.histogram_summary('linear_regression.X', X)
+        tf.histogram_summary('linear_regression.y', y)
         y_shape = y.get_shape()
         if len(y_shape) == 1:
             output_shape = 1
@@ -38,6 +40,8 @@ def linear_regression(X, y):
             output_shape = y_shape[1]
         weights = tf.get_variable('weights', [X.get_shape()[1], output_shape])
         bias = tf.get_variable('bias', [output_shape])
+        tf.histogram_summary('linear_regression.weights', weights)
+        tf.histogram_summary('linear_regression.bias', bias)
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
@@ -54,9 +58,13 @@ def logistic_regression(X, y):
         Predictions and loss tensors.
     """
     with tf.variable_scope('logistic_regression'):
+        tf.histogram_summary('logistic_regression.X', X)
+        tf.histogram_summary('logistic_regression.y', y)
         weights = tf.get_variable('weights', [X.get_shape()[1],
                                               y.get_shape()[-1]])
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
+        tf.histogram_summary('logistic_regression.weights', weights)
+        tf.histogram_summary('logistic_regression.bias', bias)
         return softmax_classifier(X, y, weights, bias)
 
 

@@ -1,4 +1,4 @@
-#  Copyright 2015 Google Inc. All Rights Reserved.
+#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
 
 # Continuesly train for 1000 steps & predict on test set.
 while True:
-    classifier.fit(X_train, y_train)
+    classifier.fit(X_train, y_train, logdir='/tmp/tf_examples/word_rnn')
     score = metrics.accuracy_score(classifier.predict(X_test), y_test)
     print('Accuracy: {0:f}'.format(score))
 
