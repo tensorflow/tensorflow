@@ -37,13 +37,6 @@ class TextTest(tf.test.TestCase):
         self.assertAllClose(list(res),
                             [[97, 98, 99, 0, 0, 0, 0, 0], [209, 132, 209, 139, 208, 178, 208, 176]])
 
-    def testWordVocabulary(self):
-        vocab = text.WordVocabulary()
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
-
     def testVocabularyProcessor(self):
         vocab_processor = text.VocabularyProcessor(
             max_document_length=4,
