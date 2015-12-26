@@ -23,7 +23,8 @@ from sklearn.utils import check_array
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
-    input_shape = [batch_size] + list(x_shape[1:])
+    x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
+    input_shape = [batch_size] + x_shape
     y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
     # Skip first dimention if it is 1.
     if y_shape and y_shape[0] == 1:
@@ -84,7 +85,10 @@ class DataFeeder(object):
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
                 sample = random.randint(0, self.X.shape[0] - 1)
-                inp[i, :] = self.X[sample, :]
+                if len(self.X.shape) == 1:
+                    inp[i, :] = [self.X[sample]]
+                else:
+                    inp[i, :] = self.X[sample, :]
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
                         out.itemset((i, self.y[sample]), 1.0)
