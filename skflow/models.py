@@ -29,6 +29,8 @@ def linear_regression(X, y):
         Predictions and loss tensors.
     """
     with tf.variable_scope('linear_regression'):
+        tf.histogram_summary('linear_regression.X', X)
+        tf.histogram_summary('linear_regression.y', y)
         y_shape = y.get_shape()
         if len(y_shape) == 1:
             output_shape = 1
@@ -54,6 +56,8 @@ def logistic_regression(X, y):
         Predictions and loss tensors.
     """
     with tf.variable_scope('logistic_regression'):
+        tf.histogram_summary('logistic_regression.X', X)
+        tf.histogram_summary('logistic_regression.y', y)
         weights = tf.get_variable('weights', [X.get_shape()[1],
                                               y.get_shape()[-1]])
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
