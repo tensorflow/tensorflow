@@ -55,7 +55,7 @@ use the following command from your workspace root to install the APK once
 built:
 
 ```bash
-$ adb install -r -g bazel-bin/tensorflow/examples/android/tensorflow_demo_incremental.apk
+$ adb install -r -g bazel-bin/tensorflow/examples/android/tensorflow_demo.apk
 ```
 
 Alternatively, a streamlined means of building, installing and running in one
