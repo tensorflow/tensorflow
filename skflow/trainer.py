@@ -26,6 +26,13 @@ OPTIMIZER_CLS_NAMES = {
 }
 
 
+def _print_report(print_loss_buffer, global_step):
+    """Prints report for given losses and global step."""
+    avg_loss = np.mean(print_loss_buffer)
+    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
+                                                       loss=avg_loss))
+
+
 class TensorFlowTrainer(object):
     """General trainer class.
 
@@ -76,13 +83,16 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
-    def train(self, sess, feed_dict_fn, steps, print_steps=0, verbose=1):
+    def train(self, sess, feed_dict_fn, steps,
+              summary_writer=None, summaries=None, print_steps=0, verbose=1):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
             sess: Session object.
             feed_dict_fn: Function that will return a feed dictionary.
             steps: Number of steps to run.
+            summary_writer: SummaryWriter object to use for writing summaries.
+            summaries: Joined object of all summaries that should be ran.
             print_steps: Number of steps in between printing cost.
             verbose: Controls the verbosity. If set to 0, the algorithm is muted.
 
@@ -94,15 +104,20 @@ class TensorFlowTrainer(object):
                        math.ceil(float(steps) / 10))
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
-            global_step, loss, _ = sess.run(
-                [self.global_step, self.loss, self.trainer],
-                feed_dict=feed_dict)
+            if summaries:
+                global_step, loss, summ, _ = sess.run(
+                    [self.global_step, self.loss, summaries, self.trainer],
+                    feed_dict=feed_dict)
+            else:
+                global_step, loss, _ = sess.run(
+                    [self.global_step, self.loss, self.trainer],
+                    feed_dict=feed_dict)
             losses.append(loss)
             print_loss_buffer.append(loss)
+            if summaries and summary_writer:
+                summary_writer.add_summary(summ, global_step)
             if verbose > 0:
                 if step % print_steps == 0:
-                    avg_loss = np.mean(print_loss_buffer)
+                    _print_report(print_loss_buffer, global_step)
                     print_loss_buffer = []
-                    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                                       loss=avg_loss))
         return losses

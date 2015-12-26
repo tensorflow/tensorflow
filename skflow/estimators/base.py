@@ -107,6 +107,10 @@ class TensorFlowEstimator(BaseEstimator):
                 tf.as_dtype(self._data_feeder.output_dtype), output_shape,
                 name="output")
 
+            # Add histograms for X and y.
+            tf.histogram_summary("X", self._inp)
+            tf.histogram_summary("y", self._out)
+
             # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
@@ -128,10 +132,11 @@ class TensorFlowEstimator(BaseEstimator):
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
-        # Create summary to monitor loss
-        tf.scalar_summary("loss", self._model_loss)
-        # Set up a single operator to merge all the summaries
-        tf.merge_all_summaries()
+        with self._graph.as_default():
+            # Create summary to monitor loss
+            tf.scalar_summary("loss", self._model_loss)
+            # Set up a single operator to merge all the summaries
+            self._summaries = tf.merge_all_summaries()
         # Set up summary writer to the specified log directory
         self._summary_writer = tf.train.SummaryWriter(
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
@@ -172,12 +177,17 @@ class TensorFlowEstimator(BaseEstimator):
             # Sets up summary writer for later optional visualization
             if logdir:
                 self._setup_summary_writer(logdir)
+            else:
+                self._summary_writer = None
+                self._summaries = None
 
         # Train model for given number of steps.
         self._trainer.train(self._session,
                             self._data_feeder.get_feed_dict_fn(
                                 self._inp, self._out),
                             self.steps,
+                            self._summary_writer,
+                            self._summaries,
                             verbose=self.verbose)
         return self
 

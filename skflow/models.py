@@ -36,6 +36,8 @@ def linear_regression(X, y):
             output_shape = y_shape[1]
         weights = tf.get_variable('weights', [X.get_shape()[1], output_shape])
         bias = tf.get_variable('bias', [output_shape])
+        tf.histogram_summary('linear_regression.weights', weights)
+        tf.histogram_summary('linear_regression.bias', bias)
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
@@ -55,6 +57,8 @@ def logistic_regression(X, y):
         weights = tf.get_variable('weights', [X.get_shape()[1],
                                               y.get_shape()[-1]])
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
+        tf.histogram_summary('logistic_regression.weights', weights)
+        tf.histogram_summary('logistic_regression.bias', bias)
         return softmax_classifier(X, y, weights, bias)
 
 
