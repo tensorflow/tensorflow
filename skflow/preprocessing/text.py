@@ -17,6 +17,8 @@ from __future__ import division, print_function, absolute_import
 
 import re
 import collections
+import six
+
 import numpy as np
 
 TOKENIZER_RE = re.compile(
@@ -60,10 +62,10 @@ class ByteProcessor(object):
         """
         for doc in X:
             word_ids = np.zeros(self.max_document_length, np.int64)
-            for idx, token in enumerate(doc):
+            for idx, token_byte in enumerate(six.iterbytes(doc)):
                 if idx >= self.max_document_length:
                     break
-                word_ids[idx] = ord(token)
+                word_ids[idx] = token_byte
             yield word_ids
 
 
@@ -126,7 +128,7 @@ class WordVocabulary(object):
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove stop words.
         """
-        for word, count in self._freq.iteritems():
+        for word, count in six.iteritems(self._freq):
             if count <= min_frequency and (max_frequency < 0 or
                                            count >= max_frequency):
                 self._mapping.pop(word)

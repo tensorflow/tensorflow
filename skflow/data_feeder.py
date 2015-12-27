@@ -18,6 +18,7 @@ from __future__ import division, print_function, absolute_import
 
 import itertools
 import random
+import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
 import numpy as np
@@ -126,8 +127,8 @@ class StreamingDataFeeder(object):
     """
 
     def __init__(self, X, y, n_classes, batch_size):
-        X_first_el = X.next()
-        y_first_el = y.next()
+        X_first_el = six.next(X)
+        y_first_el = six.next(y)
         self.X = itertools.chain([X_first_el], X)
         self.y = itertools.chain([y_first_el], y)
         self.n_classes = n_classes

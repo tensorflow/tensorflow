@@ -87,8 +87,10 @@ class TensorFlowEstimator(BaseEstimator):
         If X and y are iterators, use StreamingDataFeeder.
         """
         data_feeder_cls = data_feeder.DataFeeder
-        if hasattr(X, 'next'):
-            assert hasattr(y, 'next')
+        if hasattr(X, 'next') or hasattr(X, '__next__'):
+            if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+                raise ValueError("Both X and y should be iterators for "
+                                 "streaming learning to work.")
             data_feeder_cls = data_feeder.StreamingDataFeeder
         self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
@@ -278,10 +280,11 @@ class TensorFlowEstimator(BaseEstimator):
             raise ValueError("Path %s should be a directory to save"
                              "checkpoints and graph." % path)
         with open(os.path.join(path, 'model.def'), 'w') as fmodel:
-            params = self.get_params()
-            for key, value in params.items():
-                if callable(value):
-                    params.pop(key)
+            all_params = self.get_params()
+            params = {}
+            for key, value in all_params.items():
+                if not callable(value):
+                    params[key] = value
             params['class_name'] = type(self).__name__
             fmodel.write(json.dumps(params))
         with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
