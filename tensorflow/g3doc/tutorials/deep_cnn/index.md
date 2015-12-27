@@ -143,6 +143,12 @@ processing time. To prevent these operations from slowing down training, we run
 them inside 16 separate threads which continuously fill a TensorFlow
 [queue](../../api_docs/python/io_ops.md#shuffle_batch).
 
+To run TensorBoard, use the command
+
+```bash
+tensorboard --logdir=/tmp/cifar10_train
+```
+
 ### Model Prediction {#model-prediction}
 
 The prediction part of the model is constructed by the `inference()` function
