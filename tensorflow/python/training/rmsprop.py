@@ -44,7 +44,7 @@ class RMSPropOptimizer(optimizer.Optimizer):
   @@__init__
   """
 
-  def __init__(self, learning_rate, decay, momentum=0.0, epsilon=1e-10,
+  def __init__(self, learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10,
                use_locking=False, name="RMSProp"):
     """Construct a new RMSProp optimizer.
 
