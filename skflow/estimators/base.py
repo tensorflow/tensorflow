@@ -99,7 +99,6 @@ class TensorFlowEstimator(BaseEstimator):
                 0, name="global_step", trainable=False)
 
             # Setting up input and output placeholders.
-            print self._data_feeder.input_shape
             input_shape = [None] + self._data_feeder.input_shape[1:]
             output_shape = [None] + self._data_feeder.output_shape[1:]
             self._inp = tf.placeholder(

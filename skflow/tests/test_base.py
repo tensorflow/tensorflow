@@ -17,6 +17,7 @@ import random
 from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.platform import googletest
 
@@ -24,6 +25,15 @@ import skflow
 
 
 class BaseTest(googletest.TestCase):
+
+    def testOneDim(self):
+        random.seed(42)
+        X = np.random.rand(1000)
+        y = 2 * X + 3
+        regressor = skflow.TensorFlowLinearRegressor()
+        regressor.fit(X, y)
+        score = mean_squared_error(regressor.predict(X), y)
+        self.assertLess(score, 0.1, "Failed with score = {0}".format(score))
 
     def testIris(self):
         random.seed(42)
