@@ -46,7 +46,7 @@ class BaseTest(googletest.TestCase):
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
-                                                       continue_training=True)
+            learning_rate=0.05, continue_training=True)
         classifier.fit(iris.data, iris.target)
         score1 = accuracy_score(classifier.predict(iris.data), iris.target)
         classifier.fit(iris.data, iris.target)
