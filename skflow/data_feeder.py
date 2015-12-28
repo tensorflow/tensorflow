@@ -49,6 +49,7 @@ class DataFeeder(object):
             of targets.
         n_classes: number of classes, 0 and 1 are considered regression.
         batch_size: mini batch size to accumulate.
+        random_state: numpy RandomState object to reproduce sampling.
 
     Attributes:
         X: input features.
@@ -61,7 +62,7 @@ class DataFeeder(object):
         output_dtype: dtype of output.
     """
 
-    def __init__(self, X, y, n_classes, batch_size):
+    def __init__(self, X, y, n_classes, batch_size, random_state=None):
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
         self.X = check_array(X, ensure_2d=False,
                              allow_nd=True, dtype=x_dtype)
@@ -71,6 +72,10 @@ class DataFeeder(object):
         self.input_shape, self.output_shape = _get_in_out_shape(
             self.X.shape, self.y.shape, n_classes, batch_size)
         self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        if random_state is None:
+            self.random_state = np.random.RandomState(42)
+        else:
+            self.random_state = random_state
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -87,7 +92,7 @@ class DataFeeder(object):
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
-                sample = random.randint(0, self.X.shape[0] - 1)
+                sample = self.random_state.randint(0, self.X.shape[0])
                 inp[i, :] = self.X[sample, :]
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
