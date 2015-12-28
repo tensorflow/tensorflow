@@ -34,6 +34,7 @@ from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
 from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
 
+
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
 
@@ -261,6 +262,28 @@ class TensorFlowEstimator(BaseEstimator):
             probabilities for each class.
         """
         return self._predict(X)
+
+    def get_tensor(self, name):
+        """Returns tensor by name.
+
+        Args:
+            name: string, name of the tensor.
+
+        Returns:
+            Tensor.
+        """
+        return self._graph.get_tensor_by_name(name)
+ 
+    def get_tensor_value(self, name):
+        """Returns value of the tensor give by name.
+
+        Args:
+            name: string, name of the tensor.
+
+        Returns:
+            Numpy array - value of the tensor.
+        """
+        return self._session.run(self.get_tensor(name))
 
     def save(self, path):
         """Saves checkpoints and graph to given path.

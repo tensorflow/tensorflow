@@ -17,7 +17,6 @@
 from __future__ import division, print_function, absolute_import
 
 import itertools
-import random
 import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
 

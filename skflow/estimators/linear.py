@@ -35,6 +35,16 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
             continue_training=continue_training,
             verbose=verbose)
 
+    @property
+    def weights_(self):
+        """Returns weights of the linear regression."""
+        return self.get_tensor_value('linear_regression/weights:0')
+
+    @property
+    def bias_(self):
+        """Returns bias of the linear regression."""
+        return self.get_tensor_value('linear_regression/bias:0')
+
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
@@ -49,6 +59,16 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             verbose=verbose)
+
+    @property
+    def weights_(self):
+        """Returns weights of the linear classifier."""
+        return self.get_tensor_value('logistic_regression/weights:0')
+
+    @property
+    def bias_(self):
+        """Returns weights of the linear classifier."""
+        return self.get_tensor_value('logistic_regression/bias:0')
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor
