@@ -33,9 +33,14 @@ class TextTest(tf.test.TestCase):
 
     def testByteProcessor(self):
         processor = text.ByteProcessor(max_document_length=8)
-        res = processor.transform(["abc", "фыва"])
+        res = processor.transform(["abc", "фыва", u"фыва", b"abc",
+                                   u"12345678901234567890"])
         self.assertAllClose(list(res),
-                            [[97, 98, 99, 0, 0, 0, 0, 0], [209, 132, 209, 139, 208, 178, 208, 176]])
+                            [[97, 98, 99, 0, 0, 0, 0, 0],
+                            [209, 132, 209, 139, 208, 178, 208, 176],
+                            [209, 132, 209, 139, 208, 178, 208, 176],
+                            [97, 98, 99, 0, 0, 0, 0, 0],
+                            [49, 50, 51, 52, 53, 54, 55, 56]])
 
     def testWordVocabulary(self):
         vocab = text.WordVocabulary()

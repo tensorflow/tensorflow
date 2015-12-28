@@ -17,7 +17,6 @@ from __future__ import division, print_function, absolute_import
 
 import re
 import collections
-import sys
 import six
 
 import numpy as np
@@ -58,20 +57,19 @@ class ByteProcessor(object):
 
         Args:
             X: iterator or list of input documents.
+               Documents can be bytes or unicode strings, which will be encoded
+               as utf-8 to map to bytes. Note, in Python2 str and bytes is the
+               same type.
         Returns:
             iterator of byte ids.
         """
-        for doc in X:
-            word_ids = np.zeros(self.max_document_length, np.int64)
-            if sys.version_info[0] == 3:
-                doc_iter = (t for t in bytes(doc, encoding='utf8'))
-            else:
-                doc_iter = (ord(t) for t in doc)
-            for idx, token_byte in enumerate(doc_iter):
-                if idx >= self.max_document_length:
-                    break
-                word_ids[idx] = token_byte
-            yield word_ids
+        for document in X:
+            if isinstance(document, six.text_type):
+                document = document.encode('utf-8')
+            buff = np.frombuffer(document[:self.max_document_length],
+                                 dtype=np.uint8)
+            yield np.pad(buff, (0, self.max_document_length - len(buff)),
+                         'constant')
 
 
 class WordVocabulary(object):
