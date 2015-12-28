@@ -12,7 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import random
 from struct import Struct
 import numpy as np
 
@@ -30,19 +29,17 @@ class MockPlaceholder(object):
 class DataFeederTest(tf.test.TestCase):
 
     def test_data_feeder_regression(self):
-        random.seed(42)
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([1, 2])
-        df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=2)
+        df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=3)
         feed_dict_fn = df.get_feed_dict_fn(
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [2, 1])
+        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [1, 2, 1])
 
     def test_data_feeder_multioutput_regression(self):
-        random.seed(42)
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([[1, 2], [3, 4]])
         df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=2)
@@ -50,11 +47,10 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
+        self.assertAllClose(feed_dict['output'], [[1, 2], [3, 4]])
 
     def test_data_feeder_multioutput_classification(self):
-        random.seed(42)
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([[0, 1, 2], [2, 3, 4]])
         df = data_feeder.DataFeeder(X, y, n_classes=5, batch_size=2)
@@ -62,13 +58,13 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0],
-                                                   [0, 0, 0, 1, 0],
-                                                   [0, 0, 0, 0, 1]],
-                                                  [[1, 0, 0, 0, 0],
+        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
+        self.assertAllClose(feed_dict['output'], [[[1, 0, 0, 0, 0],
                                                    [0, 1, 0, 0, 0],
-                                                   [0, 0, 1, 0, 0]]])
+                                                   [0, 0, 1, 0, 0]],
+                                                  [[0, 0, 1, 0, 0],
+                                                   [0, 0, 0, 1, 0],
+                                                   [0, 0, 0, 0, 1]]])
 
     def test_streaming_data_feeder(self):
         def X_iter():

@@ -13,9 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import math
-import numpy as np
+from __future__ import division, print_function, absolute_import
 
+import math
+from six.moves import xrange   # pylint: disable=redefined-builtin
+
+import numpy as np
 import tensorflow as tf
 
 
