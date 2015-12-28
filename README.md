@@ -18,6 +18,11 @@ more open world of building different shapes of ML models. You can start by usin
 
 ## Installation
 
+Support versions of dependencies:
+  * Python: 2.7, 3.4+
+  * Scikit learn: 0.16, 0.17, 0.18+
+  * Tensorflow: 0.5, 0.6+
+
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
 ```Bash
