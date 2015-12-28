@@ -273,7 +273,7 @@ class TensorFlowEstimator(BaseEstimator):
             Tensor.
         """
         return self._graph.get_tensor_by_name(name)
- 
+
     def get_tensor_value(self, name):
         """Returns value of the tensor give by name.
 

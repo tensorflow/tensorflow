@@ -17,6 +17,7 @@ from __future__ import division, print_function, absolute_import
 
 import re
 import collections
+import sys
 import six
 
 import numpy as np
@@ -62,7 +63,11 @@ class ByteProcessor(object):
         """
         for doc in X:
             word_ids = np.zeros(self.max_document_length, np.int64)
-            for idx, token_byte in enumerate(six.iterbytes(doc)):
+            if sys.version_info[0] == 3:
+                doc_iter = (t for t in bytes(doc, encoding='utf8'))
+            else:
+                doc_iter = (ord(t) for t in doc)
+            for idx, token_byte in enumerate(doc_iter):
                 if idx >= self.max_document_length:
                     break
                 word_ids[idx] = token_byte
