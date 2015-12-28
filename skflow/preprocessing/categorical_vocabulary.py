@@ -18,6 +18,7 @@ Can be used for categorical variables, sparse variables and words.
 #  limitations under the License.
 
 import collections
+import six
 
 
 class CategoricalVocabulary(object):
@@ -80,7 +81,7 @@ class CategoricalVocabulary(object):
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove very frequent categories (like stop words).
         """
-        for category, count in self._freq.iteritems():
+        for category, count in six.iteritems(self._freq):
             if count <= min_frequency and (max_frequency < 0 or
                                            count >= max_frequency):
                 self._mapping.pop(category)
