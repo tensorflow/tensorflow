@@ -165,8 +165,8 @@ class StreamingDataFeeder(object):
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
-                inp[i, :] = self.X.next()
-                y = self.y.next()
+                inp[i, :] = six.next(self.X)
+                y = six.next(self.y)
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
                         out.itemset((i, y), 1.0)
