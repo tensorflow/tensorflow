@@ -13,9 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
+
 import json
 import os
 import datetime
+from six import string_types
 
 import tensorflow as tf
 
@@ -30,6 +33,7 @@ except ImportError:
 from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
 from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
@@ -84,8 +88,10 @@ class TensorFlowEstimator(BaseEstimator):
         If X and y are iterators, use StreamingDataFeeder.
         """
         data_feeder_cls = data_feeder.DataFeeder
-        if hasattr(X, 'next'):
-            assert hasattr(y, 'next')
+        if hasattr(X, 'next') or hasattr(X, '__next__'):
+            if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+                raise ValueError("Both X and y should be iterators for "
+                                 "streaming learning to work.")
             data_feeder_cls = data_feeder.StreamingDataFeeder
         self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
@@ -257,6 +263,28 @@ class TensorFlowEstimator(BaseEstimator):
         """
         return self._predict(X)
 
+    def get_tensor(self, name):
+        """Returns tensor by name.
+
+        Args:
+            name: string, name of the tensor.
+
+        Returns:
+            Tensor.
+        """
+        return self._graph.get_tensor_by_name(name)
+
+    def get_tensor_value(self, name):
+        """Returns value of the tensor give by name.
+
+        Args:
+            name: string, name of the tensor.
+
+        Returns:
+            Numpy array - value of the tensor.
+        """
+        return self._session.run(self.get_tensor(name))
+
     def save(self, path):
         """Saves checkpoints and graph to given path.
 
@@ -275,10 +303,11 @@ class TensorFlowEstimator(BaseEstimator):
             raise ValueError("Path %s should be a directory to save"
                              "checkpoints and graph." % path)
         with open(os.path.join(path, 'model.def'), 'w') as fmodel:
-            params = self.get_params()
-            for key, value in params.items():
-                if callable(value):
-                    params.pop(key)
+            all_params = self.get_params()
+            params = {}
+            for key, value in all_params.items():
+                if not callable(value):
+                    params[key] = value
             params['class_name'] = type(self).__name__
             fmodel.write(json.dumps(params))
         with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
@@ -366,8 +395,10 @@ class TensorFlowEstimator(BaseEstimator):
         with open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
+            # Only issue in Python2.
             for key, value in model_def.items():
-                if isinstance(value, unicode):
+                if (isinstance(value, string_types) and
+                        not isinstance(value, str)):
                     model_def[key] = str(value)
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':

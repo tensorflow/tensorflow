@@ -13,12 +13,16 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
+
 import re
 import collections
+import six
+
 import numpy as np
 
 TOKENIZER_RE = re.compile(
-    ur"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
+    r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
 
 
 def tokenizer(iterator):
@@ -53,16 +57,19 @@ class ByteProcessor(object):
 
         Args:
             X: iterator or list of input documents.
+               Documents can be bytes or unicode strings, which will be encoded
+               as utf-8 to map to bytes. Note, in Python2 str and bytes is the
+               same type.
         Returns:
             iterator of byte ids.
         """
-        for doc in X:
-            word_ids = np.zeros(self.max_document_length, np.int64)
-            for idx, token in enumerate(doc):
-                if idx >= self.max_document_length:
-                    break
-                word_ids[idx] = ord(token)
-            yield word_ids
+        for document in X:
+            if isinstance(document, six.text_type):
+                document = document.encode('utf-8')
+            buff = np.frombuffer(document[:self.max_document_length],
+                                 dtype=np.uint8)
+            yield np.pad(buff, (0, self.max_document_length - len(buff)),
+                         'constant')
 
 
 class WordVocabulary(object):
@@ -124,7 +131,7 @@ class WordVocabulary(object):
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove stop words.
         """
-        for word, count in self._freq.iteritems():
+        for word, count in six.iteritems(self._freq):
             if count <= min_frequency and (max_frequency < 0 or
                                            count >= max_frequency):
                 self._mapping.pop(word)

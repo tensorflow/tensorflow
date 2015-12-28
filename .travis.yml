@@ -21,10 +21,17 @@ addons:
         packages:
             - libatlas3gf-base
             - libatlas-dev
+            - libblas-dev
+            - liblapack-dev
+            - gfortran
+            - python-numpy
             - python-scipy
+            - python3-numpy
+            - python3-scipy
 
 python:
     - "2.7"
+    - "3.4"
 
 install:
     - source scripts/travis_install.sh

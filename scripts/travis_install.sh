@@ -15,7 +15,14 @@ case "$TASK" in
     "nosetests")
         # Create virtual env using system numpy and scipy
         deactivate || true
-        virtualenv --system-site-packages testenv
+        case "$TRAVIS_PYTHON_VERSION" in
+            "2.7")
+                virtualenv --system-site-packages testenv
+            ;;
+            "3.4")
+                virtualenv -p python3.4 --system-site-packages testenv
+            ;;
+        esac
         source testenv/bin/activate
 
         # Install dependencies
@@ -28,7 +35,14 @@ case "$TASK" in
         # Install TensorFlow
         case "$TRAVIS_OS_NAME" in
             "linux")
-                TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl"
+                case "$TRAVIS_PYTHON_VERSION" in
+                    "2.7")
+                        TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl"
+                    ;;
+                    "3.4")
+                        TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl"
+                    ;;
+                esac
             ;;
             "osx")
                 TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl"
