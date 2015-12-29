@@ -15,12 +15,12 @@ The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
 
 We support different ways to install TensorFlow:
 
-*  [Pip install](#pip_install): Install TensorFlow on your machine, possibly
+*  [Pip install](#pip-installation): Install TensorFlow on your machine, possibly
    upgrading previously installed Python packages.  May impact existing
    Python programs on your machine.
-*  [Virtualenv install](#virtualenv_install): Install TensorFlow in its own
+*  [Virtualenv install](#virtualenv-installation): Install TensorFlow in its own
    directory, not impacting any existing Python programs on your machine.
-*  [Docker install](#docker_install): Run TensorFlow in a Docker container
+*  [Docker install](#docker-installation): Run TensorFlow in a Docker container
    isolated from all other programs on your machine.
 
 If you are familiar with Pip, Virtualenv, or Docker, please feel free to adapt
@@ -30,7 +30,7 @@ images are listed in the corresponding installation sections.
 If you encounter installation errors, see
 [common problems](#common_install_problems) for some solutions.
 
-## Pip Installation {#pip_install}
+## Pip Installation
 
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
@@ -78,9 +78,9 @@ $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tens
 ```
 
 
-You can now [test your installation](#test_install).
+You can now [test your installation](#test-the-tensorflow-installation).
 
-## Virtualenv installation {#virtualenv_install}
+## Virtualenv installation
 
 [Virtualenv](http://docs.python-guide.org/en/latest/dev/virtualenvs/) is a tool
 to keep the dependencies required by different Python projects in separate
@@ -121,13 +121,13 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
 ```
 
 and again for python3:
@@ -148,7 +148,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 ```
 
 With the Virtualenv environment activated, you can now
-[test your installation](#test_install).
+[test your installation](#test-the-tensorflow-installation).
 
 When you are done using TensorFlow, deactivate the environment.
 
@@ -170,7 +170,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 (tensorflow)$ deactivate
 ```
 
-## Docker installation {#docker_install}
+## Docker installation
 
 [Docker](http://docker.com/) is a system to build self contained versions of a
 Linux operating system running on your machine.  When you install and run
@@ -217,9 +217,9 @@ in the repo with these flags, so the command-line would look like
 $ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh b.gcr.io/tensorflow/tensorflow:gpu
 ```
 
-You can now [test your installation](#test_install) within the Docker container.
+You can now [test your installation](#test-the-tensorflow-installation) within the Docker container.
 
-## Test the TensorFlow installation {#test_install}
+## Test the TensorFlow installation
 
 ### (Optional, Linux) Enable GPU Support
 
@@ -290,11 +290,11 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 ...
 ```
 
-## Installing from sources {#source}
+## Installing from sources
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
-[above](#pip_install).
+[above](#pip-installation).
 
 ### Clone the TensorFlow repository
 
@@ -515,7 +515,7 @@ $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_pack
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ pip install /tmp/tensorflow_pkg/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+$ pip install /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
 ```
 
 ## Train your first TensorFlow neural net model
@@ -624,8 +624,8 @@ $ sudo easy_install -U six
 
 * Install TensorFlow with a separate Python library:
 
-    *  Using [Virtualenv](#virtualenv_install).
-    *  Using [Docker](#docker_install).
+    *  Using [Virtualenv](#virtualenv-installation).
+    *  Using [Docker](#docker-installation).
 
 * Install a separate copy of Python via [Homebrew](http://brew.sh/) or
 [MacPorts](https://www.macports.org/) and re-install TensorFlow in that
@@ -649,9 +649,9 @@ On Mac OS X, you may encounter the following when importing tensorflow.
 Traceback (most recent call last):
   File "<stdin>", line 1, in <module>
   File "/usr/local/lib/python2.7/site-packages/tensorflow/__init__.py", line 4, in <module>
-    from tensorflow.python import *
+    from google3.third_party.tensorflow.python import *
   File "/usr/local/lib/python2.7/site-packages/tensorflow/python/__init__.py", line 13, in <module>
-    from tensorflow.core.framework.graph_pb2 import *
+    from google3.third_party.tensorflow.core.framework.graph_pb2 import *
 ...
   File "/usr/local/lib/python2.7/site-packages/tensorflow/core/framework/tensor_shape_pb2.py", line 22, in <module>
     serialized_pb=_b('\n,tensorflow/core/framework/tensor_shape.proto\x12\ntensorflow\"d\n\x10TensorShapeProto\x12-\n\x03\x64im\x18\x02 \x03(\x0b\x32 .tensorflow.TensorShapeProto.Dim\x1a!\n\x03\x44im\x12\x0c\n\x04size\x18\x01 \x01(\x03\x12\x0c\n\x04name\x18\x02 \x01(\tb\x06proto3')
