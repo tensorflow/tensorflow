@@ -9,7 +9,7 @@ The TensorFlow Python API currently supports Python 2.7 and Python 3.3+ from
 source.
 
 The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
-6.5 V2.  Please see [Cuda installation](#install_cuda).
+6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 ## Overview
 
@@ -28,7 +28,7 @@ the instructions to your particular needs.  The names of the pip and Docker
 images are listed in the corresponding installation sections.
 
 If you encounter installation errors, see
-[common problems](#common_install_problems) for some solutions.
+[common problems](#common-installation-problems) for some solutions.
 
 ## Pip Installation
 
@@ -224,7 +224,7 @@ You can now [test your installation](#test-the-tensorflow-installation) within t
 ### (Optional, Linux) Enable GPU Support
 
 If you installed the GPU version of TensorFlow, you must also install the Cuda
-Toolkit 7.0 and CUDNN 6.5 V2.  Please see [Cuda installation](#install_cuda).
+Toolkit 7.0 and CUDNN 6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 You also need to set the `LD_LIBRARY_PATH` and `CUDA_HOME` environment
 variables.  Consider adding the commands below to your `~/.bash_profile`.  These
@@ -237,7 +237,7 @@ export CUDA_HOME=/usr/local/cuda
 
 ### Run TensorFlow from the Command Line
 
-See [common problems](#common_install_problems) if an error happens.
+See [common problems](#common-installation-problems) if an error happens.
 
 Open a terminal and type the following:
 
@@ -331,11 +331,11 @@ binary path.
 $ sudo apt-get install python-numpy swig python-dev
 ```
 
-#### Configure the installation {#configure}
+#### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter and allows (optional)
-configuration of the CUDA libraries (see [below](#configure_cuda)).
+configuration of the CUDA libraries (see [below](#configure-tensorflows-canonical-view-of-cuda-libraries)).
 
 This step is used to locate the python and numpy header files.
 
@@ -344,7 +344,7 @@ $ ./configure
 Please specify the location of python. [Default is /usr/bin/python]:
 ```
 
-#### Optional: Install CUDA (GPUs on Linux) {#install_cuda}
+#### Optional: Install CUDA (GPUs on Linux)
 
 In order to build or run TensorFlow with GPU support, both Cuda Toolkit 7.0 and
 CUDNN 6.5 V2 from NVIDIA need to be installed.
@@ -376,7 +376,7 @@ sudo cp cudnn-6.5-linux-x64-v2/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-6.5-linux-x64-v2/libcudnn* /usr/local/cuda/lib64
 ```
 
-##### Configure TensorFlow's canonical view of Cuda libraries {#configure_cuda}
+##### Configure TensorFlow's canonical view of Cuda libraries
 When running the `configure` script from the root of your source tree, select
 the option `Y` when asked to build TensorFlow with GPU support.
 
@@ -491,7 +491,7 @@ best install that too:
 $ sudo easy_install ipython
 ```
 
-#### Configure the installation {#configure_osx}
+#### Configure the installation for Mac OS X
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter.
@@ -504,7 +504,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N]
 ```
 
-### Create the pip package and install {#create-pip}
+### Create the pip package and install
 
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
@@ -546,7 +546,7 @@ Validation error: 7.0%
 ...
 ```
 
-## Common Problems {#common_install_problems}
+## Common Installation Problems
 
 ### GPU-related issues
 
@@ -556,7 +556,7 @@ If you encounter the following when trying to run a TensorFlow program:
 ImportError: libcudart.so.7.0: cannot open shared object file: No such file or directory
 ```
 
-Make sure you followed the the GPU installation [instructions](#install_cuda).
+Make sure you followed the the GPU installation [instructions](#optional-install-cuda-gpus-on-linux).
 
 ### Pip installation issues
 

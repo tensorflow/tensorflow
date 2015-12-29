@@ -107,7 +107,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ```
 
 Once you
-[build and reinstall TensorFlow](../../get_started/os_setup.md#create-pip), the
+[build and reinstall TensorFlow](../../get_started/os_setup.md#create-the-pip-package-and-install-create-pip), the
 Tensorflow system can reference and use the Op when requested.
 
 ## Generate the client wrapper
