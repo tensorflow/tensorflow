@@ -34,6 +34,7 @@ except ImportError:
 from skflow.trainer import TensorFlowTrainer
 from skflow import data_feeder
 from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -82,6 +83,9 @@ class TensorFlowEstimator(BaseEstimator):
         if HAS_PANDAS:
             X = extract_pandas_data(X)
             y = extract_pandas_labels(y)
+        if HAS_DASK:
+            X = extract_dask_data(X)
+            y = extract_dask_labels(y)
         return X, y
 
     def _setup_data_feeder(self, X, y):

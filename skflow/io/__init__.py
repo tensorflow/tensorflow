@@ -14,3 +14,4 @@
 #  limitations under the License.
 
 from skflow.io.pandas_io import *
+from skflow.io.dask_io import *
