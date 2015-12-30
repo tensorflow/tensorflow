@@ -23,6 +23,7 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
+import dask.dataframe as dd
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
@@ -183,12 +184,29 @@ class StreamingDataFeeder(object):
 
 
 class DaskDataFeeder(object):
-# train = dd.read_csv('dbpedia_csv/train.csv', header=None)
-# train.divisions = tuple(range(1, len(train.divisions) + 1))
-# X_train, y_train = train[2], train[0]
-# test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
-# X_test, y_test = test[2], test[0]
+    """Data feeder for TF trainer that reads data from dask.Series.
 
+    Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
+    DaskDataFeeder will remove requirement to have full dataset in the memory and still do 
+    random seeks for sampling of batches.
+
+    Parameters:
+        X: iterator that returns for each element, returns features.
+        y: iterator that returns for each element, returns 1 or many classes /
+           regression values.
+        n_classes: indicator of how many classes the target has.
+        batch_size: Mini batch size to accumulate.
+
+    Attributes:
+        X: input features.
+        y: input target.
+        n_classes: number of classes.
+        batch_size: mini batch size to accumulate.
+        input_shape: shape of the input.
+        output_shape: shape of the output.
+        input_dtype: dtype of input.
+        output_dtype: dtype of output.
+    """
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
         self.X = check_array(X, ensure_2d=False,
@@ -228,14 +246,10 @@ class DaskDataFeeder(object):
         def _feed_dict_fn():
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
+            # TODO: option for with/without replacement (dev version of dask)
             sample = self.df.random(batch_size/float(list(self.X_shape)[0]),
                 random_state=self.random_state)
             inp = sample[self.X_columns]
             out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
-
-
-
-
-
