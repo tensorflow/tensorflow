@@ -16,10 +16,11 @@
 from __future__ import division, print_function, absolute_import
 
 import re
-import collections
 import six
 
 import numpy as np
+
+from skflow.preprocessing.categorical_vocabulary import CategoricalVocabulary
 
 TOKENIZER_RE = re.compile(
     r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)
@@ -72,71 +73,6 @@ class ByteProcessor(object):
                          'constant')
 
 
-class WordVocabulary(object):
-    """Word vocabulary class.
-
-    Accumulates and provides mapping from words to indexes.
-    """
-
-    def __init__(self, unknown_token='<UNK>'):
-        self._mapping = {unknown_token: 0}
-        self._freq = collections.defaultdict(int)
-        self._freeze = False
-
-    def __len__(self):
-        return len(self._mapping)
-
-    def freeze(self, freeze=True):
-        """Freezes the vocabulary, after which new words return unknown token id.
-
-        Args:
-            freeze: True to freeze, False to unfreeze.
-        """
-        self._freeze = freeze
-
-    def get(self, word):
-        """Returns word's id in the vocabulary.
-
-        If word is new, creates a new id for it.
-
-        Args:
-            word: string to lookup in vocabulary.
-
-        Returns:
-            interger, id in the vocabulary.
-        """
-        if word not in self._mapping:
-            if self._freeze:
-                return 0
-            self._mapping[word] = len(self._mapping)
-        return self._mapping[word]
-
-    def add(self, word, count=1):
-        """Adds count of the word to the frequency table.
-
-        Args:
-            word: string, word to add frequency to.
-            count: optional integer, how many to add.
-        """
-        word_id = self.get(word)
-        if word_id <= 0:
-            return
-        self._freq[word] += count
-
-    def trim(self, min_frequency, max_frequency=-1):
-        """Trims vocabulary for minimum frequency.
-
-        Args:
-            min_frequency: minimum frequency to keep.
-            max_frequency: optional, maximum frequency to keep.
-                Useful to remove stop words.
-        """
-        for word, count in six.iteritems(self._freq):
-            if count <= min_frequency and (max_frequency < 0 or
-                                           count >= max_frequency):
-                self._mapping.pop(word)
-
-
 class VocabularyProcessor(object):
     """Maps documents to sequences of word ids.
 
@@ -144,10 +80,10 @@ class VocabularyProcessor(object):
         max_document_length: Maximum length of documents.
             if documents are longer, they will be trimmed, if shorter - padded.
         min_frequency: Minimum frequency of words in the vocabulary.
-        vocabulary: WordVocabulary object.
+        vocabulary: CategoricalVocabulary object.
 
     Attributes:
-        vocabulary_: WordVocabulary object.
+        vocabulary_: CategoricalVocabulary object.
     """
 
     def __init__(self, max_document_length,
@@ -158,7 +94,7 @@ class VocabularyProcessor(object):
         if vocabulary:
             self.vocabulary_ = vocabulary
         else:
-            self.vocabulary_ = WordVocabulary()
+            self.vocabulary_ = CategoricalVocabulary()
         if tokenizer_fn:
             self._tokenizer = tokenizer_fn
         else:

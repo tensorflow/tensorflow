@@ -42,13 +42,6 @@ class TextTest(tf.test.TestCase):
                             [97, 98, 99, 0, 0, 0, 0, 0],
                             [49, 50, 51, 52, 53, 54, 55, 56]])
 
-    def testWordVocabulary(self):
-        vocab = text.WordVocabulary()
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
-
     def testVocabularyProcessor(self):
         vocab_processor = text.VocabularyProcessor(
             max_document_length=4,

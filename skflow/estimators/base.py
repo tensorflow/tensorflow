@@ -20,6 +20,7 @@ import os
 import datetime
 from six import string_types
 
+import numpy as np
 import tensorflow as tf
 
 from google.protobuf import text_format
@@ -226,6 +227,8 @@ class TensorFlowEstimator(BaseEstimator):
             raise NotFittedError()
         if HAS_PANDAS:
             X = extract_pandas_data(X)
+        if len(X.shape) == 1:
+            X = np.reshape(X, (-1, 1))
         pred = self._session.run(self._model_predictions,
                                  feed_dict={
                                      self._inp.name: X

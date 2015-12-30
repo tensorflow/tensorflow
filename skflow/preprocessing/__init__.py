@@ -14,3 +14,4 @@
 #  limitations under the License.
 
 from skflow.preprocessing.text import *
+from skflow.preprocessing.categorical import *
