@@ -14,5 +14,6 @@ Text classification
 -------------------
 
 * [Text Classification Using Recurrent Neural Networks on Words](text_classification.py)
+* [Text Classification Using Convolutional Neural Networks on Words](text_classification_cnn.py)
 * [Text Classification Using Recurrent Neural Networks on Characters](text_classification_character_rnn.py)
 * [Text Classification Using Convolutional Neural Networks on Characters](text_classification_character_cnn.py)
