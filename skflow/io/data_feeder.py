@@ -23,6 +23,9 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
+from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
+
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
@@ -38,6 +41,35 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
         output_shape = [batch_size] + y_shape
     return input_shape, output_shape
 
+def _data_type_filter(X, y):
+    """Filter data types into acceptable format"""
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
+        y = extract_pandas_labels(y)
+    if HAS_DASK:
+        X = extract_dask_data(X)
+        y = extract_dask_labels(y)
+    return X, y
+
+def _setup_data_feeder(X, y, n_classes, batch_size):
+    """Create data feeder, to sample inputs from dataset.
+    If X and y are iterators, use StreamingDataFeeder.
+    """
+    if HAS_DASK:
+        import dask.dataframe as dd
+        if isinstance(X, dd.Series) and isinstance(y, dd.Series):
+            data_feeder_cls = DaskDataFeeder
+        else:
+            data_feeder_cls = DataFeeder
+    else:
+        data_feeder_cls = DataFeeder
+
+    if hasattr(X, 'next') or hasattr(X, '__next__'):
+        if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+            raise ValueError("Both X and y should be iterators for "
+                             "streaming learning to work.")
+        data_feeder_cls = StreamingDataFeeder
+    return data_feeder_cls(X, y, n_classes, batch_size)
 
 class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.

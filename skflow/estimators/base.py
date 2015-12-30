@@ -32,9 +32,9 @@ except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
 from skflow.trainer import TensorFlowTrainer
-from skflow import data_feeder
-from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
-from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
+from skflow.io.data_feeder import _data_type_filter, _setup_data_feeder
+from skflow.io import HAS_PANDAS, extract_pandas_data
+from skflow.io import HAS_DASK, extract_dask_data
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -76,37 +76,6 @@ class TensorFlowEstimator(BaseEstimator):
         self.continue_training = continue_training
         self.num_cores = num_cores
         self._initialized = False
-
-    @staticmethod
-    def _data_type_filter(X, y):
-        """Filter data types into acceptable format"""
-        if HAS_PANDAS:
-            X = extract_pandas_data(X)
-            y = extract_pandas_labels(y)
-        if HAS_DASK:
-            X = extract_dask_data(X)
-            y = extract_dask_labels(y)
-        return X, y
-
-    def _setup_data_feeder(self, X, y):
-        """Create data feeder, to sample inputs from dataset.
-        If X and y are iterators, use StreamingDataFeeder.
-        """
-        if HAS_DASK:
-            import dask.dataframe as dd
-            if isinstance(X, dd.Series) and isinstance(y, dd.Series):
-                data_feeder_cls = data_feeder.DaskDataFeeder
-            else:
-                data_feeder_cls = data_feeder.DataFeeder
-        else:
-            data_feeder_cls = data_feeder.DataFeeder
-
-        if hasattr(X, 'next') or hasattr(X, '__next__'):
-            if not hasattr(y, 'next') and not hasattr(y, '__next__'):
-                raise ValueError("Both X and y should be iterators for "
-                                 "streaming learning to work.")
-            data_feeder_cls = data_feeder.StreamingDataFeeder
-        self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -184,9 +153,11 @@ class TensorFlowEstimator(BaseEstimator):
         Returns:
             Returns self.
         """
-        X, y = self._data_type_filter(X, y)
+        X, y = _data_type_filter(X, y)
         # Sets up data feeder.
-        self._setup_data_feeder(X, y)
+        self._data_feeder = _setup_data_feeder(X, y,
+                                               self.n_classes,
+                                               self.batch_size)
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
@@ -239,6 +210,8 @@ class TensorFlowEstimator(BaseEstimator):
             raise NotFittedError()
         if HAS_PANDAS:
             X = extract_pandas_data(X)
+        if HAS_DASK:
+            X = extract_dask_data(X)
         if len(X.shape) == 1:
             X = np.reshape(X, (-1, 1))
         pred = self._session.run(self._model_predictions,
