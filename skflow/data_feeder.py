@@ -183,19 +183,11 @@ class StreamingDataFeeder(object):
 
 
 class DaskDataFeeder(object):
-
-train = dd.read_csv('dbpedia_csv/train.csv', header=None)
-train.divisions = tuple(range(1, len(train.divisions) + 1))
-X_train, y_train = train[2], train[0]
+# train = dd.read_csv('dbpedia_csv/train.csv', header=None)
+# train.divisions = tuple(range(1, len(train.divisions) + 1))
+# X_train, y_train = train[2], train[0]
 # test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
 # X_test, y_test = test[2], test[0]
-
-    # import dask.dataframe as dd
-    # df = dd.read_csv("dbpedia_csv/train.csv", header = None)
-    # df.divisions = tuple(range(1, len(df.divisions) + 1))
-    # df.get_division(7).count().compute()
-    # df.get_division(2).head()
-    # df.sample(.1, random_state).compute()
 
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
@@ -204,6 +196,12 @@ X_train, y_train = train[2], train[0]
         self.y = check_array(y, ensure_2d=False, dtype=np.float32)
         self.X = X
         self.y = y
+        # save column names
+        self.X_columns = list(X.columns)
+        self.y_columns = list(y.columns)
+        # combine into a data frame 
+        self.df = dd.multi.concat([X, y], axis=1)
+
         self.n_classes = n_classes
         self.batch_size = batch_size
         X_shape = tuple([X.count().compute()])
@@ -230,18 +228,10 @@ X_train, y_train = train[2], train[0]
         def _feed_dict_fn():
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
-            for i in xrange(self.batch_size):
-                sample = self.random_state.randint(0, self.X_shape[0])
-                inp[i, :] = self.X.loc[sample].compute()
-                out_value = self.y.loc[sample].compute()
-                if self.n_classes > 1:
-                    if len(self.output_shape) == 2:
-                        out.itemset((i, out_value), 1.0) # TODO: sample needs to be index for y to work
-                    else:
-                        for idx, value in enumerate(out_value):
-                            out.itemset(tuple([i, idx, value]), 1.0)
-                else:
-                    out[i] = out_value
+            sample = self.df.random(batch_size/float(list(self.X_shape)[0]),
+                random_state=self.random_state)
+            inp = sample[self.X_columns]
+            out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
