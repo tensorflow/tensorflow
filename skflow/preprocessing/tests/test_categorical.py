@@ -22,12 +22,23 @@ from skflow.preprocessing import categorical
 
 class CategoricalTest(tf.test.TestCase):
 
-    def testCategoricalProcessor(self):
+    def testSingleCategoricalProcessor(self):
         cat_processor = categorical.CategoricalProcessor(
             min_frequency=1)
         X = cat_processor.fit_transform(
-            ["0", 1, float('nan'), "C", "C", 1, "0", np.nan, 3])
-        self.assertAllEqual(list(X), [1, 2, 0, 3, 3, 2, 1, 0, 0])
+            [["0"], [1], [float('nan')], 
+            ["C"], ["C"], [1], ["0"], [np.nan], [3]])
+        self.assertAllEqual(list(X), [
+            [1], [2], [0], [3], 
+            [3], [2], [1], [0],
+            [0]])
+
+    def testMultiCategoricalProcessor(self):
+        cat_processor = categorical.CategoricalProcessor(
+            min_frequency=0, share=False)
+        x = cat_processor.fit_transform(
+            [["0", "Male"], [1, "Female"], ["3", "Male"]])
+        self.assertAllEqual(list(x), [[1, 1], [2, 2], [3, 1]])
 
 
 if __name__ == "__main__":

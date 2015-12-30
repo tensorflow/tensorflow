@@ -27,44 +27,64 @@ class CategoricalProcessor(object):
 
     Parameters:
         min_frequency: Minimum frequency of categories in the vocabulary.
-        vocabulary: CategoricalVocabulary object.
+        share: Share vocabulary between variables.
+        vocabularies: list of CategoricalVocabulary objects for each variable in
+                    the input dataset.
 
     Attributes:
-        vocabulary_: CategoricalVocabulary object.
+        vocabularies_: CategoricalVocabulary object.
     """
 
-    def __init__(self, min_frequency=0, vocabulary=None):
+    def __init__(self, min_frequency=0, share=False, vocabularies=None):
         self.min_frequency = min_frequency
-        if vocabulary:
-            self.vocabulary_ = vocabulary
-        else:
-            self.vocabulary_ = categorical_vocabulary.CategoricalVocabulary()
+        self.share = share
+        self.vocabularies_ = vocabularies
+
+    def freeze(self, freeze=True):
+        """Freeze or unfreeze all vocabularies.
+
+        Args:
+            freeze: Boolean, indicate if vocabularies should be frozen.
+        """
+        for vocab in self.vocabularies_:
+            vocab.freeze(freeze)
 
     def fit(self, X, unused_y=None):
         """Learn a vocabulary dictionary of all categories in X.
 
         Args:
-            raw_documents: numpy array or iterable.
+            raw_documents: numpy matrix or iterable of lists/numpy arrays.
             unused_y: to match fit format signature of estimators.
 
         Returns:
             self
         """
         for row in X:
-            # Nans are handled as unknowns.
-            if (isinstance(row, float) and math.isnan(row)) or row == np.nan:
-                continue
-            self.vocabulary_.add(row)
+            # Create vocabularies if not given.
+            if self.vocabularies_ is None:
+                # If not share, one per column, else one shared across.
+                if not self.share:
+                    self.vocabularies_ = [
+                        categorical_vocabulary.CategoricalVocabulary() for _ in row]
+                else:
+                    vocab = categorical_vocabulary.CategoricalVocabulary()
+                    self.vocabularies_ = [vocab for _ in row]
+            for idx, value in enumerate(row):
+                # Nans are handled as unknowns.
+                if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
+                    continue
+                self.vocabularies_[idx].add(value)
         if self.min_frequency > 0:
-            self.vocabulary_.trim(self.min_frequency)
-        self.vocabulary_.freeze()
+            for vocab in self.vocabularies_:
+                vocab.trim(self.min_frequency)
+        self.freeze()
         return self
 
     def fit_transform(self, X, unused_y=None):
         """Learn the vocabulary dictionary and return indexies of categories.
 
         Args:
-            X: numpy array or iterable.
+            X: numpy matrix or iterable of lists/numpy arrays.
             unused_y: to match fit_transform signature of estimators.
 
         Returns:
@@ -80,15 +100,19 @@ class CategoricalProcessor(object):
         one provided in the constructor.
 
         Args:
-            X: numpy array or iterable.
+            X: numpy matrix or iterable of lists/numpy arrays.
 
         Returns:
             X: iterable, [n_samples]. Category-id matrix.
         """
+        self.freeze()
         for row in X:
-            # Return <UNK> when it's Nan.
-            if (isinstance(row, float) and math.isnan(row)) or row == np.nan:
-                yield 0
-                continue
-            yield self.vocabulary_.get(row)
+            output_row = []
+            for idx, value in enumerate(row):
+                # Return <UNK> when it's Nan.
+                if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
+                    output_row.append(0)
+                    continue
+                output_row.append(self.vocabularies_[idx].get(value))
+            yield np.array(output_row, dtype=np.int64)
 
