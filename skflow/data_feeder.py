@@ -182,7 +182,7 @@ class StreamingDataFeeder(object):
         return _feed_dict_fn
 
 
-class DaskDataFrameFeeder(object):
+class DaskDataFeeder(object):
 
 train = dd.read_csv('dbpedia_csv/train.csv', header=None)
 train.divisions = tuple(range(1, len(train.divisions) + 1))
@@ -231,17 +231,17 @@ X_train, y_train = train[2], train[0]
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             for i in xrange(self.batch_size):
-                # sample = self.random_state.randint(0, self.X.shape[0])
-                # inp[i, :] = self.X[sample, :]
-                inp[i, :] = self.X.sample(1, self.random_state)
+                sample = self.random_state.randint(0, self.X_shape[0])
+                inp[i, :] = self.X.loc[sample].compute()
+                out_value = self.y.loc[sample].compute()
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
-                        out.itemset((i, self.y[sample]), 1.0)
+                        out.itemset((i, out_value), 1.0) # TODO: sample needs to be index for y to work
                     else:
-                        for idx, value in enumerate(self.y[sample]):
+                        for idx, value in enumerate(out_value):
                             out.itemset(tuple([i, idx, value]), 1.0)
                 else:
-                    out[i] = self.y[sample]
+                    out[i] = out_value
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
