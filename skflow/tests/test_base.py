@@ -33,7 +33,7 @@ class BaseTest(googletest.TestCase):
         regressor = skflow.TensorFlowLinearRegressor()
         regressor.fit(X, y)
         score = mean_squared_error(regressor.predict(X), y)
-        self.assertLess(score, 0.1, "Failed with score = {0}".format(score))
+        self.assertLess(score, 0.3, "Failed with score = {0}".format(score))
 
     def testIris(self):
         random.seed(42)

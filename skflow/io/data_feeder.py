@@ -240,7 +240,7 @@ class DaskDataFeeder(object):
     """
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         import dask.dataframe as dd
-        x_dtype = np.int64 if X.dtype == np.int64 else np.float32
+        # TODO: check X and y dtypes in dask_io like pandas
         self.X = X
         self.y = y
         # save column names
