@@ -180,3 +180,72 @@ class StreamingDataFeeder(object):
                     out[i] = y
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
+
+
+class DaskDataFrameFeeder(object):
+
+train = dd.read_csv('dbpedia_csv/train.csv', header=None)
+train.divisions = tuple(range(1, len(train.divisions) + 1))
+X_train, y_train = train[2], train[0]
+# test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
+# X_test, y_test = test[2], test[0]
+
+    # import dask.dataframe as dd
+    # df = dd.read_csv("dbpedia_csv/train.csv", header = None)
+    # df.divisions = tuple(range(1, len(df.divisions) + 1))
+    # df.get_division(7).count().compute()
+    # df.get_division(2).head()
+    # df.sample(.1, random_state).compute()
+
+    def __init__(self, X, y, n_classes, batch_size, random_state=None):
+        x_dtype = np.int64 if X.dtype == np.int64 else np.float32
+        self.X = check_array(X, ensure_2d=False,
+                             allow_nd=True, dtype=x_dtype)
+        self.y = check_array(y, ensure_2d=False, dtype=np.float32)
+        self.X = X
+        self.y = y
+        self.n_classes = n_classes
+        self.batch_size = batch_size
+        X_shape = tuple([X.count().compute()])
+        y_shape = tuple([y.count().compute()])
+        self.input_shape, self.output_shape = _get_in_out_shape(
+            X_shape, y_shape, n_classes, batch_size)
+        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        if random_state is None:
+            self.random_state = np.random.RandomState(42)
+        else:
+            self.random_state = random_state
+
+    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+        """Returns a function, that will sample data and provide it to given
+        placeholders.
+
+        Args:
+            input_placeholder: tf.Placeholder for input features mini batch.
+            output_placeholder: tf.Placeholder for output targets.
+        Returns:
+            A function that when called samples a random subset of batch size
+            from X and y.
+        """
+        def _feed_dict_fn():
+            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
+            out = np.zeros(self.output_shape, dtype=self.output_dtype)
+            for i in xrange(self.batch_size):
+                # sample = self.random_state.randint(0, self.X.shape[0])
+                # inp[i, :] = self.X[sample, :]
+                inp[i, :] = self.X.sample(1, self.random_state)
+                if self.n_classes > 1:
+                    if len(self.output_shape) == 2:
+                        out.itemset((i, self.y[sample]), 1.0)
+                    else:
+                        for idx, value in enumerate(self.y[sample]):
+                            out.itemset(tuple([i, idx, value]), 1.0)
+                else:
+                    out[i] = self.y[sample]
+            return {input_placeholder.name: inp, output_placeholder.name: out}
+        return _feed_dict_fn
+
+
+
+
+
