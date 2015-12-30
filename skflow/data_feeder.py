@@ -23,8 +23,6 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
-import dask.dataframe as dd
-
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
     x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
@@ -187,7 +185,7 @@ class DaskDataFeeder(object):
     """Data feeder for TF trainer that reads data from dask.Series.
 
     Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
-    DaskDataFeeder will remove requirement to have full dataset in the memory and still do 
+    DaskDataFeeder will remove requirement to have full dataset in the memory and still do
     random seeks for sampling of batches.
 
     Parameters:
@@ -208,6 +206,7 @@ class DaskDataFeeder(object):
         output_dtype: dtype of output.
     """
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
+        import dask.dataframe as dd
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
         self.X = check_array(X, ensure_2d=False,
                              allow_nd=True, dtype=x_dtype)
@@ -217,7 +216,7 @@ class DaskDataFeeder(object):
         # save column names
         self.X_columns = list(X.columns)
         self.y_columns = list(y.columns)
-        # combine into a data frame 
+        # combine into a data frame
         self.df = dd.multi.concat([X, y], axis=1)
 
         self.n_classes = n_classes
@@ -247,8 +246,7 @@ class DaskDataFeeder(object):
             inp = np.zeros(self.input_shape, dtype=self.input_dtype)
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             # TODO: option for with/without replacement (dev version of dask)
-            sample = self.df.random(batch_size/float(list(self.X_shape)[0]),
-                random_state=self.random_state)
+            sample = self.df.random(batch_size/float(list(self.X_shape)[0]), random_state=self.random_state)
             inp = sample[self.X_columns]
             out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}

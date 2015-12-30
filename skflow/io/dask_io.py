@@ -27,9 +27,9 @@ def extract_dask_data(data):
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
-    if isinstance(labels, dd.Series): 
+    if isinstance(labels, dd.Series):
         if len(labels.columns) > 1:
-            raise ValueError('Only one column for labels is allowed.')    
+            raise ValueError('Only one column for labels is allowed.')
         labels.divisions = tuple(range(len(labels.divisions)))
     else:
         return labels

@@ -92,16 +92,17 @@ class TensorFlowEstimator(BaseEstimator):
         """Create data feeder, to sample inputs from dataset.
         If X and y are iterators, use StreamingDataFeeder.
         """
-        if isinstance(X, dd.Series) or isinstance(y, dd.Series):
-            data_feeder_cls = data_feeder.DaskDataFeeder
-            self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
+        if HAS_DASK:
+            import dask.dataframe as dd
+            if isinstance(X, dd.Series) and isinstance(y, dd.Series):
+                data_feeder_cls = data_feeder.DaskDataFeeder
         else:
             if hasattr(X, 'next') or hasattr(X, '__next__'):
                 if not hasattr(y, 'next') and not hasattr(y, '__next__'):
                     raise ValueError("Both X and y should be iterators for "
                                      "streaming learning to work.")
                 data_feeder_cls = data_feeder.StreamingDataFeeder
-            self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
+        self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""

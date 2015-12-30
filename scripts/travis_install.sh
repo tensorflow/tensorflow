@@ -31,6 +31,8 @@ case "$TASK" in
         pip install scipy
         pip install pandas
         pip install scikit-learn
+        pip install toolz
+        pip install dask
 
         # Install TensorFlow
         case "$TRAVIS_OS_NAME" in
