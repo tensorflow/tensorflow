@@ -23,6 +23,7 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
+
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
     x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
@@ -208,9 +209,6 @@ class DaskDataFeeder(object):
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         import dask.dataframe as dd
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
-        self.X = check_array(X, ensure_2d=False,
-                             allow_nd=True, dtype=x_dtype)
-        self.y = check_array(y, ensure_2d=False, dtype=np.float32)
         self.X = X
         self.y = y
         # save column names
@@ -220,9 +218,9 @@ class DaskDataFeeder(object):
         self.df = dd.multi.concat([X, y], axis=1)
 
         self.n_classes = n_classes
-        self.batch_size = batch_size
         X_shape = tuple([X.count().compute()])
         y_shape = tuple([y.count().compute()])
+        self.sample_fraction = batch_size/float(list(X_shape)[0])
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
         self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
@@ -243,10 +241,8 @@ class DaskDataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
-            out = np.zeros(self.output_shape, dtype=self.output_dtype)
             # TODO: option for with/without replacement (dev version of dask)
-            sample = self.df.random(self.batch_size/float(list(self.X_shape)[0]),
+            sample = self.df.random(self.sample_fraction,
                                     random_state=self.random_state)
             inp = sample[self.X_columns]
             out = sample[self.y_columns]
