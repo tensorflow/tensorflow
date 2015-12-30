@@ -96,12 +96,12 @@ class TensorFlowEstimator(BaseEstimator):
             import dask.dataframe as dd
             if isinstance(X, dd.Series) and isinstance(y, dd.Series):
                 data_feeder_cls = data_feeder.DaskDataFeeder
-        else:
-            if hasattr(X, 'next') or hasattr(X, '__next__'):
-                if not hasattr(y, 'next') and not hasattr(y, '__next__'):
-                    raise ValueError("Both X and y should be iterators for "
-                                     "streaming learning to work.")
-                data_feeder_cls = data_feeder.StreamingDataFeeder
+
+        if hasattr(X, 'next') or hasattr(X, '__next__'):
+            if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+                raise ValueError("Both X and y should be iterators for "
+                                    "streaming learning to work.")
+            data_feeder_cls = data_feeder.StreamingDataFeeder
         self._data_feeder = data_feeder_cls(X, y, self.n_classes, self.batch_size)
 
     def _setup_training(self):
