@@ -247,7 +247,7 @@ class DaskDataFeeder(object):
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
             # TODO: option for with/without replacement (dev version of dask)
             sample = self.df.random(self.batch_size/float(list(self.X_shape)[0]),
-                random_state=self.random_state)
+                                    random_state=self.random_state)
             inp = sample[self.X_columns]
             out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}
