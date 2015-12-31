@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <dlfcn.h>
 #include <limits.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #include <stdlib.h>
 #include <unistd.h>
 #include <initializer_list>
-#include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
 
+#include "tensorflow/core/platform/
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -30,6 +33,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
+
+#define STRINGIFY(x) #x
+#define TO_STRING(x) STRINGIFY(x)
 
 namespace perftools {
 namespace gputools {
@@ -41,8 +47,8 @@ string GetCudaVersion() { return ""; }
 string GetCudnnVersion() { return ""; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcublas.so" + GetCudaVersion(),
-                                  "third_party/gpus/cuda/lib64"),
+  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cublas", GetCudaVersion()),
+                                  GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
@@ -51,34 +57,34 @@ string GetCudnnVersion() { return ""; }
   // different version number than other CUDA libraries.  See b/22397368 for
   // some details about the complications surrounding this.
   return GetDsoHandle(
-      FindDsoPath("libcudnn.so" + GetCudnnVersion(),
-                  "third_party/gpus/cuda/lib64"),
-      dso_handle);
+      FindDsoPath(tensorflow::port::FormatLibraryFileName("cudnn", GetCudnnVersion()),
+                              GetCudaLibraryDirPath()),
+                      dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcufft.so" + GetCudaVersion(),
-                                  "third_party/gpus/cuda/lib64"),
+  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cufft", GetCudaToolkitVersion()),
+                                  GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcurand.so" + GetCudaVersion(),
-                                  "third_party/gpus/cuda/lib64"),
+  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("curand", GetCudaVersion()),
+                                  GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(
-      FindDsoPath("libcuda.so.1", "third_party/gpus/cuda/driver/lib64"),
-      dso_handle);
+  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cuda", ""),
+                                  GetCudaDriverLibraryPath()),
+                      dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
   return GetDsoHandle(
-      FindDsoPath("libcupti.so" + GetCudaVersion(),
-                  "third_party/gpus/cuda/extras/CUPTI/lib64"),
-      dso_handle);
+      FindDsoPath(tensorflow::port::FormatLibraryFileName("cupti", GetCudaVersion()),
+                                                          GetCudaCuptiLibraryPath()),
+                  dso_handle);
 }
 
 /* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
@@ -109,7 +115,15 @@ string GetCudnnVersion() { return ""; }
 
 /* static */ string DsoLoader::GetBinaryDirectory(bool strip_executable_name) {
   char exe_path[PATH_MAX] = {0};
+#ifdef __APPLE__
+  uint32_t buffer_size(0U);
+  _NSGetExecutablePath(nullptr, &buffer_size);
+  char unresolved_path[buffer_size];
+  _NSGetExecutablePath(unresolved_path, &buffer_size);
+  CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
+#else
   CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 
@@ -126,8 +140,11 @@ string GetCudnnVersion() { return ""; }
 // Ownership is transferred to the caller.
 static std::vector<string>* CreatePrimordialRpaths() {
   auto rpaths = new std::vector<string>;
-  rpaths->push_back(
-      "driver/driver_sh.runfiles/third_party/gpus/cuda/lib64");
+#if defined(__APPLE__)
+  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib");
+#else
+  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib64");
+#endif
   return rpaths;
 }
 
@@ -174,6 +191,39 @@ static std::vector<string>* CreatePrimordialRpaths() {
 
   return library_name.ToString();
 }
+
+/* static */ string DsoLoader::GetCudaToolkitVersion() {
+  return TO_STRING(CUDA_TOOLKIT_VERSION);
+}
+
+/* static */ string DsoLoader::GetCuDnnLibraryVersion() {
+  return TO_STRING(CUDNN_VERSION);
+}
+
+/* static */ string DsoLoader::GetCudaLibraryDirPath() {
+#if defined(__APPLE__)
+  return "third_party/gpus/cuda/lib";
+#else
+  return "third_party/gpus/cuda/lib64";
+#endif
+}
+
+/* static */ string DsoLoader::GetCudaDriverLibraryPath() {
+#if defined(__APPLE__)
+  return "third_party/gpus/cuda/driver/lib";
+#else
+  return "third_party/gpus/cuda/driver/lib64";
+#endif
+}
+
+/* static */ string DsoLoader::GetCudaCuptiLibraryPath() {
+#if defined(__APPLE__)
+  return "third_party/gpus/cuda/extras/CUPTI/lib";
+#else
+  return "third_party/gpus/cuda/extras/CUPTI/lib64";
+#endif
+}
+
 
 // -- CachedDsoLoader
 

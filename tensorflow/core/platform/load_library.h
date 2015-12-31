@@ -25,7 +25,6 @@ namespace internal {
 Status LoadLibrary(const char* library_filename, void** handle);
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                             void** symbol);
-
 }  // namespace internal
 
 }  // namespace tensorflow

@@ -314,10 +314,12 @@ port::Status CudnnSupport::Init() {
     } else {
       const auto& version = result.ValueOrDie();
       LOG(INFO) << "running driver version: " << DriverVersionToString(version);
+#if !defined(__APPLE__)
       if (std::get<0>(version) < 340) {
         LOG(ERROR)
             << "cudnn library is only supported on 340.XX+ driver versions";
       }
+#endif
     }
   }
 

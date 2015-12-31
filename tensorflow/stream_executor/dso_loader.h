@@ -91,6 +91,16 @@ class DsoLoader {
   static string FindDsoPath(port::StringPiece library_name,
                             port::StringPiece runfiles_relpath);
 
+  // Return the version of CUDA toolkit this binary was built against
+  static string GetCudaToolkitVersion();
+  // Return the version of cuDNN library this binary was built against
+  static string GetCuDnnLibraryVersion();
+
+  // Return platform dependent paths for DSOs
+  static string GetCudaLibraryDirPath();
+  static string GetCudaDriverLibraryPath();
+  static string GetCudaCuptiLibraryPath();
+
   SE_DISALLOW_COPY_AND_ASSIGN(DsoLoader);
 };
 

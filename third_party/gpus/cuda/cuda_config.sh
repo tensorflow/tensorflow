@@ -99,35 +99,57 @@ function CheckAndLinkToSrcTree {
 
   # Link the output file to the source tree, avoiding self links if they are
   # the same. This could happen if invoked from the source tree by accident.
-  if [ ! $(readlink -f $PWD) == $(readlink -f $OUTPUTDIR/third_party/gpus/cuda) ]; then
+  if [ ! $($READLINK_CMD -f $PWD) == $($READLINK_CMD -f $OUTPUTDIR/third_party/gpus/cuda) ]; then
     mkdir -p $(dirname $OUTPUTDIR/third_party/gpus/cuda/$FILE)
     ln -sf $PWD/$FILE $OUTPUTDIR/third_party/gpus/cuda/$FILE
   fi
 }
+
+OSNAME=`uname -s`
+if [ "$OSNAME" == "Linux" ]; then
+  CUDA_LIB_PATH="lib64"
+  CUDA_RT_LIB_PATH="lib64/libcudart.so.${TF_CUDA_VERSION}"
+  CUDA_RT_LIB_STATIC_PATH="lib64/libcudart_static.a"
+  CUDA_BLAS_LIB_PATH="lib64/libcublas.so.${TF_CUDA_VERSION}"
+  CUDA_DNN_LIB_PATH="lib64/libcudnn.so.${TF_CUDNN_VERSION}"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn.so.${TF_CUDNN_VERSION}"
+  CUDA_FFT_LIB_PATH="lib64/libcufft.so.${TF_CUDA_VERSION}"
+  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION"
+  READLINK_CMD="readlink"
+elif [ "$OSNAME" == "Darwin" ]; then
+  CUDA_LIB_PATH="lib"
+  CUDA_RT_LIB_PATH="lib/libcudart.${TF_CUDA_VERSION}.dylib"
+  CUDA_RT_LIB_STATIC_PATH="lib/libcudart_static.a"
+  CUDA_BLAS_LIB_PATH="lib/libcublas.${TF_CUDA_VERSION}.dylib"
+  CUDA_DNN_LIB_PATH="lib/libcudnn.${TF_CUDNN_VERSION}.dylib"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn.${TF_CUDNN_VERSION}.dylib"
+  CUDA_FFT_LIB_PATH="lib/libcufft.${TF_CUDA_VERSION}.dylib"
+  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib/libcupti.${TF_CUDA_VERSION}.dylib"
+  READLINK_CMD="greadlink"
+fi
 
 if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cuda.h
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
   CheckAndLinkToSrcTree CudaError extras/CUPTI/include/cupti.h
-  CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
-  CheckAndLinkToSrcTree CudaError lib64/libcublas.so$TF_CUDA_VERSION
-  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so$TF_CUDNN_VERSION
-  CheckAndLinkToSrcTree CudaError lib64/libcudart.so$TF_CUDA_VERSION
-  CheckAndLinkToSrcTree CudaError lib64/libcufft.so$TF_CUDA_VERSION
-  CheckAndLinkToSrcTree CudaError extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_STATIC_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_BLAS_LIB_PATH
+  CheckAndLinkToSrcTree CudnnError $CUDA_DNN_LIB_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_FFT_LIB_PATH
   exit 0
 fi
 
 # Actually configure the source tree for TensorFlow's canonical view of Cuda
 # libraries.
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION"
+if test ! -e ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}"
 fi
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION"
+if test ! -e ${CUDA_TOOLKIT_PATH}/${CUDA_CUPTI_LIB_PATH}; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUDA_CUPTI_LIB_PATH}"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -142,16 +164,16 @@ elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
 elif test -e /usr/include/cudnn.h; then
   CUDNN_HEADER_PATH=/usr/include
 else
-  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH} or /usr/include"
+  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}, ${CUDNN_INSTALL_PATH}/include or /usr/include"
 fi
 
-# Locate libcudnn.so.${$TF_CUDNN_VERSION}
-if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so$TF_CUDNN_VERSION; then
+# Locate libcudnn
+if test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so$TF_CUDNN_VERSION; then
-  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/lib64
+elif test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}; then
+  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}
 else
-  CudnnError "cannot find libcudnn.so.$TF_CUDNN_VERSION under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find ${CUDA_DNN_LIB_PATH} under: ${CUDNN_INSTALL_PATH}"
 fi
 
 # Helper function to build symbolic links for all files under a directory.
@@ -181,8 +203,8 @@ function LinkAllFiles {
 mkdir -p $OUTPUTDIR/third_party/gpus/cuda
 echo "Setting up Cuda include"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/include $OUTPUTDIR/third_party/gpus/cuda/include || exit -1
-echo "Setting up Cuda lib64"
-LinkAllFiles ${CUDA_TOOLKIT_PATH}/lib64 $OUTPUTDIR/third_party/gpus/cuda/lib64 || exit -1
+echo "Setting up Cuda ${CUDA_LIB_PATH}"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/${CUDA_LIB_PATH} $OUTPUTDIR/third_party/gpus/cuda/${CUDA_LIB_PATH} || exit -1
 echo "Setting up Cuda bin"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/bin $OUTPUTDIR/third_party/gpus/cuda/bin || exit -1
 echo "Setting up Cuda nvvm"
@@ -194,4 +216,4 @@ LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64 $OUTPUTDIR/third_party/gpus
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/libcudnn.so$TF_CUDNN_VERSION $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so$TF_CUDNN_VERSION || exit -1
+ln -sf $CUDNN_LIB_PATH/$CUDA_DNN_LIB_PATH $OUTPUTDIR/third_party/gpus/cuda/$CUDA_DNN_LIB_PATH || exit -1
