@@ -37,20 +37,23 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
+        early_stopping_rounds: Activates early stopping if this is not None.
+            Loss needs to decrease at least every every <early_stopping_rounds>
+            round(s) to continue training. (default: None)
      """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1):
+                 verbose=1, early_stopping_rounds=None):
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training,
-            verbose=verbose)
+            continue_training=continue_training, verbose=verbose,
+            early_stopping_rounds=early_stopping_rounds)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -72,20 +75,23 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
+        early_stopping_rounds: Activates early stopping if this is not None.
+            Loss needs to decrease at least every every <early_stopping_rounds>
+            round(s) to continue training. (default: None)
     """
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1):
+                 verbose=1, early_stopping_rounds=None):
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training,
-            verbose=verbose)
+            continue_training=continue_training, verbose=verbose,
+            early_stopping_rounds=early_stopping_rounds)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,

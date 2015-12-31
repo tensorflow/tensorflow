@@ -15,6 +15,7 @@
 
 from __future__ import division, print_function, absolute_import
 
+import sys
 import math
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
@@ -112,6 +113,8 @@ class TensorFlowTrainer(object):
 
         min_loss = float('inf')
         min_loss_i = 0
+        if early_stopping_rounds is not None:
+            sys.stderr.write("Performing early stopping. ")
 
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
