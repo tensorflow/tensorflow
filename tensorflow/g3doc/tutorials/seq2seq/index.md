@@ -22,7 +22,7 @@ python translate.py --data_dir [your_data_directory]
 It will download English-to-French translation data from the
 [WMT'15 Website](http://www.statmt.org/wmt15/translation-task.html)
 prepare it for training and train. It takes about 20GB of disk space,
-and a while to download and prepare (see [later](#run_it) for details),
+and a while to download and prepare (see [later](#lets-run-it) for details),
 so you can start and leave it running while reading this tutorial.
 
 This tutorial references the following files from `models/rnn`.
@@ -233,7 +233,7 @@ with encoder inputs representing `[PAD PAD "." "go" "I"]` and decoder
 inputs `[GO "Je" "vais" "." EOS PAD PAD PAD PAD PAD]`.
 
 
-## Let's Run It {#run_it}
+## Let's Run It 
 
 To train the model described above, we need to a large English-French corpus.
 We will use the *10^9-French-English corpus* from the
