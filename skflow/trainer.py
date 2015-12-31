@@ -114,7 +114,7 @@ class TensorFlowTrainer(object):
         min_loss = float('inf')
         min_loss_i = 0
         if early_stopping_rounds is not None:
-            sys.stderr.write("Performing early stopping. ")
+            sys.stderr.write("Performing early stopping. \n")
 
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
@@ -133,8 +133,8 @@ class TensorFlowTrainer(object):
                     min_loss_i = step
                 elif step - min_loss_i >= early_stopping_rounds:
                     sys.stderr.write("Stopping. Best step:\n \
-                                     {} with loss {}\n".format(min_loss_i,
-                                                               min_loss))
+                                     step {} with loss {}\n".format(min_loss_i,
+                                                                    min_loss))
                     break
 
             losses.append(loss)
