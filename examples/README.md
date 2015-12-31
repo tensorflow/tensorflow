@@ -9,6 +9,8 @@ Examples of Using skflow
 * [Using skflow with Pipeline](iris_with_pipeline.py)
 * [Example of saving and restoring models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
+* [Improving Performance Using Early Stopping with Iris Data](iris_early_stopping.py)
+
 
 Text classification
 -------------------
