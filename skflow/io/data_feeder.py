@@ -23,6 +23,9 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
+from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
+
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
@@ -38,6 +41,35 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
         output_shape = [batch_size] + y_shape
     return input_shape, output_shape
 
+def _data_type_filter(X, y):
+    """Filter data types into acceptable format"""
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
+        y = extract_pandas_labels(y)
+    if HAS_DASK:
+        X = extract_dask_data(X)
+        y = extract_dask_labels(y)
+    return X, y
+
+def _setup_data_feeder(X, y, n_classes, batch_size):
+    """Create data feeder, to sample inputs from dataset.
+    If X and y are iterators, use StreamingDataFeeder.
+    """
+    if HAS_DASK:
+        import dask.dataframe as dd
+        if isinstance(X, dd.Series) and isinstance(y, dd.Series):
+            data_feeder_cls = DaskDataFeeder
+        else:
+            data_feeder_cls = DataFeeder
+    else:
+        data_feeder_cls = DataFeeder
+
+    if hasattr(X, 'next') or hasattr(X, '__next__'):
+        if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+            raise ValueError("Both X and y should be iterators for "
+                             "streaming learning to work.")
+        data_feeder_cls = StreamingDataFeeder
+    return data_feeder_cls(X, y, n_classes, batch_size)
 
 class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.
@@ -178,5 +210,73 @@ class StreamingDataFeeder(object):
                             out.itemset(tuple([i, idx, value]), 1.0)
                 else:
                     out[i] = y
+            return {input_placeholder.name: inp, output_placeholder.name: out}
+        return _feed_dict_fn
+
+
+class DaskDataFeeder(object):
+    """Data feeder for TF trainer that reads data from dask.Series.
+
+    Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
+    DaskDataFeeder will remove requirement to have full dataset in the memory and still do
+    random seeks for sampling of batches.
+
+    Parameters:
+        X: iterator that returns for each element, returns features.
+        y: iterator that returns for each element, returns 1 or many classes /
+           regression values.
+        n_classes: indicator of how many classes the target has.
+        batch_size: Mini batch size to accumulate.
+
+    Attributes:
+        X: input features.
+        y: input target.
+        n_classes: number of classes.
+        batch_size: mini batch size to accumulate.
+        input_shape: shape of the input.
+        output_shape: shape of the output.
+        input_dtype: dtype of input.
+        output_dtype: dtype of output.
+    """
+    def __init__(self, X, y, n_classes, batch_size, random_state=None):
+        import dask.dataframe as dd
+        # TODO: check X and y dtypes in dask_io like pandas
+        self.X = X
+        self.y = y
+        # save column names
+        self.X_columns = list(X.columns)
+        self.y_columns = list(y.columns)
+        # combine into a data frame
+        self.df = dd.multi.concat([X, y], axis=1)
+
+        self.n_classes = n_classes
+        X_shape = tuple([X.count().compute()])
+        y_shape = tuple([y.count().compute()])
+        self.sample_fraction = batch_size/float(list(X_shape)[0])
+        self.input_shape, self.output_shape = _get_in_out_shape(
+            X_shape, y_shape, n_classes, batch_size)
+        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        if random_state is None:
+            self.random_state = np.random.RandomState(42)
+        else:
+            self.random_state = random_state
+
+    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+        """Returns a function, that will sample data and provide it to given
+        placeholders.
+
+        Args:
+            input_placeholder: tf.Placeholder for input features mini batch.
+            output_placeholder: tf.Placeholder for output targets.
+        Returns:
+            A function that when called samples a random subset of batch size
+            from X and y.
+        """
+        def _feed_dict_fn():
+            # TODO: option for with/without replacement (dev version of dask)
+            sample = self.df.random(self.sample_fraction,
+                                    random_state=self.random_state)
+            inp = sample[self.X_columns]
+            out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn

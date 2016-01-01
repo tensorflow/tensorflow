@@ -20,6 +20,6 @@ from skflow.io import *
 from skflow.estimators import *
 from skflow import ops
 from skflow import preprocessing
-from skflow import data_feeder
+from skflow.io import data_feeder
 from skflow import models
 from skflow.trainer import TensorFlowTrainer
