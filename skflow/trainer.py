@@ -15,6 +15,7 @@
 
 from __future__ import division, print_function, absolute_import
 
+import sys
 import math
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
@@ -87,7 +88,8 @@ class TensorFlowTrainer(object):
         return sess.run(self._initializers)
 
     def train(self, sess, feed_dict_fn, steps,
-              summary_writer=None, summaries=None, print_steps=0, verbose=1):
+              summary_writer=None, summaries=None,
+              print_steps=0, verbose=1, early_stopping_rounds=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -98,6 +100,9 @@ class TensorFlowTrainer(object):
             summaries: Joined object of all summaries that should be ran.
             print_steps: Number of steps in between printing cost.
             verbose: Controls the verbosity. If set to 0, the algorithm is muted.
+            early_stopping_rounds: Activates early stopping if this is not None.
+                Loss needs to decrease at least every every <early_stopping_rounds>
+                round(s) to continue training. (default: None)
 
         Returns:
             List of losses for each step.
@@ -105,6 +110,12 @@ class TensorFlowTrainer(object):
         losses, print_loss_buffer = [], []
         print_steps = (print_steps if print_steps else
                        math.ceil(float(steps) / 10))
+
+        min_loss = float('inf')
+        min_loss_i = 0
+        if early_stopping_rounds is not None:
+            sys.stderr.write("Performing early stopping. \n")
+
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
             if summaries:
@@ -115,6 +126,17 @@ class TensorFlowTrainer(object):
                 global_step, loss, _ = sess.run(
                     [self.global_step, self.loss, self.trainer],
                     feed_dict=feed_dict)
+
+            if early_stopping_rounds is not None:
+                if loss < min_loss:
+                    min_loss = loss
+                    min_loss_i = step
+                elif step - min_loss_i >= early_stopping_rounds:
+                    sys.stderr.write("Stopping. Best step:\n \
+                                     step {} with loss {}\n".format(min_loss_i,
+                                                                    min_loss))
+                    break
+
             losses.append(loss)
             print_loss_buffer.append(loss)
             if summaries and summary_writer:

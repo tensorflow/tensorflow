@@ -58,11 +58,15 @@ class TensorFlowEstimator(BaseEstimator):
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
+        early_stopping_rounds: Activates early stopping if this is not None.
+            Loss needs to decrease at least every every <early_stopping_rounds>
+            round(s) to continue training. (default: None)
+
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 num_cores=4, verbose=1):
+                 num_cores=4, verbose=1, early_stopping_rounds=None):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -75,6 +79,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.continue_training = continue_training
         self.num_cores = num_cores
         self._initialized = False
+        self._early_stopping_rounds = early_stopping_rounds
 
     @staticmethod
     def _data_type_filter(X, y):
@@ -195,7 +200,8 @@ class TensorFlowEstimator(BaseEstimator):
                             self.steps,
                             self._summary_writer,
                             self._summaries,
-                            verbose=self.verbose)
+                            verbose=self.verbose,
+                            early_stopping_rounds=self._early_stopping_rounds)
         return self
 
     def partial_fit(self, X, y):
