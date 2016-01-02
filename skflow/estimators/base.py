@@ -64,7 +64,7 @@ class TensorFlowEstimator(BaseEstimator):
             round(s) to continue training. (default: None)
         exponential_decay: Whether to apply exponential_decay to the learning_rate.
                              A dict type containing the following keys: global_step(int),
-                             decay_steps(int), decay_rate(float), and staircase(bool). 
+                             decay_steps(int), decay_rate(float), and staircase(bool).
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
@@ -115,8 +115,9 @@ class TensorFlowEstimator(BaseEstimator):
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
             self._trainer = TensorFlowTrainer(
-                self._model_loss, self._global_step, self.optimizer,
-                self.learning_rate, self._exponential_decay)
+                loss=self._model_loss, global_step=self._global_step,
+                optimizer=self.optimizer, learning_rate=self.learning_rate,
+                exponential_decay=self._exponential_decay)
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver()

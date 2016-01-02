@@ -53,26 +53,27 @@ class TensorFlowTrainer(object):
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
-          learning_rate: This would be the initial learning_rate if 
+          learning_rate: This would be the initial learning_rate if
                          exponential_decay is specified.
           exponential_decay: Whether to apply exponential_decay to the learning_rate.
                              A dict type containing the following keys: global_step(int),
-                             decay_steps(int), decay_rate(float), and staircase(bool). 
+                             decay_steps(int), decay_rate(float), and staircase(bool).
         """
         self.loss = loss
         self.global_step = global_step
-        self._learning_rate = tf.get_variable(
-            "learning_rate",
-            [],
-            initializer=tf.constant_initializer(learning_rate))
         if exponential_decay is not None:
             if isinstance(exponential_decay, dict):
                 self._learning_rate = tf.train.exponential_decay(
-                    self._learning_rate, exponential_decay["global_step"],
+                    learning_rate, exponential_decay["global_step"],
                     exponential_decay["decay_steps"], exponential_decay["decay_rate"],
                     exponential_decay["staircase"])
             else:
                 raise ValueError("exponential_decay must be a dict type.")
+        else:
+            self._learning_rate = tf.get_variable(
+            "learning_rate",
+            [],
+            initializer=tf.constant_initializer(learning_rate))
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
