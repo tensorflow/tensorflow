@@ -45,7 +45,8 @@ class TensorFlowTrainer(object):
       gradients: Gradients tensor.
     """
 
-    def __init__(self, loss, global_step, optimizer, learning_rate, clip_gradients=5.0):
+    def __init__(self, loss, global_step, optimizer,
+                 learning_rate, clip_gradients=5.0, exponential_decay=None):
         """Build a trainer part of graph.
 
         Args:
@@ -59,6 +60,14 @@ class TensorFlowTrainer(object):
             "learning_rate",
             [],
             initializer=tf.constant_initializer(learning_rate))
+        if exponential_decay is not None:
+            if isinstance(exponential_decay, dict):
+                self._learning_rate = tf.train.exponential_decay(
+                    self._learning_rate, exponential_decay["global_step"],
+                    exponential_decay["decay_steps"], exponential_decay["decay_rate"],
+                    exponential_decay["staircase"])
+            else:
+                raise ValueError("exponential_decay must be a dict type.")
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
