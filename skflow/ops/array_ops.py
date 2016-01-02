@@ -71,4 +71,3 @@ def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
     ret = tf.reshape(one_hot_vector, tf.concat(0, [dims, [num_classes]]))
     ret.set_shape(tensor_in.get_shape().concatenate(num_classes))
     return ret
-

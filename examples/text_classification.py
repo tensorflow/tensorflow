@@ -12,7 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import csv
 import numpy as np
 from sklearn import metrics
 import pandas
