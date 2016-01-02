@@ -24,7 +24,6 @@ and is somewhat alternative to the Lua code from here:
    https://github.com/zhangxiangxiao/Crepe
 """
 
-import csv
 import numpy as np
 from sklearn import metrics
 import pandas

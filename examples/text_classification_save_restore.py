@@ -13,9 +13,9 @@
 #  limitations under the License.
 
 import os
-import csv
 import numpy as np
 from sklearn import metrics
+import pandas
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn, rnn_cell
@@ -27,17 +27,10 @@ import skflow
 # https://drive.google.com/folderview?id=0Bz8a_Dbh9Qhbfll6bVpmNUtUcFdjYmF2SEpmZUZUcVNiMUw1TWN6RDV3a0JHT3kxLVhVR2M
 # Unpack: tar -xvf dbpedia_csv.tar.gz
 
-def load_dataset(filename):
-    target = []
-    data = []
-    reader = csv.reader(open(filename), delimiter=',')
-    for line in reader:
-        target.append(int(line[0]))
-        data.append(line[2])
-    return data, np.array(target, np.float32)
-
-X_train, y_train = load_dataset('dbpedia_csv/train.csv')
-X_test, y_test = load_dataset('dbpedia_csv/test.csv')
+train = pandas.read_csv('dbpedia_csv/train.csv', header=None)
+X_train, y_train = train[2], train[0]
+test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
+X_test, y_test = test[2], test[0]
 
 ### Process vocabulary
 
@@ -85,17 +78,17 @@ def rnn_model(X, y):
 model_path = '/tmp/skflow_examples/text_classification'
 if os.path.exists(model_path):
     classifier = skflow.TensorFlowEstimator.restore(model_path)
-    score = metrics.accuracy_score(classifier.predict(X_test), y_test)
-    print('Accuracy: {0:f}'.format(score))
 else:
     classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
         steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-    # Continuesly train for 1000 steps & predict on test set.
+    # Continuesly train for 1000 steps
     while True:
         try:
             classifier.fit(X_train, y_train)
         except KeyboardInterrupt:
             classifier.save(model_path)
             break
-
+# Predict on test set
+score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+print('Accuracy: {0:f}'.format(score))

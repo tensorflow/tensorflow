@@ -38,7 +38,7 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
                  use.
         bias: Boolean, if to add bias.
     Returns:
-        A Tensor with resuling convolution.
+        A Tensor with resulting convolution.
     """
     with tf.variable_scope('convolution'):
         if strides is None:
