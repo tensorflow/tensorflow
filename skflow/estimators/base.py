@@ -62,12 +62,15 @@ class TensorFlowEstimator(BaseEstimator):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
-
+        exponential_decay: Whether to apply exponential_decay to the learning_rate.
+                             A dict type containing the following keys: global_step(int),
+                             decay_steps(int), decay_rate(float), and staircase(bool). 
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 num_cores=4, verbose=1, early_stopping_rounds=None):
+                 num_cores=4, verbose=1, early_stopping_rounds=None,
+                 exponential_decay=None):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -81,6 +84,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.num_cores = num_cores
         self._initialized = False
         self._early_stopping_rounds = early_stopping_rounds
+        self._exponential_decay = exponential_decay
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -110,8 +114,9 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
-            self._trainer = TensorFlowTrainer(self._model_loss,
-                                              self._global_step, self.optimizer, self.learning_rate)
+            self._trainer = TensorFlowTrainer(
+                self._model_loss, self._global_step, self.optimizer,
+                self.learning_rate, self._exponential_decay)
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver()

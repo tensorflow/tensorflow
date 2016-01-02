@@ -53,6 +53,11 @@ class TensorFlowTrainer(object):
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
+          learning_rate: This would be the initial learning_rate if 
+                         exponential_decay is specified.
+          exponential_decay: Whether to apply exponential_decay to the learning_rate.
+                             A dict type containing the following keys: global_step(int),
+                             decay_steps(int), decay_rate(float), and staircase(bool). 
         """
         self.loss = loss
         self.global_step = global_step
