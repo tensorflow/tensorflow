@@ -61,6 +61,7 @@ class TensorFlowTrainer(object):
         """
         self.loss = loss
         self.global_step = global_step
+        # pylint: disable=redefined-variable-type
         if exponential_decay is not None:
             if isinstance(exponential_decay, dict):
                 self._learning_rate = tf.train.exponential_decay(
@@ -71,9 +72,9 @@ class TensorFlowTrainer(object):
                 raise ValueError("exponential_decay must be a dict type.")
         else:
             self._learning_rate = tf.get_variable(
-            "learning_rate",
-            [],
-            initializer=tf.constant_initializer(learning_rate))
+                "learning_rate",
+                [],
+                initializer=tf.constant_initializer(learning_rate))
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
