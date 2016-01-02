@@ -78,17 +78,17 @@ def rnn_model(X, y):
 model_path = '/tmp/skflow_examples/text_classification'
 if os.path.exists(model_path):
     classifier = skflow.TensorFlowEstimator.restore(model_path)
-    score = metrics.accuracy_score(classifier.predict(X_test), y_test)
-    print('Accuracy: {0:f}'.format(score))
 else:
     classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
         steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-    # Continuesly train for 1000 steps & predict on test set.
+    # Continuesly train for 1000 steps
     while True:
         try:
             classifier.fit(X_train, y_train)
         except KeyboardInterrupt:
             classifier.save(model_path)
             break
-
+# Predict on test set
+score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+print('Accuracy: {0:f}'.format(score))
