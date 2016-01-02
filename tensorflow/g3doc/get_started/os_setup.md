@@ -455,7 +455,7 @@ configs in the same source tree.
 
 * You have to run configure before running bazel build. Otherwise, the build
 will fail with a clear error message. In the future, we might consider making
-this more conveninent by including the configure step in our build process,
+this more convenient by including the configure step in our build process,
 given necessary bazel new feature support.
 
 ### Installation for Mac OS X
@@ -525,10 +525,10 @@ Starting from the root of your source tree, run:
 ```python
 $ cd tensorflow/models/image/mnist
 $ python convolutional.py
-Succesfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
-Succesfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
-Succesfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.
-Succesfully downloaded t10k-labels-idx1-ubyte.gz 4542 bytes.
+Successfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
+Successfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
+Successfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.
+Successfully downloaded t10k-labels-idx1-ubyte.gz 4542 bytes.
 Extracting data/train-images-idx3-ubyte.gz
 Extracting data/train-labels-idx1-ubyte.gz
 Extracting data/t10k-images-idx3-ubyte.gz
