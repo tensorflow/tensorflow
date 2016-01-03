@@ -17,7 +17,7 @@
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.models.rnn import rnn_cell, rnn, seq2seq
+from tensorflow.python.ops import rnn_cell, rnn, seq2seq
 
 import skflow
 
@@ -30,6 +30,10 @@ def X_iter():
         yield "some sentence"
         yield "some other sentence"
 
+def X_predict_iter():
+    yield "some sentence"
+    yield "some other sentence"
+
 def y_iter():
     while True:
         yield u"какое-то приложение" 
@@ -37,26 +41,58 @@ def y_iter():
 
 # Translation model
 
-hidden_size = 10
+MAX_DOCUMENT_LENGTH = 3
+HIDDEN_SIZE = 10
+
+
+def sequence_classifier(decoding, labels):
+    predictions, xent_list = [], []
+    print decoding, labels
+    for i, pred in enumerate(decoding):
+        print pred, labels[i]
+        xent_list.append(
+            tf.nn.softmax_cross_entropy_with_logits(
+                pred, labels[i], name="sequence_loss/xent_raw{0}".format(i)))
+        predictions.append(tf.nn.softmax(pred))
+    xent = tf.add_n(xent_list)
+    loss = tf.reduce_mean(xent, name="loss")
+    return predictions, loss
+
+
+def seq2seq_inputs(X, y, input_length, output_length, sentinel=None):
+    in_X = skflow.ops.split_squeeze(1, input_length, X)
+    y = skflow.ops.split_squeeze(1, output_length, y)
+    if not sentinel:
+        # Set to zeros of shape of y[0]
+        sentinel = tf.zeros(tf.shape(y[0]))
+        sentinel.set_shape(y[0].get_shape())
+    in_y = [sentinel] + y
+    out_y = y + [sentinel]
+    return in_X, in_y, out_y
+ 
 
 def translate_model(X, y):
-    print X.get_shape(), y.get_shape()
+    byte_list = skflow.ops.one_hot_matrix(X, 256)
+    print X.get_shape(), byte_list.get_shape(), y.get_shape()
+    in_X, in_y, out_y = seq2seq_inputs(
+        byte_list, y, MAX_DOCUMENT_LENGTH, MAX_DOCUMENT_LENGTH)
+    cell = rnn_cell.OutputProjectionWrapper(rnn_cell.GRUCell(HIDDEN_SIZE), 256)
+    print in_X[0].get_shape()
+    for yyy in in_y:
+        print yyy.get_shape()
+    decoding, _ = seq2seq.basic_rnn_seq2seq(in_X, in_y, cell)
+    return sequence_classifier(decoding, out_y)
 
-#    in_X, in_y, out_y = skflow.ops.seq2seq_inputs(X, y)
-#    cell = tf.rnn_cell.GRUCell(hidden_size)
-#    decoding = seq2seq.basic_rnn_seq2seq(in_X, in_y, cell)
-#    return skflow.ops.sequence_classifier(decoding, out_y)
-    return X, y
 
-vocab_processor = skflow.preprocessing.VocabularyProcessor(
-    max_document_length=3)
-vocab_processor.fit(["some sentence", "some other sentence"])
+vocab_processor = skflow.preprocessing.ByteProcessor(
+    max_document_length=MAX_DOCUMENT_LENGTH)
 
-xiter = vocab_processor.transform(X_iter())
-yiter = vocab_processor.transform(y_iter())
+x_iter = vocab_processor.transform(X_iter())
+y_iter = vocab_processor.transform(y_iter())
+xpredict_iter = vocab_processor.transform(X_predict_iter())
 
 translator = skflow.TensorFlowEstimator(model_fn=translate_model,
-    n_classes=128)
-translator.fit(xiter, yiter)
-print translator.predict(X_iter())
+    n_classes=256)
+translator.fit(x_iter, y_iter)
+print translator.predict(xpredict_iter)
 
