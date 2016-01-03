@@ -149,7 +149,9 @@ class TensorFlowTrainer(object):
 
 
 class RestoredTrainer(TensorFlowTrainer):
+    """Trainer class  that takes already existing graph."""
 
+    # pylint: disable=super-init-not-called
     def __init__(self, loss, global_step, trainer):
         self.global_step = global_step
         self.loss = loss
