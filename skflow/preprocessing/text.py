@@ -56,7 +56,7 @@ class ByteProcessor(object):
     def reverse(self, X):
         """Reverses output of transform back to text."""
         for data in X:
-            document =  np.trim_zeros(data, trim='b').tostring()
+            document =  np.trim_zeros(data.astype(np.int8), trim='b').tostring()
             yield document
 
     def transform(self, X):
