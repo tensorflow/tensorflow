@@ -68,7 +68,7 @@ class ByteProcessor(object):
             # For Python3 defined buffer as memoryview.
             buffer_or_memoryview = memoryview
         else:
-            buffer_or_memoryview = buffer
+            buffer_or_memoryview = buffer  # pylint: disable=undefined-variable
         for document in X:
             if isinstance(document, six.text_type):
                 document = document.encode('utf-8')
