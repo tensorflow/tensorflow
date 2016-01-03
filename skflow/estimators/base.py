@@ -217,7 +217,7 @@ class TensorFlowEstimator(BaseEstimator):
         for data in predict_data_feeder:
             preds.append(self._session.run(
                 self._model_predictions,
-                feed_dict = {
+                feed_dict={
                     self._inp.name: data
                 }))
         return np.concatenate(preds, axis=0)

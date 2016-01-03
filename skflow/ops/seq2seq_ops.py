@@ -20,12 +20,15 @@ import tensorflow as tf
 from skflow.ops import array_ops
 
 
-def sequence_classifier(decoding, labels, name=None):
+def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
     """Returns predictions and loss for sequence of predictions.
 
     Args:
         decoding: List of Tensors with predictions.
         labels: List of Tensors with labels.
+        sampling_decoding: Optional, List of Tensor with predictions to be used
+                           in sampling. E.g. they shouldn't have dependncy on ouptuts.
+                           If not provided, decoding is used.
 
     Returns:
         Predictions and losses tensors.
@@ -36,10 +39,13 @@ def sequence_classifier(decoding, labels, name=None):
             xent_list.append(
                 tf.nn.softmax_cross_entropy_with_logits(
                     pred, labels[i], name="sequence_loss/xent_raw{0}".format(i)))
-            predictions.append(tf.nn.softmax(pred))
+            if sampling_decoding:
+                predictions.append(tf.nn.softmax(sampling_decoding[i]))
+            else:
+                predictions.append(tf.nn.softmax(pred))
         xent = tf.add_n(xent_list, name="sequence_loss/xent")
         loss = tf.reduce_mean(xent, name="sequence_loss")
-        return predictions, loss
+        return array_ops.expand_concat(1, predictions), loss
 
 
 def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
@@ -52,6 +58,8 @@ def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
         output_length: length of output y.
         sentinel: optional first input to decoder and final output expected.
                   if sentinel is not provided, zeros are used.
+                  Due to fact that y is not available in sampling time, shape
+                  of sentinel will be inferred from X.
 
     Returns:
         Encoder input from X, and decoder inputs and outputs from y.
@@ -60,10 +68,10 @@ def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
         in_X = array_ops.split_squeeze(1, input_length, X)
         y = array_ops.split_squeeze(1, output_length, y)
         if not sentinel:
-            # Set to zeros of shape of y[0]
-            sentinel = tf.zeros(tf.shape(y[0]))
-            sentinel.set_shape(y[0].get_shape())
+            # Set to zeros of shape of X[0]
+            sentinel = tf.zeros(tf.shape(in_X[0]))
+            sentinel.set_shape(in_X[0].get_shape())
         in_y = [sentinel] + y
         out_y = y + [sentinel]
         return in_X, in_y, out_y
-     
+

@@ -99,7 +99,7 @@ def _batch_data(X, batch_size):
 
 def setup_predict_data_feeder(X, batch_size=-1):
     """Returns an iterable for feeding into predict step.
-    
+
     Args:
         X: numpy, pandas, Dask array or iterable.
         batch_size: Size of batches to split data into.
@@ -115,7 +115,7 @@ def setup_predict_data_feeder(X, batch_size=-1):
     if _is_iterable(X):
         return _batch_data(X, batch_size)
     if len(X.shape) == 1:
-        X = np.reshape(X, (-1, 1)) 
+        X = np.reshape(X, (-1, 1))
     return [X]
 
 
