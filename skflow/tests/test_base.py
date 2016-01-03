@@ -72,14 +72,23 @@ class BaseTest(googletest.TestCase):
                 for x in iris.data:
                     yield x
 
+        def iris_predict_data():
+            for x in iris.data:
+                yield x
+
         def iris_target():
             while True:
                 for y in iris.target:
                     yield y
+
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3, steps=100)
         classifier.fit(iris_data(), iris_target())
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
+        score2 = accuracy_score(classifier.predict(iris_predict_data()), iris.target)
+        self.assertGreater(score1, 0.5, "Failed with score = {0}".format(score1))
+        self.assertEqual(score2, score1, "Scores from {0} iterator doesn't "
+                                         "match score {1} from full "
+                                         "data.".format(score2, score1))
 
     def testIris_proba(self):
         random.seed(42)

@@ -60,6 +60,15 @@ def _is_iterable(X):
 def setup_train_data_feeder(X, y, n_classes, batch_size):
     """Create data feeder, to sample inputs from dataset.
     If X and y are iterators, use StreamingDataFeeder.
+
+    Args:
+        X: numpy, pandas or Dask matrix or iterable.
+        y: numpy, pandas or Dask array or iterable.
+        n_classes: number of classes.
+        batch_size: size to split data into parts.
+
+    Returns:
+        DataFeeder object that returns training data.
     """
     X, y = _data_type_filter(X, y)
     if HAS_DASK:
@@ -79,13 +88,32 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     return data_feeder_cls(X, y, n_classes, batch_size)
 
 
+def _batch_data(X, batch_size):
+    chunk = []
+    for data in X:
+        chunk.append(data)
+        if batch_size > 0 and len(chunk) > batch_size:
+            yield np.matrix(chunk)
+    yield np.matrix(chunk)
+
+
 def setup_predict_data_feeder(X, batch_size=-1):
+    """Returns an iterable for feeding into predict step.
+    
+    Args:
+        X: numpy, pandas, Dask array or iterable.
+        batch_size: Size of batches to split data into.
+            If negative, returns one batch of full size.
+
+    Returns:
+        List or iterator of parts of data to predict on.
+    """
     if HAS_PANDAS:
         X = extract_pandas_data(X)
     if HAS_DASK:
         X = extract_dask_data(X)
     if _is_iterable(X):
-        return None
+        return _batch_data(X, batch_size)
     if len(X.shape) == 1:
         X = np.reshape(X, (-1, 1)) 
     return [X]
