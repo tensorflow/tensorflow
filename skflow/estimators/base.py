@@ -32,9 +32,8 @@ except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
 from skflow.trainer import TensorFlowTrainer
-from skflow.io.data_feeder import _data_type_filter, _setup_data_feeder
-from skflow.io import HAS_PANDAS, extract_pandas_data
-from skflow.io import HAS_DASK, extract_dask_data
+from skflow.io.data_feeder import setup_train_data_feeder
+from skflow.io.data_feeder import setup_predict_data_feeder
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -158,11 +157,10 @@ class TensorFlowEstimator(BaseEstimator):
         Returns:
             Returns self.
         """
-        X, y = _data_type_filter(X, y)
         # Sets up data feeder.
-        self._data_feeder = _setup_data_feeder(X, y,
-                                               self.n_classes,
-                                               self.batch_size)
+        self._data_feeder = setup_train_data_feeder(X, y,
+                                                    self.n_classes,
+                                                    self.batch_size)
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
@@ -214,17 +212,15 @@ class TensorFlowEstimator(BaseEstimator):
     def _predict(self, X):
         if not self._initialized:
             raise NotFittedError()
-        if HAS_PANDAS:
-            X = extract_pandas_data(X)
-        if HAS_DASK:
-            X = extract_dask_data(X)
-        if len(X.shape) == 1:
-            X = np.reshape(X, (-1, 1))
-        pred = self._session.run(self._model_predictions,
-                                 feed_dict={
-                                     self._inp.name: X
-                                 })
-        return pred
+        predict_data_feeder = setup_predict_data_feeder(X)
+        preds = []
+        for data in predict_data_feeder:
+            preds.append(self._session.run(
+                self._model_predictions,
+                feed_dict = {
+                    self._inp.name: data
+                }))
+        return np.concatenate(preds, axis=0)
 
     def predict(self, X):
         """Predict class or regression for X.
