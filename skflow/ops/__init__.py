@@ -19,3 +19,4 @@ from skflow.ops.conv_ops import *
 from skflow.ops.dnn_ops import *
 from skflow.ops.embeddings_ops import *
 from skflow.ops.losses_ops import *
+from skflow.ops.seq2seq_ops import *

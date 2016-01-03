@@ -45,43 +45,13 @@ MAX_DOCUMENT_LENGTH = 3
 HIDDEN_SIZE = 10
 
 
-def sequence_classifier(decoding, labels):
-    predictions, xent_list = [], []
-    print decoding, labels
-    for i, pred in enumerate(decoding):
-        print pred, labels[i]
-        xent_list.append(
-            tf.nn.softmax_cross_entropy_with_logits(
-                pred, labels[i], name="sequence_loss/xent_raw{0}".format(i)))
-        predictions.append(tf.nn.softmax(pred))
-    xent = tf.add_n(xent_list)
-    loss = tf.reduce_mean(xent, name="loss")
-    return predictions, loss
-
-
-def seq2seq_inputs(X, y, input_length, output_length, sentinel=None):
-    in_X = skflow.ops.split_squeeze(1, input_length, X)
-    y = skflow.ops.split_squeeze(1, output_length, y)
-    if not sentinel:
-        # Set to zeros of shape of y[0]
-        sentinel = tf.zeros(tf.shape(y[0]))
-        sentinel.set_shape(y[0].get_shape())
-    in_y = [sentinel] + y
-    out_y = y + [sentinel]
-    return in_X, in_y, out_y
- 
-
 def translate_model(X, y):
     byte_list = skflow.ops.one_hot_matrix(X, 256)
-    print X.get_shape(), byte_list.get_shape(), y.get_shape()
-    in_X, in_y, out_y = seq2seq_inputs(
+    in_X, in_y, out_y = skflow.ops.seq2seq_inputs(
         byte_list, y, MAX_DOCUMENT_LENGTH, MAX_DOCUMENT_LENGTH)
     cell = rnn_cell.OutputProjectionWrapper(rnn_cell.GRUCell(HIDDEN_SIZE), 256)
-    print in_X[0].get_shape()
-    for yyy in in_y:
-        print yyy.get_shape()
     decoding, _ = seq2seq.basic_rnn_seq2seq(in_X, in_y, cell)
-    return sequence_classifier(decoding, out_y)
+    return skflow.ops.sequence_classifier(decoding, out_y)
 
 
 vocab_processor = skflow.preprocessing.ByteProcessor(
