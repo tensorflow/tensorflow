@@ -139,10 +139,19 @@ class TensorFlowTrainer(object):
 
             losses.append(loss)
             print_loss_buffer.append(loss)
-            if summaries and summary_writer:
+            if summaries and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
             if verbose > 0:
                 if step % print_steps == 0:
                     _print_report(print_loss_buffer, global_step)
                     print_loss_buffer = []
         return losses
+
+
+class RestoredTrainer(TensorFlowTrainer):
+
+    def __init__(self, loss, global_step, trainer):
+        self.global_step = global_step
+        self.loss = loss
+        self.trainer = trainer
+
