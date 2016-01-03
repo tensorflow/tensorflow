@@ -14,6 +14,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import unicode_literals
+
 import tensorflow as tf
 
 from skflow.preprocessing import text
@@ -23,18 +25,18 @@ class TextTest(tf.test.TestCase):
 
     def testTokenizer(self):
         words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c",
-                                u"фыв выф", u"你好 怎么样"])
+                                "фыв выф", "你好 怎么样"])
         self.assertEqual(list(words),
                          [["a", "b", "c"],
                           ["a", "b", "c"],
                           ["a", "b", "-", "c"],
-                          [u"фыв", u"выф"],
-                          [u"你好", u"怎么样"]])
+                          ["фыв", "выф"],
+                          ["你好", "怎么样"]])
 
     def testByteProcessor(self):
         processor = text.ByteProcessor(max_document_length=8)
-        inp = ["abc", "фыва", u"фыва", b"abc",
-               u"12345678901234567890"]
+        inp = ["abc", "фыва", "фыва", b"abc",
+               "12345678901234567890"]
         res = list(processor.transform(inp))
         self.assertAllEqual(res,
                             [[97, 98, 99, 0, 0, 0, 0, 0],
