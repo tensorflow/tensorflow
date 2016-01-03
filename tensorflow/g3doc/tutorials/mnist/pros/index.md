@@ -47,7 +47,7 @@ It allows you to interleave operations which build a
 [computation graph](../../../get_started/basic_usage.md#the-computation-graph)
 with ones that run the graph.
 This is particularly convenient when working in interactive contexts like
-iPython.
+IPython.
 If you are not using an `InteractiveSession`, then you should build
 the entire computation graph before starting a session and [launching the
 graph](../../../get_started/basic_usage.md#launching-the-graph-in-a-session).
