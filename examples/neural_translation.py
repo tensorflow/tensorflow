@@ -14,6 +14,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
+
+import os
 import numpy as np
 
 import tensorflow as tf
@@ -30,18 +33,16 @@ def X_iter():
         yield "some sentence"
         yield "some other sentence"
 
-def X_predict_iter():
-    yield "some sentence"
-    yield "some other sentence"
+X_pred = ["some sentence", "some other sentence"]
 
 def y_iter():
     while True:
-        yield u"какое-то приложение" 
-        yield u"какое-то другое приложение"
+        yield "какое-то приложение"
+        yield "какое-то другое приложение"
 
 # Translation model
 
-MAX_DOCUMENT_LENGTH = 3
+MAX_DOCUMENT_LENGTH = 10
 HIDDEN_SIZE = 10
 
 def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
@@ -88,11 +89,24 @@ vocab_processor = skflow.preprocessing.ByteProcessor(
 
 x_iter = vocab_processor.transform(X_iter())
 y_iter = vocab_processor.transform(y_iter())
-xpredict_iter = vocab_processor.transform(X_predict_iter())
+xpred = np.array(list(vocab_processor.transform(X_pred)))
 
-translator = skflow.TensorFlowEstimator(model_fn=translate_model,
-    n_classes=256)
-translator.fit(x_iter, y_iter, logdir='/tmp/tf_examples/ntm/')
-translator.save('/tmp/tf_examples/ntm/')
-print translator.predict(xpredict_iter)
+PATH = '/tmp/tf_examples/ntm/'
+
+if os.path.exists(PATH):
+    translator = skflow.TensorFlowEstimator.restore(PATH)
+else:
+    translator = skflow.TensorFlowEstimator(model_fn=translate_model,
+        n_classes=256, continue_training=True)
+
+while True:
+    translator.fit(x_iter, y_iter, logdir=PATH)
+    translator.save(PATH)
+
+    predictions = translator.predict(xpred, axis=2)
+    xpred_inp = vocab_processor.reverse(xpred)
+    text_outputs = vocab_processor.reverse(predictions)
+    for inp_data, input_text, pred, output_text in zip(xpred, xpred_inp, predictions, text_outputs):
+        print(input_text, output_text)
+        print(inp_data, pred)
 
