@@ -33,14 +33,18 @@ class TextTest(tf.test.TestCase):
 
     def testByteProcessor(self):
         processor = text.ByteProcessor(max_document_length=8)
-        res = processor.transform(["abc", "фыва", u"фыва", b"abc",
-                                   u"12345678901234567890"])
-        self.assertAllClose(list(res),
+        inp = ["abc", "фыва", u"фыва", b"abc",
+               u"12345678901234567890"]
+        res = list(processor.transform(inp))
+        self.assertAllEqual(res,
                             [[97, 98, 99, 0, 0, 0, 0, 0],
                             [209, 132, 209, 139, 208, 178, 208, 176],
                             [209, 132, 209, 139, 208, 178, 208, 176],
                             [97, 98, 99, 0, 0, 0, 0, 0],
                             [49, 50, 51, 52, 53, 54, 55, 56]])
+        res = list(processor.reverse(res))
+        self.assertAllEqual(res,
+            ["abc", "фыва", "фыва", "abc", "12345678"])
 
     def testVocabularyProcessor(self):
         vocab_processor = text.VocabularyProcessor(
@@ -48,7 +52,7 @@ class TextTest(tf.test.TestCase):
             min_frequency=1)
         tokens = vocab_processor.fit_transform(
             ["a b c", "a\nb\nc", "a, b - c"])
-        self.assertAllClose(list(tokens),
+        self.assertAllEqual(list(tokens),
                             [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
 
 if __name__ == "__main__":

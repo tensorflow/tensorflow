@@ -53,6 +53,12 @@ class ByteProcessor(object):
         """Calls transform."""
         return self.transform(X)
 
+    def reverse(self, X):
+        """Reverses output of transform back to text."""
+        for data in X:
+            document =  np.trim_zeros(data, trim='b').tostring()
+            yield document
+
     def transform(self, X):
         """Transforms input documents into sequence of ids.
 
