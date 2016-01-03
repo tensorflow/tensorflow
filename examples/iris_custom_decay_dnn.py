@@ -18,6 +18,7 @@ from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
 import skflow
+import tensorflow as tf
 
 
 random.seed(42)
