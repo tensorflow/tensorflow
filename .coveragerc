@@ -1,0 +1,6 @@
+[run]
+brunch = True
+
+[report]
+omit = tests/*
+
