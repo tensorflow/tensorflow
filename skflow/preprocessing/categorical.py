@@ -17,6 +17,7 @@ import math
 import numpy as np
 
 from skflow.preprocessing import categorical_vocabulary
+from skflow.io import HAS_PANDAS
 
 
 class CategoricalProcessor(object):
@@ -59,6 +60,10 @@ class CategoricalProcessor(object):
         Returns:
             self
         """
+        if HAS_PANDAS:
+            import pandas
+            if isinstance(X, pandas.DataFrame):
+                X = X.as_matrix()
         for row in X:
             # Create vocabularies if not given.
             if self.vocabularies_ is None:
@@ -106,6 +111,10 @@ class CategoricalProcessor(object):
             X: iterable, [n_samples]. Category-id matrix.
         """
         self.freeze()
+        if HAS_PANDAS:
+            import pandas
+            if isinstance(X, pandas.DataFrame):
+                X = X.as_matrix()
         for row in X:
             output_row = []
             for idx, value in enumerate(row):
