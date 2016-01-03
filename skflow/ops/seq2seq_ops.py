@@ -44,7 +44,7 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
             else:
                 predictions.append(tf.nn.softmax(pred))
         xent = tf.add_n(xent_list, name="sequence_loss/xent")
-        loss = tf.reduce_mean(xent, name="sequence_loss")
+        loss = tf.reduce_sum(xent, name="sequence_loss")
         return array_ops.expand_concat(1, predictions), loss
 
 
