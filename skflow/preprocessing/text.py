@@ -64,14 +64,15 @@ class ByteProcessor(object):
         Returns:
             iterator of byte ids.
         """
+        if six.PY3:
+            # For Python3 defined buffer as memoryview.
+            buffer_or_memoryview = memoryview
+        else:
+            buffer_or_memoryview = buffer
         for document in X:
             if isinstance(document, six.text_type):
                 document = document.encode('utf-8')
-            if six.PY3:
-                # For Python3 defined buffer as memoryview.
-                document_mv = memoryview(document)
-            else:
-                document_mv = buffer(document)
+            document_mv = buffer_or_memoryview(document)
             buff = np.frombuffer(document_mv[:self.max_document_length],
                                  dtype=np.uint8)
             yield np.pad(buff, (0, self.max_document_length - len(buff)),
