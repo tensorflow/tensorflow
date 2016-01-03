@@ -32,7 +32,14 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -40,16 +47,12 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
-        exponential_decay: Whether to apply exponential_decay to the learning_rate.
-                             A dict type containing the following keys: global_step(int),
-                             decay_steps(int), decay_rate(float), and staircase(bool).
      """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None,
-                 exponential_decay=None):
+                 verbose=1, early_stopping_rounds=None):
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
@@ -57,8 +60,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
-            exponential_decay=exponential_decay)
+            early_stopping_rounds=early_stopping_rounds)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -75,7 +77,14 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -83,16 +92,12 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
-        exponential_decay: Whether to apply exponential_decay to the learning_rate.
-                             A dict type containing the following keys: global_step(int),
-                             decay_steps(int), decay_rate(float), and staircase(bool).
     """
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None,
-                 exponential_decay=None):
+                 verbose=1, early_stopping_rounds=None):
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
@@ -100,8 +105,7 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
-            exponential_decay=exponential_decay)
+            early_stopping_rounds=early_stopping_rounds)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,

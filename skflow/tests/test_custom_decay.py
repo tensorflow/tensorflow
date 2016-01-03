@@ -22,9 +22,9 @@ from sklearn.cross_validation import train_test_split
 
 import skflow
 
-class ExponentialDecayTest(googletest.TestCase):
+class CustomDecayTest(googletest.TestCase):
 
-    def testIrisED(self):
+    def testIrisExponentialDecay(self):
         random.seed(42)
 
         iris = datasets.load_iris()
@@ -32,12 +32,14 @@ class ExponentialDecayTest(googletest.TestCase):
                                                             iris.target,
                                                             test_size=0.2,
                                                             random_state=42)
-        # setup exponential decay
-        ED = {"global_step": 10, "decay_steps": 100,
-              "decay_rate": 0.001, "staircase": False}
+        # setup exponential decay function
+        def exp_decay(global_step):
+            return tf.train.exponential_decay(
+                learning_rate=0.1, global_step=global_step,
+                decay_steps=100, decay_rate=0.001)
         classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                     n_classes=3, steps=800,
-                                                    exponential_decay=ED)
+                                                    learning_rate=exp_decay)
         classifier.fit(X_train, y_train)
         score = metrics.accuracy_score(classifier.predict(X_test), y_test)
 

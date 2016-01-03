@@ -46,35 +46,32 @@ class TensorFlowTrainer(object):
     """
 
     def __init__(self, loss, global_step, optimizer,
-                 learning_rate, clip_gradients=5.0, exponential_decay=None):
+                 learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
 
         Args:
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
-          learning_rate: This would be the initial learning_rate if
-                         exponential_decay is specified.
-          exponential_decay: Whether to apply exponential_decay to the learning_rate.
-                             A dict type containing the following keys: global_step(int),
-                             decay_steps(int), decay_rate(float), and staircase(bool).
+          learning_rate: If this is constant float value, no decay function is used.
+                         Instead, a customized decay function can be passed that accepts
+                         global_step as parameter and returns a Tensor.
+                         e.g. exponential decay function:
+                         def exp_decay(global_step):
+                            return tf.train.exponential_decay(
+                                learning_rate=0.1, global_step=global_step,
+                                decay_steps=2, decay_rate=0.001)
         """
         self.loss = loss
         self.global_step = global_step
         # pylint: disable=redefined-variable-type
-        if exponential_decay is not None:
-            if isinstance(exponential_decay, dict):
-                self._learning_rate = tf.train.exponential_decay(
-                    learning_rate, exponential_decay["global_step"],
-                    exponential_decay["decay_steps"], exponential_decay["decay_rate"],
-                    exponential_decay["staircase"])
-            else:
-                raise ValueError("exponential_decay must be a dict type.")
-        else:
+        if isinstance(learning_rate, float):
             self._learning_rate = tf.get_variable(
                 "learning_rate",
                 [],
                 initializer=tf.constant_initializer(learning_rate))
+        else:
+            self._learning_rate = learning_rate(self.global_step)
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:

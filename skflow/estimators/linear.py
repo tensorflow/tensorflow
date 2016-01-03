@@ -26,15 +26,14 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None, exponential_decay=None):
+                 verbose=1, early_stopping_rounds=None):
         super(TensorFlowLinearRegressor, self).__init__(
             model_fn=models.linear_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
-            verbose=verbose, early_stopping_rounds=early_stopping_rounds,
-            exponential_decay=exponential_decay)
+            verbose=verbose, early_stopping_rounds=early_stopping_rounds)
 
     @property
     def weights_(self):
@@ -52,15 +51,14 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None, exponential_decay=None):
+                 verbose=1, early_stopping_rounds=None):
         super(TensorFlowLinearClassifier, self).__init__(
             model_fn=models.logistic_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
-            verbose=verbose, early_stopping_rounds=early_stopping_rounds,
-            exponential_decay=exponential_decay)
+            verbose=verbose, early_stopping_rounds=early_stopping_rounds)
 
     @property
     def weights_(self):
