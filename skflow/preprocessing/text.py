@@ -68,10 +68,10 @@ class ByteProcessor(object):
             if isinstance(document, six.text_type):
                 document = document.encode('utf-8')
             if six.PY3:
-                mv = memoryview(document)
-            else:
-                mv = buffer(document)
-            buff = np.frombuffer(mv[:self.max_document_length],
+                # For Python3 defined buffer as memoryview.
+                buffer = memoryview
+            document_mv = buffer(document)
+            buff = np.frombuffer(document_mv[:self.max_document_length],
                                  dtype=np.uint8)
             yield np.pad(buff, (0, self.max_document_length - len(buff)),
                          'constant')
