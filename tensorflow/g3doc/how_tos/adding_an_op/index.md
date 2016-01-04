@@ -3,7 +3,7 @@
 PREREQUISITES:
 
 * Some familiarity with C++.
-* Must have [downloaded TensorFlow source](../../get_started/index.md#source),
+* Must have [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources),
   and be able to build it.
 
 If you'd like to incorporate an operation that isn't covered by the existing
@@ -107,7 +107,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ```
 
 Once you
-[build and reinstall TensorFlow](../../get_started/os_setup.md#pip-installation), the
+[build and reinstall TensorFlow](../../get_started/os_setup.md#create-the-pip-package-and-install), the
 Tensorflow system can reference and use the Op when requested.
 
 ## Generate the client wrapper
