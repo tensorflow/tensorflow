@@ -1,8 +1,6 @@
 [run]
-
-brunch = True
+branch = True
 
 [report]
-
-omit = tests/*
+omit = */tests/*
 
