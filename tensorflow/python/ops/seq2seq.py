@@ -691,7 +691,7 @@ def sequence_loss(logits, targets, weights, num_decoder_symbols,
   """Weighted cross-entropy loss for a sequence of logits, batch-collapsed.
 
   Args:
-    logits: list of 2D Tensors os shape [batch_size x num_decoder_symbols].
+    logits: list of 2D Tensors of shape [batch_size x num_decoder_symbols].
     targets: list of 1D batch-sized int32 Tensors of the same length as logits.
     weights: list of 1D batch-sized float-Tensors of the same length as logits.
     num_decoder_symbols: integer, number of decoder symbols (output classes).
