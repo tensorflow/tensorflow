@@ -3,7 +3,7 @@
 PREREQUISITES:
 
 * Some familiarity with C++.
-* Must have [downloaded TensorFlow source](../../get_started/index.md#source),
+* Must have [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources),
   and be able to build it.
 
 If you'd like to incorporate an operation that isn't covered by the existing
@@ -22,7 +22,7 @@ to:
 * Optionally, write a function to compute gradients for the Op.
 * Optionally, write a function that describes the input and output shapes
   for the Op.  This allows shape inference to work with your Op.
-* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/kernel_tests/gradient_checker.py).
+* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/kernel_tests/gradient_checker.py).
 
 [TOC]
 
@@ -39,7 +39,7 @@ zero. Create file [`tensorflow/core/user_ops`][user_ops]`/zero_out.cc` and
 add a call to the `REGISTER_OP` macro that defines the interface for such an Op:
 
 ```c++
-#include "tensorflow/core/framework/op.h"
+#include "third_party/tensorflow/core/framework/op.h"
 
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
@@ -64,7 +64,7 @@ Add your kernel to the file you created above. The kernel might look something
 like this:
 
 ```c++
-#include "tensorflow/core/framework/op_kernel.h"
+#include "third_party/tensorflow/core/framework/op_kernel.h"
 
 using namespace tensorflow;
 
@@ -107,14 +107,14 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ```
 
 Once you
-[build and reinstall TensorFlow](../../get_started/os_setup.md#create-pip), the
+[build and reinstall TensorFlow](../../get_started/os_setup.md#create-the-pip-package-and-install-create-pip), the
 Tensorflow system can reference and use the Op when requested.
 
 ## Generate the client wrapper
 ### The Python Op wrapper
 
 Python op wrappers are created automatically in
-`bazel-genfiles/tensorflow/python/ops/gen_user_ops.py` for all ops placed in the
+`blaze-genfiles/third_party/tensorflow/python/ops/gen_user_ops.py` for all ops placed in the
 [`tensorflow/core/user_ops`][user_ops] directory when you build Tensorflow.
 
 > Note: The generated function will be given a snake\_case name (to comply with
@@ -125,13 +125,13 @@ Those ops are imported into
 [`tensorflow/python/user_ops/user_ops.py`][python-user_ops] with the statement:
 
 ```python
-from tensorflow.python.ops.gen_user_ops import *
+from google3.third_party.tensorflow.python.ops.gen_user_ops import *
 ```
 
 You may optionally use your own function instead.  To do this, you first hide
 the generated code for that op by adding its name to the `hidden` list in the
 `"user_ops"` rule in
-[`tensorflow/python/BUILD`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD):
+[`tensorflow/python/BUILD`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/BUILD):
 
 ```python
 tf_gen_op_wrapper_py(
@@ -144,7 +144,7 @@ tf_gen_op_wrapper_py(
 ```
 
 List your op next to `"Fact"`.  Next you add your replacement function to
-[`tensorflow/python/user_ops/user_ops.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py).
+[`tensorflow/python/user_ops/user_ops.py`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/user_ops/user_ops.py).
 Typically your function will call the generated function to actually add the op
 to the graph.  The hidden version of the generated function will be in the
 `gen_user_ops` package and start with an underscore ("`_`").  For example:
@@ -160,14 +160,14 @@ def my_fact():
 C++ op wrappers are created automatically for all ops placed in the
 [`tensorflow/core/user_ops`][user_ops] directory, when you build Tensorflow. For
 example, ops in `tensorflow/core/user_ops/zero_out.cc` will generate wrappers in
-`bazel-genfiles/tensorflow/cc/ops/user_ops.{h,cc}`.
+`blaze-genfiles/third_party/tensorflow/cc/ops/user_ops.{h,cc}`.
 
 All generated wrappers for user ops are automatically
 imported into [`tensorflow/cc/ops/standard_ops.h`][standard_ops-cc] with the
 statement
 
 ```c++
-#include "tensorflow/cc/ops/user_ops.h"
+#include "third_party/tensorflow/cc/ops/user_ops.h"
 ```
 
 ## Verify it works
@@ -216,13 +216,13 @@ This asserts that the input is a vector, and returns having set the
 
 *   The `context`, which can either be an `OpKernelContext` or
     `OpKernelConstruction` pointer (see
-    [`tensorflow/core/framework/op_kernel.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_kernel.h)),
+    [`tensorflow/core/framework/op_kernel.h`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/op_kernel.h)),
     for its `SetStatus()` method.
 *   The condition.  For example, there are functions for validating the shape
     of a tensor in
-    [`tensorflow/core/public/tensor_shape.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/tensor_shape.h)
+    [`tensorflow/core/public/tensor_shape.h`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/public/tensor_shape.h)
 *   The error itself, which is represented by a `Status` object, see
-    [`tensorflow/core/public/status.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/status.h). A
+    [`tensorflow/core/public/status.h`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/public/status.h). A
     `Status` has both a type (frequently `InvalidArgument`, but see the list of
     types) and a message.  Functions for constructing an error may be found in
     [`tensorflow/core/lib/core/errors.h`][validation-macros].
@@ -368,7 +368,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
 
     The specific lists of types allowed by these are defined by the functions
     (like `NumberTypes()`) in
-    [`tensorflow/core/framework/types.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.h).
+    [`tensorflow/core/framework/types.h`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/types.h).
     In this example the attr `t` must be one of the numeric types:
 
     ```c++
@@ -512,7 +512,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 > ```
 
 <code class="lang-c++"><pre>
-\#include "tensorflow/core/framework/op_kernel.h"<br/>
+\#include "third_party/tensorflow/core/framework/op_kernel.h"<br/>
 class ZeroOut<b>Int32</b>Op : public OpKernel {
   // as before
 };<br/>
@@ -624,7 +624,7 @@ If you have more than a couple overloads, you can put the registration in a
 macro.
 
 ```c++
-#include "tensorflow/core/framework/op_kernel.h"
+#include "third_party/tensorflow/core/framework/op_kernel.h"
 
 #define REGISTER_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                          \
@@ -643,8 +643,8 @@ able to use a macro provided by
 [`tensorflow/core/framework/register_types.h`][register_types]:
 
 ```c++
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "third_party/tensorflow/core/framework/op_kernel.h"
+#include "third_party/tensorflow/core/framework/register_types.h"
 
 REGISTER_OP("ZeroOut")
     .Attr("T: realnumbertype")
@@ -844,7 +844,8 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized `GraphDef` protocol
-buffers constructed from older specfications.
+buffers constructed from older specfications.  The details of `GraphDef`
+compatibility are [described here](../../resources/versions.md#graphs).
 
 There are several ways to preserve backwards-compatibility.
 
@@ -888,7 +889,7 @@ There are several ways to preserve backwards-compatibility.
    type into a list of varying types).
 
 The full list of safe and unsafe changes can be found in
-[`tensorflow/core/framework/op_compatibility_test.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
+[`tensorflow/core/framework/op_compatibility_test.cc`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/op_compatibility_test.cc).
 If you cannot make your change to an operation backwards compatible, then create
 a new operation with a new name with the new semantics.
 
@@ -897,23 +898,24 @@ generated Python code may change in a way that isn't compatible with old
 callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
-made when TensorFlow's changes major versions.
+made when TensorFlow's changes major versions, and must conform to the
+[`GraphDef` version semantics](../../resources/versions.md#graphs).
 
 ## GPU Support {#mult-archs}
 
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#Polymorphism).
 There are several examples of kernels with GPU support in
-[`tensorflow/core/kernels/`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/).
+[`tensorflow/core/kernels/`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/kernels/).
 Notice some kernels have a CPU version in a `.cc` file, a GPU version in a file
 ending in `_gpu.cu.cc`, and some code shared in common in a `.h` file.
 
 For example, the [`pad` op](../../api_docs/python/array_ops.md#pad) has
 everything but the GPU kernel in [`tensorflow/core/kernels/pad_op.cc`][pad_op].
 The GPU kernel is in
-[`tensorflow/core/kernels/pad_op_gpu.cu.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op_gpu.cu.cc),
+[`tensorflow/core/kernels/pad_op_gpu.cu.cc`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/kernels/pad_op_gpu.cu.cc),
 and the shared code is a templated class defined in
-[`tensorflow/core/kernels/pad_op.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op.h).
+[`tensorflow/core/kernels/pad_op.h`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/kernels/pad_op.h).
 One thing to note, even when the GPU kernel version of `pad` is used, it still
 needs its `"paddings"` input in CPU memory.  To mark that inputs or outputs are
 kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
@@ -951,9 +953,9 @@ gradient with respect to the input is a sparse "one hot" tensor.  This is
 expressed as follows:
 
 ```python
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import sparse_ops
+from google3.third_party.tensorflow.python.framework import ops
+from google3.third_party.tensorflow.python.ops import array_ops
+from google3.third_party.tensorflow.python.ops import sparse_ops
 
 @ops.RegisterGradient("ZeroOut")
 def _zero_out_grad(op, grad):
@@ -1070,23 +1072,23 @@ any of the inputs. The [`merge_with`](../../api_docs/python/framework.md)
 method allows the caller to assert that two shapes are the same, even if either
 or both of them do not have complete information. Shape functions are defined
 for all of the
-[standard Python ops](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/ops/),
+[standard Python ops](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/ops/),
 and provide many different usage examples.
 
-[core-array_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ops/array_ops.cc
-[python-user_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py
-[tf-kernels]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/
-[user_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/user_ops/
-[pad_op]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op.cc
-[standard_ops-py]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/ops/standard_ops.py
-[standard_ops-cc]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/cc/ops/standard_ops.h
-[python-BUILD]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD
-[validation-macros]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/lib/core/errors.h
-[op_def_builder]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def_builder.h
-[register_types]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/register_types.h
-[FinalizeAttr]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def_builder.cc#FinalizeAttr
-[DataTypeString]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.cc#DataTypeString
-[python-BUILD]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD
-[types-proto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.proto
-[TensorShapeProto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/tensor_shape.proto
-[TensorProto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/tensor.proto
+[core-array_ops]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/ops/array_ops.cc
+[python-user_ops]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/user_ops/user_ops.py
+[tf-kernels]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/kernels/
+[user_ops]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/user_ops/
+[pad_op]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/kernels/pad_op.cc
+[standard_ops-py]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/ops/standard_ops.py
+[standard_ops-cc]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/cc/ops/standard_ops.h
+[python-BUILD]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/BUILD
+[validation-macros]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/lib/core/errors.h
+[op_def_builder]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/op_def_builder.h
+[register_types]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/register_types.h
+[FinalizeAttr]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/op_def_builder.cc#FinalizeAttr
+[DataTypeString]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/types.cc#DataTypeString
+[python-BUILD]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/python/BUILD
+[types-proto]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/types.proto
+[TensorShapeProto]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/tensor_shape.proto
+[TensorProto]:https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/tensor.proto
