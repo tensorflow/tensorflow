@@ -10,7 +10,7 @@ There are three main methods of getting data into a TensorFlow program:
 
 [TOC]
 
-## Feeding {#Feeding}
+## Feeding 
 
 TensorFlow's feed mechanism lets you inject data into any Tensor in a
 computation graph. A python computation can thus feed data directly into the
@@ -253,7 +253,7 @@ summary to the graph that indicates how full the example queue is. If you have
 enough reading threads, that summary will stay above zero.  You can
 [view your summaries as training progresses using TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
 
-### Creating threads to prefetch using `QueueRunner` objects {#QueueRunner}
+### Creating threads to prefetch using `QueueRunner` objects 
 
 The short version: many of the `tf.train` functions listed above add
 [`QueueRunner`](../../api_docs/python/train.md#QueueRunner) objects to your
