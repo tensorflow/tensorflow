@@ -374,6 +374,7 @@ toolkit is installed in `/usr/local/cuda`:
 tar xvzf cudnn-6.5-linux-x64-v2.tgz
 sudo cp cudnn-6.5-linux-x64-v2/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-6.5-linux-x64-v2/libcudnn* /usr/local/cuda/lib64
+sudo chmod a+r /usr/local/cuda/lib64/libcudnn*
 ```
 
 ##### Configure TensorFlow's canonical view of Cuda libraries
