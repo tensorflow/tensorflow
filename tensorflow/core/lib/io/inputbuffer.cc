@@ -61,7 +61,10 @@ Status InputBuffer::ReadLine(string* result) {
       // We don't append the '\n' to *result
       return Status::OK();
     }
-    *result += c;
+    // We don't append '\r' to *result
+    if (c != '\r') {
+      *result += c;
+    }
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();

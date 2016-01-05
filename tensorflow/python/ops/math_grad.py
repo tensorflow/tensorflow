@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -221,6 +223,28 @@ def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
   return grad * (1 - math_ops.square(y))
+
+
+@ops.RegisterGradient("Erf")
+def _ErfGrad(op, grad):
+  """Returns grad * 2/sqrt(pi) * exp(-x**2)."""
+  x = op.inputs[0]
+  two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
+  return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+
+
+@ops.RegisterGradient("Erfc")
+def _ErfcGrad(op, grad):
+  """Returns -grad * 2/sqrt(pi) * exp(-x**2)."""
+  x = op.inputs[0]
+  two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
+  return  -grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+
+
+@ops.RegisterGradient("Lgamma")
+def _LgammaGrad(op, grad):  # pylint: disable=unused-argument
+  # TODO(ebrevdo): implement digamma
+  raise NotImplementedError("grad(Lgamma) == Digamma is not implemented")
 
 
 @ops.RegisterGradient("Sigmoid")

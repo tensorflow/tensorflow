@@ -188,6 +188,24 @@ REGISTER_OP("Tanh")
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
+REGISTER_OP("Lgamma")
+    .UNARY()
+    .Doc(R"doc(
+Computes the log of the absolute value of Gamma of `x` element-wise.
+)doc");
+
+REGISTER_OP("Erf")
+    .UNARY()
+    .Doc(R"doc(
+Computes the Gauss error function of `x` element-wise.
+)doc");
+
+REGISTER_OP("Erfc")
+    .UNARY()
+    .Doc(R"doc(
+Computes the complementary error function of `x` element-wise.
+)doc");
+
 REGISTER_OP("Sigmoid")
     .UNARY()
     .Doc(R"doc(

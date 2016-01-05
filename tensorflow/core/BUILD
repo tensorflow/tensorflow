@@ -111,6 +111,7 @@ cc_library(
         "public/tensor_shape.h",
     ],
     copts = tf_copts(),
+    linkopts = ["-ldl"],
     visibility = [
         ":friends",
         "//tensorflow:internal",
@@ -171,8 +172,12 @@ tf_cuda_library(
     hdrs = glob([
         "public/**/*.h",
         "util/device_name_utils.h",
-    ]),
+    ]) + [
+        "framework/op.h",
+        "framework/op_kernel.h",
+    ],
     copts = tf_copts(),
+    linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -422,6 +427,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "script_ops",
         "sendrecv_ops",
         "sparse_ops",
         "state_ops",

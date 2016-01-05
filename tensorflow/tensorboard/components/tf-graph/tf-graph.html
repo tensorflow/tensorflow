@@ -112,8 +112,8 @@ Polymer({
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInformation(
-          graphHierarchy, params);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy,
+          params);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list

@@ -542,6 +542,35 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
                   % (error_prefix, value, type(value)))
 
 
+def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
+  """Converts `values` to a list of `Tensor` objects.
+
+  Args:
+    values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A list of `Tensor` and/or `IndexedSlices` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  if not isinstance(values, collections.Sequence):
+    raise TypeError("values must be a list.")
+  ret = []
+  for i, value in enumerate(values):
+    n = None if name is None else "%s_%d" % (name, i)
+    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+  return ret
+
+
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
                                         as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
@@ -2218,7 +2247,7 @@ class Graph(object):
     """
     try:
       old_stack = self._name_stack
-      if not name:  # Both for name=None nad name="" we re-set to empty scope.
+      if not name:  # Both for name=None and name="" we re-set to empty scope.
         new_stack = (None, None)
       elif name and name[-1] == "/":
         new_stack = (name[:-1], name[:-1])
@@ -2734,7 +2763,7 @@ def device(dev):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
-  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  [`Graph.device()`](../../api_docs/python/framework.md#Graph.device)
   for more details.
 
   Args:

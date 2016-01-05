@@ -1339,7 +1339,7 @@ Converts the given `type_value` to a `DType`.
 Wrapper for `Graph.device()` using the default graph.
 
 See
-[`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+[`Graph.device()`](../../api_docs/python/framework.md#Graph.device)
 for more details.
 
 ##### Args:
@@ -1542,6 +1542,35 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 *  <b>`ValueError`</b>: If `input_map`, or `return_elements` contains names that
     do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
     it refers to an unknown tensor).
+
+
+- - -
+
+### `tf.load_op_library(library_filename)` {#load_op_library}
+
+Loads a TensorFlow plugin, containing custom ops and kernels.
+
+Pass "library_filename" to a platform-specific mechanism for dynamically
+loading a library. The rules for determining the exact location of the
+library are platform-specific and are not documented here.
+Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
+defined in the library.
+
+##### Args:
+
+
+*  <b>`library_filename`</b>: Path to the plugin.
+    Relative or absolute filesystem path to a dynamic library file.
+
+##### Returns:
+
+  A python module containing the Python wrappers for Ops defined in
+  the plugin.
+
+##### Raises:
+
+
+*  <b>`RuntimeError`</b>: when unable to load the library or get the python wrappers.
 
 
 

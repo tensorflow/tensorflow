@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import, g-bad-import-order
 import tensorflow.python.platform
+# pylint: enable=unused-import, g-bad-import-order
 
 import numpy as np
 
@@ -46,13 +48,17 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def _SparseTensor_2x3x4(self, dtype):
+    # Includes two entries with the form [1, 1, x] : 150.
     ind = np.array([
         [0, 0, 1],
-        [0, 1, 0], [0, 1, 2],
+        [0, 1, 0],
+        [0, 1, 2],
         [1, 0, 3],
-        [1, 1, 1], [1, 1, 3],
+        [1, 1, 0],
+        [1, 1, 1],
+        [1, 1, 2],
         [1, 2, 2]])
-    val = np.array([1, 10, 12, 103, 111, 113, 122])
+    val = np.array([1, 10, 12, 103, 150, 149, 150, 122])
     shape = np.array([2, 3, 4])
     return ops.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
@@ -90,7 +96,8 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
 
       expected_output = np.zeros((2, 3, 200), dtype=np.bool)
       expected_trues = [(0, 0, 1), (0, 1, 10), (0, 1, 12),
-                        (1, 0, 103), (1, 1, 111), (1, 1, 113), (1, 2, 122)]
+                        (1, 0, 103), (1, 1, 149), (1, 1, 150),
+                        (1, 2, 122)]
       for expected_true in expected_trues:
         expected_output[expected_true] = True
 

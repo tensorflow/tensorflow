@@ -813,9 +813,8 @@ class Saver(object):
       last_checkpoints: A list of checkpoint filenames.
 
     Raises:
-      AssertionError: If the list of checkpoint filenames has already been set.
+      AssertionError: If last_checkpoints is not a list.
     """
-    assert not self._last_checkpoints
     assert isinstance(last_checkpoints, list)
     # We use a timestamp of +inf so that this checkpoint will never be
     # deleted.  This is both safe and backwards compatible to a previous

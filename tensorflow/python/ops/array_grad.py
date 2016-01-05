@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -231,7 +230,22 @@ ops.NoGradient("Size")
 def _TileGrad(op, grad):
   """Sum reduces grad along the tiled dimensions."""
   assert isinstance(grad, ops.Tensor)
-  return [gen_array_ops._tile_grad(grad, op.inputs[1]), None]
+  input_shape = array_ops.shape(op.inputs[0])
+  # We interleave multiples and input_shape to get split_shape,
+  # reshape grad to split_shape, and reduce along all even
+  # dimensions (the tiled dimensions) to get the result
+  # with shape input_shape.  For example
+  #   input_shape = [20, 30, 40]
+  #   multiples = [2, 3, 4]
+  #   split_shape = [2, 20, 3, 30, 4, 40]
+  #   axes = [0, 2, 4]
+  split_shape = array_ops.reshape(array_ops.transpose(
+      array_ops.pack([op.inputs[1], input_shape])), [-1])
+  axes = math_ops.range(0, array_ops.size(split_shape), 2)
+  input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
+  # Fix shape inference
+  input_grad.set_shape(op.inputs[0].get_shape())
+  return [input_grad, None]
 
 
 ops.NoGradient("TileGrad")

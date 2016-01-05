@@ -105,17 +105,19 @@ def all_libraries(module_to_name, members, documented):
                                "rnn", "state_saving_rnn", "bidirectional_rnn",
                                "dynamic_rnn", "seq2seq", "rnn_cell"],
               prefix=PREFIX_TEXT),
-      library('client', "Running Graphs", client_lib),
+      library("client", "Running Graphs", client_lib),
       library("train", "Training", tf.train,
               exclude_symbols=["Feature", "Features", "BytesList", "FloatList",
                                "Int64List", "Example", "InferenceExample",
                                "FeatureList", "FeatureLists",
                                "RankingExample", "SequenceExample"]),
+      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT)
   ]
 
 _hidden_symbols = ["Event", "Summary", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
-                   "GPUOptions", "SessionInterface", "BaseSession"]
+                   "GPUOptions", "GraphOptions", "SessionInterface",
+                   "BaseSession"]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

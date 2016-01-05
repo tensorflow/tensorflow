@@ -784,7 +784,7 @@ Sets the list of old checkpoint filenames.
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If the list of checkpoint filenames has already been set.
+*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
 
 
 - - -

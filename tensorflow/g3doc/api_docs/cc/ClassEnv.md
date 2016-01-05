@@ -36,6 +36,10 @@ All Env implementations are safe for concurrent access from multiple threads wit
   * Sleeps/delays the thread for the prescribed number of micro-seconds.
 * [`virtual Thread* tensorflow::Env::StartThread(const ThreadOptions &thread_options, const string &name, std::function< void()> fn) TF_MUST_USE_RESULT=0`](#virtual_Thread_tensorflow_Env_StartThread)
   * Returns a new thread that is running fn() and is identified (for debugging/performance-analysis) by "name".
+* [`virtual void tensorflow::Env::SchedClosure(std::function< void()> closure)=0`](#virtual_void_tensorflow_Env_SchedClosure)
+* [`virtual void tensorflow::Env::SchedClosureAfter(int micros, std::function< void()> closure)=0`](#virtual_void_tensorflow_Env_SchedClosureAfter)
+* [`virtual Status tensorflow::Env::LoadLibrary(const char *library_filename, void **handle)=0`](#virtual_Status_tensorflow_Env_LoadLibrary)
+* [`virtual Status tensorflow::Env::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol)=0`](#virtual_Status_tensorflow_Env_GetSymbolFromLibrary)
 * [`static Env* tensorflow::Env::Default()`](#static_Env_tensorflow_Env_Default)
   * Returns a default environment suitable for the current operating system.
 
@@ -136,6 +140,30 @@ Sleeps/delays the thread for the prescribed number of micro-seconds.
 Returns a new thread that is running fn() and is identified (for debugging/performance-analysis) by "name".
 
 Caller takes ownership of the result and must delete it eventually (the deletion will block until fn() stops running).
+
+#### `virtual void tensorflow::Env::SchedClosure(std::function< void()> closure)=0` {#virtual_void_tensorflow_Env_SchedClosure}
+
+
+
+
+
+#### `virtual void tensorflow::Env::SchedClosureAfter(int micros, std::function< void()> closure)=0` {#virtual_void_tensorflow_Env_SchedClosureAfter}
+
+
+
+
+
+#### `virtual Status tensorflow::Env::LoadLibrary(const char *library_filename, void **handle)=0` {#virtual_Status_tensorflow_Env_LoadLibrary}
+
+
+
+
+
+#### `virtual Status tensorflow::Env::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol)=0` {#virtual_Status_tensorflow_Env_GetSymbolFromLibrary}
+
+
+
+
 
 #### `static Env* tensorflow::Env::Default()` {#static_Env_tensorflow_Env_Default}
 

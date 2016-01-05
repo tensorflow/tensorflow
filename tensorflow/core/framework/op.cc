@@ -33,14 +33,13 @@ OpRegistryInterface::~OpRegistryInterface() {}
 
 OpRegistry::OpRegistry() : initialized_(false) {}
 
-void OpRegistry::Register(std::function<OpDef(void)> func) {
+void OpRegistry::Register(const OpDef& op_def) {
   mutex_lock lock(mu_);
   if (initialized_) {
-    OpDef def = func();
-    TF_QCHECK_OK(RegisterAlreadyLocked(def)) << "Attempting to register: "
-                                             << SummarizeOpDef(def);
+    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
+                                                << SummarizeOpDef(op_def);
   } else {
-    deferred_.push_back(func);
+    deferred_.push_back(op_def);
   }
 }
 
@@ -75,6 +74,14 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
   return op_def;
 }
 
+void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
+  mutex_lock lock(mu_);
+  CallDeferred();
+  for (auto p : registry_) {
+    op_defs->push_back(*p.second);
+  }
+}
+
 void OpRegistry::Export(bool include_internal, OpList* ops) const {
   mutex_lock lock(mu_);
   CallDeferred();
@@ -107,10 +114,9 @@ string OpRegistry::DebugString(bool include_internal) const {
 bool OpRegistry::CallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (const auto& fn : deferred_) {
-    OpDef def = fn();
-    TF_QCHECK_OK(RegisterAlreadyLocked(def)) << "Attempting to register: "
-                                             << SummarizeOpDef(def);
+  for (const auto& op_def : deferred_) {
+    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
+                                                << SummarizeOpDef(op_def);
   }
   deferred_.clear();
   return true;
@@ -136,12 +142,25 @@ OpRegistry* OpRegistry::Global() {
 
 namespace register_op {
 OpDefBuilderReceiver::OpDefBuilderReceiver(const OpDefBuilder& builder) {
-  OpRegistry::Global()->Register([builder]() {
-    OpDef op_def;
-    TF_QCHECK_OK(builder.Finalize(&op_def));
-    return op_def;
-  });
+  OpDef op_def;
+  builder.Finalize(&op_def);
+  OpRegistry::Global()->Register(op_def);
 }
 }  // namespace register_op
+
+extern "C" void RegisterOps(void* registry_ptr) {
+  OpRegistry* op_registry = static_cast<OpRegistry*>(registry_ptr);
+  std::vector<OpDef> op_defs;
+  OpRegistry::Global()->GetRegisteredOps(&op_defs);
+  for (auto const& op_def : op_defs) {
+    op_registry->Register(op_def);
+  }
+}
+
+extern "C" void GetOpList(void* str) {
+  OpList op_list;
+  OpRegistry::Global()->Export(true, &op_list);
+  op_list.SerializeToString(reinterpret_cast<string*>(str));
+}
 
 }  // namespace tensorflow

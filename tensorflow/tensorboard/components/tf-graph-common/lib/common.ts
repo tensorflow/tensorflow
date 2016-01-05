@@ -18,17 +18,19 @@ limitations under the License.
 declare module graphlib {
 
   interface GraphOptions {
-    name: string;
+    name?: string;
     /**
      * Direction for rank nodes. Can be TB, BT, LR, or RL, where T = top,
      * B = bottom, L = left, and R = right.
      */
-    rankdir: string;
-    type: string|number;
+    rankdir?: string;
+    type?: string|number;
     /** Number of pixels between each rank in the layout. */
     ranksep?: number;
     /** Number of pixels that separate nodes horizontally in the layout. */
     nodesep?: number;
+    /** Number of pixels that separate edges horizontally in the layout */
+    edgesep?: number;
   }
 
   export interface EdgeObject {
@@ -58,7 +60,10 @@ declare module graphlib {
         edges(): EdgeObject[];
         outEdges(name: string): E[];
         inEdges(name: string): E[];
-        /** Returns those nodes in the graph that have no in-edges. Takes O(|V|) time. */
+        /**
+         * Returns those nodes in the graph that have no in-edges.
+         * Takes O(|V|) time.
+         */
         sources(): string[];
         /**
          * Remove the node with the id v in the graph or do nothing if

@@ -118,8 +118,8 @@ export function fit(svg, zoomG, d3zoom, callback) {
  *            provided node.
  */
 export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
-  let node: any = d3.selectAll("[data-name='" + nodeName + "']."
-    + Class.Node.GROUP)[0][0];
+  let node = <SVGAElement> d3.select("[data-name='" + nodeName + "']."
+    + Class.Node.GROUP).node();
   if (!node) {
     return false;
   }
@@ -247,7 +247,7 @@ export function selectChild(container, tagName: string, className?: string) {
  * @param sceneClass class attribute of the scene (default="scene").
  */
 export function buildGroup(container,
-    renderNode: render.RenderGroupNodeInformation,
+    renderNode: render.RenderGroupNodeInfo,
     sceneBehavior,
     sceneClass: string) {
   sceneClass = sceneClass || Class.Scene.GROUP;
@@ -301,8 +301,7 @@ export function buildGroup(container,
 
   // Fade in the scene group if it didn't already exist.
   if (isNewSceneGroup) {
-    sceneGroup.attr("opacity", 0)
-      .transition().attr("opacity", 1);
+    sceneGroup.attr("opacity", 0).transition().attr("opacity", 1);
   }
 
   return sceneGroup;
@@ -315,7 +314,7 @@ export function buildGroup(container,
  * @param sceneGroup
  * @param renderNode render node of a metanode or series node.
  */
-function position(sceneGroup, renderNode: render.RenderGroupNodeInformation) {
+function position(sceneGroup, renderNode: render.RenderGroupNodeInfo) {
   // Translate scenes down by the label height so that when showing graphs in
   // expanded metanodes, the graphs are below the labels.  Do not shift them
   // down for series nodes as series nodes don't have labels inside of their
@@ -324,14 +323,13 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInformation) {
     0 : layout.PARAMS.subscene.meta.labelHeight;
 
   // core
-  translate(selectChild(sceneGroup, "g", Class.Scene.CORE),
-                  0, yTranslate);
+  translate(selectChild(sceneGroup, "g", Class.Scene.CORE), 0, yTranslate);
 
   // in-extract
-  let inExtractX = renderNode.coreBox.width === 0 ?
-    0 : renderNode.coreBox.width;
   let hasInExtract = renderNode.isolatedInExtract.length > 0;
   if (hasInExtract) {
+    let inExtractX = renderNode.coreBox.width -
+      renderNode.inExtractBox.width / 2 - renderNode.outExtractBox.width;
     translate(selectChild(sceneGroup, "g", Class.Scene.INEXTRACT),
                     inExtractX, yTranslate);
   }
@@ -339,8 +337,8 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInformation) {
   // out-extract
   let hasOutExtract = renderNode.isolatedOutExtract.length > 0;
   if (hasOutExtract) {
-    let outExtractX = inExtractX + renderNode.inExtractBox.width
-      + renderNode.extractXOffset;
+    let outExtractX = renderNode.coreBox.width -
+      renderNode.outExtractBox.width / 2;
     translate(selectChild(sceneGroup, "g", Class.Scene.OUTEXTRACT),
                     outExtractX, yTranslate);
   }
@@ -355,6 +353,10 @@ export function addGraphClickListener(graphGroup, sceneBehavior) {
 
 /** Helper for adding transform: translate(x0, y0) */
 export function translate(selection, x0: number, y0: number) {
+  // If it is already placed on the screen, make it a transition.
+  if (selection.attr("transform") != null) {
+    selection = selection.transition("position");
+  }
   selection.attr("transform", "translate(" + x0 + "," + y0 + ")");
 };
 
@@ -382,12 +384,16 @@ export function positionRect(rect, cx: number, cy: number, width: number,
  * @param renderNode the render node of the group node to position
  *        the button on.
  */
-export function positionButton(button,
-    renderNode: render.RenderNodeInformation) {
+export function positionButton(button, renderNode: render.RenderNodeInfo) {
+  let cx = layout.computeCXPositionOfNodeShape(renderNode);
   // Position the button in the top-right corner of the group node,
   // with space given the draw the button inside of the corner.
-  let x = renderNode.x + renderNode.width / 2 - 6;
-  let y = renderNode.y - renderNode.height / 2 + 6;
+  let width = renderNode.expanded ?
+      renderNode.width : renderNode.coreBox.width;
+  let height = renderNode.expanded ?
+      renderNode.height : renderNode.coreBox.height;
+  let x = cx + width / 2 - 6;
+  let y = renderNode.y - height / 2 + 6;
   // For unexpanded series nodes, the button has special placement due
   // to the unique visuals of this group node.
   if (renderNode.node.type === NodeType.SERIES && !renderNode.expanded) {

@@ -364,5 +364,14 @@ class ConcatOpTest(tf.test.TestCase):
       err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
     self.assertLess(err, 1e-11)
 
+  def testConcatTuple(self):
+    c1 = np.random.rand(4, 4)
+    c2 = np.random.rand(4, 4)
+    with self.test_session():
+      concat_list_t = tf.concat(0, [c1, c2])
+      concat_tuple_t = tf.concat(0, (c1, c2))
+      self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
+
+
 if __name__ == "__main__":
   tf.test.main()

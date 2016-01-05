@@ -152,6 +152,9 @@ class Tracing::Engine {
   Engine() {}
   virtual ~Engine();
 
+  // Returns true if Tracing is currently enabled.
+  virtual bool IsEnabled() const = 0;
+
   // Represents an active annotation.
   class Annotation {
    public:
@@ -225,7 +228,7 @@ class Tracing::TraceMe {
 
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(e->PushAnnotation(name));
   }
 }
@@ -233,7 +236,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
                                                    StringPiece name_part2) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(
         e->PushAnnotation(strings::StrCat(name_part1, ":", name_part2)));
   }
@@ -241,7 +244,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
 
 inline Tracing::TraceMe::TraceMe(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     tracer_.reset(e->StartTracing(name));
   }
 }

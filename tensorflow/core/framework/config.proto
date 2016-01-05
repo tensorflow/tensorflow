@@ -19,6 +19,21 @@ message GPUOptions {
   // "BFC": A "Best-fit with coalescing" algorithm, simplified from a
   //        version of dlmalloc.
   string allocator_type = 2;
+
+  // Delay deletion of up to this many bytes to reduce the number of
+  // interactions with gpu driver code.  If 0, the system chooses
+  // a reasonable default (several MBs).
+  int64 deferred_deletion_bytes = 3;
+};
+
+message GraphOptions {
+  // If true, do not attempt to optimize the graph using common
+  // subexpression elimination.
+  bool skip_common_subexpression_elimination = 1;
+
+  // If true, use control flow to schedule the activation of Recv nodes.
+  // (Currently ignored.)
+  bool enable_recv_scheduling = 2;
 };
 
 // Session configuration parameters.
@@ -75,4 +90,7 @@ message ConfigProto {
 
   // Whether device placements should be logged.
   bool log_device_placement = 8;
+
+  // Options that apply to all graphs.
+  GraphOptions graph_options = 10;
 };

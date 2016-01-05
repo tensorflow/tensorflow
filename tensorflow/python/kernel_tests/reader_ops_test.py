@@ -235,7 +235,7 @@ class TextLineReaderTest(tf.test.TestCase):
   def _LineText(self, f, l):
     return tf.compat.as_bytes("%d: %d" % (f, l))
 
-  def _CreateFiles(self):
+  def _CreateFiles(self, crlf=False):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
@@ -246,11 +246,10 @@ class TextLineReaderTest(tf.test.TestCase):
         # Always include a newline after the record unless it is
         # at the end of the file, in which case we include it sometimes.
         if j + 1 != self._num_lines or i == 0:
-          f.write(b"\n")
+          f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
-  def testOneEpoch(self):
-    files = self._CreateFiles()
+  def _testOneEpoch(self, files):
     with self.test_session() as sess:
       reader = tf.TextLineReader(name="test_reader")
       queue = tf.FIFOQueue(99, [tf.string], shapes=())
@@ -267,6 +266,12 @@ class TextLineReaderTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def testOneEpochLF(self):
+    self._testOneEpoch(self._CreateFiles(crlf=False))
+
+  def testOneEpochCRLF(self):
+    self._testOneEpoch(self._CreateFiles(crlf=True))
 
   def testSkipHeaderLines(self):
     files = self._CreateFiles()

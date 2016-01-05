@@ -19,6 +19,8 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 void DFS(const Graph& g, std::function<void(Node*)> enter,
@@ -78,14 +80,18 @@ void PruneForReverseReachability(Graph* g,
   // nodes, and accumulating the visited nodes.
   std::deque<const Node*> queue;
   for (const Node* n : nodes) {
-    queue.push_back(n);
+    if (visited.insert(n).second) {
+      VLOG(2) << "Reverse reach init: " << n->name();
+      queue.push_back(n);
+    }
   }
   while (!queue.empty()) {
     const Node* n = queue.front();
     queue.pop_front();
-    if (visited.insert(n).second) {
-      for (const Node* in : n->in_nodes()) {
+    for (const Node* in : n->in_nodes()) {
+      if (visited.insert(in).second) {
         queue.push_back(in);
+        VLOG(2) << "Reverse reach : " << n->name() << " from " << in->name();
       }
     }
   }
