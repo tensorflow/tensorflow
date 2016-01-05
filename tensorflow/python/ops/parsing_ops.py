@@ -607,7 +607,7 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
 
     outputs = gen_parsing_ops._parse_single_sequence_example(
         serialized=serialized,
-        debug_name=debug_name,
+        debug_name=debug_name if debug_name is not None else 'SequenceExample',
         context_dense_defaults=context_dense_defaults_vec,
         context_sparse_keys=context_sparse_keys,
         context_sparse_types=context_sparse_types,
