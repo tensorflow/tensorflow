@@ -25,48 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("_Arg")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("index: int >= 0")
-    .Doc(R"doc(
-A graph node which represents an argument to a function.
-
-output: The argument.
-index: This argument is the index-th argument of the function.
-)doc");
-
-REGISTER_OP("_Retval")
-    .Input("input: T")
-    .Attr("T: type")
-    .Attr("index: int >= 0")
-    .Doc(R"doc(
-A graph node which represents a return value of a function.
-
-input: The return value.
-index: This return value is the index-th return value of the function.
-)doc");
-
-REGISTER_OP("_ListToArray")
-    .Input("input: Tin")
-    .Output("output: N * T")
-    .Attr("Tin: list(type)")
-    .Attr("T: type")
-    .Attr("N: int >= 1")
-    .Doc(R"doc(
-Converts a list of tensors to an array of tensors.
-)doc");
-
-REGISTER_OP("_ArrayToList")
-    .Input("input: N * T")
-    .Output("output: out_types")
-    .Attr("T: type")
-    .Attr("N: int >= 1")
-    .Attr("out_types: list(type)")
-    .Doc(R"doc(
-Converts an array of tensors to a list of tensors.
-)doc");
-
 namespace {
 
 // Extracts the actual type from "attr_values" based on its definition

@@ -171,6 +171,8 @@ class TensorFlowTestCase(googletest.TestCase):
       A Session object that should be used as a context manager to surround
       the graph building and execution code in a test case.
     """
+    if self.id().endswith(".test_session"):
+      self.skipTest("Not a test.")
     def prepare_config(config):
       if config is None:
         config = config_pb2.ConfigProto()

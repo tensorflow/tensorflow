@@ -36,6 +36,7 @@
 @@convert_to_tensor_or_indexed_slices
 @@get_default_graph
 @@import_graph_def
+@@load_op_library
 
 ## Graph collections
 
@@ -89,3 +90,6 @@ from tensorflow.python.framework.tensor_shape import Dimension
 from tensorflow.python.framework.tensor_shape import TensorShape
 
 from tensorflow.python.framework.dtypes import *
+
+# Load a TensorFlow plugin
+from tensorflow.python.framework.load_library import *

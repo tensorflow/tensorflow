@@ -42,6 +42,7 @@ from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.random_ops import *
+from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.sparse_ops import *
 from tensorflow.python.ops.state_ops import assign
 from tensorflow.python.ops.state_ops import assign_add

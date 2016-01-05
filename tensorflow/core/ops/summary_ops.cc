@@ -24,15 +24,15 @@ REGISTER_OP("ScalarSummary")
     .Input("tags: string")
     .Input("values: T")
     .Output("summary: string")
-    .Attr("T: {float, double}")
+    .Attr("T: realnumbertype")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with scalar values.
 
 The input `tags` and `values` must have the same shape.  The generated summary
 has a summary value for each tag-value pair in `tags` and `values`.
 
-tags: 1-D. Tags for the summary.
-values: 1-D, same size as `tags.  Values for the summary.
+tags: Tags for the summary.
+values: Same shape as `tags.  Values for the summary.
 summary: Scalar.  Serialized `Summary` protocol buffer.
 )doc");
 

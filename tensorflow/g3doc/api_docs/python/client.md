@@ -277,7 +277,7 @@ with tf.Session():
 
 - - -
 
-#### `tf.InteractiveSession.__init__(target='', graph=None)` {#InteractiveSession.__init__}
+#### `tf.InteractiveSession.__init__(target='', graph=None, config=None)` {#InteractiveSession.__init__}
 
 Creates a new interactive TensorFlow session.
 
@@ -296,6 +296,7 @@ the session constructor.
     Defaults to using an in-process engine. At present, no value
     other than the empty string is supported.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
+*  <b>`config`</b>: (Optional) `ConfigProto` proto used to configure the session.
 
 
 - - -

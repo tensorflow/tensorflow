@@ -81,9 +81,7 @@ void TitlecaseString(string* s, StringPiece delimiters);
 
 // Join functionality
 template <typename T>
-string Join(const std::vector<T>& s, const char* sep);
-template <typename T>
-string Join(const gtl::ArraySlice<T>& s, const char* sep);
+string Join(const T& s, const char* sep);
 
 struct AllowEmpty {
   bool operator()(StringPiece sp) const { return true; }
@@ -110,30 +108,15 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 
 // ------------------------------------------------------------------
 // Implementation details below
-namespace internal {
 template <typename T>
-string JoinHelper(typename gtl::ArraySlice<T>::const_iterator begin,
-                  typename gtl::ArraySlice<T>::const_iterator end,
-                  const char* sep) {
+string Join(const T& s, const char* sep) {
   string result;
   bool first = true;
-  for (typename gtl::ArraySlice<T>::const_iterator it = begin; it != end;
-       ++it) {
-    tensorflow::strings::StrAppend(&result, (first ? "" : sep), *it);
+  for (const auto& x : s) {
+    tensorflow::strings::StrAppend(&result, (first ? "" : sep), x);
     first = false;
   }
   return result;
-}
-}  // namespace internal
-
-template <typename T>
-string Join(const std::vector<T>& s, const char* sep) {
-  return Join<T>(gtl::ArraySlice<T>(s), sep);
-}
-
-template <typename T>
-string Join(const gtl::ArraySlice<T>& s, const char* sep) {
-  return internal::JoinHelper<T>(s.begin(), s.end(), sep);
 }
 
 inline std::vector<string> Split(StringPiece text, char delim) {

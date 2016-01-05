@@ -139,6 +139,7 @@ from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
+from tensorflow.python.training.coordinator import LooperThread
 from tensorflow.python.training.queue_runner import *
 
 # For the module level doc.

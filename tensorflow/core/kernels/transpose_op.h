@@ -29,6 +29,12 @@ class TransposeOp : public OpKernel {
   void Compute(OpKernelContext* context) override;
 };
 
+// Exposed for use in reduction ops
+template <typename Device, typename T>
+void TransposeTensor(const Device& device, const Tensor& input,
+                     const gtl::ArraySlice<int64> input_shape,
+                     gtl::ArraySlice<int32> permutation, Tensor* output);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_TRANSPOSE_OP_H_

@@ -145,6 +145,27 @@ class Env {
   // NOTE(mrry): This closure must not block.
   virtual void SchedClosureAfter(int micros, std::function<void()> closure) = 0;
 
+  // \brief Load a dynamic library.
+  //
+  // Pass "library_filename" to a platform-specific mechanism for dynamically
+  // loading a library.  The rules for determining the exact location of the
+  // library are platform-specific and are not documented here.
+  //
+  // On success, returns a handle to the library in "*handle" and returns
+  // OK from the function.
+  // Otherwise returns nullptr in "*handle" and an error status from the
+  // function.
+  virtual Status LoadLibrary(const char* library_filename, void** handle) = 0;
+
+  // \brief Get a pointer to a symbol from a dynamic library.
+  //
+  // "handle" should be a pointer returned from a previous call to LoadLibrary.
+  // On success, store a pointer to the located symbol in "*symbol" and return
+  // OK from the function. Otherwise, returns nullptr in "*symbol" and an error
+  // status from the function.
+  virtual Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                                      void** symbol) = 0;
+
  private:
   /// No copying allowed
   Env(const Env&);
@@ -250,6 +271,13 @@ class EnvWrapper : public Env {
   }
   void SchedClosureAfter(int micros, std::function<void()> closure) override {
     target_->SchedClosureAfter(micros, closure);
+  }
+  Status LoadLibrary(const char* library_filename, void** handle) override {
+    return target_->LoadLibrary(library_filename, handle);
+  }
+  Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                              void** symbol) override {
+    return target_->GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
  private:

@@ -2413,6 +2413,56 @@ op {
   is_commutative: true
 }
 op {
+  name: "Erf"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the Gauss error function of `x` element-wise."
+}
+op {
+  name: "Erfc"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the complementary error function of `x` element-wise."
+}
+op {
   name: "Exit"
   input_arg {
     name: "data"
@@ -2949,6 +2999,7 @@ op {
   }
   summary: "Creates a non-initialized hash table."
   description: "This op creates a hash table, specifying the type of its keys and values.\nBefore using the table you will have to initialize it.  After initialization the\ntable will be immutable."
+  is_stateful: true
 }
 op {
   name: "HistogramSummary"
@@ -3552,6 +3603,31 @@ op {
     }
   }
   summary: "Returns the truth value of (x <= y) element-wise."
+}
+op {
+  name: "Lgamma"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the log of the absolute value of Gamma of `x` element-wise."
 }
 op {
   name: "LinSpace"
@@ -4731,6 +4807,12 @@ op {
     number_attr: "Ncontext_dense"
   }
   input_arg {
+    name: "feature_list_sparse_keys"
+    description: "A list of Nfeature_list_sparse string Tensors\n(scalars).  The keys expected in the FeatureLists associated with sparse\nvalues."
+    type: DT_STRING
+    number_attr: "Nfeature_list_sparse"
+  }
+  input_arg {
     name: "feature_list_dense_keys"
     description: "A list of Nfeature_list_dense string Tensors (scalars).\nThe keys expected in the SequenceExamples\' feature_lists associated\nwith lists of dense values."
     type: DT_STRING
@@ -4765,27 +4847,62 @@ op {
     type_list_attr: "Tcontext_dense"
   }
   output_arg {
+    name: "feature_list_sparse_indices"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
+    name: "feature_list_sparse_values"
+    type_list_attr: "feature_list_sparse_types"
+  }
+  output_arg {
+    name: "feature_list_sparse_shapes"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
     name: "feature_list_dense_values"
     type_list_attr: "feature_list_dense_types"
   }
   attr {
     name: "Ncontext_sparse"
     type: "int"
+    default_value {
+      i: 0
+    }
     has_minimum: true
   }
   attr {
     name: "Ncontext_dense"
     type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Nfeature_list_sparse"
+    type: "int"
+    default_value {
+      i: 0
+    }
     has_minimum: true
   }
   attr {
     name: "Nfeature_list_dense"
     type: "int"
+    default_value {
+      i: 0
+    }
     has_minimum: true
   }
   attr {
     name: "context_sparse_types"
     type: "list(type)"
+    default_value {
+      list {
+      }
+    }
     description: "A list of Ncontext_sparse types; the data types of data in\neach context Feature given in context_sparse_keys.\nCurrently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
     has_minimum: true
     allowed_values {
@@ -4799,6 +4916,10 @@ op {
   attr {
     name: "Tcontext_dense"
     type: "list(type)"
+    default_value {
+      list {
+      }
+    }
     has_minimum: true
     allowed_values {
       list {
@@ -4811,6 +4932,10 @@ op {
   attr {
     name: "feature_list_dense_types"
     type: "list(type)"
+    default_value {
+      list {
+      }
+    }
     has_minimum: true
     allowed_values {
       list {
@@ -4823,12 +4948,37 @@ op {
   attr {
     name: "context_dense_shapes"
     type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
     description: "A list of Ncontext_dense shapes; the shapes of data in\neach context Feature given in context_dense_keys.\nThe number of elements in the Feature corresponding to context_dense_key[j]\nmust always equal context_dense_shapes[j].NumEntries().\nThe shape of context_dense_values[j] will match context_dense_shapes[j]."
     has_minimum: true
   }
   attr {
+    name: "feature_list_sparse_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "A list of Nfeature_list_sparse types; the data types\nof data in each FeatureList given in feature_list_sparse_keys.\nCurrently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
     name: "feature_list_dense_shapes"
     type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
     description: "A list of Nfeature_list_dense shapes; the shapes of\ndata in each FeatureList given in feature_list_dense_keys.\nThe shape of each Feature in the FeatureList corresponding to\nfeature_list_dense_key[j] must always equal\nfeature_list_dense_shapes[j].NumEntries()."
     has_minimum: true
   }
@@ -4984,6 +5134,39 @@ op {
   }
   summary: "Computes the product of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
+}
+op {
+  name: "PyFunc"
+  input_arg {
+    name: "input"
+    description: "List of Tensors that will provide input to the Op."
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "The outputs from the Op."
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+    description: "A token representing a registered python function in this address space."
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "Data types of the inputs to the op."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "Data types of the outputs from the op.\nThe length of the list specifies the number of outputs."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Invokes a python function to compute func(input)->output."
 }
 op {
   name: "QueueClose"
@@ -6354,12 +6537,12 @@ op {
   name: "ScalarSummary"
   input_arg {
     name: "tags"
-    description: "1-D. Tags for the summary."
+    description: "Tags for the summary."
     type: DT_STRING
   }
   input_arg {
     name: "values"
-    description: "1-D, same size as `tags.  Values for the summary."
+    description: "Same shape as `tags.  Values for the summary."
     type_attr: "T"
   }
   output_arg {
@@ -6374,6 +6557,11 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -7806,6 +7994,14 @@ op {
     type_attr: "T"
   }
   attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, indices are checked to make sure they are sorted in\nlexicographic order and that there are no repeats."
+  }
+  attr {
     name: "T"
     type: "type"
   }
@@ -7820,7 +8016,7 @@ op {
     }
   }
   summary: "Converts a sparse representation into a dense tensor."
-  description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value."
+  description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
   name: "Split"

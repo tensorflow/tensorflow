@@ -37,6 +37,10 @@ May be useful to clients who wish to override just part of the functionality of 
   * Sleeps/delays the thread for the prescribed number of micro-seconds.
 * [`Thread* tensorflow::EnvWrapper::StartThread(const ThreadOptions &thread_options, const string &name, std::function< void()> fn) override`](#Thread_tensorflow_EnvWrapper_StartThread)
   * Returns a new thread that is running fn() and is identified (for debugging/performance-analysis) by "name".
+* [`void tensorflow::EnvWrapper::SchedClosure(std::function< void()> closure) override`](#void_tensorflow_EnvWrapper_SchedClosure)
+* [`void tensorflow::EnvWrapper::SchedClosureAfter(int micros, std::function< void()> closure) override`](#void_tensorflow_EnvWrapper_SchedClosureAfter)
+* [`Status tensorflow::EnvWrapper::LoadLibrary(const char *library_filename, void **handle) override`](#Status_tensorflow_EnvWrapper_LoadLibrary)
+* [`Status tensorflow::EnvWrapper::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol) override`](#Status_tensorflow_EnvWrapper_GetSymbolFromLibrary)
 
 ##Member Details
 
@@ -141,3 +145,27 @@ Sleeps/delays the thread for the prescribed number of micro-seconds.
 Returns a new thread that is running fn() and is identified (for debugging/performance-analysis) by "name".
 
 Caller takes ownership of the result and must delete it eventually (the deletion will block until fn() stops running).
+
+#### `void tensorflow::EnvWrapper::SchedClosure(std::function< void()> closure) override` {#void_tensorflow_EnvWrapper_SchedClosure}
+
+
+
+
+
+#### `void tensorflow::EnvWrapper::SchedClosureAfter(int micros, std::function< void()> closure) override` {#void_tensorflow_EnvWrapper_SchedClosureAfter}
+
+
+
+
+
+#### `Status tensorflow::EnvWrapper::LoadLibrary(const char *library_filename, void **handle) override` {#Status_tensorflow_EnvWrapper_LoadLibrary}
+
+
+
+
+
+#### `Status tensorflow::EnvWrapper::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol) override` {#Status_tensorflow_EnvWrapper_GetSymbolFromLibrary}
+
+
+
+

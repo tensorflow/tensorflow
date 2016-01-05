@@ -24,6 +24,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/reduction_ops.h"
+#include "tensorflow/core/kernels/transpose_op.h"
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
@@ -76,7 +78,7 @@ class ReductionHelper {
   Status Simplify(const Tensor& data, const Tensor& axis,
                   const bool keep_dims) {
     // bitmap[i] indicates whether to reduce data along i-th axis.
-    std::vector<bool> bitmap(data.dims(), false);
+    gtl::InlinedVector<bool, 4> bitmap(data.dims(), false);
     auto axis_vec = axis.flat<int32>();
     for (int64 i = 0; i < axis.NumElements(); ++i) {
       const int32 index = axis_vec(i);
@@ -194,11 +196,43 @@ class ReductionHelper {
     return data.shaped<T, N>(data_reshape_);
   }
 
+  // Shape of shuffled input
+  const gtl::ArraySlice<int64> data_reshape() const { return data_reshape_; }
+
+  // Shape with all reduction dimensions at the end
+  TensorShape shuffled_shape() {
+    const int dims = data_reshape_.size();
+    TensorShape shape;
+    for (int i = reduce_first_axis_; i < dims; i += 2) {
+      shape.AddDim(data_reshape_[i]);
+    }
+    for (int i = !reduce_first_axis_; i < dims; i += 2) {
+      shape.AddDim(data_reshape_[i]);
+    }
+    return shape;
+  }
+
+  // Permutation of reduced dims needed to put reduction dimensions at the end
+  gtl::InlinedVector<int32, 8> permutation() {
+    const int dims = data_reshape_.size();
+    const int unreduced_dims = (dims + !reduce_first_axis_) / 2;
+    gtl::InlinedVector<int32, 8> perm(dims);
+    for (int i = 0; i < unreduced_dims; i++) {
+      perm[i] = 2 * i + reduce_first_axis_;
+    }
+    for (int i = unreduced_dims; i < dims; i++) {
+      perm[i] = 2 * (i - unreduced_dims) + !reduce_first_axis_;
+    }
+    return perm;
+  }
+
  private:
   bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.
-  std::vector<int64> data_reshape_;  // Reshape the data before reduction.
-  std::vector<int64> out_shape_;     // The final output shape.
-  std::vector<int64> out_reshape_;   // Reshape the output for reduction.
+  gtl::InlinedVector<int64, 4>
+      data_reshape_;  // Reshape the data before reduction.
+  gtl::InlinedVector<int64, 4> out_shape_;  // The final output shape.
+  gtl::InlinedVector<int64, 4>
+      out_reshape_;  // Reshape the output for reduction.
 };
 
 }  // end namespace
@@ -252,6 +286,9 @@ class ReductionOp : public OpKernel {
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
 
+    if (tmp_out.NumElements() == 0) {
+      // Nothing to do, fall through to final reshaping.
+    }
     if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
       // Reduce to a scalar.
       Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
@@ -274,15 +311,20 @@ class ReductionOp : public OpKernel {
       Functor::Reduce(d, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
                       constants.kOne, reducer);
     } else {
-      // TODO(zhifengc): We can implement reduction for arbitrary rank
-      // tensor and arbitrary reduction axes by iterating the reduction
-      // multiple times. This may also be accomplished in the graph
-      // construction.
-      ctx->SetStatus(
-          errors::Unimplemented("Reducing ", data.shape().ShortDebugString(),
-                                " axes [", axes.SummarizeValue(10), "] to ",
-                                tmp_out.shape().ShortDebugString()));
-      return;
+      // If we don't hit one of the cases above, transpose the data so that
+      // all reduced dimensions are last and reuse the 2-D -> 1-D case.
+      Tensor shuffled;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                        helper.shuffled_shape(), &shuffled));
+      TransposeTensor<Device, T>(d, data, helper.data_reshape(),
+                                 helper.permutation(), &shuffled);
+      const int64 unreduced = tmp_out.NumElements();
+      const int64 reduced = shuffled.NumElements() / unreduced;
+      const Tensor& const_shuffled = shuffled;
+      Functor::Reduce(d, tmp_out.flat<T>(),
+                      const_shuffled.shaped<T, 2>({unreduced, reduced}),
+                      constants.kOne, reducer);
     }
 
     // Set the real output using the contents of the reduction but the

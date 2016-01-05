@@ -43,18 +43,39 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
                          ":", frame_iter.iter_id);
 }
 
+// Return the prefix of "*s" up to the next occurrence of "delim", or
+// the whole remaining string if "delim" is not found.  "*s" is advanced
+// past the string returned plus the delimiter (if found).
+static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
+  for (int offset = 0; offset < s->size(); offset++) {
+    if ((*s)[offset] == delim) {
+      StringPiece result(s->data(), offset);
+      s->remove_prefix(offset + 1);  // +1: remove delim, as well
+      return result;
+    }
+  }
+  // No delimiter found: return rest of string
+  StringPiece result(s->data(), s->size());
+  s->remove_prefix(s->size());
+  return result;
+}
+
 /* static */
 Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
-  // TODO(zhifengc): This code is not fast enough.
-  std::vector<string> parts = str_util::Split(key, ';');
-  if (parts.size() == 5 &&
+  StringPiece s(key);
+  StringPiece parts[5];
+  for (int i = 0; i < 5; i++) {
+    parts[i] = ConsumeNextPart(&s, ';');
+  }
+  if (s.empty() &&          // Consumed the whole string
+      !parts[4].empty() &&  // Exactly five parts
       DeviceNameUtils::ParseFullName(parts[0], &out->src) &&
-      strings::StringToFp(parts[1], &out->src_incarnation) &&
+      strings::StringToFp(parts[1].ToString(), &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
-    out->src_device = parts[0];
-    out->dst_device = parts[2];
-    out->edge_name = parts[3];
+    out->src_device.assign(parts[0].data(), parts[0].size());
+    out->dst_device.assign(parts[2].data(), parts[2].size());
+    out->edge_name.assign(parts[3].data(), parts[3].size());
     return Status::OK();
   }
   return errors::InvalidArgument("Invalid rendezvous key: ", key);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -454,6 +455,31 @@ Status DirectSession::CreateGraphs(
   std::unique_ptr<FunctionLibraryDefinition> fdefs;
   std::unique_ptr<Graph> graph;
   GraphConstructorOptions opts;
+  if (options_.config.has_graph_options()) {
+    opts.optimizer_do_cse = !options_.config.graph_options()
+                                 .skip_common_subexpression_elimination();
+  } else {
+    opts.optimizer_do_cse = true;
+  }
+
+  if (opts.optimizer_do_cse) {
+    // Prevent CSE from eliminating nodes that will be required during
+    // RewriteGraphForExecution, below.
+    std::unordered_set<StringPiece, StringPiece::Hasher> no_cse_nodes;
+    for (const string& feed : feeds) {
+      no_cse_nodes.insert(ParseTensorName(feed).first);
+    }
+    for (const string& fetch : fetches) {
+      no_cse_nodes.insert(ParseTensorName(fetch).first);
+    }
+    for (const string& target_node : target_nodes) {
+      no_cse_nodes.insert(target_node);
+    }
+    opts.cse_consider_function = [no_cse_nodes](const Node* n) {
+      return n->type_string() != "Const" && !no_cse_nodes.count(n->name());
+    };
+  }
+
   {
     mutex_lock l(graph_def_lock_);
     fdefs.reset(new FunctionLibraryDefinition(graph_def_.library()));

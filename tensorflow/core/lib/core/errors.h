@@ -103,19 +103,19 @@ using ::tensorflow::error::OK;
 // }
 
 // Declares an op deprecated, and illegal starting at GraphDef version VERSION
-#define OP_DEPRECATED(CTX, VERSION)                                            \
+#define OP_DEPRECATED(CTX, VERSION, NOTE)                                      \
   if ((CTX)->graph_def_version() >= (VERSION)) {                               \
     ::tensorflow::Status _s(::tensorflow::errors::Unimplemented(               \
         "Op ", (CTX)->op_def().name(),                                         \
         " is not available in GraphDef version ", (CTX)->graph_def_version(),  \
-        ". It has been removed in version ", (VERSION), "."));                 \
+        ". It has been removed in version ", (VERSION), ". ", (NOTE), "."));   \
     VLOG(1) << _s;                                                             \
     (CTX)->SetStatus(_s);                                                      \
     return;                                                                    \
   } else {                                                                     \
     LOG(WARNING) << "Op is deprecated."                                        \
                  << " It will cease to work in GraphDef version " << (VERSION) \
-                 << ".";                                                       \
+                 << ". " << (NOTE) << ".";                                     \
   }
 
 #define OP_REQUIRES(CTX, EXP, STATUS) \
