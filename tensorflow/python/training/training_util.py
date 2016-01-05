@@ -66,11 +66,13 @@ def write_graph(graph_def, logdir, name, as_text=True):
     name: Filename for the graph.
     as_text: If `True`, writes the graph as an ASCII proto.
   """
+  if not gfile.IsDirectory(logdir):
+    gfile.MakeDirs(logdir)
   path = os.path.join(logdir, name)
-  gfile.MakeDirs(os.path.dirname(path))
-  f = gfile.FastGFile(path, "w")
   if as_text:
+    f = gfile.FastGFile(path, "w")
     f.write(str(graph_def))
   else:
+    f = gfile.FastGFile(path, "wb")
     f.write(graph_def.SerializeToString())
   f.close()
