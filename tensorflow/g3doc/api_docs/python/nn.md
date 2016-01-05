@@ -243,7 +243,7 @@ as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
 For the `'SAME'` padding, the output height and width are computed as:
 
     out_height = ceil(float(in_height) / float(strides[1]))
-    out_width  = ceil(float(in_width) / float(stides[2]))
+    out_width  = ceil(float(in_width) / float(strides[2]))
 
 and the padding on the top and left are computed as:
 
@@ -265,7 +265,7 @@ same number of pixels on both sides.
 For the `'VALID`' padding, the output height and width are computed as:
 
     out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
-    out_width  = ceil(float(in_width - filter_width + 1) / float(stides[2]))
+    out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
 
 and the padding values are always zero. The output is then computed as
 
