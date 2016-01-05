@@ -61,6 +61,8 @@ class TensorFlowTrainer(object):
                             return tf.train.exponential_decay(
                                 learning_rate=0.1, global_step=global_step,
                                 decay_steps=2, decay_rate=0.001)
+        Raises:
+            ValueError: if learning_rate is not a float or a callable.
         """
         self.loss = loss
         self.global_step = global_step
@@ -70,10 +72,10 @@ class TensorFlowTrainer(object):
                 "learning_rate",
                 [],
                 initializer=tf.constant_initializer(learning_rate))
-        else:
-            if not callable(learning_rate):
-                raise ValueError("learning_rate should be a float or a callable function.")
+        elif callable(learning_rate):
             self._learning_rate = learning_rate(self.global_step)
+        else:
+            raise ValueError("learning_rate should be a float or a callable function.")
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
