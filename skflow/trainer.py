@@ -71,6 +71,8 @@ class TensorFlowTrainer(object):
                 [],
                 initializer=tf.constant_initializer(learning_rate))
         else:
+            if not callable(learning_rate):
+                raise ValueError("learning_rate should be a float or a callable function.")
             self._learning_rate = learning_rate(self.global_step)
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
