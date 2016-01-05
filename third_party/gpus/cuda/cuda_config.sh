@@ -54,7 +54,7 @@ source cuda.config || exit -1
 
 OUTPUTDIR=${OUTPUTDIR:-../../..}
 CUDA_TOOLKIT_PATH=${CUDA_TOOLKIT_PATH:-/usr/local/cuda}
-CUDNN_INSTALL_PATH=${CUDNN_INSTALL_PATH:-/usr/local/cuda}
+CUDNN_INSTALL_BASEDIR=${CUDNN_INSTALL_PATH:-/usr/local/cuda}
 
 # An error message when the Cuda toolkit is not found
 function CudaError {
@@ -152,28 +152,26 @@ if test ! -e ${CUDA_TOOLKIT_PATH}/${CUDA_CUPTI_LIB_PATH}; then
   CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUDA_CUPTI_LIB_PATH}"
 fi
 
-if test ! -d ${CUDNN_INSTALL_PATH}; then
-  CudnnError "cannot find dir: ${CUDNN_INSTALL_PATH}"
+if test ! -d ${CUDNN_INSTALL_BASEDIR}; then
+  CudnnError "cannot find dir: ${CUDNN_INSTALL_BASEDIR}"
 fi
 
 # Locate cudnn.h
-if test -e ${CUDNN_INSTALL_PATH}/cudnn.h; then
-  CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
-  CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}/include
-elif test -e /usr/include/cudnn.h; then
-  CUDNN_HEADER_PATH=/usr/include
+if test -e ${CUDNN_INSTALL_BASEDIR}/cudnn.h; then
+  CUDNN_HEADER_DIR=${CUDNN_INSTALL_BASEDIR}
+elif test -e ${CUDNN_INSTALL_BASEDIR}/include/cudnn.h; then
+  CUDNN_HEADER_DIR=${CUDNN_INSTALL_BASEDIR}/include
 else
-  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}, ${CUDNN_INSTALL_PATH}/include or /usr/include"
+  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_BASEDIR}"
 fi
 
 # Locate libcudnn
-if test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}; then
-  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}; then
-  CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}
+if test -e ${CUDNN_INSTALL_BASEDIR}/${CUDA_DNN_LIB_PATH}; then
+  CUDNN_LIB_INSTALL_PATH=${CUDNN_INSTALL_BASEDIR}/${CUDA_DNN_LIB_PATH}
+elif test -e ${CUDNN_INSTALL_BASEDIR}/${CUDA_DNN_LIB_ALT_PATH}; then
+  CUDNN_LIB_INSTALL_PATH=${CUDNN_INSTALL_BASEDIR}/${CUDA_DNN_LIB_ALT_PATH}
 else
-  CudnnError "cannot find ${CUDA_DNN_LIB_PATH} under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find ${CUDA_DNN_LIB_PATH} or ${CUDA_DNN_LIB_ALT_PATH} under: ${CUDNN_INSTALL_BASEDIR}"
 fi
 
 # Helper function to build symbolic links for all files under a directory.
@@ -215,5 +213,5 @@ echo "Setting up CUPTI lib64"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64 $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/lib64 || exit -1
 
 # Set up symbolic link for cudnn
-ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/$CUDA_DNN_LIB_PATH $OUTPUTDIR/third_party/gpus/cuda/$CUDA_DNN_LIB_PATH || exit -1
+ln -sf $CUDNN_HEADER_DIR/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
+ln -sf $CUDNN_LIB_INSTALL_PATH $OUTPUTDIR/third_party/gpus/cuda/$CUDA_DNN_LIB_PATH || exit -1
