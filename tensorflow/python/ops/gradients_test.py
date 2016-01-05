@@ -308,6 +308,22 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       c_dense = math_ops.mul(c_sparse, 1.0)
       self.assertAllClose(np_val, c_dense.eval())
 
+  def testIndexedSlicesToTensorList(self):
+    with self.test_session():
+      numpy_list = []
+      dense_list = []
+      sparse_list = []
+      for _ in range(3):
+        np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
+        c = constant_op.constant(np_val)
+        c_sparse = math_ops._as_indexed_slices(c)
+        numpy_list.append(np_val)
+        dense_list.append(c)
+        sparse_list.append(c_sparse)
+      packed_dense = array_ops.pack(dense_list)
+      packed_sparse = array_ops.pack(sparse_list)
+      self.assertAllClose(packed_dense.eval(), packed_sparse.eval())
+
   def testInt64Indices(self):
     with self.test_session():
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)

@@ -527,6 +527,63 @@ Computes sin of x element-wise.
   A `Tensor`. Has the same type as `x`.
 
 
+- - -
+
+### `tf.lgamma(x, name=None)` {#lgamma}
+
+Computes `ln(|gamma(x)|)` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
+- - -
+
+### `tf.erf(x, name=None)` {#erf}
+
+Computes Gauss error function of `x` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
+- - -
+
+### `tf.erfc(x, name=None)` {#erfc}
+
+Computes complementary error function of `x` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
 
 ## Matrix Math Functions
 

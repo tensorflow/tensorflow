@@ -165,8 +165,8 @@ def scalar_summary(tags, values, collections=None, name=None):
   summary has a summary value for each tag-value pair in `tags` and `values`.
 
   Args:
-    tags: A 1-D `string` `Tensor`.  Tags for the summaries.
-    values: A 1-D `float32` or `float64` Tensor.  Values for the summaries.
+    tags: A `string` `Tensor`.  Tags for the summaries.
+    values: A real numeric Tensor.  Values for the summaries.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     name: A name for the operation (optional).

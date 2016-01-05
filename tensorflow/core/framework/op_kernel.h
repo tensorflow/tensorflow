@@ -966,6 +966,13 @@ typedef ::tensorflow::KernelDefBuilder Name;
           +[](::tensorflow::OpKernelConstruction* context)       \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
+void* GlobalKernelRegistry();
+
+// Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
+// registered with the current library's global kernel registry (obtained by
+// calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
+extern "C" void RegisterKernels(void* registry_ptr);
+
 namespace kernel_factory {
 
 class OpKernelRegistrar {

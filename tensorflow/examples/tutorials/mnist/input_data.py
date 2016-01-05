@@ -21,9 +21,12 @@ from __future__ import print_function
 import gzip
 import os
 
+import tensorflow.python.platform
+
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
@@ -91,9 +94,18 @@ def extract_labels(filename, one_hot=False):
 
 class DataSet(object):
 
-  def __init__(self, images, labels, fake_data=False, one_hot=False):
-    """Construct a DataSet. one_hot arg is used only if fake_data is true."""
+  def __init__(self, images, labels, fake_data=False, one_hot=False,
+               dtype=tf.float32):
+    """Construct a DataSet.
 
+    one_hot arg is used only if fake_data is true.  `dtype` can be either
+    `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
+    `[0, 1]`.
+    """
+    dtype = tf.as_dtype(dtype).base_dtype
+    if dtype not in (tf.uint8, tf.float32):
+      raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
+                      dtype)
     if fake_data:
       self._num_examples = 10000
       self.one_hot = one_hot
@@ -108,9 +120,10 @@ class DataSet(object):
       assert images.shape[3] == 1
       images = images.reshape(images.shape[0],
                               images.shape[1] * images.shape[2])
-      # Convert from [0, 255] -> [0.0, 1.0].
-      images = images.astype(numpy.float32)
-      images = numpy.multiply(images, 1.0 / 255.0)
+      if dtype == tf.float32:
+        # Convert from [0, 255] -> [0.0, 1.0].
+        images = images.astype(numpy.float32)
+        images = numpy.multiply(images, 1.0 / 255.0)
     self._images = images
     self._labels = labels
     self._epochs_completed = 0
@@ -160,15 +173,17 @@ class DataSet(object):
     return self._images[start:end], self._labels[start:end]
 
 
-def read_data_sets(train_dir, fake_data=False, one_hot=False):
+def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=tf.float32):
   class DataSets(object):
     pass
   data_sets = DataSets()
 
   if fake_data:
-    data_sets.train = DataSet([], [], fake_data=True, one_hot=one_hot)
-    data_sets.validation = DataSet([], [], fake_data=True, one_hot=one_hot)
-    data_sets.test = DataSet([], [], fake_data=True, one_hot=one_hot)
+    def fake():
+      return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype)
+    data_sets.train = fake()
+    data_sets.validation = fake()
+    data_sets.test = fake()
     return data_sets
 
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
@@ -194,8 +209,9 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False):
   train_images = train_images[VALIDATION_SIZE:]
   train_labels = train_labels[VALIDATION_SIZE:]
 
-  data_sets.train = DataSet(train_images, train_labels)
-  data_sets.validation = DataSet(validation_images, validation_labels)
-  data_sets.test = DataSet(test_images, test_labels)
+  data_sets.train = DataSet(train_images, train_labels, dtype=dtype)
+  data_sets.validation = DataSet(validation_images, validation_labels,
+                                 dtype=dtype)
+  data_sets.test = DataSet(test_images, test_labels, dtype=dtype)
 
   return data_sets

@@ -17,6 +17,7 @@
   * [`Graph`](../../api_docs/python/framework.md#Graph)
   * [`GraphKeys`](../../api_docs/python/framework.md#GraphKeys)
   * [`import_graph_def`](../../api_docs/python/framework.md#import_graph_def)
+  * [`load_op_library`](../../api_docs/python/framework.md#load_op_library)
   * [`name_scope`](../../api_docs/python/framework.md#name_scope)
   * [`NoGradient`](../../api_docs/python/framework.md#NoGradient)
   * [`op_scope`](../../api_docs/python/framework.md#op_scope)
@@ -124,6 +125,8 @@
   * [`diag`](../../api_docs/python/math_ops.md#diag)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
+  * [`erf`](../../api_docs/python/math_ops.md#erf)
+  * [`erfc`](../../api_docs/python/math_ops.md#erfc)
   * [`exp`](../../api_docs/python/math_ops.md#exp)
   * [`fft2d`](../../api_docs/python/math_ops.md#fft2d)
   * [`floor`](../../api_docs/python/math_ops.md#floor)
@@ -132,6 +135,7 @@
   * [`imag`](../../api_docs/python/math_ops.md#imag)
   * [`inv`](../../api_docs/python/math_ops.md#inv)
   * [`invert_permutation`](../../api_docs/python/math_ops.md#invert_permutation)
+  * [`lgamma`](../../api_docs/python/math_ops.md#lgamma)
   * [`listdiff`](../../api_docs/python/math_ops.md#listdiff)
   * [`log`](../../api_docs/python/math_ops.md#log)
   * [`matmul`](../../api_docs/python/math_ops.md#matmul)
@@ -355,6 +359,7 @@
   * [`gradients`](../../api_docs/python/train.md#gradients)
   * [`histogram_summary`](../../api_docs/python/train.md#histogram_summary)
   * [`image_summary`](../../api_docs/python/train.md#image_summary)
+  * [`LooperThread`](../../api_docs/python/train.md#LooperThread)
   * [`merge_all_summaries`](../../api_docs/python/train.md#merge_all_summaries)
   * [`merge_summary`](../../api_docs/python/train.md#merge_summary)
   * [`MomentumOptimizer`](../../api_docs/python/train.md#MomentumOptimizer)
@@ -368,4 +373,7 @@
   * [`SummaryWriter`](../../api_docs/python/train.md#SummaryWriter)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
   * [`zero_fraction`](../../api_docs/python/train.md#zero_fraction)
+
+* **[Wraps python functions](../../api_docs/python/script_ops.md)**:
+  * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 

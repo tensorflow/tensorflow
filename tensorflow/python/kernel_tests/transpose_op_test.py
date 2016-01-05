@@ -186,8 +186,8 @@ class TransposeTest(tf.test.TestCase):
   def testError(self):
     with self.assertRaises(ValueError):
       tf.transpose(np.arange(0., 30).reshape([2, 3, 5]), [[0, 1], [2, 3]])
-    self._testError(np.arange(0., 2 ** 10).reshape([2] * 10),
-                    np.arange(10),
+    self._testError(np.arange(0., 2 ** 11).reshape([2] * 11),
+                    np.arange(11),
                     "not implemented")
     with self.assertRaises(IndexError):
       tf.transpose(np.arange(0., 30).reshape([2, 3, 5]), [0, 1, 3])

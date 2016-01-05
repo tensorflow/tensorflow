@@ -844,7 +844,8 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized `GraphDef` protocol
-buffers constructed from older specfications.
+buffers constructed from older specfications.  The details of `GraphDef`
+compatibility are [described here](../../resources/versions.md#graphs).
 
 There are several ways to preserve backwards-compatibility.
 
@@ -897,7 +898,8 @@ generated Python code may change in a way that isn't compatible with old
 callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
-made when TensorFlow's changes major versions.
+made when TensorFlow's changes major versions, and must conform to the
+[`GraphDef` version semantics](../../resources/versions.md#graphs).
 
 ## GPU Support {#mult-archs}
 

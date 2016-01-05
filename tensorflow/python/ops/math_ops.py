@@ -49,6 +49,9 @@ mathematical functions to your graph.
 @@minimum
 @@cos
 @@sin
+@@lgamma
+@@erf
+@@erfc
 
 ## Matrix Math Functions
 
@@ -1097,6 +1100,57 @@ def tanh(x, name=None):
     return gen_math_ops._tanh(x, name=name)
 
 
+def lgamma(x, name=None):
+  """Computes `ln(|gamma(x)|)` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Lgamma") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._lgamma(x, name=name)
+
+
+def erf(x, name=None):
+  """Computes Gauss error function of `x` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Erf") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._erf(x, name=name)
+
+
+def erfc(x, name=None):
+  """Computes complementary error function of `x` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Erfc") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._erfc(x, name=name)
+
+
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
@@ -1119,6 +1173,9 @@ ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
 ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
+ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
+ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
+ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
 ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
 ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)

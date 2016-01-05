@@ -1124,6 +1124,33 @@ class FIFOQueueTest(tf.test.TestCase):
       thread.join()
       self.assertAllEqual(elem, results)
 
+  def testDtypes(self):
+    with self.test_session() as sess:
+      dtypes = [tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8,
+                tf.int64, tf.bool, tf.complex64]
+      shape = (32, 4, 128)
+      q = tf.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
+
+      input_tuple = []
+      for dtype in dtypes:
+        np_dtype = dtype.as_numpy_dtype
+        np_array = np.random.randint(-10, 10, shape)
+        if dtype == tf.bool:
+          np_array = np_array > 0
+        elif dtype == tf.complex64:
+          np_array = np.sqrt(np_array.astype(np_dtype))
+        else:
+          np_array = np_array.astype(np_dtype)
+        input_tuple.append(np_array)
+
+      q.enqueue_many(input_tuple).run()
+
+      output_tuple_t = q.dequeue_many(32)
+      output_tuple = sess.run(output_tuple_t)
+
+      for (input_elem, output_elem) in zip(input_tuple, output_tuple):
+        self.assertAllEqual(input_elem, output_elem)
+
 
 if __name__ == "__main__":
   tf.test.main()

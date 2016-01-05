@@ -376,16 +376,14 @@ class OpDefLibrary(object):
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
-            values = ops.convert_n_to_tensor_or_indexed_slices(
-                values, name=input_arg.name,
-                dtype=dtype if dtype else None,
+            values = ops.convert_n_to_tensor(
+                values, name=input_arg.name, dtype=dtype if dtype else None,
                 as_ref=input_arg.is_ref)
           except (TypeError, ValueError):
             assert dtype is not None, "Should not fail if dtype is None"
             assert input_arg.number_attr, "Should be number_attr case"
             # What types does the conversion function think values have?
-            values = ops.convert_n_to_tensor_or_indexed_slices(
-                values, as_ref=input_arg.is_ref)
+            values = ops.convert_n_to_tensor(values, as_ref=input_arg.is_ref)
             observed = ", ".join(v.dtype.base_dtype.name for v in values)
 
             prefix = (
@@ -659,8 +657,7 @@ class OpDefLibrary(object):
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)
         outputs = op.outputs
-        return _Restructure(ops.convert_n_to_tensor_or_indexed_slices(outputs),
-                            output_structure)
+        return _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
       else:
         return g.create_op(op_type_name, inputs, output_types, name=scope,
                            input_types=input_types, attrs=attr_protos,
