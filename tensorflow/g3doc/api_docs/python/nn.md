@@ -418,9 +418,9 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
 The transpose of `conv2d`.
 
-This operation is sometimes called "deconvolution" after
-(Deconvolutional Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf],
-but is actually the transpose (gradient) of `conv2d` rather than an actual
+This operation is sometimes called "deconvolution" after (Deconvolutional
+Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+actually the transpose (gradient) of `conv2d` rather than an actual
 deconvolution.
 
 ##### Args:
