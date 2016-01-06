@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_LOGGING_H_
 #define TENSORFLOW_PLATFORM_LOGGING_H_
 
-// TODO(josh11b): switch this from port.h to platform.h
-#include "tensorflow/core/platform/port.h"  // To pick up PLATFORM_define
+#include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "base/logging.h"
