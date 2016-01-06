@@ -45,7 +45,7 @@ class ConcatOp : public OpKernel {
     const Tensor* concat_dim_tensor;
     OP_REQUIRES_OK(c, c->input("concat_dim", &concat_dim_tensor));
     OP_REQUIRES(
-        c, TensorShapeUtils::IsLegacyScalar(concat_dim_tensor->shape()),
+        c, IsLegacyScalar(concat_dim_tensor->shape()),
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
             concat_dim_tensor->shape().DebugString()));
@@ -57,7 +57,7 @@ class ConcatOp : public OpKernel {
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(
         c, (0 <= concat_dim && concat_dim < input_dims) ||
-               (kAllowLegacyScalars && concat_dim == 0),
+               (allow_legacy_scalars() && concat_dim == 0),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
             ", ", input_dims, "), but got ", concat_dim));
@@ -74,10 +74,10 @@ class ConcatOp : public OpKernel {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
     int output_concat_dim = 0;
-    const bool input_is_scalar = TensorShapeUtils::IsLegacyScalar(input_shape);
+    const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
-      const bool in_is_scalar = TensorShapeUtils::IsLegacyScalar(in.shape());
+      const bool in_is_scalar = IsLegacyScalar(in.shape());
       OP_REQUIRES(
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
@@ -100,12 +100,12 @@ class ConcatOp : public OpKernel {
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
       }
-      // TODO(irving): Remove check once !kAllowLegacyScalars
+      // TODO(irving): Remove check once !allow_legacy_scalars().
       output_concat_dim += in.dims() > 0 ? in.dim_size(concat_dim) : 1;
     }
 
     TensorShape output_shape(input_shape);
-    // TODO(irving): Remove rank 0 case once !kAllowLegacyScalars
+    // TODO(irving): Remove rank 0 case once !allow_legacy_scalars().
     if (output_shape.dims() == 0) {
       output_shape.AddDim(output_concat_dim);
     } else {

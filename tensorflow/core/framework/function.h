@@ -81,7 +81,7 @@ class FunctionDefHelper {
     return FunctionRef(name, {});
   }
 
-  // Node is used to consturct FunctionDef.Node using initialization
+  // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
   struct Node {
