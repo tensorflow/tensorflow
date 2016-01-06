@@ -289,6 +289,7 @@
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
   * [`compute_accidental_hits`](../../api_docs/python/nn.md#compute_accidental_hits)
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
+  * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`depthwise_conv2d`](../../api_docs/python/nn.md#depthwise_conv2d)
   * [`dropout`](../../api_docs/python/nn.md#dropout)
   * [`elu`](../../api_docs/python/nn.md#elu)
