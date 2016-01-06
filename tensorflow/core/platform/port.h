@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
 #endif  // TENSORFLOW_PLATFORM_PORT_H_
