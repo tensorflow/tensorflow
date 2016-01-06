@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_READER_H_
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/status.h"
 
