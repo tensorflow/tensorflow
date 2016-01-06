@@ -24,12 +24,12 @@ limitations under the License.
 
 // Choose which platform we are on.
 #if defined(ANDROID) || defined(__ANDROID__)
-#define PLATFORM_POSIX_ANDROID
+#define PLATFORM_GOOGLE_ANDROID
 #elif defined(__APPLE__)
 #define PLATFORM_POSIX
 #else
 // If no platform specified, use:
-#define PLATFORM_POSIX
+#define PLATFORM_GOOGLE
 #endif
 
 #endif
