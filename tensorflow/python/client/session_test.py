@@ -44,6 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
+
 # NOTE(mrry): Dummy shape registration for op used in the tests.
 ops.RegisterShape('ConstructionFails')(None)
 
@@ -363,6 +364,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       ind_values = array_ops.identity(ind.values)
       ind_indices = array_ops.identity(ind.indices)
       ind2 = ops.IndexedSlices(ind_values, ind_indices)
+      # Feed with tuple
+      values_out, indices_out = s.run(
+        [ind_values, ind_indices], {ind: (values, indices)})
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(indices_out, indices)
+      # Feed with IndexedSlicesValue
+      values_out, indices_out = s.run(
+        [ind_values, ind_indices],
+        {ind: ops.IndexedSlicesValue(values, indices, dense_shape)})
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(indices_out, indices)
       # Feed with IndexedSlicesValue, fetch IndexedSlicesValue
       ind2_out = s.run(ind2, {ind: ops.IndexedSlicesValue(values, indices, dense_shape)})
       self.assertAllEqual(ind2_out.values, values)
