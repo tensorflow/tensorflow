@@ -668,13 +668,36 @@ function normalizeInputs(inputs: string[]): NormalizedInput[] {
   }, []);
 }
 
+function addEdgeToGraph(graph: SlimGraph, inputName: string,
+    outputNode: OpNode, isControlDependency: boolean, params: BuildParams,
+    index: number) {
+  // Don't allow loops in the graph.
+  if (inputName === outputNode.name) {
+    return;
+  }
+  // Check if this op type and input number corresponds to a
+  // reference edge using the refEdges dictionary in the params.
+  let isRefEdge = params.refEdges[outputNode.op + " " + index] === true;
+  graph.edges.push({
+    v: inputName,
+    w: outputNode.name,
+    isControlDependency: isControlDependency,
+    isReferenceEdge: isRefEdge
+  });
+}
+
 export function build(rawNodes: tf.TFNode[], params: BuildParams,
     tracker: ProgressTracker): Promise<SlimGraph|void> {
   /**
-   * A dictionary that maps each in-embedding node name to its host node label
+   * A dictionary that maps each in-embedding node name to the node
    * object.
    */
   let inEmbedding: {[nodeName: string]: OpNode} = {};
+  /**
+   * A dictionary that maps each out-embedding node name to the node
+   * object.
+   */
+  let outEmbedding: {[nodeName: string]: OpNode} = {};
   /**
    * A dictionary that maps each node name to an array of the node's
    * out-embedding node label objects.
@@ -708,6 +731,7 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
 
       if (isOutEmbeddedPred(opNode)) {
         embeddingNodeNames.push(opNode.name);
+        outEmbedding[opNode.name] = opNode;
         _.each(opNode.inputs, input => {
           let inputName = input.name;
           outEmbeddings[inputName] = outEmbeddings[inputName] || [];
@@ -754,16 +778,28 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
         _.each(opNode.inputs, (input, i) => {
           let inputName = input.name;
           if (inputName in inEmbedding) {
-            opNode.inEmbeddings.push(inEmbedding[inputName]);
+            let inEmbedNode = inEmbedding[inputName];
+            opNode.inEmbeddings.push(inEmbedNode);
+            // Move the inputs of the in-embedding node into incoming edges of
+            // the main node. E.g. the control dependency of a constant node
+            // should be moved to the op node where the constant is embedded.
+            for (let embedInput of inEmbedNode.inputs) {
+              addEdgeToGraph(graph,
+                  normalizedNameDict[embedInput.name] || embedInput.name,
+                  opNode, embedInput.isControlDependency, params, i);
+            }
+          } else if (inputName in outEmbedding) {
+            // Move the inputs of the out-embedding node into inputs of
+            // the main node where the out-embedding points to.
+            let outEmbedNode = outEmbedding[inputName];
+            for (let embedInput of outEmbedNode.inputs) {
+              addEdgeToGraph(graph,
+                  normalizedNameDict[embedInput.name] || embedInput.name,
+                  opNode, input.isControlDependency, params, i);
+            }
           } else {
-            graph.edges.push({
-              v: normalizedNameDict[inputName] || inputName,
-              w: opNode.name,
-              isControlDependency: input.isControlDependency,
-              // Check if this op type and input number corresponds to a
-              // reference edge using the refEdges dictionary in the params.
-              isReferenceEdge: (params.refEdges[opNode.op + " " + i] === true)
-            });
+            addEdgeToGraph(graph, normalizedNameDict[inputName] || inputName,
+                opNode, input.isControlDependency, params, i);
           }
         });
       });
@@ -800,7 +836,7 @@ export function createGraph<N, E>(name: string, type, opt = {}):
  * the specified types.
  */
 function getEmbedPredicate(types: string[]) {
-  return function(node) {
+  return function(node: OpNode) {
     // check types
     for (let i = 0; i < types.length; i++) {
       let regExp = new RegExp(types[i]);

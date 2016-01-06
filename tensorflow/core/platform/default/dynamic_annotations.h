@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/mem.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/mem.h
+
 // Do nothing for this platform
 #define TF_ANNOTATE_MEMORY_IS_INITIALIZED(ptr, bytes) \
   do {                                                \

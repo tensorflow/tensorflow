@@ -26,6 +26,7 @@ from __future__ import print_function
 import gzip
 import os
 import sys
+import time
 
 import tensorflow.python.platform
 
@@ -251,6 +252,8 @@ def main(argv=None):  # pylint: disable=unused-argument
   test_prediction = tf.nn.softmax(model(test_data_node))
 
   # Create a local session to run this computation.
+  start_time = time.time()
+  log_each_x_steps = 100
   with tf.Session() as s:
     # Run all the initializers to prepare the trainable parameters.
     tf.initialize_all_variables().run()
@@ -270,7 +273,10 @@ def main(argv=None):  # pylint: disable=unused-argument
       _, l, lr, predictions = s.run(
           [optimizer, loss, learning_rate, train_prediction],
           feed_dict=feed_dict)
-      if step % 100 == 0:
+      if step % log_each_x_steps == 0:
+        elapsed_time = time.time() - start_time
+        start_time = time.time()
+        print('Step %d, %.1f ms'%(step, 1000 * elapsed_time / log_each_x_steps))
         print('Epoch %.2f' % (float(step) * BATCH_SIZE / train_size))
         print('Minibatch loss: %.3f, learning rate: %.6f' % (l, lr))
         print('Minibatch error: %.1f%%' % error_rate(predictions, batch_labels))

@@ -81,16 +81,17 @@ An iterator that read the records from a TFRecords file.
 
 ### TFRecords Format Details
 
-A TFRecords file contains a sequence of strings with CRC hashes.  Each record
-has the format
+A TFRecords file contains a sequence of strings with CRC32C hashes.  Each
+record has the format (with numerical values in little-endian order)
 
     uint64 length
-    uint32 masked_crc32_of_length
+    uint32 masked_crc32c_of_length
     byte   data[length]
-    uint32 masked_crc32_of_data
+    uint32 masked_crc32c_of_data
 
-and the records are concatenated together to produce the file.  The CRC32s
-are [described here](https://en.wikipedia.org/wiki/Cyclic_redundancy_check),
+and the records are concatenated together to produce the file.  The CRCs
+and CRC-32C in particular are
+[described here](https://en.wikipedia.org/wiki/Cyclic_redundancy_check),
 and the mask of a CRC is
 
     masked_crc = ((crc >> 15) | (crc << 17)) + 0xa282ead8ul

@@ -198,7 +198,7 @@ Polymer({
     progress: Object
   },
   observers: [
-    '_colorByChanged(colorBy, renderHierarchy)',
+    '_colorByChanged(colorBy)',
     '_buildAndFit(renderHierarchy)'
   ],
   getNode: function(nodeName) {
@@ -332,10 +332,6 @@ Polymer({
       auxTitleStyle.display = 'none';
     }
   },
-
-
-
-
   /**
     * Called whenever the user changed the 'color by' option in the
     * UI controls.

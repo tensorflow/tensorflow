@@ -13,29 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/port.h"
+#ifndef TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
+#define TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
 
-namespace tensorflow {
+#if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) && \
+    !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)
 
-Allocator::~Allocator() {}
+// Choose which platform we are on.
+#if defined(ANDROID) || defined(__ANDROID__)
+#define PLATFORM_POSIX_ANDROID
 
-class CPUAllocator : public Allocator {
- public:
-  ~CPUAllocator() override {}
+#elif defined(__APPLE__)
+#define PLATFORM_POSIX
 
-  string Name() override { return "cpu"; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return port::aligned_malloc(num_bytes, alignment);
-  }
+#else
+// If no platform specified, use:
+#define PLATFORM_POSIX
 
-  void DeallocateRaw(void* ptr) override { port::aligned_free(ptr); }
-};
+#endif
+#endif
 
-Allocator* cpu_allocator() {
-  static CPUAllocator* cpu_alloc = new CPUAllocator;
-  return cpu_alloc;
-}
-
-}  // namespace tensorflow
+#endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

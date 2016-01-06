@@ -106,6 +106,7 @@ concatenated.
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
+@@conv2d_transpose
 
 ## Pooling
 

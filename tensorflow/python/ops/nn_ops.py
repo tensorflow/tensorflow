@@ -39,12 +39,14 @@ from tensorflow.python.ops.gen_nn_ops import *
 local_response_normalization = gen_nn_ops.lrn
 
 
-def deconv2d(value, filter, output_shape, strides, padding="SAME",
-             name=None):
+def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
+                     name=None):
   """The transpose of `conv2d`.
 
-  This used to be called "deconvolution", but it is actually the transpose
-  (gradient) of `conv2d`, not an actual deconvolution.
+  This operation is sometimes called "deconvolution" after (Deconvolutional
+  Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+  actually the transpose (gradient) of `conv2d` rather than an actual
+  deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float` and shape
@@ -66,7 +68,8 @@ def deconv2d(value, filter, output_shape, strides, padding="SAME",
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, filter, output_shape], name, "DeConv2D") as name:
+  with ops.op_scope([value, filter, output_shape], name,
+                    "conv2d_transpose") as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):

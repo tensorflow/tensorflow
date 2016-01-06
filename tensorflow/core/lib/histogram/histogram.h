@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
