@@ -246,7 +246,6 @@ py_library(
     srcs = ["ops/functional_ops.py"],
     deps = [
         ":functional_ops",
-        "//tensorflow/cc:cc_ops",
     ],
 )
 
