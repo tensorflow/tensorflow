@@ -25,11 +25,9 @@ enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
 
 // Include appropriate platform-dependent implementations of mutex etc.
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/dynamic_annotations.h"
 #include "tensorflow/core/platform/google/mutex.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/default/dynamic_annotations.h"
 #include "tensorflow/core/platform/default/mutex.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
