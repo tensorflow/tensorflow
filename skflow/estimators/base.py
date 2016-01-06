@@ -69,11 +69,15 @@ class TensorFlowEstimator(BaseEstimator):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
+        max_to_keep: The maximum number of recent checkpoint files to keep.
+        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+            to be saved.
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 num_cores=4, verbose=1, early_stopping_rounds=None):
+                 num_cores=4, verbose=1, early_stopping_rounds=None,
+                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -87,6 +91,8 @@ class TensorFlowEstimator(BaseEstimator):
         self.num_cores = num_cores
         self._initialized = False
         self._early_stopping_rounds = early_stopping_rounds
+        self.max_to_keep = max_to_keep
+        self.keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -121,7 +127,8 @@ class TensorFlowEstimator(BaseEstimator):
                 optimizer=self.optimizer, learning_rate=self.learning_rate)
 
             # Create model's saver capturing all the nodes created up until now.
-            self._saver = tf.train.Saver()
+            self._saver = tf.train.Saver(max_to_keep=self.max_to_keep,
+                                         keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
 
             # Create session to run model with.
             self._session = tf.Session(self.tf_master,
