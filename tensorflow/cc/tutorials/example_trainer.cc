@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/tensor.h"
 
+using tensorflow::string;
+using tensorflow::int32;
+
 namespace tensorflow {
 namespace example {
 
