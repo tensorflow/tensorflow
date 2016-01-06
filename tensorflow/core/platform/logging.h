@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_LOGGING_H_
 #define TENSORFLOW_PLATFORM_LOGGING_H_
 
+// TODO(josh11b): switch this from port.h to platform.h
 #include "tensorflow/core/platform/port.h"  // To pick up PLATFORM_define
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
@@ -23,5 +24,18 @@ limitations under the License.
 #else
 #include "tensorflow/core/platform/default/logging.h"
 #endif
+
+namespace tensorflow {
+namespace port {
+
+// Some platforms require that filenames be of a certain form when
+// used for logging.  This function is invoked to allow platforms to
+// adjust the filename used for logging appropriately, if necessary
+// (most ports can just do nothing).  If any changes are necessary, the
+// implementation should mutate "*filename" appropriately.
+void AdjustFilenameForLogging(string* filename);
+
+}  // namespace port
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_LOGGING_H_

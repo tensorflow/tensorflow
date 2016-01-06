@@ -13,16 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PORT_H_
-#define TENSORFLOW_PLATFORM_PORT_H_
+#ifndef TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
+#define TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
 
-#include <vector>
+#if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) && \
+    !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)
 
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/platform/types.h"
+// Choose which platform we are on.
+#if defined(ANDROID) || defined(__ANDROID__)
+#define PLATFORM_POSIX_ANDROID
 
-#endif  // TENSORFLOW_PLATFORM_PORT_H_
+#elif defined(__APPLE__)
+#define PLATFORM_POSIX
+
+#else
+// If no platform specified, use:
+#define PLATFORM_POSIX
+
+#endif
+#endif
+
+#endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
