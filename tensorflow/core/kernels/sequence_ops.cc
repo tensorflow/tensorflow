@@ -34,13 +34,13 @@ class RangeOp : public OpKernel {
     const Tensor& start_in = context->input(0);
     const Tensor& limit_in = context->input(1);
     const Tensor& delta_in = context->input(2);
-    OP_REQUIRES(context, IsLegacyScalar(start_in.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(start_in.shape()),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in.shape().ShortDebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(limit_in.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(limit_in.shape()),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
                                         limit_in.shape().ShortDebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(delta_in.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(delta_in.shape()),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in.shape().ShortDebugString()));
     const int32 start = GetValue(start_in.scalar<T>()());
