@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"

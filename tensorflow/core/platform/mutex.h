@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_MUTEX_H_
 
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
