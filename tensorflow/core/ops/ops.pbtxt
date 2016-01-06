@@ -8380,6 +8380,39 @@ op {
   description: "If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `RefSwitch` and `Merge`."
 }
 op {
+  name: "SymbolicGradient"
+  input_arg {
+    name: "input"
+    description: "a list of input tensors of size N + M;"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "a list of output tensors of size N;"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "the type list for the input list."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "the type list for the input list."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The function we want to compute the gradient for.\n\nThe function \'f\' must be a numerical function which takes N inputs and\nproduces M outputs. Its gradient function \'g\', which is computed by\nthis SymbolicGradient op is a function taking N + M inputs and\nproduces N outputs.\n\nI.e. if we have\n   (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),\nthen, g is\n   (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,\n                                     dL/dy1, dL/dy2, ..., dL/dy_M),\n\nwhere L is a scalar-value function of (x1, x2, ..., xN) (e.g., the\nloss function). dL/dx_i is the the partial derivative of L with respect\nto x_i.\n\n(Needs some math expert to say the comment above better.)"
+  }
+  summary: "Computes the gradient function for function f via backpropagation."
+}
+op {
   name: "TFRecordReader"
   output_arg {
     name: "reader_handle"

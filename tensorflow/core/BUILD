@@ -423,6 +423,7 @@ tf_gen_op_libs(
         "io_ops",
         "linalg_ops",
         "logging_ops",
+        "functional_ops",
         "math_ops",
         "nn_ops",
         "no_op",

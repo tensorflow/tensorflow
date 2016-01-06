@@ -151,6 +151,7 @@ py_library(
     srcs = [
         "framework/device.py",
         "framework/dtypes.py",
+        "framework/function.py",
         "framework/op_def_registry.py",
         "framework/ops.py",
         "framework/registry.py",
@@ -229,6 +230,34 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "functional_ops",
+    out = "ops/gen_functional_ops.py",
+)
+
+py_library(
+    name = "functional_ops_lib",
+    srcs = ["ops/functional_ops.py"],
+    deps = [
+        ":functional_ops",
+        "//tensorflow/cc:cc_ops",
+    ],
+)
+
+py_test(
+    name = "framework_function_test",
+    srcs = ["framework/function_test.py"],
+    main = "framework/function_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":functional_ops_lib",
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
