@@ -60,7 +60,7 @@ class SparseToDense : public OpKernel {
     // output_shape
     const Tensor& output_shape = c->input(1);
     OP_REQUIRES(
-        c, IsLegacyVector(output_shape.shape()),
+        c, TensorShapeUtils::IsLegacyVector(output_shape.shape()),
         errors::InvalidArgument("output_shape should be a vector, got shape ",
                                 output_shape.shape().ShortDebugString()));
     OP_REQUIRES(c, output_shape.NumElements() == num_dims,

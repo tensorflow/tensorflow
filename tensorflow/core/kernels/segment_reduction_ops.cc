@@ -184,7 +184,7 @@ class UnsortedSegmentSumOp : public OpKernel {
     const Tensor& num_segments = context->input(2);
 
     OP_REQUIRES(
-        context, IsLegacyScalar(num_segments.shape()),
+        context, TensorShapeUtils::IsLegacyScalar(num_segments.shape()),
         errors::InvalidArgument("num_segments should be a scalar, not shape ",
                                 num_segments.shape().ShortDebugString()));
 
@@ -406,7 +406,7 @@ class SparseSegmentMeanGradOp : public OpKernel {
                 errors::InvalidArgument("indices should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
                 errors::InvalidArgument("segment_ids should be a vector."));
-    OP_REQUIRES(context, IsLegacyScalar(output_dim0.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(output_dim0.shape()),
                 errors::InvalidArgument("output_dim0 should be a scalar."));
 
     const int64 N = indices.NumElements();
