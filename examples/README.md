@@ -4,6 +4,7 @@ Examples of Using skflow
 * [Deep Neural Network Regression with Boston Data](boston.py)
 * [Convolutional Neural Networks with Digits Data](digits.py)
 * [Deep Neural Network Classification with Iris Data](iris.py)
+* [Deep Neural Network with Customized Decay Function](iris_custom_decay_dnn.py)
 * [Building A Custom Model](iris_custom_model.py)
 * [Building A Custom Model Using Multiple GPUs](multiple_gpu.py)
 * [Using skflow with Pipeline](iris_with_pipeline.py)

@@ -49,7 +49,14 @@ class TensorFlowEstimator(BaseEstimator):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -62,7 +69,6 @@ class TensorFlowEstimator(BaseEstimator):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
-
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
@@ -110,8 +116,9 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
-            self._trainer = TensorFlowTrainer(self._model_loss,
-                                              self._global_step, self.optimizer, self.learning_rate)
+            self._trainer = TensorFlowTrainer(
+                loss=self._model_loss, global_step=self._global_step,
+                optimizer=self.optimizer, learning_rate=self.learning_rate)
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver()

@@ -45,20 +45,37 @@ class TensorFlowTrainer(object):
       gradients: Gradients tensor.
     """
 
-    def __init__(self, loss, global_step, optimizer, learning_rate, clip_gradients=5.0):
+    def __init__(self, loss, global_step, optimizer,
+                 learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
 
         Args:
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
+          learning_rate: If this is constant float value, no decay function is used.
+                         Instead, a customized decay function can be passed that accepts
+                         global_step as parameter and returns a Tensor.
+                         e.g. exponential decay function:
+                         def exp_decay(global_step):
+                            return tf.train.exponential_decay(
+                                learning_rate=0.1, global_step=global_step,
+                                decay_steps=2, decay_rate=0.001)
+        Raises:
+            ValueError: if learning_rate is not a float or a callable.
         """
         self.loss = loss
         self.global_step = global_step
-        self._learning_rate = tf.get_variable(
-            "learning_rate",
-            [],
-            initializer=tf.constant_initializer(learning_rate))
+        # pylint: disable=redefined-variable-type
+        if isinstance(learning_rate, float):
+            self._learning_rate = tf.get_variable(
+                "learning_rate",
+                [],
+                initializer=tf.constant_initializer(learning_rate))
+        elif callable(learning_rate):
+            self._learning_rate = learning_rate(self.global_step)
+        else:
+            raise ValueError("learning_rate should be a float or a callable function.")
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:

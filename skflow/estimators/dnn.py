@@ -32,7 +32,14 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -70,7 +77,14 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
