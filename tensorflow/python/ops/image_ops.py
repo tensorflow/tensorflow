@@ -966,7 +966,7 @@ def rgb_to_grayscale(images):
     gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
                                      rank_1,
                                      keep_dims=True)
-
+    gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype)
 
 
@@ -988,7 +988,9 @@ def grayscale_to_rgb(images):
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
     multiples = array_ops.concat(0, shape_list)
-    return array_ops.tile(images, multiples)
+    rgb = array_ops.tile(images, multiples)
+    rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
+    return rgb
 
 
 # pylint: disable=invalid-name
