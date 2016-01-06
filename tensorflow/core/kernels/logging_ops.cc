@@ -28,7 +28,7 @@ class AssertOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& cond = ctx->input(0);
-    OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsLegacyScalar(cond.shape()),
                 errors::InvalidArgument("In[0] should be a scalar: ",
                                         cond.shape().ShortDebugString()));
 

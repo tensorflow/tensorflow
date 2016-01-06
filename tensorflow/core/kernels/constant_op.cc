@@ -142,14 +142,11 @@ class FillOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& Tdims = context->input(0);
-    OP_REQUIRES(
-        context, IsLegacyVector(Tdims.shape()),
-        errors::InvalidArgument("dims must be a vector of int32, got shape ",
-                                Tdims.shape().ShortDebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyVector(Tdims.shape()),
+                errors::InvalidArgument("dims must be a vector of int32."));
     const Tensor& Tvalue = context->input(1);
-    OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
-                errors::InvalidArgument("value must be a scalar, got shape ",
-                                        Tvalue.shape().ShortDebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(Tvalue.shape()),
+                errors::InvalidArgument("value must be a scalar."));
     auto dims = Tdims.flat<int32>();
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,

@@ -59,8 +59,7 @@ class PadOp : public OpKernel {
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 in1.shape().DebugString()));
     const int fixed_dims =
-        (allow_legacy_scalars() && dims == 0 && in1.dim_size(0) == 1) ? 1
-                                                                      : dims;
+        (kAllowLegacyScalars && dims == 0 && in1.dim_size(0) == 1) ? 1 : dims;
     OP_REQUIRES(
         context, fixed_dims == in1.dim_size(0),
         errors::InvalidArgument(
@@ -77,7 +76,7 @@ class PadOp : public OpKernel {
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
       const int size_d =
-          (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
+          (kAllowLegacyScalars && d == in0.dims()) ? 1 : in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
     Tensor* output = nullptr;
@@ -90,7 +89,7 @@ class PadOp : public OpKernel {
         break;
       case 1:
         // TODO(irving): Once Pad doesn't need a scalar special case,
-        // change flat to tensor.  That is, once !allow_legacy_scalars().
+        // change flat to tensor.  That is, once !kAllowLegacyScalars.
         Operate<1>(context, in0.flat<T>(), paddings, output);
         break;
       case 2:

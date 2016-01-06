@@ -345,11 +345,19 @@ def _ConcatShape(op):
     # output shape.
     concat_dim = int(concat_dim)
     output_shape = op.inputs[1].get_shape()
+    # TODO(irving): Remove once !kAllowLegacyScalars.
+    if output_shape.ndims == 0:
+      output_shape = tensor_shape.TensorShape([1])
     for value in op.inputs[2:]:
       value_shape = value.get_shape()
       if value_shape.ndims is not None and concat_dim >= value_shape.ndims:
-        raise ValueError("concat_dim is out of range (values rank = %d)" %
-                         value_shape.ndims)
+        if value_shape.ndims == 0 and concat_dim == 0:
+          # Let concat handle scalars
+          # TODO(irving): Remove once !kAllowLegacyScalars.
+          value_shape = tensor_shape.TensorShape([1])
+        else:
+          raise ValueError("concat_dim is out of range (values rank = %d)" %
+                           value_shape.ndims)
       before = output_shape[:concat_dim].merge_with(value_shape[:concat_dim])
       at = output_shape[concat_dim] + value_shape[concat_dim]
       after = output_shape[
@@ -956,7 +964,11 @@ def _PadShape(op):
   """
   paddings_shape = op.inputs[1].get_shape().with_rank(2)
   input_shape = op.inputs[0].get_shape()
-  input_shape = input_shape.with_rank(paddings_shape[0].value)
+  if input_shape.ndims == 0 and paddings_shape[0].value == 1:
+    # TODO(irving): Remove once !kAllowLegacyScalars.
+    input_shape = tensor_shape.TensorShape([1])
+  else:
+    input_shape = input_shape.with_rank(paddings_shape[0].value)
   paddings_shape = paddings_shape.merge_with(
       tensor_shape.matrix(input_shape.ndims, 2))
   paddings = tensor_util.ConstantValue(op.inputs[1])
