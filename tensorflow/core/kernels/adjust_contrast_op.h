@@ -106,10 +106,11 @@ struct AdjustContrastv2 {
     reshape_dims.set(0, batch);
     reshape_dims.set(3, channels);
 #endif
-    mean_values.device(d) = input.mean(reduction_axis)
-                                .eval()
-                                .reshape(reshape_dims)
-                                .broadcast(broadcast_dims);
+    float num_reduced_coeffs = height * width;
+    mean_values.device(d) =
+        (input.sum(reduction_axis).eval() / num_reduced_coeffs)
+            .reshape(reshape_dims)
+            .broadcast(broadcast_dims);
     auto contrast_factor_tensor =
         contrast_factor.reshape(scalar).broadcast(scalar_broadcast);
     auto adjusted =
