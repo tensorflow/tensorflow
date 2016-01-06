@@ -92,7 +92,7 @@ def all_libraries(module_to_name, members, documented):
               prefix=PREFIX_TEXT),
       library("python_io", "Data IO (Python functions)", tf.python_io),
       library("nn", "Neural Network", tf.nn,
-              exclude_symbols=["deconv2d", "conv2d_backprop_input",
+              exclude_symbols=["conv2d_backprop_input",
                                "conv2d_backprop_filter", "avg_pool_grad",
                                "max_pool_grad", "max_pool_grad_with_argmax",
                                "batch_norm_with_global_normalization_grad",
