@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 typedef std::unordered_map<string, int32> NodeNameToCostIdMap;
