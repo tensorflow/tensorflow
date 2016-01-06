@@ -528,7 +528,7 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
   """
 # pylint: enable=line-too-long
   with ops.op_scope(
-      [serialized, debug_name], name, "parse_single_sequence_example"):
+      [serialized], name, "parse_single_sequence_example"):
     context_dense_defaults = (
         {} if context_dense_defaults is None else context_dense_defaults)
     context_sparse_keys = (
@@ -556,6 +556,7 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
     feature_list_dense_defaults = (
         dict() if feature_list_dense_defaults is None
         else feature_list_dense_defaults)
+    debug_name = "" if debug_name is None else debug_name
 
     # Internal
     feature_list_dense_missing_assumed_empty = []
@@ -685,7 +686,6 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
 def _ParseSingleSequenceExampleShape(op):
   """Shape function for the ParseExample op."""
   op.inputs[0].get_shape().with_rank(0)  # input
-  op.inputs[-1].get_shape().with_rank(0)  # debug_name
   # feature_list_dense_missing_assumed_empty
   op.inputs[1].get_shape().with_rank(1)
   num_context_sparse = op.get_attr("Ncontext_sparse")
