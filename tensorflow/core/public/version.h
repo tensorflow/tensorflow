@@ -38,7 +38,7 @@ limitations under the License.
 
 // Supported GraphDef versions (see graph.proto).
 #define TF_GRAPH_DEF_VERSION_MIN 0
-#define TF_GRAPH_DEF_VERSION_MAX 3
+#define TF_GRAPH_DEF_VERSION_MAX 4
 #define TF_GRAPH_DEF_VERSION TF_GRAPH_DEF_VERSION_MAX
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_

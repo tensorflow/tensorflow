@@ -168,17 +168,6 @@ class TensorShapeIter {
   int d_;
 };
 
-// In some places, allow shape (1,) to be treated as a scalar and shape () to be
-// treated as a vector.  This flag is for temporary backwards compatibility
-// only, and will be changed to strict within Google around November 15, 2015.
-#if defined(PLATFORM_GOOGLE)
-// TODO(irving): Become strict on November 15, 2015.
-static const bool kAllowLegacyScalars = true;
-#else
-// For open source (outside Google), we are strict.
-static const bool kAllowLegacyScalars = false;
-#endif
-
 /// \brief Static helper routines for `TensorShape`. Includes a few common
 /// predicates on a tensor shape.
 class TensorShapeUtils {
@@ -186,17 +175,6 @@ class TensorShapeUtils {
   static bool IsScalar(const TensorShape& shape) { return shape.dims() == 0; }
 
   static bool IsVector(const TensorShape& shape) { return shape.dims() == 1; }
-
-  // Allow either scalars or (if allowing legacy scalars) shape (1,).
-  static bool IsLegacyScalar(const TensorShape& shape) {
-    return shape.dims() == 0 ||
-           (kAllowLegacyScalars && shape.dims() == 1 && shape.dim_size(0) == 1);
-  }
-
-  // Allow rank 1 or (if allowing legacy scalars) rank 0.
-  static bool IsLegacyVector(const TensorShape& shape) {
-    return shape.dims() == 1 || (kAllowLegacyScalars && shape.dims() == 0);
-  }
 
   static bool IsVectorOrHigher(const TensorShape& shape) {
     return shape.dims() >= 1;

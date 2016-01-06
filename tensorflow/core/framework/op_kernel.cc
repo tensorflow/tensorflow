@@ -94,6 +94,7 @@ OpKernel::OpKernel(OpKernelConstruction* context)
                    context->input_types().end()),
       output_types_(context->output_types().begin(),
                     context->output_types().end()),
+      graph_def_version_(context->graph_def_version()),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,

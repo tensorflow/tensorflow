@@ -69,14 +69,15 @@ static void SharedValidation(OpKernelContext* context,
   const Tensor& size_tensor = context->input(2);
 
   OP_REQUIRES(
-      context, TensorShapeUtils::IsLegacyVector(begin_tensor.shape()) &&
-                   TensorShapeUtils::IsLegacyVector(size_tensor.shape()) &&
+      context, context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
+                   context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
                    begin_tensor.NumElements() == input.dims() &&
                    size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input.dims(), ", but got ", begin_tensor.NumElements(), " and ",
-          size_tensor.NumElements(), " instead."));
+          input.dims(), ", but got shapes ",
+          begin_tensor.shape().ShortDebugString(), " and ",
+          size_tensor.shape().ShortDebugString(), " instead."));
 
   const int input_dims = input.dims();
   *begin = IntTensorToInt64Vec(begin_tensor);
