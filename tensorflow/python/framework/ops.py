@@ -785,16 +785,16 @@ class SparseTensor(object):
   """Represents a sparse tensor.
 
   Tensorflow represents a sparse tensor as three separate dense tensors:
-  `indices`, `values`, and `dense_shape`.  In Python, the three tensors are
+  `indices`, `values`, and `shape`.  In Python, the three tensors are
   collected into a `SparseTensor` class for ease of use.  If you have separate
-  `indices`, `values`, and `dense_shape` tensors, wrap them in a `SparseTensor`
-  object before passing to the Ops below.
+  `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
+  object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(values, indices, dense_shape)` is
+  Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
 
   * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
   * `values`: A 1-D tensor of any type and shape `[N]`.
-  * `dense_shape`: A 1-D int64 tensor of shape `[ndims]`.
+  * `shape`: A 1-D int64 tensor of shape `[ndims]`.
 
   where `N` and `ndims` are the number of values, and number of dimensions in
   the `SparseTensor` respectively.
@@ -802,15 +802,15 @@ class SparseTensor(object):
   The corresponding dense tensor satisfies
 
   ```python
-  dense.shape = dense_shape
+  dense.shape = shape
   dense[tuple(indices[i])] = values[i]
   ```
 
   By convention, `indices` should be sorted in row-major order (or equivalently
   lexicographic order on the tuples `indices[i]`).  This is not enforced when
   `SparseTensor` objects are constructed, but most ops assume correct ordering.
-  If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
-  misordered `SparseTensor`.
+  If the ordering of sparse tensor `st` is wrong, a fixed version can be
+  obtained by calling `tf.sparse_reorder(st)`.
 
   Example: The sparse tensor
 
