@@ -18,6 +18,9 @@ limitations under the License.
 
 // Stub implementations of tracing functionality.
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/tracing.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
+
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
