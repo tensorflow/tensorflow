@@ -37,8 +37,8 @@ static bool InitModule(const SessionOptions& options) {
   if (intra_op_parallelism_threads == 0) {
     intra_op_parallelism_threads = port::NumSchedulableCPUs();
   }
-  LOG(INFO) << "Local device intra op parallelism threads: "
-            << intra_op_parallelism_threads;
+  VLOG(1) << "Local device intra op parallelism threads: "
+          << intra_op_parallelism_threads;
   eigen_worker_threads.num_threads = intra_op_parallelism_threads;
   eigen_worker_threads.workers = new thread::ThreadPool(
       options.env, "Eigen", intra_op_parallelism_threads);

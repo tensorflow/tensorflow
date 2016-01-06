@@ -404,6 +404,8 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
                                   context_dense_types=None,
                                   context_dense_defaults=None,
                                   context_dense_shapes=None,
+                                  feature_list_sparse_keys=None,
+                                  feature_list_sparse_types=None,
                                   feature_list_dense_keys=None,
                                   feature_list_dense_types=None,
                                   feature_list_dense_shapes=None,
@@ -461,6 +463,12 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
   map will be  treated as empty (zero length) if not found in the
   `FeatureList` map.
 
+  The key `feature_list_sparse_keys[j]` is mapped to a `SparseTensor` of type
+  `feature_list_sparse_types[j]`. This `SparseTensor` represents a ragged
+  vector.  Its indices are `[time, index]`, where `time` is the FeatureList
+  entry `index` is the value's index in the list of values associated with that
+  time.
+
   `debug_name` may contain a descriptive name for the corresponding serialized
   proto. This may be useful for debugging purposes, but it has no effect on the
   output. If not `None`, `debug_name` must be a scalar.
@@ -485,6 +493,12 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
       The shape of the data for each context_dense feature referenced by
       `context_dense_keys`.  Required for any input tensors identified by
       `context_dense_keys` whose shapes are anything other than `[]` or `[1]`.
+    feature_list_sparse_keys: A list of string keys in the `SequenceExample`'s
+      feature_lists.  The results for these keys will be returned as
+      `SparseTensor` objects.
+    feature_list_sparse_types: A list of `DTypes`, same length as `sparse_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
     feature_list_dense_keys: A list of string keys in the `SequenceExample`'s
       features_lists. The results for these keys will be returned as `Tensor`s.
     feature_list_dense_types: A list of `DTypes`, same length as
@@ -528,6 +542,10 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
     context_dense_shapes = (
         [[]] * len(context_dense_keys)
         if context_dense_shapes is None else context_dense_shapes)
+    feature_list_sparse_keys = (
+        [] if feature_list_sparse_keys is None else feature_list_sparse_keys)
+    feature_list_sparse_types = (
+        [] if feature_list_sparse_types is None else feature_list_sparse_types)
     feature_list_dense_keys = (
         [] if feature_list_dense_keys is None else feature_list_dense_keys)
     feature_list_dense_types = (
@@ -545,6 +563,7 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
     num_context_dense = len(context_dense_keys)
     num_feature_list_dense = len(feature_list_dense_keys)
     num_context_sparse = len(context_sparse_keys)
+    num_feature_list_sparse = len(feature_list_sparse_keys)
 
     if len(context_dense_shapes) != num_context_dense:
       raise ValueError(
@@ -567,15 +586,28 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
       raise ValueError(
           "len(context_sparse_types) != len(context_sparse_keys): %d vs. %d"
           % (len(context_sparse_types), num_context_sparse))
-    if num_context_dense + num_context_sparse + num_feature_list_dense == 0:
+    if len(feature_list_sparse_types) != num_feature_list_sparse:
+      raise ValueError(
+          "len(feature_list_sparse_types) != len(feature_list_sparse_keys): "
+          "%d vs. %d"
+          % (len(feature_list_sparse_types), num_feature_list_sparse))
+    if (num_context_dense + num_context_sparse
+        + num_feature_list_dense + num_feature_list_sparse) == 0:
       raise ValueError(
           "Must provide at least one context_sparse key, context_dense key, "
-          "or feature_list_dense key")
+          ", feature_list_sparse key, or feature_list_dense key")
     if not set(context_dense_keys).isdisjoint(set(context_sparse_keys)):
       raise ValueError(
-          "Context_Dense and context_sparse keys must not intersect; "
+          "context_dense and context_sparse keys must not intersect; "
           "intersection: %s" %
           set(context_dense_keys).intersection(set(context_sparse_keys)))
+    if not set(feature_list_dense_keys).isdisjoint(
+        set(feature_list_sparse_keys)):
+      raise ValueError(
+          "feature_list_dense and feature_list_sparse keys must not intersect; "
+          "intersection: %s" %
+          set(feature_list_dense_keys).intersection(
+              set(feature_list_sparse_keys)))
     if not isinstance(feature_list_dense_defaults, dict):
       raise TypeError("feature_list_dense_defaults must be a dict")
     for k, v in feature_list_dense_defaults.items():
@@ -613,6 +645,8 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
         context_sparse_types=context_sparse_types,
         context_dense_keys=context_dense_keys,
         context_dense_shapes=context_dense_shapes,
+        feature_list_sparse_keys=feature_list_sparse_keys,
+        feature_list_sparse_types=feature_list_sparse_types,
         feature_list_dense_keys=feature_list_dense_keys,
         feature_list_dense_types=feature_list_dense_types,
         feature_list_dense_shapes=feature_list_dense_shapes,
@@ -622,7 +656,8 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
 
     (context_sparse_indices, context_sparse_values,
      context_sparse_shapes, context_dense_values,
-     feature_list_dense_values) = outputs
+     feature_list_sparse_indices, feature_list_sparse_values,
+     feature_list_sparse_shapes, feature_list_dense_values) = outputs
 
     context_sparse_tensors = [
         ops.SparseTensor(ix, val, shape) for (ix, val, shape)
@@ -630,12 +665,18 @@ def parse_single_sequence_example(serialized,  # pylint: disable=invalid-name
                context_sparse_values,
                context_sparse_shapes)]
 
+    feature_list_sparse_tensors = [
+        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        in zip(feature_list_sparse_indices,
+               feature_list_sparse_values,
+               feature_list_sparse_shapes)]
+
     context_output = dict(
         zip(context_sparse_keys + context_dense_keys,
             context_sparse_tensors + context_dense_values))
     feature_list_output = dict(
-        zip(feature_list_dense_keys,
-            feature_list_dense_values))
+        zip(feature_list_sparse_keys + feature_list_dense_keys,
+            feature_list_sparse_tensors + feature_list_dense_values))
 
     return (context_output, feature_list_output)
 
@@ -651,6 +692,7 @@ def _ParseSingleSequenceExampleShape(op):
   num_context_dense = op.get_attr("Ncontext_dense")
   num_feature_list_dense = op.get_attr("Nfeature_list_dense")
   context_dense_shapes = op.get_attr("context_dense_shapes")
+  num_feature_list_sparse = op.get_attr("Nfeature_list_sparse")
   feature_list_dense_shapes = op.get_attr("feature_list_dense_shapes")
   context_sparse_index_shapes = [
       tensor_shape.matrix(None, 1) for _ in range(num_context_sparse)]
@@ -661,6 +703,12 @@ def _ParseSingleSequenceExampleShape(op):
   context_dense_shapes = [
       tensor_shape.TensorShape(dense_shape)
       for dense_shape in context_dense_shapes]
+  feature_list_sparse_index_shapes = [
+      tensor_shape.matrix(None, 2) for _ in range(num_feature_list_sparse)]
+  feature_list_sparse_value_shapes = [
+      tensor_shape.vector(None) for _ in range(num_feature_list_sparse)]
+  feature_list_sparse_shape_shapes = [
+      tensor_shape.vector(2) for _ in range(num_feature_list_sparse)]
   feature_list_dense_shapes = [
       tensor_shape.vector(None).concatenate(dense_shape)
       for dense_shape in feature_list_dense_shapes]
@@ -668,7 +716,8 @@ def _ParseSingleSequenceExampleShape(op):
   assert num_feature_list_dense == len(feature_list_dense_shapes)
   return (context_sparse_index_shapes + context_sparse_value_shapes +
           context_sparse_shape_shapes + context_dense_shapes +
-          feature_list_dense_shapes)
+          feature_list_sparse_index_shapes + feature_list_sparse_value_shapes +
+          feature_list_sparse_shape_shapes + feature_list_dense_shapes)
 
 
 ops.RegisterShape("StringToNumber")(

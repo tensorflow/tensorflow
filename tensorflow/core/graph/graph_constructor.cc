@@ -53,7 +53,7 @@ class GraphConstructor {
       *status = errors::InvalidArgument(
           "GraphDef version ", version, " is ", low ? "no longer" : "not yet",
           " supported: TensorFlow ", TF_VERSION_STRING, " needs ",
-          TF_GRAPH_DEF_VERSION_MAX, " <= version <= ", TF_GRAPH_DEF_VERSION_MIN,
+          TF_GRAPH_DEF_VERSION_MIN, " <= version <= ", TF_GRAPH_DEF_VERSION_MAX,
           ".  ",
           low ? "Please regenerate your graph." : "Please upgrade TensorFlow.");
       return;
@@ -150,8 +150,8 @@ void GraphConstructor::BuildNodeIndex() {
       SetNodeError(node_def, "Node name contains invalid characters");
       return;
     }
-    if (!name_index_.insert(std::make_pair(StringPiece(node_def.name()),
-                                           NodeInfo(n)))
+    if (!name_index_
+             .insert(std::make_pair(StringPiece(node_def.name()), NodeInfo(n)))
              .second) {
       SetNodeError(node_def, "Node name is not unique");
       return;
@@ -346,8 +346,8 @@ void GraphConstructor::Convert() {
 
     if (opts_.optimizer_do_cse) {
       if (!back_edges.empty()) {
-        LOG(WARNING) << "Not doing CSE.  We need to figure out how to handle "
-                     << "loops in the CSE phase.";
+        VLOG(1) << "Not doing CSE. We need to figure out how to handle "
+                << "loops in the CSE phase.";
       } else {
         VLOG(1) << "Starting CSE: graph of " << CountNodes(g_) << " nodes";
         OptimizeCSE(g_, opts_.cse_consider_function);
@@ -391,6 +391,9 @@ void CopyGraph(const Graph& src, Graph* dest) {
   for (Node* n : dest->nodes()) {
     CHECK(n->IsSource() || n->IsSink()) << "*dest must be empty";
   }
+
+  // Copy GraphDef version
+  dest->set_version(src.version());
 
   // Copy the nodes
   std::unordered_map<Node*, Node*>

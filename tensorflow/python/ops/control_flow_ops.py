@@ -69,6 +69,7 @@ from __future__ import print_function
 
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -82,6 +83,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
+from tensorflow.python.platform import logging
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -630,6 +632,8 @@ def cond(pred, fn1, fn2, name=None):
       raise TypeError("fn2 must be callable.")
 
     # Add the Switch to the graph.
+    if isinstance(pred, bool):
+      raise TypeError("pred must not be a Python bool")
     p_2, p_1 = switch(pred, pred)
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
@@ -1172,7 +1176,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
   with ops.op_scope(dependencies + [output_tensor], name,
-                   "control_dependency") as name:
+                    "control_dependency") as name:
     with ops.device(output_tensor.device
                     or ops.get_default_graph().get_default_device()):
       with ops.control_dependencies(dependencies):
@@ -1237,12 +1241,14 @@ def group(*inputs, **kwargs):
     # 2-level tree. The root node is the returned NoOp node.
     # deps contains 1 NoOp node for each device.
     deps = []
+
     def device_key(dev):
       """A sort key that allows None to be compared to strings."""
       return "" if dev is None else dev
     for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
     return _GroupControlDeps(None, deps, name=name)
+
 
 def tuple(tensors, name=None, control_inputs=None):
   """Group tensors together.

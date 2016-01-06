@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import tensorflow.python.platform
 
 import numpy as np
@@ -55,6 +57,11 @@ class UnaryOpTest(tf.test.TestCase):
       tf_cpu = y.eval()
       self.assertShapeEqual(np_ans, y)
       self.assertAllClose(np_ans, tf_cpu)
+
+      # TODO(ebrevdo): add gradient for lgamma (digamma) and remove lgamma here.
+      if tf_func in (tf.lgamma,):
+        return  # Return early
+
       if x.dtype == np.float32:
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
@@ -94,6 +101,17 @@ class UnaryOpTest(tf.test.TestCase):
   def _sigmoid(self, x):
     return 1.0 / (1.0 + np.exp(-x))
 
+  def _replace_domain_error_with_inf(self, fn):
+    def func(x):
+      try:
+        return fn(x)
+      except ValueError, e:
+        if "domain error" in e.message:
+          return np.inf * np.ones_like(x)
+        else:
+          raise e
+    return func
+
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
     y = (x + .5).astype(np.float32)     # no zero
@@ -113,6 +131,12 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(y, np.sign, tf.sign)
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
+    self._compareBoth(
+        x,
+        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
+        tf.lgamma)
+    self._compareBoth(x, np.vectorize(math.erf), tf.erf)
+    self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
 
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)

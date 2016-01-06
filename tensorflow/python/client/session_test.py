@@ -677,6 +677,18 @@ class SessionTest(test_util.TensorFlowTestCase):
           self.assertAllEqual(np_array,
                               out_t.eval(feed_dict={feed_t: np_array}))
 
+  def testFeedError(self):
+    with session.Session() as sess:
+      feed_t = array_ops.placeholder(dtype=dtypes.float32)
+      out_t = array_ops.identity(feed_t)
+      feed_val = constant_op.constant(5.0)
+      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+        sess.run(out_t, feed_dict={feed_t: feed_val})
+      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+        out_t.eval(feed_dict={feed_t: feed_val})
+      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+        out_t.op.run(feed_dict={feed_t: feed_val})
+
   def testStringFetch(self):
     with session.Session():
       for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:

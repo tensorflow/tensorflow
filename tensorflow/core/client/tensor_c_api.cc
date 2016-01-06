@@ -52,6 +52,11 @@ struct TF_Status {
   Status status;
 };
 
+struct TF_Library {
+  void* lib_handle;
+  TF_Buffer op_list;
+};
+
 TF_Status* TF_NewStatus() { return new TF_Status; }
 
 void TF_DeleteStatus(TF_Status* s) { delete s; }
@@ -304,6 +309,10 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
                       [](void*, size_t, void*) {}, nullptr);
 }
 
+// Helpers for loading a TensorFlow plugin (a .so file).
+Status LoadLibrary(const char* library_filename, void** result,
+                   const void** buf, size_t* len);
+
 }  // namespace tensorflow
 
 extern "C" {
@@ -381,5 +390,23 @@ void TF_Run(TF_Session* s,
     }
   }
 }
+
+const void* TF_BufferData(TF_Buffer* buffer) { return buffer->data; }
+
+size_t TF_BufferLength(TF_Buffer* buffer) { return buffer->length; }
+
+TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
+  TF_Library* lib_handle = new TF_Library;
+  status->status = tensorflow::LoadLibrary(
+      library_filename, &lib_handle->lib_handle, &lib_handle->op_list.data,
+      &lib_handle->op_list.length);
+  if (!status->status.ok()) {
+    delete lib_handle;
+    return nullptr;
+  }
+  return lib_handle;
+}
+
+TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
 }  // end extern "C"

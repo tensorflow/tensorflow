@@ -17,13 +17,20 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/framework/config.pb.h"
 
 namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
-EventMgr::EventMgr(gpu::StreamExecutor* se)
+EventMgr::EventMgr(gpu::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
+      deferred_bytes_threshold_(gpu_options.deferred_deletion_bytes()
+                                    ? gpu_options.deferred_deletion_bytes()
+                                    : 8 * 1048576),
+      accumulated_stream_(nullptr),
+      accumulated_tensors_(new TensorReferenceVector),
+      accumulated_tensor_bytes_(0),
       // threadpool_ has 1 thread for the polling loop, and one to execute
       // event callback functions. Maybe we should have more?
       threadpool_(Env::Default(), "GPU_Event_Manager", 2) {
@@ -39,6 +46,10 @@ EventMgr::~EventMgr() {
   for (auto& e : free_events_) {
     delete e;
   }
+  for (auto& t : *(accumulated_tensors_)) {
+    t.Unref();
+  }
+  delete accumulated_tensors_;
   while (!used_events_.empty()) {
     InUse* ue = &used_events_[0];
     delete ue->event;
@@ -49,6 +60,35 @@ EventMgr::~EventMgr() {
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);
     used_events_.pop_front();
   }
+}
+
+void EventMgr::ThenDeleteTensors(perftools::gputools::Stream* stream,
+                                 const TensorReferenceVector& tensors) {
+  mutex_lock l(mu_);
+  // TODO(jeff): We currently keep one accumulated_tensors_ object.
+  // If we start to use multiple streams heavily, we might want to keep
+  // separate vectors/byte counters per stream
+  if (!accumulated_tensors_->empty() && stream != accumulated_stream_) {
+    FlushAccumulatedTensors();
+  }
+  accumulated_stream_ = stream;
+  for (auto t : tensors) {
+    // accumulated_tensors_ takes over ownership of the reference to "t"
+    accumulated_tensors_->push_back(t);
+    accumulated_tensor_bytes_ += t.TotalBytes();
+  }
+  if (accumulated_tensor_bytes_ >= deferred_bytes_threshold_) {
+    FlushAccumulatedTensors();
+  }
+}
+
+void EventMgr::FlushAccumulatedTensors() {
+  DCHECK(!accumulated_tensors_->empty());
+  DCHECK(accumulated_stream_ != nullptr);
+  QueueTensors(accumulated_stream_, accumulated_tensors_);
+  accumulated_tensors_ = new TensorReferenceVector;
+  accumulated_tensor_bytes_ = 0;
+  accumulated_stream_ = nullptr;
 }
 
 // This polling loop runs at a relatively low frequency. Most calls to

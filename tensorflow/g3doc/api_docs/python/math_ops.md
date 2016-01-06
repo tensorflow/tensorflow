@@ -527,6 +527,63 @@ Computes sin of x element-wise.
   A `Tensor`. Has the same type as `x`.
 
 
+- - -
+
+### `tf.lgamma(x, name=None)` {#lgamma}
+
+Computes `ln(|gamma(x)|)` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
+- - -
+
+### `tf.erf(x, name=None)` {#erf}
+
+Computes Gauss error function of `x` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
+- - -
+
+### `tf.erfc(x, name=None)` {#erfc}
+
+Computes complementary error function of `x` element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
 
 ## Matrix Math Functions
 
@@ -1067,6 +1124,40 @@ tf.real(in) ==> [-2.25, 3.25]
 ##### Returns:
 
   A `Tensor` of type `float32`.
+
+
+- - -
+
+### `tf.fft2d(in_, name=None)` {#fft2d}
+
+Compute the 2-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The 2D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.ifft2d(in_, name=None)` {#ifft2d}
+
+Compute the inverse 2-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The inverse 2D Fourier Transform of `in`.
 
 
 

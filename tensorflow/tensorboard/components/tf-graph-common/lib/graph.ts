@@ -19,7 +19,6 @@ module tf.graph {
 
 /** Delimiter used in node names to denote namespaces. */
 export const NAMESPACE_DELIM = "/";
-const FULL_GRAPH_NAME = "fullGraph";
 export const ROOT_NAME = "__root__";
 
 // Separator between the source and the destination name of the edge.
@@ -315,8 +314,8 @@ class OpNodeImpl implements OpNode {
    * @param rawNode The raw node.
    * @param normalizedInputs An array of normalized
    *     inputs that denote the incoming edges to the current node. Each input
-   *     contains the normalized name of the source node, whether it has a number
-   *     part and whether it is a control dependency.
+   *     contains the normalized name of the source node, whether it has a
+   *     number part and whether it is a control dependency.
    */
   constructor(rawNode: tf.TFNode, normalizedInputs: NormalizedInput[]) {
     this.op = rawNode.op;
@@ -340,8 +339,8 @@ export function createMetanode(name: string, opt = {}): Metanode {
 }
 
 /**
- * Joins the information from the stats file (memory, compute time) with the graph
- * information.
+ * Joins the information from the stats file (memory, compute time) with the
+ * graph information.
  */
 export function joinStatsInfoWithGraph(graph: SlimGraph,
     statsJson: TFStats): void {
@@ -894,7 +893,8 @@ export function hasSimilarDegreeSequence(graph1: graphlib.Graph<any, any>,
 
 /**
  * Returns the hierarchical path of the current node, based on the node's name.
- * For example, if the name is 'a/b/c', the returned path is ['a', 'a/b', 'a/b/c'].
+ * For example, if the name is 'a/b/c', the returned path is
+ * ['a', 'a/b', 'a/b/c'].
  */
 export function getHierarchicalPath(name: string,
   seriesNames?: { [name: string]: string }): string[] {

@@ -1143,6 +1143,8 @@ The following `DType` objects are defined:
 
 * `tf.qint8`: Quantized 8-bit signed integer.
 * `tf.quint8`: Quantized 8-bit unsigned integer.
+* `tf.qint16`: Quantized 16-bit signed integer.
+* `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
 
 In addition, variants of these types with the `_ref` suffix are
@@ -1337,7 +1339,7 @@ Converts the given `type_value` to a `DType`.
 Wrapper for `Graph.device()` using the default graph.
 
 See
-[`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+[`Graph.device()`](../../api_docs/python/framework.md#Graph.device)
 for more details.
 
 ##### Args:
@@ -1542,6 +1544,35 @@ protocol buffer, and extract individual objects in the `GraphDef` as
     it refers to an unknown tensor).
 
 
+- - -
+
+### `tf.load_op_library(library_filename)` {#load_op_library}
+
+Loads a TensorFlow plugin, containing custom ops and kernels.
+
+Pass "library_filename" to a platform-specific mechanism for dynamically
+loading a library. The rules for determining the exact location of the
+library are platform-specific and are not documented here.
+Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
+defined in the library.
+
+##### Args:
+
+
+*  <b>`library_filename`</b>: Path to the plugin.
+    Relative or absolute filesystem path to a dynamic library file.
+
+##### Returns:
+
+  A python module containing the Python wrappers for Ops defined in
+  the plugin.
+
+##### Raises:
+
+
+*  <b>`RuntimeError`</b>: when unable to load the library or get the python wrappers.
+
+
 
 ## Graph collections
 
@@ -1617,6 +1648,10 @@ The following standard keys are defined:
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See
   [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
+  for more details.
+* `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
+  keep moving averages.  See
+  [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
   for more details.
 
 

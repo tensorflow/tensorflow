@@ -25,23 +25,23 @@ module TF {
 
     function router(route: string): ((tag: string, run: string) => string) {
       return function(tag: string, run: string): string {
-        return "/" + route + "?tag=" + encodeURIComponent(tag)
+        return "/data/" + route + "?tag=" + encodeURIComponent(tag)
                            + "&run=" + encodeURIComponent(run);
       };
     }
 
     export function runsUrl() {
-      return "/runs";
+      return "/data/runs";
     }
     export var scalarsUrl = router("scalars");
     export var histogramsUrl = router("histograms");
     export var compressedHistogramsUrl = router("compressedHistograms");
     export var imagesUrl = router("images");
     export function individualImageUrl(query: string) {
-      return "/individualImage?" + query;
+      return "/data/individualImage?" + query;
     }
     export function graphUrl(run: string) {
-      return "/graph?run=" + encodeURIComponent(run);
+      return "/data/graph?run=" + encodeURIComponent(run);
     }
 
   }

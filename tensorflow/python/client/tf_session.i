@@ -200,7 +200,13 @@ tensorflow::ImportNumpy();
 // END TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
 
-
+// Typemaps for TF_GetOpList.
+// The wrapped function TF_GetOpList returns a TF_Buffer pointer. This typemap
+// creates a Python string from the TF_Buffer and returns it.
+%typemap(out) TF_Buffer TF_GetOpList {
+  $result = PyString_FromStringAndSize(
+      reinterpret_cast<const char*>($1.data), $1.length);
+}
 
 // Include the functions from tensor_c_api.h, except TF_Run.
 %ignoreall
@@ -219,6 +225,9 @@ tensorflow::ImportNumpy();
 %unignore TF_CloseSession;
 %unignore TF_DeleteSession;
 %unignore TF_ExtendGraph;
+%unignore TF_NewLibrary;
+%unignore TF_LoadLibrary;
+%unignore TF_GetOpList;
 %include "tensorflow/core/public/tensor_c_api.h"
 %ignoreall
 

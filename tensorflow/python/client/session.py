@@ -368,6 +368,12 @@ class BaseSession(SessionInterface):
                          + e.message)
             e.args = (e.message,)
             raise e
+
+          if isinstance(subfeed_val, ops.Tensor):
+            raise TypeError('The value of a feed cannot be a tf.Tensor object. '
+                            'Acceptable feed values include Python scalars, '
+                            'strings, lists, or numpy ndarrays.')
+
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
           if subfeed_t.op.type == 'Placeholder':
             if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
@@ -602,7 +608,7 @@ class InteractiveSession(BaseSession):
   @@close
   """
 
-  def __init__(self, target='', graph=None):
+  def __init__(self, target='', graph=None, config=None):
     """Creates a new interactive TensorFlow session.
 
     If no `graph` argument is specified when constructing the session,
@@ -618,8 +624,9 @@ class InteractiveSession(BaseSession):
         Defaults to using an in-process engine. At present, no value
         other than the empty string is supported.
       graph: (Optional.) The `Graph` to be launched (described above).
+      config: (Optional) `ConfigProto` proto used to configure the session.
     """
-    super(InteractiveSession, self).__init__(target, graph)
+    super(InteractiveSession, self).__init__(target, graph, config)
     self._default_session = self.as_default()
     self._default_session.__enter__()
     self._explicit_graph = graph

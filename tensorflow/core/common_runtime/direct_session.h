@@ -53,15 +53,33 @@ class DirectSession : public Session {
   ::tensorflow::Status Close() override;
 
  private:
+  typedef DirectSession ME;
+
+  // We create one executor and its dependent library runtime for
+  // every partition.
+  struct PerPartitionExecutorsAndLib {
+    Executor* executor = nullptr;
+    FunctionLibraryRuntime* flib = nullptr;
+  };
+
+  // An ExecutorsAndKeys is created for a given set of feeds/fetches.
+  // 'func_defs' are the function definition used by all the
+  // underlying executors. Each item in 'items' is the executor for a
+  // partition of the graph bundled with its dependent library
+  // runtime. 'input_keys' are the rendezvous keys for the feeds and
+  // 'output_keys' are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
-    std::unordered_map<string, Executor*> device_executors;
+    FunctionLibraryDefinition* func_defs = nullptr;
+    std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
 
     ~ExecutorsAndKeys() {
-      for (auto it : device_executors) {
-        delete it.second;
+      for (auto item : items) {
+        delete item.executor;
+        delete item.flib;
       }
+      delete func_defs;
     }
   };
 
@@ -77,6 +95,7 @@ class DirectSession : public Session {
   ::tensorflow::Status CreateGraphs(
       gtl::ArraySlice<string> feeds, gtl::ArraySlice<string> fetches,
       gtl::ArraySlice<string> target_nodes,
+      FunctionLibraryDefinition** func_defs,
       std::unordered_map<string, Graph*>* outputs);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)

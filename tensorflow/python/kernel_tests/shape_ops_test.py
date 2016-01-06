@@ -227,14 +227,22 @@ class TileTest(tf.test.TestCase):
 
   def testSimple(self):
     with self.test_session():
-      inp = np.random.rand(4, 1).astype("f")
-      a = tf.constant([float(x) for x in inp.ravel(order="C")],
-                   shape=[4, 1], dtype=tf.float32)
+      inp = np.random.rand(4, 1).astype(np.float32)
+      a = tf.constant(inp)
       tiled = tf.tile(a, [1, 4])
       result = tiled.eval()
     self.assertEqual(result.shape, (4, 4))
     self.assertEqual([4, 4], tiled.get_shape())
     self.assertTrue((result == np.tile(inp, (1, 4))).all())
+
+  def testEmpty(self):
+    with self.test_session():
+      inp = np.random.rand(2, 3).astype(np.float32)
+      a = tf.constant(inp)
+      tiled = tf.tile(a, [5, 0])
+      result = tiled.eval()
+    self.assertEqual(result.shape, (10, 0))
+    self.assertEqual([10, 0], tiled.get_shape())
 
   def testTypes(self):
     types_to_test = {

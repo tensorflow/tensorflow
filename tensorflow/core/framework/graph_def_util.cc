@@ -38,4 +38,27 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
   return Status::OK();
 }
 
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface* op_registry,
+                                 int node_offset) {
+  if (node_offset > graph_def->node_size()) {
+    return errors::InvalidArgument(
+        "Tried to add default attrs to GraphDef "
+        "starting at offset ",
+        node_offset, " with total nodes in graph: ", graph_def->node_size());
+  }
+
+  Status s;
+  for (int i = node_offset; i < graph_def->node_size(); ++i) {
+    NodeDef* node_def = graph_def->mutable_node(i);
+    const OpDef* op_def = op_registry->LookUp(node_def->op(), &s);
+    if (!s.ok()) {
+      return s;
+    }
+    AddDefaultsToNodeDef(*op_def, node_def);
+  }
+
+  return s;
+}
+
 }  // namespace tensorflow

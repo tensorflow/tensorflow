@@ -21,8 +21,6 @@ limitations under the License.
  */
 module tf.graph.hierarchy {
 
-const LOG_PREFIX_MSG = "Graph hierarchy: ";
-
 /**
  * Class used as output for getPredecessors and getSuccessors methods
  */
@@ -469,7 +467,8 @@ function addNodes(h: Hierarchy, graph: SlimGraph) {
       }
       parent = child;
     }
-    // Assuming node name is 'a/b/c', assign the OpNode as a child of the metanode 'a/b'.
+    // Assuming node name is 'a/b/c', assign the OpNode as a child of the
+    // metanode 'a/b'.
     h.setNode(node.name, node);
     node.parentNode = parent;
     parent.metagraph.setNode(node.name, node);
@@ -567,7 +566,8 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
  * @param hierarchy
  * @param threshold If the series has this many nodes or more, then group them
  *     into a series.
- * @return A dictionary from node name to series node name that contains the node
+ * @return A dictionary from node name to series node name that contains the
+ *     node.
  */
 function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
     seriesNames: { [name: string]: string }, threshold: number) {
@@ -589,9 +589,6 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
     if (nodeMemberNames.length < threshold) {
       return;
     }
-    let firstMember = seriesNode.metagraph.node(nodeMemberNames[0]);
-    let seriesType = firstMember.type;
-
     hierarchy.setNode(seriesName, seriesNode); // add to the index
     metagraph.setNode(seriesName, seriesNode);
     _.each(nodeMemberNames, n => {
@@ -620,7 +617,8 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
 function clusterNodes(metagraph: graphlib.Graph<GroupNode|OpNode, Metaedge>):
     {[clusterId: string]: string[]} {
   let result: {[clusterId: string]: string[]} = {};
-  return  _.reduce(metagraph.nodes(), function(clusters: {[clusterId: string]: string[]}, n: string) {
+  return  _.reduce(metagraph.nodes(),
+      (clusters: {[clusterId: string]: string[]}, n: string) => {
     let child = metagraph.node(n);
     if (child.type === NodeType.META) {
       // skip metanodes
@@ -702,7 +700,8 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
       let seriesNodes = [seriesInfoArray[0]];
       for (let index = 1; index < seriesInfoArray.length; index++) {
         let nextNode = seriesInfoArray[index];
-        if (nextNode.clusterId === seriesNodes[seriesNodes.length - 1].clusterId + 1) {
+        if (nextNode.clusterId === seriesNodes[seriesNodes.length - 1].clusterId
+            + 1) {
           seriesNodes.push(nextNode);
           continue;
         }

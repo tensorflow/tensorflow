@@ -69,18 +69,17 @@ class ConcatOpTest(tf.test.TestCase):
 
   def testRefType(self):
     with self.test_session():
-      p1 = tf.placeholder(tf.float32_ref, shape=[4, 4])
-      p2 = tf.placeholder(tf.float32_ref, shape=[4, 4])
-      c = tf.concat(0, [p1, p2])
-      params = {
-          p1: np.random.rand(4, 4).astype("f"),
-          p2: np.random.rand(4, 4).astype("f")
-          }
-      result = c.eval(feed_dict=params)
+      p1 = np.random.rand(4, 4).astype("f")
+      p2 = np.random.rand(4, 4).astype("f")
+      v1 = tf.Variable(p1)
+      v2 = tf.Variable(p2)
+      c = tf.concat(0, [v1, v2])
+      tf.initialize_all_variables().run()
+      result = c.eval()
 
     self.assertEqual(result.shape, c.get_shape())
-    self.assertAllEqual(result[:4, :], params[p1])
-    self.assertAllEqual(result[4:, :], params[p2])
+    self.assertAllEqual(result[:4, :], p1)
+    self.assertAllEqual(result[4:, :], p2)
 
   def _testRandom(self, dtype, use_gpu=False):
     # Random dims of rank 5
@@ -364,6 +363,15 @@ class ConcatOpTest(tf.test.TestCase):
       output = tf.gather(x_concat, [1, 2, 0, 5])
       err = tf.test.compute_gradient_error(xs, x_shapes, output, output_shape)
     self.assertLess(err, 1e-11)
+
+  def testConcatTuple(self):
+    c1 = np.random.rand(4, 4)
+    c2 = np.random.rand(4, 4)
+    with self.test_session():
+      concat_list_t = tf.concat(0, [c1, c2])
+      concat_tuple_t = tf.concat(0, (c1, c2))
+      self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

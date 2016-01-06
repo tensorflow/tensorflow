@@ -44,6 +44,8 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.tensorboard import float_wrapper
 
+
+DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
@@ -51,6 +53,7 @@ HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
+TAB_ROUTES = ['', '/events', '/images', '/graphs', '/histograms']
 
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
@@ -373,32 +376,34 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     if clean_path.endswith('/'):
       clean_path = clean_path[:-1]
 
-    handlers = {
-        SCALARS_ROUTE: self._serve_scalars,
-        GRAPH_ROUTE: self._serve_graph,
-        HISTOGRAMS_ROUTE: self._serve_histograms,
-        COMPRESSED_HISTOGRAMS_ROUTE: self._serve_compressed_histograms,
-        IMAGES_ROUTE: self._serve_images,
-        INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
-        RUNS_ROUTE: self._serve_runs,
-        '': self._serve_index,
+    data_handlers = {
+        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
+        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
+        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
+        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
+            self._serve_compressed_histograms,
+        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
+        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
         '/app.js': self._serve_js
     }
 
-    if clean_path in handlers:
-      query_params = urlparse.parse_qs(parsed_url.query)
-      # parse_qs returns a list of values for each key; we're only interested in
-      # the first.
-      for key in query_params:
-        value_count = len(query_params[key])
-        if value_count != 1:
-          self.send_error(
-              400,
-              'query parameter %s should have exactly one value, had %d' %
-              (key, value_count))
-          return
+    query_params = urlparse.parse_qs(parsed_url.query)
+    # parse_qs returns a list of values for each key; we're only interested in
+    # the first.
+    for key in query_params:
+      value_count = len(query_params[key])
+      if value_count != 1:
+        self.send_error(
+            400,
+            'query parameter %s should have exactly one value, had %d' %
+            (key, value_count))
+        return
+      query_params[key] = query_params[key][0]
 
-        query_params[key] = query_params[key][0]
-      handlers[clean_path](query_params)
+    if clean_path in data_handlers:
+      data_handlers[clean_path](query_params)
+    elif clean_path in TAB_ROUTES:
+      self._serve_index(query_params)
     else:
       self._serve_static_file(clean_path)

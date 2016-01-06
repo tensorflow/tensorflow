@@ -622,14 +622,16 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testVersionLow(self):
     with tf.Graph().as_default():
       pat = (r"^GraphDef version -1 is no longer supported: TensorFlow \S+ "
-             r"needs \d+ <= version <= \d+.  Please regenerate your graph.$")
+             r"needs %d <= version <= %d.  Please regenerate your graph.$" %
+             (tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX))
       with self.assertRaisesRegexp(ValueError, pat):
         tf.import_graph_def(self._MakeGraphDef("", version=-1))
 
   def testVersionHigh(self):
     with tf.Graph().as_default():
       pat = (r"^GraphDef version \d+ is not yet supported: TensorFlow \S+ "
-             r"needs \d+ <= version <= \d+.  Please upgrade TensorFlow.$")
+             r"needs %d <= version <= %d.  Please upgrade TensorFlow.$" %
+             (tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX))
       with self.assertRaisesRegexp(ValueError, pat):
         tf.import_graph_def(self._MakeGraphDef("", version=1 << 30))
 

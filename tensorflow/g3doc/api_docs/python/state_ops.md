@@ -462,6 +462,22 @@ contents of that collection.
   A list of Variable objects.
 
 
+- - -
+
+### `tf.moving_average_variables()` {#moving_average_variables}
+
+Returns all variables that maintain their moving averages.
+
+If an `ExponentialMovingAverage` object is created and the `apply()`
+method is called on a list of variables, these variables will
+be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
+This convenience function returns the contents of that collection.
+
+##### Returns:
+
+  A list of Variable objects.
+
+
 
 - - -
 
@@ -768,7 +784,7 @@ Sets the list of old checkpoint filenames.
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If the list of checkpoint filenames has already been set.
+*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
 
 
 - - -

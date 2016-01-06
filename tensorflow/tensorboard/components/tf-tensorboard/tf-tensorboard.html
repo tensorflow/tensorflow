@@ -20,11 +20,11 @@ allows the user to toggle between various dashboards.
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
-          <paper-tabs selected="0" noink class="tabs">
-            <paper-tab on-click="chooseEvents">Events</paper-tab>
-            <paper-tab on-click="chooseImages">Images</paper-tab>
-            <paper-tab on-click="chooseGraphs">Graph</paper-tab>
-            <paper-tab on-click="chooseHistograms">Histograms</paper-tab>
+          <paper-tabs selected="0" noink class="tabs" id="tabs">
+            <paper-tab data-mode="events" on-click="changeMode">Events</paper-tab>
+            <paper-tab data-mode="images" on-click="changeMode">Images</paper-tab>
+            <paper-tab data-mode="graphs" on-click="changeMode">Graph</paper-tab>
+            <paper-tab data-mode="histograms" on-click="changeMode">Histograms</paper-tab>
           </paper-tabs>
         </div>
       </paper-toolbar>
@@ -100,17 +100,9 @@ allows the user to toggle between various dashboards.
           value: "events",
         },
       },
-      chooseEvents: function() {
-        this.mode = "events";
-      },
-      chooseImages: function() {
-        this.mode = "images";
-      },
-      chooseGraphs: function() {
-        this.mode = "graphs";
-      },
-      chooseHistograms: function() {
-        this.mode = "histograms";
+      changeMode: function(ev) {
+        var mode = ev.target.parentElement.getAttribute('data-mode');
+        this._changeMode(mode, true);
       },
       eventDashboard: function(mode) {
         return mode === "events";
@@ -123,7 +115,47 @@ allows the user to toggle between various dashboards.
       },
       histogramDashboard: function(mode) {
         return mode === "histograms";
-      }
+      },
+      loadPreviousMode: function() {
+        this._changeMode(this._getModeAndPath().mode, false);
+      },
+      ready: function() {
+        this._changeMode(this._getModeAndPath().mode, true);
+
+        var tb = this;
+        window.addEventListener('popstate', function(){
+          tb.loadPreviousMode();
+        });
+      },
+      _changeMode: function(mode, isNewState) {
+        this.mode = mode;
+
+        // Change the selected tab
+        this.$.tabs.selected = this._tabs().indexOf(mode);
+
+        if (isNewState){
+          var basePath = this._getModeAndPath().path;
+          basePath += basePath[basePath.length - 1] == '/' ? '' : '/';
+          history.pushState(null, null, basePath + mode);
+        }
+      },
+      _getModeAndPath: function() {
+        // Returns a {mode: 'mode', path: 'basePathWithoutMode'}
+        // The mode is assumed to be at the end of the pathname.
+        var tokens = window.location.pathname.split('/');
+        var mode = tokens[tokens.length - 1];
+
+        if (_.contains(this._tabs(), mode)) {
+          return {mode: mode, path: tokens.slice(0, tokens.length-1).join('/')};
+        } else {
+          // Unrecognized modes turn into events
+          return {mode: 'events', path: tokens.join('/')};
+        }
+      },
+      _tabs: function() {
+        var elts = Array.prototype.slice.call(this.querySelectorAll('paper-tab'));
+        return elts.map(function(elt){ return elt.getAttribute('data-mode')});
+      },
     });
   </script>
 </dom-module>
