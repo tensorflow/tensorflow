@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"
