@@ -13,16 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PORT_H_
-#define TENSORFLOW_PLATFORM_PORT_H_
+#ifndef TENSORFLOW_PLATFORM_SNAPPY_H_
+#define TENSORFLOW_PLATFORM_SNAPPY_H_
 
-#include <vector>
-
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
-#endif  // TENSORFLOW_PLATFORM_PORT_H_
+namespace tensorflow {
+namespace port {
+
+// Snappy compression/decompression support
+bool Snappy_Compress(const char* input, size_t length, string* output);
+
+bool Snappy_GetUncompressedLength(const char* input, size_t length,
+                                  size_t* result);
+bool Snappy_Uncompress(const char* input, size_t length, char* output);
+
+}  // namespace port
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_PLATFORM_SNAPPY_H_
