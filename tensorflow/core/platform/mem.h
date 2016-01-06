@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_MEM_H_
 #define TENSORFLOW_PLATFORM_MEM_H_
 
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace port {
 
