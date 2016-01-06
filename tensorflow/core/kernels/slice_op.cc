@@ -175,6 +175,7 @@ class SliceOp : public OpKernel {
       HANDLE_DIM(3);
       HANDLE_DIM(4);
       HANDLE_DIM(5);
+      HANDLE_DIM(6);
 
 #undef HANDLE_DIM
 
@@ -230,7 +231,8 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 2); \
   DECLARE_GPU_SPEC(T, 3); \
   DECLARE_GPU_SPEC(T, 4); \
-  DECLARE_GPU_SPEC(T, 5);
+  DECLARE_GPU_SPEC(T, 5); \
+  DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
