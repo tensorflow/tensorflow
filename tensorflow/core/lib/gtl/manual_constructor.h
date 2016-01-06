@@ -29,7 +29,7 @@ limitations under the License.
 #include <new>
 #include <utility>
 
-#include "tensorflow/core/platform/port.h"  // For aligned_malloc/aligned_free
+#include "tensorflow/core/platform/mem.h"  // For aligned_malloc/aligned_free
 
 namespace tensorflow {
 namespace gtl {

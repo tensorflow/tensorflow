@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

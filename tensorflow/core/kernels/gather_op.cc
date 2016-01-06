@@ -15,10 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
