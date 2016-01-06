@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/env.h"
 
