@@ -106,6 +106,20 @@ limitations under the License.
 // Maybe we could put an empty macro here for Android?
 #define TF_CALL_GPU_NUMBER_TYPES(m) m(float)
 
+#if defined(__ANDROID_TYPES_FULL__)
+
+// Call "m" on all quantized types.
+#define TF_CALL_QUANTIZED_TYPES(m) \
+  m(qint8);                        \
+  m(quint8);                       \
+  m(qint32)
+
+#else
+
+#define TF_CALL_QUANTIZED_TYPES(m)
+
+#endif  // defined(__ANDROID_TYPES_FULL__)
+
 #endif  // defined(__ANDROID__)
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
