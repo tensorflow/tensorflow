@@ -151,7 +151,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "The constrast-adjusted image or images."
+    description: "The contrast-adjusted image or images."
     type: DT_FLOAT
   }
   summary: "Adjust the contrast of one or more images."
@@ -204,7 +204,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
