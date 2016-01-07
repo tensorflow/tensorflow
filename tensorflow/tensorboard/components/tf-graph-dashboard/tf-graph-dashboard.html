@@ -19,6 +19,7 @@ by default. The user can select a different run from a dropdown menu.
 <template>
 <div id="plumbing">
   <tf-url-generator
+      router="[[router]]"
       out-runs-url="{{_runsUrl}}"
       out-graph-url-generator="{{_graphUrlGen}}"
       id="urlGenerator"
@@ -101,7 +102,11 @@ Polymer({
     _datasets: {
       type: Object,
       computed: '_getDatasets(_runsWithGraph, _graphUrlGen)'
-    }
+    },
+    router: {
+      type: Object,
+      value: TF.Urls.productionRouter(),
+    },
   },
   _getDatasets: function(runsWithGraph, graphUrlGen) {
     return _.map(runsWithGraph, function(runName) {
