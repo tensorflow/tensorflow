@@ -160,18 +160,12 @@ class AdjustContrastOpv2 : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
 
-    Tensor mean_values;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<float>::value,
-                                                   TensorShape(input.shape()),
-                                                   &mean_values));
-
     if (input.NumElements() > 0) {
       const int64 batch = input.NumElements() / (height * width * channels);
       const int64 shape[4] = {batch, height, width, channels};
       functor::AdjustContrastv2<Device>()(
           context->eigen_device<Device>(), input.shaped<float, 4>(shape),
-          factor.scalar<float>(), mean_values.shaped<float, 4>(shape),
-          output->shaped<float, 4>(shape));
+          factor.scalar<float>(), output->shaped<float, 4>(shape));
     }
   }
 };
@@ -187,7 +181,6 @@ template <>
 void AdjustContrastv2<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float, 4>::ConstTensor input,
     typename TTypes<float>::ConstScalar contrast_factor,
-    typename TTypes<float, 4>::Tensor mean_values,
     typename TTypes<float, 4>::Tensor output);
 extern template struct AdjustContrastv2<GPUDevice>;
 #undef DECLARE_GPU_SPEC

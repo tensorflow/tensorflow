@@ -30,19 +30,31 @@ allows the user to toggle between various dashboards.
       </paper-toolbar>
       <div id="content" class="fit">
         <template is="dom-if" if="[[eventDashboard(mode)]]">
-          <tf-event-dashboard id="eventDash"></tf-event-dashboard>
+          <tf-event-dashboard
+            id="eventDash"
+            router="[[router]]"
+          ></tf-event-dashboard>
         </template>
 
         <template is="dom-if" if="[[imageDashboard(mode)]]">
-          <tf-image-dashboard id="imageDash"></tf-image-dashboard>
+          <tf-image-dashboard
+            id="imageDash"
+            router="[[router]]"
+          ></tf-image-dashboard>
         </template>
 
         <template is="dom-if" if="[[graphDashboard(mode)]]">
-          <tf-graph-dashboard id="graphDash"></tf-graph-dashboard>
+          <tf-graph-dashboard
+            id="graphDash"
+            router="[[router]]"
+          ></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[histogramDashboard(mode)]]">
-          <tf-histogram-dashboard id="histogramDash"></tf-histogram-dashboard>
+          <tf-histogram-dashboard
+            id="histogramDash"
+            router="[[router]]"
+          ></tf-histogram-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -95,6 +107,10 @@ allows the user to toggle between various dashboards.
     Polymer({
       is: "tf-tensorboard",
       properties: {
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
         mode: {
           type: String,
           value: "events",
