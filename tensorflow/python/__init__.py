@@ -73,11 +73,12 @@ from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import logging
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
 # Don't export modules except for the few we really want
 _whitelist = set([app, compat, errors, flags, image, logging, nn,
-                  python_io, test, train, user_ops])
+                  python_io, resource_loader, test, train, user_ops])
 # TODO(b/25561952): tf.tensor_util is DEPRECATED.  Please avoid.
 _whitelist.update([tensor_util])  # pylint: disable=undefined-variable
 __all__ = [name for name, x in locals().items() if not name.startswith('_') and

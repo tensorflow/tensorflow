@@ -12,33 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Load a file resource and return the contents."""
+"""Tests for custom user ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-import os.path
-import sys
-
+# pylint: disable=g-bad-import-order
 # pylint: disable=unused-import
-# pylint: disable=g-import-not-at-top
-# pylint: disable=wildcard-import
-# pylint: disable=protected-access
-from . import control_imports
+import os.path
+
 import tensorflow.python.platform
-if control_imports.USE_OSS:
-  from tensorflow.python.platform.default._resource_loader import *
-else:
-  from tensorflow.python.platform.google._resource_loader import *
+
+import tensorflow as tf
 
 
-def get_data_files_path():
-  """Get the directory where files specified in data attribute are stored.
+class AckermannTest(tf.test.TestCase):
 
-  Returns:
-    The directory where files specified in data attribute of py_test
-    and py_binary are store.
-  """
-  return os.path.dirname(inspect.getfile(sys._getframe(1)))
+  def testBasic(self):
+    library_filename = os.path.join(tf.resource_loader.get_data_files_path(),
+                                    'ackermann_op.so')
+    ackermann = tf.load_op_library(library_filename)
+
+    self.assertEqual(len(ackermann.OP_LIST.op), 1)
+    self.assertEqual(ackermann.OP_LIST.op[0].name, 'Ackermann')
+
+    with self.test_session():
+      self.assertEqual(ackermann.ackermann().eval(), 'A(m, 0) == A(m-1, 1)')
+
+
+if __name__ == '__main__':
+  tf.test.main()

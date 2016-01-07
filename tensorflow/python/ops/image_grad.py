@@ -58,7 +58,10 @@ def _ResizeBilinearGrad(op, grad):
   grad0 = None
   if op.inputs[0].dtype in allowed_types:
     # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bilinear_grad(grad, op.inputs[0])
+    grad0 = gen_image_ops._resize_bilinear_grad(
+        grad,
+        op.inputs[0],
+        align_corners=op.get_attr("align_corners"))
     # pylint: enable=protected-access
   return [grad0, None]
 
@@ -83,4 +86,3 @@ def _ResizeShape(op):
 def _ResizeBilinearGradShape(op):
   """Shape function for ResizeBilinearGrad."""
   return [op.inputs[1].get_shape()]
-

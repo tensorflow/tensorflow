@@ -133,14 +133,14 @@ allows the user to toggle between various dashboards.
         return mode === "histograms";
       },
       loadPreviousMode: function() {
-        this._changeMode(this._getModeAndPath().mode, false);
+        this._changeMode(this._getMode(), false);
       },
       ready: function() {
-        this._changeMode(this._getModeAndPath().mode, true);
+        this._changeMode(this._getMode(), true);
 
-        var tb = this;
-        window.addEventListener('popstate', function(){
-          tb.loadPreviousMode();
+        var self = this;
+        window.addEventListener('hashchange', function(){
+          self.loadPreviousMode();
         });
       },
       _changeMode: function(mode, isNewState) {
@@ -150,23 +150,14 @@ allows the user to toggle between various dashboards.
         this.$.tabs.selected = this._tabs().indexOf(mode);
 
         if (isNewState){
-          var basePath = this._getModeAndPath().path;
-          basePath += basePath[basePath.length - 1] == '/' ? '' : '/';
-          history.pushState(null, null, basePath + mode);
+          window.location.hash = mode;
         }
       },
-      _getModeAndPath: function() {
-        // Returns a {mode: 'mode', path: 'basePathWithoutMode'}
-        // The mode is assumed to be at the end of the pathname.
-        var tokens = window.location.pathname.split('/');
-        var mode = tokens[tokens.length - 1];
-
-        if (_.contains(this._tabs(), mode)) {
-          return {mode: mode, path: tokens.slice(0, tokens.length-1).join('/')};
-        } else {
-          // Unrecognized modes turn into events
-          return {mode: 'events', path: tokens.join('/')};
-        }
+      _getMode: function() {
+        // Return the mode as it is stored in the hash.
+        // If no mode can be found, default to the first tab.
+        var hash = window.location.hash;
+        return hash.length > 0 ? hash.slice(1, hash.length) : this._tabs()[0];
       },
       _tabs: function() {
         var elts = Array.prototype.slice.call(this.querySelectorAll('paper-tab'));
