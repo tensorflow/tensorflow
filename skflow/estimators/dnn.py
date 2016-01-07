@@ -47,12 +47,19 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
+        max_to_keep: The maximum number of recent checkpoint files to keep.
+            As new files are created, older files are deleted.
+            If None or 0, all checkpoint files are kept.
+            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
+        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+            to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None):
+                 verbose=1, early_stopping_rounds=None,
+                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
@@ -60,7 +67,9 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds)
+            early_stopping_rounds=early_stopping_rounds,
+            max_to_keep=max_to_keep,
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -97,7 +106,8 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 verbose=1, early_stopping_rounds=None):
+                 verbose=1, early_stopping_rounds=None,
+                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
@@ -105,7 +115,9 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds)
+            early_stopping_rounds=early_stopping_rounds,
+            max_to_keep=max_to_keep,
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
