@@ -357,7 +357,7 @@ class BaseSession(SessionInterface):
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
-                            'Acceptible feed values include Python scalars, '
+                            'Acceptable feed values include Python scalars, '
                             'strings, lists, or numpy ndarrays.')
 
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)

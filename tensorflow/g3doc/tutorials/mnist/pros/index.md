@@ -25,7 +25,7 @@ which automatically downloads and imports the MNIST dataset. It will create a
 directory `'MNIST_data'` in which to store the data files.
 
 ```python
-import input_data
+from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 ```
 
@@ -47,7 +47,7 @@ It allows you to interleave operations which build a
 [computation graph](../../../get_started/basic_usage.md#the-computation-graph)
 with ones that run the graph.
 This is particularly convenient when working in interactive contexts like
-iPython.
+IPython.
 If you are not using an `InteractiveSession`, then you should build
 the entire computation graph before starting a session and [launching the
 graph](../../../get_started/basic_usage.md#launching-the-graph-in-a-session).

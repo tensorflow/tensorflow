@@ -105,7 +105,7 @@ adds operations that perform inference, i.e. classification, on supplied images.
 add operations that compute the loss,
 gradients, variable updates and visualization summaries.
 
-### Model Inputs {#model-inputs}
+### Model Inputs 
 
 The input part of the model is built by the functions `inputs()` and
 `distorted_inputs()` which read images from the CIFAR-10 binary data files.
@@ -143,7 +143,7 @@ processing time. To prevent these operations from slowing down training, we run
 them inside 16 separate threads which continuously fill a TensorFlow
 [queue](../../api_docs/python/io_ops.md#shuffle_batch).
 
-### Model Prediction {#model-prediction}
+### Model Prediction 
 
 The prediction part of the model is constructed by the `inference()` function
 which adds operations to compute the *logits* of the predictions. That part of
@@ -182,7 +182,7 @@ layers of Alex's original model are locally connected and not fully connected.
 Try editing the architecture to exactly reproduce the locally connected
 architecture in the top layer.
 
-### Model Training {#model-training}
+### Model Training 
 
 The usual method for training a network to perform N-way classification is
 [multinomial logistic regression](https://en.wikipedia.org/wiki/Multinomial_logistic_regression),
@@ -301,7 +301,7 @@ values.  See how the scripts use
 [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
 for this purpose.
 
-## Evaluating a Model {#evaluating-a-model}
+## Evaluating a Model 
 
 Let us now evaluate how well the trained model performs on a hold-out data set.
 The model is evaluated by the script `cifar10_eval.py`.  It constructs the model

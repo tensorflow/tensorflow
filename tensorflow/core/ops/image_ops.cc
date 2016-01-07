@@ -275,7 +275,7 @@ channel and then adjusts each component of each pixel to
 
 images: Images to adjust.  At least 3-D.
 contrast_factor: A float multiplier for adjusting contrast.
-output: The constrast-adjusted image or images.
+output: The contrast-adjusted image or images.
 )Doc");
 
 // --------------------------------------------------------------------------

@@ -234,17 +234,19 @@ void PoolAllocator::EvictOne() {
         evicted_count_ / static_cast<double>(put_count_);
     const int64 alloc_request_count = allocated_count_ + get_from_pool_count_;
     const double alloc_rate =
-        allocated_count_ / static_cast<double>(alloc_request_count);
+        (alloc_request_count == 0)
+            ? 0.0
+            : allocated_count_ / static_cast<double>(alloc_request_count);
     static int log_counter = 0;
     // (counter increment not thread safe but it's just for logging, so we
     // don't care).
     bool should_log = ((log_counter++ % 10) == 0);
     if (should_log) {
-      LOG(WARNING) << "PoolAllocator: After " << alloc_request_count
-                   << " get requests, put_count=" << put_count_
-                   << " evicted_count=" << evicted_count_
-                   << " eviction_rate=" << eviction_rate
-                   << " and unsatisfied allocation rate=" << alloc_rate;
+      LOG(INFO) << "PoolAllocator: After " << alloc_request_count
+                << " get requests, put_count=" << put_count_
+                << " evicted_count=" << evicted_count_
+                << " eviction_rate=" << eviction_rate
+                << " and unsatisfied allocation rate=" << alloc_rate;
     }
     if (auto_resize_ && (eviction_rate > kTolerable) &&
         (alloc_rate > kTolerable)) {

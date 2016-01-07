@@ -108,7 +108,7 @@ unzip tensorflow/examples/label_image/data/inception_dec_2015.zip -d tensorflow/
 
 Next, we need to compile the C++ binary that includes the code to load and run the graph.
 If you've followed [the instructions to download the source installation of
-TensorFlow](http://www.tensorflow.org/versions/master/get_started/os_setup.html#source)
+TensorFlow](../../get_started/os_setup.md#installing-from-sources)
 for your platform, you should be able to build the example by
 running this command from your shell terminal:
 

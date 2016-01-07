@@ -112,7 +112,7 @@ Example:
 # Decode an image and convert it to HSV.
 rgb_image = tf.decode_png(...,  channels=3)
 rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.hsv_to_rgb(rgb_image)
+hsv_image = tf.rgb_to_hsv(rgb_image)
 ```
 
 @@rgb_to_grayscale
@@ -592,7 +592,7 @@ def per_image_whitening(image):
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/srqt(image.NumElements()))`.
+  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
 
   `stddev` is the standard deviation of all values in `image`. It is capped
   away from zero to protect against division by 0 when handling uniform images.
@@ -661,7 +661,7 @@ def random_brightness(image, max_delta, seed=None):
 def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image by a random factor.
 
-  Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
+  Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
 
   Args:
@@ -877,7 +877,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Images that are represented using floating point values are expected to have
   values in the range [0,1). Image data stored in integer data types are
-  expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+  expected to have values in the range `[0,MAX]`, where `MAX` is the largest
   positive representable number for the data type.
 
   This op converts between data types, scaling the values appropriately before
@@ -1123,7 +1123,7 @@ def random_saturation(image, lower, upper, seed=None):
 
 
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust staturation of an RGB image.
+  """Adjust saturation of an RGB image.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the saturation channel,

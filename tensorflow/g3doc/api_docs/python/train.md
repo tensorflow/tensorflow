@@ -463,7 +463,7 @@ Optimizer that implements the RMSProp algorithm.
 
 - - -
 
-#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
+#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
 

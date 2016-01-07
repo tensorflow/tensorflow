@@ -111,7 +111,7 @@ class ExponentialMovingAverage(object):
   maintain_averages_op = ema.apply([var0, var1])
 
   # Create an op that will update the moving averages after each training
-  # step.  This is what we will use in place of the usuall trainig op.
+  # step.  This is what we will use in place of the usual training op.
   with tf.control_dependencies([opt_op]):
       training_op = tf.group(maintain_averages_op)
 

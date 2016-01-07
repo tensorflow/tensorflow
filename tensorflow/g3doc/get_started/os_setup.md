@@ -9,18 +9,18 @@ The TensorFlow Python API currently supports Python 2.7 and Python 3.3+ from
 source.
 
 The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
-6.5 V2.  Please see [Cuda installation](#install_cuda).
+6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 ## Overview
 
 We support different ways to install TensorFlow:
 
-*  [Pip install](#pip_install): Install TensorFlow on your machine, possibly
+*  [Pip install](#pip-installation): Install TensorFlow on your machine, possibly
    upgrading previously installed Python packages.  May impact existing
    Python programs on your machine.
-*  [Virtualenv install](#virtualenv_install): Install TensorFlow in its own
+*  [Virtualenv install](#virtualenv-installation): Install TensorFlow in its own
    directory, not impacting any existing Python programs on your machine.
-*  [Docker install](#docker_install): Run TensorFlow in a Docker container
+*  [Docker install](#docker-installation): Run TensorFlow in a Docker container
    isolated from all other programs on your machine.
 
 If you are familiar with Pip, Virtualenv, or Docker, please feel free to adapt
@@ -28,9 +28,9 @@ the instructions to your particular needs.  The names of the pip and Docker
 images are listed in the corresponding installation sections.
 
 If you encounter installation errors, see
-[common problems](#common_install_problems) for some solutions.
+[common problems](#common-problems) for some solutions.
 
-## Pip Installation {#pip_install}
+## Pip Installation 
 
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
@@ -78,9 +78,9 @@ $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tens
 ```
 
 
-You can now [test your installation](#test_install).
+You can now [test your installation](#test-the-tensorflow-installation).
 
-## Virtualenv installation {#virtualenv_install}
+## Virtualenv installation 
 
 [Virtualenv](http://docs.python-guide.org/en/latest/dev/virtualenvs/) is a tool
 to keep the dependencies required by different Python projects in separate
@@ -121,13 +121,13 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.5.0-py2-none-any.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl
 ```
 
 and again for python3:
@@ -148,7 +148,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 ```
 
 With the Virtualenv environment activated, you can now
-[test your installation](#test_install).
+[test your installation](#test-the-tensorflow-installation).
 
 When you are done using TensorFlow, deactivate the environment.
 
@@ -170,7 +170,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 (tensorflow)$ deactivate
 ```
 
-## Docker installation {#docker_install}
+## Docker installation 
 
 [Docker](http://docker.com/) is a system to build self contained versions of a
 Linux operating system running on your machine.  When you install and run
@@ -217,14 +217,14 @@ in the repo with these flags, so the command-line would look like
 $ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh b.gcr.io/tensorflow/tensorflow:gpu
 ```
 
-You can now [test your installation](#test_install) within the Docker container.
+You can now [test your installation](#test-the-tensorflow-installation) within the Docker container.
 
-## Test the TensorFlow installation {#test_install}
+## Test the TensorFlow installation 
 
 ### (Optional, Linux) Enable GPU Support
 
 If you installed the GPU version of TensorFlow, you must also install the Cuda
-Toolkit 7.0 and CUDNN 6.5 V2.  Please see [Cuda installation](#install_cuda).
+Toolkit 7.0 and CUDNN 6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 You also need to set the `LD_LIBRARY_PATH` and `CUDA_HOME` environment
 variables.  Consider adding the commands below to your `~/.bash_profile`.  These
@@ -237,7 +237,7 @@ export CUDA_HOME=/usr/local/cuda
 
 ### Run TensorFlow from the Command Line
 
-See [common problems](#common_install_problems) if an error happens.
+See [common problems](#common-problems) if an error happens.
 
 Open a terminal and type the following:
 
@@ -290,11 +290,11 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 ...
 ```
 
-## Installing from sources {#source}
+## Installing from sources 
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
-[above](#pip_install).
+[above](#pip-installation).
 
 ### Clone the TensorFlow repository
 
@@ -331,11 +331,11 @@ binary path.
 $ sudo apt-get install python-numpy swig python-dev
 ```
 
-#### Configure the installation {#configure}
+#### Configure the installation 
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter and allows (optional)
-configuration of the CUDA libraries (see [below](#configure_cuda)).
+configuration of the CUDA libraries (see [below](#configure-tensorflows-canonical-view-of-cuda-libraries)).
 
 This step is used to locate the python and numpy header files.
 
@@ -344,7 +344,7 @@ $ ./configure
 Please specify the location of python. [Default is /usr/bin/python]:
 ```
 
-#### Optional: Install CUDA (GPUs on Linux) {#install_cuda}
+#### Optional: Install CUDA (GPUs on Linux) 
 
 In order to build or run TensorFlow with GPU support, both Cuda Toolkit 7.0 and
 CUDNN 6.5 V2 from NVIDIA need to be installed.
@@ -376,7 +376,7 @@ sudo cp cudnn-6.5-linux-x64-v2/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-6.5-linux-x64-v2/libcudnn* /usr/local/cuda/lib64
 ```
 
-##### Configure TensorFlow's canonical view of Cuda libraries {#configure_cuda}
+##### Configure TensorFlow's canonical view of Cuda libraries 
 When running the `configure` script from the root of your source tree, select
 the option `Y` when asked to build TensorFlow with GPU support.
 
@@ -455,7 +455,7 @@ configs in the same source tree.
 
 * You have to run configure before running bazel build. Otherwise, the build
 will fail with a clear error message. In the future, we might consider making
-this more conveninent by including the configure step in our build process,
+this more convenient by including the configure step in our build process,
 given necessary bazel new feature support.
 
 ### Installation for Mac OS X
@@ -491,7 +491,7 @@ best install that too:
 $ sudo easy_install ipython
 ```
 
-#### Configure the installation {#configure_osx}
+#### Configure the installation 
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter.
@@ -504,7 +504,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N]
 ```
 
-### Create the pip package and install {#create-pip}
+### Create the pip package and install 
 
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
@@ -515,7 +515,7 @@ $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_pack
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ pip install /tmp/tensorflow_pkg/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
+$ pip install /tmp/tensorflow_pkg/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 ```
 
 ## Train your first TensorFlow neural net model
@@ -525,10 +525,10 @@ Starting from the root of your source tree, run:
 ```python
 $ cd tensorflow/models/image/mnist
 $ python convolutional.py
-Succesfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
-Succesfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
-Succesfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.
-Succesfully downloaded t10k-labels-idx1-ubyte.gz 4542 bytes.
+Successfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
+Successfully downloaded train-labels-idx1-ubyte.gz 28881 bytes.
+Successfully downloaded t10k-images-idx3-ubyte.gz 1648877 bytes.
+Successfully downloaded t10k-labels-idx1-ubyte.gz 4542 bytes.
 Extracting data/train-images-idx3-ubyte.gz
 Extracting data/train-labels-idx1-ubyte.gz
 Extracting data/t10k-images-idx3-ubyte.gz
@@ -546,7 +546,7 @@ Validation error: 7.0%
 ...
 ```
 
-## Common Problems {#common_install_problems}
+## Common Problems 
 
 ### GPU-related issues
 
@@ -556,7 +556,7 @@ If you encounter the following when trying to run a TensorFlow program:
 ImportError: libcudart.so.7.0: cannot open shared object file: No such file or directory
 ```
 
-Make sure you followed the the GPU installation [instructions](#install_cuda).
+Make sure you followed the the GPU installation [instructions](#optional-install-cuda-gpus-on-linux).
 
 ### Pip installation issues
 
@@ -624,8 +624,8 @@ $ sudo easy_install -U six
 
 * Install TensorFlow with a separate Python library:
 
-    *  Using [Virtualenv](#virtualenv_install).
-    *  Using [Docker](#docker_install).
+    *  Using [Virtualenv](#virtualenv-installation).
+    *  Using [Docker](#docker-installation).
 
 * Install a separate copy of Python via [Homebrew](http://brew.sh/) or
 [MacPorts](https://www.macports.org/) and re-install TensorFlow in that
