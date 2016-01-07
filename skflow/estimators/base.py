@@ -115,9 +115,11 @@ class TensorFlowEstimator(BaseEstimator):
                 tf.as_dtype(self._data_feeder.output_dtype), output_shape,
                 name="output")
 
-            # Add histograms for X and y.
-            tf.histogram_summary("X", self._inp)
-            tf.histogram_summary("y", self._out)
+            # Add histograms for X and y if they are floats.
+            if self._data_feeder.input_dtype in (np.float32, np.float64):
+                tf.histogram_summary("X", self._inp)
+            if self._data_feeder.output_dtype in (np.float32, np.float64):
+                tf.histogram_summary("y", self._out)
 
             # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(
