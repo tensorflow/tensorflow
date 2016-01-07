@@ -23,7 +23,7 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
-from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 
@@ -117,6 +117,20 @@ def setup_predict_data_feeder(X, batch_size=-1):
     if len(X.shape) == 1:
         X = np.reshape(X, (-1, 1))
     return [X]
+
+
+def setup_processor_data_feeder(X):
+    """Sets up processor iterable.
+
+    Args:
+        X: numpy, pandas or iterable.
+
+    Returns:
+        Iterable of data to process.
+    """
+    if HAS_PANDAS:
+        X = extract_pandas_matrix(X)
+    return X
 
 
 class DataFeeder(object):
