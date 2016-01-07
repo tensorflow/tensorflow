@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/public/session_options.h"
