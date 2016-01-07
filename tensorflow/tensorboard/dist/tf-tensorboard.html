@@ -478,12 +478,32 @@ var tf;
                 return normalizedInputs;
             }, []);
         }
+        function addEdgeToGraph(graph, inputName, outputNode, isControlDependency, params, index) {
+            // Don't allow loops in the graph.
+            if (inputName === outputNode.name) {
+                return;
+            }
+            // Check if this op type and input number corresponds to a
+            // reference edge using the refEdges dictionary in the params.
+            var isRefEdge = params.refEdges[outputNode.op + " " + index] === true;
+            graph.edges.push({
+                v: inputName,
+                w: outputNode.name,
+                isControlDependency: isControlDependency,
+                isReferenceEdge: isRefEdge
+            });
+        }
         function build(rawNodes, params, tracker) {
             /**
-             * A dictionary that maps each in-embedding node name to its host node label
+             * A dictionary that maps each in-embedding node name to the node
              * object.
              */
             var inEmbedding = {};
+            /**
+             * A dictionary that maps each out-embedding node name to the node
+             * object.
+             */
+            var outEmbedding = {};
             /**
              * A dictionary that maps each node name to an array of the node's
              * out-embedding node label objects.
@@ -515,6 +535,7 @@ var tf;
                     }
                     if (isOutEmbeddedPred(opNode)) {
                         embeddingNodeNames.push(opNode.name);
+                        outEmbedding[opNode.name] = opNode;
                         _.each(opNode.inputs, function (input) {
                             var inputName = input.name;
                             outEmbeddings[inputName] = outEmbeddings[inputName] || [];
@@ -558,17 +579,27 @@ var tf;
                         _.each(opNode.inputs, function (input, i) {
                             var inputName = input.name;
                             if (inputName in inEmbedding) {
-                                opNode.inEmbeddings.push(inEmbedding[inputName]);
+                                var inEmbedNode = inEmbedding[inputName];
+                                opNode.inEmbeddings.push(inEmbedNode);
+                                // Move the inputs of the in-embedding node into incoming edges of
+                                // the main node. E.g. the control dependency of a constant node
+                                // should be moved to the op node where the constant is embedded.
+                                for (var _i = 0, _a = inEmbedNode.inputs; _i < _a.length; _i++) {
+                                    var embedInput = _a[_i];
+                                    addEdgeToGraph(graph, normalizedNameDict[embedInput.name] || embedInput.name, opNode, embedInput.isControlDependency, params, i);
+                                }
+                            }
+                            else if (inputName in outEmbedding) {
+                                // Move the inputs of the out-embedding node into inputs of
+                                // the main node where the out-embedding points to.
+                                var outEmbedNode = outEmbedding[inputName];
+                                for (var _b = 0, _c = outEmbedNode.inputs; _b < _c.length; _b++) {
+                                    var embedInput = _c[_b];
+                                    addEdgeToGraph(graph, normalizedNameDict[embedInput.name] || embedInput.name, opNode, input.isControlDependency, params, i);
+                                }
                             }
                             else {
-                                graph.edges.push({
-                                    v: normalizedNameDict[inputName] || inputName,
-                                    w: opNode.name,
-                                    isControlDependency: input.isControlDependency,
-                                    // Check if this op type and input number corresponds to a
-                                    // reference edge using the refEdges dictionary in the params.
-                                    isReferenceEdge: (params.refEdges[opNode.op + " " + i] === true)
-                                });
+                                addEdgeToGraph(graph, normalizedNameDict[inputName] || inputName, opNode, input.isControlDependency, params, i);
                             }
                         });
                     });
@@ -5346,6 +5377,10 @@ var tf;
              */
             Minimap.prototype.update = function () {
                 var _this = this;
+                // The origin hasn't rendered yet. Ignore making an update.
+                if (this.zoomG.childElementCount === 0) {
+                    return;
+                }
                 var $download = d3.select("#graphdownload");
                 this.download = $download.node();
                 $download.on("click", function (d) {
@@ -6261,43 +6296,82 @@ var TF;
 (function (TF) {
     var Urls;
     (function (Urls) {
+        ;
         Urls.routes = ["runs", "scalars", "histograms",
             "compressedHistograms", "images",
             "individualImage", "graph"];
-        function router(route) {
-            return function (tag, run) {
-                return "/" + route + "?tag=" + encodeURIComponent(tag)
-                    + "&run=" + encodeURIComponent(run);
+        function productionRouter() {
+            /* The standard router for communicating with the TensorBoard backend */
+            function standardRoute(route) {
+                return function (tag, run) {
+                    return "/data/" + route + "?tag=" + encodeURIComponent(tag)
+                        + "&run=" + encodeURIComponent(run);
+                };
+            }
+            function individualImageUrl(query) {
+                return "/data/individualImage?" + query;
+            }
+            function graphUrl(run) {
+                return "/data/graph?run=" + encodeURIComponent(run);
+            }
+            return {
+                runs: function () { return "/data/runs"; },
+                individualImage: individualImageUrl,
+                graph: graphUrl,
+                scalars: standardRoute("scalars"),
+                histograms: standardRoute("histograms"),
+                compressedHistograms: standardRoute("compressedHistograms"),
+                images: standardRoute("images"),
             };
         }
-        function runsUrl() {
-            return "/runs";
+        Urls.productionRouter = productionRouter;
+        ;
+        function demoRouter(dataDir) {
+            /* Retrieves static .json data generated by demo_from_server.py */
+            function demoRoute(route) {
+                return function (tag, run) {
+                    run = run.replace(/[ \)\(]/g, "_");
+                    tag = tag.replace(/[ \)\(]/g, "_");
+                    return dataDir + "/" + route + "/" + run + "/" + tag + ".json";
+                };
+            }
+            ;
+            function individualImageUrl(query) {
+                return dataDir + "/individualImage/" + query + ".png";
+            }
+            ;
+            function graphUrl(run) {
+                run = run.replace(/ /g, "_");
+                return dataDir + "/graph/" + run + ".pbtxt";
+            }
+            ;
+            return {
+                runs: function () { return dataDir + "/runs.json"; },
+                individualImage: individualImageUrl,
+                graph: graphUrl,
+                scalars: demoRoute("scalars"),
+                histograms: demoRoute("histograms"),
+                compressedHistograms: demoRoute("compressedHistograms"),
+                images: demoRoute("images"),
+            };
         }
-        Urls.runsUrl = runsUrl;
-        Urls.scalarsUrl = router("scalars");
-        Urls.histogramsUrl = router("histograms");
-        Urls.compressedHistogramsUrl = router("compressedHistograms");
-        Urls.imagesUrl = router("images");
-        function individualImageUrl(query) {
-            return "/individualImage?" + query;
-        }
-        Urls.individualImageUrl = individualImageUrl;
-        function graphUrl(run) {
-            return "/graph?run=" + encodeURIComponent(run);
-        }
-        Urls.graphUrl = graphUrl;
+        Urls.demoRouter = demoRouter;
     })(Urls = TF.Urls || (TF.Urls = {}));
 })(TF || (TF = {}));
 </script>
   <script>
     var polymerObject = {
       is: "tf-url-generator",
+      _computeRuns: function(router) {
+        return router.runs();
+      },
       properties: {
+        router: {
+          type: Object,
+        },
         outRunsUrl: {
           type: String,
-          value: function() {
-            return TF.Urls.runsUrl();
-          },
+          computed: "_computeRuns(router)",
           readOnly: true,
           notify: true,
         },
@@ -6316,15 +6390,16 @@ var TF;
       if (route === "runs") {
         return;
       }
+      var computeFnName = "_compute" + route;
+      polymerObject[computeFnName] = function(router) {
+        return router[route];
+      };
       var urlName = route + "Url";
       var propertyName = Polymer.CaseMap.dashToCamelCase("out-" + urlName + "Generator");
       polymerObject.properties[propertyName] = {
         type: Function,
-        value: function() {
-          return TF.Urls[urlName];
-        },
+        computed: computeFnName + "(router)",
         notify: true,
-        readOnly: true,
       }
     });
     Polymer(polymerObject);
@@ -7474,7 +7549,7 @@ var TF;
 <dom-module id="tf-event-dashboard" assetpath="../tf-event-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-url-generator out-runs-url="{{runsUrl}}" out-scalars-url-generator="{{scalarsUrlGen}}" id="urlGenerator"></tf-url-generator>
+      <tf-url-generator router="[[router]]" out-runs-url="{{runsUrl}}" out-scalars-url-generator="{{scalarsUrlGen}}" id="urlGenerator"></tf-url-generator>
 
       <tf-data-coordinator id="dataCoordinator" url-generator="[[scalarsUrlGen]]" run-to-tag="[[runToScalars]]" color-scale="[[colorScale]]" out-data-coordinator="{{dataCoordinator}}"></tf-data-coordinator>
 
@@ -7554,6 +7629,10 @@ var TF;
           computed: "_getVisibleTags(selectedRuns.*, runToScalars.*)"
         },
         _show_download_links: Boolean,
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
       },
       observers: ['redraw(_show_download_links)'],
       redraw: function(_show_download_links) {
@@ -7585,7 +7664,7 @@ var TF;
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-url-generator out-runs-url="{{runsUrl}}" out-compressed-histograms-url-generator="{{compressedHistogramsUrlGen}}" id="urlGenerator"></tf-url-generator>
+      <tf-url-generator router="[[router]]" out-runs-url="{{runsUrl}}" out-compressed-histograms-url-generator="{{compressedHistogramsUrlGen}}" id="urlGenerator"></tf-url-generator>
 
       <tf-data-coordinator id="dataCoordinator" url-generator="[[compressedHistogramsUrlGen]]" run-to-tag="[[runToCompressedHistograms]]" color-scale="[[colorScale]]" out-data-coordinator="{{dataCoordinator}}"></tf-data-coordinator>
 
@@ -7659,7 +7738,11 @@ var TF;
         _visibleTags: {
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, runToCompressedHistograms.*)"
-        }
+        },
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
       },
       _exists: function(run, tag, runToCompressedHistogramsChange) {
         var runToCompressedHistograms = runToCompressedHistogramsChange.base;
@@ -7916,6 +7999,10 @@ var TF;
         runToImages: Object,
         imagesUrlGen: Function,
         individualImageUrlGen: Function,
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
       },
       _hasImages: function(runToImagesChange) {
         return _.values(runToImagesChange.base).some(function(arr) {
@@ -8583,10 +8670,7 @@ Polymer({
   properties: {
     renderHierarchy: Object,
     name: String,
-    colorBy: {
-      type: String,
-      observer: '_colorByChanged'
-    },
+    colorBy: String,
     /** @type {d3_zoom} d3 zoom object */
     _zoom: Object,
     highlightedNode: {
@@ -8686,6 +8770,7 @@ Polymer({
     progress: Object
   },
   observers: [
+    '_colorByChanged(colorBy)',
     '_buildAndFit(renderHierarchy)'
   ],
   getNode: function(nodeName) {
@@ -8819,10 +8904,6 @@ Polymer({
       auxTitleStyle.display = 'none';
     }
   },
-
-
-
-
   /**
     * Called whenever the user changed the 'color by' option in the
     * UI controls.
@@ -10717,7 +10798,7 @@ function convertToHumanReadable(value, units, unitIndex) {
 <dom-module id="tf-graph-dashboard" assetpath="../tf-graph-dashboard/">
 <template>
 <div id="plumbing">
-  <tf-url-generator out-runs-url="{{_runsUrl}}" out-graph-url-generator="{{_graphUrlGen}}" id="urlGenerator"></tf-url-generator>
+  <tf-url-generator router="[[router]]" out-runs-url="{{_runsUrl}}" out-graph-url-generator="{{_graphUrlGen}}" id="urlGenerator"></tf-url-generator>
   <tf-run-generator id="runGenerator" url="[[_runsUrl]]" out-runs-with-graph="{{_runsWithGraph}}"></tf-run-generator>
 </div>
 <template is="dom-if" if="[[_datasetsEmpty(_datasets)]]">
@@ -10769,7 +10850,11 @@ Polymer({
     _datasets: {
       type: Object,
       computed: '_getDatasets(_runsWithGraph, _graphUrlGen)'
-    }
+    },
+    router: {
+      type: Object,
+      value: TF.Urls.productionRouter(),
+    },
   },
   _getDatasets: function(runsWithGraph, graphUrlGen) {
     return _.map(runsWithGraph, function(runName) {
@@ -10791,29 +10876,29 @@ Polymer({
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
-          <paper-tabs selected="0" noink="" class="tabs">
-            <paper-tab on-click="chooseEvents">Events</paper-tab>
-            <paper-tab on-click="chooseImages">Images</paper-tab>
-            <paper-tab on-click="chooseGraphs">Graph</paper-tab>
-            <paper-tab on-click="chooseHistograms">Histograms</paper-tab>
+          <paper-tabs selected="0" noink="" class="tabs" id="tabs">
+            <paper-tab data-mode="events" on-click="changeMode">Events</paper-tab>
+            <paper-tab data-mode="images" on-click="changeMode">Images</paper-tab>
+            <paper-tab data-mode="graphs" on-click="changeMode">Graph</paper-tab>
+            <paper-tab data-mode="histograms" on-click="changeMode">Histograms</paper-tab>
           </paper-tabs>
         </div>
       </paper-toolbar>
       <div id="content" class="fit">
         <template is="dom-if" if="[[eventDashboard(mode)]]">
-          <tf-event-dashboard id="eventDash"></tf-event-dashboard>
+          <tf-event-dashboard id="eventDash" router="[[router]]"></tf-event-dashboard>
         </template>
 
         <template is="dom-if" if="[[imageDashboard(mode)]]">
-          <tf-image-dashboard id="imageDash"></tf-image-dashboard>
+          <tf-image-dashboard id="imageDash" router="[[router]]"></tf-image-dashboard>
         </template>
 
         <template is="dom-if" if="[[graphDashboard(mode)]]">
-          <tf-graph-dashboard id="graphDash"></tf-graph-dashboard>
+          <tf-graph-dashboard id="graphDash" router="[[router]]"></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[histogramDashboard(mode)]]">
-          <tf-histogram-dashboard id="histogramDash"></tf-histogram-dashboard>
+          <tf-histogram-dashboard id="histogramDash" router="[[router]]"></tf-histogram-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -10866,22 +10951,18 @@ Polymer({
     Polymer({
       is: "tf-tensorboard",
       properties: {
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
         mode: {
           type: String,
           value: "events",
         },
       },
-      chooseEvents: function() {
-        this.mode = "events";
-      },
-      chooseImages: function() {
-        this.mode = "images";
-      },
-      chooseGraphs: function() {
-        this.mode = "graphs";
-      },
-      chooseHistograms: function() {
-        this.mode = "histograms";
+      changeMode: function(ev) {
+        var mode = ev.target.parentElement.getAttribute('data-mode');
+        this._changeMode(mode, true);
       },
       eventDashboard: function(mode) {
         return mode === "events";
@@ -10894,7 +10975,38 @@ Polymer({
       },
       histogramDashboard: function(mode) {
         return mode === "histograms";
-      }
+      },
+      loadPreviousMode: function() {
+        this._changeMode(this._getMode(), false);
+      },
+      ready: function() {
+        this._changeMode(this._getMode(), true);
+
+        var self = this;
+        window.addEventListener('hashchange', function(){
+          self.loadPreviousMode();
+        });
+      },
+      _changeMode: function(mode, isNewState) {
+        this.mode = mode;
+
+        // Change the selected tab
+        this.$.tabs.selected = this._tabs().indexOf(mode);
+
+        if (isNewState){
+          window.location.hash = mode;
+        }
+      },
+      _getMode: function() {
+        // Return the mode as it is stored in the hash.
+        // If no mode can be found, default to the first tab.
+        var hash = window.location.hash;
+        return hash.length > 0 ? hash.slice(1, hash.length) : this._tabs()[0];
+      },
+      _tabs: function() {
+        var elts = Array.prototype.slice.call(this.querySelectorAll('paper-tab'));
+        return elts.map(function(elt){ return elt.getAttribute('data-mode')});
+      },
     });
   </script>
 </dom-module>

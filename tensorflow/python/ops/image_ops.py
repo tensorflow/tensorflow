@@ -511,7 +511,11 @@ class ResizeMethod(object):
   AREA = 3
 
 
-def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
+def resize_images(images,
+                  new_height,
+                  new_width,
+                  method=ResizeMethod.BILINEAR,
+                  align_corners=False):
   """Resize `images` to `new_width`, `new_height` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -534,6 +538,9 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
     new_height: integer.
     new_width: integer.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+    align_corners: bool. If true, exactly align all 4 cornets of the input and
+                   output. Defaults to `false`. Only implemented for bilinear
+                   interpolation method so far.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -562,7 +569,9 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
     return images
 
   if method == ResizeMethod.BILINEAR:
-    images = gen_image_ops.resize_bilinear(images, [new_height, new_width])
+    images = gen_image_ops.resize_bilinear(images,
+                                           [new_height, new_width],
+                                           align_corners=align_corners)
   elif method == ResizeMethod.NEAREST_NEIGHBOR:
     images = gen_image_ops.resize_nearest_neighbor(images, [new_height,
                                                             new_width])
