@@ -167,7 +167,7 @@ class TensorFlowEstimator(BaseEstimator):
             # Initialize model parameters.
             self._trainer.initialize(self._session)
             self._initialized = True
-        
+ 
         # Sets up summary writer for later optional visualization.
         # Due to not able to setup _summary_writer in __init__ as it's not a
         # parameter of the model, here we need to check if such variable exists
