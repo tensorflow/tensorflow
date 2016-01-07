@@ -34,7 +34,8 @@ class CategoricalVocabulary(object):
         self._freeze = False
 
     def __len__(self):
-        return len(self._mapping)
+        """Returns total count of mappings, without counting unknown token."""
+        return len(self._mapping) - 1
 
     def freeze(self, freeze=True):
         """Freezes the vocabulary, after which new words return unknown token id.

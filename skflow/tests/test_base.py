@@ -22,6 +22,7 @@ import tensorflow as tf
 from tensorflow.python.platform import googletest
 
 import skflow
+from skflow.estimators import base
 
 
 class BaseTest(googletest.TestCase):
@@ -109,6 +110,13 @@ class BaseTest(googletest.TestCase):
         score = mean_squared_error(
             boston.target, regressor.predict(boston.data))
         self.assertLess(score, 150, "Failed with score = {0}".format(score))
+
+    def testUnfitted(self):
+        estimator = skflow.TensorFlowEstimator(model_fn=None, n_classes=1)
+        with self.assertRaises(base.NotFittedError):
+            estimator.predict([1, 2, 3])
+        with self.assertRaises(base.NotFittedError):
+            estimator.save('/tmp/path')
 
 
 if __name__ == "__main__":
