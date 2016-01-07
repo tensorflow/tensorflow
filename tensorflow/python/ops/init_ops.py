@@ -22,6 +22,7 @@ import math
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -40,6 +41,22 @@ def constant_initializer(value=0.0):
   """
   def _initializer(shape, dtype=dtypes.float32):
     return constant_op.constant(value, dtype=dtype, shape=shape)
+  return _initializer
+
+def identity_initializer(x):
+  """Returns an initializer that generates identical tensors.
+
+  Args:
+    x: A tensor. All elements of the initialized variable
+      will be set to the elements of this tensor.
+
+  Returns:
+    An initializer that generates tensors with same shape and contents.
+  """
+  def _initializer(shape, dtype):
+    x_ = gen_array_ops.identity(x)
+    x_.get_shape().assert_is_compatible_with(shape)
+    return x_
   return _initializer
 
 def random_uniform_initializer(minval=0.0, maxval=1.0, seed=None):
