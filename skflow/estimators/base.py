@@ -167,8 +167,13 @@ class TensorFlowEstimator(BaseEstimator):
             # Initialize model parameters.
             self._trainer.initialize(self._session)
             self._initialized = True
-            # Sets up summary writer for later optional visualization
-
+        
+        # Sets up summary writer for later optional visualization.
+        # Due to not able to setup _summary_writer in __init__ as it's not a
+        # parameter of the model, here we need to check if such variable exists
+        # and if it's None or not (in case it was setup in a previous run).
+        # It is initialized only in the case where it wasn't before and log dir
+        # is provided.
         if (logdir and (not hasattr(self, "_summary_writer") or
                         (hasattr(self, "_summary_writer") and self._summary_writer is None))):
             self._setup_summary_writer(logdir)
