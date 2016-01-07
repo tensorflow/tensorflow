@@ -37,6 +37,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
   <template>
     <div id="plumbing">
       <tf-url-generator
+        router="[[router]]"
         out-runs-url="{{runsUrl}}"
         out-scalars-url-generator="{{scalarsUrlGen}}"
         id="urlGenerator"
@@ -181,6 +182,10 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           computed: "_getVisibleTags(selectedRuns.*, runToScalars.*)"
         },
         _show_download_links: Boolean,
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
       },
       observers: ['redraw(_show_download_links)'],
       redraw: function(_show_download_links) {
