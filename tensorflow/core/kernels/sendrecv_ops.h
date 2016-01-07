@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_SENDRECV_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 

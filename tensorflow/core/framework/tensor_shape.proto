@@ -10,6 +10,10 @@ message TensorShapeProto {
   // One dimension of the tensor.
   message Dim {
     // Size of the tensor in that dimension.
+    // This value must be >= -1, but values of -1 are reserved for "unknown"
+    // shapes (values of -1 mean "unknown" dimension).  Certain wrappers
+    // that work with TensorShapeProto may fail at runtime when deserializing
+    // a TensorShapeProto containing a dim value of -1.
     int64 size = 1;
 
     // Optional name of the tensor dimension.

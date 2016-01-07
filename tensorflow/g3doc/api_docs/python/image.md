@@ -207,7 +207,7 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 - - -
 
-### `tf.image.resize_images(images, new_height, new_width, method=0)` {#resize_images}
+### `tf.image.resize_images(images, new_height, new_width, method=0, align_corners=False)` {#resize_images}
 
 Resize `images` to `new_width`, `new_height` using the specified `method`.
 
@@ -233,6 +233,9 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 *  <b>`new_height`</b>: integer.
 *  <b>`new_width`</b>: integer.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+*  <b>`align_corners`</b>: bool. If true, exactly align all 4 cornets of the input and
+                 output. Defaults to `false`. Only implemented for bilinear
+                 interpolation method so far.
 
 ##### Raises:
 
@@ -298,7 +301,7 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_bilinear(images, size, name=None)` {#resize_bilinear}
+### `tf.image.resize_bilinear(images, size, align_corners=None, name=None)` {#resize_bilinear}
 
 Resize `images` to `size` using bilinear interpolation.
 
@@ -311,6 +314,10 @@ Input images can be of different types but output images are always float.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -685,7 +692,7 @@ Example:
 # Decode an image and convert it to HSV.
 rgb_image = tf.decode_png(...,  channels=3)
 rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.hsv_to_rgb(rgb_image)
+hsv_image = tf.rgb_to_hsv(rgb_image)
 ```
 
 - - -
@@ -788,7 +795,7 @@ Convert `image` to `dtype`, scaling its values if needed.
 
 Images that are represented using floating point values are expected to have
 values in the range [0,1). Image data stored in integer data types are
-expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+expected to have values in the range `[0,MAX]`, where `MAX` is the largest
 positive representable number for the data type.
 
 This op converts between data types, scaling the values appropriately before
@@ -921,7 +928,7 @@ channel and then adjusts each component `x` of each pixel to
 
 Adjust the contrast of an image by a random factor.
 
-Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
+Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
 picked in the interval `[lower, upper]`.
 
 ##### Args:
@@ -1010,7 +1017,7 @@ picked in the interval `[-max_delta, max_delta]`.
 
 ### `tf.image.adjust_saturation(image, saturation_factor, name=None)` {#adjust_saturation}
 
-Adjust staturation of an RGB image.
+Adjust saturation of an RGB image.
 
 This is a convenience method that converts an RGB image to float
 representation, converts it to HSV, add an offset to the saturation channel,
@@ -1073,7 +1080,7 @@ Linearly scales `image` to have zero mean and unit norm.
 
 This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
 of all values in image, and
-`adjusted_stddev = max(stddev, 1.0/srqt(image.NumElements()))`.
+`adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
 
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.

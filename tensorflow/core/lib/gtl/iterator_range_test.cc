@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

@@ -24,6 +24,7 @@ limitations under the License.
 //#include "prodkernel/api/base/numa.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
@@ -232,9 +233,10 @@ void PoolAllocator::EvictOne() {
     const double eviction_rate =
         evicted_count_ / static_cast<double>(put_count_);
     const int64 alloc_request_count = allocated_count_ + get_from_pool_count_;
-    const double alloc_rate = (alloc_request_count == 0) ? 
-        0.0 :
-        allocated_count_ / static_cast<double>(alloc_request_count);
+    const double alloc_rate =
+        (alloc_request_count == 0)
+            ? 0.0
+            : allocated_count_ / static_cast<double>(alloc_request_count);
     static int log_counter = 0;
     // (counter increment not thread safe but it's just for logging, so we
     // don't care).

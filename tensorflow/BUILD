@@ -50,5 +50,5 @@ cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/core:tensorflow",
-    ]
+    ],
 )

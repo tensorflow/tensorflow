@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 #include "tensorflow/core/lib/gtl/inlined_vector.h"

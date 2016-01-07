@@ -7953,7 +7953,7 @@ var TF;
 <dom-module id="tf-image-dashboard" assetpath="../tf-image-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-url-generator out-runs-url="{{runsUrl}}" out-images-url-generator="{{imagesUrlGen}}" out-individual-image-url-generator="{{individualImageUrlGen}}" id="urlGenerator"></tf-url-generator>
+      <tf-url-generator router="[[router]]" out-runs-url="{{runsUrl}}" out-images-url-generator="{{imagesUrlGen}}" out-individual-image-url-generator="{{individualImageUrlGen}}" id="urlGenerator"></tf-url-generator>
 
       <tf-run-generator id="runGenerator" url="[[runsUrl]]" out-run-to-images="{{runToImages}}"></tf-run-generator>
     </div>

@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/typed_queue.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"

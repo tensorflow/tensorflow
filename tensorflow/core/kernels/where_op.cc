@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"

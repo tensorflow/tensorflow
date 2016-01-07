@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor_shape.h"
 

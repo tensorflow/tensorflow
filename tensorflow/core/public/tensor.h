@@ -54,6 +54,14 @@ class Tensor {
   /// `a` must outlive the lifetime of this Tensor.
   Tensor(Allocator* a, DataType type, const TensorShape& shape);
 
+  /// \brief Creates a tensor with the input `type` and `shape`, using the
+  /// allocator `a` and the specified "allocation_attr" to allocate the
+  /// underlying buffer.
+  ///
+  /// `a` must outlive the lifetime of this Tensor.
+  Tensor(Allocator* a, DataType type, const TensorShape& shape,
+         const AllocationAttributes& allocation_attr);
+
   /// Creates an uninitialized Tensor of the given data type.
   explicit Tensor(DataType type);
 

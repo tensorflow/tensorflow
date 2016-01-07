@@ -41,11 +41,18 @@ from tensorflow.python.training import training_ops
 class RMSPropOptimizer(optimizer.Optimizer):
   """Optimizer that implements the RMSProp algorithm (http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
 
+  See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
+
   @@__init__
   """
 
-  def __init__(self, learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10,
-               use_locking=False, name="RMSProp"):
+  def __init__(self,
+               learning_rate,
+               decay=0.9,
+               momentum=0.0,
+               epsilon=1e-10,
+               use_locking=False,
+               name="RMSProp"):
     """Construct a new RMSProp optimizer.
 
     Args:

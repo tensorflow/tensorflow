@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/env.h"
@@ -646,7 +647,13 @@ class OpKernelContext {
   // may retain references to the temporary tensors after the Op's
   // Compute method has run. See comment above.
   Status allocate_temp(DataType type, const TensorShape& shape,
-                       Tensor* out_temp, AllocatorAttributes attr);
+                       Tensor* out_temp, AllocatorAttributes allocator_attr,
+                       const AllocationAttributes& allocation_attr);
+  Status allocate_temp(DataType type, const TensorShape& shape,
+                       Tensor* out_temp, AllocatorAttributes allocator_attr) {
+    return allocate_temp(type, shape, out_temp, allocator_attr,
+                         AllocationAttributes());
+  }
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp) {
     return allocate_temp(type, shape, out_temp, AllocatorAttributes());
@@ -850,7 +857,15 @@ class OpKernelContext {
 
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
-                         Tensor* out_tensor, AllocatorAttributes attr);
+                         Tensor* out_tensor,
+                         AllocatorAttributes allocator_attr) {
+    return allocate_tensor(type, shape, out_tensor, allocator_attr,
+                           AllocationAttributes());
+  }
+
+  Status allocate_tensor(DataType type, const TensorShape& shape,
+                         Tensor* out_tensor, AllocatorAttributes allocator_attr,
+                         const AllocationAttributes& allocation_attr);
 
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
@@ -1084,12 +1099,11 @@ inline Status OpKernelContext::allocate_output(int index,
   return allocate_output(index, shape, output, attr);
 }
 
-inline Status OpKernelContext::allocate_tensor(DataType type,
-                                               const TensorShape& shape,
-                                               Tensor* out_tensor,
-                                               AllocatorAttributes attr) {
+inline Status OpKernelContext::allocate_tensor(
+    DataType type, const TensorShape& shape, Tensor* out_tensor,
+    AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  Tensor new_tensor(a, type, shape);
+  Tensor new_tensor(a, type, shape, allocation_attr);
 
   if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
@@ -1120,11 +1134,12 @@ inline Status OpKernelContext::allocate_output(int index,
   return s;
 }
 
-inline Status OpKernelContext::allocate_temp(DataType type,
-                                             const TensorShape& shape,
-                                             Tensor* out_temp,
-                                             AllocatorAttributes attr) {
-  Status s = allocate_tensor(type, shape, out_temp, attr);
+inline Status OpKernelContext::allocate_temp(
+    DataType type, const TensorShape& shape, Tensor* out_temp,
+    AllocatorAttributes allocator_attr,
+    const AllocationAttributes& allocation_attr) {
+  Status s =
+      allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (s.ok()) {
     if (params_.device->SaveTemporaryTensors()) {
       // keep a reference to the underlying memory around

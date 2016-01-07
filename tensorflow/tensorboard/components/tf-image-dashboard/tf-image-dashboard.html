@@ -20,6 +20,7 @@ mechanism for loading older images rather than always getting the most recent on
   <template>
     <div id="plumbing">
       <tf-url-generator
+        router="[[router]]"
         out-runs-url="{{runsUrl}}"
         out-images-url-generator="{{imagesUrlGen}}"
         out-individual-image-url-generator="{{individualImageUrlGen}}"

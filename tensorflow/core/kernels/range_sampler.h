@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/weighted_picker.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/status.h"

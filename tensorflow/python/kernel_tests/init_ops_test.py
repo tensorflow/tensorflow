@@ -93,86 +93,114 @@ class RandomNormalInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):
     for use_gpu in [False, True]:
-      init1 = tf.random_normal_initializer(0.0, 1.0, seed=1)
-      init2 = tf.random_normal_initializer(0.0, 1.0, seed=1)
-      self.assertTrue(identicaltest(self, init1, init2, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.random_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.random_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        self.assertTrue(identicaltest(self, init1, init2, use_gpu))
 
   def testInitializerDifferent(self):
     for use_gpu in [False, True]:
-      init1 = tf.random_normal_initializer(0.0, 1.0, seed=1)
-      init2 = tf.random_normal_initializer(0.0, 1.0, seed=2)
-      self.assertFalse(identicaltest(self, init1, init2, use_gpu=use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.random_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.random_normal_initializer(0.0, 1.0, seed=2, dtype=dtype)
+        self.assertFalse(identicaltest(self, init1, init2, use_gpu=use_gpu))
 
   def testDuplicatedInitializer(self):
     for use_gpu in [False, True]:
       init = tf.random_normal_initializer(0.0, 1.0)
       self.assertFalse(duplicated_initializer(self, init, use_gpu, 1))
 
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError,
+        tf.random_normal_initializer, 0.0, 1.0, dtype=tf.string)
+
 
 class TruncatedNormalInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):
     for use_gpu in [False, True]:
-      init1 = tf.truncated_normal_initializer(0.0, 1.0, seed=1)
-      init2 = tf.truncated_normal_initializer(0.0, 1.0, seed=1)
-      self.assertTrue(identicaltest(self, init1, init2, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.truncated_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.truncated_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        self.assertTrue(identicaltest(self, init1, init2, use_gpu))
 
   def testInitializerDifferent(self):
     for use_gpu in [False, True]:
-      init1 = tf.truncated_normal_initializer(0.0, 1.0, seed=1)
-      init2 = tf.truncated_normal_initializer(0.0, 1.0, seed=2)
-      self.assertFalse(identicaltest(self, init1, init2, use_gpu=use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.truncated_normal_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.truncated_normal_initializer(0.0, 1.0, seed=2, dtype=dtype)
+        self.assertFalse(identicaltest(self, init1, init2, use_gpu=use_gpu))
 
   def testDuplicatedInitializer(self):
     for use_gpu in [False, True]:
       init = tf.truncated_normal_initializer(0.0, 1.0)
       self.assertFalse(duplicated_initializer(self, init, use_gpu, 1))
 
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError,
+        tf.truncated_normal_initializer, 0.0, 1.0, dtype=tf.string)
+
 
 class RandomUniformInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):
     for use_gpu in [False, True]:
-      init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1)
-      init2 = tf.random_uniform_initializer(0.0, 1.0, seed=1)
-      self.assertTrue(identicaltest(self, init1, init2, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        self.assertTrue(identicaltest(self, init1, init2, use_gpu))
 
   def testInitializerDifferent(self):
     for use_gpu in [False, True]:
-      init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1)
-      init2 = tf.random_uniform_initializer(0.0, 1.0, seed=2)
-      self.assertFalse(identicaltest(self, init1, init2, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
+        init2 = tf.random_uniform_initializer(0.0, 1.0, seed=2, dtype=dtype)
+        self.assertFalse(identicaltest(self, init1, init2, use_gpu))
 
   def testDuplicatedInitializer(self):
     for use_gpu in [False, True]:
       init = tf.random_uniform_initializer(0.0, 1.0)
       self.assertFalse(duplicated_initializer(self, init, use_gpu, 1))
 
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError,
+        tf.random_uniform_initializer, 0.0, 1.0, dtype=tf.string)
+
 
 class UniformUnitScalingInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):
     for use_gpu in [False, True]:
-      init1 = tf.uniform_unit_scaling_initializer(seed=1)
-      init2 = tf.uniform_unit_scaling_initializer(seed=1)
-      self.assertTrue(identicaltest(self, init1, init2, use_gpu))
-      init3 = tf.uniform_unit_scaling_initializer(1.5, seed=1)
-      init4 = tf.uniform_unit_scaling_initializer(1.5, seed=1)
-      self.assertTrue(identicaltest(self, init3, init4, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
+        init2 = tf.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
+        self.assertTrue(identicaltest(self, init1, init2, use_gpu))
+        init3 = tf.uniform_unit_scaling_initializer(1.5, seed=1, dtype=dtype)
+        init4 = tf.uniform_unit_scaling_initializer(1.5, seed=1, dtype=dtype)
+        self.assertTrue(identicaltest(self, init3, init4, use_gpu))
 
   def testInitializerDifferent(self):
     for use_gpu in [False, True]:
-      init1 = tf.uniform_unit_scaling_initializer(seed=1)
-      init2 = tf.uniform_unit_scaling_initializer(seed=2)
-      init3 = tf.uniform_unit_scaling_initializer(1.5, seed=1)
-      self.assertFalse(identicaltest(self, init1, init2, use_gpu))
-      self.assertFalse(identicaltest(self, init1, init3, use_gpu))
-      self.assertFalse(identicaltest(self, init2, init3, use_gpu))
+      for dtype in [tf.float32, tf.float64]:
+        init1 = tf.uniform_unit_scaling_initializer(seed=1, dtype=dtype)
+        init2 = tf.uniform_unit_scaling_initializer(seed=2, dtype=dtype)
+        init3 = tf.uniform_unit_scaling_initializer(1.5, seed=1, dtype=dtype)
+        self.assertFalse(identicaltest(self, init1, init2, use_gpu))
+        self.assertFalse(identicaltest(self, init1, init3, use_gpu))
+        self.assertFalse(identicaltest(self, init2, init3, use_gpu))
 
   def testDuplicatedInitializer(self):
     for use_gpu in [False, True]:
       init = tf.uniform_unit_scaling_initializer()
       self.assertFalse(duplicated_initializer(self, init, use_gpu, 1))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError,
+        tf.uniform_unit_scaling_initializer, dtype=tf.string)
 
 
 class RandomWalkShapeTest(tf.test.TestCase):

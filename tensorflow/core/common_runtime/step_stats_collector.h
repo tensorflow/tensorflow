@@ -15,10 +15,9 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STEP_STATS_COLLECTOR_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STEP_STATS_COLLECTOR_H_
 
-#include <string>
-
-#include "tensorflow/core/platform/port.h"  // Must be first.
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
