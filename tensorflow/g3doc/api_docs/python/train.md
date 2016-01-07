@@ -298,6 +298,8 @@ Construct a new gradient descent optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
+See http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+
 - - -
 
 #### `tf.train.AdagradOptimizer.__init__(learning_rate, initial_accumulator_value=0.1, use_locking=False, name='Adagrad')` {#AdagradOptimizer.__init__}
@@ -350,13 +352,13 @@ Construct a new Momentum optimizer.
 
 Optimizer that implements the Adam algorithm.
 
+See http://arxiv.org/pdf/1412.6980v7.pdf.
+
 - - -
 
 #### `tf.train.AdamOptimizer.__init__(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')` {#AdamOptimizer.__init__}
 
 Construct a new Adam optimizer.
-
-Implementation is based on: http://arxiv.org/pdf/1412.6980v7.pdf
 
 Initialization:
 
@@ -460,6 +462,8 @@ using this function.
 ### `class tf.train.RMSPropOptimizer` {#RMSPropOptimizer}
 
 Optimizer that implements the RMSProp algorithm.
+
+See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
 
 - - -
 
@@ -893,7 +897,7 @@ ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 maintain_averages_op = ema.apply([var0, var1])
 
 # Create an op that will update the moving averages after each training
-# step.  This is what we will use in place of the usuall trainig op.
+# step.  This is what we will use in place of the usual training op.
 with tf.control_dependencies([opt_op]):
     training_op = tf.group(maintain_averages_op)
 
