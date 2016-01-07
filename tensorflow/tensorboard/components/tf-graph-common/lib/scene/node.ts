@@ -65,7 +65,7 @@ module tf.graph.scene.node {
  * @return selection of the created nodeGroups
  */
 export function buildGroup(sceneGroup,
-    nodeData: render.RenderNodeInformation[], sceneBehavior) {
+    nodeData: render.RenderNodeInfo[], sceneBehavior) {
   let container = scene.selectOrCreateChild(sceneGroup, "g",
     Class.Node.CONTAINER);
   // Select all children and join with data.
@@ -76,7 +76,7 @@ export function buildGroup(sceneGroup,
     // (It's not listed in the d3 wiki.)
     return this.childNodes; // this here refers to container.node()
   })
-    .data(nodeData, (d: any) => {
+    .data(nodeData, (d) => {
       // make sure that we don't have to swap shape type
       return d.node.name + ":" + d.node.type;
     });
@@ -124,7 +124,8 @@ export function buildGroup(sceneGroup,
       addInteraction(shape, d, sceneBehavior);
 
       // build subscene on the top
-      subsceneBuild(nodeGroup, d, sceneBehavior);
+      subsceneBuild(nodeGroup, <render.RenderGroupNodeInfo> d,
+          sceneBehavior);
 
       stylize(nodeGroup, d, sceneBehavior);
       position(nodeGroup, d, sceneBehavior);
@@ -168,7 +169,7 @@ export function buildGroup(sceneGroup,
  *        not have a subscene.
  */
 function subsceneBuild(nodeGroup,
-    renderNodeInfo: render.RenderGroupNodeInformation, sceneBehavior) {
+    renderNodeInfo: render.RenderGroupNodeInfo, sceneBehavior) {
   if (renderNodeInfo.node.isGroupNode) {
     if (renderNodeInfo.expanded) {
       // Recursively build the subscene.
@@ -184,7 +185,7 @@ function subsceneBuild(nodeGroup,
 /**
  * Translate the subscene of the given node group
  */
-function subscenePosition(nodeGroup, d: render.RenderNodeInformation) {
+function subscenePosition(nodeGroup, d: render.RenderNodeInfo) {
   let x0 = d.x - d.width / 2.0 + d.paddingLeft;
   let y0 = d.y - d.height / 2.0 + d.paddingTop;
 
@@ -199,7 +200,7 @@ function subscenePosition(nodeGroup, d: render.RenderNodeInformation) {
  * @param d Info about the node being rendered.
  * @param sceneBehavior parent scene module.
  */
-function addButton(selection, d: render.RenderNodeInformation, sceneBehavior) {
+function addButton(selection, d: render.RenderNodeInfo, sceneBehavior) {
   let group = scene.selectOrCreateChild(
     selection, "g", Class.Node.BUTTON_CONTAINER);
   scene.selectOrCreateChild(group, "circle", Class.Node.BUTTON_CIRCLE);
@@ -224,7 +225,7 @@ function addButton(selection, d: render.RenderNodeInformation, sceneBehavior) {
  * don't need interaction as their surrounding shape has interaction, and if
  * given interaction would cause conflicts with the expand/collapse button.
  */
-function addInteraction(selection, d: render.RenderNodeInformation,
+function addInteraction(selection, d: render.RenderNodeInfo,
     sceneBehavior, disableInteraction?: boolean) {
   if (disableInteraction) {
     selection.attr("pointer-events", "none");
@@ -282,7 +283,7 @@ export function getContextMenu(node: Node, sceneBehavior) {
  * @param renderNodeInfo The render node information for the label.
  * @param sceneBehavior parent scene module.
  */
-function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInformation,
+function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInfo,
     sceneBehavior) {
   let namePath = renderNodeInfo.node.name.split("/");
   let text = namePath[namePath.length - 1];
@@ -320,14 +321,15 @@ function getLabelFontScale(sceneBehavior) {
   }
   return fontScale;
 }
+
 /**
  * Set label position of a given node group
  */
-function labelPosition(nodeGroup, d: render.RenderNodeInformation,
+function labelPosition(nodeGroup, cx: number, cy: number,
     yOffset: number) {
   scene.selectChild(nodeGroup, "text", Class.Node.LABEL).transition()
-    .attr("x", d.x)
-    .attr("y", d.y + yOffset);
+    .attr("x", cx)
+    .attr("y", cy + yOffset);
 };
 
 /**
@@ -335,7 +337,7 @@ function labelPosition(nodeGroup, d: render.RenderNodeInformation,
  * as the shape's data.
  *
  * @param nodeGroup
- * @param d RenderNodeInformation
+ * @param d Render node information.
  * @param nodeClass class for the element.
  * @param before Reference DOM node for insertion.
  * @return Selection of the shape.
@@ -353,7 +355,7 @@ export function buildShape(nodeGroup, d, nodeClass: string, before?) {
     case NodeType.SERIES:
       // Choose the correct stamp to use to represent this series.
       let stampType = "annotation";
-      let groupNodeInfo = <render.RenderGroupNodeInformation>d;
+      let groupNodeInfo = <render.RenderGroupNodeInfo>d;
       if (groupNodeInfo.coreGraph) {
         stampType = groupNodeInfo.node.hasNonControlEdges
           ? "vertical" : "horizontal";
@@ -377,7 +379,7 @@ export function buildShape(nodeGroup, d, nodeClass: string, before?) {
   return shapeGroup;
 };
 
-export function nodeClass(d: render.RenderNodeInformation) {
+export function nodeClass(d: render.RenderNodeInfo) {
   switch (d.node.type) {
     case NodeType.OP:
       return Class.OPNODE;
@@ -394,43 +396,43 @@ export function nodeClass(d: render.RenderNodeInformation) {
 };
 
 /** Modify node and its subscene and its label's positional attributes */
-function position(nodeGroup, d: render.RenderNodeInformation, sceneBehavior) {
+function position(nodeGroup, d: render.RenderNodeInfo, sceneBehavior) {
   let shapeGroup = scene.selectChild(nodeGroup, "g", Class.Node.SHAPE);
+  let cx = layout.computeCXPositionOfNodeShape(d);
   switch (d.node.type) {
     case NodeType.OP: {
       // position shape
       let shape = scene.selectChild(shapeGroup, "ellipse");
-      scene.positionEllipse(shape, d.x, d.y, d.width, d.height);
-      labelPosition(nodeGroup, d, d.labelOffset);
+      scene.positionEllipse(shape, cx, d.y, d.coreBox.width, d.coreBox.height);
+      labelPosition(nodeGroup, cx, d.y, d.labelOffset);
       break;
     }
     case NodeType.META: {
       // position shape
       let shape = scene.selectChild(shapeGroup, "rect");
-      scene.positionRect(shape, d.x, d.y, d.width, d.height);
-
       if (d.expanded) {
+        scene.positionRect(shape, d.x, d.y, d.width, d.height);
         subscenePosition(nodeGroup, d);
-
         // put label on top
-        labelPosition(nodeGroup, d,
+        labelPosition(nodeGroup, cx, d.y,
           - d.height / 2 + d.labelHeight / 2);
       } else {
-        labelPosition(nodeGroup, d, 0);
+        scene.positionRect(shape, cx, d.y, d.coreBox.width, d.coreBox.height);
+        labelPosition(nodeGroup, cx, d.y, 0);
       }
       break;
     }
     case NodeType.SERIES: {
       let shape = scene.selectChild(shapeGroup, "use");
-      scene.positionRect(shape, d.x, d.y, d.width, d.height);
       if (d.expanded) {
-      subscenePosition(nodeGroup, d);
-
+        scene.positionRect(shape, d.x, d.y, d.width, d.height);
+        subscenePosition(nodeGroup, d);
         // put label on top
-        labelPosition(nodeGroup, d,
+        labelPosition(nodeGroup, cx, d.y,
           - d.height / 2 + d.labelHeight / 2);
       } else {
-        labelPosition(nodeGroup, d, d.labelOffset);
+        scene.positionRect(shape, cx, d.y, d.coreBox.width, d.coreBox.height);
+        labelPosition(nodeGroup, cx, d.y, d.labelOffset);
       }
     }
     case NodeType.BRIDGE: {
@@ -455,7 +457,7 @@ export enum ColorBy { STRUCTURE, DEVICE, COMPUTE_TIME, MEMORY };
  * option.
  */
 export function getFillForNode(templateIndex, colorBy,
-    renderInfo: render.RenderNodeInformation, isExpanded: boolean): string {
+    renderInfo: render.RenderNodeInfo, isExpanded: boolean): string {
   let colorParams = tf.graph.render.MetanodeColors;
   switch (colorBy) {
     case ColorBy.STRUCTURE:
@@ -493,7 +495,7 @@ export function getFillForNode(templateIndex, colorBy,
         linearGradient.selectAll("*").remove();
         let cumulativeProportion = 0;
         // For each device, create a stop using the proportion of that device.
-        _.each(renderInfo.deviceColors, (d: any) => {
+        _.each(renderInfo.deviceColors, d => {
           let color = d.color;
           linearGradient.append("stop")
             .attr("offset", cumulativeProportion)
@@ -522,7 +524,7 @@ export function getFillForNode(templateIndex, colorBy,
  * Modify node style by toggling class and assign attributes (only for things
  * that can't be done in css).
  */
-export function stylize(nodeGroup, renderInfo: render.RenderNodeInformation,
+export function stylize(nodeGroup, renderInfo: render.RenderNodeInfo,
     sceneBehavior, nodeClass?) {
   nodeClass = nodeClass || Class.Node.SHAPE;
   let isHighlighted = sceneBehavior.isNodeHighlighted(renderInfo.node.name);

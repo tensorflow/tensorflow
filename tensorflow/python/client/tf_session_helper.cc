@@ -71,6 +71,10 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
       *out_tf_datatype = TF_QUINT8;
     } else if (key == "qint8") {
       *out_tf_datatype = TF_QINT8;
+    } else if (key == "qint16") {
+      *out_tf_datatype = TF_QINT16;
+    } else if (key == "quint16") {
+      *out_tf_datatype = TF_QUINT16;
     } else if (key == "qint32") {
       *out_tf_datatype = TF_QINT32;
     } else {
@@ -98,11 +102,11 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT8:
       *out_tf_datatype = TF_UINT8;
       break;
-    case NPY_INT16:
-      *out_tf_datatype = TF_INT16;
-      break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
+      break;
+    case NPY_INT16:
+      *out_tf_datatype = TF_INT16;
       break;
     case NPY_INT64:
       *out_tf_datatype = TF_INT64;
@@ -143,11 +147,11 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
       break;
-    case TF_INT16:
-      *out_pyarray_type = NPY_INT16;
-      break;
     case TF_INT8:
       *out_pyarray_type = NPY_INT8;
+      break;
+    case TF_INT16:
+      *out_pyarray_type = NPY_INT16;
       break;
     case TF_INT64:
       *out_pyarray_type = NPY_INT64;
@@ -169,6 +173,12 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_QUINT8:
       *out_pyarray_type = NPY_UINT8;
+      break;
+    case TF_QINT16:
+      *out_pyarray_type = NPY_INT16;
+      break;
+    case TF_QUINT16:
+      *out_pyarray_type = NPY_UINT16;
       break;
     case TF_QINT32:
       *out_pyarray_type = NPY_INT32;

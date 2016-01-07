@@ -61,11 +61,10 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
       LOG(WARNING) << allocation_status;
-      context_->SetStatus(allocation_status);
       return perftools::gputools::port::StatusOr<
-          perftools::gputools::DeviceMemory<uint8>>();
+          perftools::gputools::DeviceMemory<uint8>>(
+          AsDeviceMemory<uint8>(nullptr, 0));
     }
-
     return perftools::gputools::port::StatusOr<
         perftools::gputools::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),

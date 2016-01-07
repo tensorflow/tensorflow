@@ -9,6 +9,8 @@ load("/tensorflow/core/platform/default/build_config_root",
 # List of proto files for android builds
 def tf_android_core_proto_sources():
     return [
+        "//tensorflow/core:example/example.proto",
+        "//tensorflow/core:example/feature.proto",
         "//tensorflow/core:framework/allocation_description.proto",
         "//tensorflow/core:framework/attr_value.proto",
         "//tensorflow/core:framework/config.proto",

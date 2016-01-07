@@ -29,7 +29,4 @@ addgroup --gid $CI_BUILD_GID $CI_BUILD_GROUP
 adduser --gid $CI_BUILD_GID --uid $CI_BUILD_UID --disabled-password \
     --home $CI_BUILD_HOME --quiet $CI_BUILD_USER
 
-cp /root/.bazelrc $CI_BUILD_HOME/.bazelrc
-chown $CI_BUILD_USER:$CI_BUILD_GROUP $CI_BUILD_HOME/.bazelrc
-
 sudo -u $CI_BUILD_USER --preserve-env -H ${COMMAND[@]}

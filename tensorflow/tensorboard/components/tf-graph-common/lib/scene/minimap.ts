@@ -142,6 +142,10 @@ export class Minimap {
    * was updated (e.g. when a node was expanded).
    */
   update(): void {
+    // The origin hasn't rendered yet. Ignore making an update.
+    if (this.zoomG.childElementCount === 0) {
+      return;
+    }
     let $download = d3.select("#graphdownload");
     this.download = <HTMLLinkElement>$download.node();
     $download.on("click", d => {

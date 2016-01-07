@@ -86,7 +86,8 @@ class FlagsTest(googletest.TestCase):
 if __name__ == "__main__":
   # Test command lines
   sys.argv.extend(["--bool_a", "--nobool_negation", "--bool_c=True",
-                   "--bool_d=False", "--bool_e=gibberish"])
+                   "--bool_d=False", "--bool_e=gibberish", "--unknown_flag",
+                   "and_argument"])
 
   # googletest.main() tries to interpret the above flags, so use the
   # direct functions instead.

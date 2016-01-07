@@ -28,7 +28,7 @@ from tensorflow.python.ops import gen_nn_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
-def _DeConv2DGrad(op, grad):
+def _Conv2DBackpropGrad(op, grad):
   """The derivatives for deconvolution.
 
   Args:

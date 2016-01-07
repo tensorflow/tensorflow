@@ -22,7 +22,7 @@ py_library(
     name = "input_data",
     srcs = ["input_data.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow:tensorflow_py"],
 )
 

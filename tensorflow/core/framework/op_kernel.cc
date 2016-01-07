@@ -442,15 +442,25 @@ struct KernelRegistration {
 // KernelDef.
 typedef std::unordered_multimap<string, KernelRegistration> KernelRegistry;
 
-static KernelRegistry* GlobalKernelRegistry() {
+void* GlobalKernelRegistry() {
   static KernelRegistry* global_kernel_registry = new KernelRegistry;
   return global_kernel_registry;
+}
+
+static KernelRegistry* GlobalKernelRegistryTyped() {
+  return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
 }
 
 static string Key(const string& op_type, DeviceType device_type,
                   const string& label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
+}
+
+extern "C" void RegisterKernels(void* registry_ptr) {
+  KernelRegistry* kernel_registry = static_cast<KernelRegistry*>(registry_ptr);
+  kernel_registry->insert(GlobalKernelRegistryTyped()->begin(),
+                          GlobalKernelRegistryTyped()->end());
 }
 
 namespace kernel_factory {
@@ -460,7 +470,7 @@ OpKernelRegistrar::OpKernelRegistrar(const KernelDef* kernel_def,
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
           kernel_def->label());
-  GlobalKernelRegistry()->insert(
+  GlobalKernelRegistryTyped()->insert(
       std::make_pair(key, KernelRegistration(*kernel_def, factory)));
   delete kernel_def;
 }
@@ -533,7 +543,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
   string label;  // Label defaults to empty if not found in NodeDef.
   GetNodeAttr(node_def, "_kernel", &label);
   const string key = Key(node_def.op(), device_type, label);
-  auto regs = GlobalKernelRegistry()->equal_range(key);
+  auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
@@ -730,7 +740,7 @@ bool FindArgInOp(const string& arg_name,
 
 Status ValidateKernelRegistrations(const OpRegistryInterface* op_registry) {
   Status unused_status;
-  for (const auto& key_registration : *GlobalKernelRegistry()) {
+  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
     const KernelDef& kernel_def(key_registration.second.def);
     const OpDef* op_def = op_registry->LookUp(kernel_def.op(), &unused_status);
     if (op_def == nullptr) {

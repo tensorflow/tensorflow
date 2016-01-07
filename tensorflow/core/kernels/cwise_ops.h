@@ -342,6 +342,15 @@ template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>
+struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
+
+template <typename T>
+struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
+
+template <typename T>
+struct erfc : base<T, Eigen::internal::scalar_erfc_op<T> > {};
+
+template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T> > {};
 
 template <typename T>

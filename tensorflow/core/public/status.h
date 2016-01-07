@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PUBLIC_STATUS_H_
 #define TENSORFLOW_PUBLIC_STATUS_H_
 
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include "tensorflow/core/lib/core/error_codes.pb.h"

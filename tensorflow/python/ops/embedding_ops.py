@@ -226,8 +226,17 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
   if not isinstance(sp_ids, ops.SparseTensor):
     raise TypeError("sp_ids must be SparseTensor")
   ignore_weights = sp_weights is None
-  if not ignore_weights and not isinstance(sp_weights, ops.SparseTensor):
-    raise TypeError("sp_weights must be either None or SparseTensor")
+  if not ignore_weights:
+    if not isinstance(sp_weights, ops.SparseTensor):
+      raise TypeError("sp_weights must be either None or SparseTensor")
+    sp_ids.values.get_shape().assert_is_compatible_with(
+        sp_weights.values.get_shape())
+    sp_ids.indices.get_shape().assert_is_compatible_with(
+        sp_weights.indices.get_shape())
+    sp_ids.shape.get_shape().assert_is_compatible_with(
+        sp_weights.shape.get_shape())
+    # TODO(yleon): Add enhanced node assertions to verify that sp_ids and
+    # sp_weights have equal indices and shapes.
 
   with ops.op_scope(params + [sp_ids], name, "embedding_lookup_sparse") as name:
     segment_ids = sp_ids.indices[:, 0]
@@ -252,7 +261,16 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
           array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
       bcast_weights_shape = array_ops.concat(0, [
           array_ops.shape(weights), ones])
+
+      orig_weights_shape = weights.get_shape()
       weights = array_ops.reshape(weights, bcast_weights_shape)
+
+      # Set the weight shape, since after reshaping to bcast_weights_shape,
+      # the shape becomes None.
+      if embeddings.get_shape().ndims is not None:
+        weights.set_shape(orig_weights_shape.concatenate(
+            [1 for _ in range(embeddings.get_shape().ndims - 1)]))
+
       embeddings *= weights
 
       if combiner == "sum":

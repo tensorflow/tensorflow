@@ -35,6 +35,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
   <template>
     <div id="plumbing">
       <tf-url-generator
+        router="[[router]]"
         out-runs-url="{{runsUrl}}"
         out-compressed-histograms-url-generator="{{compressedHistogramsUrlGen}}"
         id="urlGenerator"
@@ -164,7 +165,11 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
         _visibleTags: {
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, runToCompressedHistograms.*)"
-        }
+        },
+        router: {
+          type: Object,
+          value: TF.Urls.productionRouter(),
+        },
       },
       _exists: function(run, tag, runToCompressedHistogramsChange) {
         var runToCompressedHistograms = runToCompressedHistogramsChange.base;

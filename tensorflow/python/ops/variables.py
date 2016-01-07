@@ -572,6 +572,20 @@ def trainable_variables():
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
 
+def moving_average_variables():
+  """Returns all variables that maintain their moving averages.
+
+  If an `ExponentialMovingAverage` object is created and the `apply()`
+  method is called on a list of variables, these variables will
+  be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
+  This convenience function returns the contents of that collection.
+
+  Returns:
+    A list of Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES)
+
+
 def initialize_variables(var_list, name="init"):
   """Returns an Op that initializes a list of variables.
 

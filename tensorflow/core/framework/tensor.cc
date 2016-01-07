@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
@@ -216,6 +217,8 @@ PROTO_TRAITS(bool, bool, bool);
 PROTO_TRAITS(string, string, string);
 PROTO_TRAITS(qint8, int32, int);
 PROTO_TRAITS(quint8, int32, int);
+PROTO_TRAITS(qint16, int32, int);
+PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
 template <>
@@ -387,6 +390,8 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(qint32, SINGLE_ARG(STMTS))                   \
     CASE(quint8, SINGLE_ARG(STMTS))                   \
     CASE(qint8, SINGLE_ARG(STMTS))                    \
+    CASE(quint16, SINGLE_ARG(STMTS))                  \
+    CASE(qint16, SINGLE_ARG(STMTS))                   \
     CASE(bfloat16, SINGLE_ARG(STMTS))                 \
     case DT_INVALID:                                  \
       LOG(FATAL) << "Type not set";                   \

@@ -36,7 +36,7 @@ Properties out:
       </template>
       <template is="dom-if" if="[[!xValue]]">
         <h3 id="tooltip-help" class="tooltip-container">
-          Selected Runs
+          Runs
         </h3>
       </template>
     </div>
@@ -78,10 +78,10 @@ Properties out:
         height: 0px; /* hackhack So the flex-grow takes over and gives it space */
       }
       .x-button {
-        font-size: 14px;
-        background-color: var(--paper-grey-500);
+        font-size: 13px;
+        background-color: var(--tb-ui-light-accent);
         margin-top: 5px;
-        color: white;
+        color: var(--tb-ui-dark-accent);
       }
       .x-tooltip {
         display: flex;
