@@ -78,8 +78,8 @@ from tensorflow.python.platform import test
 # Don't export modules except for the few we really want
 _whitelist = set([app, compat, errors, flags, image, logging, nn,
                   python_io, test, train, user_ops])
-# TODO(b/25561952): tf.ops and tf.tensor_util are DEPRECATED.  Please avoid.
-_whitelist.update([ops, tensor_util])  # pylint: disable=undefined-variable
+# TODO(b/25561952): tf.tensor_util is DEPRECATED.  Please avoid.
+_whitelist.update([tensor_util])  # pylint: disable=undefined-variable
 __all__ = [name for name, x in locals().items() if not name.startswith('_') and
            (not inspect.ismodule(x) or x in _whitelist)]
 __all__.append('__version__')

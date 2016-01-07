@@ -7,11 +7,25 @@
     <title>Event Dashboard Demo Demo</title>
   </head>
   <body>
-    <script>
-      TF.Urls.runsUrl = function() {return "data/runs.json"};
-      TF.Urls.scalarsUrl = function(tag, run) {return "data/" + run + "/" + tag + ".json";};
-    </script>
-
-    <tf-event-dashboard id="demo"></tf-event-dashboard>
+    <dom-module id="x-demo">
+      <template>
+        <tf-event-dashboard
+          id="demo"
+          router="[[demoRouter]]">
+        </tf-event-dashboard>
+      </template>
+      <script>
+        Polymer({
+          is: "x-demo",
+          properties: {
+            demoRouter: {
+              type: Object,
+              value: TF.Urls.demoRouter("data"),
+            },
+          },
+        });
+      </script>
+    </dom-module>
+    <x-demo></x-demo>
   </body>
 </html>
