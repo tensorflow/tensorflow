@@ -19,6 +19,7 @@ from __future__ import unicode_literals
 import tensorflow as tf
 
 from skflow.preprocessing import text
+from skflow.preprocessing import CategoricalVocabulary
 
 
 class TextTest(tf.test.TestCase):
@@ -37,7 +38,7 @@ class TextTest(tf.test.TestCase):
         processor = text.ByteProcessor(max_document_length=8)
         inp = ["abc", "фыва", "фыва", b"abc",
                "12345678901234567890"]
-        res = list(processor.transform(inp))
+        res = list(processor.fit_transform(inp))
         self.assertAllEqual(res,
                             [[97, 98, 99, 0, 0, 0, 0, 0],
                             [209, 132, 209, 139, 208, 178, 208, 176],
@@ -56,6 +57,17 @@ class TextTest(tf.test.TestCase):
             ["a b c", "a\nb\nc", "a, b - c"])
         self.assertAllEqual(list(tokens),
                             [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
+
+    def testExistingVocabularyProcessor(self):
+        vocab = CategoricalVocabulary()
+        vocab.get("A")
+        vocab.get("B")
+        vocab.freeze()
+        vocab_processor = text.VocabularyProcessor(
+            max_document_length=4, vocabulary=vocab, tokenizer_fn=list)
+        tokens = vocab_processor.fit_transform(["ABC", "CBABAF"])
+        self.assertAllEqual(list(tokens), [[1, 2, 0, 0], [0, 2, 1, 2]])
+
 
 if __name__ == "__main__":
     tf.test.main()
