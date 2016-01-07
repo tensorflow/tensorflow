@@ -17,8 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/kernels/transpose_op_functor.h"
+#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 namespace functor {
@@ -34,14 +35,15 @@ struct TransposeFunctor<Eigen::GpuDevice, T, NDIMS> {
 
 #define DEFINE(T, N) template struct TransposeFunctor<Eigen::GpuDevice, T, N>;
 #define DEFINE_DIM(T) \
-  DEFINE(T, 1);       \
   DEFINE(T, 2);       \
   DEFINE(T, 3);       \
   DEFINE(T, 4);       \
   DEFINE(T, 5);       \
   DEFINE(T, 6);       \
   DEFINE(T, 7);       \
-  DEFINE(T, 8);
+  DEFINE(T, 8);       \
+  DEFINE(T, 9);       \
+  DEFINE(T, 10);
 DEFINE_DIM(uint8);
 DEFINE_DIM(int8);
 DEFINE_DIM(int16);
@@ -49,6 +51,8 @@ DEFINE_DIM(int32);
 DEFINE_DIM(int64);
 DEFINE_DIM(float);
 DEFINE_DIM(double);
+DEFINE_DIM(complex64);
+DEFINE_DIM(bool);
 #undef DEFINE_DIM
 #undef DEFINE
 

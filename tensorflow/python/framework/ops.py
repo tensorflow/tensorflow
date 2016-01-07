@@ -542,6 +542,35 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
                   % (error_prefix, value, type(value)))
 
 
+def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
+  """Converts `values` to a list of `Tensor` objects.
+
+  Args:
+    values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A list of `Tensor` and/or `IndexedSlices` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  if not isinstance(values, collections.Sequence):
+    raise TypeError("values must be a list.")
+  ret = []
+  for i, value in enumerate(values):
+    n = None if name is None else "%s_%d" % (name, i)
+    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+  return ret
+
+
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
                                         as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
@@ -613,29 +642,30 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
 
 def register_tensor_conversion_function(base_type, conversion_func,
                                         priority=100):
-  """Registers a function for converting objects of base_type to Tensor.
+  """Registers a function for converting objects of `base_type` to `Tensor`.
 
   The conversion function must have the following signature:
 
       def conversion_func(value, dtype=None, name=None, as_ref=False):
         # ...
 
-  It must return a Tensor with the given dtype if specified. If the
-  conversion function creates a new Tensor, it should use the given
-  name if specified. All exceptions will be propagated to the caller.
+  It must return a `Tensor` with the given `dtype` if specified. If the
+  conversion function creates a new `Tensor`, it should use the given
+  `name` if specified. All exceptions will be propagated to the caller.
 
-  If `as_ref` is true, the function must return a Tensor reference,
-  such as a VariableOp.
+  If `as_ref` is true, the function must return a `Tensor` reference,
+  such as a `Variable`.
 
   NOTE: The conversion functions will execute in order of priority,
-    followed by order of registration. To ensure that a conversion
-    function F runs before another conversion function G, ensure that
-    F is registered with a smaller priority than G.
+  followed by order of registration. To ensure that a conversion function
+  `F` runs before another conversion function `G`, ensure that `F` is
+  registered with a smaller priority than `G`.
 
   Args:
     base_type: The base type or tuple of base types for all objects that
       `conversion_func` accepts.
-    conversion_func: A function that converts instances of base_type to Tensor.
+    conversion_func: A function that converts instances of `base_type` to
+      `Tensor`.
     priority: Optional integer that indicates the priority for applying this
       conversion function. Conversion functions with smaller priority values
       run earlier than conversion functions with larger priority values.
@@ -756,16 +786,16 @@ class SparseTensor(object):
   """Represents a sparse tensor.
 
   Tensorflow represents a sparse tensor as three separate dense tensors:
-  `indices`, `values`, and `dense_shape`.  In Python, the three tensors are
+  `indices`, `values`, and `shape`.  In Python, the three tensors are
   collected into a `SparseTensor` class for ease of use.  If you have separate
-  `indices`, `values`, and `dense_shape` tensors, wrap them in a `SparseTensor`
-  object before passing to the Ops below.
+  `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
+  object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(values, indices, dense_shape)` is
+  Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
 
   * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
   * `values`: A 1-D tensor of any type and shape `[N]`.
-  * `dense_shape`: A 1-D int64 tensor of shape `[ndims]`.
+  * `shape`: A 1-D int64 tensor of shape `[ndims]`.
 
   where `N` and `ndims` are the number of values, and number of dimensions in
   the `SparseTensor` respectively.
@@ -773,15 +803,15 @@ class SparseTensor(object):
   The corresponding dense tensor satisfies
 
   ```python
-  dense.shape = dense_shape
+  dense.shape = shape
   dense[tuple(indices[i])] = values[i]
   ```
 
   By convention, `indices` should be sorted in row-major order (or equivalently
   lexicographic order on the tuples `indices[i]`).  This is not enforced when
   `SparseTensor` objects are constructed, but most ops assume correct ordering.
-  If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
-  misordered `SparseTensor`.
+  If the ordering of sparse tensor `st` is wrong, a fixed version can be
+  obtained by calling `tf.sparse_reorder(st)`.
 
   Example: The sparse tensor
 
@@ -2218,7 +2248,7 @@ class Graph(object):
     """
     try:
       old_stack = self._name_stack
-      if not name:  # Both for name=None nad name="" we re-set to empty scope.
+      if not name:  # Both for name=None and name="" we re-set to empty scope.
         new_stack = (None, None)
       elif name and name[-1] == "/":
         new_stack = (name[:-1], name[:-1])
@@ -2734,7 +2764,7 @@ def device(dev):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
-  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  [`Graph.device()`](../../api_docs/python/framework.md#Graph.device)
   for more details.
 
   Args:
@@ -2865,7 +2895,7 @@ def get_default_session():
   The returned `Session` will be the innermost session on which a
   `Session` or `Session.as_default()` context has been entered.
 
-  *N.B.* The default session is a property of the current thread. If you
+  NOTE: The default session is a property of the current thread. If you
   create a new thread, and wish to use the default session in that
   thread, you must explicitly add a `with sess.as_default():` in that
   thread's function.
@@ -2994,8 +3024,11 @@ _default_graph_stack = _DefaultGraphStack()
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
-  *N.B.* The default graph is a property of the current thread. This
-   function applies only to the current thread.
+  NOTE: The default graph is a property of the current thread. This
+  function applies only to the current thread.  Calling this function while
+  a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
+  behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
+  after calling this function will result in undefined behavior.
   """
   _default_graph_stack.reset()
 
@@ -3007,7 +3040,7 @@ def get_default_graph():
   `Graph.as_default()` context has been entered, or a global default
   graph if none has been explicitly created.
 
-  *N.B.* The default graph is a property of the current thread. If you
+  NOTE: The default graph is a property of the current thread. If you
   create a new thread, and wish to use the default graph in that
   thread, you must explicitly add a `with g.as_default():` in that
   thread's function.
@@ -3122,6 +3155,10 @@ class GraphKeys(object):
     produce input for a computation. See
     [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
     for more details.
+  * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
+    keep moving averages.  See
+    [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
+    for more details.
   """
 
   # Key to collect Variable objects that must be saved and restored
@@ -3139,6 +3176,8 @@ class GraphKeys(object):
   # Key to collect asset filepaths. An asset represents an external resource
   # like a vocabulary file.
   ASSET_FILEPATHS = "asset_filepaths"
+  # Key to collect Variable objects that keep moving averages.
+  MOVING_AVERAGE_VARIABLES = "moving_average_variables"
 
 
 def add_to_collection(name, value):

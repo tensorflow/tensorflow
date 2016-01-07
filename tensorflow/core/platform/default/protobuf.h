@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/protobuf.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/protobuf.h
+
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream.h"

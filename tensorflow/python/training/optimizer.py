@@ -44,7 +44,7 @@ class Optimizer(object):
   # Add Ops to the graph to minimize a cost by updating a list of variables.
   # "cost" is a Tensor, and the list of variables contains tf.Variable
   # objects.
-  opt_op = opt.minimize(cost, <list of variables>)
+  opt_op = opt.minimize(cost, var_list=<list of variables>)
   ```
 
   In the training program you will just have to run the returned Op.

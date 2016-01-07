@@ -43,6 +43,10 @@ template <>
 struct is_quantized<quint8> : true_type {};
 template <>
 struct is_quantized<qint32> : true_type {};
+template <>
+struct is_quantized<qint16> : true_type {};
+template <>
+struct is_quantized<quint16> : true_type {};
 
 // All types not specialized are marked invalid.
 template <class T>
@@ -68,6 +72,12 @@ template <>
 class numeric_limits<tensorflow::quint8>
     : public numeric_limits<tensorflow::uint8> {};
 template <>
+class numeric_limits<tensorflow::qint16>
+    : public numeric_limits<tensorflow::int16> {};
+template <>
+class numeric_limits<tensorflow::quint16>
+    : public numeric_limits<tensorflow::uint16> {};
+template <>
 class numeric_limits<tensorflow::qint32>
     : public numeric_limits<tensorflow::int32> {};
 
@@ -76,6 +86,10 @@ template <>
 struct is_signed<tensorflow::qint8> : public is_signed<tensorflow::int8> {};
 template <>
 struct is_signed<tensorflow::quint8> : public is_signed<tensorflow::uint8> {};
+template <>
+struct is_signed<tensorflow::qint16> : public is_signed<tensorflow::int16> {};
+template <>
+struct is_signed<tensorflow::quint16> : public is_signed<tensorflow::uint16> {};
 template <>
 struct is_signed<tensorflow::qint32> : public is_signed<tensorflow::int32> {};
 

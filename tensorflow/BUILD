@@ -44,3 +44,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python"],
 )
+
+cc_binary(
+    name = "libtensorflow.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/core:tensorflow",
+    ]
+)

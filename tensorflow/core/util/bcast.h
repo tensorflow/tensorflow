@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/port.h"
 
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
@@ -71,7 +72,7 @@ class BCast {
   // element is the outer-most dimension and the last element is the
   // inner-most dimension. Note that we do not use TensorShape since
   // it's more convenient to manipulate Vec directly for this module.
-  typedef std::vector<int64> Vec;
+  typedef gtl::InlinedVector<int64, 4> Vec;
 
   BCast(const Vec& x, const Vec& y);
   ~BCast() {}

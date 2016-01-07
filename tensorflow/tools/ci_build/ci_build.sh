@@ -67,6 +67,7 @@ docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
 echo "Running '${COMMAND[@]}' inside ${BUILD_TAG}.${CONTAINER_TYPE}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
+    --rm \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=${USER}" \

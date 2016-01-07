@@ -120,7 +120,7 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
                 "DT_INT8] } } }");
   ExpectSuccess(b().Attr("a:quantizedtype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
-                "[DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+                "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16]} } }");
   ExpectSuccess(b().Attr("a:{string,int32}"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_STRING, DT_INT32] } } }");
@@ -174,7 +174,7 @@ TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
   ExpectSuccess(
       b().Attr("a:list(quantizedtype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
-      "[DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+      "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16] } } }");
   ExpectSuccess(
       b().Attr("a: list({float, string, bool})"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "

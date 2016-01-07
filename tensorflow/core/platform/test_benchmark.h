@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 #if defined(PLATFORM_GOOGLE)

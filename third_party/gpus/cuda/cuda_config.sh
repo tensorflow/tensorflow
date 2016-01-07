@@ -113,6 +113,7 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError lib64/libcublas.so.7.0
   CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.6.5
   CheckAndLinkToSrcTree CudaError lib64/libcudart.so.7.0
+  CheckAndLinkToSrcTree CudaError lib64/libcufft.so.7.0
   exit 0
 fi
 

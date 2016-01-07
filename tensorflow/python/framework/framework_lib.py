@@ -35,7 +35,9 @@
 @@convert_to_tensor
 @@convert_to_tensor_or_indexed_slices
 @@get_default_graph
+@@reset_default_graph
 @@import_graph_def
+@@load_op_library
 
 ## Graph collections
 
@@ -52,13 +54,17 @@
 @@Dimension
 @@op_scope
 @@get_seed
+
+## For libraries building on TensorFlow
+
+@@register_tensor_conversion_function
 """
 
-# Classes used when building a Graph.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# Classes used when building a Graph.
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
@@ -72,6 +78,7 @@ from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.framework.ops import control_dependencies
 from tensorflow.python.framework.ops import get_default_graph
+from tensorflow.python.framework.ops import reset_default_graph
 from tensorflow.python.framework.ops import GraphKeys
 from tensorflow.python.framework.ops import add_to_collection
 from tensorflow.python.framework.ops import get_collection
@@ -88,4 +95,10 @@ from tensorflow.python.framework.ops import RegisterShape
 from tensorflow.python.framework.tensor_shape import Dimension
 from tensorflow.python.framework.tensor_shape import TensorShape
 
+# Needed when interfacing tensorflow to new array libraries
+from tensorflow.python.framework.ops import register_tensor_conversion_function
+
 from tensorflow.python.framework.dtypes import *
+
+# Load a TensorFlow plugin
+from tensorflow.python.framework.load_library import *

@@ -4,7 +4,7 @@ PREREQUISITES:
 
 *   Some familiarity with C++.
 *   Must have
-    [downloaded TensorFlow source](../../get_started/os_setup.md#source), and be
+    [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources), and be
     able to build it.
 
 We divide the task of supporting a file format into two pieces:

@@ -46,6 +46,7 @@ write the graph to a file.
 * [tensorflow::TensorShape](ClassTensorShape.md)
 * [tensorflow::TensorShapeDim](StructTensorShapeDim.md)
 * [tensorflow::TensorShapeUtils](ClassTensorShapeUtils.md)
+* [TF_Buffer](StructTF_Buffer.md)
 
 ## Thread
 
@@ -68,6 +69,7 @@ write the graph to a file.
 <!-- ClassTensorShape.md -->
 <!-- StructTensorShapeDim.md -->
 <!-- ClassTensorShapeUtils.md -->
+<!-- StructTF_Buffer.md -->
 <!-- ClassThread.md -->
 <!-- StructThreadOptions.md -->
 -->

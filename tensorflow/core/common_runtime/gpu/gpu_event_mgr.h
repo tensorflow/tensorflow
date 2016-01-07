@@ -37,29 +37,24 @@ class StreamExecutor;
 
 namespace tensorflow {
 
+class GPUOptions;
+
 // An object to keep track of pending Events in the StreamExecutor streams
 // and associated Tensors that cannot safely be deleted until the associated
 // Events are recorded.
 class EventMgr {
  public:
-  explicit EventMgr(perftools::gputools::StreamExecutor* se);
+  EventMgr(perftools::gputools::StreamExecutor* se,
+           const GPUOptions& gpu_options);
 
   ~EventMgr();
 
   typedef gtl::InlinedVector<TensorReference, 4> TensorReferenceVector;
 
-  // Takes ownership of *tensors and deletes it as soon as all events
-  // currently enqueued on *stream have completed.
-  inline void ThenDeleteTensors(perftools::gputools::Stream* stream,
-                                TensorReferenceVector* tensors) {
-    ToFreeVector to_free;
-    {
-      mutex_lock l(mu_);
-      QueueTensors(stream, tensors);
-      PollEvents(false, &to_free);
-    }
-    FreeMemory(to_free);
-  }
+  // Releases the references on the elements of "tensors" as soon as
+  // all events currently enqueued on "stream" have completed.
+  void ThenDeleteTensors(perftools::gputools::Stream* stream,
+                         const TensorReferenceVector& tensors);
 
   struct BufRec {
     Allocator* alloc;
@@ -92,8 +87,11 @@ class EventMgr {
 
  private:
   friend class TEST_EventMgrHelper;
+  perftools::gputools::StreamExecutor* const exec_;
+  const int64 deferred_bytes_threshold_;
   mutex mu_;
-  perftools::gputools::StreamExecutor* exec_;
+
+  void FlushAccumulatedTensors() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   struct InUse {
     perftools::gputools::Event* event;
@@ -122,7 +120,6 @@ class EventMgr {
   // Tensors and/or a BufRec to be deleted only after the Event
   // records.
   void QueueInUse(perftools::gputools::Stream* stream, InUse in_use)
-
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void QueueTensors(perftools::gputools::Stream* stream,
@@ -155,6 +152,12 @@ class EventMgr {
 
   // A stack of unused events
   std::vector<perftools::gputools::Event*> free_events_ GUARDED_BY(mu_);
+
+  // Buffered list of tensors waiting to have an event queued for deletion
+  perftools::gputools::Stream* accumulated_stream_ GUARDED_BY(mu_);
+  TensorReferenceVector* accumulated_tensors_ GUARDED_BY(mu_);
+  // Sum of the TotalBytes() of the tensors in "accumulated_tensors_"
+  int64 accumulated_tensor_bytes_ GUARDED_BY(mu_);
 
   // A FIFO queue of InUse events and associated tensors.
   std::deque<InUse> used_events_ GUARDED_BY(mu_);

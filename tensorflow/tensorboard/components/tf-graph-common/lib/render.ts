@@ -22,6 +22,8 @@ limitations under the License.
 
 module tf.graph.render {
 
+export type Point = {x: number, y: number};
+
 /**
  * Color parameters for op nodes.
  */
@@ -149,18 +151,19 @@ export interface RenderGraphParams {
  * Stores the rendering information, such as x and y coordinates,
  * for each node in the graph.
  */
-export class RenderGraphInformation {
+export class RenderGraphInfo {
   private hierarchy: hierarchy.Hierarchy;
-  private index: {[nodeName: string]: RenderNodeInformation};
+  private index: {[nodeName: string]: RenderNodeInfo};
   private params: RenderGraphParams;
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
   // Since the rendering information for each node is constructed lazily,
-  // upon node's expansion by the user, we keep a map between the node's name and
-  // whether the rendering information was already constructed for that node.
+  // upon node's expansion by the user, we keep a map between the node's name
+  // and whether the rendering information was already constructed for that
+  // node.
   private hasSubhierarchy: {[nodeName: string]: boolean};
-  root: RenderGroupNodeInformation;
+  root: RenderGroupNodeInfo;
 
   constructor(hierarchy: hierarchy.Hierarchy, params: RenderGraphParams) {
     this.hierarchy = hierarchy;
@@ -185,7 +188,8 @@ export class RenderGraphInformation {
         .range(params.minMaxColors);
 
     // Find also the minimum and maximum compute time.
-    let computeTimeExtent = d3.extent(topLevelGraph.nodes(), (nodeName, index) => {
+    let computeTimeExtent = d3.extent(topLevelGraph.nodes(),
+        (nodeName, index) => {
       let node = topLevelGraph.node(nodeName);
       // Some ops don't have stats at all.
       if (node.stats != null) {
@@ -196,27 +200,28 @@ export class RenderGraphInformation {
         .domain(computeTimeExtent)
         .range(params.minMaxColors);
 
-    // Maps node name to whether the rendering hierarchy was already constructed.
+    // Maps node name to whether the rendering hierarchy was already
+    // constructed.
     this.hasSubhierarchy = {};
     this.params = params;
-    this.root = new RenderGroupNodeInformation(hierarchy.root);
+    this.root = new RenderGroupNodeInfo(hierarchy.root);
     this.index[hierarchy.root.name] = this.root;
     this.buildSubhierarchy(hierarchy.root.name);
     this.root.expanded = true;
   }
 
   /**
-   * Get a previously created RenderNodeInformation by its node name.
+   * Get a previously created RenderNodeInfo by its node name.
    */
-  getRenderNodeByName(nodeName: string): RenderNodeInformation {
+  getRenderNodeByName(nodeName: string): RenderNodeInfo {
     return this.index[nodeName];
   }
 
   /**
-   * Get a previously created RenderNodeInformation for the specified node name,
+   * Get a previously created RenderNodeInfo for the specified node name,
    * or create one if it hasn't been created yet.
    */
-  getOrCreateRenderNodeByName(nodeName: string): RenderNodeInformation {
+  getOrCreateRenderNodeByName(nodeName: string): RenderNodeInfo {
     // Polymer may invoke this with null.
     if (!nodeName) {
       return null;
@@ -228,8 +233,8 @@ export class RenderGraphInformation {
 
     let node = this.hierarchy.node(nodeName);
     let renderInfo = node.isGroupNode ?
-        new RenderGroupNodeInformation(<GroupNode>node) :
-        new RenderNodeInformation(node);
+        new RenderGroupNodeInfo(<GroupNode>node) :
+        new RenderNodeInfo(node);
     this.index[nodeName] = renderInfo;
 
     if (node.stats) {
@@ -291,8 +296,8 @@ export class RenderGraphInformation {
   /**
    * Returns true if the renderNode is an isolated node within its parent node.
    */
-  isNodeAuxilliary(renderNode: RenderNodeInformation): boolean {
-    let parentNode = <RenderGroupNodeInformation>this.getRenderNodeByName(
+  isNodeAuxilliary(renderNode: RenderNodeInfo): boolean {
+    let parentNode = <RenderGroupNodeInfo>this.getRenderNodeByName(
       renderNode.node.parentNode.name);
     let found = _.find(parentNode.isolatedInExtract, node => {
       return node.node.name === renderNode.node.name;
@@ -322,7 +327,7 @@ export class RenderGraphInformation {
     }
 
     // At this point we know the rendering information is about a group node.
-    let renderGroupNodeInfo = <RenderGroupNodeInformation> renderNodeInfo;
+    let renderGroupNodeInfo = <RenderGroupNodeInfo> renderNodeInfo;
     let metagraph = renderGroupNodeInfo.node.metagraph;
     let coreGraph = renderGroupNodeInfo.coreGraph;
 
@@ -339,16 +344,16 @@ export class RenderGraphInformation {
 
       if (!childNode.isGroupNode) {
         _.each((<OpNode>childNode).inEmbeddings, embedding => {
-          let renderMetaedgeInfo = new RenderMetaedgeInformation(null);
+          let renderMetaedgeInfo = new RenderMetaedgeInfo(null);
           addInAnnotation(childRenderInfo, embedding, null, renderMetaedgeInfo,
               AnnotationType.CONSTANT, this.params);
-          this.index[embedding.name] = new RenderNodeInformation(embedding);
+          this.index[embedding.name] = new RenderNodeInfo(embedding);
         });
         _.each((<OpNode>childNode).outEmbeddings, embedding => {
-          let renderMetaedgeInfo = new RenderMetaedgeInformation(null);
+          let renderMetaedgeInfo = new RenderMetaedgeInfo(null);
           addOutAnnotation(childRenderInfo, embedding, null, renderMetaedgeInfo,
               AnnotationType.SUMMARY, this.params);
-          this.index[embedding.name] = new RenderNodeInformation(embedding);
+          this.index[embedding.name] = new RenderNodeInfo(embedding);
         });
       }
 
@@ -357,7 +362,7 @@ export class RenderGraphInformation {
     // Add render metaedge info for edges in the metagraph.
     _.each(metagraph.edges(), edgeObj => {
       let metaedge = metagraph.edge(edgeObj);
-      let renderMetaedgeInfo = new RenderMetaedgeInformation(metaedge);
+      let renderMetaedgeInfo = new RenderMetaedgeInfo(metaedge);
       coreGraph.setEdge(edgeObj.v, edgeObj.w, renderMetaedgeInfo);
     });
 
@@ -376,7 +381,7 @@ export class RenderGraphInformation {
       return;
     }
     let parentNodeInfo =
-      <RenderGroupNodeInformation> this.index[parentNode.name];
+      <RenderGroupNodeInfo> this.index[parentNode.name];
 
     // Utility function for computing the name of a bridge node.
     let getBridgeNodeName = (inbound, ...rest) =>
@@ -439,7 +444,7 @@ export class RenderGraphInformation {
       let isHighDegreeControlEdge = !bridgeMetaedge.numRegularEdges &&
         otherCounts.control[otherName] > this.params.maxControlDegree;
 
-      let [annotations, childAnnotations] =
+      let [, childAnnotations] =
         inbound ?
           [renderNodeInfo.inAnnotations, childRenderInfo.inAnnotations] :
           [renderNodeInfo.outAnnotations, childRenderInfo.outAnnotations];
@@ -472,7 +477,7 @@ export class RenderGraphInformation {
             inbound ?
               { v: targetName, w: nodeName } :
               { v: nodeName, w: targetName };
-          return <RenderMetaedgeInformation>
+          return <RenderMetaedgeInfo>
             parentNodeInfo.coreGraph.edge(adjoiningEdgeObj);
         };
 
@@ -547,7 +552,7 @@ export class RenderGraphInformation {
         childAnnotations.push(new Annotation(
             otherNode,
             otherRenderInfo,
-            new RenderMetaedgeInformation(bridgeMetaedge),
+            new RenderMetaedgeInfo(bridgeMetaedge),
             AnnotationType.SHORTCUT,
             inbound), this.params);
         return;
@@ -578,7 +583,7 @@ export class RenderGraphInformation {
             inbound: inbound,
           };
           bridgeContainerInfo =
-            new RenderNodeInformation(bridgeContainerNode);
+            new RenderNodeInfo(bridgeContainerNode);
           this.index[bridgeContainerName] = bridgeContainerInfo;
           coreGraph.setNode(bridgeContainerName, bridgeContainerInfo);
         }
@@ -596,7 +601,7 @@ export class RenderGraphInformation {
           // BridgeNode properties.
           inbound: inbound,
         };
-        bridgeNodeRenderInfo = new RenderNodeInformation(bridgeNode);
+        bridgeNodeRenderInfo = new RenderNodeInfo(bridgeNode);
         this.index[bridgeNodeName] = bridgeNodeRenderInfo;
         coreGraph.setNode(bridgeNodeName, bridgeNodeRenderInfo);
 
@@ -607,7 +612,7 @@ export class RenderGraphInformation {
 
       // Create and add a bridge render metaedge.
       let bridgeRenderMetaedge =
-        new RenderMetaedgeInformation(bridgeMetaedge);
+        new RenderMetaedgeInfo(bridgeMetaedge);
       bridgeRenderMetaedge.adjoiningMetaedge = adjoiningMetaedge;
       inbound ?
         coreGraph.setEdge(bridgeNodeName, childName, bridgeRenderMetaedge) :
@@ -716,7 +721,7 @@ export class RenderGraphInformation {
             // BridgeNode properties.
             inbound: inbound,
           };
-          structuralRenderInfo = new RenderNodeInformation(bridgeNode);
+          structuralRenderInfo = new RenderNodeInfo(bridgeNode);
           structuralRenderInfo.structural = true;
           this.index[structuralNodeName] = structuralRenderInfo;
           coreGraph.setNode(structuralNodeName, structuralRenderInfo);
@@ -725,7 +730,7 @@ export class RenderGraphInformation {
         }
 
         // Create the structural Metaedge and insert it.
-        let structuralMetaedgeInfo = new RenderMetaedgeInformation(null);
+        let structuralMetaedgeInfo = new RenderMetaedgeInfo(null);
         structuralMetaedgeInfo.structural = true;
         structuralMetaedgeInfo.weight--; // Reduce weight for dagre layout.
         inbound ?
@@ -748,8 +753,8 @@ export class RenderGraphInformation {
  */
 export class Annotation {
   node: Node;
-  renderNodeInfo: RenderNodeInformation;
-  renderMetaedgeInfo: RenderMetaedgeInformation;
+  renderNodeInfo: RenderNodeInfo;
+  renderMetaedgeInfo: RenderMetaedgeInfo;
   annotationType: AnnotationType;
   /**
    * Center position of annotation relative to the host
@@ -791,8 +796,8 @@ export class Annotation {
    * @param isIn True if it is an in-annotation. False if it is an
    *     out-annotation.
    */
-  constructor(node: Node, renderNodeInfo: RenderNodeInformation,
-      renderMetaedgeInfo: RenderMetaedgeInformation, type: AnnotationType,
+  constructor(node: Node, renderNodeInfo: RenderNodeInfo,
+      renderMetaedgeInfo: RenderMetaedgeInfo, type: AnnotationType,
       isIn: boolean) {
     this.node = node;
     this.renderNodeInfo = renderNodeInfo;
@@ -813,7 +818,7 @@ export enum AnnotationType {SHORTCUT, CONSTANT, SUMMARY, ELLIPSIS};
 
 /**
  * Manages a list of annotations. Two will be used for each
- * RenderNodeInformation, one for in annotations and one for out annotations.
+ * RenderNodeInfo, one for in annotations and one for out annotations.
  */
 export class AnnotationList {
   /**
@@ -857,7 +862,7 @@ export class AnnotationList {
 
     let ellipsisNode = new tf.graph.EllipsisNodeImpl(1);
     this.list.push(new Annotation(ellipsisNode,
-        new RenderNodeInformation(ellipsisNode), null,
+        new RenderNodeInfo(ellipsisNode), null,
         AnnotationType.ELLIPSIS, annotation.isIn));
   }
 }
@@ -865,7 +870,7 @@ export class AnnotationList {
 /**
  * Contains rendering information about a node in the hierarchical graph.
  */
-export class RenderNodeInformation {
+export class RenderNodeInfo {
   /** Reference to the original underlying Node from the hierarchical graph. */
   node: Node;
   /** Whether the node is expanded or not. */
@@ -875,7 +880,9 @@ export class RenderNodeInformation {
    * shortcuts to high-degree nodes.
    */
   inAnnotations: AnnotationList;
-  /** List of rendering information about out-annotations (e.g. summary nodes)  */
+  /**
+   * List of rendering information about out-annotations (e.g. summary nodes)
+   */
   outAnnotations: AnnotationList;
 
   // --- Params specified by layout --- //
@@ -884,10 +891,25 @@ export class RenderNodeInformation {
   x: number;
   /** Center y position */
   y: number;
-  /** Width of the node's shape */
+  /**
+   * Total width of the node's shape, including in- and out-annotations. This
+   * property is used by dagre to layout the graph.
+   */
   width: number;
-  /** Height of the node's shape. */
+  /**
+   * Total height of the node's shape, including in- and out-annotations. This
+   * property is used by dagre to layout the graph.
+   */
   height: number;
+  /**
+   * Size of the main box of the node, excluding in- and out-annotations. This
+   * property is used to draw the rectangle/ellipse shape denoting the node.
+   */
+  coreBox: {
+    width: number,
+    height: number,
+  };
+
   /** Width of the bounding box for all in-annotations. */
   inboxWidth: number;
   /** Width of the bounding box for all out-annotations. */
@@ -930,13 +952,9 @@ export class RenderNodeInformation {
   paddingRight: number;
   paddingBottom: number;
 
-  /** Width of the whole node including its shape and its annotations */
-  outerWidth: number;
-  /** Height of the whole node including its shape and its annotations */
-  outerHeight: number;
   /**
-   * Whether a node is extracted as source-like (having high out-degree or matching
-   * predefined in-extract pattern.)
+   * Whether a node is extracted as source-like (having high out-degree or
+   * matching predefined in-extract pattern.)
    */
   isInExtract: boolean;
   /**
@@ -991,11 +1009,9 @@ export class RenderNodeInformation {
     this.paddingLeft = 0;
     this.paddingRight = 0;
     this.paddingBottom = 0;
-
-    this.outerWidth = 0;
-    this.outerHeight = 0;
     this.isInExtract = false;
     this.isOutExtract = false;
+    this.coreBox = {width: 0, height: 0};
   }
 
   isInCore(): boolean {
@@ -1007,7 +1023,7 @@ export class RenderNodeInformation {
  * Contains rendering information about a Metaedge from the underlying
  * hierarchical graph. It may be from either a metagraph or a bridgegraph.
  */
-export class RenderMetaedgeInformation {
+export class RenderMetaedgeInfo {
   /**
    * Reference to the original underlying Metaedge from the hierarchical graph,
    * if any. This will be null for the edges which connect OpNodes to their
@@ -1016,15 +1032,15 @@ export class RenderMetaedgeInformation {
   metaedge: Metaedge;
 
   /**
-   * Reference to the adjoining RenderMeteaedgeInformation from the parent's
+   * Reference to the adjoining RenderMeteaedgeInfo from the parent's
    * coreGraph. This is used during layout to determine the point at which this
    * edge should touch the node's bounding box. This property will be null for
    * edges which terminate at a node on both ends (all non-bridge edges).
    */
-  adjoiningMetaedge: RenderMetaedgeInformation;
+  adjoiningMetaedge: RenderMetaedgeInfo;
 
   /**
-   * Most of the time, a RenderMetaedgeInformation object represents a real
+   * Most of the time, a RenderMetaedgeInfo object represents a real
    * edge between nodes in the underlying graph structure. But sometimes, an
    * edge only exsts for layout purposes. These structural edges are added
    * during buildSubhierarchy() to force dagre.layout() to put bridge nodes
@@ -1044,12 +1060,12 @@ export class RenderMetaedgeInformation {
    * X and Y coordinate pairs of the points in the path of the edge.
    * @see tf.graph.node.subsceneAdjustPaths
    */
-  points: any[];
+  points: Point[];
 
   /**
    * D3 selection of the group containing the path that displays this edge.
    */
-  edgeGroup: d3.Selection<RenderMetaedgeInformation>;
+  edgeGroup: d3.Selection<RenderMetaedgeInfo>;
 
   constructor(metaedge: Metaedge) {
     this.metaedge = metaedge;
@@ -1059,23 +1075,24 @@ export class RenderMetaedgeInformation {
   }
 }
 
-function addInAnnotation(node: RenderNodeInformation, predecessor: Node,
-    predecessorRenderInfo: RenderNodeInformation, edge: any,
-    type: AnnotationType, params: RenderGraphParams): void {
+function addInAnnotation(node: RenderNodeInfo, predecessor: Node,
+    predecessorRenderInfo: RenderNodeInfo,
+    edge: RenderMetaedgeInfo, type: AnnotationType,
+    params: RenderGraphParams): void {
   let annotation = new Annotation(predecessor, predecessorRenderInfo, edge,
       type, true);
   node.inAnnotations.push(annotation, params);
 }
 
-function addOutAnnotation(node: RenderNodeInformation, successor: Node,
-    successorRenderInfo: RenderNodeInformation, edge: any,
+function addOutAnnotation(node: RenderNodeInfo, successor: Node,
+    successorRenderInfo: RenderNodeInfo, edge: RenderMetaedgeInfo,
     type: AnnotationType, params: RenderGraphParams): void {
   let annotation = new Annotation(successor, successorRenderInfo, edge,
       type, false);
   node.outAnnotations.push(annotation, params);
 }
 
-function setGraphDepth(graph: graphlib.Graph<RenderNodeInformation, any>,
+function setGraphDepth(graph: graphlib.Graph<RenderNodeInfo, any>,
     depth: number) {
   _.each(graph.nodes(), nodeName => {
     let child = graph.node(nodeName);
@@ -1084,7 +1101,7 @@ function setGraphDepth(graph: graphlib.Graph<RenderNodeInformation, any>,
       switch (child.node.type) {
         case NodeType.META:
         case NodeType.SERIES:
-          setGroupNodeDepth(<RenderGroupNodeInformation>child, depth - 1);
+          setGroupNodeDepth(<RenderGroupNodeInfo>child, depth - 1);
           break;
         // Do nothing for leaf
       }
@@ -1092,35 +1109,31 @@ function setGraphDepth(graph: graphlib.Graph<RenderNodeInformation, any>,
   });
 };
 
-export class RenderGroupNodeInformation extends RenderNodeInformation {
+export class RenderGroupNodeInfo extends RenderNodeInfo {
   node: GroupNode;
   /**
    * The core graph is derived from the underlying node's metagraph, minus
    * the extracted source-like and sink-like nodes.
    */
-  coreGraph: graphlib.Graph<RenderNodeInformation, RenderMetaedgeInformation>;
-  /** Size of the bounding box for a metanode's core graph. */
-  coreBox: {
-    width: number,
-    height: number,
-  };
+  coreGraph: graphlib.Graph<RenderNodeInfo, RenderMetaedgeInfo>;
   /** Size of the bounding box for a metanode's isolated in-extract children. */
   inExtractBox: {width: number, height: number};
-  /** Size of the bounding box for a metanode's isolated out-extract children. */
+  /**
+   * Size of the bounding box for a metanode's isolated out-extract children.
+   */
   outExtractBox: {width: number, height: number};
   /** Array of isolated in-extract nodes. */
-  isolatedInExtract: RenderNodeInformation[];
+  isolatedInExtract: RenderNodeInfo[];
   /** Array of isolated out-extract nodes. */
-  isolatedOutExtract: RenderNodeInformation[];
+  isolatedOutExtract: RenderNodeInfo[];
 
   constructor(groupNode: GroupNode) {
     super(groupNode);
     let metagraph = groupNode.metagraph;
     let gl = metagraph.graph();
     this.coreGraph =
-        createGraph<RenderNodeInformation, RenderMetaedgeInformation>(
+        createGraph<RenderNodeInfo, RenderMetaedgeInfo>(
             gl.name, GraphType.CORE, { compound: true });
-    this.coreBox = {width: 0, height: 0};
     this.inExtractBox = {width: 0, height: 0};
     this.outExtractBox = {width: 0, height: 0};
     this.isolatedInExtract = [];
@@ -1128,7 +1141,7 @@ export class RenderGroupNodeInformation extends RenderNodeInformation {
   }
 }
 
-function setGroupNodeDepth(renderInfo: RenderGroupNodeInformation,
+function setGroupNodeDepth(renderInfo: RenderGroupNodeInfo,
     depth: number): void {
   if (renderInfo.coreGraph) {
     setGraphDepth(renderInfo.coreGraph, depth);
@@ -1142,8 +1155,9 @@ function setGroupNodeDepth(renderInfo: RenderGroupNodeInformation,
  * @param v Source name.
  * @param w Sink name.
  */
-function createShortcut(graph: graphlib.Graph<RenderNodeInformation, {}>,
-  v: string, w: string, params: RenderGraphParams) {
+function createShortcut(
+    graph: graphlib.Graph<RenderNodeInfo, RenderMetaedgeInfo>,
+    v: string, w: string, params: RenderGraphParams) {
   let src = graph.node(v);
   let sink = graph.node(w);
   let edge = graph.edge(v, w);
@@ -1173,7 +1187,7 @@ function createShortcut(graph: graphlib.Graph<RenderNodeInformation, {}>,
  * If detachAllEdgesForHighDegree or forceDetach is true, extract all of its
  * edges. Otherwise, only extract all in-edges.
  */
-function makeOutExtract(renderNode: RenderGroupNodeInformation, n: string,
+function makeOutExtract(renderNode: RenderGroupNodeInfo, n: string,
     params: RenderGraphParams, forceDetach?: boolean) {
   let graph = renderNode.coreGraph;
   let child = graph.node(n);
@@ -1204,7 +1218,7 @@ function makeOutExtract(renderNode: RenderGroupNodeInformation, n: string,
  * If detachAllEdgesForHighDegree or forceDetach is true, extract all of its
  * edges. Otherwise, only remove all out-edges.
  */
-export function makeInExtract(renderNode: RenderGroupNodeInformation, n: string,
+export function makeInExtract(renderNode: RenderGroupNodeInfo, n: string,
     params: RenderGraphParams, forceDetach?: boolean) {
   let graph = renderNode.coreGraph;
   let child = graph.node(n);
@@ -1251,7 +1265,7 @@ function hasTypeIn(node: Node, types: string[]): boolean {
 }
 
 /** Move nodes that are speficied to be excluded out of the core graph. */
-function extractSpeficiedNodes(renderNode: RenderGroupNodeInformation,
+function extractSpecifiedNodes(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
   _.each(graph.nodes(), n => {
@@ -1268,7 +1282,7 @@ function extractSpeficiedNodes(renderNode: RenderGroupNodeInformation,
 }
 
 /** Remove edges from pre-defined out-extract patterns */
-function extractPredefinedSink(renderNode: RenderGroupNodeInformation,
+function extractPredefinedSink(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
   _.each(graph.nodes(), n => {
@@ -1283,7 +1297,7 @@ function extractPredefinedSink(renderNode: RenderGroupNodeInformation,
 }
 
 /** Remove edges from pre-defined in-extract patterns */
-function extractPredefinedSource(renderNode: RenderGroupNodeInformation,
+function extractPredefinedSource(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
 
@@ -1299,7 +1313,7 @@ function extractPredefinedSource(renderNode: RenderGroupNodeInformation,
 }
 
 /** Extract from nodes with in-degree > maxInDegree */
-function extractHighInDegree(renderNode: RenderGroupNodeInformation,
+function extractHighInDegree(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
   let maxInDegree = params.maxInDegree;
@@ -1313,7 +1327,8 @@ function extractHighInDegree(renderNode: RenderGroupNodeInformation,
     // no regular edges, in which case use the number of control edges.
     // This is done so that control edges don't effect if nodes are extracted
     // from the core graph, unless the node is only used for control.
-    let numEdgesToCount = _.reduce(graph.predecessors(n), (numEdgesToCount, pred) => {
+    let numEdgesToCount = _.reduce(graph.predecessors(n),
+        (numEdgesToCount, pred) => {
       let metaedge = graph.edge(pred, n).metaedge;
       return numEdgesToCount + (metaedge.numRegularEdges ? 1 : 0);
     }, 0);
@@ -1329,7 +1344,7 @@ function extractHighInDegree(renderNode: RenderGroupNodeInformation,
 }
 
 /** Extract nodes with out-degree > maxOutDegree */
-function extractHighOutDegree(renderNode: RenderGroupNodeInformation,
+function extractHighOutDegree(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
   let maxOutDegree = params.maxOutDegree;
@@ -1343,7 +1358,8 @@ function extractHighOutDegree(renderNode: RenderGroupNodeInformation,
     // no regular edges, in which case use the number of control edges.
     // This is done so that control edges don't effect if nodes are extracted
     // from the core graph, unless the node is only used for control.
-    let numEdgesToCount = _.reduce(graph.successors(n), (numEdgesToCount, succ) => {
+    let numEdgesToCount = _.reduce(graph.successors(n),
+        (numEdgesToCount, succ) => {
       let metaedge = graph.edge(n, succ).metaedge;
       return numEdgesToCount + (metaedge.numRegularEdges ? 1 : 0);
     }, 0);
@@ -1359,7 +1375,7 @@ function extractHighOutDegree(renderNode: RenderGroupNodeInformation,
 }
 
 /** Remove control edges from nodes that have too many control edges */
-function removeControlEdges(renderNode: RenderGroupNodeInformation,
+function removeControlEdges(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;
 
@@ -1408,10 +1424,10 @@ export function mapIndexToHue(id: number): number {
  * @param {Object} params render Graph construction parameters. See
  *     <tf-graph-params>'s output
  */
-function extractHighDegrees(renderNode: RenderGroupNodeInformation,
+function extractHighDegrees(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
 
-  extractSpeficiedNodes(renderNode, params);
+  extractSpecifiedNodes(renderNode, params);
 
   if (params.outExtractTypes) {
     extractPredefinedSink(renderNode, params);

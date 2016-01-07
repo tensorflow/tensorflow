@@ -106,6 +106,7 @@ concatenated.
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
+@@conv2d_transpose
 
 ## Pooling
 
@@ -686,7 +687,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
-          sparse_indices, sampled_logits_shape, acc_weights, 0.0)
+          sparse_indices, sampled_logits_shape, acc_weights,
+          default_value=0.0, validate_indices=False)
 
     if subtract_log_q:
       # Subtract log of Q(l), prior probability that l appears in sampled.

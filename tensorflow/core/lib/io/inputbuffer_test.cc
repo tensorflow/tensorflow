@@ -116,6 +116,32 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
   }
 }
 
+TEST(InputBuffer, ReadLine_CRLF) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/inputbuffer_test";
+  WriteStringToFile(env, fname, "line one\r\n\r\n\r\nline two\r\nline three");
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessFile* file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    string line;
+    io::InputBuffer in(file, buf_size);
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line one");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line two");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line three");
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    // A second call should also return end of file
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+  }
+}
+
 TEST(InputBuffer, ReadNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";

@@ -27,7 +27,7 @@ REGISTER_OP("Switch")
     .Doc(R"doc(
 Forwards `data` to the output port determined by `pred`.
 
-If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,
+If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
 the data goes to `output_false`.
 
 See also `RefSwitch` and `Merge`.
@@ -48,7 +48,7 @@ REGISTER_OP("RefSwitch")
     .Doc(R"doc(
 Forwards the ref tensor `data` to the output port determined by `pred`.
 
-If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,
+If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
 the data goes to `output_false`.
 
 See also `Switch` and `Merge`.

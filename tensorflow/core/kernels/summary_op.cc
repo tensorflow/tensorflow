@@ -61,15 +61,6 @@ class SummaryScalarOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SummaryScalarOp<float>);
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SummaryScalarOp<double>);
-
 template <typename T>
 class SummaryHistoOp : public OpKernel {
  public:
@@ -107,6 +98,9 @@ class SummaryHistoOp : public OpKernel {
 };
 
 #define REGISTER(T)                                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("ScalarSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
+      SummaryScalarOp<T>);                                                \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SummaryHistoOp<T>);

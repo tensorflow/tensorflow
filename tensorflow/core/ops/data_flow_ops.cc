@@ -388,6 +388,7 @@ REGISTER_OP("HashTable")
     .Attr("shared_name: string = ''")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
+    .SetIsStateful()
     .Doc(R"doc(
 Creates a non-initialized hash table.
 

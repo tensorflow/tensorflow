@@ -55,11 +55,12 @@ struct AdjustContrast {
     reshape_dims.set(0, batch);
     reshape_dims.set(3, channels);
 #endif
-    mean_values.device(d) = input.template cast<float>()
-                                .mean(reduction_axis)
-                                .eval()
-                                .reshape(reshape_dims)
-                                .broadcast(broadcast_dims);
+    float num_reduced_coeffs = height * width;
+    mean_values.device(d) =
+        (input.template cast<float>().sum(reduction_axis).eval() /
+         num_reduced_coeffs)
+            .reshape(reshape_dims)
+            .broadcast(broadcast_dims);
 
     auto contrast_factor_tensor =
         contrast_factor.reshape(scalar).broadcast(scalar_broadcast);
@@ -78,7 +79,6 @@ template <typename Device>
 struct AdjustContrastv2 {
   void operator()(const Device& d, typename TTypes<float, 4>::ConstTensor input,
                   typename TTypes<float>::ConstScalar contrast_factor,
-                  typename TTypes<float, 4>::Tensor mean_values,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch = input.dimension(0);
     const int height = input.dimension(1);
@@ -87,12 +87,13 @@ struct AdjustContrastv2 {
 
     Eigen::array<int, 4> scalar_broadcast{{batch, height, width, channels}};
 #if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 2> reduction_axis{{1, 2}};
+    Eigen::array<int, 2> reduction_axis{{0, 1}};
     Eigen::array<int, 4> scalar{{1, 1, 1, 1}};
     Eigen::array<int, 4> broadcast_dims{{1, height, width, 1}};
     Eigen::Tensor<int, 4>::Dimensions reshape_dims{{batch, 1, 1, channels}};
+    Eigen::array<int, 4> reduced_dims_first{{1, 2, 0, 3}};
 #else
-    Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >
+    Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<1> >
         reduction_axis;
     Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<1>,
                      Eigen::type2index<1>, Eigen::type2index<1> >
@@ -105,16 +106,20 @@ struct AdjustContrastv2 {
         reshape_dims;
     reshape_dims.set(0, batch);
     reshape_dims.set(3, channels);
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>,
+                     Eigen::type2index<0>, Eigen::type2index<3> >
+        reduced_dims_first;
 #endif
-    mean_values.device(d) = input.mean(reduction_axis)
-                                .eval()
-                                .reshape(reshape_dims)
-                                .broadcast(broadcast_dims);
+    float num_reduced_coeffs = height * width;
+    output.device(d) =
+        (input.shuffle(reduced_dims_first).sum(reduction_axis).eval() /
+         num_reduced_coeffs)
+            .reshape(reshape_dims)
+            .broadcast(broadcast_dims);
     auto contrast_factor_tensor =
         contrast_factor.reshape(scalar).broadcast(scalar_broadcast);
-    auto adjusted =
-        (input - mean_values) * contrast_factor_tensor + mean_values;
-    output.device(d) = adjusted;
+    auto adjusted = (input - output) * contrast_factor_tensor;
+    output.device(d) += adjusted;
   }
 };
 

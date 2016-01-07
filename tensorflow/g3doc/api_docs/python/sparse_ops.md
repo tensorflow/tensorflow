@@ -21,16 +21,16 @@ dimension, and dense along all other dimensions.
 Represents a sparse tensor.
 
 Tensorflow represents a sparse tensor as three separate dense tensors:
-`indices`, `values`, and `dense_shape`.  In Python, the three tensors are
+`indices`, `values`, and `shape`.  In Python, the three tensors are
 collected into a `SparseTensor` class for ease of use.  If you have separate
-`indices`, `values`, and `dense_shape` tensors, wrap them in a `SparseTensor`
-object before passing to the Ops below.
+`indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
+object before passing to the ops below.
 
-Concretely, the sparse tensor `SparseTensor(values, indices, dense_shape)` is
+Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
 
 * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
 * `values`: A 1-D tensor of any type and shape `[N]`.
-* `dense_shape`: A 1-D int64 tensor of shape `[ndims]`.
+* `shape`: A 1-D int64 tensor of shape `[ndims]`.
 
 where `N` and `ndims` are the number of values, and number of dimensions in
 the `SparseTensor` respectively.
@@ -38,15 +38,15 @@ the `SparseTensor` respectively.
 The corresponding dense tensor satisfies
 
 ```python
-dense.shape = dense_shape
+dense.shape = shape
 dense[tuple(indices[i])] = values[i]
 ```
 
 By convention, `indices` should be sorted in row-major order (or equivalently
 lexicographic order on the tuples `indices[i]`).  This is not enforced when
 `SparseTensor` objects are constructed, but most ops assume correct ordering.
-If the ordering is wrong, it can be fixed by calling `sparse_reorder` on the
-misordered `SparseTensor`.
+If the ordering of sparse tensor `st` is wrong, a fixed version can be
+obtained by calling `tf.sparse_reorder(st)`.
 
 Example: The sparse tensor
 
@@ -157,7 +157,7 @@ Alias for field number 1
 
 - - -
 
-### `tf.sparse_to_dense(sparse_indices, output_shape, sparse_values, default_value=0, name=None)` {#sparse_to_dense}
+### `tf.sparse_to_dense(sparse_indices, output_shape, sparse_values, default_value=0, validate_indices=True, name=None)` {#sparse_to_dense}
 
 Converts a sparse representation into a dense tensor.
 
@@ -177,6 +177,10 @@ dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
 All other values in `dense` are set to `default_value`.  If `sparse_values`
 is a scalar, all sparse indices are set to this single value.
 
+Indices should be sorted in lexicographic order, and indices must not
+contain any repeats. If `validate_indices` is True, these properties
+are checked during execution.
+
 ##### Args:
 
 
@@ -189,6 +193,8 @@ is a scalar, all sparse indices are set to this single value.
     `sparse_indices`, or a scalar value to be used for all sparse indices.
 *  <b>`default_value`</b>: A 0-D `Tensor` of the same type as `sparse_values`.  Value
     to set for indices not specified in `sparse_indices`.  Defaults to zero.
+*  <b>`validate_indices`</b>: A boolean value.  If True, indices are checked to make
+    sure they are sorted in lexicographic order and that there are no repeats.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -199,7 +205,7 @@ is a scalar, all sparse indices are set to this single value.
 
 - - -
 
-### `tf.sparse_tensor_to_dense(sp_input, default_value=0, name=None)` {#sparse_tensor_to_dense}
+### `tf.sparse_tensor_to_dense(sp_input, default_value=0, validate_indices=True, name=None)` {#sparse_tensor_to_dense}
 
 Converts a `SparseTensor` into a dense tensor.
 
@@ -218,12 +224,17 @@ string tensor with values:
      [x x x x x]
      [c x x x x]]
 
+Indices must be without repeats.  This is only
+tested if validate_indices is True.
+
 ##### Args:
 
 
 *  <b>`sp_input`</b>: The input `SparseTensor`.
 *  <b>`default_value`</b>: Scalar value to set for indices not specified in
     `sp_input`.  Defaults to zero.
+*  <b>`validate_indices`</b>: A boolean value.  If `True`, indices are checked to make
+    sure they are sorted in lexicographic order and that there are no repeats.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional).
 
 ##### Returns:
@@ -257,15 +268,18 @@ For example, if `sp_input.shape = [2, 3, 4]` with non-empty values:
     [0, 0, 0]: 0
     [0, 1, 0]: 10
     [1, 0, 3]: 103
-    [1, 1, 2]: 112
-    [1, 1, 3]: 113
+    [1, 1, 2]: 150
+    [1, 1, 3]: 149
+    [1, 1, 4]: 150
     [1, 2, 1]: 121
 
 and `vocab_size = 200`, then the output will be a `[2, 3, 200]` dense bool
 tensor with False everywhere except at positions
 
-    (0, 0, 0), (0, 1, 10), (1, 0, 103), (1, 1, 112), (1, 1, 113), (1, 2, 121).
+    (0, 0, 0), (0, 1, 10), (1, 0, 103), (1, 1, 149), (1, 1, 150),
+    (1, 2, 121).
 
+Note that repeats are allowed in the input SparseTensor.
 This op is useful for converting `SparseTensor`s into dense formats for
 compatibility with ops that expect dense tensors.
 

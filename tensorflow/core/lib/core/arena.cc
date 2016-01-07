@@ -29,6 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
+
 namespace tensorflow {
 namespace core {
 

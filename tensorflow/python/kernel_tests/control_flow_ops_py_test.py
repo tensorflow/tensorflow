@@ -330,6 +330,13 @@ class ControlFlowTest(tf.test.TestCase):
       result = exit_i.eval()
     self.assertAllEqual(10, result)
 
+  def testCondBool(self):
+    values = tf.constant(10)
+    fn1 = lambda: tf.add(values, 1)
+    fn2 = lambda: tf.sub(values, 1)
+    with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
+      _ = control_flow_ops.cond(False, fn1, fn2)
+
   def testCondIndexedSlices(self):
     with self.test_session():
       values = tf.constant(10)
