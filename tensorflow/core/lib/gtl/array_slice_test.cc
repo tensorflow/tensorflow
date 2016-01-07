@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

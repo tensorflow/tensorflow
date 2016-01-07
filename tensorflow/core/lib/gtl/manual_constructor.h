@@ -29,6 +29,7 @@ limitations under the License.
 #include <new>
 #include <utility>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"  // For aligned_malloc/aligned_free
 
 namespace tensorflow {

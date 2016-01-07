@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/util/event.pb.h"
