@@ -26,6 +26,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Attributes for a single allocation call. Different calls to the same
+// allocator could potentially have different allocation attributes.
+struct AllocationAttributes {
+  // If the first attempt to allocate the memory fails, the allocation
+  // should return immediately without retrying.
+  // An example use case is optional scratch spaces where a failure
+  // has only performance impact.
+  bool no_retry_on_failure = false;
+};
+
 // Allocator is an abstract interface for allocating and deallocating
 // device memory.
 class Allocator {
@@ -41,6 +51,17 @@ class Allocator {
   // REQUIRES: "alignment" is a power of 2.
   virtual void* AllocateRaw(size_t alignment, size_t num_bytes) = 0;
 
+  // Return an uninitialized block of memory that is "num_bytes" bytes
+  // in size with specified allocation attributes.  The returned pointer is
+  // guaranteed to be aligned to a multiple of "alignment" bytes.
+  // REQUIRES: "alignment" is a power of 2.
+  virtual void* AllocateRaw(size_t alignment, size_t num_bytes,
+                            const AllocationAttributes& allocation_attr) {
+    // The default behavior is to use the implementation without any allocation
+    // attributes.
+    return AllocateRaw(alignment, num_bytes);
+  }
+
   // Deallocate a block of memory pointer to by "ptr"
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
@@ -50,6 +71,12 @@ class Allocator {
   // tensor has too many elements to represent in a single allocation.
   template <typename T>
   T* Allocate(size_t num_elements) {
+    return Allocate<T>(num_elements, AllocationAttributes());
+  }
+
+  template <typename T>
+  T* Allocate(size_t num_elements,
+              const AllocationAttributes& allocation_attr) {
     // TODO(jeff): Do we need to allow clients to pass in alignment
     // requirements?
 
@@ -58,7 +85,7 @@ class Allocator {
     }
 
     void* p = AllocateRaw(32 /* align to 32 byte boundary */,
-                          sizeof(T) * num_elements);
+                          sizeof(T) * num_elements, allocation_attr);
     return reinterpret_cast<T*>(p);
   }
 

@@ -104,6 +104,18 @@ void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
       kMaxMillisToWait, unused_alignment, num_bytes);
 }
 
+void* GPUBFCAllocator::AllocateRaw(
+    size_t unused_alignment, size_t num_bytes,
+    const AllocationAttributes& allocation_attr) {
+  if (allocation_attr.no_retry_on_failure) {
+    // Return immediately upon the first failure if this is for allocating an
+    // optional scratch space.
+    return AllocateRawInternal(unused_alignment, num_bytes, true);
+  } else {
+    return AllocateRaw(unused_alignment, num_bytes);
+  }
+}
+
 void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                            size_t num_bytes,
                                            bool dump_log_on_failure) {

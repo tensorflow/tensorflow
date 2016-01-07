@@ -49,6 +49,8 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   string Name() override { return "gpu_bfc"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
 
   void AddAllocVisitor(Visitor visitor) override;
