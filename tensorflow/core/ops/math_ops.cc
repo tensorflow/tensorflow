@@ -178,7 +178,7 @@ Computes exponential of x element-wise.  \\(y = e^x\\).
 REGISTER_OP("Log")
     .UNARY()
     .Doc(R"doc(
-Computes natural logrithm of x element-wise.
+Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 

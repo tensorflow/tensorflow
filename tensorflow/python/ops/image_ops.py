@@ -652,7 +652,7 @@ def random_brightness(image, max_delta, seed=None):
 def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image by a random factor.
 
-  Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
+  Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
 
   Args:
@@ -868,7 +868,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Images that are represented using floating point values are expected to have
   values in the range [0,1). Image data stored in integer data types are
-  expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+  expected to have values in the range `[0,MAX]`, where `MAX` is the largest
   positive representable number for the data type.
 
   This op converts between data types, scaling the values appropriately before
@@ -1114,7 +1114,7 @@ def random_saturation(image, lower, upper, seed=None):
 
 
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust staturation of an RGB image.
+  """Adjust saturation of an RGB image.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the saturation channel,
