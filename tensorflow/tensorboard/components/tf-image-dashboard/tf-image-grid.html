@@ -50,7 +50,7 @@ is high)
         <template
           is="dom-repeat"
           items="[[_tags]]"
-          sort
+          sort="_sort"
           as="tag"
         >
           <div class="image-row container noshrink">
@@ -160,6 +160,9 @@ is high)
       _exists: function (run, tag, runToImages) {
         runToImages = runToImages.base;
         return runToImages[run].indexOf(tag) !== -1;
+      },
+      _sort: function(a, b) {
+        return a > b;
       },
     });
   </script>
