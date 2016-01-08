@@ -804,7 +804,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape")
+    .Attr("shape: shape = {}")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 

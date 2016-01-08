@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Python front-end supports for functions."""
 
 from __future__ import absolute_import
@@ -22,6 +21,7 @@ from __future__ import print_function
 import inspect
 import re
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import dtypes
@@ -59,31 +59,79 @@ def _get_node_def_attr(op):
   # pylint: enable=protected-access
 
 
-def _add_list_to_array(op, func):
+def _add_input_list_to_array(op, start, limit, dtype, func):
+  """Adds a _ListToArray node in the func for op.inputs[start:limit]."""
   node = function_pb2.FunctionDef.Node()
   node.op = "_ListToArray"
-  node_name = op.name + "_ListToArray"
-  node.ret.extend([node_name])
-  node.arg.extend([_make_argname_from_tensor_name(x.name) for x in op.inputs])
-  for k, v in _get_node_def_attr(op).iteritems():
-    node.attr[k].CopyFrom(v)
+  ret_name = op.name + "_L2A_" + str(start)
+  node.ret.extend([ret_name])
+  node.arg.extend([_make_argname_from_tensor_name(x.name)
+                   for x in op.inputs[start:limit]])
+  num = limit - start
+  node.attr["Tin"].CopyFrom(attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  node.attr["T"].CopyFrom(attr_value_pb2.AttrValue(type=dtype))
+  node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
   func.node.extend([node])
-  return node_name
+  return ret_name
+
+
+def _add_output_array_to_list(op, start, limit, dtype, func):
+  """Adds a _ArrayToList node in the func for op.outputs[start:limit]."""
+  node = function_pb2.FunctionDef.Node()
+  node.op = "_ArrayToList"
+  node.ret.extend([_make_argname_from_tensor_name(x.name)
+                   for x in op.outputs[start:limit]])
+  arg_name = op.name + "_A2L_" + str(start)
+  node.arg.extend([arg_name])
+  node.attr["T"].CopyFrom(attr_value_pb2.AttrValue(type=dtype))
+  num = limit - start
+  node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
+  node.attr["out_types"].CopyFrom(attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  func.node.extend([node])
+  return arg_name
 
 
 def _add_op_node(op, func):
   """Converts an op to a function def node and add it to `func`."""
   node = function_pb2.FunctionDef.Node()
   node.op = op.type
-  node.ret.extend([_make_argname_from_tensor_name(x.name) for x in op.outputs])
-  if op.inputs:
-    # TODO(zhifengc): We for now only support T*N to be the only input
-    # to the op.
-    if _is_array_type_input(node.op, 0):
-      node.arg.extend([_add_list_to_array(op, func)])
+  op_def = op_def_registry.get_registered_ops()[op.type]
+  attrs = _get_node_def_attr(op)
+  out_index = 0
+  for arg_def in op_def.output_arg:
+    if arg_def.number_attr:
+      dtype = attrs[arg_def.type_attr].type
+      num = attrs[arg_def.number_attr].i
+      node.ret.append(_add_output_array_to_list(op, out_index, out_index + num,
+                                                dtype, func))
+      out_index += num
+    elif arg_def.type_list_attr:
+      num = len(attrs[arg_def.type_list_attr].list.type)
+      node.ret.extend([_make_argname_from_tensor_name(op.outputs[i].name)
+                       for i in range(out_index, out_index + num)])
+      out_index += num
     else:
-      node.arg.extend([_make_argname_from_tensor_name(x.name) for x in op.inputs
-                      ])
+      node.ret.append(_make_argname_from_tensor_name(op.outputs[
+          out_index].name))
+      out_index += 1
+  inp_index = 0
+  for arg_def in op_def.input_arg:
+    if arg_def.number_attr:
+      dtype = attrs[arg_def.type_attr].type
+      num = attrs[arg_def.number_attr].i
+      node.arg.append(_add_input_list_to_array(op, inp_index, inp_index + num,
+                                               dtype, func))
+      inp_index += num
+    elif arg_def.type_list_attr:
+      num = len(attrs[arg_def.type_list_attr].list.type)
+      node.arg.extend([_make_argname_from_tensor_name(op.inputs[i].name)
+                       for i in range(inp_index, inp_index + num)])
+      inp_index += num
+    else:
+      node.arg.append(_make_argname_from_tensor_name(op.inputs[inp_index].name))
+      inp_index += 1
   node.dep.extend([_make_argname_from_tensor_name(x.name)
                    for x in op.control_inputs])
   for k, v in _get_node_def_attr(op).iteritems():
@@ -117,7 +165,7 @@ def graph_to_function_def(graph, name, inputs, outputs):
   Returns:
     A FunctionDef protocol buffer.
   """
-# pylint: enable=line-too-long
+  # pylint: enable=line-too-long
   func = function_pb2.FunctionDef()
   func.signature.name = name
   func.signature.input_arg.extend([_tensor_to_argdef(graph.get_tensor_by_name(
@@ -175,8 +223,11 @@ def call_function(func_def, *inputs, **kwargs):
     g = ops.get_default_graph()
     g._add_function(func_def)  # pylint: disable=protected-access
     # TODO(touts): Pass compute_shapes as "try if function exists"
-    op = g.create_op(func_name, list(inputs), output_types,
-                     name=name, compute_shapes=False)
+    op = g.create_op(func_name,
+                     list(inputs),
+                     output_types,
+                     name=name,
+                     compute_shapes=False)
     if op.outputs:
       if len(op.outputs) == 1:
         return op.outputs[0]
@@ -223,7 +274,8 @@ def define_function(func, input_types):
   def my_func(x, y):
     return x + y, x - y
 
-  # Create a FunctionDef for 'my_func'. (This does not change the default graph.)
+  # Create a FunctionDef for 'my_func'. (This does not change the default
+  graph.)
   my_func_def = tf.define_function(my_func, {'x': tf.float32, 'y': tf.float32})
 
   # Build the graph, calling the function.

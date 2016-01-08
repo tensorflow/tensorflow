@@ -3159,6 +3159,8 @@ class GraphKeys(object):
     keep moving averages.  See
     [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
     for more details.
+  * `REGULARIZATION_LOSSES`: regularization losses collected during graph
+    construction.
   """
 
   # Key to collect Variable objects that must be saved and restored
@@ -3178,6 +3180,8 @@ class GraphKeys(object):
   ASSET_FILEPATHS = "asset_filepaths"
   # Key to collect Variable objects that keep moving averages.
   MOVING_AVERAGE_VARIABLES = "moving_average_variables"
+  # Key to collected regularization losses at graph construction.
+  REGULARIZATION_LOSSES = "regularization_losses"
 
 
 def add_to_collection(name, value):

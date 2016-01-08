@@ -38,11 +38,14 @@ struct AdjustContrast {
     Eigen::array<int, 4> scalar_broadcast{{batch, height, width, channels}};
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::array<int, 2> reduction_axis{{1, 2}};
+    Eigen::array<int, 4> scalar{{1, 1, 1, 1}};
     Eigen::array<int, 4> broadcast_dims{{1, height, width, 1}};
     Eigen::Tensor<int, 4>::Dimensions reshape_dims{{batch, 1, 1, channels}};
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >
         reduction_axis;
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<1>,
+                     Eigen::type2index<1>, Eigen::type2index<1> > scalar;
     Eigen::IndexList<Eigen::type2index<1>, int, int, Eigen::type2index<1> >
         broadcast_dims;
     broadcast_dims.set(1, height);
@@ -52,7 +55,6 @@ struct AdjustContrast {
     reshape_dims.set(0, batch);
     reshape_dims.set(3, channels);
 #endif
-    Eigen::Sizes<1, 1, 1, 1> scalar;
     float num_reduced_coeffs = height * width;
     mean_values.device(d) =
         (input.template cast<float>().sum(reduction_axis).eval() /
@@ -86,12 +88,16 @@ struct AdjustContrastv2 {
     Eigen::array<int, 4> scalar_broadcast{{batch, height, width, channels}};
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::array<int, 2> reduction_axis{{0, 1}};
+    Eigen::array<int, 4> scalar{{1, 1, 1, 1}};
     Eigen::array<int, 4> broadcast_dims{{1, height, width, 1}};
     Eigen::Tensor<int, 4>::Dimensions reshape_dims{{batch, 1, 1, channels}};
     Eigen::array<int, 4> reduced_dims_first{{1, 2, 0, 3}};
 #else
     Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<1> >
         reduction_axis;
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<1>,
+                     Eigen::type2index<1>, Eigen::type2index<1> >
+        scalar;
     Eigen::IndexList<Eigen::type2index<1>, int, int, Eigen::type2index<1> >
         broadcast_dims;
     broadcast_dims.set(1, height);
@@ -104,7 +110,6 @@ struct AdjustContrastv2 {
                      Eigen::type2index<0>, Eigen::type2index<3> >
         reduced_dims_first;
 #endif
-    Eigen::Sizes<1, 1, 1, 1> scalar;
     float num_reduced_coeffs = height * width;
     output.device(d) =
         (input.shuffle(reduced_dims_first).sum(reduction_axis).eval() /

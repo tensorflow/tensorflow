@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Tests for functions."""
 
 from __future__ import absolute_import
@@ -23,8 +22,10 @@ from __future__ import print_function
 import tensorflow.python.platform
 # pylint: enable=unused-import,g-bad-import-order
 
+import time
 import numpy as np
 import tensorflow as tf
+
 
 from tensorflow.python.framework import function
 from tensorflow.python.ops.functional_ops import symbolic_gradient
@@ -110,8 +111,10 @@ class FunctionTest(tf.test.TestCase):
       return x * x + 1.0
 
     def XSquarePlusOneGrad(x, dy):
-      dx = symbolic_gradient(input=[x, dy], Tout=[tf.float32],
-                             f="XSquarePlusOne", name="dx")
+      dx = symbolic_gradient(input=[x, dy],
+                             Tout=[tf.float32],
+                             f="XSquarePlusOne",
+                             name="dx")
       return dx
 
     g = tf.Graph()
@@ -140,7 +143,9 @@ class FunctionTest(tf.test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = symbolic_gradient(input=[x, y, dz], Tout=[tf.float32]*2, f="Foo")
+      dx, dy = symbolic_gradient(input=[x, y, dz],
+                                 Tout=[tf.float32] * 2,
+                                 f="Foo")
       self.assertEquals(x.get_shape(), dx.get_shape())
       self.assertEquals(y.get_shape(), dy.get_shape())
 
@@ -205,9 +210,11 @@ class FunctionTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError, "specified input types"):
         function.define_function(PlusMinus, {"c": tf.float32})
       with self.assertRaisesRegexp(ValueError, "type for argument: b"):
-        function.define_function(PlusMinus, {"a": tf.float32, "c": tf.float32})
+        function.define_function(PlusMinus, {"a": tf.float32,
+                                             "c": tf.float32})
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"a": tf.float32, "b": tf.float32,
+        function.define_function(PlusMinus, {"a": tf.float32,
+                                             "b": tf.float32,
                                              "c": tf.float32})
 
   def testCallErrors(self):
@@ -268,6 +275,60 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([1], sess.run(call1))
         self.assertAllEqual([0], sess.run(call2))
+
+  def testUnrollLSTM(self):
+
+    # Helper to construct a LSTM cell graph.
+    def LSTMCell(x, mprev, cprev, weights):
+      xm = tf.concat(1, [x, mprev])
+      i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+      new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
+      new_c = tf.clip_by_value(new_c, -50.0, 50.0)
+      new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
+      return new_m, new_c
+
+    # Helper to construct a LSTM function.
+    @function.Defun(x=tf.float32,
+                    mprev=tf.float32,
+                    cprev=tf.float32,
+                    weights=tf.float32)
+    def LSTMCellFunc(x, mprev, cprev, weights):
+      return LSTMCell(x, mprev, cprev, weights)
+
+    batch_size = 16
+    lstm_dims = 32
+    num_unroll = 100
+
+    # Run one step of the unrolled lstm graph.
+    def RunStep(cell):
+      g = tf.Graph()
+      start = time.time()
+      with g.as_default():
+        m = tf.zeros(shape=[batch_size, lstm_dims])
+        c = tf.zeros(shape=[batch_size, lstm_dims])
+        weights = tf.random_uniform(
+            [2 * lstm_dims, 4 * lstm_dims],
+            -1,
+            1,
+            seed=123456)
+        inputs = tf.random_uniform(
+            [num_unroll, batch_size, lstm_dims],
+            seed=654321)
+        x = tf.unpack(inputs)
+        for i in range(num_unroll):
+          m, c = cell(x[i], m, c, weights)
+      gdef = g.as_graph_def()
+      finish = time.time()
+      print("time: ", finish - start, " txt size: ", len(str(gdef)),
+            "gdef bin size: ", len(gdef.SerializeToString()))
+      with g.as_default(), tf.Session() as sess:
+        mv, cv = sess.run([m, c])
+      return mv, cv
+
+    mv0, cv0 = RunStep(LSTMCell)
+    mv1, cv1 = RunStep(LSTMCellFunc)
+    self.assertAllClose(mv0, mv1)
+    self.assertAllClose(cv0, cv1)
 
 
 if __name__ == "__main__":

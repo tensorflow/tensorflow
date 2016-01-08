@@ -121,6 +121,19 @@ class OpKernel {
   Status InputRange(const string& input_name, int* start, int* stop) const;
   Status OutputRange(const string& output_name, int* start, int* stop) const;
 
+  // TODO(irving): At the moment, the following three functions forward to
+  // TensorShapeUtils, but they are about to become the only versions once we
+  // become scalar strict.
+  bool allow_legacy_scalars() const { return kAllowLegacyScalars; }
+
+  bool IsLegacyScalar(const TensorShape& shape) const {
+    return TensorShapeUtils::IsLegacyScalar(shape);
+  }
+
+  bool IsLegacyVector(const TensorShape& shape) const {
+    return TensorShapeUtils::IsLegacyVector(shape);
+  }
+
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
@@ -454,6 +467,8 @@ class OpKernelContext {
   ~OpKernelContext();
 
   Env* env() const { return params_.device->env(); }
+
+  const OpKernel& op_kernel() const { return *params_.op_kernel; }
 
   // Input/output signature.
 

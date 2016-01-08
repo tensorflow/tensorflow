@@ -1666,6 +1666,8 @@ The following standard keys are defined:
   keep moving averages.  See
   [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
   for more details.
+* `REGULARIZATION_LOSSES`: regularization losses collected during graph
+  construction.
 
 
 ## Defining new operations

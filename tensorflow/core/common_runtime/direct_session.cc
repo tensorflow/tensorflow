@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -202,6 +203,12 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
     graph_def_.mutable_node()->DeleteSubrange(node_size_before_merge,
                                               nodes_added);
     return s;
+  }
+
+  if (graph_def_.version() >= 5) {
+    // Validate the graph: we assume that merging two valid graphs
+    // should maintain graph validity.
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, &fdefs));
   }
 
   graph_created_ = true;  // In case this is first call

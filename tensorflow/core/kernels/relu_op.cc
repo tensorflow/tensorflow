@@ -49,7 +49,8 @@ class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
 
   // INPUTS:
   //   g (gradients): backpropagated gradients
-  //   a (inputs): inputs that were passed to ReluOp()
+  //   a (inputs): either the inputs that were passed to ReluOp(), or its
+  //               outputs (using either one yields the same result here).
   // OUTPUT:
   //   gradients to backprop
   template <int NDIMS>

@@ -180,7 +180,7 @@ namespace {
 
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
                                       int index, Tensor** output) {
-  if (!TensorShapeUtils::IsLegacyVector(shape.shape())) {
+  if (!ctx->op_kernel().IsLegacyVector(shape.shape())) {
     return errors::InvalidArgument(
         "shape must be a vector of {int32,int64}, got shape ",
         shape.shape().ShortDebugString());

@@ -41,13 +41,14 @@ class SaveOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Save")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
-                                    DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
-                                    DT_INT16, DT_STRING, DT_COMPLEX64}))
-                  .Finalize(node_def()));
+    ASSERT_OK(
+        NodeDefBuilder("myop", "Save")
+            .Input(FakeInput())
+            .Input(FakeInput())
+            .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8,
+                              DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_INT64,
+                              DT_STRING, DT_COMPLEX64}))
+            .Finalize(node_def()));
     ASSERT_OK(InitOp());
   }
 };
@@ -55,9 +56,9 @@ class SaveOpTest : public OpsTestBase {
 TEST_F(SaveOpTest, Simple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
   const string tensornames[] = {
-      "tensor_bool",  "tensor_int",    "tensor_float",    "tensor_double",
-      "tensor_qint8", "tensor_qint32", "tensor_uint8",    "tensor_int8",
-      "tensor_int16", "tensor_string", "tensor_complex64"};
+      "tensor_bool",  "tensor_int",    "tensor_float",  "tensor_double",
+      "tensor_qint8", "tensor_qint32", "tensor_uint8",  "tensor_int8",
+      "tensor_int16", "tensor_int64",  "tensor_string", "tensor_complex64"};
 
   MakeOp();
   // Add a file name
@@ -65,7 +66,7 @@ TEST_F(SaveOpTest, Simple) {
                    [&filename](int x) -> string { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({11}),
+  AddInput<string>(TensorShape({12}),
                    [&tensornames](int x) -> string { return tensornames[x]; });
 
   // Add a 1-d bool tensor
@@ -99,6 +100,9 @@ TEST_F(SaveOpTest, Simple) {
 
   // Add a 1-d int16 tensor
   AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
+
+  // Add a 1-d int64 tensor
+  AddInput<int64>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
 
   // Add a 1-d string tensor
   AddInput<string>(TensorShape({2}),
@@ -280,6 +284,24 @@ TEST_F(SaveOpTest, Simple) {
     EXPECT_TRUE(reader.CopySliceData("tensor_int16", s, data));
     for (int i = 0; i < 7; ++i) {
       EXPECT_EQ(i - 8, data[i]);
+    }
+  }
+
+  {
+    // The 1-d int64 tensor
+    TensorShape shape;
+    DataType type;
+    EXPECT_TRUE(reader.HasTensor("tensor_int64", &shape, &type));
+    TensorShape expected({9});
+    EXPECT_TRUE(shape.IsSameSize(expected));
+    EXPECT_EQ(DT_INT64, type);
+
+    // We expect the tensor value to be correct.
+    TensorSlice s = TensorSlice::ParseOrDie("-");
+    int64 data[9];
+    EXPECT_TRUE(reader.CopySliceData("tensor_int64", s, data));
+    for (int i = 0; i < 9; ++i) {
+      EXPECT_EQ(i - 9, data[i]);
     }
   }
 

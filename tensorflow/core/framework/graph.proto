@@ -23,6 +23,7 @@ message GraphDef {
   // 2. adjust_contrast only takes float, doesn't perform clamping (11dec2015)
   // 3. Remove TileGrad, since it was equivalent to reduce_sum (30dec2015)
   // 4. Skipped.
+  // 5. Graphs are wholly-validated during Session::Create() (7jan2016).
   //
   // The GraphDef version is distinct from the TensorFlow version.
   // Each released version of TensorFlow will support a range of

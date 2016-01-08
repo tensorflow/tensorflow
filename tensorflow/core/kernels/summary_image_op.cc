@@ -48,8 +48,8 @@ class SummaryImageOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const Tensor& tags = c->input(0);
     const Tensor& tensor = c->input(1);
-    OP_REQUIRES(c, TensorShapeUtils::IsLegacyScalar(tags.shape()),
-                errors::InvalidArgument("Tags must have be a scalar"));
+    OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
+                errors::InvalidArgument("Tags must be a scalar"));
     OP_REQUIRES(c, tensor.dims() == 4 &&
                        (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
                         tensor.dim_size(3) == 4),

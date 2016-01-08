@@ -419,8 +419,9 @@ REGISTER_OP("ReluGrad")
 Computes rectified linear gradients for a Relu operation.
 
 gradients: The backpropagated gradients to the corresponding Relu operation.
-features: The features passed as input to the corresponding Relu operation.
-backprops: The gradients: `gradients * features * (features > 0)`.
+features: The features passed as input to the corresponding Relu operation, OR
+  the outputs of that operation (both work equivalently).
+backprops: `gradients * (features > 0)`.
 )doc");
 
 REGISTER_OP("Relu6")

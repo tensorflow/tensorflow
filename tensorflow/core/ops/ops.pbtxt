@@ -4999,6 +4999,10 @@ op {
   attr {
     name: "shape"
     type: "shape"
+    default_value {
+      shape {
+      }
+    }
     description: "(Optional) The shape of the tensor. If the shape has 0 dimensions, the\nshape is unconstrained."
   }
   summary: "A placeholder op for a value that will be fed into the computation."
@@ -6061,12 +6065,12 @@ op {
   }
   input_arg {
     name: "features"
-    description: "The features passed as input to the corresponding Relu operation."
+    description: "The features passed as input to the corresponding Relu operation, OR\nthe outputs of that operation (both work equivalently)."
     type_attr: "T"
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients * features * (features > 0)`."
+    description: "`gradients * (features > 0)`."
     type_attr: "T"
   }
   attr {
