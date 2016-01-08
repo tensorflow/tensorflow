@@ -180,6 +180,7 @@ tf_cuda_library(
     ]) + [
         "framework/op.h",
         "framework/op_kernel.h",
+        "framework/reader_op_kernel.h",
     ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
@@ -327,6 +328,9 @@ tf_cuda_library(
             "kernels/**/*.cu.cc",
         ],
     ),
+    hdrs = [
+        "kernels/reader_base.h",
+    ],
     copts = tf_copts(),
     cuda_deps = [
         ":gpu_kernels",
