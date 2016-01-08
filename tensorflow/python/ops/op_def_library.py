@@ -559,6 +559,7 @@ class OpDefLibrary(object):
                                "less than minimum %d." %
                                (key, op_type_name, len(value),
                                 attr_def.minimum))
+          attr_value.list.SetInParent()
         if attr_def.type == "string":
           attr_value.s = _MakeStr(value, key)
           if attr_def.HasField("allowed_values"):

@@ -683,6 +683,7 @@ py_library(
         "ops/image_ops.py",
         "ops/init_ops.py",
         "ops/io_ops.py",
+        "ops/learn.py",
         "ops/linalg_grad.py",
         "ops/linalg_ops.py",
         "ops/logging_ops.py",
