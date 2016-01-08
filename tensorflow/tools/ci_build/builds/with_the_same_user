@@ -25,8 +25,11 @@ set -e
 
 COMMAND=("$@")
 
-addgroup --gid $CI_BUILD_GID $CI_BUILD_GROUP
-adduser --gid $CI_BUILD_GID --uid $CI_BUILD_UID --disabled-password \
-    --home $CI_BUILD_HOME --quiet $CI_BUILD_USER
+getent group "${CI_BUILD_GID}" || addgroup --gid "${CI_BUILD_GID}" "${CI_BUILD_GROUP}"
+getent passwd "${CI_BUILD_UID}" || adduser --gid "${CI_BUILD_GID}" --uid "${CI_BUILD_UID}" \
+    --disabled-password --home "${CI_BUILD_HOME}" --quiet "${CI_BUILD_USER}"
 
-sudo -u $CI_BUILD_USER --preserve-env -H ${COMMAND[@]}
+cp /root/.bazelrc "${CI_BUILD_HOME}/.bazelrc"
+chown "${CI_BUILD_UID}:${CI_BUILD_GID}" "${CI_BUILD_HOME}/.bazelrc"
+
+sudo -u "#${CI_BUILD_UID}" --preserve-env -H "${COMMAND[@]}"
