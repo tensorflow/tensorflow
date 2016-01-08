@@ -4999,6 +4999,10 @@ op {
   attr {
     name: "shape"
     type: "shape"
+    default_value {
+      shape {
+      }
+    }
     description: "(Optional) The shape of the tensor. If the shape has 0 dimensions, the\nshape is unconstrained."
   }
   summary: "A placeholder op for a value that will be fed into the computation."
