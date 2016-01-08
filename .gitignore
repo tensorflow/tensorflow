@@ -9,3 +9,4 @@ node_modules
 /tools/bazel.rc
 /util/python/python_include
 /util/python/python_lib
+/cmake/build
