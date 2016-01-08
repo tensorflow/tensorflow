@@ -16,8 +16,8 @@ limitations under the License.
 module tf {
 
 /**
- * Mapping from color palette name to color pallette, which contains
- * exact colors for multiple states of a single color pallette.
+ * Mapping from color palette name to color palette, which contains
+ * exact colors for multiple states of a single color palette.
  */
 export let COLORS = [
   {

@@ -216,7 +216,7 @@ export interface GroupNode extends Node {
    *   + A->Z/Y/X in GroupNode Z/Y's bridgegraph.
    *
    * Considering any BaseEdge then, if N is the number of path segments in the
-   * source and M is the number of path semgents in the destination, then the
+   * source and M is the number of path segments in the destination, then the
    * total number of bridgegraph edges you could create would be (N-1)(M-1).
    *
    * For this reason, it is computationally expensive to generate all the
@@ -387,7 +387,7 @@ export class NodeStats {
   }
 
   /**
-   * Total number of bytes used for the node. Sum of all childen
+   * Total number of bytes used for the node. Sum of all children
    * if it is a Group node.
    */
   totalBytes: number;
@@ -404,7 +404,7 @@ export class NodeStats {
 
   /**
    * Combines the specified stats with the current stats.
-   * Modifies the current object. This methos is used to
+   * Modifies the current object. This method is used to
    * compute aggregate stats for group nodes.
    */
   combine(stats: NodeStats): void {
