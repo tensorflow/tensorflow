@@ -17,5 +17,5 @@
 set -e
 
 bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
-rm -rf /root/.cache/tensorflow-pip
-bazel-bin/tensorflow/tools/pip_package/build_pip_package /root/.cache/tensorflow-pip
+rm -rf $HOME/.cache/tensorflow-pip
+bazel-bin/tensorflow/tools/pip_package/build_pip_package $HOME/.cache/tensorflow-pip

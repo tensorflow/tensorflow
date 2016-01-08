@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

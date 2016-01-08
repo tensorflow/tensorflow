@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 

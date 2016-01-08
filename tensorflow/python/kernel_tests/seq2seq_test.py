@@ -349,6 +349,32 @@ class Seq2SeqTest(tf.test.TestCase):
       res = sess.run(loss_per_sequence)
       self.assertAllClose(res, np.asarray([4.828314, 4.828314]))
 
+  def testModelWithBucketsScope(self):
+    """Test that variable scope reuse is not reset after model_with_buckets."""
+    classes = 10
+    buckets = [(4, 4), (8, 8)]
+
+    with self.test_session():
+      # Here comes a sample Seq2Seq model using GRU cells.
+      def SampleGRUSeq2Seq(enc_inp, dec_inp, weights):
+        """Example sequence-to-sequence model that uses GRU cells."""
+        def GRUSeq2Seq(enc_inp, dec_inp):
+          cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2)
+          return tf.nn.seq2seq.embedding_attention_seq2seq(
+              enc_inp, dec_inp, cell, classes, classes)
+        targets = [dec_inp[i+1] for i in xrange(len(dec_inp) - 1)] + [0]
+        return tf.nn.seq2seq.model_with_buckets(
+            enc_inp, dec_inp, targets, weights, buckets, classes, GRUSeq2Seq)
+
+      # Now we construct the copy model.
+      inp = [tf.placeholder(tf.int32, shape=[None]) for _ in xrange(8)]
+      out = [tf.placeholder(tf.int32, shape=[None]) for _ in xrange(8)]
+      weights = [tf.ones_like(inp[0], dtype=tf.float32) for _ in xrange(8)]
+      with tf.variable_scope("root"):
+        _ = SampleGRUSeq2Seq(inp, out, weights)
+        # Now check that we did not accidentally set reuse.
+        self.assertEqual(tf.get_variable_scope().reuse, False)
+
   def testModelWithBuckets(self):
     """Larger tests that does full sequence-to-sequence model training."""
     # We learn to copy 10 symbols in 2 buckets: length 4 and length 8.

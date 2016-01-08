@@ -170,7 +170,7 @@ available. These operations allow you to build sophisticated
 [input pipelines](../how_tos/reading_data/index.md), at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-[using `QueueRunner` objects to drive queues and readers](../how_tos/reading_data/index.md#QueueRunners)
+[using `QueueRunner` objects to drive queues and readers](../how_tos/reading_data/index.md#creating-threads-to-prefetch-using-queuerunner-objects)
 for more information on how to use them.
 
 ## Variables
@@ -241,7 +241,7 @@ to encode the batch size as a Python constant, but instead to use a symbolic
   of `tf.reduce_sum(...) / batch_size`.
 
 * If you use
-  [placeholders for feeding input](../how_tos/reading_data/index.md#Feeding),
+  [placeholders for feeding input](../how_tos/reading_data/index.md#feeding),
   you can specify a variable batch dimension by creating the placeholder with
   [`tf.placeholder(..., shape=[None, ...])`](../api_docs/python/io_ops.md#placeholder). The
   `None` element of the shape corresponds to a variable-sized dimension.
@@ -281,7 +281,7 @@ The easier option is to write parsing code in Python that transforms the data
 into a numpy array, then feed a [`tf.placeholder()`]
 (../api_docs/python/io_ops.md#placeholder) a tensor with that data. See the
 documentation on
-[using placeholders for input](../how_tos/reading_data/index.md#Feeding) for
+[using placeholders for input](../how_tos/reading_data/index.md#feeding) for
 more details. This approach is easy to get up and running, but the parsing can
 be a performance bottleneck.
 
@@ -298,7 +298,7 @@ single tensor, a list of tensors with the same type (for example when adding
 together a variable-length list of tensors), or a list of tensors with different
 types (for example when enqueuing a tuple of tensors to a queue).  See the
 how-to documentation for
-[adding an op with a list of inputs or outputs](../how_tos/adding_an_op/index.md#list-input-output)
+[adding an op with a list of inputs or outputs](../how_tos/adding_an_op/index.md#list-inputs-and-outputs)
 for more details of how to define these different input types.
 
 ## Miscellaneous

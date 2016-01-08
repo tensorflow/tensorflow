@@ -188,7 +188,7 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   forward and backward cell must match. The initial state for both directions
   is zero by default (but can be set optionally) and no intermediate states are
   ever returned -- the network is fully unrolled for the given (passed in)
-  length(s) of the sequence(s).
+  length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 
   Args:
     cell_fw: An instance of RNNCell, to be used for forward direction.
@@ -201,8 +201,8 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
     initial_state_bw: (optional) Same as for initial_state_fw.
     dtype: (optional) The data type for the initial state.  Required if either
       of the initial states are not provided.
-    sequence_length: An int64 vector (tensor) of size [batch_size], containing
-      the actual lengths for each of the sequences.
+    sequence_length: (optional) An int64 vector (tensor) of size [batch_size],
+      containing the actual lengths for each of the sequences.
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 
   Returns:
@@ -213,7 +213,6 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   Raises:
     TypeError: If "cell_fw" or "cell_bw" is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
-    ValueError: If sequence_length is not defined.
   """
 
   if not isinstance(cell_fw, rnn_cell.RNNCell):
@@ -222,8 +221,6 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
     raise TypeError("cell_bw must be an instance of RNNCell")
   if not isinstance(inputs, list):
     raise TypeError("inputs must be a list")
-  if not sequence_length:
-    raise ValueError("sequence_length has to be defined")
   if not inputs:
     raise ValueError("inputs must not be empty")
 

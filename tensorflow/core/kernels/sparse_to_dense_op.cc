@@ -41,7 +41,10 @@ namespace tensorflow {
 template <typename T, typename Index>
 class SparseToDense : public OpKernel {
  public:
-  explicit SparseToDense(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit SparseToDense(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("validate_indices", &validate_indices_));
+  }
 
   void Compute(OpKernelContext* c) override {
     // sparse_indices
@@ -57,7 +60,7 @@ class SparseToDense : public OpKernel {
     // output_shape
     const Tensor& output_shape = c->input(1);
     OP_REQUIRES(
-        c, TensorShapeUtils::IsLegacyVector(output_shape.shape()),
+        c, IsLegacyVector(output_shape.shape()),
         errors::InvalidArgument("output_shape should be a vector, got shape ",
                                 output_shape.shape().ShortDebugString()));
     OP_REQUIRES(c, output_shape.NumElements() == num_dims,
@@ -81,11 +84,12 @@ class SparseToDense : public OpKernel {
                 errors::InvalidArgument("default_value should be a scalar."));
 
     auto output_shape_vec = output_shape.flat<Index>();
+    TensorShape output_tensor_shape;
+    OP_REQUIRES_OK(c, TensorShapeUtils::MakeShape(output_shape_vec.data(),
+                                                  output_shape_vec.size(),
+                                                  &output_tensor_shape));
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShapeUtils::MakeShape(
-                                                output_shape_vec.data(),
-                                                output_shape_vec.size()),
-                                         &output));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_tensor_shape, &output));
 
     TensorShape ix_shape({num_elems, num_dims});
     Tensor indices_shaped(DT_INT64, ix_shape);
@@ -110,10 +114,18 @@ class SparseToDense : public OpKernel {
       sparse_values_b = sparse_values;
     }
 
+    // Assume SparseTensor is lexicographically sorted.
     gtl::InlinedVector<int64, 8> order(output->shape().dims());
-    std::iota(order.begin(), order.end(), 0);  // Assume order is correct
+    std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st(indices_shaped, sparse_values_b, output->shape(),
                             order);
+
+    if (validate_indices_) {
+      OP_REQUIRES(c, st.IndicesValid(),
+                  errors::InvalidArgument("Indices are not valid: not "
+                                          "lexicographically sorted or "
+                                          "containing repeats."));
+    }
 
     output->flat<T>().setConstant(default_value.scalar<T>()());
     OP_REQUIRES(c, st.template ToDense<T>(output, false /* initialize */),
@@ -121,6 +133,9 @@ class SparseToDense : public OpKernel {
                     "Indices are not valid (out of bounds).  Shape: ",
                     output->shape().DebugString()));
   }
+
+ private:
+  bool validate_indices_;
 };
 
 #define REGISTER_KERNELS(type, index_type)                             \

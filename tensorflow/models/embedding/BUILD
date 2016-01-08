@@ -1,6 +1,8 @@
 # Description:
 # TensorFlow model for word2vec
 
+package(default_visibility = ["//tensorflow:internal"])
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])

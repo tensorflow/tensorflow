@@ -46,6 +46,8 @@ class DType(object):
 
   * `tf.qint8`: Quantized 8-bit signed integer.
   * `tf.quint8`: Quantized 8-bit unsigned integer.
+  * `tf.qint16`: Quantized 16-bit signed integer.
+  * `tf.quint16`: Quantized 16-bit unsigned integer.
   * `tf.qint32`: Quantized 32-bit signed integer.
 
   In addition, variants of these types with the `_ref` suffix are
@@ -136,7 +138,7 @@ class DType(object):
   @property
   def is_quantized(self):
     """Returns whether this is a quantized data type."""
-    return self.base_dtype in [qint8, quint8, qint32, bfloat16]
+    return self.base_dtype in [qint8, quint8, qint16, quint16, qint32, bfloat16]
 
   @property
   def is_unsigned(self):
@@ -258,6 +260,8 @@ int64 = DType(types_pb2.DT_INT64)
 bool = DType(types_pb2.DT_BOOL)
 qint8 = DType(types_pb2.DT_QINT8)
 quint8 = DType(types_pb2.DT_QUINT8)
+qint16 = DType(types_pb2.DT_QINT16)
+quint16 = DType(types_pb2.DT_QUINT16)
 qint32 = DType(types_pb2.DT_QINT32)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 float32_ref = DType(types_pb2.DT_FLOAT_REF)
@@ -273,6 +277,8 @@ int64_ref = DType(types_pb2.DT_INT64_REF)
 bool_ref = DType(types_pb2.DT_BOOL_REF)
 qint8_ref = DType(types_pb2.DT_QINT8_REF)
 quint8_ref = DType(types_pb2.DT_QUINT8_REF)
+qint16_ref = DType(types_pb2.DT_QINT16_REF)
+quint16_ref = DType(types_pb2.DT_QUINT16_REF)
 qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
 
@@ -292,6 +298,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BOOL: bool,
     types_pb2.DT_QINT8: qint8,
     types_pb2.DT_QUINT8: quint8,
+    types_pb2.DT_QINT16: qint16,
+    types_pb2.DT_QUINT16: quint16,
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_FLOAT_REF: float32_ref,
@@ -306,6 +314,8 @@ _INTERN_TABLE = {
     types_pb2.DT_BOOL_REF: bool_ref,
     types_pb2.DT_QINT8_REF: qint8_ref,
     types_pb2.DT_QUINT8_REF: quint8_ref,
+    types_pb2.DT_QINT16_REF: qint16_ref,
+    types_pb2.DT_QUINT16_REF: quint16_ref,
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
 }
@@ -325,6 +335,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BOOL: "bool",
     types_pb2.DT_QINT8: "qint8",
     types_pb2.DT_QUINT8: "quint8",
+    types_pb2.DT_QINT16: "qint16",
+    types_pb2.DT_QUINT16: "quint16",
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_FLOAT_REF: "float32_ref",
@@ -339,6 +351,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BOOL_REF: "bool_ref",
     types_pb2.DT_QINT8_REF: "qint8_ref",
     types_pb2.DT_QUINT8_REF: "quint8_ref",
+    types_pb2.DT_QINT16_REF: "qint16_ref",
+    types_pb2.DT_QUINT16_REF: "quint16_ref",
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
 }
@@ -359,6 +373,8 @@ _STRING_TO_TF["double_ref"] = float64_ref
 # hard-coding of names.
 _np_qint8 = np.dtype([("qint8", np.int8, 1)])
 _np_quint8 = np.dtype([("quint8", np.uint8, 1)])
+_np_qint16 = np.dtype([("qint16", np.int16, 1)])
+_np_quint16 = np.dtype([("quint16", np.uint16, 1)])
 _np_qint32 = np.dtype([("qint32", np.int32, 1)])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
@@ -375,6 +391,8 @@ _NP_TO_TF = frozenset([
     (np.bool, bool),
     (_np_qint8, qint8),
     (_np_quint8, quint8),
+    (_np_qint16, qint16),
+    (_np_quint16, quint16),
     (_np_qint32, qint32),
     # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
 ])
@@ -393,6 +411,8 @@ _TF_TO_NP = {
     types_pb2.DT_BOOL: np.bool,
     types_pb2.DT_QINT8: _np_qint8,
     types_pb2.DT_QUINT8: _np_quint8,
+    types_pb2.DT_QINT16: _np_qint16,
+    types_pb2.DT_QUINT16: _np_quint16,
     types_pb2.DT_QINT32: _np_qint32,
     types_pb2.DT_BFLOAT16: np.uint16,
 
@@ -409,13 +429,16 @@ _TF_TO_NP = {
     types_pb2.DT_BOOL_REF: np.bool,
     types_pb2.DT_QINT8_REF: _np_qint8,
     types_pb2.DT_QUINT8_REF: _np_quint8,
+    types_pb2.DT_QINT16_REF: _np_qint16,
+    types_pb2.DT_QUINT16_REF: _np_quint16,
     types_pb2.DT_QINT32_REF: _np_qint32,
     types_pb2.DT_BFLOAT16_REF: np.uint16,
 }
 
 
 QUANTIZED_DTYPES = frozenset(
-    [qint8, quint8, qint32, qint8_ref, quint8_ref, qint32_ref])
+    [qint8, quint8, qint16, quint16, qint32, qint8_ref, quint8_ref, qint16_ref,
+     quint16_ref, qint32_ref])
 
 
 def as_dtype(type_value):

@@ -177,23 +177,16 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   const OpDef* op_def = ops_->LookUp(node_def.op(), status);
   if (op_def == nullptr) return nullptr;
 
-  // TODO(vrv,josh11b): Find a location higher in the stack to add these defaults
-  // to the NodeDef.
-  NodeDef node_def_with_defaults(node_def);
-  AddDefaultsToNodeDef(*op_def, &node_def_with_defaults);
-
   DataTypeVector inputs;
   DataTypeVector outputs;
-  status->Update(
-      InOutTypesForNode(node_def_with_defaults, *op_def, &inputs, &outputs));
+  status->Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
   if (!status->ok()) {
-    *status = AttachDef(*status, node_def_with_defaults);
+    *status = AttachDef(*status, node_def);
     return nullptr;
   }
 
   Node* node = AllocateNode(
-      new Node::Properties(op_def, node_def_with_defaults, inputs, outputs),
-      nullptr);
+      new Node::Properties(op_def, node_def, inputs, outputs), nullptr);
   return node;
 }
 

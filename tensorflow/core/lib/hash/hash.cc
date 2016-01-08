@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 
 #include "tensorflow/core/lib/core/raw_coding.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 #include <string.h>

@@ -40,12 +40,12 @@ class SummaryScalarOp : public OpKernel {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
 
-    OP_REQUIRES(c, tags.IsSameSize(values) ||
-                       (TensorShapeUtils::IsLegacyScalar(tags.shape()) &&
-                        TensorShapeUtils::IsLegacyScalar(values.shape())),
+    OP_REQUIRES(c, tags.IsSameSize(values) || (IsLegacyScalar(tags.shape()) &&
+                                               IsLegacyScalar(values.shape())),
                 errors::InvalidArgument("tags and values not the same shape: ",
                                         tags.shape().ShortDebugString(), " != ",
-                                        values.shape().ShortDebugString()));
+                                        values.shape().ShortDebugString(),
+                                        SingleTag(tags)));
     auto Ttags = tags.flat<string>();
     auto Tvalues = values.flat<T>();
     Summary s;
@@ -59,16 +59,16 @@ class SummaryScalarOp : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
     CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
   }
-};
 
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SummaryScalarOp<float>);
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SummaryScalarOp<double>);
+  // If there's only one tag, include it in the error message
+  static string SingleTag(const Tensor& tags) {
+    if (tags.NumElements() == 1) {
+      return strings::StrCat(" (tag '", tags.flat<string>()(0), "')");
+    } else {
+      return "";
+    }
+  }
+};
 
 template <typename T>
 class SummaryHistoOp : public OpKernel {
@@ -81,7 +81,7 @@ class SummaryHistoOp : public OpKernel {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
     const auto flat = values.flat<T>();
-    OP_REQUIRES(c, TensorShapeUtils::IsLegacyScalar(tags.shape()),
+    OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
                 errors::InvalidArgument("tags must be scalar"));
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
@@ -107,6 +107,9 @@ class SummaryHistoOp : public OpKernel {
 };
 
 #define REGISTER(T)                                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("ScalarSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
+      SummaryScalarOp<T>);                                                \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SummaryHistoOp<T>);

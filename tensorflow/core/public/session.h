@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/public/session_options.h"
@@ -69,7 +68,7 @@ namespace tensorflow {
 ///
 ///     // Close the session to release the resources associated with
 ///     // this session.
-///     session->Close()
+///     session->Close();
 ///
 /// ```
 ///

@@ -412,6 +412,43 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
   A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
 
+- - -
+
+### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv2d_transpose}
+
+The transpose of `conv2d`.
+
+This operation is sometimes called "deconvolution" after (Deconvolutional
+Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+actually the transpose (gradient) of `conv2d` rather than an actual
+deconvolution.
+
+##### Args:
+
+
+*  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
+    `[batch, height, width, in_channels]`.
+*  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
+    `[height, width, output_channels, in_channels]`.  `filter`'s
+    `in_channels` dimension must match that of `value`.
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
+    deconvolution op.
+*  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
+    dimension of the input tensor.
+*  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+*  <b>`name`</b>: Optional name for the returned tensor.
+
+##### Returns:
+
+  A `Tensor` with the same type as `value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input/output depth does not match `filter`'s shape, or if
+    padding is other than `'VALID'` or `'SAME'`.
+
+
 
 ## Pooling
 
@@ -465,7 +502,7 @@ Performs the max pooling on the input.
 
 
 *  <b>`value`</b>: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
-    type `float32`, `float64`, `qint8`, `quint8`, `qint32`.
+    type `tf.float32`.
 *  <b>`ksize`</b>: A list of ints that has length >= 4.  The size of the window for
     each dimension of the input tensor.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
@@ -475,7 +512,7 @@ Performs the max pooling on the input.
 
 ##### Returns:
 
-  A `Tensor` with the same type as `value`.  The max pooled output tensor.
+  A `Tensor` with type `tf.float32`.  The max pooled output tensor.
 
 
 - - -

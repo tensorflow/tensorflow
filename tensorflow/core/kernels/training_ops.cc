@@ -153,7 +153,7 @@ class ApplyGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", def().input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -242,7 +242,7 @@ class ApplyAdagradOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", def().input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -253,7 +253,7 @@ class ApplyAdagradOp : public OpKernel {
                                 accum.shape().DebugString()));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
+        errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
   }
@@ -336,7 +336,7 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -457,7 +457,7 @@ class ApplyMomentumOp : public OpKernel {
                                 accum.shape().DebugString()));
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
+        errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 

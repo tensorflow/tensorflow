@@ -65,7 +65,7 @@ class UnpackOpTest(tf.test.TestCase):
   def testCannotInferNum(self):
     x = tf.placeholder(np.float32)
     with self.assertRaisesRegexp(
-        ValueError, r'Cannot infer num from shape TensorShape\(None\)'):
+        ValueError, r'Cannot infer num from shape <unknown>'):
       tf.unpack(x)
 
 

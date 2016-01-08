@@ -112,7 +112,7 @@ Example:
 # Decode an image and convert it to HSV.
 rgb_image = tf.decode_png(...,  channels=3)
 rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.hsv_to_rgb(rgb_image)
+hsv_image = tf.rgb_to_hsv(rgb_image)
 ```
 
 @@rgb_to_grayscale
@@ -172,8 +172,8 @@ from tensorflow.python.ops import random_ops
 
 
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.attention_ops import *
 from tensorflow.python.ops.gen_image_ops import *
-from tensorflow.python.ops.gen_attention_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient('RandomCrop')
@@ -511,7 +511,11 @@ class ResizeMethod(object):
   AREA = 3
 
 
-def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
+def resize_images(images,
+                  new_height,
+                  new_width,
+                  method=ResizeMethod.BILINEAR,
+                  align_corners=False):
   """Resize `images` to `new_width`, `new_height` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -534,6 +538,9 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
     new_height: integer.
     new_width: integer.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+    align_corners: bool. If true, exactly align all 4 cornets of the input and
+                   output. Defaults to `false`. Only implemented for bilinear
+                   interpolation method so far.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -557,10 +564,14 @@ def resize_images(images, new_height, new_width, method=ResizeMethod.BILINEAR):
   _, height, width, depth = _ImageDimensions(images)
 
   if width == new_width and height == new_height:
+    if not is_batch:
+      images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
 
   if method == ResizeMethod.BILINEAR:
-    images = gen_image_ops.resize_bilinear(images, [new_height, new_width])
+    images = gen_image_ops.resize_bilinear(images,
+                                           [new_height, new_width],
+                                           align_corners=align_corners)
   elif method == ResizeMethod.NEAREST_NEIGHBOR:
     images = gen_image_ops.resize_nearest_neighbor(images, [new_height,
                                                             new_width])
@@ -581,7 +592,7 @@ def per_image_whitening(image):
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/srqt(image.NumElements()))`.
+  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
 
   `stddev` is the standard deviation of all values in `image`. It is capped
   away from zero to protect against division by 0 when handling uniform images.
@@ -648,9 +659,9 @@ def random_brightness(image, max_delta, seed=None):
 
 
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrase of an image by a random factor.
+  """Adjust the contrast of an image by a random factor.
 
-  Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
+  Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
 
   Args:
@@ -866,7 +877,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Images that are represented using floating point values are expected to have
   values in the range [0,1). Image data stored in integer data types are
-  expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+  expected to have values in the range `[0,MAX]`, where `MAX` is the largest
   positive representable number for the data type.
 
   This op converts between data types, scaling the values appropriately before
@@ -964,7 +975,7 @@ def rgb_to_grayscale(images):
     gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
                                      rank_1,
                                      keep_dims=True)
-
+    gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype)
 
 
@@ -986,7 +997,9 @@ def grayscale_to_rgb(images):
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
     multiples = array_ops.concat(0, shape_list)
-    return array_ops.tile(images, multiples)
+    rgb = array_ops.tile(images, multiples)
+    rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
+    return rgb
 
 
 # pylint: disable=invalid-name
@@ -1110,7 +1123,7 @@ def random_saturation(image, lower, upper, seed=None):
 
 
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust staturation of an RGB image.
+  """Adjust saturation of an RGB image.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the saturation channel,

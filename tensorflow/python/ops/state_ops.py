@@ -24,6 +24,7 @@ collected in the graph.
 
 @@all_variables
 @@trainable_variables
+@@moving_average_variables
 
 @@initialize_all_variables
 @@initialize_variables

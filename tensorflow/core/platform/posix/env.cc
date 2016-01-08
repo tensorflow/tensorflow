@@ -26,6 +26,7 @@ limitations under the License.
 #include <thread>
 
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/env.h"
 
@@ -387,9 +388,30 @@ class PosixEnv : public Env {
                       std::function<void()> fn) override {
     return new StdThread(thread_options, name, fn);
   }
+
+  void SchedClosure(std::function<void()> closure) override {
+    // TODO(mrry): Replace with a threadpool.
+    CHECK(false) << "PosixEnv::SchedClosure not implemented.";
+  }
+
+  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+    // TODO(mrry): Replace with a non-blocking timer mechanism and threadpool.
+    CHECK(false) << "PosixEnv::SchedClosureAfter not implemented.";
+  }
+
+  Status LoadLibrary(const char* library_filename, void** handle) override {
+    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  }
+
+  Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                              void** symbol) override {
+    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
+                                                      symbol);
+  }
 };
 
 }  // namespace
+
 #if defined(PLATFORM_POSIX) || defined(__ANDROID__)
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;

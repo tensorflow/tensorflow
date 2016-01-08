@@ -4,7 +4,7 @@
 ## TensorFlow WhitePaper
 
 Additional details about the TensorFlow programming model and the underlying
-implementation can be found in out white paper:
+implementation can be found in our white paper:
 
 * [TensorFlow: Large-scale machine learning on heterogeneous systems](http://download.tensorflow.org/paper/whitepaper2015.pdf)
 
@@ -12,7 +12,7 @@ implementation can be found in out white paper:
 
 If you use TensorFlow in your research and would like to cite the TensorFlow
 system, we suggest you cite the paper above.
-You can use this [BibTeX entry](../resources/bib.md).  As the project progresses, we
+You can use this [BibTeX entry](bib.md).  As the project progresses, we
 may update the suggested citation with new papers.
 
 Please only use the TensorFlow name and marks when accurately referencing this
@@ -55,3 +55,8 @@ https://github.com/tensorflow/tensorflow/issues) on GitHub.
 If you need help with using TensorFlow, please do not use the issue
 tracker for that. Instead, direct your questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).
 
+## Versioning
+
+TensorFlow uses [Semantic Versioning 2.0](http://semver.org).  For details on
+the versioning of our public API and binary compatibility, see the [versioning
+document](versions.md).

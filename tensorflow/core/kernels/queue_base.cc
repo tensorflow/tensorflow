@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor_shape.h"
 
@@ -204,15 +205,17 @@ void QueueBase::Cancel(Action action, CancellationToken token) {
 
     for (Attempt& attempt : *attempts) {
       if (attempt.cancellation_token == token) {
-        attempt.is_cancelled = true;
-        if (action == kEnqueue) {
-          attempt.context->SetStatus(
-              errors::Cancelled("Enqueue operation was cancelled"));
-        } else {
-          attempt.context->SetStatus(
-              errors::Cancelled("Dequeue operation was cancelled"));
+        if (!attempt.is_cancelled) {
+          attempt.is_cancelled = true;
+          if (action == kEnqueue) {
+            attempt.context->SetStatus(
+                errors::Cancelled("Enqueue operation was cancelled"));
+          } else {
+            attempt.context->SetStatus(
+                errors::Cancelled("Dequeue operation was cancelled"));
+          }
+          std::swap(callback, attempt.done_callback);
         }
-        std::swap(callback, attempt.done_callback);
         break;
       }
     }
@@ -229,10 +232,12 @@ void QueueBase::CloseAndCancel() {
     mutex_lock lock(mu_);
     closed_ = true;
     for (Attempt& attempt : enqueue_attempts_) {
-      attempt.is_cancelled = true;
-      attempt.context->SetStatus(
-          errors::Cancelled("Enqueue operation was cancelled"));
-      callbacks.emplace_back(std::move(attempt.done_callback));
+      if (!attempt.is_cancelled) {
+        attempt.is_cancelled = true;
+        attempt.context->SetStatus(
+            errors::Cancelled("Enqueue operation was cancelled"));
+        callbacks.emplace_back(std::move(attempt.done_callback));
+      }
     }
   }
   for (const DoneCallback& callback : callbacks) {
@@ -341,7 +346,14 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_INT16);
   HANDLE_TYPE(DT_INT8);
   HANDLE_TYPE(DT_STRING);
+  HANDLE_TYPE(DT_COMPLEX64);
   HANDLE_TYPE(DT_INT64);
+  HANDLE_TYPE(DT_BOOL);
+  HANDLE_TYPE(DT_QINT8);
+  HANDLE_TYPE(DT_QUINT8);
+  HANDLE_TYPE(DT_QINT32);
+  HANDLE_TYPE(DT_QINT16);
+  HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
   return errors::Unimplemented("Unhandled data type: ", parent.dtype());
 }
@@ -361,7 +373,14 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_INT16);
   HANDLE_TYPE(DT_INT8);
   HANDLE_TYPE(DT_STRING);
+  HANDLE_TYPE(DT_COMPLEX64);
   HANDLE_TYPE(DT_INT64);
+  HANDLE_TYPE(DT_BOOL);
+  HANDLE_TYPE(DT_QINT8);
+  HANDLE_TYPE(DT_QUINT8);
+  HANDLE_TYPE(DT_QINT32);
+  HANDLE_TYPE(DT_QINT16);
+  HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
   return errors::Unimplemented("Unhandled data type: ", element.dtype());
 }

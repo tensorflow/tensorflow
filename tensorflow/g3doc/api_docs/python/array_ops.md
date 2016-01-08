@@ -558,13 +558,12 @@ For example:
 
 ```prettyprint
 # 't' is [[1, 1], [2, 2]]
-# 'paddings' is [[1, 1]], [2, 2]]
+# 'paddings' is [[1, 1], [2, 2]]
 # rank of 't' is 2
-pad(t, paddings) ==> [[0, 0, 0, 0, 0]
-                      [0, 0, 0, 0, 0]
-                      [0, 1, 1, 0, 0]
-                     [[0, 2, 2, 0, 0]
-                      [0, 0, 0, 0, 0]]
+pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
+                      [0, 0, 1, 1, 0, 0]
+                      [0, 0, 2, 2, 0, 0]
+                      [0, 0, 0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -728,6 +727,7 @@ output[3, 2:, :, ...] = input[3, 2:, :, ...]
 ```
 
 In contrast, if:
+
 ```prettyprint
 # Given this:
 batch_dim = 2

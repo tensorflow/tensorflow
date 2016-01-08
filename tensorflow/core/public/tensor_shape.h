@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -210,10 +211,16 @@ class TensorShapeUtils {
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
   template <typename T>
-  static TensorShape MakeShape(const T* dims, int n) {
-    TensorShape shape;
-    for (int i = 0; i < n; ++i) shape.AddDim(dims[i]);
-    return shape;
+  static Status MakeShape(const T* dims, int n, TensorShape* out) {
+    *out = TensorShape();
+    for (int i = 0; i < n; ++i) {
+      if (dims[i] >= 0) {
+        out->AddDim(dims[i]);
+      } else {
+        return errors::InvalidArgument("Dimension ", dims[i], " must be >= 0");
+      }
+    }
+    return Status::OK();
   }
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {

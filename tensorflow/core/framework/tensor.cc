@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
@@ -50,6 +51,7 @@ template <typename T>
 class Buffer : public TensorBuffer {
  public:
   Buffer(Allocator* a, int64 n);
+  Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
 
   void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
@@ -216,6 +218,8 @@ PROTO_TRAITS(bool, bool, bool);
 PROTO_TRAITS(string, string, string);
 PROTO_TRAITS(qint8, int32, int);
 PROTO_TRAITS(quint8, int32, int);
+PROTO_TRAITS(qint16, int32, int);
+PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
 template <>
@@ -270,6 +274,13 @@ struct ProtoHelper<bfloat16> {
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
     : alloc_(a), data_(a->Allocate<T>(n)), elem_(n) {
+  if (data_) Helper<T>::RunCtor(data_, elem_);
+}
+
+template <typename T>
+Buffer<T>::Buffer(Allocator* a, int64 n,
+                  const AllocationAttributes& allocation_attr)
+    : alloc_(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {
   if (data_) Helper<T>::RunCtor(data_, elem_);
 }
 
@@ -387,6 +398,8 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(qint32, SINGLE_ARG(STMTS))                   \
     CASE(quint8, SINGLE_ARG(STMTS))                   \
     CASE(qint8, SINGLE_ARG(STMTS))                    \
+    CASE(quint16, SINGLE_ARG(STMTS))                  \
+    CASE(qint16, SINGLE_ARG(STMTS))                   \
     CASE(bfloat16, SINGLE_ARG(STMTS))                 \
     case DT_INVALID:                                  \
       LOG(FATAL) << "Type not set";                   \
@@ -401,6 +414,15 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
+  }
+}
+
+Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
+               const AllocationAttributes& allocation_attr)
+    : type_(type), shape_(shape), buf_(nullptr) {
+  CHECK_NOTNULL(a);
+  if (shape_.num_elements() > 0) {
+    CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
 }
 

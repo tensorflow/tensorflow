@@ -69,6 +69,7 @@ from __future__ import print_function
 
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -82,6 +83,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
+from tensorflow.python.platform import logging
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -107,7 +109,7 @@ def _Identity(data, name=None):
 
 
 def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
-           name=None):
+           use_ref=True, name=None):
   """Creates or finds a child frame, and makes 'data' available to it.
 
   The unique `frame_name` is used by the `Executor` to identify frames. If
@@ -120,17 +122,18 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
     frame_name: The name of the child frame.
     is_constant: If true, the output is constant within the child frame.
     parallel_iterations: The number of iterations allowed to run in parallel.
+    use_ref: If true, use ref_enter if data is of ref type.
     name: A name for this operation (optional).
 
   Returns:
     The same tensor as 'data'.
   """
-  if not data.dtype.is_ref_dtype:
-    return enter(data, frame_name, is_constant, parallel_iterations,
-                 name=name)
-  else:
+  if data.dtype.is_ref_dtype and use_ref:
     return ref_enter(data, frame_name, is_constant, parallel_iterations,
                      name=name)
+  else:
+    return enter(data, frame_name, is_constant, parallel_iterations,
+                 name=name)
 
 
 def exit(data, name=None):
@@ -148,7 +151,7 @@ def exit(data, name=None):
   return gen_control_flow_ops._exit(data, name)
 
 
-def switch(data, pred, name=None):
+def switch(data, pred, dtype=None, name=None):
   """Forwards `data` to an output determined by `pred`.
 
   If `pred` is true, the `data` input is forwared to the first output.
@@ -159,6 +162,8 @@ def switch(data, pred, name=None):
   Args:
     data: The tensor to be forwarded to the appropriate output.
     pred: A scalar that specifies which output port will receive data.
+    dtype: Optional element type for the returned tensor. If missing,
+           the type is inferred from the type of `value`.
     name: A name for this operation (optional).
 
   Returns:
@@ -166,7 +171,8 @@ def switch(data, pred, name=None):
     `output_true`, otherwise it goes to `output_false`.
   """
   with ops.op_scope([data, pred], name, "Switch") as name:
-    data = ops.convert_to_tensor_or_indexed_slices(data, name="data")
+    data = ops.convert_to_tensor_or_indexed_slices(data, dtype=dtype,
+                                                   name="data")
     pred = ops.convert_to_tensor(pred, name="pred")
     if isinstance(data, ops.Tensor):
       return gen_control_flow_ops._switch(data, pred, name=name)
@@ -571,18 +577,20 @@ class CondContext(ControlFlowContext):
       if not isinstance(r, list) and not isinstance(r, _basetuple):
         r = [r]
       for v in r:
+        real_v = v
         if isinstance(v, ops.Operation):
-          v = with_dependencies([v], self._pivot)
+          real_v = with_dependencies([v], self._pivot)
         elif v.name not in self._values:
           self._values.add(v.name)
           if self._outer_context is not None:
-            v = self._outer_context.AddValue(v)
-          v = _SwitchRefOrTensor(v, self._pred)[self._branch]
+            real_v = self._outer_context.AddValue(v)
+          real_v = _SwitchRefOrTensor(real_v, self._pred)[self._branch]
+          self._external_values[v.name] = real_v
         else:
           external_v = self._external_values.get(v.name)
           if external_v is not None:
-            v = external_v
-        result.append(v)
+            real_v = external_v
+        result.append(real_v)
     return result
 
 
@@ -624,6 +632,8 @@ def cond(pred, fn1, fn2, name=None):
       raise TypeError("fn2 must be callable.")
 
     # Add the Switch to the graph.
+    if isinstance(pred, bool):
+      raise TypeError("pred must not be a Python bool")
     p_2, p_1 = switch(pred, pred)
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
@@ -917,7 +927,7 @@ class WhileContext(ControlFlowContext):
                        name="f_cond")
     merge_acc = merge([enter_acc, enter_acc])[0]
     switch_acc = switch(merge_acc, self._pivot)
-    acc = array_ops.concat(0, [switch_add_acc[1], value])
+    acc = array_ops.concat(0, [switch_acc[1], value])
     next_acc = next_iteration(acc)
     merge_acc.op._update_input(1, next_acc)
 
@@ -1013,12 +1023,11 @@ class WhileContext(ControlFlowContext):
       real_vars = [self._outer_context.AddValue(x) for x in loop_vars]
     with ops.control_dependencies(None):
       enter_vars = [_Enter(x, self._name, is_constant=False,
-                           parallel_iterations=self._parallel_iterations)
+                           parallel_iterations=self._parallel_iterations,
+                           use_ref=False)
                     for x in real_vars]
     for x in enter_vars:
-      # pylint: disable=protected-access
-      x.op._set_control_flow_context(self)
-      # pylint: enable=protected-access
+      x.op._set_control_flow_context(self)  # pylint: disable=protected-access
     self._values = set([x.name for x in enter_vars])
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
@@ -1167,7 +1176,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
   with ops.op_scope(dependencies + [output_tensor], name,
-                   "control_dependency") as name:
+                    "control_dependency") as name:
     with ops.device(output_tensor.device
                     or ops.get_default_graph().get_default_device()):
       with ops.control_dependencies(dependencies):
@@ -1232,12 +1241,14 @@ def group(*inputs, **kwargs):
     # 2-level tree. The root node is the returned NoOp node.
     # deps contains 1 NoOp node for each device.
     deps = []
+
     def device_key(dev):
       """A sort key that allows None to be compared to strings."""
       return "" if dev is None else dev
     for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
     return _GroupControlDeps(None, deps, name=name)
+
 
 def tuple(tensors, name=None, control_inputs=None):
   """Group tensors together.

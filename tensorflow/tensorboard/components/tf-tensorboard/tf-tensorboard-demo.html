@@ -1,0 +1,38 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="tf-tensorboard.html">
+<!--
+tf-tensorboard-demo is a standalone demo TensorBoard that expects to load mocked
+json data from a "dataDir" rather than connecting to a live backend.
+-->
+<dom-module id="tf-tensorboard-demo">
+  <template>
+    <tf-tensorboard
+      id="tensorboard"
+      router="[[_demoRouter]]"
+    ></tf-tensorboard>
+    <style>
+      :host {
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-tensorboard-demo",
+      properties: {
+        _demoRouter: {
+          type: Object,
+          computed: "_makeDemoRouter(dataDir)",
+        },
+        dataDir: {
+          type: String,
+          value: "data",
+        },
+      },
+      _makeDemoRouter: function(dataDir) {
+        return TF.Urls.demoRouter(dataDir);
+      },
+    });
+  </script>
+</dom-module>

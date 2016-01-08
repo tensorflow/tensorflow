@@ -22,6 +22,7 @@ import contextlib
 
 import tensorflow.python.platform
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -225,6 +226,16 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
+      # Set any default attr values that aren't present.
+      op_def = op_dict[node.op]
+      for attr_def in op_def.attr:
+        key = attr_def.name
+        value = node.attr[key]
+        if attr_def.HasField('default_value') and value is None:
+          attr_value = attr_value_pb2.AttrValue()
+          attr_value.CopyFrom(attr_def.default_value)
+          node.attr[key] = attr_value
+
       output_types = _OutputTypes(node, op_dict)
       with _MaybeDevice(node.device):
         name_to_op[node.name] = g.create_op(

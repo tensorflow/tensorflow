@@ -25,10 +25,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/edit_distance.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
-
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -118,10 +118,15 @@ class EditDistanceOp : public OpKernel {
                             *hypothesis_shape, *truth_indices, *truth_values,
                             *truth_shape));
 
-    TensorShape hypothesis_st_shape = TensorShapeUtils::MakeShape(
-        hypothesis_shape->vec<int64>().data(), hypothesis_shape->NumElements());
-    TensorShape truth_st_shape = TensorShapeUtils::MakeShape(
-        truth_shape->vec<int64>().data(), truth_shape->NumElements());
+    TensorShape hypothesis_st_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShapeUtils::MakeShape(hypothesis_shape->vec<int64>().data(),
+                                         hypothesis_shape->NumElements(),
+                                         &hypothesis_st_shape));
+    TensorShape truth_st_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                            truth_shape->vec<int64>().data(),
+                            truth_shape->NumElements(), &truth_st_shape));
 
     // Assume indices are sorted in row-major order.
     std::vector<int64> sorted_order(truth_st_shape.dims());

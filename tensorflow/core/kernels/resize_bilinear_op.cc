@@ -33,8 +33,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Device, typename T>
 class ResizeBilinearOp : public OpKernel {
  public:
-  explicit ResizeBilinearOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit ResizeBilinearOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -64,12 +65,23 @@ class ResizeBilinearOp : public OpKernel {
     const int64 channels = input.dim_size(3);
     const int64 out_height = output->dim_size(1);
     const int64 out_width = output->dim_size(2);
+    CHECK_GT(in_height, 0);
+    CHECK_GT(in_width, 0);
+    CHECK_GT(channels, 0);
+    CHECK_GT(out_height, 0);
+    CHECK_GT(out_width, 0);
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<float, 4>::Tensor output_data = output->tensor<float, 4>();
 
-    const float height_scale = in_height / static_cast<float>(out_height);
-    const float width_scale = in_width / static_cast<float>(out_width);
+    const float height_scale =
+        (align_corners_ && out_height > 1)
+            ? (in_height - 1) / static_cast<float>(out_height - 1)
+            : in_height / static_cast<float>(out_height);
+    const float width_scale =
+        (align_corners_ && out_width > 1)
+            ? (in_width - 1) / static_cast<float>(out_width - 1)
+            : in_width / static_cast<float>(out_width);
 
     for (int b = 0; b < batch_size; ++b) {
       for (int y = 0; y < out_height; ++y) {
@@ -105,13 +117,18 @@ class ResizeBilinearOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 template <typename Device, typename T>
 class ResizeBilinearOpGrad : public OpKernel {
  public:
   explicit ResizeBilinearOpGrad(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     // Validate input.
@@ -161,9 +178,13 @@ class ResizeBilinearOpGrad : public OpKernel {
     }
 
     const float height_scale =
-        original_height / static_cast<float>(resized_height);
+        (align_corners_ && resized_height > 1)
+            ? (original_height - 1) / static_cast<float>(resized_height - 1)
+            : original_height / static_cast<float>(resized_height);
     const float width_scale =
-        original_width / static_cast<float>(resized_width);
+        (align_corners_ && resized_width > 1)
+            ? (original_width - 1) / static_cast<float>(resized_width - 1)
+            : original_width / static_cast<float>(resized_width);
 
     // Each resized pixel was computed as a weighted average of four input
     // pixels. Here we find the pixels that contributed to each output pixel
@@ -201,6 +222,9 @@ class ResizeBilinearOpGrad : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 #define REGISTER_KERNEL(T)                            \
@@ -210,11 +234,8 @@ class ResizeBilinearOpGrad : public OpKernel {
                               .HostMemory("size"),    \
                           ResizeBilinearOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
 #undef REGISTER_KERNEL
 
 REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
@@ -142,24 +143,26 @@ class FillOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& Tdims = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsLegacyVector(Tdims.shape()),
-                errors::InvalidArgument("dims must be a vector of int32."));
+    OP_REQUIRES(
+        context, IsLegacyVector(Tdims.shape()),
+        errors::InvalidArgument("dims must be a vector of int32, got shape ",
+                                Tdims.shape().ShortDebugString()));
     const Tensor& Tvalue = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(Tvalue.shape()),
-                errors::InvalidArgument("value must be a scalar."));
+    OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
+                errors::InvalidArgument("value must be a scalar, got shape ",
+                                        Tvalue.shape().ShortDebugString()));
     auto dims = Tdims.flat<int32>();
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,
                   errors::InvalidArgument("dims[", i, "] = ", dims(i),
                                           " must be nonnegative."));
     }
+    TensorShape shape;
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                reinterpret_cast<const int32*>(dims.data()),
+                                dims.size(), &shape));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShapeUtils::MakeShape(
-                   reinterpret_cast<const int32*>(dims.data()), dims.size()),
-            &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;
     functor(context->eigen_device<Device>(), out->flat<T>(),
             Tvalue.scalar<T>());

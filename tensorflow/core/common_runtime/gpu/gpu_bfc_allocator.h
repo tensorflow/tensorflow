@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -48,6 +50,8 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   string Name() override { return "gpu_bfc"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
 
   void AddAllocVisitor(Visitor visitor) override;

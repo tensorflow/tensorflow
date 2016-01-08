@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/padding.h"
@@ -264,16 +265,18 @@ typedef Eigen::GpuDevice GPUDevice;
           << ", strides = " << strides[1]
 
 namespace {
-TensorShape VectorToShape(const TTypes<int32>::ConstVec& sizes) {
-  TensorShape shape;
-
+Status VectorToShape(const TTypes<int32>::ConstVec& sizes, TensorShape* out) {
   using Index = TTypes<int32>::ConstVec::Index;
   const Index dims = sizes.size();
   for (Index i = 0; i < dims; ++i) {
-    shape.AddDim(sizes(i));
+    if (sizes(i) >= 0) {
+      out->AddDim(sizes(i));
+    } else {
+      return errors::InvalidArgument("Dimension ", sizes(i), " must be >= 0");
+    }
   }
 
-  return shape;
+  return Status::OK();
 }
 }  // namespace
 
@@ -309,7 +312,9 @@ class Conv2DFastBackpropInputOp : public OpKernel {
         errors::InvalidArgument(
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
-    TensorShape input_shape = VectorToShape(input_sizes.vec<int32>());
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -359,7 +364,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         errors::InvalidArgument(
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
-    TensorShape input_shape = VectorToShape(input_sizes.vec<int32>());
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -566,7 +573,9 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
-    TensorShape filter_shape = VectorToShape(filter_sizes.vec<int32>());
+    TensorShape filter_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;
@@ -618,7 +627,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
             "not ",
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
-    TensorShape filter_shape = VectorToShape(filter_sizes.vec<int32>());
+    TensorShape filter_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DCustomBackpropFilter");
     Tensor* filter_backprop;
@@ -790,7 +801,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         errors::InvalidArgument(
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
-    TensorShape input_shape = VectorToShape(input_sizes.vec<int32>());
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -936,7 +949,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                          pre_transformed_in_backprop.template flat<T>().size());
 
       static int64 ConvolveBackwardDataScratchSize = GetCudnnWorkspaceLimit(
-          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
           );
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
@@ -1067,7 +1080,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
-    TensorShape filter_shape = VectorToShape(filter_sizes.vec<int32>());
+    TensorShape filter_shape;
+    OP_REQUIRES_OK(context,
+                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;
@@ -1229,7 +1244,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                          transformed_input.template flat<T>().size());
 
       static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
-          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 30  // 1GB by default
+          "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
           );
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);

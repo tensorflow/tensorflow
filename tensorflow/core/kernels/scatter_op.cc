@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/tensor.h"
 
@@ -147,10 +148,8 @@ class ScatterUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_UPDATE_INT32(type) REGISTER_SCATTER_UPDATE(type, int32)
 #define REGISTER_SCATTER_UPDATE_INT64(type) REGISTER_SCATTER_UPDATE(type, int64)
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_INT32);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_INT64);
-REGISTER_SCATTER_UPDATE_INT32(bool)
-REGISTER_SCATTER_UPDATE_INT64(bool)
+TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_INT32);
+TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_INT64);
 
 #undef REGISTER_SCATTER_UPDATE_INT64
 #undef REGISTER_SCATTER_UPDATE_INT32

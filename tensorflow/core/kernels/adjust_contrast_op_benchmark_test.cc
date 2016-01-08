@@ -23,8 +23,8 @@ namespace tensorflow {
 
 static Graph* BM_AdjustContrast(int batches, int width, int height) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor in(DT_UINT8, TensorShape({batches, width, height, 3}));
-  in.flat<uint8>().setRandom();
+  Tensor in(DT_FLOAT, TensorShape({batches, width, height, 3}));
+  in.flat<float>().setRandom();
   Tensor factor(DT_FLOAT, TensorShape({}));
   factor.flat<float>().setConstant(1.2);
 

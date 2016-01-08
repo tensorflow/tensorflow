@@ -86,9 +86,20 @@ struct BatchNormGrad {
     const int rest_size = input.size() / depth;
 
     typedef typename TTypes<T>::ConstVec::Index Index;
+
     Eigen::DSizes<Index, 2> rest_by_depth(rest_size, depth);
+#if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::DSizes<Index, 2> rest_by_one(rest_size, 1);
     Eigen::DSizes<Index, 2> one_by_depth(1, depth);
+    Eigen::array<Index, 1> reduction_axis;
+    reduction_axis[0] = 0;  // Reduces on first dimension.
+#else
+    Eigen::IndexList<Index, Eigen::type2index<1> > rest_by_one;
+    rest_by_one.set(0, rest_size);
+    Eigen::IndexList<Eigen::type2index<1>, Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+#endif
 
     // db = out_backprop
     //
@@ -100,9 +111,6 @@ struct BatchNormGrad {
     // dm = sum_over_rest(out_backprop * gamma) * (-1 / rsqrt(v + epsilon))
     //
     // dx = out_backprop * (gamma * rsqrt(v + epsilon))
-    Eigen::array<Index, 1> reduction_axis;
-    reduction_axis[0] = 0;  // Reduces on first dimension.
-
     db.device(d) = out_backprop.reshape(rest_by_depth).sum(reduction_axis);
 
     // scratch1 = rsqrt(v + epsilon)

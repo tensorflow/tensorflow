@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
 #define TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/mutex.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/mutex.h
+
 #include <chrono>
 #include <condition_variable>
 #include <mutex>

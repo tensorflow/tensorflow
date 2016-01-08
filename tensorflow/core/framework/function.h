@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -81,7 +82,7 @@ class FunctionDefHelper {
     return FunctionRef(name, {});
   }
 
-  // Node is used to consturct FunctionDef.Node using initialization
+  // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
   struct Node {

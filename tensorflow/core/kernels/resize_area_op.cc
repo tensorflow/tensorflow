@@ -144,11 +144,8 @@ class ResizeAreaOp : public OpKernel {
                               .HostMemory("size"),    \
                           ResizeAreaOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
 #undef REGISTER_KERNEL
 
 }  // namespace tensorflow

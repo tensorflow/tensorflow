@@ -33,7 +33,7 @@ if (output_tensor(0) > 0.5) { ... }
 
 // Close the session to release the resources associated with
 // this session.
-session->Close()
+session->Close();
 
 ```
 

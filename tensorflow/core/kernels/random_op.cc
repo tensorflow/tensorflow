@@ -180,19 +180,23 @@ namespace {
 
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
                                       int index, Tensor** output) {
-  if (!TensorShapeUtils::IsLegacyVector(shape.shape())) {
+  if (!ctx->op_kernel().IsLegacyVector(shape.shape())) {
     return errors::InvalidArgument(
         "shape must be a vector of {int32,int64}, got shape ",
         shape.shape().ShortDebugString());
   }
   if (shape.dtype() == DataType::DT_INT32) {
     auto vec = shape.flat<int32>();
-    TF_RETURN_IF_ERROR(ctx->allocate_output(
-        index, TensorShapeUtils::MakeShape(vec.data(), vec.size()), output));
+    TensorShape tensor_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
+    TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
   } else if (shape.dtype() == DataType::DT_INT64) {
     auto vec = shape.flat<int64>();
-    TF_RETURN_IF_ERROR(ctx->allocate_output(
-        index, TensorShapeUtils::MakeShape(vec.data(), vec.size()), output));
+    TensorShape tensor_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
+    TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
   } else {
     return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
   }

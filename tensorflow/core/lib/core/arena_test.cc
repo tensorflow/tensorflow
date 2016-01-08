@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/arena.h"
 
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace core {

@@ -15,11 +15,6 @@ components/*
 # be in the repo.
 components/tf-graph/demo/tf_model_zoo/*
 
-# Js files in the graph visualizer produces by the typescript
-# compiler and should not be submitted to the repo.
-components/tf-graph-common/lib/*.js
-components/tf-graph-common/lib/scene/*.js
-components/tf-event-dashboard/*.js
-components/tf-categorizer/*.js
-components/tf-dashboard-common/*.js
-components/**/tf-test/*.js
+# All standalone code for TensorBoard components should be written in
+# typescript, and the compiled javascript code should be ignored.
+components/tf-*/**/*.js

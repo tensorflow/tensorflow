@@ -32,6 +32,8 @@ class Dimension(object):
       self._value = None
     else:
       self._value = int(value)
+      if self._value < 0:
+        raise ValueError("Dimension %d must be >= 0" % self._value)
 
   def __repr__(self):
     return "Dimension(%s)" % repr(self._value)
@@ -423,6 +425,16 @@ class TensorShape(object):
 
   def __repr__(self):
     return "TensorShape(%s)" % self._dims
+
+  def __str__(self):
+    if self.ndims is None:
+      return "<unknown>"
+    elif self.ndims == 1:
+      length = self._dims[0].value
+      return "(%s,)" % (str(length) if length is not None else "?")
+    else:
+      return "(%s)" % ", ".join(str(d.value) if d.value is not None else "?"
+                                for d in self._dims)
 
   @property
   def dims(self):

@@ -85,6 +85,8 @@ typedef enum {
   TF_QUINT8 = 12,    // Quantized uint8
   TF_QINT32 = 13,    // Quantized int32
   TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.  Only for cast ops.
+  TF_QINT16 = 15,    // Quantized int16
+  TF_QUINT16 = 16,   // Quantized uint16
 } TF_DataType;
 
 // --------------------------------------------------------------------------
@@ -114,6 +116,21 @@ typedef enum {
 // TF_Status holds error information.  It either has an OK code, or
 // else an error code with an associated error message.
 typedef struct TF_Status TF_Status;
+
+// --------------------------------------------------------------------------
+// TF_Buffer holds a pointer to a block of data and its associated length.
+// Typically, the data consists of a serialized protocol buffer, but other data
+// may also be held in a buffer.
+//
+// TF_Buffer itself does not do any memory management of the pointed-to block.
+typedef struct {
+  const void* data;
+  size_t length;
+} TF_Buffer;
+
+// --------------------------------------------------------------------------
+// TF_Library holds information about dynamically loaded TensorFlow plugins.
+typedef struct TF_Library TF_Library;
 
 // Return a new status object.
 extern TF_Status* TF_NewStatus();
@@ -250,6 +267,32 @@ extern void TF_Run(TF_Session*,
                    const char** target_node_names, int ntargets,
                    // Output status
                    TF_Status*);
+
+// --------------------------------------------------------------------------
+// Load plugins containing custom ops and kernels
+
+// Load the library specified by library_filename and register the ops and
+// kernels present in that library.
+//
+// Pass "library_filename" to a platform-specific mechanism for dynamically
+// loading a library. The rules for determining the exact location of the
+// library are platform-specific and are not documented here.
+// Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
+// defined in the library.
+//
+// On success, place OK in status and return the newly created library handle.
+// The caller owns the library handle.
+//
+// On failure, place an error status in status and return nullptr.
+extern TF_Library* TF_LoadLibrary(const char* library_filename,
+                                  TF_Status* status);
+
+// Get the OpList of OpDefs defined in the library pointed by lib_handle.
+//
+// Returns a TF_Buffer. The memory pointed to by the result is owned by
+// lib_handle. The data in the buffer will be the serialized OpList proto for
+// ops defined in the library.
+extern TF_Buffer TF_GetOpList(TF_Library* lib_handle);
 
 #ifdef __cplusplus
 } /* end extern "C" */

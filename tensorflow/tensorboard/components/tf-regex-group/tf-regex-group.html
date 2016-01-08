@@ -1,8 +1,8 @@
-<link rel="import" href="../../bower_components/polymer/polymer.html">
-<link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
-<link rel="import" href="../../bower_components/iron-icons/iron-icons.html">
-<link rel="import" href="../../bower_components/paper-toggle-button/paper-toggle-button.html">
-<link rel="import" href="../../bower_components/paper-input/paper-input.html">
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
+<link rel="import" href="../paper-input/paper-input.html">
 
 <!--
 `tf-regex-group` provides an input component for a group of regular expressions.
@@ -30,23 +30,22 @@ more regexes).
     <div class="regex-list">
       <template is="dom-repeat" items="{{rawRegexes}}">
         <div class="regex-line">
+          <paper-checkbox
+            class="active-button"
+            checked="{{item.active}}"
+            disabled="[[!item.valid]]"
+          ></paper-checkbox>
           <paper-input
             id="text-input"
             class="regex-input"
-            label="input new regex"
+            label="Regex filter"
             no-label-float
             bind-value="{{item.regex}}"
             invalid="[[!item.valid]]"
             on-keyup="moveFocus"
           ></paper-input>
-          <paper-toggle-button
-            class="active-button"
-            checked="{{item.active}}"
-            disabled="[[!item.valid]]"
-          ></paper-toggle-button>
-
           <paper-icon-button
-            icon="delete"
+            icon="close"
             class="delete-button"
             aria-label="Delete Regex"
             tabindex="0"
@@ -55,28 +54,35 @@ more regexes).
         </div>
         <style>
           .regex-input {
-            width: 210px;
+            width: 230px;
             display: inline-block;
-            padding-left: 8px;
-            padding-right: 5px;
+            margin-left: -3px;
           }
 
-          .active-button {
-            --paper-toggle-button-checked-button-color: var(--tb-orange-strong);
-            --paper-toggle-button-checked-bar-color: var(--tb-orange-weak);
-            border: none;
+          paper-checkbox {
+            --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
+            --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
           }
 
           .delete-button {
-            color: var(--paper-pink-900);
-            width: 24px;
-            height: 24px;
+            color: var(--paper-grey-700);
+            width: 40px;
+            height: 40px;
+            margin-right: -10px;
           }
+
           .regex-list {
             margin-bottom: 10px;
           }
+          
           paper-input {
             --paper-input-container-focus-color: var(--tb-orange-strong);
+            --paper-input-container-input: {
+              font-size: 14px;
+            };
+            --paper-input-container-label: {
+              font-size: 14px;
+            };
           }
         </style>
       </template>

@@ -38,6 +38,17 @@ class TensorReference {
     if (buf_) buf_->Unref();
   }
 
+  // Return an estimate of the total bytes being kept alive by this reference.
+  size_t TotalBytes() const {
+    // We add 128 as a baseline to account for per-Tensor metadata
+    return 128 + (buf_ ? buf_->size() : 0);
+  }
+
+  // A constructor used only for tests
+  explicit TensorReference(TensorBuffer* test_buffer) : buf_(test_buffer) {
+    if (buf_) buf_->Ref();
+  }
+
  private:
   TensorBuffer* buf_;
 };

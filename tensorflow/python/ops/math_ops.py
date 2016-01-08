@@ -49,6 +49,9 @@ mathematical functions to your graph.
 @@minimum
 @@cos
 @@sin
+@@lgamma
+@@erf
+@@erfc
 
 ## Matrix Math Functions
 
@@ -83,6 +86,8 @@ functions to your graph.
 @@conj
 @@imag
 @@real
+@@fft2d
+@@ifft2d
 
 ## Reduction
 
@@ -630,7 +635,7 @@ def reduce_sum(input_tensor, reduction_indices=None, keep_dims=False,
   For example:
 
   ```python
-  # 'x' is [[1, 1, 1]]
+  # 'x' is [[1, 1, 1]
   #         [1, 1, 1]]
   tf.reduce_sum(x) ==> 6
   tf.reduce_sum(x, 0) ==> [2, 2, 2]
@@ -669,7 +674,7 @@ def reduce_mean(input_tensor, reduction_indices=None, keep_dims=False,
   For example:
 
   ```python
-  # 'x' is [[1., 1. ]]
+  # 'x' is [[1., 1.]
   #         [2., 2.]]
   tf.reduce_mean(x) ==> 1.5
   tf.reduce_mean(x, 0) ==> [1.5, 1.5]
@@ -787,7 +792,7 @@ def reduce_all(input_tensor, reduction_indices=None, keep_dims=False,
   For example:
 
   ```python
-  # 'x' is [[True,  True]]
+  # 'x' is [[True,  True]
   #         [False, False]]
   tf.reduce_all(x) ==> False
   tf.reduce_all(x, 0) ==> [False, False]
@@ -824,7 +829,7 @@ def reduce_any(input_tensor, reduction_indices=None, keep_dims=False,
   For example:
 
   ```python
-  # 'x' is [[True,  True]]
+  # 'x' is [[True,  True]
   #         [False, False]]
   tf.reduce_any(x) ==> True
   tf.reduce_any(x, 0) ==> [True, True]
@@ -1095,6 +1100,57 @@ def tanh(x, name=None):
     return gen_math_ops._tanh(x, name=name)
 
 
+def lgamma(x, name=None):
+  """Computes `ln(|gamma(x)|)` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Lgamma") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._lgamma(x, name=name)
+
+
+def erf(x, name=None):
+  """Computes Gauss error function of `x` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Erf") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._erf(x, name=name)
+
+
+def erfc(x, name=None):
+  """Computes complementary error function of `x` element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Erfc") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._erfc(x, name=name)
+
+
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
@@ -1117,8 +1173,13 @@ ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
 ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
+ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
+ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
+ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
 ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
+ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)
+ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("Add")

@@ -3,7 +3,7 @@
 PREREQUISITES:
 
 * Some familiarity with C++.
-* Must have [downloaded TensorFlow source](../../get_started/index.md#source),
+* Must have [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources),
   and be able to build it.
 
 If you'd like to incorporate an operation that isn't covered by the existing
@@ -26,12 +26,12 @@ to:
 
 [TOC]
 
-## Define the Op's interface {#define_interface}
+## Define the Op's interface 
 
 You define the interface of an Op by registering it with the TensorFlow system.
 In the registration, you specify the name of your Op, its inputs (types and
 names) and outputs (types and names), as well as docstrings and
-any [attrs](#Attrs) the Op might require.
+any [attrs](#attrs) the Op might require.
 
 To see how this works, suppose you'd like to create an Op that takes a tensor of
 `int32`s and outputs a copy of the tensor, with all but the first element set to
@@ -107,7 +107,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ```
 
 Once you
-[build and reinstall TensorFlow](../../get_started/os_setup.md#create-pip), the
+[build and reinstall TensorFlow](../../get_started/os_setup.md#create-the-pip-package-and-install), the
 Tensorflow system can reference and use the Op when requested.
 
 ## Generate the client wrapper
@@ -193,7 +193,7 @@ Then run your test:
 $ bazel test tensorflow/python:zero_out_op_test
 ```
 
-## Validation {#Validation}
+## Validation 
 
 The example above assumed that the Op applied to a tensor of any shape.  What
 if it only applied to vectors?  That means adding a check to the above OpKernel
@@ -234,7 +234,7 @@ function on error.
 
 ## Op registration
 
-### Attrs {#Attrs}
+### Attrs 
 
 Ops can have attrs, whose values are set when the Op is added to a graph. These
 are used to configure the Op, and their values can be accessed both within the
@@ -435,8 +435,8 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type` use [the `DT_*` names
 for the types](../../resources/dims_types.md#data-types).
 
-### Polymorphism {#Polymorphism}
-#### Type Polymorphism {#type-polymorphism}
+### Polymorphism 
+#### Type Polymorphism 
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
@@ -664,7 +664,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 ```
 
-#### List Inputs and Outputs {#list-input-output}
+#### List Inputs and Outputs 
 
 In addition to being able to accept or produce different types, ops can consume
 or produce a variable number of tensors.
@@ -775,7 +775,7 @@ expressions:
 
 * `<attr-type>`, where `<attr-type>` is the name of an [Attr](#attrs) with type
   `type` or `list(type)` (with a possible type restriction). This syntax allows
-  for [polymorphic ops](#Polymorphism).
+  for [polymorphic ops](#polymorphism).
 
   ```c++
   REGISTER_OP("PolymorphicSingleInput")
@@ -844,7 +844,8 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized `GraphDef` protocol
-buffers constructed from older specfications.
+buffers constructed from older specfications.  The details of `GraphDef`
+compatibility are [described here](../../resources/versions.md#graphs).
 
 There are several ways to preserve backwards-compatibility.
 
@@ -897,12 +898,13 @@ generated Python code may change in a way that isn't compatible with old
 callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
-made when TensorFlow's changes major versions.
+made when TensorFlow's changes major versions, and must conform to the
+[`GraphDef` version semantics](../../resources/versions.md#graphs).
 
-## GPU Support {#mult-archs}
+## GPU Support 
 
 You can implement different OpKernels and register one for CPU and another for
-GPU, just like you can [register kernels for different types](#Polymorphism).
+GPU, just like you can [register kernels for different types](#polymorphism).
 There are several examples of kernels with GPU support in
 [`tensorflow/core/kernels/`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/).
 Notice some kernels have a CPU version in a `.cc` file, a GPU version in a file
@@ -1018,7 +1020,7 @@ returns a list of
 output of the op). To register a shape function, apply the
 [`tf.RegisterShape` decorator](../../api_docs/python/framework.md#RegisterShape)
 to a shape function. For example, the
-[`ZeroOut` op defined above](#define_interface) would have a shape function like
+[`ZeroOut` op defined above](#define-the-ops-interface) would have a shape function like
 the following:
 
 ```python
@@ -1033,7 +1035,7 @@ def _zero_out_shape(op):
 ```
 
 A shape function can also constrain the shape of an input. For the version of
-[`ZeroOut` with a vector shape constraint](#Validation), the shape function
+[`ZeroOut` with a vector shape constraint](#validation), the shape function
 would be as follows:
 
 ```python
@@ -1048,7 +1050,7 @@ def _zero_out_shape(op):
   return [input_shape]
 ```
 
-If your op is [polymorphic with multiple inputs](#Polymorphism), use the
+If your op is [polymorphic with multiple inputs](#polymorphism), use the
 properties of the operation to determine the number of shapes to check:
 
 ```

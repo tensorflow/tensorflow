@@ -24,27 +24,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"  // Must be first
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-class NodeExecStats;
-class StepStats;
-
-class StepStatsCollector {
- public:
-  explicit StepStatsCollector(StepStats* ss);
-
-  void Save(const string& device, NodeExecStats* nt);
-
-  void Swap(StepStats* ss);
-
- private:
-  friend class StepStatsMgr;
-  mutex mu_;
-  StepStats* step_stats_ GUARDED_BY(mu_);
-};
 
 namespace port {
 
@@ -152,6 +136,9 @@ class Tracing::Engine {
   Engine() {}
   virtual ~Engine();
 
+  // Returns true if Tracing is currently enabled.
+  virtual bool IsEnabled() const = 0;
+
   // Represents an active annotation.
   class Annotation {
    public:
@@ -225,7 +212,7 @@ class Tracing::TraceMe {
 
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(e->PushAnnotation(name));
   }
 }
@@ -233,7 +220,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
                                                    StringPiece name_part2) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(
         e->PushAnnotation(strings::StrCat(name_part1, ":", name_part2)));
   }
@@ -241,7 +228,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
 
 inline Tracing::TraceMe::TraceMe(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     tracer_.reset(e->StartTracing(name));
   }
 }

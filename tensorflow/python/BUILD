@@ -1,9 +1,7 @@
 # Description:
 # Python support for TensorFlow.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -71,6 +69,20 @@ py_tests(
 )
 
 cc_library(
+    name = "py_func_lib",
+    srcs = ["lib/core/py_func.cc"],
+    hdrs = [
+        "lib/core/py_func.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "py_record_reader_lib",
     srcs = [
         "lib/io/py_record_reader.cc",
@@ -109,16 +121,27 @@ py_test(
 )
 
 cc_library(
-    name = "python_op_gen_main",
+    name = "python_op_gen",
     srcs = [
         "framework/python_op_gen.cc",
         "framework/python_op_gen.h",
-        "framework/python_op_gen_main.cc",
     ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "python_op_gen_main",
+    srcs = [
+        "framework/python_op_gen_main.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":python_op_gen",
     ],
 )
 
@@ -128,6 +151,7 @@ py_library(
     srcs = [
         "framework/device.py",
         "framework/dtypes.py",
+        "framework/function.py",
         "framework/op_def_registry.py",
         "framework/ops.py",
         "framework/registry.py",
@@ -156,6 +180,7 @@ py_library(
         "framework/importer.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
+        "framework/load_library.py",
         # TODO(josh11b): Move this to the framework directory
         "ops/common_shapes.py",
     ],
@@ -205,6 +230,33 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "functional_ops",
+    out = "ops/gen_functional_ops.py",
+)
+
+py_library(
+    name = "functional_ops_lib",
+    srcs = ["ops/functional_ops.py"],
+    deps = [
+        ":functional_ops",
+    ],
+)
+
+py_test(
+    name = "framework_function_test",
+    srcs = ["framework/function_test.py"],
+    main = "framework/function_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":functional_ops_lib",
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
@@ -485,6 +537,9 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
+        "Lgamma",
+        "Erf",
+        "Erfc",
     ],
     require_shape_functions = True,
 )
@@ -528,6 +583,14 @@ tf_gen_op_wrapper_py(
         "RandomShuffle",
         "RandomStandardNormal",
         "TruncatedNormal",
+    ],
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "script_ops",
+    hidden = [
+        "PyFunc",
     ],
     require_shape_functions = True,
 )
@@ -620,6 +683,7 @@ py_library(
         "ops/image_ops.py",
         "ops/init_ops.py",
         "ops/io_ops.py",
+        "ops/learn.py",
         "ops/linalg_grad.py",
         "ops/linalg_ops.py",
         "ops/logging_ops.py",
@@ -633,6 +697,7 @@ py_library(
         "ops/random_ops.py",
         "ops/rnn.py",
         "ops/rnn_cell.py",
+        "ops/script_ops.py",
         "ops/seq2seq.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
@@ -660,6 +725,7 @@ py_library(
         ":nn_ops",
         ":parsing_ops",
         ":random_ops",
+        ":script_ops",
         ":sparse_ops",
         ":string_ops",
         ":summary_ops",
@@ -712,8 +778,18 @@ tf_proto_library_py(
     name = "protos_all",
     srcs = glob(
         ["**/*.proto"],
-        exclude = ["util/protobuf/compare_test.proto"],
+        exclude = [
+            "util/protobuf/compare_test.proto",
+            "training/saver.proto",
+        ],
     ),
+    deps = [":public_protos_py"],
+)
+
+tf_proto_library_py(
+    name = "public_protos",
+    srcs = ["training/saver.proto"],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
@@ -787,6 +863,8 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/events_writer.i",
         "client/tf_session.i",
+        "framework/python_op_gen.i",
+        "lib/core/py_func.i",
         "lib/core/status.i",
         "lib/core/status_helper.i",
         "lib/core/strings.i",
@@ -797,8 +875,10 @@ tf_py_wrap_cc(
         "util/port.i",
     ],
     deps = [
+        ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
+        ":python_op_gen",
         ":tf_session_helper",
         "//util/python:python_headers",
     ],

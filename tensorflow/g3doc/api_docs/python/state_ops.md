@@ -462,6 +462,22 @@ contents of that collection.
   A list of Variable objects.
 
 
+- - -
+
+### `tf.moving_average_variables()` {#moving_average_variables}
+
+Returns all variables that maintain their moving averages.
+
+If an `ExponentialMovingAverage` object is created and the `apply()`
+method is called on a list of variables, these variables will
+be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
+This convenience function returns the contents of that collection.
+
+##### Returns:
+
+  A list of Variable objects.
+
+
 
 - - -
 
@@ -768,7 +784,7 @@ Sets the list of old checkpoint filenames.
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If the list of checkpoint filenames has already been set.
+*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
 
 
 - - -
@@ -1148,7 +1164,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.constant_initializer(value=0.0)` {#constant_initializer}
+### `tf.constant_initializer(value=0.0, dtype=tf.float32)` {#constant_initializer}
 
 Returns an initializer that generates tensors with a single value.
 
@@ -1157,15 +1173,21 @@ Returns an initializer that generates tensors with a single value.
 
 *  <b>`value`</b>: A Python scalar. All elements of the initialized variable
     will be set to this value.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
 
 ##### Returns:
 
   An initializer that generates tensors with a single value.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+
 
 - - -
 
-### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None)` {#random_normal_initializer}
+### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer}
 
 Returns an initializer that generates tensors with a normal distribution.
 
@@ -1179,15 +1201,21 @@ Returns an initializer that generates tensors with a normal distribution.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
 
 ##### Returns:
 
   An initializer that generates tensors with a normal distribution.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+
 
 - - -
 
-### `tf.truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None)` {#truncated_normal_initializer}
+### `tf.truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#truncated_normal_initializer}
 
 Returns an initializer that generates a truncated normal distribution.
 
@@ -1206,16 +1234,22 @@ neural network weights and filters.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
 
 ##### Returns:
 
   An initializer that generates tensors with a truncated normal
   distribution.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+
 
 - - -
 
-### `tf.random_uniform_initializer(minval=0.0, maxval=1.0, seed=None)` {#random_uniform_initializer}
+### `tf.random_uniform_initializer(minval=0.0, maxval=1.0, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
 
 Returns an initializer that generates tensors with a uniform distribution.
 
@@ -1229,15 +1263,21 @@ Returns an initializer that generates tensors with a uniform distribution.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
 
 ##### Returns:
 
   An initializer that generates tensors with a uniform distribution.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+
 
 - - -
 
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None)` {#uniform_unit_scaling_initializer}
+### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
 
 Returns an initializer that generates tensors without scaling variance.
 
@@ -1263,10 +1303,16 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
 
 ##### Returns:
 
   An initializer that generates tensors with unit variance.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -

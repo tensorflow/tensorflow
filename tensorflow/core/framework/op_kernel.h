@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/env.h"
@@ -118,6 +120,19 @@ class OpKernel {
 
   Status InputRange(const string& input_name, int* start, int* stop) const;
   Status OutputRange(const string& output_name, int* start, int* stop) const;
+
+  // TODO(irving): At the moment, the following three functions forward to
+  // TensorShapeUtils, but they are about to become the only versions once we
+  // become scalar strict.
+  bool allow_legacy_scalars() const { return kAllowLegacyScalars; }
+
+  bool IsLegacyScalar(const TensorShape& shape) const {
+    return TensorShapeUtils::IsLegacyScalar(shape);
+  }
+
+  bool IsLegacyVector(const TensorShape& shape) const {
+    return TensorShapeUtils::IsLegacyVector(shape);
+  }
 
  private:
   const NodeDef def_;
@@ -453,6 +468,8 @@ class OpKernelContext {
 
   Env* env() const { return params_.device->env(); }
 
+  const OpKernel& op_kernel() const { return *params_.op_kernel; }
+
   // Input/output signature.
 
   int num_inputs() const { return params_.inputs->size(); }
@@ -645,7 +662,13 @@ class OpKernelContext {
   // may retain references to the temporary tensors after the Op's
   // Compute method has run. See comment above.
   Status allocate_temp(DataType type, const TensorShape& shape,
-                       Tensor* out_temp, AllocatorAttributes attr);
+                       Tensor* out_temp, AllocatorAttributes allocator_attr,
+                       const AllocationAttributes& allocation_attr);
+  Status allocate_temp(DataType type, const TensorShape& shape,
+                       Tensor* out_temp, AllocatorAttributes allocator_attr) {
+    return allocate_temp(type, shape, out_temp, allocator_attr,
+                         AllocationAttributes());
+  }
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp) {
     return allocate_temp(type, shape, out_temp, AllocatorAttributes());
@@ -849,7 +872,15 @@ class OpKernelContext {
 
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
-                         Tensor* out_tensor, AllocatorAttributes attr);
+                         Tensor* out_tensor,
+                         AllocatorAttributes allocator_attr) {
+    return allocate_tensor(type, shape, out_tensor, allocator_attr,
+                           AllocationAttributes());
+  }
+
+  Status allocate_tensor(DataType type, const TensorShape& shape,
+                         Tensor* out_tensor, AllocatorAttributes allocator_attr,
+                         const AllocationAttributes& allocation_attr);
 
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
@@ -966,6 +997,13 @@ typedef ::tensorflow::KernelDefBuilder Name;
           +[](::tensorflow::OpKernelConstruction* context)       \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
+void* GlobalKernelRegistry();
+
+// Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
+// registered with the current library's global kernel registry (obtained by
+// calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
+extern "C" void RegisterKernels(void* registry_ptr);
+
 namespace kernel_factory {
 
 class OpKernelRegistrar {
@@ -1076,12 +1114,11 @@ inline Status OpKernelContext::allocate_output(int index,
   return allocate_output(index, shape, output, attr);
 }
 
-inline Status OpKernelContext::allocate_tensor(DataType type,
-                                               const TensorShape& shape,
-                                               Tensor* out_tensor,
-                                               AllocatorAttributes attr) {
+inline Status OpKernelContext::allocate_tensor(
+    DataType type, const TensorShape& shape, Tensor* out_tensor,
+    AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  Tensor new_tensor(a, type, shape);
+  Tensor new_tensor(a, type, shape, allocation_attr);
 
   if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
@@ -1112,11 +1149,12 @@ inline Status OpKernelContext::allocate_output(int index,
   return s;
 }
 
-inline Status OpKernelContext::allocate_temp(DataType type,
-                                             const TensorShape& shape,
-                                             Tensor* out_temp,
-                                             AllocatorAttributes attr) {
-  Status s = allocate_tensor(type, shape, out_temp, attr);
+inline Status OpKernelContext::allocate_temp(
+    DataType type, const TensorShape& shape, Tensor* out_temp,
+    AllocatorAttributes allocator_attr,
+    const AllocationAttributes& allocation_attr) {
+  Status s =
+      allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (s.ok()) {
     if (params_.device->SaveTemporaryTensors()) {
       // keep a reference to the underlying memory around

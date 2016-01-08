@@ -39,7 +39,7 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     Args:
       learning_rate: A Tensor or a floating point value.  The learning
         rate to use.
-      use_locking: If True use locks for update operation.s
+      use_locking: If True use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "GradientDescent".
     """

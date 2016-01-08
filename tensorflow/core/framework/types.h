@@ -161,6 +161,8 @@ struct EnumToDataType {};  // Specializations below
 typedef Eigen::QInt8 qint8;
 typedef Eigen::QUInt8 quint8;
 typedef Eigen::QInt32 qint32;
+typedef Eigen::QInt16 qint16;
+typedef Eigen::QUInt16 quint16;
 
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
@@ -174,6 +176,8 @@ MATCH_TYPE_AND_ENUM(int64, DT_INT64);
 MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
 MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
 MATCH_TYPE_AND_ENUM(quint8, DT_QUINT8);
+MATCH_TYPE_AND_ENUM(qint16, DT_QINT16);
+MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 

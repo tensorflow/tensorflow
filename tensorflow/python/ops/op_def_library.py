@@ -267,7 +267,7 @@ class OpDefLibrary(object):
     for op_def in op_list.op:
       self.add_op(op_def)
 
-  def apply_op(self, op_type_name, g=None, name=None, **keywords):
+  def apply_op(self, op_type_name, name=None, **keywords):
     # pylint: disable=g-doc-args
     """Add a node invoking a registered Op to a graph.
 
@@ -276,9 +276,6 @@ class OpDefLibrary(object):
        # input1 and input2 can be Tensors or anything ops.convert_to_tensor()
        # will convert to a Tensor.
        op_def_library.apply_op("op", input1=input1, input2=input2)
-       # If none of the inputs are Tensors and your session doesn't have a
-       # default graph, you will have to specify the graph.
-       op_def_library.apply_op("op", input1=input1, g=g)
        # Can specify a node name.
        op_def_library.apply_op("op", input1=input1, name="node_name")
        # Must use keyword arguments, with the names specified in the OpDef.
@@ -291,7 +288,6 @@ class OpDefLibrary(object):
 
     Args:
       op_type_name: string. Must match the name field of a registered Op.
-      g: The graph context (optional)
       name: string. Optional name of the created op.
       **keywords: input Tensor and attr arguments specified by name,
         and optional parameters to pass when constructing the Operation.
@@ -314,12 +310,12 @@ class OpDefLibrary(object):
     try:
       # Need to flatten all the arguments into a list.
       # pylint: disable=protected-access
-      g = ops._get_graph_from_inputs(_Flatten(keywords.values()), graph=g)
+      g = ops._get_graph_from_inputs(_Flatten(keywords.values()))
       # pyline: enable=protected-access
     except AssertionError as e:
       raise RuntimeError(
-          "Need to specify g=graph to Op '%s' (could not determine graph due "
-          "to: %s)" % (op_type_name, e.message))
+          "Cannot determine graph for Op '%s' due to: %s"
+          % (op_type_name, e.message))
 
     # Default name if not specified.
     if name is None:
@@ -380,16 +376,14 @@ class OpDefLibrary(object):
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
-            values = ops.convert_n_to_tensor_or_indexed_slices(
-                values, name=input_arg.name,
-                dtype=dtype if dtype else None,
+            values = ops.convert_n_to_tensor(
+                values, name=input_arg.name, dtype=dtype if dtype else None,
                 as_ref=input_arg.is_ref)
           except (TypeError, ValueError):
             assert dtype is not None, "Should not fail if dtype is None"
             assert input_arg.number_attr, "Should be number_attr case"
             # What types does the conversion function think values have?
-            values = ops.convert_n_to_tensor_or_indexed_slices(
-                values, as_ref=input_arg.is_ref)
+            values = ops.convert_n_to_tensor(values, as_ref=input_arg.is_ref)
             observed = ", ".join(v.dtype.base_dtype.name for v in values)
 
             prefix = (
@@ -565,6 +559,7 @@ class OpDefLibrary(object):
                                "less than minimum %d." %
                                (key, op_type_name, len(value),
                                 attr_def.minimum))
+          attr_value.list.SetInParent()
         if attr_def.type == "string":
           attr_value.s = _MakeStr(value, key)
           if attr_def.HasField("allowed_values"):
@@ -663,8 +658,7 @@ class OpDefLibrary(object):
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)
         outputs = op.outputs
-        return _Restructure(ops.convert_n_to_tensor_or_indexed_slices(outputs),
-                            output_structure)
+        return _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
       else:
         return g.create_op(op_type_name, inputs, output_types, name=scope,
                            input_types=input_types, attrs=attr_protos,

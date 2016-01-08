@@ -342,6 +342,15 @@ template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>
+struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
+
+template <typename T>
+struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
+
+template <typename T>
+struct erfc : base<T, Eigen::internal::scalar_erfc_op<T> > {};
+
+template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T> > {};
 
 template <typename T>
@@ -350,7 +359,8 @@ struct sin : base<T, Eigen::internal::scalar_sin_op<T> > {};
 template <typename T>
 struct cos : base<T, Eigen::internal::scalar_cos_op<T> > {};
 
-struct logical_not : base<bool, std::logical_not<bool> > {};
+struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
+};
 
 namespace impl {
 

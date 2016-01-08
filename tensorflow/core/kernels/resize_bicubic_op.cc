@@ -63,6 +63,11 @@ class ResizeBicubicOp : public OpKernel {
     const int64 channels = input.dim_size(3);
     const int64 out_height = output->dim_size(1);
     const int64 out_width = output->dim_size(2);
+    CHECK_GT(in_height, 0);
+    CHECK_GT(in_width, 0);
+    CHECK_GT(channels, 0);
+    CHECK_GT(out_height, 0);
+    CHECK_GT(out_width, 0);
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<float, 4>::Tensor output_data = output->tensor<float, 4>();
@@ -126,11 +131,8 @@ class ResizeBicubicOp : public OpKernel {
                               .HostMemory("size"),    \
                           ResizeBicubicOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
 #undef REGISTER_KERNEL
 
 }  // namespace tensorflow

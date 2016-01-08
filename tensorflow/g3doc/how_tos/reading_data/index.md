@@ -10,7 +10,7 @@ There are three main methods of getting data into a TensorFlow program:
 
 [TOC]
 
-## Feeding {#Feeding}
+## Feeding 
 
 TensorFlow's feed mechanism lets you inject data into any Tensor in a
 computation graph. A python computation can thus feed data directly into the
@@ -99,7 +99,7 @@ key, value = reader.read(filename_queue)
 record_defaults = [[1], [1], [1], [1], [1]]
 col1, col2, col3, col4, col5 = tf.decode_csv(
     value, record_defaults=record_defaults)
-features = tf.concat(0, [col1, col2, col3, col4])
+features = tf.pack([col1, col2, col3, col4])
 
 with tf.Session() as sess:
   # Start populating the filename queue.
@@ -253,7 +253,7 @@ summary to the graph that indicates how full the example queue is. If you have
 enough reading threads, that summary will stay above zero.  You can
 [view your summaries as training progresses using TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
 
-### Creating threads to prefetch using `QueueRunner` objects {#QueueRunner}
+### Creating threads to prefetch using `QueueRunner` objects 
 
 The short version: many of the `tf.train` functions listed above add
 [`QueueRunner`](../../api_docs/python/train.md#QueueRunner) objects to your
@@ -264,7 +264,7 @@ will start threads that run the input pipeline, filling the example queue so
 that the dequeue to get the examples will succeed.  This is best combined with a
 [`tf.train.Coordinator`](../../api_docs/python/train.md#Coordinator) to cleanly
 shut down these threads when there are errors. If you set a limit on the number
-of epochs, that will use an epoch counter that will need to be intialized.  The
+of epochs, that will use an epoch counter that will need to be initialized. The
 recommended code pattern combining these is:
 
 ```python
@@ -431,8 +431,8 @@ with tf.Session() as sess:
                                     shape=training_data.shape)
   label_initializer = tf.placeholder(dtype=training_labels.dtype,
                                      shape=training_labels.shape)
-  input_data = tf.Variable(data_initalizer, trainable=False, collections=[])
-  input_labels = tf.Variable(label_initalizer, trainable=False, collections=[])
+  input_data = tf.Variable(data_initializer, trainable=False, collections=[])
+  input_labels = tf.Variable(label_initializer, trainable=False, collections=[])
   ...
   sess.run(input_data.initializer,
            feed_dict={data_initializer: training_data})

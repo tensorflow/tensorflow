@@ -180,16 +180,20 @@ TEST_F(GraphConstructorTest, VersionGraph) {
 
 TEST_F(GraphConstructorTest, LowVersion) {
   ExpectError(strings::StrCat("version: ", -1),
-              R"(^GraphDef version -1 is no longer supported: TensorFlow \S+ )"
-              R"(needs \d+ <= version <= \d+\.  )"
-              R"(Please regenerate your graph\.$)");
+              strings::StrCat(R"(^GraphDef version -1 is no longer supported: )"
+                              R"(TensorFlow \S+ needs )",
+                              TF_GRAPH_DEF_VERSION_MIN, " <= version <= ",
+                              TF_GRAPH_DEF_VERSION_MAX,
+                              R"(.  Please regenerate your graph\.$)"));
 }
 
 TEST_F(GraphConstructorTest, HighVersion) {
   ExpectError(strings::StrCat("version: ", TF_GRAPH_DEF_VERSION_MAX + 1),
-              R"(^GraphDef version \d+ is not yet supported: TensorFlow \S+ )"
-              R"(needs \d+ <= version <= \d+\.  )"
-              R"(Please upgrade TensorFlow\.$)");
+              strings::StrCat(R"(^GraphDef version \d+ is not yet supported: )"
+                              R"(TensorFlow \S+ needs )",
+                              TF_GRAPH_DEF_VERSION_MIN, " <= version <= ",
+                              TF_GRAPH_DEF_VERSION_MAX,
+                              R"(.  Please upgrade TensorFlow\.$)"));
 }
 
 TEST_F(GraphConstructorTest, SimpleModel) {
@@ -229,6 +233,17 @@ TEST_F(GraphConstructorTest, Error_ControlEdgeBeforeRealInput) {
       "node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'W1', '^t1', 'input:1' ] }",
       "Node 't2': Control dependencies must come after regular dependencies");
+}
+
+TEST_F(GraphConstructorTest, CopyGraph) {
+  const int version = TF_GRAPH_DEF_VERSION - 1;
+
+  Graph src(OpRegistry::Global());
+  src.set_version(version);
+
+  Graph dst(OpRegistry::Global());
+  CopyGraph(src, &dst);
+  EXPECT_EQ(dst.version(), version);
 }
 
 }  // namespace
