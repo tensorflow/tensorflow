@@ -7848,7 +7848,7 @@ var TF;
       </template>
       </div>
       <div id="bottomContainer" class="container">
-        <template is="dom-repeat" items="[[_tags]]" sort="" as="tag">
+        <template is="dom-repeat" items="[[_tags]]" sort="_sort" as="tag">
           <div class="image-row container noshrink">
             <div class="tag-name-cell noshrink">
               <span class="tag-name">[[tag]]</span>
@@ -7946,6 +7946,9 @@ var TF;
       _exists: function (run, tag, runToImages) {
         runToImages = runToImages.base;
         return runToImages[run].indexOf(tag) !== -1;
+      },
+      _sort: function(a, b) {
+        return a > b;
       },
     });
   </script>
