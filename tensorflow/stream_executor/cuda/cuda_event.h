@@ -46,7 +46,7 @@ class CUDAEvent : public internal::EventInterface {
   // Polls the CUDA platform for the event's current status.
   Event::Status PollForStatus();
 
-  // The underyling CUDA event element.
+  // The underlying CUDA event element.
   const CUevent& cuda_event();
 
  private:

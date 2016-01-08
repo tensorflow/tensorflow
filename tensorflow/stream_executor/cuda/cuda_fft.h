@@ -34,7 +34,7 @@ namespace cuda {
 
 class CUDAExecutor;
 
-// Opaque and unique indentifier for the cuFFT plugin.
+// Opaque and unique identifier for the cuFFT plugin.
 extern const PluginId kCuFftPlugin;
 
 class CUDAFftPlan : public fft::Plan {

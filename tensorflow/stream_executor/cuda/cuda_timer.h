@@ -31,7 +31,7 @@ class CUDAExecutor;
 class CUDAStream;
 
 // Wraps a pair of CUevents in order to satisfy the platform-independent
-// TimerInferface -- both a start and a stop event are present which may be
+// TimerInterface -- both a start and a stop event are present which may be
 // recorded in a stream.
 class CUDATimer : public internal::TimerInterface {
  public:

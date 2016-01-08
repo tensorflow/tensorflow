@@ -240,7 +240,7 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
       return false;
     }
 
-    // Note that the orignal ptx may be compressed, and the ptx we get below is
+    // Note that the original ptx may be compressed, and the ptx we get below is
     // the decompressed result. To cache the module we should use the original
     // ptx (compressed one) as the key. This is because for the same compressed
     // ptx, we may get different decompressed ptx wrt the pointer value.
@@ -809,7 +809,7 @@ bool CUDAExecutor::GetSymbol(const string& symbol_name, void **mem,
     }
   }
 
-  LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
+  LOG(INFO) << "Failed to find symbol in any modules: " << symbol_name;
   return false;
 }
 
@@ -871,7 +871,7 @@ void *CUDAExecutor::CudaContextHack() { return context_; }
 
 CUcontext CUDAExecutor::cuda_context() { return context_; }
 
-// Attemps to read the NUMA node corresponding to the GPU device's PCI bus out
+// Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.
 //
 // For anything more complicated/prod-focused than this, you'll likely want to

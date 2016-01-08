@@ -51,7 +51,7 @@ namespace gputools {
 namespace cuda {
 
 // CUDA-platform implementation of the platform-agnostic
-// StreamExecutorInferface.
+// StreamExecutorInterface.
 class CUDAExecutor : public internal::StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
@@ -276,10 +276,10 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
 
-  // The major verion of the compute capability for device_.
+  // The major version of the compute capability for device_.
   int cc_major_;
 
-  // The minor verion of the compute capability for device_.
+  // The minor version of the compute capability for device_.
   int cc_minor_;
 
   // The plugin configuration associated with this instance.

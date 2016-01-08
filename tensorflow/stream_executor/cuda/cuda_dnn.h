@@ -32,7 +32,7 @@ namespace cuda {
 
 class CUDAExecutor;
 
-// Opaque and unique identifer for the cuDNN plugin.
+// Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
 
 // cudnn-library based DNN support. For details on overridden interface
