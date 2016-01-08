@@ -6061,12 +6061,12 @@ op {
   }
   input_arg {
     name: "features"
-    description: "The features passed as input to the corresponding Relu operation."
+    description: "The features passed as input to the corresponding Relu operation, OR\nthe outputs of that operation (both work equivalently)."
     type_attr: "T"
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients * features * (features > 0)`."
+    description: "`gradients * (features > 0)`."
     type_attr: "T"
   }
   attr {
