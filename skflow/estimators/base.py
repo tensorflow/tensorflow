@@ -31,10 +31,9 @@ try:
 except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
-from skflow.trainer import TensorFlowTrainer
-from skflow.io.data_feeder import _data_type_filter, _setup_data_feeder
-from skflow.io import HAS_PANDAS, extract_pandas_data
-from skflow.io import HAS_DASK, extract_dask_data
+from skflow.trainer import TensorFlowTrainer, RestoredTrainer
+from skflow.io.data_feeder import setup_train_data_feeder
+from skflow.io.data_feeder import setup_predict_data_feeder
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -125,6 +124,12 @@ class TensorFlowEstimator(BaseEstimator):
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
 
+            # Create summary to monitor loss
+            tf.scalar_summary("loss", self._model_loss)
+
+            # Set up a single operator to merge all the summaries
+            self._summaries = tf.merge_all_summaries()
+
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
             self._trainer = TensorFlowTrainer(
@@ -145,12 +150,6 @@ class TensorFlowEstimator(BaseEstimator):
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
-        with self._graph.as_default():
-            # Create summary to monitor loss
-            tf.scalar_summary("loss", self._model_loss)
-            # Set up a single operator to merge all the summaries
-            self._summaries = tf.merge_all_summaries()
-        # Set up summary writer to the specified log directory
         self._summary_writer = tf.train.SummaryWriter(
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
             graph_def=self._session.graph_def)
@@ -178,23 +177,28 @@ class TensorFlowEstimator(BaseEstimator):
         Returns:
             Returns self.
         """
-        X, y = _data_type_filter(X, y)
         # Sets up data feeder.
-        self._data_feeder = _setup_data_feeder(X, y,
-                                               self.n_classes,
-                                               self.batch_size)
+        self._data_feeder = setup_train_data_feeder(X, y,
+                                                    self.n_classes,
+                                                    self.batch_size)
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
             # Initialize model parameters.
             self._trainer.initialize(self._session)
             self._initialized = True
-            # Sets up summary writer for later optional visualization
-            if logdir:
-                self._setup_summary_writer(logdir)
-            else:
-                self._summary_writer = None
-                self._summaries = None
+
+        # Sets up summary writer for later optional visualization.
+        # Due to not able to setup _summary_writer in __init__ as it's not a
+        # parameter of the model, here we need to check if such variable exists
+        # and if it's None or not (in case it was setup in a previous run).
+        # It is initialized only in the case where it wasn't before and log dir
+        # is provided.
+        if (logdir and (not hasattr(self, "_summary_writer") or
+                        (hasattr(self, "_summary_writer") and self._summary_writer is None))):
+            self._setup_summary_writer(logdir)
+        else:
+            self._summary_writer = None
 
         # Train model for given number of steps.
         self._trainer.train(self._session,
@@ -234,19 +238,17 @@ class TensorFlowEstimator(BaseEstimator):
     def _predict(self, X):
         if not self._initialized:
             raise NotFittedError()
-        if HAS_PANDAS:
-            X = extract_pandas_data(X)
-        if HAS_DASK:
-            X = extract_dask_data(X)
-        if len(X.shape) == 1:
-            X = np.reshape(X, (-1, 1))
-        pred = self._session.run(self._model_predictions,
-                                 feed_dict={
-                                     self._inp.name: X
-                                 })
-        return pred
+        predict_data_feeder = setup_predict_data_feeder(X)
+        preds = []
+        for data in predict_data_feeder:
+            preds.append(self._session.run(
+                self._model_predictions,
+                feed_dict={
+                    self._inp.name: data
+                }))
+        return np.concatenate(preds, axis=0)
 
-    def predict(self, X):
+    def predict(self, X, axis=1):
         """Predict class or regression for X.
 
         For a classification model, the predicted class for each sample in X is
@@ -263,7 +265,7 @@ class TensorFlowEstimator(BaseEstimator):
         pred = self._predict(X)
         if self.n_classes < 2:
             return pred
-        return pred.argmax(axis=1)
+        return pred.argmax(axis=axis)
 
     def predict_proba(self, X):
         """Predict class probability of the input samples X.
@@ -320,7 +322,7 @@ class TensorFlowEstimator(BaseEstimator):
             all_params = self.get_params()
             params = {}
             for key, value in all_params.items():
-                if not callable(value):
+                if not callable(value) and value is not None:
                     params[key] = value
             params['class_name'] = type(self).__name__
             fmodel.write(json.dumps(params))
@@ -364,7 +366,7 @@ class TensorFlowEstimator(BaseEstimator):
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
                  self._model_predictions, self._model_loss) = tf.import_graph_def(
-                     graph_def, return_elements=endpoints)
+                     graph_def, name='', return_elements=endpoints)
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
@@ -372,16 +374,23 @@ class TensorFlowEstimator(BaseEstimator):
                 from tensorflow.python.training import saver_pb2
                 saver_def = saver_pb2.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
-                # ??? For some reason the saver def doesn't have import/ prefix.
-                saver_def.filename_tensor_name = 'import/' + saver_def.filename_tensor_name
-                saver_def.restore_op_name = 'import/' + saver_def.restore_op_name
                 self._saver = tf.train.Saver(saver_def=saver_def)
+
+            # Restore trainer
+            self._global_step = self._graph.get_tensor_by_name('global_step:0')
+            trainer_op = self._graph.get_operation_by_name('train')
+            self._trainer = RestoredTrainer(
+                self._model_loss, self._global_step, trainer_op)
+
+            # Restore summaries.
+            self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
+
+            # Restore session.
             self._session = tf.Session(self.tf_master,
                                        config=tf.ConfigProto(
                                            log_device_placement=self.verbose > 1,
                                            inter_op_parallelism_threads=self.num_cores,
                                            intra_op_parallelism_threads=self.num_cores))
-            self._graph.get_operation_by_name('import/save/restore_all')
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "

@@ -46,12 +46,27 @@ class ByteProcessor(object):
         self.max_document_length = max_document_length
 
     def fit(self, X):
-        """Does nothing."""
+        """Does nothing. No fitting required."""
         pass
 
     def fit_transform(self, X):
         """Calls transform."""
         return self.transform(X)
+
+    # pylint: disable=no-self-use
+    def reverse(self, X):
+        """Reverses output of transform back to text.
+
+        Args:
+            X: iterator or matrix of integers.
+               Document representation in bytes.
+
+        Returns:
+            Iterators of utf-8 strings.
+        """
+        for data in X:
+            document = np.trim_zeros(data.astype(np.int8), trim='b').tostring()
+            yield document.decode('utf-8')
 
     def transform(self, X):
         """Transforms input documents into sequence of ids.

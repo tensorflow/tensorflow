@@ -23,8 +23,10 @@ from tensorflow.python.platform import googletest
 from skflow.io import *
 import skflow
 
-class BaseTest(googletest.TestCase):
-    def test_pandas_dataframe(self):
+
+class IOTest(googletest.TestCase):
+
+    def testPandasDataframe(self):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
@@ -37,7 +39,7 @@ class BaseTest(googletest.TestCase):
         else:
             print("No pandas installed. test_pandas_dataframe skipped.")
 
-    def test_pandas_series(self):
+    def testPandasSeries(self):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
@@ -49,6 +51,13 @@ class BaseTest(googletest.TestCase):
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
         else:
             print("No pandas installed. test_pandas_series skipped.")
+
+    def testStringDataFormats(self):
+        with self.assertRaises(ValueError):
+            skflow.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
+        with self.assertRaises(ValueError):
+            skflow.io.extract_pandas_labels(pd.DataFrame({"Test": ["A", "B"]}))
+   
 
 if __name__ == '__main__':
     tf.test.main()

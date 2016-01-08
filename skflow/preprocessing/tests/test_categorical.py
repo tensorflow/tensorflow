@@ -15,6 +15,7 @@
 #  limitations under the License.
 
 import numpy as np
+import pandas
 import tensorflow as tf
 
 from skflow.preprocessing import categorical
@@ -32,6 +33,12 @@ class CategoricalTest(tf.test.TestCase):
             [1], [2], [0], [3], 
             [3], [2], [1], [0],
             [0]])
+
+    def testSingleCategoricalProcessorPandasSingleDF(self):
+        cat_processor = categorical.CategoricalProcessor()
+        data = pandas.DataFrame({"Gender": ["Male", "Female", "Male"]})
+        X = list(cat_processor.fit_transform(data))
+        self.assertAllEqual(list(X), [[1], [2], [1]]) 
 
     def testMultiCategoricalProcessor(self):
         cat_processor = categorical.CategoricalProcessor(

@@ -14,33 +14,40 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import unicode_literals
+
 import tensorflow as tf
 
 from skflow.preprocessing import text
+from skflow.preprocessing import CategoricalVocabulary
 
 
 class TextTest(tf.test.TestCase):
 
     def testTokenizer(self):
         words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c",
-                                u"фыв выф", u"你好 怎么样"])
+                                "фыв выф", "你好 怎么样"])
         self.assertEqual(list(words),
                          [["a", "b", "c"],
                           ["a", "b", "c"],
                           ["a", "b", "-", "c"],
-                          [u"фыв", u"выф"],
-                          [u"你好", u"怎么样"]])
+                          ["фыв", "выф"],
+                          ["你好", "怎么样"]])
 
     def testByteProcessor(self):
         processor = text.ByteProcessor(max_document_length=8)
-        res = processor.transform(["abc", "фыва", u"фыва", b"abc",
-                                   u"12345678901234567890"])
-        self.assertAllClose(list(res),
+        inp = ["abc", "фыва", "фыва", b"abc",
+               "12345678901234567890"]
+        res = list(processor.fit_transform(inp))
+        self.assertAllEqual(res,
                             [[97, 98, 99, 0, 0, 0, 0, 0],
                             [209, 132, 209, 139, 208, 178, 208, 176],
                             [209, 132, 209, 139, 208, 178, 208, 176],
                             [97, 98, 99, 0, 0, 0, 0, 0],
                             [49, 50, 51, 52, 53, 54, 55, 56]])
+        res = list(processor.reverse(res))
+        self.assertAllEqual(res,
+            ["abc", "фыва", "фыва", "abc", "12345678"])
 
     def testVocabularyProcessor(self):
         vocab_processor = text.VocabularyProcessor(
@@ -48,8 +55,19 @@ class TextTest(tf.test.TestCase):
             min_frequency=1)
         tokens = vocab_processor.fit_transform(
             ["a b c", "a\nb\nc", "a, b - c"])
-        self.assertAllClose(list(tokens),
+        self.assertAllEqual(list(tokens),
                             [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
+
+    def testExistingVocabularyProcessor(self):
+        vocab = CategoricalVocabulary()
+        vocab.get("A")
+        vocab.get("B")
+        vocab.freeze()
+        vocab_processor = text.VocabularyProcessor(
+            max_document_length=4, vocabulary=vocab, tokenizer_fn=list)
+        tokens = vocab_processor.fit_transform(["ABC", "CBABAF"])
+        self.assertAllEqual(list(tokens), [[1, 2, 0, 0], [0, 2, 1, 2]])
+
 
 if __name__ == "__main__":
     tf.test.main()

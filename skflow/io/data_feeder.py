@@ -23,7 +23,7 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
-from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_labels
+from skflow.io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from skflow.io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 
@@ -41,6 +41,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
         output_shape = [batch_size] + y_shape
     return input_shape, output_shape
 
+
 def _data_type_filter(X, y):
     """Filter data types into acceptable format"""
     if HAS_PANDAS:
@@ -51,10 +52,25 @@ def _data_type_filter(X, y):
         y = extract_dask_labels(y)
     return X, y
 
-def _setup_data_feeder(X, y, n_classes, batch_size):
+
+def _is_iterable(X):
+    return hasattr(X, 'next') or hasattr(X, '__next__')
+
+
+def setup_train_data_feeder(X, y, n_classes, batch_size):
     """Create data feeder, to sample inputs from dataset.
     If X and y are iterators, use StreamingDataFeeder.
+
+    Args:
+        X: numpy, pandas or Dask matrix or iterable.
+        y: numpy, pandas or Dask array or iterable.
+        n_classes: number of classes.
+        batch_size: size to split data into parts.
+
+    Returns:
+        DataFeeder object that returns training data.
     """
+    X, y = _data_type_filter(X, y)
     if HAS_DASK:
         import dask.dataframe as dd
         if isinstance(X, dd.Series) and isinstance(y, dd.Series):
@@ -64,12 +80,58 @@ def _setup_data_feeder(X, y, n_classes, batch_size):
     else:
         data_feeder_cls = DataFeeder
 
-    if hasattr(X, 'next') or hasattr(X, '__next__'):
-        if not hasattr(y, 'next') and not hasattr(y, '__next__'):
+    if _is_iterable(X):
+        if not _is_iterable(y):
             raise ValueError("Both X and y should be iterators for "
                              "streaming learning to work.")
         data_feeder_cls = StreamingDataFeeder
     return data_feeder_cls(X, y, n_classes, batch_size)
+
+
+def _batch_data(X, batch_size):
+    chunk = []
+    for data in X:
+        chunk.append(data)
+        if batch_size > 0 and len(chunk) > batch_size:
+            yield np.matrix(chunk)
+    yield np.matrix(chunk)
+
+
+def setup_predict_data_feeder(X, batch_size=-1):
+    """Returns an iterable for feeding into predict step.
+
+    Args:
+        X: numpy, pandas, Dask array or iterable.
+        batch_size: Size of batches to split data into.
+            If negative, returns one batch of full size.
+
+    Returns:
+        List or iterator of parts of data to predict on.
+    """
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
+    if HAS_DASK:
+        X = extract_dask_data(X)
+    if _is_iterable(X):
+        return _batch_data(X, batch_size)
+    if len(X.shape) == 1:
+        X = np.reshape(X, (-1, 1))
+    return [X]
+
+
+def setup_processor_data_feeder(X):
+    """Sets up processor iterable.
+
+    Args:
+        X: numpy, pandas or iterable.
+
+    Returns:
+        Iterable of data to process.
+    """
+    if HAS_PANDAS:
+        X = extract_pandas_matrix(X)
+    return X
+
 
 class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.
