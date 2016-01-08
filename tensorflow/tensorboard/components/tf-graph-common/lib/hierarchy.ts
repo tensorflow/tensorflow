@@ -178,7 +178,7 @@ class HierarchyImpl implements Hierarchy {
   };
 
   /**
-   * Given the name of a node, return the names of its predecssors.
+   * Given the name of a node, return the names of its predecessors.
    * For an OpNode, this will contain the targets from the underlying BaseEdges.
    * For a GroupNode, this will contain the targets truncated to siblings of
    * the shared ancestor.
@@ -200,7 +200,7 @@ class HierarchyImpl implements Hierarchy {
    * into the details of which of of Z/Y's descendant nodes have predecessors to
    * which of A's descendants.
    *
-   * On the other hand, for an OpNode it's clear what the final predecssors
+   * On the other hand, for an OpNode it's clear what the final predecessors
    * ought to be. There is no ambiguity.
    */
   getPredecessors(nodeName: string): Edges {
@@ -246,7 +246,7 @@ class HierarchyImpl implements Hierarchy {
     return successors;
   }
 
-  /** Helper method for getPredeccessors and getSuccessors */
+  /** Helper method for getPredecessors and getSuccessors */
   getOneWayEdges(node: GroupNode|OpNode, inEdges: boolean) {
     let edges = { control: [], regular: [] };
     // A node with no parent cannot have any edges.
