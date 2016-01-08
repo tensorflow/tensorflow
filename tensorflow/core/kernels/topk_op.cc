@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/op_kernel.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/public/tensor.h"
@@ -31,6 +31,11 @@ class TopK : public OpKernel {
  public:
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
+    OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
+
+    if (k_ == 1) {
+      sorted_ = false;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -55,7 +60,6 @@ class TopK : public OpKernel {
     auto indices = indices_out->matrix<int32>();
 
     gtl::TopN<std::pair<T, int32>> filter(k_);
-
     for (int r = 0; r < num_rows; r++) {
       for (int32 c = 0; c < num_cols; ++c) {
         // The second element is the negated index, so that lower-index elements
@@ -63,10 +67,21 @@ class TopK : public OpKernel {
         filter.push(std::make_pair(input(r, c), -c));
       }
 
-      std::unique_ptr<std::vector<std::pair<T, int32>>> top_k(filter.Extract());
-      for (int32 i = 0; i < k_; ++i) {
-        values(r, i) = (*top_k)[i].first;
-        indices(r, i) = -(*top_k)[i].second;
+      int32 i = 0;
+      if (sorted_) {
+        std::unique_ptr<std::vector<std::pair<T, int32>>> top_k(
+            filter.Extract());
+        for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();
+             ++top_k_it, ++i) {
+          values(r, i) = top_k_it->first;
+          indices(r, i) = -top_k_it->second;
+        }
+      } else {
+        for (auto top_k_it = filter.unsorted_begin();
+             top_k_it != filter.unsorted_end(); ++top_k_it, ++i) {
+          values(r, i) = top_k_it->first;
+          indices(r, i) = -top_k_it->second;
+        }
       }
       filter.Reset();
     }
@@ -74,6 +89,7 @@ class TopK : public OpKernel {
 
  private:
   int k_;
+  bool sorted_;
 };
 
 #define REGISTER_KERNELS(type) \

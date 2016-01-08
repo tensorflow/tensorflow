@@ -26,11 +26,12 @@ import tensorflow as tf
 
 class TopKTest(tf.test.TestCase):
 
-  def _validateTopK(self, inputs, k, expected_values, expected_indices):
+  def _validateTopK(
+      self, inputs, k, expected_values, expected_indices, sorted_output=True):
     np_values = np.array(expected_values)
     np_indices = np.array(expected_indices)
     with self.test_session():
-      values_op, indices_op = tf.nn.top_k(inputs, k)
+      values_op, indices_op = tf.nn.top_k(inputs, k, sorted=sorted_output)
       values = values_op.eval()
       indices = indices_op.eval()
       self.assertAllClose(np_values, values)
@@ -55,6 +56,12 @@ class TopKTest(tf.test.TestCase):
     self._validateTopK(inputs, 4,
                        [[0.4, 0.3, 0.2, 0.1], [0.3, 0.3, 0.2, 0.1]],
                        [[3, 1, 2, 0], [1, 2, 3, 0]])
+
+  def testTop3Unsorted(self):
+    inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
+    self._validateTopK(inputs, 3,
+                       [[0.2, 0.3, 0.4], [0.2, 0.3, 0.3]],
+                       [[2, 1, 3], [3, 1, 2]], sorted_output=False)
 
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]

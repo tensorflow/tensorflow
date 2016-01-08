@@ -8669,7 +8669,7 @@ op {
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row, sorted in descending order."
+    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
     type_attr: "T"
   }
   output_arg {
@@ -8683,6 +8683,14 @@ op {
     description: "Number of top elements to look for within each row."
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
   }
   attr {
     name: "T"
