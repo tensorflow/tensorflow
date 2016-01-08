@@ -54,16 +54,20 @@ file(GLOB tf_stream_executor_srcs
 #
 #list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs}) 
 
-add_library(tf_stream_executor ${tf_stream_executor_srcs})
+add_library(tf_stream_executor OBJECT ${tf_stream_executor_srcs})
 
-target_include_directories(tf_stream_executor PUBLIC ${tensorflow_source_dir})
-
-target_link_libraries(tf_stream_executor
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    tf_protos_cc
+target_include_directories(tf_stream_executor PRIVATE
+    ${tensorflow_source_dir}
+)
+add_dependencies(tf_stream_executor
     tf_core_lib
 )
+#target_link_libraries(tf_stream_executor
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    tf_protos_cc
+#    tf_core_lib
+#)
 
 target_compile_options(tf_stream_executor PRIVATE
     -fno-exceptions

@@ -19,22 +19,28 @@ set(tf_tutorials_example_trainer_srcs
 
 add_executable(tf_tutorials_example_trainer
     ${tf_tutorials_example_trainer_srcs}
+    $<TARGET_OBJECTS:tf_core_lib>
+    $<TARGET_OBJECTS:tf_core_cpu>
+    $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_core_kernels>
+    $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_core_ops>
+    $<TARGET_OBJECTS:tf_core_direct_session>
 )
 
-#target_include_directories(tf_tutorials_example_trainer PUBLIC
-#    ${tensorflow_source_dir}/third_party/eigen3
-#)
+target_include_directories(tf_tutorials_example_trainer PUBLIC
+    ${tensorflow_source_dir}
+    ${eigen_INCLUDE_DIRS}
+)
 
 target_link_libraries(tf_tutorials_example_trainer PUBLIC
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
     tf_protos_cc
-    tf_core_lib
-    tf_core_cpu
-    tf_core_framework
-    tf_core_kernels
-    tf_core_direct_session
-    tf_cc_ops
+    re2_lib
+    ${jpeg_STATIC_LIBRARIES}
+    ${png_STATIC_LIBRARIES}
+    ${ZLIB_LIBRARIES}
 )
 
 target_compile_options(tf_tutorials_example_trainer PRIVATE

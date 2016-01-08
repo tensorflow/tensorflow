@@ -7,19 +7,22 @@ set(tf_cc_op_gen_main_srcs
     "${tensorflow_source_dir}/tensorflow/cc/ops/cc_op_gen.h"
 )
 
-add_library(tf_cc_op_gen_main ${tf_cc_op_gen_main_srcs})
+add_library(tf_cc_op_gen_main OBJECT ${tf_cc_op_gen_main_srcs})
 
-target_include_directories(tf_cc_op_gen_main PUBLIC
+add_dependencies(tf_cc_op_gen_main tf_core_framework)
+
+target_include_directories(tf_cc_op_gen_main PRIVATE
     ${tensorflow_source_dir}
+    ${eigen_INCLUDE_DIRS}
 )
 
-target_link_libraries(tf_cc_op_gen_main
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    tf_protos_cc
-    tf_core_lib
-    tf_core_framework
-)
+#target_link_libraries(tf_cc_op_gen_main
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    tf_protos_cc
+#    tf_core_lib
+#    tf_core_framework
+#)
 
 target_compile_options(tf_cc_op_gen_main PRIVATE
     -fno-exceptions
@@ -99,21 +102,27 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
     # registered (static initializers dropped by the linker because the ops
     # are not used explicitly in the *_gen_cc executables).
     add_executable(${tf_cc_op_lib_name}_gen_cc
-        ${tf_cc_op_gen_main_srcs}
+        $<TARGET_OBJECTS:tf_cc_op_gen_main>
         $<TARGET_OBJECTS:tf_${tf_cc_op_lib_name}>
+        $<TARGET_OBJECTS:tf_core_lib>
+        $<TARGET_OBJECTS:tf_core_framework>
     )
 
-    target_include_directories(${tf_cc_op_lib_name}_gen_cc PUBLIC
+    target_include_directories(${tf_cc_op_lib_name}_gen_cc PRIVATE
         ${tensorflow_source_dir}
-        ${tensorflow_source_dir}/third_party/eigen3
+        ${eigen_INCLUDE_DIRS}
     )
 
-    target_link_libraries(${tf_cc_op_lib_name}_gen_cc PUBLIC
+    find_package(ZLIB REQUIRED)
+
+    target_link_libraries(${tf_cc_op_lib_name}_gen_cc PRIVATE
         ${CMAKE_THREAD_LIBS_INIT}
         ${PROTOBUF_LIBRARIES}
         tf_protos_cc
-        tf_core_lib
-        tf_core_framework
+        re2_lib
+        ${jpeg_STATIC_LIBRARIES}
+        ${png_STATIC_LIBRARIES}
+        ${ZLIB_LIBRARIES}
     )
 
     target_compile_options(${tf_cc_op_lib_name}_gen_cc PRIVATE
@@ -147,29 +156,26 @@ endforeach()
 ########################################################
 # tf_cc_ops library
 ########################################################
-add_library(tf_cc_ops
+add_library(tf_cc_ops OBJECT
     ${tf_cc_ops_generated_files}
     "${tensorflow_source_dir}/tensorflow/cc/ops/const_op.h"
     "${tensorflow_source_dir}/tensorflow/cc/ops/const_op.cc"
     "${tensorflow_source_dir}/tensorflow/cc/ops/standard_ops.h"
-    "${tensorflow_source_dir}/tensorflow/cc/ops/array_grad.cc"
-    "${tensorflow_source_dir}/tensorflow/cc/ops/math_grad.cc"
-    "${tensorflow_source_dir}/tensorflow/cc/ops/functional_grad.cc"
 )
 
-target_include_directories(tf_cc_ops PUBLIC
+target_include_directories(tf_cc_ops PRIVATE
     ${tensorflow_source_dir}
-    ${tensorflow_source_dir}/third_party/eigen3
+    ${eigen_INCLUDE_DIRS}
 )
 
-target_link_libraries(tf_cc_ops
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    tf_protos_cc
-    tf_core_lib
-    tf_core_cpu
+#target_link_libraries(tf_cc_ops
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    tf_protos_cc
+#    tf_core_lib
+#    tf_core_cpu
 #    tf_models_word2vec_ops
-)
+#)
 
 target_compile_options(tf_cc_ops PRIVATE
     -fno-exceptions

@@ -53,8 +53,12 @@ RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
 )
 
 add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
-target_include_directories(tf_protos_cc PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(tf_protos_cc ${PROTOBUF_LIBRARIES})
+target_include_directories(tf_protos_cc PUBLIC
+     ${CMAKE_CURRENT_BINARY_DIR}
+)
+target_link_libraries(tf_protos_cc PUBLIC
+    ${PROTOBUF_LIBRARIES}
+)
 
 
 ########################################################
@@ -78,13 +82,13 @@ file(GLOB_RECURSE tf_core_lib_test_srcs
 
 list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs}) 
 
-add_library(tf_core_lib ${tf_core_lib_srcs})
+add_library(tf_core_lib OBJECT ${tf_core_lib_srcs})
 target_include_directories(tf_core_lib PUBLIC ${tensorflow_source_dir})
-target_link_libraries(tf_core_lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    tf_protos_cc
-)
+#target_link_libraries(tf_core_lib
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    tf_protos_cc
+#)
 target_compile_options(tf_core_lib PRIVATE
     -fno-exceptions
     -DEIGEN_AVOID_STL_ARRAY
@@ -98,7 +102,10 @@ target_compile_features(tf_core_lib PRIVATE
 add_dependencies(tf_core_lib
     jpeg_copy_headers_to_destination
     png_copy_headers_to_destination
-    re2_copy_headers_to_destination)
+    re2_copy_headers_to_destination
+    eigen
+    tf_protos_cc
+)
 
 
 ########################################################
@@ -123,20 +130,23 @@ file(GLOB_RECURSE tf_core_framework_test_srcs
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
 
-add_library(tf_core_framework ${tf_core_framework_srcs})
+add_library(tf_core_framework OBJECT ${tf_core_framework_srcs})
 target_include_directories(tf_core_framework PUBLIC
     ${tensorflow_source_dir}
-    ${tensorflow_source_dir}/third_party/eigen3
+    ${eigen_INCLUDE_DIRS}
     ${re2_INCLUDES}
 )
-target_link_libraries(tf_core_framework
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    #${re2_STATIC_LIBRARIES}
-    re2_lib
-    ${jpeg_STATIC_LIBRARIES}
-    ${png_STATIC_LIBRARIES}
-    tf_protos_cc
+#target_link_libraries(tf_core_framework
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    #${re2_STATIC_LIBRARIES}
+#    re2_lib
+#    ${jpeg_STATIC_LIBRARIES}
+#    ${png_STATIC_LIBRARIES}
+#    tf_protos_cc
+#    tf_core_lib
+#)
+add_dependencies(tf_core_framework
     tf_core_lib
 )
 target_compile_options(tf_core_framework PRIVATE

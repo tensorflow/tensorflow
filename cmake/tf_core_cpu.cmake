@@ -23,20 +23,24 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
 
 list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs}) 
 
-add_library(tf_core_cpu ${tf_core_cpu_srcs})
+add_library(tf_core_cpu OBJECT ${tf_core_cpu_srcs})
 
-target_include_directories(tf_core_cpu PUBLIC
+target_include_directories(tf_core_cpu PRIVATE
     ${tensorflow_source_dir}
-    ${tensorflow_source_dir}/third_party/eigen3
+    ${eigen_INCLUDE_DIRS}
+    ${re2_INCLUDES}
 )
 
-target_link_libraries(tf_core_cpu
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
+add_dependencies(tf_core_cpu
     tf_core_framework
-    tf_core_lib
-    tf_protos_cc
 )
+#target_link_libraries(tf_core_cpu
+#    ${CMAKE_THREAD_LIBS_INIT}
+#    ${PROTOBUF_LIBRARIES}
+#    tf_core_framework
+#    tf_core_lib
+#    tf_protos_cc
+#)
 
 target_compile_options(tf_core_cpu PRIVATE
     -fno-exceptions

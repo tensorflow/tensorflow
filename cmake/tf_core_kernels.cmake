@@ -15,25 +15,27 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
 
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs}) 
 
-add_library(tf_core_kernels ${tf_core_kernels_srcs})
+add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 
-target_include_directories(tf_core_kernels PUBLIC
+add_dependencies(tf_core_kernels tf_core_cpu)
+
+target_include_directories(tf_core_kernels PRIVATE
    ${tensorflow_source_dir}
-   ${tensorflow_source_dir}/third_party/eigen3
+   ${eigen_INCLUDE_DIRS}
 )
 
-target_link_libraries(tf_core_kernels
-   ${CMAKE_THREAD_LIBS_INIT}
-   ${PROTOBUF_LIBRARIES}
-   tf_core_cpu
-   tf_core_framework
-   tf_core_lib
-   tf_protos_cc
-   tf_models_word2vec_kernels
-   tf_stream_executor
-   tf_core_ops
-   tf_core_cpu
-)
+#target_link_libraries(tf_core_kernels
+#   ${CMAKE_THREAD_LIBS_INIT}
+#   ${PROTOBUF_LIBRARIES}
+#   tf_core_cpu
+#   tf_core_framework
+#   tf_core_lib
+#   tf_protos_cc
+#   tf_models_word2vec_kernels
+#   tf_stream_executor
+#   tf_core_ops
+#   tf_core_cpu
+#)
 
 #        "@gemmlowp//:eight_bit_int_gemm",
 

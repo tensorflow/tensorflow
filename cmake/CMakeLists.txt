@@ -40,6 +40,7 @@ mark_as_advanced(DOWNLOAD_LOCATION)
 include(png)
 include(jpeg)
 include(re2)
+include(eigen)
 
 # Let's get to work!
 include(tf_core_framework.cmake)
