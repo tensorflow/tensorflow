@@ -288,9 +288,14 @@ Returns element-wise smallest integer in not less than x.
   Input("x: T").Input("y: T").Output("z: T").Attr( \
       "T: {float, double, int32, complex64, int64}")
 
+// TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
-    .BINARY_MORE()
-    .SetIsCommutative()
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {float, double, uint8, int8, int16, int32, int64, complex64, "
+        "string}")
     .Doc(R"doc(
 Returns x + y element-wise.
 

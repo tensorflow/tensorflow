@@ -50,12 +50,12 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_STRING
       }
     }
   }
   summary: "Returns x + y element-wise."
   description: "*NOTE*: Add supports broadcasting. AddN does not."
-  is_commutative: true
 }
 op {
   name: "AddN"

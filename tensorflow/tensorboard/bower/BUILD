@@ -60,6 +60,7 @@ filegroup(
         "@paper-ripple//:paper-ripple",
         "@paper-slider//:paper-slider",
         "@paper-styles//:paper-styles",
+        "@paper-tabs//:paper-tabs",
         "@paper-toggle-button//:paper-toggle-button",
         "@paper-toolbar//:paper-toolbar",
         "@plottable//:plottable",

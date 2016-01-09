@@ -167,7 +167,7 @@ def switch(data, pred, dtype=None, name=None):
     name: A name for this operation (optional).
 
   Returns:
-    `(output_true, output_false)`: If `pred` is true, data will be forwarded to
+    `(output_false, output_true)`: If `pred` is true, data will be forwarded to
     `output_true`, otherwise it goes to `output_false`.
   """
   with ops.op_scope([data, pred], name, "Switch") as name:
