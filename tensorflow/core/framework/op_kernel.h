@@ -853,7 +853,8 @@ class OpKernelContext {
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr) {
-    Allocator* allocator = params_.device->GetAllocator(attr);
+    Allocator* allocator =
+        params_.device->GetStepAllocator(attr, step_resource_manager());
     if (params_.track_allocations) {
       mutex_lock lock(mu_);
       for (const auto& wrapped : wrapped_allocators_) {

@@ -42,6 +42,7 @@ namespace tensorflow {
 class Device;
 class Env;
 class EventMgr;
+class ResourceMgr;
 
 namespace thread {
 class ThreadPool;
@@ -143,6 +144,16 @@ class DeviceBase {
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
     LOG(FATAL) << "GetAllocator() is not implemented.";
+  }
+
+  // Return the Allocator implementation to use based on the allocator
+  // attributes requested and the supplied resource manager. By
+  // default this ignores the resource manager and calls the base
+  // implementation but devices can override if they want to consult
+  // the resource manager when choosing the allocator.
+  virtual Allocator* GetStepAllocator(AllocatorAttributes attr,
+                                      ResourceMgr* /*step_resource_manager*/) {
+    return GetAllocator(attr);
   }
 
   const Eigen::ThreadPoolDevice* eigen_cpu_device() {
