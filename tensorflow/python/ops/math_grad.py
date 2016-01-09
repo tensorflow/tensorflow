@@ -182,26 +182,32 @@ def _NegGrad(_, grad):
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
-  return grad * (- math_ops.square(y))
+  # Added control dependencies to prevent -x^2 from being computed too early.
+  with ops.control_dependencies([grad]):
+    return -grad * math_ops.square(y)
 
 
 @ops.RegisterGradient("Square")
 def _SquareGrad(op, grad):
   x = op.inputs[0]
-  return grad * (2.0 * x)
+  # Added control dependencies to prevent 2*x from being computed too early.
+  with ops.control_dependencies([grad]):
+    return grad * (2.0 * x)
 
 
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
-  return grad * (.5 * math_ops.inv(y))
+  with ops.control_dependencies([grad]):
+    return grad * .5 * math_ops.inv(y)
 
 
 @ops.RegisterGradient("Rsqrt")
 def _RsqrtGrad(op, grad):
   x = op.inputs[0]
   y = op.outputs[0]  # y = x^(-1/2)
-  return grad * ((-0.5) * math_ops.inv(x) * y)
+  with ops.control_dependencies([grad]):
+    return grad * ((-0.5) * math_ops.inv(x) * y)
 
 
 @ops.RegisterGradient("Exp")
@@ -215,14 +221,16 @@ def _ExpGrad(op, grad):
 def _LogGrad(op, grad):
   """Returns grad * (1/x)."""
   x = op.inputs[0]
-  return grad * math_ops.inv(x)
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.inv(x)
 
 
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
-  return grad * (1 - math_ops.square(y))
+  with ops.control_dependencies([grad]):
+    return grad * (1 - math_ops.square(y))
 
 
 @ops.RegisterGradient("Erf")
@@ -230,15 +238,18 @@ def _ErfGrad(op, grad):
   """Returns grad * 2/sqrt(pi) * exp(-x**2)."""
   x = op.inputs[0]
   two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
-  return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+  with ops.control_dependencies([grad]):
+    return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Erfc")
 def _ErfcGrad(op, grad):
   """Returns -grad * 2/sqrt(pi) * exp(-x**2)."""
   x = op.inputs[0]
-  two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
-  return  -grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+  minus_two_over_root_pi = constant_op.constant(-2 / np.sqrt(np.pi),
+                                                dtype=grad.dtype)
+  with ops.control_dependencies([grad]):
+    return  grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Lgamma")
@@ -251,7 +262,8 @@ def _LgammaGrad(op, grad):  # pylint: disable=unused-argument
 def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
-  return grad * (y * (1 - y))
+  with ops.control_dependencies([grad]):
+    return grad * (y * (1 - y))
 
 
 @ops.RegisterGradient("Sign")
@@ -265,14 +277,16 @@ def _SignGrad(op, _):
 def _SinGrad(op, grad):
   """Returns grad * cos(x)."""
   x = op.inputs[0]
-  return grad * math_ops.cos(x)
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.cos(x)
 
 
 @ops.RegisterGradient("Cos")
 def _CosGrad(op, grad):
   """Returns grad * -sin(x)."""
   x = op.inputs[0]
-  return -grad * math_ops.sin(x)
+  with ops.control_dependencies([grad]):
+    return -grad * math_ops.sin(x)
 
 
 @ops.RegisterGradient("AddN")
