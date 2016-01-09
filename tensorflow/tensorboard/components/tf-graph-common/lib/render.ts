@@ -296,7 +296,7 @@ export class RenderGraphInfo {
   /**
    * Returns true if the renderNode is an isolated node within its parent node.
    */
-  isNodeAuxilliary(renderNode: RenderNodeInfo): boolean {
+  isNodeAuxiliary(renderNode: RenderNodeInfo): boolean {
     let parentNode = <RenderGroupNodeInfo>this.getRenderNodeByName(
       renderNode.node.parentNode.name);
     let found = _.find(parentNode.isolatedInExtract, node => {

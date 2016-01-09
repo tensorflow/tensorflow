@@ -1826,7 +1826,7 @@ var tf;
                 /**
                  * Returns true if the renderNode is an isolated node within its parent node.
                  */
-                RenderGraphInfo.prototype.isNodeAuxilliary = function (renderNode) {
+                RenderGraphInfo.prototype.isNodeAuxiliary = function (renderNode) {
                     var parentNode = this.getRenderNodeByName(renderNode.node.parentNode.name);
                     var found = _.find(parentNode.isolatedInExtract, function (node) {
                         return node.node.name === renderNode.node.name;
@@ -9368,7 +9368,7 @@ Polymer({
       renderNode.node.include = tf.graph.InclusionType.INCLUDE;
     } else {
       renderNode.node.include =
-       this.renderHierarchy.isNodeAuxilliary(renderNode)
+       this.renderHierarchy.isNodeAuxiliary(renderNode)
           ? tf.graph.InclusionType.INCLUDE : tf.graph.InclusionType.EXCLUDE;
     }
 
