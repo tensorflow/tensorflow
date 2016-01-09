@@ -119,13 +119,7 @@ filegroup(
 
 filegroup(
     name = "stacky",
-    srcs = [
-        "gulpfile.js",
-        "lib/formatting.js",
-        "lib/index.js",
-        "lib/normalization.js",
-        "lib/parsing.js",
-    ],
+    srcs = ["browser.js"],
 )
 
 filegroup(
@@ -778,6 +772,7 @@ filegroup(
     srcs = [
         "index.html",
         "paper-material.html",
+        "paper-material-shared-styles.html",
     ],
 )
 
@@ -952,6 +947,16 @@ filegroup(
         "karma.conf.js",
         "karma.sauce.js",
         "sauce.browsers.js",
+    ],
+)
+
+filegroup(
+    name = "paper-tabs",
+    srcs = [
+        "index.html",
+        "paper-tab.html",
+        "paper-tabs.html",
+        "paper-tabs-icons.html",
     ],
 )
 
