@@ -17,12 +17,6 @@ from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
 
-# TODO(ilblackdragon@): Fix this in TensorFlow v0.6.
-try:
-    from tensorflow.models.rnn.linear import linear
-except AttributeError:
-    from tensorflow.python.ops.rnn_cell import linear
-
 
 def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     """Creates fully connected deep neural network subgraph.
@@ -40,7 +34,7 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     with tf.variable_scope('dnn'):
         for i, n_units in enumerate(hidden_units):
             with tf.variable_scope('layer%d' % i):
-                tensor_in = linear(tensor_in, n_units, True)
+                tensor_in = tf.nn.rnn_cell.linear(tensor_in, n_units, True)
             tensor_in = activation(tensor_in)
             if keep_prob:
                 tensor_in = tf.nn.dropout(tensor_in, keep_prob)
