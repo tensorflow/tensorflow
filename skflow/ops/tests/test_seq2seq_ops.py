@@ -59,6 +59,23 @@ class Seq2SeqOpsTest(tf.test.TestCase):
                                       [[1, 0], [0, 1]],
                                       [[0, 0], [0, 0]]]) 
 
+    def test_rnn_decoder(self):
+        with self.test_session() as session:
+            decoder_inputs = [
+                tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
+            encoding = tf.placeholder(tf.float32, [2, 2])
+            cell = tf.nn.rnn_cell.GRUCell(2)
+            outputs, states, sampling_outputs, sampling_states = (
+                ops.rnn_decoder(decoder_inputs, encoding, cell))
+            self.assertEqual(len(outputs), 3)
+            self.assertEqual(outputs[0].get_shape(), [2, 2])
+            self.assertEqual(len(states), 4)
+            self.assertEqual(states[0].get_shape(), [2, 2])
+            self.assertEqual(len(sampling_outputs), 3)
+            self.assertEqual(sampling_outputs[0].get_shape(), [2, 2])
+            self.assertEqual(len(sampling_states), 4)
+            self.assertEqual(sampling_states[0].get_shape(), [2, 2])
+
 
 if __name__ == '__main__':
     tf.test.main()
