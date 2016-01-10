@@ -49,7 +49,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
@@ -97,7 +97,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
@@ -144,7 +144,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
@@ -191,7 +191,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
@@ -249,7 +249,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
@@ -318,7 +318,7 @@ true_expected_count: A batch_size * num_true matrix, representing
   the number of times each candidate is expected to occur in a batch
   of sampled candidates. If unique=true, then this is a probability.
 sampled_expected_count: A vector of length num_sampled, for each sampled
-  candidate represting the number of times the candidate is expected
+  candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.

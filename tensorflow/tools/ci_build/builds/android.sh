@@ -30,7 +30,7 @@ if grep -q '^android_sdk_repository' WORKSPACE && grep -q '^android_ndk_reposito
   echo "You probably have your WORKSPACE file setup for Android."
 else
   if [ -z "${ANDROID_API_LEVEL}" -o -z "${ANDROID_BUILD_TOOLS_VERSION}" ] || \
-      [ -z "${ANDROID_HOME}" -o -z "${ANDROID_NDK_HOME}" ]; then
+      [ -z "${ANDROID_SDK_HOME}" -o -z "${ANDROID_NDK_HOME}" ]; then
     echo "ERROR: Your WORKSPACE file does not seems to have proper android"
     echo "       configuration and not all the environment variables expected"
     echo "       inside ci_build android docker container are set."
@@ -41,7 +41,7 @@ android_sdk_repository(
     name = "androidsdk",
     api_level = ${ANDROID_API_LEVEL},
     build_tools_version = "${ANDROID_BUILD_TOOLS_VERSION}",
-    path = "${ANDROID_HOME}",
+    path = "${ANDROID_SDK_HOME}",
 )
 
 android_ndk_repository(

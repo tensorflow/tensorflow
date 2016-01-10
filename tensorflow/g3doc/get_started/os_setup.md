@@ -269,7 +269,7 @@ The exact location of the Python library depends on your system, but is usually 
 You can find out the directory with the following command:
 
 ```bash
-$ python -c 'import site; print("\n".join(site.getsitepackages()))'
+$ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
 ```
 
 The simple demo model for classifying handwritten digits from the MNIST dataset

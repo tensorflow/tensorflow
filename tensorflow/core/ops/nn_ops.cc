@@ -419,8 +419,9 @@ REGISTER_OP("ReluGrad")
 Computes rectified linear gradients for a Relu operation.
 
 gradients: The backpropagated gradients to the corresponding Relu operation.
-features: The features passed as input to the corresponding Relu operation.
-backprops: The gradients: `gradients * features * (features > 0)`.
+features: The features passed as input to the corresponding Relu operation, OR
+  the outputs of that operation (both work equivalently).
+backprops: `gradients * (features > 0)`.
 )doc");
 
 REGISTER_OP("Relu6")
@@ -585,6 +586,7 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 
 REGISTER_OP("TopK")
     .Attr("k: int >= 1")
+    .Attr("sorted: bool = true")
     .Input("input: T")
     .Output("values: T")
     .Output("indices: int32")
@@ -599,9 +601,11 @@ such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
 elements are equal, the lower-index element appears first.
 
 k: Number of top elements to look for within each row.
+sorted: If true the resulting `k` elements will be sorted by the values in
+  descending order.
 input: A `batch_size` x `classes` tensor.
 values: A `batch_size` x `k` tensor with the `k` largest elements for
-  each row, sorted in descending order.
+  each row.
 indices: A `batch_size` x `k` tensor with the index of each value within
   each row.
 

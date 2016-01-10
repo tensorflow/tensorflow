@@ -254,25 +254,20 @@ void RestoreTensor(OpKernelContext* context,
 
   Tensor* t = nullptr;
   OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &t));
-#define READER_COPY(dt)                                                \
-  case dt:                                                             \
-    reader->CopySliceData(tensor_name, slice_to_load,                  \
-                          t->flat<EnumToDataType<dt>::Type>().data()); \
-    break
+
+#define READER_COPY(T)                                                      \
+  case DataTypeToEnum<T>::value:                                            \
+    reader->CopySliceData(tensor_name, slice_to_load, t->flat<T>().data()); \
+    break;
 
   switch (type) {
-    READER_COPY(DT_BOOL);
-    READER_COPY(DT_FLOAT);
-    READER_COPY(DT_DOUBLE);
-    READER_COPY(DT_INT32);
-    READER_COPY(DT_UINT8);
-    READER_COPY(DT_INT16);
-    READER_COPY(DT_INT8);
-    READER_COPY(DT_INT64);
+    TF_CALL_ALL_TYPES(READER_COPY)
+    TF_CALL_QUANTIZED_TYPES(READER_COPY)
     default:
       context->SetStatus(errors::Unimplemented(
           "Restoring data type ", DataTypeString(type), " not yet supported"));
   }
+#undef READER_COPY
 }
 
 }  // namespace tensorflow

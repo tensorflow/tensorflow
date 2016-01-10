@@ -106,6 +106,7 @@ concatenated.
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
+@@conv2d_transpose
 
 ## Pooling
 
@@ -530,7 +531,11 @@ def moments(x, axes, name=None):
     #                                        divisor), axes,
     #                    name="variance")
     mean = math_ops.mul(math_ops.reduce_sum(x, axes), divisor, name="mean")
-    var = math_ops.mul(math_ops.reduce_sum(math_ops.square(x - mean), axes),
+    # Give x-mean a specific name, so the caller might take advantage of it.
+    # The caller should have a fallback plan, however: this tensor may not be
+    # available if this function implementation changes.
+    x_centered = math_ops.sub(x, mean, name="x_centered")
+    var = math_ops.mul(math_ops.reduce_sum(math_ops.square(x_centered), axes),
                        divisor, name="variance")
     return mean, var
 

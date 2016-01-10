@@ -58,10 +58,11 @@ built:
 $ adb install -r -g bazel-bin/tensorflow/examples/android/tensorflow_demo.apk
 ```
 
-Some older versions of adb might complain about the -g option (returning: "Error: Unknown option: -g").
-In this case, if your device runs Android 6.0 or later, then make sure you update to
-the latest adb version before trying the install command again. If your device runs earlier
-versions of Android, however, you can issue the install command without the -g option.
+Some older versions of adb might complain about the -g option (returning:
+"Error: Unknown option: -g").  In this case, if your device runs Android 6.0 or
+later, then make sure you update to the latest adb version before trying the
+install command again. If your device runs earlier versions of Android, however,
+you can issue the install command without the -g option.
 
 Alternatively, a streamlined means of building, installing and running in one
 command is:

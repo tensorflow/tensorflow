@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor_shape.h"
@@ -52,6 +53,14 @@ class Tensor {
   ///
   /// `a` must outlive the lifetime of this Tensor.
   Tensor(Allocator* a, DataType type, const TensorShape& shape);
+
+  /// \brief Creates a tensor with the input `type` and `shape`, using the
+  /// allocator `a` and the specified "allocation_attr" to allocate the
+  /// underlying buffer.
+  ///
+  /// `a` must outlive the lifetime of this Tensor.
+  Tensor(Allocator* a, DataType type, const TensorShape& shape,
+         const AllocationAttributes& allocation_attr);
 
   /// Creates an uninitialized Tensor of the given data type.
   explicit Tensor(DataType type);

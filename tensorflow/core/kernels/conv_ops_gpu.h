@@ -57,8 +57,11 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
 
+    AllocationAttributes allocation_attr;
+    allocation_attr.no_retry_on_failure = true;
     Status allocation_status(context_->allocate_temp(
-        DT_UINT8, TensorShape({byte_size}), &temporary_memory));
+        DT_UINT8, TensorShape({byte_size}), &temporary_memory,
+        AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
       LOG(WARNING) << allocation_status;
       return perftools::gputools::port::StatusOr<

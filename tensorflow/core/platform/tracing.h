@@ -24,27 +24,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"  // Must be first
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-class NodeExecStats;
-class StepStats;
-
-class StepStatsCollector {
- public:
-  explicit StepStatsCollector(StepStats* ss);
-
-  void Save(const string& device, NodeExecStats* nt);
-
-  void Swap(StepStats* ss);
-
- private:
-  friend class StepStatsMgr;
-  mutex mu_;
-  StepStats* step_stats_ GUARDED_BY(mu_);
-};
 
 namespace port {
 

@@ -103,7 +103,7 @@ def ParseEventFilesFlag(flag_value):
     else:
       run_name = None
       path = specification
-      
+
     if not os.path.isabs(path):
       # Create absolute path out of relative one.
       path = os.path.join(os.path.realpath('.'), path)

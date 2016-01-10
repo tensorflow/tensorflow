@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace gpu = ::perftools::gputools;
@@ -101,6 +102,18 @@ void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
         return AllocateRawInternal(a, nb, v);
       },
       kMaxMillisToWait, unused_alignment, num_bytes);
+}
+
+void* GPUBFCAllocator::AllocateRaw(
+    size_t unused_alignment, size_t num_bytes,
+    const AllocationAttributes& allocation_attr) {
+  if (allocation_attr.no_retry_on_failure) {
+    // Return immediately upon the first failure if this is for allocating an
+    // optional scratch space.
+    return AllocateRawInternal(unused_alignment, num_bytes, true);
+  } else {
+    return AllocateRaw(unused_alignment, num_bytes);
+  }
 }
 
 void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,

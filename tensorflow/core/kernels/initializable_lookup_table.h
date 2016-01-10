@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
 
 #include "tensorflow/core/framework/lookup_interface.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace lookup {

@@ -21,14 +21,13 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import gen_nn_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
-def _DeConv2DGrad(op, grad):
+def _Conv2DBackpropGrad(op, grad):
   """The derivatives for deconvolution.
 
   Args:
@@ -104,27 +103,9 @@ def _BiasAddGrad(unused_bias_op, received_grad):
   return (received_grad, math_ops.reduce_sum(received_grad, reduction_dim_tensor))
 
 
-def _VerifyTensor(t, name, msg):
-  """Assert that the tensor does not contain any NaN's.
-
-  Args:
-    t: Tensor
-    name: name
-    msg: message to log
-  Returns:
-    Tensor, but verified
-  """
-  with ops.name_scope(name):
-    with ops.device(t.device or ops.get_default_graph().get_default_device()):
-      verify_input = array_ops.check_numerics(t, message=msg)
-      out = control_flow_ops.with_dependencies([verify_input], t)
-  return out
-
-
 @ops.RegisterGradient("Relu")
 def _ReluGrad(op, grad):
-  t = _VerifyTensor(op.inputs[0], op.name, "ReluGrad input is not finite.")
-  return gen_nn_ops._relu_grad(grad, t)
+  return gen_nn_ops._relu_grad(grad, op.outputs[0])
 
 
 @ops.RegisterGradient("Relu6")

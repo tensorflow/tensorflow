@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 namespace tensorflow {
 namespace {

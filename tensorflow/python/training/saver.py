@@ -489,6 +489,16 @@ def update_checkpoint_state(save_dir,
     all_model_checkpoint_paths.append(model_checkpoint_path)
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
+
+  # Relative paths need to be rewritten to be relative to the "save_dir".
+  if not os.path.isabs(model_checkpoint_path):
+    model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
+
+  all_model_checkpoint_paths = [
+      os.path.relpath(p, save_dir) for p in all_model_checkpoint_paths
+      if not os.path.isabs(p)
+  ]
+
   if coord_checkpoint_filename == model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
@@ -854,6 +864,10 @@ class Saver(object):
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
+
+    if os.path.split(latest_filename)[0]:
+      raise ValueError("'latest_filename' must not contain path components")
+
     if global_step is not None:
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
@@ -905,8 +919,11 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
+
+    # If you pass "os.path.join" two absolute paths it returns the second one.
     checkpoint_pattern = os.path.join(
         checkpoint_dir, ckpt.model_checkpoint_path)
+
     if gfile.Glob(checkpoint_pattern):
       return checkpoint_pattern
 

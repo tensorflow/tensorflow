@@ -456,7 +456,7 @@ Computes the inverse permutation of a tensor.
 
 This operation computes the inverse of an index permutation. It takes a 1-D
 integer tensor `x`, which represents the indices of a zero-based array, and
-swaps each value with its index position. In other words, for an ouput tensor
+swaps each value with its index position. In other words, for an output tensor
 `y` and an input tensor `x`, this operation computes the following:
 
 `y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`
@@ -804,7 +804,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape")
+    .Attr("shape: shape = {}")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 

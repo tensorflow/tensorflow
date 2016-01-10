@@ -2,24 +2,39 @@
 <html>
   <head>
     <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
-    <script>
-      function handleLoad() {
-        TF.Urls.runsUrl = function() {return "data/runs.json"};
-        TF.Urls.graphUrl = function(run) {
-          return "data/" + run + "-graph.pbtxt";
-        };
-        TF.Urls.scalarsUrl = function(tag, run) {
-          var path = "data/" + run.split("_")[0] + ".json";
-          return path;
-        };
-      }
-    </script>
-    <link rel="import" href="../tf-tensorboard.html" onload="handleLoad(event)">
+    <link rel="import" href="../tf-tensorboard.html">
     <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
     <title>TensorBoard Demo</title>
   </head>
   <body>
-    <script>handleLoad()</script>
-    <tf-tensorboard id="demo"></tf-tensorboard>
+    <base href="/"></base>
+    <dom-module id="x-demo">
+      <template>
+        <tf-tensorboard
+          id="demo"
+          router="[[demoRouter]]">
+        </tf-tensorboard>
+      </template>
+      <script>
+        var dataDir = "components/tf-tensorboard/demo/data/";
+        var demoRouter = {
+          runs: dataDir + "runs.json",
+          graph: function(run) {return dataDir + run + "-graph.pbtxt";},
+          scalars: function(tag, run) {
+            return dataDir + run.split("_")[0] + ".json";
+          },
+        };
+        Polymer({
+          is: "x-demo",
+          properties: {
+            demoRouter: {
+              type: Object,
+              value: demoRouter,
+            },
+          },
+        });
+      </script>
+    </dom-module>
+    <x-demo></x-demo>
   </body>
 </html>

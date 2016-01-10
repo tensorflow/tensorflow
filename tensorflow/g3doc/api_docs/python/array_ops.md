@@ -727,6 +727,7 @@ output[3, 2:, :, ...] = input[3, 2:, :, ...]
 ```
 
 In contrast, if:
+
 ```prettyprint
 # Given this:
 batch_dim = 2

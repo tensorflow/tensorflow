@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
@@ -50,6 +51,7 @@ template <typename T>
 class Buffer : public TensorBuffer {
  public:
   Buffer(Allocator* a, int64 n);
+  Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
 
   void* data() const override { return data_; }
   size_t size() const override { return sizeof(T) * elem_; }
@@ -276,6 +278,13 @@ Buffer<T>::Buffer(Allocator* a, int64 n)
 }
 
 template <typename T>
+Buffer<T>::Buffer(Allocator* a, int64 n,
+                  const AllocationAttributes& allocation_attr)
+    : alloc_(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {
+  if (data_) Helper<T>::RunCtor(data_, elem_);
+}
+
+template <typename T>
 Buffer<T>::~Buffer() {
   if (data_) {
     Helper<T>::RunDtor(data_, elem_);
@@ -405,6 +414,15 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
+  }
+}
+
+Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
+               const AllocationAttributes& allocation_attr)
+    : type_(type), shape_(shape), buf_(nullptr) {
+  CHECK_NOTNULL(a);
+  if (shape_.num_elements() > 0) {
+    CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
 }
 

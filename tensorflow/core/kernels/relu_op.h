@@ -42,13 +42,15 @@ struct ReluGrad {
   // Computes ReluGrad backprops.
   //
   // gradients: gradients backpropagated to the Relu op.
-  // features: inputs that where passed to the Relu op.
+  // features: either the inputs that were passed to the Relu or, or its
+  //           outputs (using either one yields the same result here).
   // backprops: gradients to backpropagate to the Relu inputs.
   void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
                   typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor backprops) {
-    // NOTE: When the activation is exactly zero, we arbitrarily choose to not
-    // propagate the associated gradient value.
+    // NOTE: When the activation is exactly zero, we do not propagate the
+    // associated gradient value. This allows the output of the Relu to be used,
+    // as well as its input.
     backprops.device(d) =
         gradients * (features > features.constant(static_cast<T>(0)));
   }

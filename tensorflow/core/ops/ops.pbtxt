@@ -50,12 +50,12 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_STRING
       }
     }
   }
   summary: "Returns x + y element-wise."
   description: "*NOTE*: Add supports broadcasting. AddN does not."
-  is_commutative: true
 }
 op {
   name: "AddN"
@@ -151,7 +151,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "The constrast-adjusted image or images."
+    description: "The contrast-adjusted image or images."
     type: DT_FLOAT
   }
   summary: "Adjust the contrast of one or more images."
@@ -204,7 +204,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
@@ -2739,7 +2739,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
@@ -3277,7 +3277,7 @@ op {
     type: DT_INT32
   }
   summary: "Computes the inverse permutation of a tensor."
-  description: "This operation computes the inverse of an index permutation. It takes a 1-D\ninteger tensor `x`, which represents the indices of a zero-based array, and\nswaps each value with its index position. In other words, for an ouput tensor\n`y` and an input tensor `x`, this operation computes the following:\n\n`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`\n\nThe values must include 0. There can be no duplicate values or negative values.\n\nFor example:\n\n```prettyprint\n# tensor `x` is [3, 4, 0, 2, 1]\ninvert_permutation(x) ==> [2, 4, 3, 0, 1]\n```"
+  description: "This operation computes the inverse of an index permutation. It takes a 1-D\ninteger tensor `x`, which represents the indices of a zero-based array, and\nswaps each value with its index position. In other words, for an output tensor\n`y` and an input tensor `x`, this operation computes the following:\n\n`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`\n\nThe values must include 0. There can be no duplicate values or negative values.\n\nFor example:\n\n```prettyprint\n# tensor `x` is [3, 4, 0, 2, 1]\ninvert_permutation(x) ==> [2, 4, 3, 0, 1]\n```"
 }
 op {
   name: "IsFinite"
@@ -3500,7 +3500,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
@@ -3716,7 +3716,7 @@ op {
       }
     }
   }
-  summary: "Computes natural logrithm of x element-wise."
+  summary: "Computes natural logarithm of x element-wise."
   description: "I.e., \\\\(y = \\log_e x\\\\)."
 }
 op {
@@ -3738,7 +3738,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
@@ -4999,6 +4999,10 @@ op {
   attr {
     name: "shape"
     type: "shape"
+    default_value {
+      shape {
+      }
+    }
     description: "(Optional) The shape of the tensor. If the shape has 0 dimensions, the\nshape is unconstrained."
   }
   summary: "A placeholder op for a value that will be fed into the computation."
@@ -5962,7 +5966,7 @@ op {
     type: "type"
   }
   summary: "Forwards the ref tensor `data` to the output port determined by `pred`."
-  description: "If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `Switch` and `Merge`."
+  description: "If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `Switch` and `Merge`."
 }
 op {
   name: "Relu"
@@ -6061,12 +6065,12 @@ op {
   }
   input_arg {
     name: "features"
-    description: "The features passed as input to the corresponding Relu operation."
+    description: "The features passed as input to the corresponding Relu operation, OR\nthe outputs of that operation (both work equivalently)."
     type_attr: "T"
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients * features * (features > 0)`."
+    description: "`gradients * (features > 0)`."
     type_attr: "T"
   }
   attr {
@@ -6210,6 +6214,14 @@ op {
       }
     }
   }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
+  }
   summary: "Resize `images` to `size` using bilinear interpolation."
   description: "Input images can be of different types but output images are always float."
 }
@@ -6239,6 +6251,14 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale grads by (orig_height - 1) / (height - 1), which\nexactly aligns the 4 corners of grads and original_image. If false, rescale by\norig_height / height. Treat similarly the width dimension."
   }
   summary: "Computes the gradient of bilinear interpolation."
 }
@@ -6448,7 +6468,7 @@ op {
     type: "type"
   }
   summary: "Reverses variable length slices."
-  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
+  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
 }
 op {
   name: "Rsqrt"
@@ -8377,7 +8397,40 @@ op {
     type: "type"
   }
   summary: "Forwards `data` to the output port determined by `pred`."
-  description: "If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `RefSwitch` and `Merge`."
+  description: "If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `RefSwitch` and `Merge`."
+}
+op {
+  name: "SymbolicGradient"
+  input_arg {
+    name: "input"
+    description: "a list of input tensors of size N + M;"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    description: "a list of output tensors of size N;"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    description: "the type list for the input list."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    description: "the type list for the input list."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The function we want to compute the gradient for.\n\nThe function \'f\' must be a numerical function which takes N inputs and\nproduces M outputs. Its gradient function \'g\', which is computed by\nthis SymbolicGradient op is a function taking N + M inputs and\nproduces N outputs.\n\nI.e. if we have\n   (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),\nthen, g is\n   (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,\n                                     dL/dy1, dL/dy2, ..., dL/dy_M),\n\nwhere L is a scalar-value function of (x1, x2, ..., xN) (e.g., the\nloss function). dL/dx_i is the the partial derivative of L with respect\nto x_i.\n\n(Needs some math expert to say the comment above better.)"
+  }
+  summary: "Computes the gradient function for function f via backpropagation."
 }
 op {
   name: "TFRecordReader"
@@ -8515,7 +8568,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {
@@ -8616,7 +8669,7 @@ op {
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row, sorted in descending order."
+    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
     type_attr: "T"
   }
   output_arg {
@@ -8630,6 +8683,14 @@ op {
     description: "Number of top elements to look for within each row."
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
   }
   attr {
     name: "T"
@@ -8742,7 +8803,7 @@ op {
   }
   output_arg {
     name: "sampled_expected_count"
-    description: "A vector of length num_sampled, for each sampled\ncandidate represting the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
+    description: "A vector of length num_sampled, for each sampled\ncandidate representing the number of times the candidate is expected\nto occur in a batch of sampled candidates.  If unique=true, then this is a\nprobability."
     type: DT_FLOAT
   }
   attr {

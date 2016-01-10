@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <set>
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 #include "tensorflow/core/platform/logging.h"

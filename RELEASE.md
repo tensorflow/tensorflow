@@ -11,6 +11,14 @@
   safety is handled by `saturate_cast`, which makes sure over- and underflows
   are handled before casting to data types with smaller ranges.
 
+## Bug fixes
+
+* The Python API will now properly set the `list` member of `AttrValue` in
+  constructed `GraphDef` messages for empty lists.  The serialization of some
+  graphs will change, but the change is both forwards and backwards compatible.
+  It will break tests that compare a generated `GraphDef` to a golden serialized
+  `GraphDef`.
+
 # Release 0.6.0
 
 ## Major Features and Improvements

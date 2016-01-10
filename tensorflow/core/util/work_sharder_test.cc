@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 

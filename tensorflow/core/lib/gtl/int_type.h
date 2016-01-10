@@ -158,6 +158,7 @@ limitations under the License.
 #include <ostream>  // NOLINT
 #include <unordered_map>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

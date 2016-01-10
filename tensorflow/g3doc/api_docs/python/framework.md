@@ -1488,7 +1488,7 @@ The returned graph will be the innermost graph on which a
 `Graph.as_default()` context has been entered, or a global default
 graph if none has been explicitly created.
 
-*N.B.* The default graph is a property of the current thread. If you
+NOTE: The default graph is a property of the current thread. If you
 create a new thread, and wish to use the default graph in that
 thread, you must explicitly add a `with g.as_default():` in that
 thread's function.
@@ -1496,6 +1496,19 @@ thread's function.
 ##### Returns:
 
   The default `Graph` being used in the current thread.
+
+
+- - -
+
+### `tf.reset_default_graph()` {#reset_default_graph}
+
+Clears the default graph stack and resets the global default graph.
+
+NOTE: The default graph is a property of the current thread. This
+function applies only to the current thread.  Calling this function while
+a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
+behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
+after calling this function will result in undefined behavior.
 
 
 - - -
@@ -1653,6 +1666,8 @@ The following standard keys are defined:
   keep moving averages.  See
   [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
   for more details.
+* `REGULARIZATION_LOSSES`: regularization losses collected during graph
+  construction.
 
 
 ## Defining new operations
@@ -2218,5 +2233,49 @@ For details on how the graph-level seed interacts with op seeds, see
 
   A tuple of two integers that should be used for the local seed of this
   operation.
+
+
+
+## For libraries building on TensorFlow
+
+- - -
+
+### `tf.register_tensor_conversion_function(base_type, conversion_func, priority=100)` {#register_tensor_conversion_function}
+
+Registers a function for converting objects of `base_type` to `Tensor`.
+
+The conversion function must have the following signature:
+
+    def conversion_func(value, dtype=None, name=None, as_ref=False):
+      # ...
+
+It must return a `Tensor` with the given `dtype` if specified. If the
+conversion function creates a new `Tensor`, it should use the given
+`name` if specified. All exceptions will be propagated to the caller.
+
+If `as_ref` is true, the function must return a `Tensor` reference,
+such as a `Variable`.
+
+NOTE: The conversion functions will execute in order of priority,
+followed by order of registration. To ensure that a conversion function
+`F` runs before another conversion function `G`, ensure that `F` is
+registered with a smaller priority than `G`.
+
+##### Args:
+
+
+*  <b>`base_type`</b>: The base type or tuple of base types for all objects that
+    `conversion_func` accepts.
+*  <b>`conversion_func`</b>: A function that converts instances of `base_type` to
+    `Tensor`.
+*  <b>`priority`</b>: Optional integer that indicates the priority for applying this
+    conversion function. Conversion functions with smaller priority values
+    run earlier than conversion functions with larger priority values.
+    Defaults to 100.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If the arguments do not have the appropriate type.
 
 

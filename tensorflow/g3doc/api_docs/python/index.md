@@ -22,8 +22,10 @@
   * [`NoGradient`](../../api_docs/python/framework.md#NoGradient)
   * [`op_scope`](../../api_docs/python/framework.md#op_scope)
   * [`Operation`](../../api_docs/python/framework.md#Operation)
+  * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`RegisterShape`](../../api_docs/python/framework.md#RegisterShape)
+  * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
@@ -289,6 +291,7 @@
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
   * [`compute_accidental_hits`](../../api_docs/python/nn.md#compute_accidental_hits)
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
+  * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`depthwise_conv2d`](../../api_docs/python/nn.md#depthwise_conv2d)
   * [`dropout`](../../api_docs/python/nn.md#dropout)
   * [`elu`](../../api_docs/python/nn.md#elu)
