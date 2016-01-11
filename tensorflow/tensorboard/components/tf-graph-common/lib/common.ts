@@ -165,7 +165,7 @@ export function escapeQuerySelector(querySelector: string): string {
 }
 
 /**
- * TensorFlow node definition as definied in the graph proto file.
+ * TensorFlow node definition as defined in the graph proto file.
  */
 export interface TFNode {
   /** Name of the node */
