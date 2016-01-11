@@ -159,7 +159,7 @@ gulp.task('vulcanize', ['compile.all', 'tslint-strict'], function() {
       stripComments: true,
       excludes: getNonTensorBoardComponents(),
     }))
-    // TODO(danmane): Remove this worrysome brittleness when vulcanize
+    // TODO(danmane): Remove this worrisome brittleness when vulcanize
     // fixes https://github.com/Polymer/vulcanize/issues/273
     .pipe(replace(linkRegex, ''))
     .pipe(replace(scriptRegex, ''))
