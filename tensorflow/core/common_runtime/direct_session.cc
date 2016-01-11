@@ -350,17 +350,6 @@ Status DirectSession::GetOrCreateExecutors(
     return s;
   }
 
-  bool has_control_flow = false;
-  for (const auto& graph : graphs) {
-    for (const Node* n : graph.second->nodes()) {
-      if (IsControlFlow(n)) {
-        has_control_flow = true;
-        break;
-      }
-    }
-    if (has_control_flow) break;
-  }
-
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   ek->func_defs = fdefs;
   ek->items.reserve(graphs.size());
@@ -382,7 +371,6 @@ Status DirectSession::GetOrCreateExecutors(
         NewFunctionLibraryRuntime(device, runner, graph_def_version, fdefs);
 
     LocalExecutorParams params;
-    params.has_control_flow = has_control_flow;
     params.device = device;
     params.function_library = item->flib;
     auto lib = item->flib;
