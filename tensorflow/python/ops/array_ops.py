@@ -563,7 +563,9 @@ def zeros_like(tensor, dtype=None, name=None):
     zeros_shape = shape(tensor)
     if dtype is None:
       dtype = tensor.dtype
-    return zeros(zeros_shape, dtype=dtype, name=name)
+    ret = zeros(zeros_shape, dtype=dtype, name=name)
+    ret.set_shape(tensor.get_shape())
+    return ret
 
 
 def ones_like(tensor, dtype=None, name=None):
@@ -594,7 +596,9 @@ def ones_like(tensor, dtype=None, name=None):
     ones_shape = shape(tensor)
     if dtype is None:
       dtype = tensor.dtype
-    return ones(ones_shape, dtype=dtype, name=name)
+    ret = ones(ones_shape, dtype=dtype, name=name)
+    ret.set_shape(tensor.get_shape())
+    return ret
 
 
 def zeros_initializer(shape, dtype=dtypes.float32):
