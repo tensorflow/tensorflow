@@ -754,7 +754,7 @@ def reduce_min(input_tensor, reduction_indices=None, keep_dims=False,
   #         [3, 4]]
   tf.reduce_min(x) ==> 1
   tf.reduce_min(x, 0) ==> [1, 2]
-  tf.reduce_min(x, 1) ==> [1,  3]
+  tf.reduce_min(x, 1) ==> [1, 3]
   ```
 
   Args:
@@ -791,7 +791,7 @@ def reduce_max(input_tensor, reduction_indices=None, keep_dims=False,
   #         [3, 4]]
   tf.reduce_max(x) ==> 4
   tf.reduce_max(x, 0) ==> [3, 4]
-  tf.reduce_max(x, 1) ==> [2,  4]
+  tf.reduce_max(x, 1) ==> [2, 4]
   ```
 
   Args:
