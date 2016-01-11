@@ -7939,7 +7939,7 @@ var TF;
       _getTags: function(runToImages) {
         return _.chain(runToImages.base).values().flatten().union().value();
       },
-      _getRuns(runToImages) {
+      _getRuns: function(runToImages) {
         var r2i = runToImages.base;
         return _.keys(r2i).filter(function(x) {return r2i[x].length > 0;});
       },
