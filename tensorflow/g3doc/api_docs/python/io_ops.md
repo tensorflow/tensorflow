@@ -1055,40 +1055,122 @@ here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ex
 
 - - -
 
-### `tf.parse_example(serialized, names=None, sparse_keys=None, sparse_types=None, dense_keys=None, dense_types=None, dense_defaults=None, dense_shapes=None, name='ParseExample')` {#parse_example}
+### `class tf.VarLenFeature` {#VarLenFeature}
 
-Parses `Example` protos.
+Configuration for parsing a variable-length input feature.
+
+Fields:
+  dtype: Data type of input.
+- - -
+
+#### `tf.VarLenFeature.dtype` {#VarLenFeature.dtype}
+
+Alias for field number 0
+
+
+
+- - -
+
+### `class tf.FixedLenFeature` {#FixedLenFeature}
+
+Configuration for parsing a fixed-length input feature.
+
+To treat sparse input as dense, provide a `default_value`; otherwise,
+the parse functions will fail on any examples missing this feature.
+
+Fields:
+  shape: Shape of input data.
+  dtype: Data type of input.
+  default_value: Value to be used if an example is missing this feature. It
+      must be compatible with `dtype`.
+- - -
+
+#### `tf.FixedLenFeature.default_value` {#FixedLenFeature.default_value}
+
+Alias for field number 2
+
+
+- - -
+
+#### `tf.FixedLenFeature.dtype` {#FixedLenFeature.dtype}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.FixedLenFeature.shape` {#FixedLenFeature.shape}
+
+Alias for field number 0
+
+
+
+- - -
+
+### `class tf.FixedLenSequenceFeature` {#FixedLenSequenceFeature}
+
+Configuration for a dense input feature in a sequence item.
+
+To treat a sparse input as dense, provide `allow_missing=True`; otherwise,
+the parse functions will fail on any examples missing this feature.
+
+Fields:
+  shape: Shape of input data.
+  dtype: Data type of input.
+  allow_missing: Whether to allow this feature to be missing from a feature
+    list item.
+- - -
+
+#### `tf.FixedLenSequenceFeature.allow_missing` {#FixedLenSequenceFeature.allow_missing}
+
+Alias for field number 2
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.dtype` {#FixedLenSequenceFeature.dtype}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.shape` {#FixedLenSequenceFeature.shape}
+
+Alias for field number 0
+
+
+
+- - -
+
+### `tf.parse_example(serialized, features, name=None, example_names=None)` {#parse_example}
+
+Parses `Example` protos into a `dict` of tensors.
 
 Parses a number of serialized [`Example`]
 (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
-`names` may contain descriptive names for the corresponding serialized protos.
-These may be useful for debugging purposes, but they have no effect on the
-output. If not `None`, `names` must be the same length as `serialized`.
+`example_names` may contain descriptive names for the corresponding serialized
+protos. These may be useful for debugging purposes, but they have no effect on
+the output. If not `None`, `names` must be the same length as `serialized`.
 
 This op parses serialized examples into a dictionary mapping keys to `Tensor`
-and `SparseTensor` objects respectively, depending on whether the keys appear
-in `sparse_keys` or `dense_keys`.
+and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
+and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
+`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
 
-The key `dense_keys[j]` is mapped to a `Tensor` of type `dense_types[j]` and
-of shape `(serialized.size(),) + dense_shapes[j]`.
+Each `VarLenFeature` maps to a `SparseTensor` of the specified type
+representing a ragged matrix. Its indices are `[batch, index]` where `batch`
+is the batch entry the value is from in `serialized`, and `index` is the
+value's index in the list of values associated with that feature and example.
 
-`dense_defaults` provides defaults for values referenced using `dense_keys`.
-If a key is not present in this dictionary, the corresponding dense `Feature`
-is required in all elements of `serialized`.
+Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
+`tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
 
-`dense_shapes[j]` provides the shape of each `Feature` entry referenced by
-`dense_keys[j]`. The number of elements in the `Feature` corresponding to
-`dense_key[j]` must always have `np.prod(dense_shapes[j])` entries. The
-returned `Tensor` for `dense_key[j]` has shape `[N] + dense_shape[j]`, where
-`N` is the number of `Example`s in `serialized`.
-
-The key `sparse_keys[j]` is mapped to a `SparseTensor` of type
-`sparse_types[j]`. The `SparseTensor` represents a ragged matrix.
-Its indices are `[batch, index]` where `batch` is the batch entry the value
-is from, and `index` is the value's index in the list of values associated
-with that feature and example.
+`FixedLenFeature` entries with a `default_value` are optional. With no default
+value, we will fail if that `Feature` is missing from any example in
+`serialized`.
 
 Examples:
 
@@ -1133,9 +1215,12 @@ Given two `Example` input protos in `serialized`:
 And arguments
 
 ```
-  names: ["input0", "input1"],
-  sparse_keys: ["kw", "dank", "gps"]
-  sparse_types: [DT_STRING, DT_INT64, DT_FLOAT]
+example_names: ["input0", "input1"],
+features: {
+    "kw": VarLenFeature(tf.string),
+    "dank": VarLenFeature(tf.int64),
+    "gps": VarLenFeature(tf.float),
+}
 ```
 
 Then the output is a dictionary:
@@ -1175,14 +1260,11 @@ For dense results in two serialized `Example`s:
 We can use arguments:
 
 ```
-names: ["input0", "input1"],
-dense_keys: np.array(["age", "gender"]),
-dense_types: [tf.int64, tf.string],
-dense_defaults: {
-  "age": -1  # "age" defaults to -1 if missing
-             # "gender" has no specified default so it's required
+example_names: ["input0", "input1"],
+features: {
+    "age": FixedLenFeature([], dtype=tf.int64, default_value=-1),
+    "gender": FixedLenFeature([], dtype=tf.string),
 }
-dense_shapes: [(1,), (1,)],  # age, gender, label, weight
 ```
 
 And the expected output is:
@@ -1199,40 +1281,25 @@ And the expected output is:
 
 *  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
     serialized `Example` protos.
-*  <b>`names`</b>: A vector (1-D Tensor) of strings (optional), the names of
-    the serialized protos.
-*  <b>`sparse_keys`</b>: A list of string keys in the examples' features.
-    The results for these keys will be returned as `SparseTensor` objects.
-*  <b>`sparse_types`</b>: A list of `DTypes` of the same length as `sparse_keys`.
-    Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
-    and `tf.string` (`BytesList`) are supported.
-*  <b>`dense_keys`</b>: A list of string keys in the examples' features.
-    The results for these keys will be returned as `Tensor`s
-*  <b>`dense_types`</b>: A list of DTypes of the same length as `dense_keys`.
-    Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
-    and `tf.string` (`BytesList`) are supported.
-*  <b>`dense_defaults`</b>: A dict mapping string keys to `Tensor`s.
-    The keys of the dict must match the dense_keys of the feature.
-*  <b>`dense_shapes`</b>: A list of tuples with the same length as `dense_keys`.
-    The shape of the data for each dense feature referenced by `dense_keys`.
-    Required for any input tensors identified by `dense_keys` whose shapes are
-    anything other than `[]` or `[1]`.
+*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
+    `VarLenFeature` values.
 *  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
+    the serialized protos in the batch.
 
 ##### Returns:
 
-  A `dict` mapping keys to `Tensor`s and `SparseTensor`s.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If sparse and dense key sets intersect, or input lengths do not
-    match up.
+*  <b>`ValueError`</b>: if any feature is invalid.
 
 
 - - -
 
-### `tf.parse_single_example(serialized, names=None, sparse_keys=None, sparse_types=None, dense_keys=None, dense_types=None, dense_defaults=None, dense_shapes=None, name='ParseSingleExample')` {#parse_single_example}
+### `tf.parse_single_example(serialized, features, name=None, example_names=None)` {#parse_single_example}
 
 Parses a single `Example` proto.
 
@@ -1247,31 +1314,25 @@ For `SparseTensor`s, the first (batch) column of the indices matrix is removed
 the first (`batch_size`) entry of the shape vector is removed (it is now a
 single element vector).
 
-See also `parse_example`.
-
 ##### Args:
 
 
 *  <b>`serialized`</b>: A scalar string Tensor, a single serialized Example.
-    See `parse_example` documentation for more details.
-*  <b>`names`</b>: (Optional) A scalar string Tensor, the associated name.
-    See `parse_example` documentation for more details.
-*  <b>`sparse_keys`</b>: See `parse_example` documentation for more details.
-*  <b>`sparse_types`</b>: See `parse_example` documentation for more details.
-*  <b>`dense_keys`</b>: See `parse_example` documentation for more details.
-*  <b>`dense_types`</b>: See `parse_example` documentation for more details.
-*  <b>`dense_defaults`</b>: See `parse_example` documentation for more details.
-*  <b>`dense_shapes`</b>: See `parse_example` documentation for more details.
+    See `_parse_single_example_raw` documentation for more details.
+*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
+    `VarLenFeature` values.
 *  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_names`</b>: (Optional) A scalar string Tensor, the associated name.
+    See `_parse_single_example_raw` documentation for more details.
 
 ##### Returns:
 
-  A dictionary mapping keys to Tensors and SparseTensors.
+  A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if "scalar" or "names" have known shapes, and are not scalars.
+*  <b>`ValueError`</b>: if any feature is invalid.
 
 
 

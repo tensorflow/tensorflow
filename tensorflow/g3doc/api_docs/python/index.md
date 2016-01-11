@@ -260,7 +260,9 @@
   * [`decode_csv`](../../api_docs/python/io_ops.md#decode_csv)
   * [`decode_raw`](../../api_docs/python/io_ops.md#decode_raw)
   * [`FIFOQueue`](../../api_docs/python/io_ops.md#FIFOQueue)
+  * [`FixedLenFeature`](../../api_docs/python/io_ops.md#FixedLenFeature)
   * [`FixedLengthRecordReader`](../../api_docs/python/io_ops.md#FixedLengthRecordReader)
+  * [`FixedLenSequenceFeature`](../../api_docs/python/io_ops.md#FixedLenSequenceFeature)
   * [`IdentityReader`](../../api_docs/python/io_ops.md#IdentityReader)
   * [`limit_epochs`](../../api_docs/python/io_ops.md#limit_epochs)
   * [`match_filenames_once`](../../api_docs/python/io_ops.md#match_filenames_once)
@@ -280,6 +282,7 @@
   * [`string_input_producer`](../../api_docs/python/io_ops.md#string_input_producer)
   * [`TextLineReader`](../../api_docs/python/io_ops.md#TextLineReader)
   * [`TFRecordReader`](../../api_docs/python/io_ops.md#TFRecordReader)
+  * [`VarLenFeature`](../../api_docs/python/io_ops.md#VarLenFeature)
   * [`WholeFileReader`](../../api_docs/python/io_ops.md#WholeFileReader)
 
 * **[Data IO (Python functions)](../../api_docs/python/python_io.md)**:
