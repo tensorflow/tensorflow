@@ -44,7 +44,7 @@ TensorBoard will look to find TensorFlow event files that it can display.
 TensorBoard will recursively walk the directory structure rooted at logdir,
 looking for .*tfevents.* files.
 
-You may also pass a comma seperated list of log directories, and TensorBoard
+You may also pass a comma separated list of log directories, and TensorBoard
 will watch each directory. You can also assign names to individual log
 directories by putting a colon between the name and the path, as in
 

@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Android SDK and NDK root direcotry workaround. For details see
+# Android SDK and NDK root directory workaround. For details see
 # https://github.com/bazelbuild/bazel/issues/714#issuecomment-166735874
 ENV ANDROID_DEV_HOME /android
 RUN mkdir -p ${ANDROID_DEV_HOME}
