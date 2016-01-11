@@ -79,7 +79,7 @@ class ParseExampleTest(tf.test.TestCase):
       self, kwargs, expected_values=None, expected_err=None):
     with self.test_session() as sess:
       if expected_err:
-        with self.assertRaisesWithRegexpMatch(expected_err[0], expected_err[1]):
+        with self.assertRaisesRegexp(expected_err[0], expected_err[1]):
           out = tf.parse_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
       else:
@@ -354,7 +354,7 @@ class ParseSingleExampleTest(tf.test.TestCase):
   def _test(self, kwargs, expected_values=None, expected_err=None):
     with self.test_session() as sess:
       if expected_err:
-        with self.assertRaisesWithRegexpMatch(expected_err[0], expected_err[1]):
+        with self.assertRaisesRegexp(expected_err[0], expected_err[1]):
           out = tf.parse_single_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
       else:
@@ -433,7 +433,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       if expected_err:
-        with self.assertRaisesWithRegexpMatch(expected_err[0], expected_err[1]):
+        with self.assertRaisesRegexp(expected_err[0], expected_err[1]):
           c_out, fl_out = tf.parse_single_sequence_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(c_out.values()))
           sess.run(flatten_values_tensors_or_sparse(fl_out.values()))
