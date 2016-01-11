@@ -321,6 +321,11 @@ class ZerosLikeTest(tf.test.TestCase):
       self.assertTrue(np.array_equal(z_value, np.array([[0] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
 
+  def testZerosLikePartialShape(self):
+    d = tf.placeholder(tf.float32, shape=[None, 4, None])
+    z = tf.zeros_like(d)
+    self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
+
   def testGenZerosLike(self):
     for dtype in [tf.float32, tf.float64, tf.int32,
                   tf.uint8, tf.int16, tf.int8,
@@ -405,6 +410,11 @@ class OnesLikeTest(tf.test.TestCase):
       # Test that the value is correct
       self.assertTrue(np.array_equal(z_value, np.array([[1] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
+
+  def testOnesLikePartialShape(self):
+    d = tf.placeholder(tf.float32, shape=[None, 4, None])
+    z = tf.zeros_like(d)
+    self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
 
   def testGenOnesLike(self):
     for dtype in [tf.float32, tf.float64, tf.int32,

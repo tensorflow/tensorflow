@@ -114,9 +114,6 @@ struct LocalExecutorParams {
   // The library runtime support.
   FunctionLibraryRuntime* function_library;
 
-  // True iff the computation contains control flow nodes.
-  bool has_control_flow;
-
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor
   // when the executor is deleted.

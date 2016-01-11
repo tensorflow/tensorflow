@@ -54,6 +54,9 @@ here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ex
 They contain `Features`, [described
 here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/feature.proto).
 
+@@VarLenFeature
+@@FixedLenFeature
+@@FixedLenSequenceFeature
 @@parse_example
 @@parse_single_example
 
