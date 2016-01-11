@@ -781,6 +781,8 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
+IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
+                                            ["values", "indices", "dense_shape"])
 
 class SparseTensor(object):
   """Represents a sparse tensor.
