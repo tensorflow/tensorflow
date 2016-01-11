@@ -19,11 +19,10 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
 
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
 // BCast is a helper for broadcasting binary tensor operation.
