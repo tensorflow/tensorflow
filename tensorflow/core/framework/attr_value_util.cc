@@ -165,10 +165,12 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
         "AttrValue had value with unexpected type 'placeholder");
   }
 
-  // If the attr type is 'list', we expect attr_value.has_list() to be true.
-  // However, proto3's attr_value.has_list() can be false when set to an empty
-  // list. So we simply check if has_list is false and some other field in
-  // attr_value is set to flag the error.
+  // If the attr type is 'list', we expect attr_value.has_list() to be
+  // true.  However, proto3's attr_value.has_list() can be false when
+  // set to an empty list for GraphDef versions <= 4. So we simply
+  // check if has_list is false and some other field in attr_value is
+  // set to flag the error.  This test can be made more strict once
+  // support for GraphDef versions <= 4 is dropped.
   if (StringPiece(type).starts_with("list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
