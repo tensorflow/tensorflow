@@ -39,7 +39,7 @@ The MNIST data is hosted on
 [Yann LeCun's website](http://yann.lecun.com/exdb/mnist/).  For your
 convenience, we've included some python code to download and install the data
 automatically. You can either download
-[the code](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/input_data.py)
+[the code](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py)
 and import it as below, or simply copy and paste it in.
 
 ```python
