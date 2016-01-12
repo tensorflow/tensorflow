@@ -135,6 +135,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 
 @@sparse_segment_sum
 @@sparse_segment_mean
+@@sparse_segment_sqrt_n
 
 
 ## Sequence Comparison and Indexing
@@ -1342,6 +1343,7 @@ def _SegmentReductionShape(op):
 
 
 @ops.RegisterShape("SparseSegmentMean")
+@ops.RegisterShape("SparseSegmentSqrtN")
 @ops.RegisterShape("SparseSegmentSum")
 def _SparseSegmentReductionShape(op):
   """Common shape function for sparse segment reduction ops."""
@@ -1355,8 +1357,9 @@ def _SparseSegmentReductionShape(op):
 
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
-def _SparseSegmentMeanGradShape(op):
-  """Shape function for the SparseSegmentMeanGrad op."""
+@ops.RegisterShape("SparseSegmentSqrtNGrad")
+def _SparseSegmentReductionGradShape(op):
+  """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
   input_shape = op.inputs[0].get_shape()
   indices_shape = op.inputs[1].get_shape().with_rank(1)
   unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)

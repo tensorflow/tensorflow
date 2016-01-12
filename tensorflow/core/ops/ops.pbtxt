@@ -7895,6 +7895,79 @@ op {
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
 op {
+  name: "SparseSegmentSqrtN"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A 1-D tensor. Has same rank as `segment_ids`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "A 1-D tensor. Values should be sorted and can be repeated."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
+  description: "N is the size of the segment being reduced.\n\nRead [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments."
+}
+op {
+  name: "SparseSegmentSqrtNGrad"
+  input_arg {
+    name: "grad"
+    description: "gradient propagated to the SparseSegmentSqrtN op."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "indices passed to the corresponding SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "segment_ids passed to the corresponding SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_dim0"
+    description: "dimension 0 of \"data\" passed to SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for SparseSegmentSqrtN."
+  description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
+}
+op {
   name: "SparseSegmentSum"
   input_arg {
     name: "data"

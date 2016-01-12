@@ -184,10 +184,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: Optional name for the op.
-    combiner: A string specifying the reduction op. Currently "mean" and "sum"
-      are supported.
+    combiner: A string specifying the reduction op. Currently "mean", "sqrtn"
+      and "sum" are supported.
       "sum" computes the weighted sum of the embedding results for each row.
       "mean" is the weighted sum divided by the total weight.
+      "sqrtn" is the weighted sum divided by the square root of the sum of the
+      squares of the weights.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -217,10 +219,10 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
   Raises:
     TypeError: If sp_ids is not a SparseTensor, or if sp_weights is neither
       None nor SparseTensor.
-    ValueError: If combiner is not one of {"mean", "sum"}.
+    ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
   """
-  if combiner not in ("mean", "sum"):
-    raise ValueError("combiner must be one of 'mean' or 'sum'")
+  if combiner not in ("mean", "sqrtn", "sum"):
+    raise ValueError("combiner must be one of 'mean', 'sqrtn' or 'sum'")
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sp_ids, ops.SparseTensor):
@@ -279,6 +281,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
         embeddings = math_ops.div(embeddings, weight_sum, name=name)
+      elif combiner == "sqrtn":
+        embeddings = math_ops.segment_sum(embeddings, segment_ids)
+        weights_squared = math_ops.pow(weights, 2)
+        weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
+        weight_sum_sqrt = math_ops.sqrt(weight_sum)
+        embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
     else:
@@ -289,6 +297,9 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       elif combiner == "mean":
         embeddings = math_ops.sparse_segment_mean(embeddings, idx, segment_ids,
                                                   name=name)
+      elif combiner == "sqrtn":
+        embeddings = math_ops.sparse_segment_sqrt_n(embeddings, idx,
+                                                    segment_ids, name=name)
       else:
         assert False, "Unrecognized combiner"
 

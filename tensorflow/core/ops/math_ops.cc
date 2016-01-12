@@ -921,6 +921,49 @@ segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
 output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
 )doc");
 
+REGISTER_OP("SparseSegmentSqrtN")
+    .Input("data: T")
+    .Input("indices: int32")
+    .Input("segment_ids: int32")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+
+N is the size of the segment being reduced.
+
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
+
+indices: A 1-D tensor. Has same rank as `segment_ids`.
+
+segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+
+output: Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+
+)doc");
+
+REGISTER_OP("SparseSegmentSqrtNGrad")
+    .Input("grad: T")
+    .Input("indices: int32")
+    .Input("segment_ids: int32")
+    .Input("output_dim0: int32")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes gradients for SparseSegmentSqrtN.
+
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+
+grad: gradient propagated to the SparseSegmentSqrtN op.
+indices: indices passed to the corresponding SparseSegmentSqrtN op.
+segment_ids: segment_ids passed to the corresponding SparseSegmentSqrtN op.
+output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
+)doc");
+
 REGISTER_OP("All")
     .Input("input: bool")
     .Input("reduction_indices: int32")

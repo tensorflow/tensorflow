@@ -136,6 +136,17 @@ def _SparseSegmentMeanGrad(op, grad):
           None, None)
 
 
+@ops.RegisterGradient("SparseSegmentSqrtN")
+def _SparseSegmentSqrtNGrad(op, grad):
+  """Gradient for SparseSegmentSqrtN."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_sqrt_n_grad(grad,
+                                              op.inputs[1],
+                                              op.inputs[2],
+                                              dim0),
+          None, None)
+
+
 @ops.RegisterGradient("SegmentMin")
 def _SegmentMinGrad(op, grad):
   """Gradient for SegmentMin."""
