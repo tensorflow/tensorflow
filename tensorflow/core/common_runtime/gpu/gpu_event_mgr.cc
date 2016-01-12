@@ -91,19 +91,28 @@ void EventMgr::FlushAccumulatedTensors() {
   accumulated_stream_ = nullptr;
 }
 
-// This polling loop runs at a relatively low frequency. Most calls to
-// PollEvents() should come directly from Compute() via
-// ThenDeleteTensors().  This function's purpose is to ensure that
-// even if no more GPU operations are being requested, we still
-// eventually clear the queue. It seems to prevent some tensorflow
-// programs from stalling for reasons not yet understood.
+// A polling loop to detect completion of GPU events.  There's a
+// tradeoff between achieving low latency detection, which argues for
+// little delay between calls, and minimizing CPU use and lock
+// contention, which argue for longer delay.  The current strategy is
+// to poll frequently when the queue is non-empty, and infrequently
+// otherwise.
 void EventMgr::PollLoop() {
+  const int32 kPollingDelayUsecs = 10;
+  const int32 kPollingSuspendMsecs = 1;
+  bool queue_empty = false;
   while (!stop_polling_.HasBeenNotified()) {
-    Env::Default()->SleepForMicroseconds(1 * 1000);
+    if (queue_empty) {
+      mutex_lock l(mu_);
+      WaitForMilliseconds(&l, &events_pending_, kPollingSuspendMsecs);
+    } else {
+      Env::Default()->SleepForMicroseconds(kPollingDelayUsecs);
+    }
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
       PollEvents(true, &to_free);
+      queue_empty = used_events_.empty();
     }
     FreeMemory(to_free);
   }
@@ -123,7 +132,10 @@ void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
   free_events_.pop_back();
   stream->ThenRecordEvent(e);
   iu.event = e;
+  bool was_empty = used_events_.empty();
   used_events_.push_back(iu);
+  // Maybe wake up the polling thread
+  if (was_empty) events_pending_.notify_all();
 }
 
 // This function must be called periodically to check whether pending
