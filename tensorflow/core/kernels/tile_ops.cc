@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -361,12 +362,8 @@ inline void TileGradientOp<Device>::HandleCase(
     OpKernelContext* context, const std::vector<int32>& input_dims,
     const gtl::ArraySlice<int32>& multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
-#ifdef __ANDROID__
-             << "[Device not shown, no RTTI], " << DataTypeString(DT) << ", "
-#else   // __ANDROID__
-             << typeid(Device).name() << ", " << DataTypeString(DT) << ", "
-#endif  // __ANDROID__
-             << NDIM;
+             << MakeTypeIndex<Device>().name() << ", " << DataTypeString(DT)
+             << ", " << NDIM;
 }
 
 #define HANDLE_CASE(device, dtype, ndim)                                       \
