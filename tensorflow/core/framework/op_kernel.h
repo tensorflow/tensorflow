@@ -121,23 +121,32 @@ class OpKernel {
   Status InputRange(const string& input_name, int* start, int* stop) const;
   Status OutputRange(const string& output_name, int* start, int* stop) const;
 
-  // TODO(irving): At the moment, the following three functions forward to
-  // TensorShapeUtils, but they are about to become the only versions once we
-  // become scalar strict.
-  bool allow_legacy_scalars() const { return kAllowLegacyScalars; }
-
-  bool IsLegacyScalar(const TensorShape& shape) const {
-    return TensorShapeUtils::IsLegacyScalar(shape);
+  // We allow legacy scalars within Google up until GraphDef version 6.
+  // TODO(irving): Remove when we can drop support for GraphDef version 5.
+  bool allow_legacy_scalars() const {
+#if defined(PLATFORM_GOOGLE)
+    return graph_def_version_ < 6;
+#else
+    return false;
+#endif
   }
 
+  // Allow either scalars or (if allowing legacy scalars) shape (1,).
+  bool IsLegacyScalar(const TensorShape& shape) const {
+    return shape.dims() == 0 || (allow_legacy_scalars() && shape.dims() == 1 &&
+                                 shape.dim_size(0) == 1);
+  }
+
+  // Allow rank 1 or (if allowing legacy scalars) rank 0.
   bool IsLegacyVector(const TensorShape& shape) const {
-    return TensorShapeUtils::IsLegacyVector(shape);
+    return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
   }
 
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
   const DataTypeVector output_types_;
+  const int graph_def_version_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   MemoryTypeVector input_memory_types_;
