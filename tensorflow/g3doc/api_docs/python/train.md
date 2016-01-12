@@ -1181,6 +1181,15 @@ Create a new Coordinator.
 
 - - -
 
+#### `tf.train.Coordinator.clear_stop()` {#Coordinator.clear_stop}
+
+Clears the stop flag.
+
+After this is called, calls to `should_stop()` will return `False`.
+
+
+- - -
+
 #### `tf.train.Coordinator.join(threads, stop_grace_period_secs=120)` {#Coordinator.join}
 
 Wait for threads to terminate.
@@ -1450,13 +1459,13 @@ the list of all threads.
 ## Summary Operations
 
 The following ops output
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 protocol buffers as serialized string tensors.
 
 You can fetch the output of a summary op in a session, and pass it to
 a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
 to an event file.  Event files contain
-[`Event`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
 protos that can contain `Summary` protos along with the timestamp and
 step.  You can then use TensorBoard to visualize the contents of the
 event files.  See [TensorBoard and
@@ -1545,7 +1554,7 @@ build the `tag` of the summary values:
 Outputs a `Summary` protocol buffer with a histogram.
 
 The generated
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 has one summary value containing a histogram for `values`.
 
 This op reports an `OutOfRange` error if any value is not finite.
@@ -1598,7 +1607,7 @@ This is useful in summaries to measure and report sparsity.  For example,
 Merges summaries.
 
 This op creates a
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 protocol buffer that contains the union of all the values in the input
 summaries.
 
@@ -1807,9 +1816,9 @@ for e in tf.summary_iterator(path to events file):
 ```
 
 See the protocol buffer definitions of
-[Event](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+[Event](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
 and
-[Summary](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[Summary](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 for more information about their attributes.
 
 ##### Args:

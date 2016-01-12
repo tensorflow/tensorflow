@@ -234,9 +234,9 @@ def summary_iterator(path):
   ```
 
   See the protocol buffer definitions of
-  [Event](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+  [Event](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
   and
-  [Summary](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+  [Summary](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
   for more information about their attributes.
 
   Args:

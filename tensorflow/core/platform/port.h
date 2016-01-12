@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 #endif  // TENSORFLOW_PLATFORM_PORT_H_
