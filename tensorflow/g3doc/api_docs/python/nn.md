@@ -832,7 +832,7 @@ Since they are nondifferentiable, they are typically used at evaluation time.
 
 - - -
 
-### `tf.nn.top_k(input, k, name=None)` {#top_k}
+### `tf.nn.top_k(input, k, sorted=None, name=None)` {#top_k}
 
 Returns the values and indices of the `k` largest elements for each row.
 
@@ -849,6 +849,9 @@ elements are equal, the lower-index element appears first.
     A `batch_size` x `classes` tensor.
 *  <b>`k`</b>: An `int` that is `>= 1`.
     Number of top elements to look for within each row.
+*  <b>`sorted`</b>: An optional `bool`. Defaults to `True`.
+    If true the resulting `k` elements will be sorted by the values in
+    descending order.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -856,7 +859,7 @@ elements are equal, the lower-index element appears first.
   A tuple of `Tensor` objects (values, indices).
 
 *  <b>`values`</b>: A `Tensor`. Has the same type as `input`. A `batch_size` x `k` tensor with the `k` largest elements for
-    each row, sorted in descending order.
+    each row.
 *  <b>`indices`</b>: A `Tensor` of type `int32`. A `batch_size` x `k` tensor with the index of each value within
     each row.
 

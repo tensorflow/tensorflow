@@ -1181,6 +1181,15 @@ Create a new Coordinator.
 
 - - -
 
+#### `tf.train.Coordinator.clear_stop()` {#Coordinator.clear_stop}
+
+Clears the stop flag.
+
+After this is called, calls to `should_stop()` will return `False`.
+
+
+- - -
+
 #### `tf.train.Coordinator.join(threads, stop_grace_period_secs=120)` {#Coordinator.join}
 
 Wait for threads to terminate.

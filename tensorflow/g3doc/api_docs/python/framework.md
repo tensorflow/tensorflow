@@ -1858,9 +1858,20 @@ Returns a list of Dimensions, or None if the shape is unspecified.
 
 - - -
 
-#### `tf.TensorShape.as_list()` {#TensorShape.as_list}
+#### `tf.TensorShape.as_list(to_proto=False)` {#TensorShape.as_list}
 
 Returns a list of integers or None for each dimension.
+
+If `to_proto` is True, returns -1 instead of None for unknown dimensions.
+
+##### Args:
+
+
+*  <b>`to_proto`</b>: boolean.  Determines how unknown dimensions are treated.
+
+##### Returns:
+
+  A list of integers or None for each dimension.
 
 
 - - -

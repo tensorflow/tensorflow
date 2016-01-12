@@ -23,7 +23,7 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `string`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1762,6 +1762,35 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
   has size `k`, the number of segments.
 
 
+- - -
+
+### `tf.sparse_segment_sqrt_n(data, indices, segment_ids, name=None)` {#sparse_segment_sqrt_n}
+
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+
+N is the size of the segment being reduced.
+
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
+
+##### Args:
+
+
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`indices`</b>: A `Tensor` of type `int32`.
+    A 1-D tensor. Has same rank as `segment_ids`.
+*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
+    A 1-D tensor. Values should be sorted and can be repeated.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `data`.
+  Has same shape as data, except for dimension 0 which
+  has size `k`, the number of segments.
+
+
 
 
 ## Sequence Comparison and Indexing
@@ -2041,5 +2070,34 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor` of type `int32`. 1-D.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.sparse_segment_sqrt_n_grad(grad, indices, segment_ids, output_dim0, name=None)` {#sparse_segment_sqrt_n_grad}
+
+Computes gradients for SparseSegmentSqrtN.
+
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+
+##### Args:
+
+
+*  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    gradient propagated to the SparseSegmentSqrtN op.
+*  <b>`indices`</b>: A `Tensor` of type `int32`.
+    indices passed to the corresponding SparseSegmentSqrtN op.
+*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
+    segment_ids passed to the corresponding SparseSegmentSqrtN op.
+*  <b>`output_dim0`</b>: A `Tensor` of type `int32`.
+    dimension 0 of "data" passed to SparseSegmentSqrtN op.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `grad`.
 
 
