@@ -268,6 +268,15 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.as_shape(proto))
 
+    partial_proto_shape = tensor_shape.as_shape(
+        tensor_util.MakeTensorShapeProto([-1, 37, 42]))
+    partial_shape = tensor_shape.TensorShape([None, 37, 42])
+    self.assertNotEqual(partial_proto_shape, partial_shape)
+    self.assertEqual(partial_proto_shape[0].value, None)
+    self.assertEqual(partial_proto_shape[1].value, 37)
+    self.assertEqual(partial_proto_shape[2].value, 42)
+    self.assertTrue(partial_shape.is_compatible_with(partial_proto_shape))
+
   def testStr(self):
     self.assertEqual("<unknown>", str(tensor_shape.unknown_shape()))
     self.assertEqual("(?,)", str(tensor_shape.unknown_shape(ndims=1)))

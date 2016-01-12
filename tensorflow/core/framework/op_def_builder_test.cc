@@ -216,6 +216,9 @@ TEST_F(OpDefBuilderTest, AttrWithDefaults) {
   ExpectSuccess(b().Attr("a:shape = { dim { size: 3 } dim { size: 4 } }"),
                 "attr: { name: 'a' type: 'shape' default_value { shape {"
                 "    dim { size: 3 } dim { size: 4 } } } }");
+  ExpectSuccess(b().Attr("a:shape = { dim { size: -1 } dim { size: 4 } }"),
+                "attr: { name: 'a' type: 'shape' default_value { shape {"
+                "    dim { size: -1 } dim { size: 4 } } } }");
 }
 
 TEST_F(OpDefBuilderTest, AttrFailedDefaults) {

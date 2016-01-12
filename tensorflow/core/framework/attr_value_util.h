@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/public/partial_tensor_shape.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
@@ -57,6 +58,7 @@ void SetAttrValue(const TensorShape& value, AttrValue* out);
 void SetAttrValue(const Tensor& value, AttrValue* out);
 void SetAttrValue(const TensorProto& value, AttrValue* out);
 void SetAttrValue(const NameAttrList& value, AttrValue* out);
+void SetAttrValue(const PartialTensorShape& value, AttrValue* out);
 
 void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
@@ -71,6 +73,7 @@ void SetAttrValue(DataTypeSlice value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorShape> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 
 inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
   *out = value;

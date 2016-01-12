@@ -284,6 +284,12 @@ TEST(NodeDefUtilTest, ValidSyntax) {
   EXPECT_EQ("n = AnyIn[T=[DT_INT32, DT_STRING]](a:0, b:123)",
             SummarizeNodeDef(node_def_explicit_inputs));
 
+  const NodeDef node_def_partial_shape = ToNodeDef(R"proto(
+    name:'n' op:'AnyIn'
+    attr { key:'shp' value { shape { dim { size: -1 } dim { size: 0 } } } }
+    )proto");
+  ExpectValidSyntax(node_def_partial_shape);
+
   const NodeDef node_def_control_input = ToNodeDef(R"proto(
     name:'n-' op:'AnyIn' input:'a' input:'^b'
     attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }

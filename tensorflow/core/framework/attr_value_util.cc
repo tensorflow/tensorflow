@@ -54,7 +54,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kType:
       return DataType_Name(attr_value.type());
     case AttrValue::kShape:
-      return TensorShape::ShortDebugString(attr_value.shape());
+      return PartialTensorShape::DebugString(attr_value.shape());
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
@@ -97,6 +97,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
                              SummarizeTensor(attr_value.list().tensor(i)));
         }
       }
+
       strings::StrAppend(&ret, "]");
       return ret;
     }
@@ -302,7 +303,19 @@ void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
 }
 
+void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
+  value.AsProto(out->mutable_shape());
+}
+
 void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(const gtl::ArraySlice<PartialTensorShape> value,
+                  AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());

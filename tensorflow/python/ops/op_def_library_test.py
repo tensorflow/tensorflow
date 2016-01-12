@@ -45,6 +45,8 @@ ops.RegisterShape("AttrListMin")(None)
 ops.RegisterShape("AttrMin")(None)
 ops.RegisterShape("AttrShape")(None)
 ops.RegisterShape("AttrShapeList")(None)
+ops.RegisterShape("AttrPartialShape")(None)
+ops.RegisterShape("AttrPartialShapeList")(None)
 ops.RegisterShape("Binary")(None)
 ops.RegisterShape("ComplexStruct")(None)
 ops.RegisterShape("InPolymorphicTwice")(None)
@@ -709,7 +711,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     #                  "Don't know how to convert 5 to a TensorShapeProto for "
     #                  "argument 'a'")
 
-    with self.assertRaises(ValueError) as cm:
+    with self.assertRaises(ValueError):
       self._lib.apply_op("AttrShape", a="ABC")
 
   def testAttrShapeList(self):
@@ -726,6 +728,78 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     op = self._lib.apply_op("AttrShapeList", a=[], name="esl")
     self.assertProtoEquals("""
       name: 'esl' op: 'AttrShapeList' attr { key: 'a' value { list { } } }
+      """, op.node_def)
+
+  def testAttrPartialShape(self):
+    self._add_op(
+        "name: 'AttrPartialShape' attr { name: 'a' type: 'shape' }")
+
+    op = self._lib.apply_op("AttrPartialShape", a=[5], name="s1")
+    self.assertProtoEquals("""
+      name: 's1' op: 'AttrPartialShape'
+      attr { key: 'a' value { shape { dim { size: 5 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShape", a=(4, None, 2), name="s2")
+    self.assertProtoEquals("""
+      name: 's2' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: 4 } dim { size: -1 } dim { size: 2 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op(
+        "AttrPartialShape", a=tensor_shape.TensorShape([3, None]), name="s3")
+    self.assertProtoEquals("""
+      name: 's3' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: 3 } dim { size: -1 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShape", a=[], name="s4")
+    self.assertProtoEquals("""
+      name: 's4' op: 'AttrPartialShape'
+      attr { key: 'a' value { shape { } } }
+      """, op.node_def)
+
+    shape = tensor_shape_pb2.TensorShapeProto()
+    shape.dim.add().size = -1
+    shape.dim.add().size = 3
+    op = self._lib.apply_op("AttrPartialShape", a=shape, name="s5")
+    self.assertProtoEquals("""
+      name: 's5' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: -1 } dim { size: 3 } } } }
+      """, op.node_def)
+
+    # TODO(ebrevdo): Re-enable once we stop promoting scalars to shapes.
+    # with self.assertRaises(TypeError) as cm:
+    #   self._lib.apply_op("AttrPartialShape", a=5)
+    # self.assertEqual(str(cm.exception),
+    #                  "Don't know how to convert 5 to a TensorShapeProto for "
+    #                  "argument 'a'")
+
+    with self.assertRaises(ValueError) as cm:
+      self._lib.apply_op("AttrPartialShape", a="ABC")
+
+  def testAttrPartialShapeList(self):
+    self._add_op("""
+      name: 'AttrPartialShapeList'
+      attr { name: 'a' type: 'list(shape)' }
+    """)
+
+    op = self._lib.apply_op(
+        "AttrPartialShapeList", a=[[3, 2], [6, None, 4]], name="sl")
+    self.assertProtoEquals("""
+      name: 'sl' op: 'AttrPartialShapeList'
+      attr { key: 'a' value { list {
+        shape { dim { size: 3 } dim { size: 2 } }
+        shape { dim { size: 6 } dim { size: -1 } dim { size: 4 } } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShapeList", a=[], name="esl")
+    self.assertProtoEquals("""
+      name: 'esl' op: 'AttrPartialShapeList' attr {
+        key: 'a' value { list { } } }
       """, op.node_def)
 
   def testAttrDefault(self):
