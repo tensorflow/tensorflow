@@ -6442,7 +6442,7 @@ op {
   }
   input_arg {
     name: "seq_lengths"
-    description: "1-D with length `input.dims(0)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
+    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
     type: DT_INT64
   }
   output_arg {
