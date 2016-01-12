@@ -412,7 +412,10 @@ class TensorShape(object):
     if dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
-      self._dims = [as_dimension(dim.size) for dim in dims.dim]
+      self._dims = [
+          # Protos store variable-size dimensions as -1
+          as_dimension(dim.size if dim.size != -1 else None)
+          for dim in dims.dim]
     else:
       try:
         dims_iter = iter(dims)
@@ -726,12 +729,24 @@ class TensorShape(object):
 
   def as_dimension_list(self):
     """DEPRECATED: use `as_list()`."""
-    self.assert_is_fully_defined()
-    return self.as_list()
+    if self.dims is None:
+      raise ValueError("Shape %s does not have a rank" % self)
 
-  def as_list(self):
-    """Returns a list of integers or None for each dimension."""
-    return [dim.value for dim in self._dims]
+    return self.as_list(to_proto=True)
+
+  def as_list(self, to_proto=False):
+    """Returns a list of integers or None for each dimension.
+
+    If `to_proto` is True, returns -1 instead of None for unknown dimensions.
+
+    Args:
+      to_proto: boolean.  Determines how unknown dimensions are treated.
+
+    Returns:
+      A list of integers or None for each dimension.
+    """
+    return [dim.value if not (to_proto and dim.value is None) else -1
+            for dim in self._dims]
 
   def __eq__(self, other):
     """Returns True if `self` is equivalent to `other`."""

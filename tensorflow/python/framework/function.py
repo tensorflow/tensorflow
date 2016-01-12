@@ -102,7 +102,7 @@ def _add_op_node(op, func):
   out_index = 0
   for arg_def in op_def.output_arg:
     if arg_def.number_attr:
-      dtype = attrs[arg_def.type_attr].type
+      dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
       node.ret.append(_add_output_array_to_list(op, out_index, out_index + num,
                                                 dtype, func))
@@ -119,7 +119,7 @@ def _add_op_node(op, func):
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
-      dtype = attrs[arg_def.type_attr].type
+      dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
       node.arg.append(_add_input_list_to_array(op, inp_index, inp_index + num,
                                                dtype, func))

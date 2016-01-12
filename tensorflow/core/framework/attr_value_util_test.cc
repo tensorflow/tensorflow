@@ -86,6 +86,17 @@ TEST(AttrValueUtil, Basic) {
             "use_cublas=true]");
 }
 
+TEST(AttrValueUtil, Shaped) {
+  auto v =
+      F("OpRequiresShape", {{"shape_full", V(TensorShape({1, 0}))},
+                            {"shape_part", V(PartialTensorShape({-1, 1, 0}))}});
+  TF_CHECK_OK(AttrValueHasType(v, "func"));
+  EXPECT_FALSE(HasPlaceHolder(v));
+
+  EXPECT_EQ(SummarizeAttrValue(v),
+            "OpRequiresShape[shape_full=[1,0], shape_part=[?,1,0]]");
+}
+
 TEST(AttrValueUtil, DeepAttr) {
   auto v = F("f", {{"T", P("T")}});
   TF_CHECK_OK(AttrValueHasType(v, "func"));
