@@ -371,6 +371,21 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertAllEqual(0, ind)
     self.assertTrue(ind.dtype == np.int64)
 
+  def testCondColocation(self):
+    with self.test_session(use_gpu=True):
+      with tf.device("/cpu:0"):
+        v = tf.Variable(7.0)
+
+      x = tf.constant(10.0)
+      pred = tf.less(1.0, 2.0)
+      fn1 = lambda: tf.add(v, 1.0)
+      fn2 = lambda: tf.sub(x, 1.0)
+      r = control_flow_ops.cond(pred, fn1, fn2)
+
+      for op in x.graph.get_operations():
+        if op.name == "cond/Add/Switch":
+          self.assertEqual(op.device, "/cpu:0")
+
   def _testCond_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       x = tf.constant(10)
@@ -1389,7 +1404,6 @@ class TupleTest(tf.test.TestCase):
       t.eval()
 
       self.assertEquals(1, var.eval())
-
 
 if __name__ == "__main__":
   tf.test.main()
