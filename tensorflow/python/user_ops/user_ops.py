@@ -60,3 +60,7 @@ def _cholesky_grad(op, grad):
 @ops.RegisterShape("CholeskyGrad")
 def _cholesky_grad_shape(op):
   return [op.inputs[0].get_shape()]  
+  
+@ops.RegisterGradient("GetDiag")
+def _get_diag_grad(op,grad ):
+    return ( array_ops.diag(grad) )
