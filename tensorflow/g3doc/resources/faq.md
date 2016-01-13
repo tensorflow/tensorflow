@@ -142,11 +142,11 @@ TensorFlow is designed to support multiple client languages. Currently, the
 best-supported client language is [Python](../api_docs/python/index.md). The
 [C++ client API](../api_docs/cc/index.md) provides an interface for launching
 graphs and running steps; we also have an experimental API for
-[building graphs in C++](https://www.tensorflow.org/code/tensorflow/cc/tutorials/example_trainer.cc).
+[building graphs in C++](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/cc/tutorials/example_trainer.cc).
 
 We would like to support more client languages, as determined by community
 interest. TensorFlow has a
-[C-based client API](https://www.tensorflow.org/code/tensorflow/core/public/tensor_c_api.h)
+[C-based client API](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/tensor_c_api.h)
 that makes it easy to build a client in many different languages. We invite
 contributions of new language bindings.
 

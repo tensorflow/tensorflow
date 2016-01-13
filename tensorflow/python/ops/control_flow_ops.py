@@ -256,13 +256,14 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     TypeError: if data is not a Tensor or IndexedSlices
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, name="data", as_ref=True)
-  if isinstance(data, ops.Tensor):
-    if not data.dtype.is_ref_dtype:
-      return switch(data, pred, name=name)
+  with ops.device(data.device):
+    if isinstance(data, ops.Tensor):
+      if not data.dtype.is_ref_dtype:
+        return switch(data, pred, name=name)
+      else:
+        return ref_switch(data, pred, name=name)
     else:
-      return ref_switch(data, pred, name=name)
-  else:
-    return switch(data, pred, name=name)
+      return switch(data, pred, name=name)
 
 
 class ControlFlowOpInputs(object):

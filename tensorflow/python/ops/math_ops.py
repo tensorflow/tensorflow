@@ -1054,7 +1054,7 @@ def _BatchMatMulShape(op):
   adj_a = op.get_attr("adj_x")
   b_shape = op.inputs[1].get_shape()
   adj_b = op.get_attr("adj_y")
-  if not a_shape.is_fully_defined() or not b_shape.is_fully_defined():
+  if a_shape.dims is None and b_shape.dims is None:
     return [tensor_shape.unknown_shape()]
   batch_dims = a_shape[:-2].merge_with(b_shape[:-2])
   output_rows = a_shape[-1] if adj_a else a_shape[-2]
@@ -1358,6 +1358,7 @@ def _SparseSegmentReductionShape(op):
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
+# pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
   """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
   input_shape = op.inputs[0].get_shape()
@@ -1371,6 +1372,7 @@ def _SparseSegmentReductionGradShape(op):
   else:
     dim0 = None
   return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
+# pylint: enable=invalid-name
 
 
 @ops.RegisterShape("UnsortedSegmentSum")

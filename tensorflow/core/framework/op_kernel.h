@@ -103,6 +103,7 @@ class OpKernel {
   const NodeDef& def() const { return def_; }
   const string& name() const { return def_.name(); }
   const string& type_string() const { return def_.op(); }
+  bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
@@ -147,6 +148,7 @@ class OpKernel {
   const DataTypeVector input_types_;
   const DataTypeVector output_types_;
   const int graph_def_version_;
+  const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   MemoryTypeVector input_memory_types_;

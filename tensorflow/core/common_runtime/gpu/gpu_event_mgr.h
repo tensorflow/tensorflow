@@ -91,6 +91,7 @@ class EventMgr {
   perftools::gputools::StreamExecutor* const exec_;
   const int64 deferred_bytes_threshold_;
   mutex mu_;
+  condition_variable events_pending_ GUARDED_BY(mu_);
 
   void FlushAccumulatedTensors() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

@@ -30,7 +30,7 @@ class MyRef : public RefCounted {
   ~MyRef() override { destroyed++; }
 };
 
-class RefTest : public testing::Test {
+class RefTest : public ::testing::Test {
  public:
   RefTest() {
     constructed = 0;

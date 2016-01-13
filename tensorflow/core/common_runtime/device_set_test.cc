@@ -36,7 +36,7 @@ static Device* Dev(const char* type, const char* name) {
   return new FakeDevice(attr);
 }
 
-class DeviceSetTest : public testing::Test {
+class DeviceSetTest : public ::testing::Test {
  public:
   void AddDevice(const char* type, const char* name) {
     Device* d = Dev(type, name);

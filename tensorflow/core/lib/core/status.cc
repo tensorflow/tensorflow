@@ -24,7 +24,6 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   state_->code = code;
   state_->msg = msg.ToString();
 }
-Status::~Status() { delete state_; }
 
 void Status::Update(const Status& new_status) {
   if (ok()) {

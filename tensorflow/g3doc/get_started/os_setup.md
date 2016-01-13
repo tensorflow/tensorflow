@@ -310,7 +310,7 @@ depends on.
 #### Install Bazel
 
 Follow instructions [here](http://bazel.io/docs/install.html) to install the
-dependencies for Bazel. Then download bazel version 0.1.1 using the
+dependencies for Bazel. Then download the latest stable bazel version using the
 [installer for your system](https://github.com/bazelbuild/bazel/releases) and
 run the installer as mentioned there:
 

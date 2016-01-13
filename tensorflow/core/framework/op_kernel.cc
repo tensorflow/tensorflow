@@ -96,6 +96,7 @@ OpKernel::OpKernel(OpKernelConstruction* context)
       output_types_(context->output_types().begin(),
                     context->output_types().end()),
       graph_def_version_(context->graph_def_version()),
+      is_internal_(StringPiece(type_string()).starts_with("_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
@@ -517,7 +518,8 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
               "KernelDef '", kernel_def.ShortDebugString(),
               "' has constraint on attr '", constraint.name(),
               "' that has value '", SummarizeAttrValue(*found),
-              "' that does not have type 'type' or 'list(type)' in NodeDef '",
+              "' that does not have type 'type' or 'list(type)' in NodeDef "
+              "'",
               SummarizeNodeDef(node_def), "'");
         }
 

@@ -159,7 +159,10 @@ ops.NoGradient("Diag")
 # Edit Distance has no gradient (but can be used to eval seq2seq or CTC).
 ops.NoGradient("EditDistance")
 
-ops.NoGradient("Fill")
+
+@ops.RegisterGradient("Fill")
+def _FillGrad(_, grad):
+  return None, math_ops.reduce_sum(grad)
 
 
 @ops.RegisterGradient("Gather")

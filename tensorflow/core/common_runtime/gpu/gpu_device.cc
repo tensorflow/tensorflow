@@ -281,7 +281,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // way we make this discrimination is quite hacky: At the moment
   // the only non-Eigen GPU Op is the recv-op, which is known to be
   // asynchronous.
-  if (op_kernel->type_string() == "_Recv") {
+  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
     context->SetStatus(errors::Internal(
         "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
   } else {
