@@ -375,9 +375,8 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,
 // where 't has a natural total order.
-#define COMPARISON()                                  \
-  Input("x: T").Input("y: T").Output("z: bool").Attr( \
-      "T: {float, double, int32, int64}")
+#define COMPARISON() \
+  Input("x: T").Input("y: T").Output("z: bool").Attr("T: realnumbertype")
 
 REGISTER_OP("Less")
     .COMPARISON()
@@ -409,7 +408,8 @@ Returns the truth value of (x >= y) element-wise.
 
 #define COMPARISON()                                                     \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr( \
-      "T: {float, double, int32, int64, complex64, quint8, qint8, qint32}")
+      "T: {float, double, uint8, int8, int16, int32, int64, complex64, " \
+      "quint8, qint8, qint32}")
 
 REGISTER_OP("Equal")
     .COMPARISON()

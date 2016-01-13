@@ -245,7 +245,12 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
 
   For brevity, let `x = logits`, `z = targets`.  The logistic loss is
 
-      x - x * z + log(1 + exp(-x))
+        z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      = z * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
+      = z * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
+      = z * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
+      = (1 - z) * x + log(1 + exp(-x))
+      = x - x * z + log(1 + exp(-x))
 
   To ensure stability and avoid overflow, the implementation uses
 
