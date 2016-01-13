@@ -507,7 +507,7 @@ class FillTest(tf.test.TestCase):
       in_v = tf.constant(5.0)
       out_shape = [3, 2]
       out_filled = tf.fill(out_shape, in_v)
-      err = tf.test.compute_gradient_error(in_v, [1],
+      err = tf.test.compute_gradient_error(in_v, [],
                                            out_filled, out_shape)
     self.assertLess(err, 1e-3)
 
