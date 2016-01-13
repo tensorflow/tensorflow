@@ -113,7 +113,7 @@ This method is thread-safe.
 
 ##### Returns:
 
-  A [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+  A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer.
 
 ##### Raises:
@@ -570,7 +570,7 @@ Note that this is unrelated to the
 The GraphDef version of this graph.
 
 For details on the meaning of each version, see [`GraphDef`]
-(https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto).
+(https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
 
 
@@ -858,7 +858,7 @@ Returns a serialized `NodeDef` representation of this operation.
 ##### Returns:
 
   A
-  [`NodeDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer.
 
 
@@ -871,7 +871,7 @@ Returns the `OpDef` proto that represents the type of this op.
 ##### Returns:
 
   An
-  [`OpDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def.proto)
+  [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
   protocol buffer.
 
 
@@ -1316,7 +1316,7 @@ Converts the given `type_value` to a `DType`.
 
 *  <b>`type_value`</b>: A value that can be converted to a `tf.DType`
     object. This may currently be a `tf.DType` object, a
-    [`DataType` enum](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.proto),
+    [`DataType` enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
     a string type name, or a `numpy.dtype`.
 
 ##### Returns:
@@ -1518,7 +1518,7 @@ after calling this function will result in undefined behavior.
 Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 
 This function provides a way to import a serialized TensorFlow
-[`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+[`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
 protocol buffer, and extract individual objects in the `GraphDef` as
 [`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
 [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
