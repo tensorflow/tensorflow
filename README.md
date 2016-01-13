@@ -1,7 +1,7 @@
 [![Travis-CI Build Status](https://travis-ci.org/google/skflow.svg?branch=master)](https://travis-ci.org/google/skflow)
-[![Codecov Status](https://codecov.io/github/google/skflow/coverage.svg?precision=2)](https://codecov.io/github/google/skflow)
-[![License](https://img.shields.io/github/license/google/skflow.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
-[![Join the chat at https://gitter.im/google/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/google/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Codecov Status](https://codecov.io/github/tensorflow/skflow/coverage.svg?precision=2)](https://codecov.io/github/tensorflow/skflow)
+[![License](https://img.shields.io/github/license/tensorflow/skflow.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
+[![Join the chat at https://gitter.im/tensorflow/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 # Scikit Flow
 
