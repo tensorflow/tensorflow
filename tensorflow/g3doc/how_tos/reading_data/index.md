@@ -35,7 +35,7 @@ it is executed without a feed, so you won't forget to feed it.
 
 An example using `placeholder` and feeding to train on MNIST data can be found
 in
-[`tensorflow/examples/tutorials/mnist/fully_connected_feed.py`](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/fully_connected_feed.py),
+[`tensorflow/examples/tutorials/mnist/fully_connected_feed.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/fully_connected_feed.py),
 and is described in the [MNIST tutorial](../../tutorials/mnist/tf/index.md).
 
 ## Reading from files
@@ -135,7 +135,7 @@ uses a file format where each record is represented using a fixed number of
 bytes: 1 byte for the label followed by 3072 bytes of image data. Once you have
 a uint8 tensor, standard operations can slice out each piece and reformat as
 needed. For CIFAR-10, you can see how to do the reading and decoding in
-[`tensorflow/models/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py)
+[`tensorflow/models/image/cifar10/cifar10_input.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/image/cifar10/cifar10_input.py)
 and described in
 [this tutorial](../../tutorials/deep_cnn/index.md#prepare-the-data).
 
@@ -146,15 +146,15 @@ This approach makes it easier to mix and match data sets and network
 architectures. The recommended format for TensorFlow is a
 [TFRecords file](../../api_docs/python/python_io.md#tfrecords-format-details)
 containing
-[`tf.train.Example` protocol buffers](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+[`tf.train.Example` protocol buffers](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
 (which contain
-[`Features`](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto)
+[`Features`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/feature.proto)
 as a field).  You write a little program that gets your data, stuffs it in an
 `Example` protocol buffer, serializes the protocol buffer to a string, and then
 writes the string to a TFRecords file using the
 [`tf.python_io.TFRecordWriter` class](../../api_docs/python/python_io.md#TFRecordWriter).
 For example,
-[`tensorflow/examples/how_tos/reading_data/convert_to_records.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/convert_to_records.py)
+[`tensorflow/examples/how_tos/reading_data/convert_to_records.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/convert_to_records.py)
 converts MNIST data to this format.
 
 To read a file of TFRecords, use
@@ -163,7 +163,7 @@ the [`tf.parse_single_example`](../../api_docs/python/io_ops.md#parse_single_exa
 decoder. The `parse_single_example` op decodes the example protocol buffers into
 tensors. An MNIST example using the data produced by `convert_to_records` can be
 found in
-[`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py),
+[`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py),
 which you can compare with the `fully_connected_feed` version.
 
 ### Preprocessing
@@ -172,7 +172,7 @@ You can then do any preprocessing of these examples you want. This would be any
 processing that doesn't depend on trainable parameters. Examples include
 normalization of your data, picking a random slice, adding noise or distortions,
 etc.  See
-[`tensorflow/models/image/cifar10/cifar10.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10.py)
+[`tensorflow/models/image/cifar10/cifar10.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/image/cifar10/cifar10.py)
 for an example.
 
 ### Batching
@@ -455,8 +455,8 @@ multiple preprocessing threads, set the `num_threads` parameter to a number
 bigger than 1.
 
 An MNIST example that preloads the data using constants can be found in
-[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py), and one that preloads the data using variables can be found in
-[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py),
+[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded.py), and one that preloads the data using variables can be found in
+[`tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/how_tos/reading_data/fully_connected_preloaded_var.py),
 You can compare these with the `fully_connected_feed` and
 `fully_connected_reader` versions above.
 

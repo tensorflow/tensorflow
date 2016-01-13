@@ -1297,7 +1297,7 @@ class Operation(object):
 
     Returns:
       A
-      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      [`NodeDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
       protocol buffer.
     """
     return self._node_def
@@ -1308,7 +1308,7 @@ class Operation(object):
 
     Returns:
       An
-      [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
+      [`OpDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def.proto)
       protocol buffer.
     """
     return self._op_def
@@ -1683,7 +1683,7 @@ class Graph(object):
     """The GraphDef version of this graph.
 
     For details on the meaning of each version, see [`GraphDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto).
     """
     return self._graph_def_version
 
@@ -1755,7 +1755,7 @@ class Graph(object):
         its `version` property had the given value.
 
     Returns:
-      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      A [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
       protocol buffer.
 
     Raises:
@@ -1783,7 +1783,7 @@ class Graph(object):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
+    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
     protocol buffer.
 
     After the function has been added, you can call to the function by

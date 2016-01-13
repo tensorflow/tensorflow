@@ -50,9 +50,9 @@ formats into tensors.
 TensorFlow's [recommended format for training
 examples](../../how_tos/reading_data/index.md#standard-tensorflow-format)
 is serialized `Example` protocol buffers, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
+here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto).
 They contain `Features`, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
+here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/feature.proto).
 
 @@VarLenFeature
 @@FixedLenFeature
