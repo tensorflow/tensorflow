@@ -22,7 +22,7 @@ to:
 * Optionally, write a function to compute gradients for the Op.
 * Optionally, write a function that describes the input and output shapes
   for the Op.  This allows shape inference to work with your Op.
-* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/kernel_tests/gradient_checker.py).
+* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/gradient_checker.py).
 
 [TOC]
 
@@ -131,7 +131,7 @@ from tensorflow.python.ops.gen_user_ops import *
 You may optionally use your own function instead.  To do this, you first hide
 the generated code for that op by adding its name to the `hidden` list in the
 `"user_ops"` rule in
-[`tensorflow/python/BUILD`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD):
+[`tensorflow/python/BUILD`](https://www.tensorflow.org/code/tensorflow/python/BUILD):
 
 ```python
 tf_gen_op_wrapper_py(
@@ -144,7 +144,7 @@ tf_gen_op_wrapper_py(
 ```
 
 List your op next to `"Fact"`.  Next you add your replacement function to
-[`tensorflow/python/user_ops/user_ops.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py).
+[`tensorflow/python/user_ops/user_ops.py`](https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py).
 Typically your function will call the generated function to actually add the op
 to the graph.  The hidden version of the generated function will be in the
 `gen_user_ops` package and start with an underscore ("`_`").  For example:
@@ -216,13 +216,13 @@ This asserts that the input is a vector, and returns having set the
 
 *   The `context`, which can either be an `OpKernelContext` or
     `OpKernelConstruction` pointer (see
-    [`tensorflow/core/framework/op_kernel.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_kernel.h)),
+    [`tensorflow/core/framework/op_kernel.h`](https://www.tensorflow.org/code/tensorflow/core/framework/op_kernel.h)),
     for its `SetStatus()` method.
 *   The condition.  For example, there are functions for validating the shape
     of a tensor in
-    [`tensorflow/core/public/tensor_shape.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/tensor_shape.h)
+    [`tensorflow/core/public/tensor_shape.h`](https://www.tensorflow.org/code/tensorflow/core/public/tensor_shape.h)
 *   The error itself, which is represented by a `Status` object, see
-    [`tensorflow/core/public/status.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/status.h). A
+    [`tensorflow/core/public/status.h`](https://www.tensorflow.org/code/tensorflow/core/public/status.h). A
     `Status` has both a type (frequently `InvalidArgument`, but see the list of
     types) and a message.  Functions for constructing an error may be found in
     [`tensorflow/core/lib/core/errors.h`][validation-macros].
@@ -368,7 +368,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
 
     The specific lists of types allowed by these are defined by the functions
     (like `NumberTypes()`) in
-    [`tensorflow/core/framework/types.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.h).
+    [`tensorflow/core/framework/types.h`](https://www.tensorflow.org/code/tensorflow/core/framework/types.h).
     In this example the attr `t` must be one of the numeric types:
 
     ```c++
@@ -889,7 +889,7 @@ There are several ways to preserve backwards-compatibility.
    type into a list of varying types).
 
 The full list of safe and unsafe changes can be found in
-[`tensorflow/core/framework/op_compatibility_test.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_compatibility_test.cc).
+[`tensorflow/core/framework/op_compatibility_test.cc`](https://www.tensorflow.org/code/tensorflow/core/framework/op_compatibility_test.cc).
 If you cannot make your change to an operation backwards compatible, then create
 a new operation with a new name with the new semantics.
 
@@ -906,16 +906,16 @@ made when TensorFlow's changes major versions, and must conform to the
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#polymorphism).
 There are several examples of kernels with GPU support in
-[`tensorflow/core/kernels/`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/).
+[`tensorflow/core/kernels/`](https://www.tensorflow.org/code/tensorflow/core/kernels/).
 Notice some kernels have a CPU version in a `.cc` file, a GPU version in a file
 ending in `_gpu.cu.cc`, and some code shared in common in a `.h` file.
 
 For example, the [`pad` op](../../api_docs/python/array_ops.md#pad) has
 everything but the GPU kernel in [`tensorflow/core/kernels/pad_op.cc`][pad_op].
 The GPU kernel is in
-[`tensorflow/core/kernels/pad_op_gpu.cu.cc`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op_gpu.cu.cc),
+[`tensorflow/core/kernels/pad_op_gpu.cu.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/pad_op_gpu.cu.cc),
 and the shared code is a templated class defined in
-[`tensorflow/core/kernels/pad_op.h`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op.h).
+[`tensorflow/core/kernels/pad_op.h`](https://www.tensorflow.org/code/tensorflow/core/kernels/pad_op.h).
 One thing to note, even when the GPU kernel version of `pad` is used, it still
 needs its `"paddings"` input in CPU memory.  To mark that inputs or outputs are
 kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
@@ -1072,23 +1072,23 @@ any of the inputs. The [`merge_with`](../../api_docs/python/framework.md)
 method allows the caller to assert that two shapes are the same, even if either
 or both of them do not have complete information. Shape functions are defined
 for all of the
-[standard Python ops](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/ops/),
+[standard Python ops](https://www.tensorflow.org/code/tensorflow/python/ops/),
 and provide many different usage examples.
 
-[core-array_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/ops/array_ops.cc
-[python-user_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/user_ops/user_ops.py
-[tf-kernels]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/
-[user_ops]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/user_ops/
-[pad_op]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/kernels/pad_op.cc
-[standard_ops-py]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/ops/standard_ops.py
-[standard_ops-cc]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/cc/ops/standard_ops.h
-[python-BUILD]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD
-[validation-macros]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/lib/core/errors.h
-[op_def_builder]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def_builder.h
-[register_types]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/register_types.h
-[FinalizeAttr]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def_builder.cc#FinalizeAttr
-[DataTypeString]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.cc#DataTypeString
-[python-BUILD]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/python/BUILD
-[types-proto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.proto
-[TensorShapeProto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/tensor_shape.proto
-[TensorProto]:https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/tensor.proto
+[core-array_ops]:https://www.tensorflow.org/code/tensorflow/core/ops/array_ops.cc
+[python-user_ops]:https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py
+[tf-kernels]:https://www.tensorflow.org/code/tensorflow/core/kernels/
+[user_ops]:https://www.tensorflow.org/code/tensorflow/core/user_ops/
+[pad_op]:https://www.tensorflow.org/code/tensorflow/core/kernels/pad_op.cc
+[standard_ops-py]:https://www.tensorflow.org/code/tensorflow/python/ops/standard_ops.py
+[standard_ops-cc]:https://www.tensorflow.org/code/tensorflow/cc/ops/standard_ops.h
+[python-BUILD]:https://www.tensorflow.org/code/tensorflow/python/BUILD
+[validation-macros]:https://www.tensorflow.org/code/tensorflow/core/lib/core/errors.h
+[op_def_builder]:https://www.tensorflow.org/code/tensorflow/core/framework/op_def_builder.h
+[register_types]:https://www.tensorflow.org/code/tensorflow/core/framework/register_types.h
+[FinalizeAttr]:https://www.tensorflow.org/code/tensorflow/core/framework/op_def_builder.cc#FinalizeAttr
+[DataTypeString]:https://www.tensorflow.org/code/tensorflow/core/framework/types.cc#DataTypeString
+[python-BUILD]:https://www.tensorflow.org/code/tensorflow/python/BUILD
+[types-proto]:https://www.tensorflow.org/code/tensorflow/core/framework/types.proto
+[TensorShapeProto]:https://www.tensorflow.org/code/tensorflow/core/framework/tensor_shape.proto
+[TensorProto]:https://www.tensorflow.org/code/tensorflow/core/framework/tensor.proto

@@ -34,13 +34,11 @@ EventMgr::EventMgr(gpu::StreamExecutor* se, const GPUOptions& gpu_options)
       // threadpool_ has 1 thread for the polling loop, and one to execute
       // event callback functions. Maybe we should have more?
       threadpool_(Env::Default(), "GPU_Event_Manager", 2) {
-  threadpool_.Schedule([this]() { PollLoop(); });
+  StartPollingLoop();
 }
 
 EventMgr::~EventMgr() {
-  stop_polling_.Notify();
-  // Shut down the backup polling loop.
-  polling_stopped_.WaitForNotification();
+  StopPollingLoop();
 
   // Events are owned by this object.
   for (auto& e : free_events_) {
@@ -53,12 +51,33 @@ EventMgr::~EventMgr() {
   while (!used_events_.empty()) {
     InUse* ue = &used_events_[0];
     delete ue->event;
-    delete ue->mem;
+    if (ue->mem != nullptr) {
+      for (auto& t : *(ue->mem)) {
+        t.Unref();
+      }
+      delete ue->mem;
+    }
     if (ue->bufrec.buf) {
       ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
     }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);
     used_events_.pop_front();
+  }
+}
+
+void EventMgr::StartPollingLoop() {
+  CHECK(polling_stopped_.get() == nullptr);
+  stop_polling_.reset(new Notification);
+  polling_stopped_.reset(new Notification);
+  threadpool_.Schedule([this]() { PollLoop(); });
+}
+
+void EventMgr::StopPollingLoop() {
+  if (stop_polling_.get()) {
+    stop_polling_->Notify();
+    polling_stopped_->WaitForNotification();
+    stop_polling_.reset(nullptr);
+    polling_stopped_.reset(nullptr);
   }
 }
 
@@ -101,7 +120,7 @@ void EventMgr::PollLoop() {
   const int32 kPollingDelayUsecs = 10;
   const int32 kPollingSuspendMsecs = 1;
   bool queue_empty = false;
-  while (!stop_polling_.HasBeenNotified()) {
+  while (!stop_polling_->HasBeenNotified()) {
     if (queue_empty) {
       mutex_lock l(mu_);
       WaitForMilliseconds(&l, &events_pending_, kPollingSuspendMsecs);
@@ -116,7 +135,7 @@ void EventMgr::PollLoop() {
     }
     FreeMemory(to_free);
   }
-  polling_stopped_.Notify();
+  polling_stopped_->Notify();
 }
 
 void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
