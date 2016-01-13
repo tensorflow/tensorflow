@@ -27,3 +27,28 @@ from tensorflow.python.ops.gen_user_ops import *
 def my_fact():
   """Example of overriding the generated code for an Op."""
   return gen_user_ops._fact()
+
+@ops.RegisterGradient("TriangularSolve")
+def _solve_grad(op, grad):
+    """The gradients for `solve`.
+    Args:
+    op: The `solve` `Operation` that we are differentiating, which we can use
+      to find the inputs and outputs of the original op.
+    grad: Gradient with respect to the output of the `solve` op.
+    
+    Returns:
+    Gradients with respect to the input of `solve`.
+    """
+    if op.get_attr('Case')=='lower':
+        outputGrad = triangular_solve( array_ops.transpose( op.inputs[0] ), grad, 'upper' )
+    else:
+        outputGrad = triangular_solve( array_ops.transpose( op.inputs[0] ), grad, 'lower' )        
+    return ( math_ops.matmul( math_ops.neg( outputGrad ), array_ops.transpose(op.outputs[0]) ), outputGrad )
+
+@ops.RegisterShape("TriangularSolve")
+def _solve_shape(op):
+  """Shape function for the Solve op.
+  produces an output
+  with the same shape as its second input.
+  """
+  return [op.inputs[1].get_shape()]
