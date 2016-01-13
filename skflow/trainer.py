@@ -106,7 +106,8 @@ class TensorFlowTrainer(object):
 
     def train(self, sess, feed_dict_fn, steps,
               summary_writer=None, summaries=None,
-              print_steps=0, verbose=1, early_stopping_rounds=None):
+              print_steps=0, verbose=1, early_stopping_rounds=None,
+              feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -120,6 +121,7 @@ class TensorFlowTrainer(object):
             early_stopping_rounds: Activates early stopping if this is not None.
                 Loss needs to decrease at least every every <early_stopping_rounds>
                 round(s) to continue training. (default: None)
+            feed_params_fn: params about data feeder state (epoch, offset)
 
         Returns:
             List of losses for each step.
@@ -162,6 +164,10 @@ class TensorFlowTrainer(object):
                 if step % print_steps == 0:
                     _print_report(print_loss_buffer, global_step)
                     print_loss_buffer = []
+                if feed_params_fn:
+                    feed_params = feed_params_fn()
+                    if 'epoch' in feed_params and 'offset' in feed_params and feed_params['offset'] == 0:
+                        sys.stderr.write("Epoch #{}\n".format(feed_params['epoch']))
         return losses
 
 

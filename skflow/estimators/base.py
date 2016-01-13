@@ -208,7 +208,8 @@ class TensorFlowEstimator(BaseEstimator):
                             self._summary_writer,
                             self._summaries,
                             verbose=self.verbose,
-                            early_stopping_rounds=self._early_stopping_rounds)
+                            early_stopping_rounds=self._early_stopping_rounds,
+                            feed_params_fn=self._data_feeder.get_feed_params_fn())
         return self
 
     def partial_fit(self, X, y):
