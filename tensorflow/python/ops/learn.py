@@ -20,6 +20,7 @@ This package provides several ops that take care of creating variables that are
 used internally in a consistent way and provide the building blocks for many
 common machine learning algorithms.
 
+@@convolution2d
 @@fully_connected
 
 ## Regularizers
@@ -130,7 +131,6 @@ def _add_histogram_summary(tensor, tag=None):
   Raises:
     ValueError: If the tag is already in use.
   """
-  # TODO(opensource): A global or scoped mechanism to disable summaries.
   tag = tag or tensor.op.name
   _assert_summary_tag_unique(tag)
   return standard_ops.histogram_summary(tag, tensor, name='%s_summary' % tag)
@@ -269,11 +269,12 @@ def fully_connected(x,
   A fully connected layer is generally defined as a matrix multiply:
   \\\\(y = f(w * x + b)\\\\) where **f** is given by `activation_fn`
 
-  This op creates `w` and optionally `b` (disable with `bias_init=None`) and
-  adds various summaries that can be useful for visualizing learning or
-  diagnosing training problems. The variable creation is compatible with
-  `tf.variable_scope` and so can be reused with `tf.variable_scope` or
-  `tf.make_template`.
+  This op creates `w` and optionally `b` and adds various summaries that can be
+  useful for visualizing learning or diagnosing training problems. Bias can be
+  disabled by setting `bias_init` to `None`.
+
+  The variable creation is compatible with `tf.variable_scope` and so can be
+  reused with `tf.variable_scope` or `tf.make_template`.
 
   In almost all cases, the number of input nodes can be inferred from the shape
   of `x`, but if it is unspecified or additional size checks are desired, then
@@ -287,13 +288,14 @@ def fully_connected(x,
   This is only applied to weights and not the bias.
 
   Args:
-    x: The input tensor.
+    x: The input `Tensor`.
     num_output_nodes: The size of the output.
     activation_fn: A function that requires a single Tensor that is applied as a
       non-linearity. If None is used, then this is a linear layer.
     weight_init: An optional initialization. If not specified, uses Xavier
       initialization (see `tf.learn.xavier_initializer`).
-    bias_init: An initializer for the bias, defaults to 0.
+    bias_init: An initializer for the bias, defaults to 0. Set to`None` in order
+      to disable bias.
     num_input_nodes: The number of input nodes.
     name: The name for this operation is used to name operations and to find
       variables. If specified it must be unique for this scope, otherwise a
@@ -319,7 +321,7 @@ def fully_connected(x,
     if not num_input_nodes:
       if x.get_shape().dims is None or x.get_shape().dims[1].value is None:
         raise ValueError(
-            'If x has an unknown first dimension then num_input_nodes '
+            'If x has an unknown second dimension then num_input_nodes '
             'must be specified; shape: %s num_input_nodes: %s'
             % (x.get_shape(), num_input_nodes))
       else:
@@ -328,7 +330,7 @@ def fully_connected(x,
     weight_init = weight_init or xavier_initializer(
         num_input_nodes, num_output_nodes)
 
-    dtype = x.dtype
+    dtype = x.dtype.base_dtype
     w = variable_scope.get_variable('weights',
                                     shape=[num_input_nodes, num_output_nodes],
                                     dtype=dtype,
@@ -342,9 +344,140 @@ def fully_connected(x,
     # Regularization is only applied to the weights and not bias.
     if weight_regularizer:
       _apply_regularization(w, weight_regularizer)
-    if bias_init:
+    if bias_init is not None:
       b = variable_scope.get_variable('bias',
                                       shape=[num_output_nodes],
+                                      dtype=dtype,
+                                      initializer=bias_init,
+                                      collections=bias_collections)
+      if not vs.reuse and create_summaries:
+        _add_histogram_summary(b)
+
+      y = nn.bias_add(y, b)
+
+    if create_summaries:
+      return _apply_activation_with_summaries(y, activation_fn)
+    else:
+      return activation_fn(y)
+
+
+def convolution2d(x,
+                  num_output_channels,
+                  kernel_size,
+                  activation_fn=None,
+                  stride=(1, 1),
+                  padding='SAME',
+                  weight_init=None,
+                  bias_init=standard_ops.constant_initializer(0.),
+                  num_input_channels=None,
+                  name=None,
+                  weight_collections=None,
+                  bias_collections=None,
+                  weight_regularizer=None,
+                  create_summaries=True):
+  """Adds the parameters for a conv2d layer and returns the output.
+
+  A neural network convolution layer is generally defined as:
+  \\\\(y = f(conv2d(w, x) + b)\\\\) where **f** is given by `activation_fn`,
+  **conv2d** is `tf.nn.conv2d` and `x` has shape
+  `[batch, height, width, channels]`
+
+  This op creates `w` and optionally `b` and adds various summaries that can be
+  useful for visualizing learning or diagnosing training problems. Bias can be
+  disabled by setting `bias_init` to `None`.
+
+  The variable creation is compatible with `tf.variable_scope` and so can be
+  reused with `tf.variable_scope` or `tf.make_template`.
+
+  In almost all cases, the input channels can be inferred from the shape
+  of `x`, but if it is unspecified or additional size checks are
+  desired, then `num_input_channels` can be specified.
+
+  Most of the details of variable creation can be controlled by specifying the
+  initializers (`weight_init` and `bias_init`) and which collections to place
+  the created variables in (`weight_collections` and `bias_collections`).
+
+  A per layer regularization can be specified by setting `weight_regularizer`.
+  This is only applied to weights and not the bias.
+
+  Args:
+    x: The input `Tensor`.
+    num_output_channels: The number of output channels (i.e. the size of
+      dim[3]).
+    kernel_size: A length 2 `list` or `tuple` containing the kernel size.
+    activation_fn: A function that requires a single Tensor that is applied as a
+      non-linearity.
+    stride: A length 2 `list` or `tuple` specifying the stride of the sliding
+      window across the image.
+    padding: A `string` from: "SAME", "VALID". The type of padding algorithm to
+      use.
+    weight_init: An optional initialization. If not specified, uses Xavier
+      initialization (see `tf.learn.xavier_initializer`).
+    bias_init: An initializer for the bias, defaults to 0. Set to`None` in order
+      to disable bias.
+    num_input_channels: The length of the channel dimension in the input.
+    name: The name for this operation is used to name operations and to find
+      variables. If specified it must be unique for this scope, otherwise a
+      unique name starting with "convolution2d" will be created.  See
+      `tf.variable_op_scope` for details.
+    weight_collections: List of graph collections for just weights.
+    bias_collections: List of graph collections for just bias.
+    weight_regularizer: A regularizer like the result of
+      `tf.learn.l1_regularizer` or `tf.learn.l2_regularizer`.
+    create_summaries: Set to false to disable summaries.
+
+  Returns:
+    The result of applying a fully connected layer.
+
+  Raises:
+    ValueError: if `x` is not rank 4; or `x`'s channel dimension is not known
+    and `num_input_channels` is not specified.
+  """
+  with variable_scope.variable_op_scope([x], name, 'convolution2d') as vs:
+    # Check rank and if num_input_channels is specified, make sure it matches.
+    x.get_shape().assert_is_compatible_with([None, None, None,
+                                             num_input_channels])
+
+    if not num_input_channels:
+      if x.get_shape().dims is None or x.get_shape().dims[3].value is None:
+        raise ValueError(
+            'If x has an unknown channels dimension then num_input_channels '
+            'must be specified; shape: %s num_input_channels: %s'
+            % (x.get_shape(), num_input_channels))
+      else:
+        num_input_channels = x.get_shape().dims[3].value
+
+    # QQQ: Should we accept a scalar for a square convolution?
+    if len(kernel_size) != 2:
+      raise ValueError('kernel_size must be length 2: ' % kernel_size)
+    if len(stride) != 2:
+      raise ValueError('stride must be length 2: ' % kernel_size)
+
+    stride = [1, stride[0], stride[1], 1]
+    shape = [kernel_size[0], kernel_size[1], num_input_channels,
+             num_output_channels]
+
+    patch_size = kernel_size[0] * kernel_size[1]
+    weight_init = weight_init or xavier_initializer(
+        num_input_channels * patch_size, num_output_channels * patch_size)
+
+    dtype = x.dtype.base_dtype
+    w = variable_scope.get_variable('weights',
+                                    shape=shape,
+                                    dtype=dtype,
+                                    initializer=weight_init,
+                                    collections=weight_collections)
+
+    if not vs.reuse and create_summaries:
+      _add_histogram_summary(w)
+
+    y = nn.conv2d(x, w, stride, padding)
+    # Regularization is only applied to the weights and not bias.
+    if weight_regularizer:
+      _apply_regularization(w, weight_regularizer)
+    if bias_init is not None:
+      b = variable_scope.get_variable('bias',
+                                      shape=[num_output_channels],
                                       dtype=dtype,
                                       initializer=bias_init,
                                       collections=bias_collections)
