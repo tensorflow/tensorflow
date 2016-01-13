@@ -543,20 +543,31 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (const auto& partition : partitions) {
+  for (auto partition : partitions) {
     const string& partition_name = partition.first;
 
-    const GraphDef& graph_def = partition.second;
-    VLOG(2) << "Created " << graph_def.DebugString() << " for "
+    GraphDef* graph_def = &partition.second;
+    VLOG(2) << "Created " << graph_def->DebugString() << " for "
             << partition_name;
 
+    // Give the device an opportunity to rewrite its subgraph.
+    Device* d;
+    TF_RETURN_IF_ERROR(device_mgr_->LookupDevice(partition_name, &d));
+    {
+      mutex_lock l(graph_def_lock_);
+      // TODO(pbar) The library is currently shared and immutable. There
+      // may be possible use cases where a device may want to modify
+      // function definitions - in which case the library would need to be
+      // replicated per device.
+      TF_RETURN_IF_ERROR(d->MaybeRewriteGraph(graph_def_.library(), graph_def));
+    }
     Graph* device_graph = new Graph(fdefs.get());
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now
     // allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    Status s = ConvertGraphDefToGraph(device_opts, graph_def, device_graph);
+    Status s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
     if (!s.ok()) {
       delete device_graph;
       // Also delete other graphs created during the loop.
