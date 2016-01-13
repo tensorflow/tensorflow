@@ -33,20 +33,12 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
-#if defined(PLATFORM_GOOGLE)
-DECLARE_bool(brain_gpu_use_bfc_allocator);
-#else
-extern bool FLAGS_brain_gpu_use_bfc_allocator;
-#endif
-
 namespace tensorflow {
 namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init) {
   RequireDefaultOps();
-
-  FLAGS_brain_gpu_use_bfc_allocator = true;
 
   SessionOptions default_options;
   if (!options) {
