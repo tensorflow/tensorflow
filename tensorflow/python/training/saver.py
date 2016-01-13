@@ -482,7 +482,8 @@ def update_checkpoint_state(save_dir,
   """
   if all_model_checkpoint_paths is None:
     all_model_checkpoint_paths = []
-  elif all_model_checkpoint_paths[-1] != model_checkpoint_path:
+
+  if all_model_checkpoint_paths and all_model_checkpoint_paths[-1] != model_checkpoint_path:
     logging.warning(
         "%s is not in all_model_checkpoint_paths! Manually adding it.",
         model_checkpoint_path)
