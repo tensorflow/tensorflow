@@ -502,6 +502,15 @@ class FillTest(tf.test.TestCase):
         tf.placeholder(tf.int32, shape=(4,)), 3.0)
     self.assertEqual([None, None, None, None], f.get_shape().as_list())
 
+  def testGradient(self):
+    with self.test_session():
+      in_v = tf.constant(5.0)
+      out_shape = [3, 2]
+      out_filled = tf.fill(out_shape, in_v)
+      err = tf.test.compute_gradient_error(in_v, [1],
+                                           out_filled, out_shape)
+    self.assertLess(err, 1e-3)
+
 
 class PlaceholderTest(tf.test.TestCase):
 
