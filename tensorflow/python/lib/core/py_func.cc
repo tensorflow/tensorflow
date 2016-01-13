@@ -250,21 +250,8 @@ Status DoCallPyFunc(PyCall* call) {
       call->out.push_back(t);
     }
   } else {
-    // 'result' is a plain python scalar. We convert it to an numpy
-    // scalar then convert it to a Tensor.
-    PyObject* scalar = PyArray_FromScalar(result, nullptr);
-    if (scalar == nullptr) {
-      s = errors::InvalidArgument(
-          call->token,
-          " returns a value which can't be converted into numpy scalar.");
-    } else {
-      Tensor t;
-      s = ConvertNdarrayToTensor(scalar, &t);
-      if (s.ok()) {
-        call->out.push_back(t);
-      }
-      Py_DECREF(scalar);
-    }
+    s = errors::Internal("Unexpected pyobject is returned: ",
+                         Py_TYPE(result)->tp_name);
   }
   Py_DECREF(result);
   return s;
