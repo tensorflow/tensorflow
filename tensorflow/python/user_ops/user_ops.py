@@ -52,3 +52,11 @@ def _solve_shape(op):
   with the same shape as its second input.
   """
   return [op.inputs[1].get_shape()]
+  
+@ops.RegisterGradient("Cholesky")
+def _cholesky_grad(op, grad):
+  return ( cholesky_grad( op.outputs[0] , grad ) )
+
+@ops.RegisterShape("CholeskyGrad")
+def _cholesky_grad_shape(op):
+  return [op.inputs[0].get_shape()]  
