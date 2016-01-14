@@ -228,11 +228,9 @@ class ReductionHelper {
 
  private:
   bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.
-  gtl::InlinedVector<int64, 4>
-      data_reshape_;  // Reshape the data before reduction.
-  gtl::InlinedVector<int64, 4> out_shape_;  // The final output shape.
-  gtl::InlinedVector<int64, 4>
-      out_reshape_;  // Reshape the output for reduction.
+  gtl::InlinedVector<int64, 4> data_reshape_;  // Reshape data before reduction.
+  gtl::InlinedVector<int64, 4> out_shape_;     // The final output shape.
+  gtl::InlinedVector<int64, 4> out_reshape_;   // Reshape output for reduction.
 };
 
 }  // end namespace

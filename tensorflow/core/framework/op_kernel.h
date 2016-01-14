@@ -436,7 +436,9 @@ class OpKernelContext {
     DeviceBase* device = nullptr;
 
     bool track_allocations = false;
-    std::function<AllocatorAttributes(int index)> output_alloc_attr = nullptr;
+
+    // Array indexed by output number for this node
+    const AllocatorAttributes* output_attr_array = nullptr;
 
     // Shared resources accessible by this op kernel invocation.
     ResourceMgr* resource_manager = nullptr;
@@ -642,7 +644,7 @@ class OpKernelContext {
   // Tensors allocated via allocate_temp. There may be a performance
   // penalty to using a Tensor that was not allocated using
   // allocate_output. This is because allocate_output uses the
-  // AllocatorAttributes stored in output_alloc_attr for the
+  // AllocatorAttributes stored in output_attr_array for the
   // designated output. In some cases, using the wrong attributes may
   // cause an extra copy of the Tensor's buffer.
 
@@ -658,9 +660,9 @@ class OpKernelContext {
   Status allocate_output(const string& name, const TensorShape& shape,
                          Tensor** tensor) TF_MUST_USE_RESULT;
   // The following methods use the supplied attributes instead of
-  // those in output_alloc_attr. The caller is responsible for
+  // those in output_attr_array. The caller is responsible for
   // ensuring that the attributes are "compatible" with the
-  // output_alloc_attr, e.g. the tensor is allocated on the correct
+  // output_attr_array, e.g. the tensor is allocated on the correct
   // device. See comment above.
   Status allocate_output(int index, const TensorShape& shape, Tensor** tensor,
                          AllocatorAttributes attr) TF_MUST_USE_RESULT;
@@ -767,7 +769,7 @@ class OpKernelContext {
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {
-    return params_.output_alloc_attr(index);
+    return params_.output_attr_array[index];
   }
 
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators() const {
@@ -1121,8 +1123,7 @@ inline Status OpKernelContext::allocate_output(int index,
                                                Tensor** output) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
-  DCHECK(params_.output_alloc_attr);
-  AllocatorAttributes attr = params_.output_alloc_attr(index);
+  AllocatorAttributes attr = output_alloc_attr(index);
   return allocate_output(index, shape, output, attr);
 }
 

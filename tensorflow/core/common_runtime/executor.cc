@@ -175,18 +175,11 @@ struct NodeItem {
   // ExecutorImpl::tensors_[input_start] is the 1st positional input
   // for this node.
   int input_start = 0;
-};
 
-// Map from std::pair<node_id, output_index> to attributes.
-struct pairhash {
- public:
-  template <typename T, typename U>
-  std::size_t operator()(const std::pair<T, U>& x) const {
-    return std::hash<T>()(x.first) ^ std::hash<U>()(x.second);
-  }
+  // ExecutorImpl::output_attrs_[output_attr_start] is the 1st
+  // positional attribute for the 0th output of this node.
+  int output_attr_start = 0;
 };
-typedef std::unordered_map<std::pair<int, int>, AllocatorAttributes, pairhash>
-    DevAttrMap;
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
 typedef gtl::InlinedVector<DeviceContext*, 4> DeviceContextVec;
@@ -231,14 +224,15 @@ class ExecutorImpl : public Executor {
   // Owned.
   LocalExecutorParams params_;
   const Graph* graph_;
-  std::vector<NodeItem> nodes_;  // nodes_.size == graph_.num_node_ids().
-  int total_tensors_ = 0;        // total_tensors_ = sum(nodes_[*].num_inputs())
+  std::vector<NodeItem> nodes_;   // nodes_.size == graph_.num_node_ids().
+  int total_input_tensors_ = 0;   // == sum(nodes_[*].num_inputs())
+  int total_output_tensors_ = 0;  // == sum(nodes_[*].num_outputs())
 
   // The number of inputs for each frame in this graph. This is static
   // information of the graph.
   std::unordered_map<string, int> frame_input_count_;
 
-  DevAttrMap alloc_attr_;
+  std::vector<AllocatorAttributes> output_attrs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
 };
@@ -248,7 +242,8 @@ Status ExecutorImpl::Initialize() {
   nodes_.resize(num_nodes);
 
   Status s;
-  total_tensors_ = 0;
+  total_input_tensors_ = 0;
+  total_output_tensors_ = 0;
 
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node;
@@ -256,8 +251,13 @@ Status ExecutorImpl::Initialize() {
     const int id = n->id();
     NodeItem* item = &nodes_[id];
     item->node = n;
-    item->input_start = total_tensors_;
-    total_tensors_ += n->num_inputs();
+
+    item->input_start = total_input_tensors_;
+    total_input_tensors_ += n->num_inputs();
+
+    item->output_attr_start = total_output_tensors_;
+    total_output_tensors_ += n->num_outputs();
+
     s = params_.create_kernel(n->def(), &item->kernel);
     if (!s.ok()) {
       s = AttachDef(s, n->def());
@@ -283,21 +283,31 @@ Status ExecutorImpl::SetAllocAttrs() {
   Device* device = params_.device;
   DeviceNameUtils::ParsedName local_dev_name = device->parsed_name();
 
+  output_attrs_.resize(total_output_tensors_);
   for (const Node* n : graph_->nodes()) {
+    NodeItem* item = &nodes_[n->id()];
+    const int base_index = item->output_attr_start;
     // Examine the out edges of each node looking for special use
     // cases that may affect memory allocation attributes.
     for (auto e : n->out_edges()) {
+      const int index = e->src_output();
       AllocatorAttributes attr;
       s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
       if (!s.ok()) return s;
       if (attr.value != 0) {
-        VLOG(2) << "node " << n->name() << " gets attr " << attr.value
-                << " for output " << e->src_output();
-        alloc_attr_[std::make_pair(n->id(), e->src_output())].Merge(attr);
-      } else {
-        VLOG(2) << "default output attr for node " << n->name() << " output "
-                << e->src_output();
+        if (!e->IsControlEdge()) {
+          output_attrs_[base_index + index].Merge(attr);
+        }
       }
+    }
+
+    for (int out = 0; out < n->num_outputs(); out++) {
+      OpKernel* op_kernel = item->kernel;
+      DCHECK_LT(out, op_kernel->output_memory_types().size());
+      bool on_host = op_kernel->output_memory_types()[out] == HOST_MEMORY;
+      AllocatorAttributes h;
+      h.set_on_host(on_host);
+      output_attrs_[base_index + out].Merge(h);
     }
   }
   return s;
@@ -712,7 +722,8 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   iter_state->outstanding_frame_count = 0;
   iter_state->pending_count = new std::vector<int>;
   iter_state->dead_count = new std::vector<int>(impl->graph_->num_node_ids());
-  iter_state->input_tensors = new std::vector<Entry>(impl_->total_tensors_);
+  iter_state->input_tensors =
+      new std::vector<Entry>(impl_->total_input_tensors_);
 
   // Initialize the executor state.
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
@@ -792,32 +803,6 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 }
 
 namespace {
-
-// This function is provided for use by OpKernelContext when allocating
-// the index'th output of node.  It provides access to the
-// AllocatorAttributes computed during initialization to determine in
-// which memory region the tensor should be allocated.
-AllocatorAttributes OutputAttributes(const DevAttrMap* attr_map,
-                                     const Node* node,
-                                     const OpKernel* op_kernel, int index) {
-  DCHECK_GE(index, 0);
-
-  AllocatorAttributes attr;
-  int nid = node->id();
-  const auto& iter = attr_map->find(std::make_pair(nid, index));
-  if (iter != attr_map->end()) {
-    attr = iter->second;
-    VLOG(2) << "nondefault attr " << attr.value << " for node " << node->name()
-            << " output " << index;
-  } else {
-    VLOG(2) << "default attr for node " << node->name() << " output " << index;
-  }
-
-  DCHECK_LT(index, op_kernel->output_memory_types().size());
-  bool on_host = op_kernel->output_memory_types()[index] == HOST_MEMORY;
-  attr.set_on_host(on_host);
-  return attr;
-}
 
 // Helpers to make a copy of 'p' and makes a copy of the input type
 // vector and the device context vector.
@@ -926,9 +911,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.op_kernel = op_kernel;
       params.frame_iter = FrameAndIter(input_frame->frame_id, input_iter);
       params.is_input_dead = is_input_dead;
-      params.output_alloc_attr = [this, node, op_kernel](int index) {
-        return OutputAttributes(&impl_->alloc_attr_, node, op_kernel, index);
-      };
+      params.output_attr_array =
+          gtl::vector_as_array(&impl_->output_attrs_) + item.output_attr_start;
 
       async = op_kernel->AsAsync();
       if (async) {
@@ -1439,7 +1423,8 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
     InitializePending(impl_->graph_, iter_state->pending_count);
     iter_state->dead_count =
         new std::vector<int>(impl_->graph_->num_node_ids());
-    iter_state->input_tensors = new std::vector<Entry>(impl_->total_tensors_);
+    iter_state->input_tensors =
+        new std::vector<Entry>(impl_->total_input_tensors_);
 
     auto frame_pending = impl_->frame_input_count_.find(enter_name);
     DCHECK(frame_pending != impl_->frame_input_count_.end());
@@ -1470,7 +1455,8 @@ void ExecutorState::IncrementIteration(FrameState* frame,
   iter_state->pending_count = new std::vector<int>;
   InitializePending(impl_->graph_, iter_state->pending_count);
   iter_state->dead_count = new std::vector<int>(impl_->graph_->num_node_ids());
-  iter_state->input_tensors = new std::vector<Entry>(impl_->total_tensors_);
+  iter_state->input_tensors =
+      new std::vector<Entry>(impl_->total_input_tensors_);
 
   // Activate the successors of the deferred roots in the new iteration.
   ActivateNexts(frame, next_iter, ready);

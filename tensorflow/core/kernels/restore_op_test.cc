@@ -164,12 +164,8 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     params.frame_iter = FrameAndIter(0, 0);
     params.inputs = &inputs;
     params.op_kernel = op.get();
-    params.output_alloc_attr = [&device, &op, &params](int index) {
-      AllocatorAttributes attr;
-      const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-      attr.set_on_host(on_host);
-      return attr;
-    };
+    std::vector<AllocatorAttributes> attrs;
+    test::SetOutputAttrs(&params, &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
@@ -392,12 +388,8 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     params.frame_iter = FrameAndIter(0, 0);
     params.inputs = &inputs;
     params.op_kernel = op.get();
-    params.output_alloc_attr = [&device, &op, &params](int index) {
-      AllocatorAttributes attr;
-      const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-      attr.set_on_host(on_host);
-      return attr;
-    };
+    std::vector<AllocatorAttributes> attrs;
+    test::SetOutputAttrs(&params, &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
