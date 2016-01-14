@@ -50,7 +50,7 @@ This basic architecture is depicted below.
 Each box in the picture above represents a cell of the RNN, most commonly
 a GRU cell or an LSTM cell (see the [RNN Tutorial](../../tutorials/recurrent/index.md)
 for an explanation of those). Encoder and decoder can share weights or,
-as is more common, use a different set of parameters. Mutli-layer cells
+as is more common, use a different set of parameters. Multi-layer cells
 have been successfully used in sequence-to-sequence models too, e.g. for
 translation [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215).
 
@@ -203,7 +203,7 @@ sentence with a special PAD symbol. Then we'd need only one seq2seq model,
 for the padded lengths. But on shorter sentence our model would be inefficient,
 encoding and decoding many PAD symbols that are useless.
 
-As a compromise between contructing a graph for every pair of lengths and
+As a compromise between constructing a graph for every pair of lengths and
 padding to a single length, we use a number of *buckets* and pad each sentence
 to the length of the bucket above it. In `translate.py` we use the following
 default buckets.

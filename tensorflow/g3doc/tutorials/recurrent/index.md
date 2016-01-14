@@ -10,7 +10,7 @@ for an introduction to recurrent neural networks and LSTMs in particular.
 
 In this tutorial we will show how to train a recurrent neural network on
 a challenging task of language modeling. The goal of the problem is to fit a
-probabilistic model which assigns probablities to sentences. It does so by
+probabilistic model which assigns probabilities to sentences. It does so by
 predicting next words in a text given a history of previous words. For this
 purpose we will use the Penn Tree Bank (PTB) dataset, which is a popular
 benchmark for measuring quality of these models, whilst being small and
@@ -80,7 +80,7 @@ of unrolled steps.
 This is easy to implement by feeding inputs of length `num_steps` at a time and
 doing backward pass after each iteration.
 
-A simplifed version of the code for the graph creation for truncated
+A simplified version of the code for the graph creation for truncated
 backpropagation:
 
 ```python
@@ -129,7 +129,7 @@ word_embeddings = tf.nn.embedding_lookup(embedding_matrix, word_ids)
 The embedding matrix will be initialized randomly and the model will learn to
 differentiate the meaning of words just by looking at the data.
 
-### Loss Fuction
+### Loss Function
 
 We want to minimize the average negative log probability of the target words:
 
