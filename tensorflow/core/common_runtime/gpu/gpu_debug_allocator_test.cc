@@ -81,7 +81,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
               stream_exec->SynchronousMemcpy(&gpu_hdr_ptr, &pi, sizeof(float)));
 
           // Expect error on free.
-          a.Deallocate(gpu_array);
+          a.DeallocateRaw(gpu_array);
         },
         "");
   }
@@ -114,7 +114,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
               stream_exec->SynchronousMemcpy(&gpu_ftr_ptr, &pi, sizeof(float)));
 
           // Expect error on free.
-          a.Deallocate(gpu_array);
+          a.DeallocateRaw(gpu_array);
         },
         "");
   }
@@ -149,7 +149,7 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
   ASSERT_EQ(1.0, cpu_array_result[0]);
 
   // Free the array
-  a.Deallocate(gpu_array);
+  a.DeallocateRaw(gpu_array);
 
   // All values should be reset to nan.
   ASSERT_TRUE(
@@ -192,7 +192,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   ASSERT_EQ(1.0, cpu_array_result[0]);
 
   // Free the array
-  a.Deallocate(gpu_array);
+  a.DeallocateRaw(gpu_array);
 
   // All values should be reset to nan.
   ASSERT_TRUE(
@@ -214,7 +214,7 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
-  a.Deallocate(t1);
+  a.DeallocateRaw(t1);
 }
 
 }  // namespace tensorflow

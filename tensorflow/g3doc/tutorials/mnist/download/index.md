@@ -1,6 +1,6 @@
 # MNIST Data Download
 
-Code: [tensorflow/examples/tutorials/mnist/](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/)
+Code: [tensorflow/examples/tutorials/mnist/](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/)
 
 The goal of this tutorial is to show how to download the dataset files required
 for handwritten digit classification using the (classic) MNIST data set.
@@ -11,7 +11,7 @@ This tutorial references the following files:
 
 File | Purpose
 --- | ---
-[`input_data.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py) | The code to download the MNIST dataset for training and evaluation.
+[`input_data.py`](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/input_data.py) | The code to download the MNIST dataset for training and evaluation.
 
 ## Prepare the Data
 

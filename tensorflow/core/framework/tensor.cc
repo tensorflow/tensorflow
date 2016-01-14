@@ -76,35 +76,12 @@ class Buffer : public TensorBuffer {
   TF_DISALLOW_COPY_AND_ASSIGN(Buffer);
 };
 
-// is_simple<T>::value if T[] can be safely constructed and destructed
-// without running T() and ~T().  We do not use std::is_trivial<T>
-// directly because std::complex<float> is not trival but its array
-// can be constructed and destructed without running its default ctor
-// and dtor.
-template <typename T>
-struct is_simple {
-  static const bool value = std::is_trivial<T>::value ||
-                            std::is_same<T, complex64>::value ||
-                            is_quantized<T>::value;
-};
-
-template <>
-struct is_simple<bfloat16> {
-  static const bool value = true;
-};
-
 // A set of helper functions depending on T.
 template <typename T>
 struct Helper {
   // By default, we assume T is a simple type (float, int32, etc.)
-  static_assert(is_simple<T>::value, "T is not a simple type.");
+  static_assert(Allocator::is_simple<T>::value, "T is not a simple type.");
   typedef protobuf::RepeatedField<T> RepeatedFieldType;
-
-  // No constructor to run.
-  static void RunCtor(T* p, int n) {}
-
-  // No destructor to run.
-  static void RunDtor(T* p, int n) {}
 
   // Encoder of simple type T to a string.  We do a copy.
   template <typename Destination>
@@ -141,16 +118,6 @@ template <>
 struct Helper<string> {
   // Proto message uses RepeatedFieldType to hold repeated T.
   typedef protobuf::RepeatedPtrField<string> RepeatedFieldType;
-
-  // Runs string's default constructor for  p[0], p[1], ..., p[n-1].
-  static void RunCtor(string* p, int n) {
-    for (int i = 0; i < n; ++p, ++i) new (p) string();
-  }
-
-  // Runs T's default destructor for  p[0], p[1], ..., p[n-1].
-  static void RunDtor(string* p, int n) {
-    for (int i = 0; i < n; ++p, ++i) p->~string();
-  }
 
   // Encodes "n" elements of type string stored in "in" into Cord
   // "out", which is usually the TensorProto::tensor_content.
@@ -273,23 +240,16 @@ struct ProtoHelper<bfloat16> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : alloc_(a), data_(a->Allocate<T>(n)), elem_(n) {
-  if (data_) Helper<T>::RunCtor(data_, elem_);
-}
+    : alloc_(a), data_(a->Allocate<T>(n)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : alloc_(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {
-  if (data_) Helper<T>::RunCtor(data_, elem_);
-}
+    : alloc_(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
-  if (data_) {
-    Helper<T>::RunDtor(data_, elem_);
-    alloc_->Deallocate<T>(data_);
-  }
+  alloc_->Deallocate<T>(data_, elem_);
 }
 
 // Allocates a T[n] buffer. Fills in the buffer with repeated values
@@ -542,7 +502,7 @@ size_t Tensor::TotalBytes() const {
 }
 
 bool Tensor::CanUseDMA() const {
-  CASES(dtype(), return is_simple<T>::value);
+  CASES(dtype(), return Allocator::is_simple<T>::value);
   return false;  // Makes compiler happy.
 }
 

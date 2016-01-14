@@ -144,7 +144,7 @@ def graph_to_function_def(graph, name, inputs, outputs):
   """Returns `graph` as a `FunctionDef` protocol buffer.
 
   This method creates a [`FunctionDef`](
-  https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
+  https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
   protocol buffer that contains all the ops present in the graph.  The
   graph effectively becomes the body of the function.
 
@@ -189,7 +189,7 @@ def call_function(func_def, *inputs, **kwargs):
 
   `func_def` is a
   [`FunctionDef`](
-  https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
+  https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
   protcol buffer describing a
   TensorFlow function.  See [`define_function()`](#define_function) for an
   easy way to create one from a Python function.

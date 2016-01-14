@@ -3046,7 +3046,7 @@ op {
     }
   }
   summary: "Outputs a `Summary` protocol buffer with a histogram."
-  description: "The generated\n[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
+  description: "The generated\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
 }
 op {
   name: "IFFT2D"
@@ -4400,7 +4400,7 @@ op {
     minimum: 1
   }
   summary: "Merges summaries."
-  description: "This op creates a\n[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)\nprotocol buffer that contains the union of all the values in the input\nsummaries.\n\nWhen the Op is run, it reports an `InvalidArgument` error if multiple values\nin the summaries to merge use the same tag."
+  description: "This op creates a\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nprotocol buffer that contains the union of all the values in the input\nsummaries.\n\nWhen the Op is run, it reports an `InvalidArgument` error if multiple values\nin the summaries to merge use the same tag."
 }
 op {
   name: "Min"

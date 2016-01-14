@@ -100,7 +100,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
           }
           tensor_ref.Unref();
           port::CopyFromArray(proto->mutable_tensor_content(), mb, num_bytes);
-          alloc->Deallocate<char>(mb);
+          alloc->Deallocate<char>(mb, num_bytes);
           done(Status::OK());
         });
   } else {

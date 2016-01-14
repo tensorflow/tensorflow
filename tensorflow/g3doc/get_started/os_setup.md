@@ -8,8 +8,8 @@ github source.
 The TensorFlow Python API currently supports Python 2.7 and Python 3.3+ from
 source.
 
-The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and CUDNN
-6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
+The GPU version (Linux only) currently requires the Cuda Toolkit 7.0 and cuDNN
+v2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 ## Overview
 
@@ -30,7 +30,7 @@ images are listed in the corresponding installation sections.
 If you encounter installation errors, see
 [common problems](#common-problems) for some solutions.
 
-## Pip Installation 
+## Pip Installation
 
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
@@ -80,7 +80,7 @@ $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tens
 
 You can now [test your installation](#test-the-tensorflow-installation).
 
-## Virtualenv installation 
+## Virtualenv installation
 
 [Virtualenv](http://docs.python-guide.org/en/latest/dev/virtualenvs/) is a tool
 to keep the dependencies required by different Python projects in separate
@@ -170,7 +170,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 (tensorflow)$ deactivate
 ```
 
-## Docker installation 
+## Docker installation
 
 [Docker](http://docker.com/) is a system to build self contained versions of a
 Linux operating system running on your machine.  When you install and run
@@ -219,12 +219,12 @@ $ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh b.gcr.io/tensorflow/ten
 
 You can now [test your installation](#test-the-tensorflow-installation) within the Docker container.
 
-## Test the TensorFlow installation 
+## Test the TensorFlow installation
 
 ### (Optional, Linux) Enable GPU Support
 
 If you installed the GPU version of TensorFlow, you must also install the Cuda
-Toolkit 7.0 and CUDNN 6.5 V2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
+Toolkit 7.0 and cuDNN v2.  Please see [Cuda installation](#optional-install-cuda-gpus-on-linux).
 
 You also need to set the `LD_LIBRARY_PATH` and `CUDA_HOME` environment
 variables.  Consider adding the commands below to your `~/.bash_profile`.  These
@@ -290,7 +290,7 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 ...
 ```
 
-## Installing from sources 
+## Installing from sources
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
@@ -331,7 +331,7 @@ binary path.
 $ sudo apt-get install python-numpy swig python-dev
 ```
 
-#### Configure the installation 
+#### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter and allows (optional)
@@ -344,10 +344,10 @@ $ ./configure
 Please specify the location of python. [Default is /usr/bin/python]:
 ```
 
-#### Optional: Install CUDA (GPUs on Linux) 
+#### Optional: Install CUDA (GPUs on Linux)
 
 In order to build or run TensorFlow with GPU support, both Cuda Toolkit 7.0 and
-CUDNN 6.5 V2 from NVIDIA need to be installed.
+cuDNN v2 from NVIDIA need to be installed.
 
 TensorFlow GPU support requires having a GPU card with NVidia Compute Capability >= 3.5.
 Supported cards include but are not limited to:
@@ -363,11 +363,11 @@ https://developer.nvidia.com/cuda-toolkit-70
 
 Install the toolkit into e.g. `/usr/local/cuda`
 
-##### Download and install CUDNN Toolkit 6.5
+##### Download and install cuDNN v2
 
 https://developer.nvidia.com/rdp/cudnn-archive
 
-Uncompress and copy the cudnn files into the toolkit directory.  Assuming the
+Uncompress and copy the cuDNN files into the toolkit directory.  Assuming the
 toolkit is installed in `/usr/local/cuda`:
 
 ``` bash
@@ -376,7 +376,7 @@ sudo cp cudnn-6.5-linux-x64-v2/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-6.5-linux-x64-v2/libcudnn* /usr/local/cuda/lib64
 ```
 
-##### Configure TensorFlow's canonical view of Cuda libraries 
+##### Configure TensorFlow's canonical view of Cuda libraries
 When running the `configure` script from the root of your source tree, select
 the option `Y` when asked to build TensorFlow with GPU support.
 
@@ -389,7 +389,7 @@ GPU support will be enabled for TensorFlow
 Please specify the location where CUDA 7.0 toolkit is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
 
-Please specify the location where CUDNN 6.5 V2 library is installed. Refer to
+Please specify the location where the cuDNN v2 library is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
 
 Setting up Cuda include
@@ -491,7 +491,7 @@ best install that too:
 $ sudo easy_install ipython
 ```
 
-#### Configure the installation 
+#### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter.
@@ -504,7 +504,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N]
 ```
 
-### Create the pip package and install 
+### Create the pip package and install
 
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
@@ -546,7 +546,30 @@ Validation error: 7.0%
 ...
 ```
 
-## Common Problems 
+## Setting up TensorFlow for Development
+
+If you're working on TensorFlow itself, it is useful to be able to test your
+changes in an interactive python shell without having to reinstall TensorFlow.
+
+To set up TensorFlow such that all files are linked (instead of copied) from the
+system directories, run the following commands inside the TensorFlow root
+directory:
+
+```bash
+bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+mkdir _python_build
+cd _python_build
+ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .
+ln -s ../tensorflow/tools/pip_package/* .
+python setup.py develop
+```
+
+Note that this setup still requires you to rebuild the
+`//tensorflow/tools/pip_package:build_pip_package` target every time you change
+a C++ file; add, delete, or move any python file; or if you change bazel build
+rules.
+
+## Common Problems
 
 ### GPU-related issues
 

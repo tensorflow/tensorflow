@@ -38,7 +38,7 @@ import java.util.List;
 public class TensorflowImageListener implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 
-  private static final boolean SAVE_PREVIEW_BITMAP = true;
+  private static final boolean SAVE_PREVIEW_BITMAP = false;
 
   private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
   private static final String LABEL_FILE =

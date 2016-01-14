@@ -447,7 +447,7 @@ def as_dtype(type_value):
   Args:
     type_value: A value that can be converted to a `tf.DType`
       object. This may currently be a `tf.DType` object, a
-      [`DataType` enum](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/types.proto),
+      [`DataType` enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
       a string type name, or a `numpy.dtype`.
 
   Returns:
