@@ -572,3 +572,10 @@ new_git_repository(
   remote = "https://github.com/polymerelements/iron-iconset-svg.git",
   tag = "v1.0.9",
 )
+
+new_git_repository(
+  name = "boost_math",
+  build_file = "boost_math.BUILD",
+  remote = "https://github.com/GPflow/BOOST_math_dependencies.git",
+  commit = "8b87020"
+)
