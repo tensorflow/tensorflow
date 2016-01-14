@@ -192,6 +192,8 @@ class Tensor(object):
       "__xor__",
       "__rxor__",
       "__getitem__",
+      "__pow__",
+      "__rpow__",
       # Unary.
       "__invert__",
       "__neg__",
