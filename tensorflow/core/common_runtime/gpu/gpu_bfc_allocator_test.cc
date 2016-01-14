@@ -119,7 +119,7 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
   GPUBFCAllocator a(0, 1 << 30);
 
   float* first_ptr = a.Allocate<float>(1024);
-  a.Deallocate(first_ptr);
+  a.DeallocateRaw(first_ptr);
   for (int i = 0; i < 1024; ++i) {
     // Allocate several buffers of different sizes, and then clean them
     // all up.  We should be able to repeat this endlessly without
@@ -130,10 +130,10 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
     double* t3 = a.Allocate<double>(2048);
     float* t4 = a.Allocate<float>(10485760);
 
-    a.Deallocate(t1);
-    a.Deallocate(t2);
-    a.Deallocate(t3);
-    a.Deallocate(t4);
+    a.DeallocateRaw(t1);
+    a.DeallocateRaw(t2);
+    a.DeallocateRaw(t3);
+    a.DeallocateRaw(t4);
   }
 
   // At the end, we should have coalesced all memory into one region
@@ -141,7 +141,7 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
   // starts from this region.
   float* first_ptr_after = a.Allocate<float>(1024);
   EXPECT_EQ(first_ptr, first_ptr_after);
-  a.Deallocate(first_ptr_after);
+  a.DeallocateRaw(first_ptr_after);
 }
 
 TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
@@ -160,7 +160,7 @@ TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
-  a.Deallocate(t1);
+  a.DeallocateRaw(t1);
 }
 
 TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
@@ -172,7 +172,7 @@ TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
 
   EXPECT_NE(nullptr, first_ptr);
   EXPECT_EQ(nullptr, second_ptr);
-  a.Deallocate(first_ptr);
+  a.DeallocateRaw(first_ptr);
 }
 
 }  // namespace

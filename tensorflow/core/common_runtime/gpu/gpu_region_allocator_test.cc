@@ -48,8 +48,8 @@ TEST(GPURegionAllocatorTest, Simple) {
   }
   float* t1 = a.Allocate<float>(1024);
   double* t2 = a.Allocate<double>(1048576);
-  a.Deallocate(t1);
-  a.Deallocate(t2);
+  a.Deallocate(t1, 1024);
+  a.Deallocate(t2, 1048576);
 }
 
 TEST(GPURegionAllocatorTest, CheckMemLeak) {
@@ -77,7 +77,7 @@ TEST(GPURegionAllocatorTest, AllocatedVsRequested) {
   // Minimum allocation size if 256
   EXPECT_EQ(256, a.AllocatedSize(t1));
 
-  a.Deallocate(t1);
+  a.Deallocate(t1, 1);
 }
 
 }  // namespace

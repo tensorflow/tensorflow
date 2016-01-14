@@ -66,7 +66,7 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   TrackingAllocator* ta = new TrackingAllocator(a);
 
   void* p1 = ta->AllocateRaw(4, 4);
-  ta->Deallocate(p1);
+  ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 12);
 
   std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
@@ -74,7 +74,7 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   EXPECT_EQ(16, sizes.first);
   EXPECT_EQ(0, sizes.second);
 
-  ta->Deallocate(p2);
+  ta->DeallocateRaw(p2);
 }
 
 TEST(TrackingAllocatorTest, SimpleTracking) {
@@ -85,7 +85,7 @@ TEST(TrackingAllocatorTest, SimpleTracking) {
   TrackingAllocator* ta = new TrackingAllocator(&a);
 
   void* p1 = ta->AllocateRaw(4, 12);
-  ta->Deallocate(p1);
+  ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 4);
 
   std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
@@ -93,7 +93,7 @@ TEST(TrackingAllocatorTest, SimpleTracking) {
   EXPECT_EQ(16, sizes.first);
   EXPECT_EQ(12, sizes.second);
 
-  ta->Deallocate(p2);
+  ta->DeallocateRaw(p2);
 }
 
 TEST(TrackingAllocatorTest, OutOfMemory) {

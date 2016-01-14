@@ -35,8 +35,8 @@ TEST(CPUAllocatorTest, Simple) {
   }
   float* t1 = a->Allocate<float>(1024);
   double* t2 = a->Allocate<double>(1048576);
-  a->Deallocate(t1);
-  a->Deallocate(t2);
+  a->Deallocate(t1, 1024);
+  a->Deallocate(t2, 1048576);
 }
 
 // Define a struct that we will use to observe behavior in the unit tests
