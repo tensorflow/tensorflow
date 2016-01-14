@@ -25,7 +25,6 @@ limitations under the License.
 #include <string.h>
 #include <algorithm>
 
-//#include "base/commandlineflags.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -55,19 +54,6 @@ limitations under the License.
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
-
-#if defined(PLATFORM_GOOGLE)
-DEFINE_bool(brain_gpu_sync_every_op, false,
-            "If true, call GPUUtil::Sync() between every dispatched opkernel.");
-
-DEFINE_int32(brain_gpu_max_streams, 1,
-             "Max number of GPU streams to use for computation.");
-#else
-// TODO(opensource): These should be made options in some options struct,
-// rather than flags.
-bool FLAGS_brain_gpu_sync_every_op = false;
-tensorflow::int32 FLAGS_brain_gpu_max_streams = 1;
-#endif
 
 namespace gpu = ::perftools::gputools;
 
@@ -172,14 +158,16 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                              Bytes memory_limit, BusAdjacency bus_adjacency,
                              int gpu_id, const string& physical_device_desc,
-                             Allocator* gpu_allocator, Allocator* cpu_allocator)
+                             Allocator* gpu_allocator, Allocator* cpu_allocator,
+                             bool sync_every_op, int32 max_streams)
     : LocalDevice(options, Device::BuildDeviceAttributes(
                                name, DEVICE_GPU, memory_limit, bus_adjacency,
                                physical_device_desc),
                   gpu_allocator),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
-      gpu_id_(gpu_id) {
+      gpu_id_(gpu_id),
+      sync_every_op_(sync_every_op) {
   gpu::StreamExecutor* executor =
       GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
   if (!executor) {
@@ -188,12 +176,12 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   }
   em_.reset(new EventMgr(executor, options.config.gpu_options()));
 
-  if (FLAGS_brain_gpu_max_streams < 1) {
-    LOG(FATAL) << "Invalid value for brain_gpu_max_streams.";
+  if (max_streams < 1) {
+    LOG(FATAL) << "Invalid value for max_streams.";
   }
 
   // Create the specified number of GPU streams
-  for (int i = 0; i < FLAGS_brain_gpu_max_streams; i++) {
+  for (int i = 0; i < max_streams; i++) {
     auto stream = new gpu::Stream(executor);
     stream->Init();
     VLOG(2) << "Created stream[" << i << "] = " << stream;
@@ -323,7 +311,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     gpu::cuda::ScopedActivateExecutorContext scoped_activation{
         stream->parent(), gpu::cuda::MultiOpActivation::kYes};
 
-    if (FLAGS_brain_gpu_sync_every_op) {
+    if (sync_every_op_) {
       op_kernel->Compute(context);
       if (context->status().ok()) {
         // Note: GPUUtil::Sync() only syncs the default stream.

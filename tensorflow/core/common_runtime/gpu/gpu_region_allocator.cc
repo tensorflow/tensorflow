@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_region_allocator.h"
 
-//#include "base/commandlineflags.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -28,20 +27,13 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 
-#if defined(PLATFORM_GOOGLE)
-DEFINE_bool(brain_gpu_region_allocator_heap_check_on_destruction, true,
-            "If true, the CUDA gpu manager checks that all allocated "
-            "memory through the GPU memory pool implementation has been "
-            "freed.");
+// If true, the CUDA gpu manager checks that all allocated memory
+// through the GPU memory pool implementation has been freed.
+const bool FLAGS_brain_gpu_region_allocator_heap_check_on_destruction = true;
 
-DEFINE_int64(brain_gpu_region_allocator_region_size, 0,
-             "If > 0, sets the default chunk-size allocatable from GPU memory. "
-             "Else defaults to entire GPU memory.");
-
-#else
-bool FLAGS_brain_gpu_region_allocator_heap_check_on_destruction = true;
-tensorflow::int64 FLAGS_brain_gpu_region_allocator_region_size = 0;
-#endif
+// If > 0, sets the default chunk-size allocatable from GPU memory.
+// Else defaults to entire GPU memory.
+const tensorflow::int64 FLAGS_brain_gpu_region_allocator_region_size = 0;
 
 namespace gpu = ::perftools::gputools;
 
