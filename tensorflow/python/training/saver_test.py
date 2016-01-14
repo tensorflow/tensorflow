@@ -653,6 +653,63 @@ class LatestCheckpointWithRelativePaths(tf.test.TestCase):
           self.assertEquals(v0.eval(), 2.0)
 
 
+class CheckpointStateTest(tf.test.TestCase):
+
+  def _TestDir(self, test_name):
+    test_dir = os.path.join(self.get_temp_dir(), test_name)
+    if os.path.exists(test_dir):
+      shutil.rmtree(test_dir)
+    gfile.MakeDirs(test_dir)
+    return test_dir
+
+  def testAbsPath(self):
+    save_dir = self._TestDir("abs_paths")
+    abs_path = os.path.join(save_dir, "model-0")
+    ckpt = tf.train.generate_checkpoint_state_proto(save_dir, abs_path)
+    self.assertEqual(ckpt.model_checkpoint_path, abs_path)
+    self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 1)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
+
+  def testRelPath(self):
+    train_dir = "train"
+    model = os.path.join(train_dir, "model-0")
+    # model_checkpoint_path should have no "train" directory part.
+    new_rel_path = "model-0"
+    ckpt = tf.train.generate_checkpoint_state_proto(train_dir, model)
+    self.assertEqual(ckpt.model_checkpoint_path, new_rel_path)
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 1)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], new_rel_path)
+
+  def testAllModelCheckpointPaths(self):
+    save_dir = self._TestDir("all_models_test")
+    abs_path = os.path.join(save_dir, "model-0")
+    for paths in [None, [], ["model-2"]]:
+      ckpt = tf.train.generate_checkpoint_state_proto(
+          save_dir, abs_path,
+          all_model_checkpoint_paths=paths)
+      self.assertEqual(ckpt.model_checkpoint_path, abs_path)
+      self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
+      self.assertEqual(len(ckpt.all_model_checkpoint_paths),
+                       len(paths) if paths else 1)
+      self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
+
+  def testUpdateCheckpointState(self):
+    save_dir = self._TestDir("update_checkpoint_state")
+    os.chdir(save_dir)
+    # Make a temporary train directory.
+    train_dir = "train"
+    os.mkdir(train_dir)
+    abs_path = os.path.join(save_dir, "model-0")
+    rel_path = "train/model-2"
+    tf.train.update_checkpoint_state(
+        train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
+    ckpt = tf.train.get_checkpoint_state(train_dir)
+    self.assertEqual(ckpt.model_checkpoint_path, rel_path)
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
+
 
 if __name__ == "__main__":
   tf.test.main()

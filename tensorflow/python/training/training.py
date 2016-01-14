@@ -86,13 +86,13 @@ see [Queues](../../api_docs/python/io_ops.md#queues).
 ## Summary Operations
 
 The following ops output
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
 protocol buffers as serialized string tensors.
 
 You can fetch the output of a summary op in a session, and pass it to
 a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
 to an event file.  Event files contain
-[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
+[`Event`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
 protos that can contain `Summary` protos along with the timestamp and
 step.  You can then use TensorBoard to visualize the contents of the
 event files.  See [TensorBoard and
@@ -146,6 +146,7 @@ from tensorflow.python.training.queue_runner import *
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 
+from tensorflow.python.training.saver import generate_checkpoint_state_proto
 from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.python.training.saver import Saver

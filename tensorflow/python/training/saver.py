@@ -458,6 +458,51 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
+def generate_checkpoint_state_proto(save_dir,
+                                    model_checkpoint_path,
+                                    all_model_checkpoint_paths=None):
+  """Generates a checkpoint state proto.
+
+  Args:
+    save_dir: Directory where the model was saved.
+    model_checkpoint_path: The checkpoint file.
+    all_model_checkpoint_paths: list of strings.  Paths to all not-yet-deleted
+      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+      the last element must be equal to model_checkpoint_path.  These paths
+      are also saved in the CheckpointState proto.
+
+  Returns:
+    CheckpointState proto with model_checkpoint_path and
+    all_model_checkpoint_paths updated to either absolute paths or
+    relative paths to the current save_dir.
+  """
+  if all_model_checkpoint_paths is None:
+    all_model_checkpoint_paths = []
+
+  if (not all_model_checkpoint_paths or
+      all_model_checkpoint_paths[-1] != model_checkpoint_path):
+    logging.info(
+        "%s is not in all_model_checkpoint_paths. Manually adding it.",
+        model_checkpoint_path)
+    all_model_checkpoint_paths.append(model_checkpoint_path)
+
+  # Relative paths need to be rewritten to be relative to the "save_dir"
+  # if model_checkpoint_path already contains "save_dir".
+  if not os.path.isabs(save_dir):
+    if not os.path.isabs(model_checkpoint_path):
+      model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
+    for i in range(len(all_model_checkpoint_paths)):
+      p = all_model_checkpoint_paths[i]
+      if not os.path.isabs(p):
+        all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
+
+  coord_checkpoint_proto = CheckpointState(
+      model_checkpoint_path=model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths)
+
+  return coord_checkpoint_proto
+
+
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
                             all_model_checkpoint_paths=None,
@@ -480,35 +525,18 @@ def update_checkpoint_state(save_dir,
   Raises:
     RuntimeError: If the save paths conflict.
   """
-  if all_model_checkpoint_paths is None:
-    all_model_checkpoint_paths = []
-
-  if all_model_checkpoint_paths and all_model_checkpoint_paths[-1] != model_checkpoint_path:
-    logging.warning(
-        "%s is not in all_model_checkpoint_paths! Manually adding it.",
-        model_checkpoint_path)
-    all_model_checkpoint_paths.append(model_checkpoint_path)
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
+  ckpt = generate_checkpoint_state_proto(
+      save_dir, model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths)
 
-  # Relative paths need to be rewritten to be relative to the "save_dir".
-  if not os.path.isabs(model_checkpoint_path):
-    model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
-
-  all_model_checkpoint_paths = [
-      os.path.relpath(p, save_dir) for p in all_model_checkpoint_paths
-      if not os.path.isabs(p)
-  ]
-
-  if coord_checkpoint_filename == model_checkpoint_path:
+  if coord_checkpoint_filename == ckpt.model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  coord_checkpoint_proto = CheckpointState(
-      model_checkpoint_path=model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
   f = gfile.FastGFile(coord_checkpoint_filename, mode="w")
-  f.write(text_format.MessageToString(coord_checkpoint_proto))
+  f.write(text_format.MessageToString(ckpt))
   f.close()
 
 
@@ -538,6 +566,16 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       f = gfile.FastGFile(coord_checkpoint_filename, mode="r")
       ckpt = CheckpointState()
       text_format.Merge(f.read(), ckpt)
+      # For relative model_checkpoint_path and all_model_checkpoint_paths,
+      # prepend checkpoint_dir.
+      if not os.path.isabs(checkpoint_dir):
+        if not os.path.isabs(ckpt.model_checkpoint_path):
+          ckpt.model_checkpoint_path = os.path.join(
+              checkpoint_dir, ckpt.model_checkpoint_path)
+        for i in range(len(ckpt.all_model_checkpoint_paths)):
+          p = ckpt.all_model_checkpoint_paths[i]
+          if not os.path.isabs(p):
+            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except IOError:
     # It's ok if the file cannot be read
     return None
@@ -862,6 +900,7 @@ class Saver(object):
 
     Raises:
       TypeError: If `sess` is not a `Session`.
+      ValueError: If `latest_filename` contains path components.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
@@ -920,12 +959,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-
-    # If you pass "os.path.join" two absolute paths it returns the second one.
-    checkpoint_pattern = os.path.join(
-        checkpoint_dir, ckpt.model_checkpoint_path)
-
-    if gfile.Glob(checkpoint_pattern):
-      return checkpoint_pattern
+    if gfile.Glob(ckpt.model_checkpoint_path):
+      return ckpt.model_checkpoint_path
 
   return None
