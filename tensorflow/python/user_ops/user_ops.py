@@ -20,8 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow.python.platform
-from tensorflow.python.ops import gen_user_ops
 from tensorflow.python.ops.gen_user_ops import *
+from tensorflow.python import ops
+from tensorflow.python.ops import array_ops, math_ops
 
 
 def my_fact():
