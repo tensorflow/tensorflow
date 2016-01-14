@@ -117,7 +117,7 @@ class SkipgramOp : public OpKernel {
   int32 label_limit_ GUARDED_BY(mu_);
 
   // {example_pos_, label_pos_} is the cursor for the next example.
-  // example_pos_ wrapps around at the end of corpus_. For each
+  // example_pos_ wraps around at the end of corpus_. For each
   // example, we randomly generate [label_pos_, label_limit) for
   // labels.
   void NextExample(int32* example, int32* label) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
