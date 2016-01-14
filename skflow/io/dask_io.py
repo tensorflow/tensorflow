@@ -23,12 +23,16 @@ def _add_to_index(df, start):
     """Make a new dask.dataframe where we add these values to the 
     index of each subdataframe. 
     """
+    if not isinstance(df, dd.DataFrame):
+        raise ValueError("df must be a dask.dataframe")
     df = df.copy()
     df.index = df.index + start
     return df
 
 def _get_divisions(df):
     """Number of rows in each sub-dataframe"""
+    if not isinstance(df, dd.DataFrame):
+        raise ValueError("df must be a dask.dataframe")
     lengths = df.map_partitions(len).compute()
     divisions = np.cumsum(lengths).tolist()
     divisions.insert(0, 0)
