@@ -116,3 +116,15 @@ def _gamma_shape(op):
   with the same shape as its input.
   """
   return [op.inputs[0].get_shape()]
+
+@ops.RegisterGradient("Triangle")
+def _solve_grad(op, grad):
+  if op.get_attr('Case')=='lower':
+    outputGrad = triangle(grad,'lower')
+  else:
+    outputGrad = triangle(grad,'upper')       
+  return ( outputGrad )
+    
+@ops.RegisterShape("Triangle")
+def _triangle_shape(op):
+    return [ op.inputs[0].get_shape() ]
