@@ -19,10 +19,20 @@ try:
 except ImportError:
     HAS_DASK = False
 
-def add_to_index(df, start):
+def _add_to_index(df, start):
+    """Make a new dask.dataframe where we add these values to the 
+    index of each subdataframe. 
+    """
     df = df.copy()
     df.index = df.index + start
     return df
+
+def _get_divisions(df):
+    """Number of rows in each sub-dataframe"""
+    lengths = df.map_partitions(len).compute()
+    divisions = np.cumsum(lengths).tolist()
+    divisions.insert(0, 0)
+    return divisions
 
 def extract_dask_data(data):
     """Extract data from dask.Series for predictors"""
