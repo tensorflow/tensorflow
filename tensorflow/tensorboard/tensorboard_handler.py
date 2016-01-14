@@ -24,15 +24,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import BaseHTTPServer
+from six.moves import BaseHTTPServer
 import csv
 import gzip
 import imghdr
 import json
 import mimetypes
 import os
-import StringIO
-import urlparse
+from six import BytesIO
+from six.moves.urllib import parse as urlparse
 
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -43,6 +43,7 @@ from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.tensorboard import float_wrapper
+from tensorflow import compat
 
 
 DATA_PREFIX = '/data'
@@ -143,9 +144,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       content_type: The mime type of the content.
       code: The numeric HTTP status code to use.
     """
-    out = StringIO.StringIO()
-    f = gzip.GzipFile(fileobj=out, mode='w')
-    f.write(content)
+    out = BytesIO()
+    f = gzip.GzipFile(fileobj=out, mode='wb')
+    f.write(compat.as_bytes(content))
     f.close()
     gzip_content = out.getvalue()
     self.send_response(code)
@@ -171,7 +172,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     self.send_header('Content-Type', 'application/json')
     self.send_header('Content-Length', len(output))
     self.end_headers()
-    self.wfile.write(output)
+    self.wfile.write(compat.as_bytes(output))
 
   def _send_csv_response(self, serialized_csv, code=200):
     """Writes out the given string, which represents CSV data.
@@ -198,7 +199,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = StringIO.StringIO()
+      string_io = BytesIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
@@ -237,7 +238,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = StringIO.StringIO()
+      string_io = BytesIO()
       writer = csv.writer(string_io)
 
       # Build the headers; we have two columns for timing and two columns for
