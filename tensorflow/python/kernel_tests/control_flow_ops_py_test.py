@@ -335,7 +335,7 @@ class ControlFlowTest(tf.test.TestCase):
     fn1 = lambda: tf.add(values, 1)
     fn2 = lambda: tf.sub(values, 1)
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
-      _ = control_flow_ops.cond(False, fn1, fn2)
+      _ = tf.cond(False, fn1, fn2)
 
   def testCondIndexedSlices(self):
     with self.test_session():
@@ -345,7 +345,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: tf.IndexedSlices(tf.add(x.values, 1), indices)
       fn2 = lambda: tf.IndexedSlices(tf.sub(x.values, 1), indices)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       val = r.values.eval()
       ind = r.indices.eval()
@@ -362,7 +362,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: tf.IndexedSlices(tf.add(x.values, 1), i_32)
       fn2 = lambda: tf.IndexedSlices(tf.sub(x.values, 1), i_64)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       val = r.values.eval()
       ind = r.indices.eval()
@@ -380,7 +380,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1.0, 2.0)
       fn1 = lambda: tf.add(v, 1.0)
       fn2 = lambda: tf.sub(x, 1.0)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       for op in x.graph.get_operations():
         if op.name == "cond/Add/Switch":
@@ -392,7 +392,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: tf.add(x, 1)
       fn2 = lambda: tf.sub(x, 1)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       result = r.eval()
     self.assertTrue(check_op_order(x.graph))
@@ -405,8 +405,7 @@ class ControlFlowTest(tf.test.TestCase):
   def testCond_2(self):
     with self.test_session():
       x = tf.constant(10)
-      r = control_flow_ops.cond(tf.less(1, 0), lambda: tf.add(x, 1),
-                                lambda: tf.sub(x, 1))
+      r = tf.cond(tf.less(1, 0), lambda: tf.add(x, 1), lambda: tf.sub(x, 1))
       result = r.eval()
     self.assertTrue(check_op_order(x.graph))
     self.assertAllEqual(9, result)
@@ -417,8 +416,8 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: tf.add(x, 1)
       fn2 = lambda: tf.sub(x, 1)
-      fn3 = lambda: tf.add(control_flow_ops.cond(pred, fn1, fn2), 1)
-      r = control_flow_ops.cond(pred, fn3, fn2)
+      fn3 = lambda: tf.add(tf.cond(pred, fn1, fn2), 1)
+      r = tf.cond(pred, fn3, fn2)
 
       result = r.eval()
     self.assertTrue(check_op_order(x.graph))
@@ -435,7 +434,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.greater(age, max_age)
       fn1 = lambda: [tf.assign(v1, 1).op, tf.assign(v2, 2).op]
       fn2 = lambda: [tf.assign(v3, 3).op, tf.constant(10).op]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       tf.initialize_all_variables().run()
       self.assertEqual(len(r), 2)
@@ -452,7 +451,7 @@ class ControlFlowTest(tf.test.TestCase):
       count = tf.constant(0, name="count")
 
       def body(i):
-        return control_flow_ops.cond(
+        return tf.cond(
             alive, lambda: [tf.less(i, 3), tf.add(count, 1)],
             lambda: [alive, count])
 
@@ -468,7 +467,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.greater(age, 4)
       fn1 = lambda: age
       fn2 = lambda: v1
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       tf.initialize_all_variables().run()
       result = r.eval()
@@ -481,7 +480,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: [tf.add(x, 1), tf.add(x, 2)]
       fn2 = lambda: [y, y]
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       self.assertAllEqual([11, 12], sess.run(r))
 
@@ -491,7 +490,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(1, 2)
       fn1 = lambda: tf.identity(x)
       fn2 = lambda: tf.identity(x)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       grad = tf.gradients(r, [x])[0]
       result = grad.eval()
@@ -504,7 +503,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(c, 2)
       fn1 = lambda: tf.mul(x, 42.0)
       fn2 = lambda: tf.mul(x, 3.0)
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
 
       grad = tf.gradients(r, [x])[0]
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
@@ -517,7 +516,7 @@ class ControlFlowTest(tf.test.TestCase):
       pred = tf.less(c, 2)
       fn1 = lambda: tf.identity(v1)
       fn2 = lambda: tf.gather(v1, [1, 1])
-      r = control_flow_ops.cond(pred, fn1, fn2)
+      r = tf.cond(pred, fn1, fn2)
       grad = tf.gradients(r, [v1])[0]
       tf.initialize_all_variables().run()
       # Should just be [1, 1], but possibly a sparse representation
@@ -806,9 +805,9 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(0, name="n")
       c = lambda x: tf.less(x, 10)
       b = lambda x: tf.add(x, 1)
-      r = control_flow_ops.cond(tf.less(0, 1),
-                                lambda: control_flow_ops.While(c, b, [n]),
-                                lambda: n)
+      r = tf.cond(tf.less(0, 1),
+                  lambda: control_flow_ops.While(c, b, [n]),
+                  lambda: n)
 
       result = r.eval()
     self.assertTrue(check_op_order(n.graph))
@@ -819,8 +818,8 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(0)
       c = lambda x: tf.less(x, 10)
       b = lambda x: tf.add(x, 1)
-      r = control_flow_ops.cond(tf.less(1, 0), lambda: tf.add(n, 1),
-                                lambda: control_flow_ops.While(c, b, [n]))
+      r = tf.cond(tf.less(1, 0), lambda: tf.add(n, 1),
+                  lambda: control_flow_ops.While(c, b, [n]))
 
       result = r.eval()
     self.assertTrue(check_op_order(n.graph))
@@ -832,9 +831,8 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(10, name="n")
       one = tf.convert_to_tensor(1, name="one")
       c = lambda x: tf.less(x, n)
-      b = lambda x: control_flow_ops.cond(tf.constant(True),
-                                          lambda: tf.add(x, one),
-                                          lambda: tf.sub(x, one))
+      b = lambda x: tf.cond(tf.constant(True), lambda: tf.add(x, one),
+                            lambda: tf.sub(x, one))
       r = control_flow_ops.While(c, b, [i])
 
       result = r.eval()
@@ -845,9 +843,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = tf.convert_to_tensor(0, name="n")
       c = lambda x: tf.less(x, 10)
-      b = lambda x: control_flow_ops.cond(tf.constant(True),
-                                          lambda: tf.add(x, 1),
-                                          lambda: n)
+      b = lambda x: tf.cond(tf.constant(True), lambda: tf.add(x, 1), lambda: n)
       r = control_flow_ops.While(c, b, [n])
 
       result = r.eval()
@@ -858,9 +854,8 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = tf.convert_to_tensor(0)
       c = lambda x: tf.less(x, 10)
-      b = lambda x: control_flow_ops.cond(tf.less(0, 1),
-                                          lambda: tf.add(x, 1),
-                                          lambda: tf.sub(x, 1))
+      b = lambda x: tf.cond(tf.less(0, 1), lambda: tf.add(x, 1),
+                            lambda: tf.sub(x, 1))
       r = control_flow_ops.While(c, b, [n])
 
       result = r.eval()
@@ -1097,7 +1092,7 @@ class ControlFlowTest(tf.test.TestCase):
       one = tf.convert_to_tensor(1, name="one")
       two = tf.convert_to_tensor(2, name="two")
       p = tf.greater_equal(c, 1)
-      i = control_flow_ops.cond(p, lambda: one, lambda: two)
+      i = tf.cond(p, lambda: one, lambda: two)
       self.assertTrue(isinstance(i, tf.Tensor))
 
       # True case: c = 2 is >= 1
@@ -1117,7 +1112,7 @@ class ControlFlowTest(tf.test.TestCase):
       def l1():
         return tf.reduce_sum(tf.abs(x))
 
-      i = control_flow_ops.cond(tf.equal(d, 2), l2, l1)
+      i = tf.cond(tf.equal(d, 2), l2, l1)
       self.assertEqual(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
 
@@ -1135,7 +1130,7 @@ class ControlFlowTest(tf.test.TestCase):
       def b():
         return tf.assign(v, two)
 
-      i = control_flow_ops.cond(p, a, b)
+      i = tf.cond(p, a, b)
       self.assertTrue(isinstance(i, tf.Tensor))
       tf.initialize_all_variables().run()
 
