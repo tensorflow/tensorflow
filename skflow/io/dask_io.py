@@ -23,22 +23,19 @@ def _add_to_index(df, start):
     """Make a new dask.dataframe where we add these values to the 
     index of each subdataframe. 
     """
-    if not isinstance(df, dd.DataFrame):
-        raise ValueError("df must be a dask.dataframe")
     df = df.copy()
     df.index = df.index + start
     return df
 
 def _get_divisions(df):
     """Number of rows in each sub-dataframe"""
-    if not isinstance(df, dd.DataFrame):
-        raise ValueError("df must be a dask.dataframe")
     lengths = df.map_partitions(len).compute()
     divisions = np.cumsum(lengths).tolist()
     divisions.insert(0, 0)
     return divisions
 
 def _construct_dask_df_with_divisions(df):
+    """Construct the new task graph and make a new dask.dataframe around it"""
     divisions = _get_divisions(df)
     name =  'csv-index' + df._name
     dsk = {(name, i): (_add_to_index, (df._name, i), divisions[i]) for i in range(df.npartitions)}
@@ -48,16 +45,16 @@ def _construct_dask_df_with_divisions(df):
 
 def extract_dask_data(data):
     """Extract data from dask.Series for predictors"""
-    if isinstance(data, dd.Series):
-        data.divisions = tuple(range(len(data.divisions)))
-    return data
+    if (not isinstance(data, dd.DataFrame)) or (not isinstance(data, dd.Series)):
+        raise ValueError("data must be a dask.dataframe or dask.series")
+    return _construct_dask_df_with_divisions(data)
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
     if isinstance(labels, dd.Series):
         if len(labels.columns) > 1:
             raise ValueError('Only one column for labels is allowed.')
-        labels.divisions = tuple(range(len(labels.divisions)))
+        return _construct_dask_df_with_divisions(labels)
     else:
         return labels
 
