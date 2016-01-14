@@ -19,6 +19,11 @@ try:
 except ImportError:
     HAS_DASK = False
 
+def add_to_index(df, start):
+    df = df.copy()
+    df.index = df.index + start
+    return df
+
 def extract_dask_data(data):
     """Extract data from dask.Series for predictors"""
     if isinstance(data, dd.Series):
