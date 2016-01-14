@@ -1049,9 +1049,9 @@ Reinterpret the bytes of a string as a vector of numbers.
 TensorFlow's [recommended format for training
 examples](../../how_tos/reading_data/index.md#standard-tensorflow-format)
 is serialized `Example` protocol buffers, [described
-here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto).
+here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
 They contain `Features`, [described
-here](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/feature.proto).
+here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 
 - - -
 
@@ -1148,7 +1148,7 @@ Alias for field number 0
 Parses `Example` protos into a `dict` of tensors.
 
 Parses a number of serialized [`Example`]
-(https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/example/example.proto)
+(https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
