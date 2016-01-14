@@ -184,7 +184,7 @@ class Seq2SeqModel(object):
       average perplexity, and the outputs.
 
     Raises:
-      ValueError: if length of enconder_inputs, decoder_inputs, or
+      ValueError: if length of encoder_inputs, decoder_inputs, or
         target_weights disagrees with bucket size for the specified bucket_id.
     """
     # Check if the sizes match.

@@ -65,7 +65,7 @@ w_out: output word embedding.
 examples: A vector of word ids.
 labels: A vector of word ids.
 vocab_count: Count of words in the vocabulary.
-num_negative_samples: Number of negative samples per exaple.
+num_negative_samples: Number of negative samples per example.
 )doc");
 
 }  // end namespace tensorflow
