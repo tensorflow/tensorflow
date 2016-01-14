@@ -80,7 +80,7 @@ $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tens
 
 You can now [test your installation](#test-the-tensorflow-installation).
 
-## Virtualenv installation 
+## Virtualenv installation
 
 [Virtualenv](http://docs.python-guide.org/en/latest/dev/virtualenvs/) is a tool
 to keep the dependencies required by different Python projects in separate
@@ -170,7 +170,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 (tensorflow)$ deactivate
 ```
 
-## Docker installation 
+## Docker installation
 
 [Docker](http://docker.com/) is a system to build self contained versions of a
 Linux operating system running on your machine.  When you install and run
@@ -290,7 +290,7 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 ...
 ```
 
-## Installing from sources 
+## Installing from sources
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
@@ -491,7 +491,7 @@ best install that too:
 $ sudo easy_install ipython
 ```
 
-#### Configure the installation 
+#### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter.
@@ -504,7 +504,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N]
 ```
 
-### Create the pip package and install 
+### Create the pip package and install
 
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
@@ -546,7 +546,30 @@ Validation error: 7.0%
 ...
 ```
 
-## Common Problems 
+## Setting up TensorFlow for Development
+
+If you're working on TensorFlow itself, it is useful to be able to test your
+changes in an interactive python shell without having to reinstall TensorFlow.
+
+To set up TensorFlow such that all files are linked (instead of copied) from the
+system directories, run the following commands inside the TensorFlow root
+directory:
+
+```bash
+bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+mkdir _python_build
+cd _python_build
+ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .
+ln -s ../tensorflow/tools/pip_package/* .
+python setup.py develop
+```
+
+Note that this setup still requires you to rebuild the
+`//tensorflow/tools/pip_package:build_pip_package` target every time you change
+a C++ file; add, delete, or move any python file; or if you change bazel build
+rules.
+
+## Common Problems
 
 ### GPU-related issues
 
