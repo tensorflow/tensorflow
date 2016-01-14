@@ -44,10 +44,11 @@ def _construct_dask_df_with_divisions(df):
     return dd.DataFrame(merge(dsk, df.dask), name, columns, divisions)
 
 def extract_dask_data(data):
-    """Extract data from dask.Series for predictors"""
-    if (not isinstance(data, dd.DataFrame)) or (not isinstance(data, dd.Series)):
-        raise ValueError("data must be a dask.dataframe or dask.series")
-    return _construct_dask_df_with_divisions(data)
+    """Extract data from dask.Series or dask.DataFrame for predictors"""
+    if isinstance(data, dd.DataFrame) or isinstance(data, dd.Series):
+        return _construct_dask_df_with_divisions(data)
+    else:
+        return data
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
