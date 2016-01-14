@@ -32,7 +32,7 @@ extern void DFS(const Graph& g, std::function<void(Node*)> enter,
 // Stores in *order the post-order numbering of all nodes
 // in graph found via a depth first search starting at the source node.
 //
-// Note that this is equivalent to topological sorting when the
+// Note that this is equivalent to reverse topological sorting when the
 // graph does not have cycles.
 //
 // REQUIRES: order is not NULL.

@@ -255,12 +255,8 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(params));
   op->Compute(sparse_context.get());

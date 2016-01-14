@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -443,12 +444,8 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> context(new OpKernelContext(params));
 
@@ -527,12 +524,8 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
 
@@ -635,12 +628,8 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
 
@@ -725,12 +714,8 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> maxpool_context(new OpKernelContext(params));
 
@@ -903,12 +888,8 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(params));
 
@@ -975,12 +956,8 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op.get();
-  params.output_alloc_attr = [&device, &op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host = (op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> softmax_context(new OpKernelContext(params));
 

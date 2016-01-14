@@ -52,6 +52,19 @@ namespace test {
 NodeDef Node(const string& name, const string& op,
              const std::vector<string>& inputs);
 
+inline void SetOutputAttrs(OpKernelContext::Params* params,
+                           std::vector<AllocatorAttributes>* attrs) {
+  attrs->clear();
+  for (int index = 0; index < params->op_kernel->num_outputs(); index++) {
+    AllocatorAttributes attr;
+    const bool on_host =
+        (params->op_kernel->output_memory_types()[index] == HOST_MEMORY);
+    attr.set_on_host(on_host);
+    attrs->push_back(attr);
+  }
+  params->output_attr_array = gtl::vector_as_array(attrs);
+}
+
 }  // namespace test
 
 // Helpful functions to test operators.
@@ -142,13 +155,8 @@ class OpsTestBase : public ::testing::Test {
     params.frame_iter = FrameAndIter(0, 0);
     params.inputs = &inputs_;
     params.op_kernel = kernel_.get();
-    params.output_alloc_attr = [this, &params](int index) {
-      AllocatorAttributes attr;
-      const bool on_host =
-          (kernel_->output_memory_types()[index] == HOST_MEMORY);
-      attr.set_on_host(on_host);
-      return attr;
-    };
+    std::vector<AllocatorAttributes> attrs;
+    test::SetOutputAttrs(&params, &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
