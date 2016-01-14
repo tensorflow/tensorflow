@@ -844,6 +844,7 @@ cc_library(
     copts = [
         "-mfpu=neon",
         "-std=c++11",
+        "-DMIN_LOG_LEVEL=0",
         "-O2",
     ],
     tags = [
