@@ -64,3 +64,55 @@ def _cholesky_grad_shape(op):
 @ops.RegisterGradient("GetDiag")
 def _get_diag_grad(op,grad ):
     return ( array_ops.diag(grad) )
+
+@ops.RegisterGradient("LogGamma")
+def _log_gamma_grad(op, grad):
+    """The gradients for `log_gamma`.
+    Args:
+    op: The `log_gamma` `Operation` that we are differentiating, which we can use
+      to find the inputs and outputs of the original op.
+    grad: Gradient with respect to the output of the `log_gamma` op.
+    
+    Returns:
+    Gradients with respect to the input of `log_gamma`.
+    """
+    return grad * digamma( op.inputs[0] )
+
+@ops.RegisterShape("LogGamma")
+def _log_gamma_shape(op):
+  """Shape function for the LogGamma op.
+  produces an output
+  with the same shape as its input.
+  """
+  return [op.inputs[0].get_shape()]
+
+@ops.RegisterGradient("Gamma")
+def _gamma_grad(op, grad):
+    """The gradients for `gamma`.
+    Args:
+    op: The `gamma` `Operation` that we are differentiating, which we can use
+      to find the inputs and outputs of the original op.
+    grad: Gradient with respect to the output of the `gamma` op.
+    
+    Returns:
+    Gradients with respect to the input of `gamma`.
+    """
+    #let f = log_gamma(x) , y = exp(f) , so that y = gamma(x)
+    #by chain rule dy/dx = dy/df * df/fx = exp(f) * digamma(x) = y * digamma(x).
+    return grad * digamma( op.inputs[0] ) * op.outputs[0]
+
+@ops.RegisterShape("Gamma")
+def _gamma_shape(op):
+  """Shape function for the Gamma op.
+  produces an output
+  with the same shape as its input.
+  """
+  return [op.inputs[0].get_shape()]
+  
+@ops.RegisterShape("Digamma")
+def _gamma_shape(op):
+  """Shape function for the Digamma op.
+  produces an output
+  with the same shape as its input.
+  """
+  return [op.inputs[0].get_shape()]
