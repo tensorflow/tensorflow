@@ -433,7 +433,12 @@ def split(split_dim, num_split, value, name="split"):
 
 @ops.RegisterShape("Reverse")
 def _ReverseShape(op):
-  return [op.inputs[0].get_shape().with_rank_at_most(8)]
+  dims_shape = op.inputs[1].get_shape().with_rank(1)
+  input_shape = op.inputs[0].get_shape().with_rank(dims_shape[0])
+  if input_shape.ndims is not None and input_shape.ndims > 8:
+    raise ValueError(
+        "tf.reverse() does not work on tensors with more than 8 dimensions")
+  return [input_shape]
 
 
 def transpose(a, perm=None, name="transpose"):
