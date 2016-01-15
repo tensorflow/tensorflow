@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A very simple MNIST classifer.
+"""A very simple MNIST classifier.
 
 See extensive documentation at
 http://tensorflow.org/tutorials/mnist/beginners/index.md
