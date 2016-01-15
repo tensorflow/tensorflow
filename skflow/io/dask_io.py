@@ -13,6 +13,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import numpy as np
+
+
 try:
     import dask.dataframe as dd
     HAS_DASK = True
@@ -20,8 +23,8 @@ except ImportError:
     HAS_DASK = False
 
 def _add_to_index(df, start):
-    """Make a new dask.dataframe where we add these values to the 
-    index of each subdataframe. 
+    """Make a new dask.dataframe where we add these values to the
+    index of each subdataframe.
     """
     df = df.copy()
     df.index = df.index + start
@@ -37,7 +40,7 @@ def _get_divisions(df):
 def _construct_dask_df_with_divisions(df):
     """Construct the new task graph and make a new dask.dataframe around it"""
     divisions = _get_divisions(df)
-    name =  'csv-index' + df._name
+    name = 'csv-index' + df._name
     dsk = {(name, i): (_add_to_index, (df._name, i), divisions[i]) for i in range(df.npartitions)}
     columns = df.columns
     from toolz import merge
