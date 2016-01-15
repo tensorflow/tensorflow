@@ -49,7 +49,7 @@ def main(_):
   sess = tf.InteractiveSession()
 
   # Create the model
-  x = tf.placeholder('float', [None, 784], name='x-input')
+  x = tf.placeholder(tf.float32, [None, 784], name='x-input')
   W = tf.Variable(tf.zeros([784, 10]), name='weights')
   b = tf.Variable(tf.zeros([10], name='bias'))
 
@@ -63,7 +63,7 @@ def main(_):
   _ = tf.histogram_summary('y', y)
 
   # Define loss and optimizer
-  y_ = tf.placeholder('float', [None, 10], name='y-input')
+  y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
   with tf.name_scope('xent'):
     cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
@@ -74,7 +74,7 @@ def main(_):
 
   with tf.name_scope('test'):
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, 'float'))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     _ = tf.scalar_summary('accuracy', accuracy)
 
   # Merge all the summaries and write them out to /tmp/mnist_logs

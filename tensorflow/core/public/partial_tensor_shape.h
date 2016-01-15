@@ -77,6 +77,10 @@ class PartialTensorShape {
   /// dimensions all either match or one is unknown.
   bool IsCompatibleWith(const PartialTensorShape& shape) const;
 
+  /// Return true iff the dimensions of `shape` are compatible with
+  /// `*this`.
+  bool IsCompatibleWith(const TensorShape& shape) const;
+
   /// \brief Returns the number of elements in dimension `d`.
   /// REQUIRES: `0 <= d < dims()`
   int64 dim_size(int d) const {

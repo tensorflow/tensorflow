@@ -94,6 +94,8 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    TensorShape* value);  // type: "shape"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
+                   PartialTensorShape* value);  // type: "shape"
+Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    Tensor* value);  // type: "tensor"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<string>* value);  // type "list(string)"
@@ -113,6 +115,9 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<TensorShapeProto>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<TensorShape>* value);  // type "list(shape)"
+Status GetNodeAttr(
+    const AttrSlice& attrs, const string& attr_name,
+    std::vector<PartialTensorShape>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 

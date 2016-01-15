@@ -125,6 +125,19 @@ TEST(PartialTensorShapeTest, PartialShapeCompatibleWith) {
   EXPECT_FALSE(c.IsCompatibleWith(f));
 }
 
+TEST(PartialTensorShapeTest, ShapeCompatibleWith) {
+  const PartialTensorShape a({-1, 0, 1});
+  TensorShape b({0, 1});
+  TensorShape c({0, 0, 1});
+  TensorShape d({1, 0, 1});
+  TensorShape e({1, 1, 1});
+
+  EXPECT_FALSE(a.IsCompatibleWith(b));
+  EXPECT_TRUE(a.IsCompatibleWith(c));
+  EXPECT_TRUE(a.IsCompatibleWith(d));
+  EXPECT_FALSE(a.IsCompatibleWith(e));
+}
+
 TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   const PartialTensorShape a({-1, 0, 1});
   const PartialTensorShape b({1, 0, 1});
