@@ -178,7 +178,8 @@ class DataFeeder(object):
         """
         return {
             'epoch': self.epoch,
-            'offset': self.offset
+            'offset': self.offset,
+            'batch_size': self.batch_size
         }
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
@@ -272,7 +273,7 @@ class StreamingDataFeeder(object):
         Returns:
             A dict with data feed params while training.
         """
-        return {}
+        return {'batch_size': self.batch_size}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -350,13 +351,14 @@ class DaskDataFeeder(object):
             self.random_state = np.random.RandomState(42)
         else:
             self.random_state = random_state
+        self.batch_size = batch_size
 
     def get_feed_params(self):
         """Function returns a dict with data feed params while training.
         Returns:
             A dict with data feed params while training.
         """
-        return {}
+        return {'batch_size': self.batch_size}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
