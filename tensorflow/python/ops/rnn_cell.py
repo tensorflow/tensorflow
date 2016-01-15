@@ -144,7 +144,7 @@ class GRUCell(RNNCell):
     """Gated recurrent unit (GRU) with nunits cells."""
     with vs.variable_scope(scope or type(self).__name__):  # "GRUCell"
       with vs.variable_scope("Gates"):  # Reset gate and update gate.
-        # We start with bias of 1.0 to not reset and not udpate.
+        # We start with bias of 1.0 to not reset and not update.
         r, u = array_ops.split(1, 2, linear([inputs, state],
                                             2 * self._num_units, True, 1.0))
         r, u = sigmoid(r), sigmoid(u)
@@ -211,7 +211,7 @@ def _get_sharded_variable(name, shape, initializer, dtype, num_shards):
 
 
 def _matmul_with_sharded_variable(tensor, sharded_tensor):
-  """Multiply tensor with each tensor in sharded_tensor and column-concat."""
+  """Multiply tensor with each tensor in sharded_tensor and column-concatenated"""
   return array_ops.concat(1, [math_ops.matmul(tensor, shard)
                               for shard in sharded_tensor])
 
@@ -364,7 +364,7 @@ class OutputProjectionWrapper(RNNCell):
 
   Note: in many cases it may be more efficient to not use this wrapper,
   but instead concatenate the whole sequence of your outputs in time,
-  do the projection on this batch-concated sequence, then split it
+  do the projection on this batch-concatenated sequence, then split it
   if needed or directly feed into a softmax.
   """
 
@@ -412,7 +412,7 @@ class InputProjectionWrapper(RNNCell):
 
   Note: in many cases it may be more efficient to not use this wrapper,
   but instead concatenate the whole sequence of your inputs in time,
-  do the projection on this batch-concated sequence, then split it.
+  do the projection on this batch-concatenated sequence, then split it.
   """
 
   def __init__(self, cell, input_size):
@@ -518,7 +518,7 @@ class EmbeddingWrapper(RNNCell):
 
   Note: in many cases it may be more efficient to not use this wrapper,
   but instead concatenate the whole sequence of your inputs in time,
-  do the embedding on this batch-concated sequence, then split it and
+  do the embedding on this batch-concatenated sequence, then split it and
   feed into your RNN.
   """
 

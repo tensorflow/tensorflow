@@ -44,7 +44,8 @@ class BaseGPUDevice : public LocalDevice {
   BaseGPUDevice(const SessionOptions& options, const string& name,
                 Bytes memory_limit, BusAdjacency bus_adjacency, int gpu_id,
                 const string& physical_device_desc, Allocator* gpu_allocator,
-                Allocator* cpu_allocator);
+                Allocator* cpu_allocator, bool sync_every_op,
+                int32 max_streams);
 
   ~BaseGPUDevice() override;
 
@@ -81,6 +82,7 @@ class BaseGPUDevice : public LocalDevice {
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;
   int gpu_id_ = -1;
+  const bool sync_every_op_ = false;
   std::unique_ptr<EventMgr> em_;
 
   const PerOpGpuDevice* NewDevice(int stream_id, Allocator* allocator);

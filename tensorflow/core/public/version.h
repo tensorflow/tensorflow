@@ -36,9 +36,24 @@ limitations under the License.
 
 // TODO(josh11b): Public API functions for exporting the above.
 
-// Supported GraphDef versions (see graph.proto).
+// Supported GraphDef compatibility versions (the version field in graph.proto).
+// Newly created graphs use TF_GRAPH_DEF_VERSION, but all versions from
+// TF_GRAPH_DEF_VERSION_MIN to TF_GRAPH_DEF_VERSION_MAX are supported, with
+// different semantics depending on the version.
+//
+// Version history:
+//
+// 0. Graphs created before GraphDef versioning
+// 1. First real version (2dec2015)
+// 2. adjust_contrast only takes float, doesn't perform clamping (11dec2015)
+// 3. Remove TileGrad, since it was equivalent to reduce_sum (30dec2015)
+// 4. When support for this version is removed, we can safely make AttrValue
+//    parsing more strict with respect to empty list values (see
+//    111635679, 7jan2016).
+// 5. Graphs are wholly-validated during Session::Create() (7jan2016).
+// 6. TensorFlow is scalar strict within Google (current on or after 1feb2016).
 #define TF_GRAPH_DEF_VERSION_MIN 0
-#define TF_GRAPH_DEF_VERSION_MAX 5
-#define TF_GRAPH_DEF_VERSION TF_GRAPH_DEF_VERSION_MAX
+#define TF_GRAPH_DEF_VERSION_MAX 6
+#define TF_GRAPH_DEF_VERSION 5
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_

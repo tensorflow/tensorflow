@@ -96,6 +96,10 @@ class InitializableLookupTable : public LookupInterface {
     TF_DISALLOW_COPY_AND_ASSIGN(InitTableIterator);
   };
 
+  InitializableLookupTable* GetInitializableLookupTable() override {
+    return this;
+  }
+
  protected:
   // Prepares and allocates the underlying data structure to store the given
   // number of expected elements.

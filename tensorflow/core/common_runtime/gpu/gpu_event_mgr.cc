@@ -34,13 +34,11 @@ EventMgr::EventMgr(gpu::StreamExecutor* se, const GPUOptions& gpu_options)
       // threadpool_ has 1 thread for the polling loop, and one to execute
       // event callback functions. Maybe we should have more?
       threadpool_(Env::Default(), "GPU_Event_Manager", 2) {
-  threadpool_.Schedule([this]() { PollLoop(); });
+  StartPollingLoop();
 }
 
 EventMgr::~EventMgr() {
-  stop_polling_.Notify();
-  // Shut down the backup polling loop.
-  polling_stopped_.WaitForNotification();
+  StopPollingLoop();
 
   // Events are owned by this object.
   for (auto& e : free_events_) {
@@ -53,12 +51,33 @@ EventMgr::~EventMgr() {
   while (!used_events_.empty()) {
     InUse* ue = &used_events_[0];
     delete ue->event;
-    delete ue->mem;
+    if (ue->mem != nullptr) {
+      for (auto& t : *(ue->mem)) {
+        t.Unref();
+      }
+      delete ue->mem;
+    }
     if (ue->bufrec.buf) {
       ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
     }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);
     used_events_.pop_front();
+  }
+}
+
+void EventMgr::StartPollingLoop() {
+  CHECK(polling_stopped_.get() == nullptr);
+  stop_polling_.reset(new Notification);
+  polling_stopped_.reset(new Notification);
+  threadpool_.Schedule([this]() { PollLoop(); });
+}
+
+void EventMgr::StopPollingLoop() {
+  if (stop_polling_.get()) {
+    stop_polling_->Notify();
+    polling_stopped_->WaitForNotification();
+    stop_polling_.reset(nullptr);
+    polling_stopped_.reset(nullptr);
   }
 }
 
@@ -91,23 +110,32 @@ void EventMgr::FlushAccumulatedTensors() {
   accumulated_stream_ = nullptr;
 }
 
-// This polling loop runs at a relatively low frequency. Most calls to
-// PollEvents() should come directly from Compute() via
-// ThenDeleteTensors().  This function's purpose is to ensure that
-// even if no more GPU operations are being requested, we still
-// eventually clear the queue. It seems to prevent some tensorflow
-// programs from stalling for reasons not yet understood.
+// A polling loop to detect completion of GPU events.  There's a
+// tradeoff between achieving low latency detection, which argues for
+// little delay between calls, and minimizing CPU use and lock
+// contention, which argue for longer delay.  The current strategy is
+// to poll frequently when the queue is non-empty, and infrequently
+// otherwise.
 void EventMgr::PollLoop() {
-  while (!stop_polling_.HasBeenNotified()) {
-    Env::Default()->SleepForMicroseconds(1 * 1000);
+  const int32 kPollingDelayUsecs = 10;
+  const int32 kPollingSuspendMsecs = 1;
+  bool queue_empty = false;
+  while (!stop_polling_->HasBeenNotified()) {
+    if (queue_empty) {
+      mutex_lock l(mu_);
+      WaitForMilliseconds(&l, &events_pending_, kPollingSuspendMsecs);
+    } else {
+      Env::Default()->SleepForMicroseconds(kPollingDelayUsecs);
+    }
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
       PollEvents(true, &to_free);
+      queue_empty = used_events_.empty();
     }
     FreeMemory(to_free);
   }
-  polling_stopped_.Notify();
+  polling_stopped_->Notify();
 }
 
 void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
@@ -123,7 +151,10 @@ void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
   free_events_.pop_back();
   stream->ThenRecordEvent(e);
   iu.event = e;
+  bool was_empty = used_events_.empty();
   used_events_.push_back(iu);
+  // Maybe wake up the polling thread
+  if (was_empty) events_pending_.notify_all();
 }
 
 // This function must be called periodically to check whether pending

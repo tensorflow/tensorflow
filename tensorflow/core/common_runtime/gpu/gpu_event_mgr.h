@@ -91,6 +91,7 @@ class EventMgr {
   perftools::gputools::StreamExecutor* const exec_;
   const int64 deferred_bytes_threshold_;
   mutex mu_;
+  condition_variable events_pending_ GUARDED_BY(mu_);
 
   void FlushAccumulatedTensors() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -151,6 +152,10 @@ class EventMgr {
   // straggler Events.
   void PollLoop();
 
+  // Setup/Teardown functions for the polling loop.
+  void StartPollingLoop();
+  void StopPollingLoop();
+
   // A stack of unused events
   std::vector<perftools::gputools::Event*> free_events_ GUARDED_BY(mu_);
 
@@ -163,8 +168,8 @@ class EventMgr {
   // A FIFO queue of InUse events and associated tensors.
   std::deque<InUse> used_events_ GUARDED_BY(mu_);
 
-  Notification stop_polling_;
-  Notification polling_stopped_;
+  std::unique_ptr<Notification> stop_polling_;
+  std::unique_ptr<Notification> polling_stopped_;
 
   // The main PollLoop for the event manager runs in this threadpool.
   thread::ThreadPool threadpool_;

@@ -10,6 +10,11 @@
 * The image processing ops do not take `min` and `max` inputs any more, casting
   safety is handled by `saturate_cast`, which makes sure over- and underflows
   are handled before casting to data types with smaller ranges.
+* For C++ API users: `IsLegacyScalar` and `IsLegacyVector` are now gone from
+  `TensorShapeUtils` since TensorFlow is scalar strict within Google (for
+  example, the shape argument to `tf.reshape` can't be a scalar anymore).  The
+  open source release was already scalar strict, so outside Google `IsScalar`
+  and `IsVector` are exact replacements.
 
 ## Bug fixes
 
@@ -18,6 +23,7 @@
   graphs will change, but the change is both forwards and backwards compatible.
   It will break tests that compare a generated `GraphDef` to a golden serialized
   `GraphDef`.
+
 
 # Release 0.6.0
 

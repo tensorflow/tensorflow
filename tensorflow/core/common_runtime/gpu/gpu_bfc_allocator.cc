@@ -110,7 +110,23 @@ void* GPUBFCAllocator::AllocateRaw(
   if (allocation_attr.no_retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
-    return AllocateRawInternal(unused_alignment, num_bytes, true);
+    void* result = AllocateRawInternal(unused_alignment, num_bytes, false);
+    if (result == nullptr) {
+      // The counter incrementing is not thread-safe. But we don't really care.
+      // TODO(zhengxq): we should implement a LOG_FIRST_N and LOG_EVERY_N for
+      // more general usage.
+      static int log_counter = 0;
+      if (log_counter < 10) {
+        log_counter++;
+        LOG(WARNING)
+            << "Ran out of memory trying to allocate "
+            << strings::HumanReadableNumBytes(num_bytes)
+            << ". The caller indicates that this is not a failure, but"
+            << " may mean that there could be performance gains if more"
+            << " memory is available.";
+      }
+    }
+    return result;
   } else {
     return AllocateRaw(unused_alignment, num_bytes);
   }

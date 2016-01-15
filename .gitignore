@@ -1,5 +1,6 @@
 node_modules
 /bazel-bin
+/bazel-ci_build-cache
 /bazel-genfiles
 /bazel-out
 /bazel-tensorflow

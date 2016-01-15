@@ -468,6 +468,7 @@ REGISTER_OP_GRADIENT("Mean", MeanGrad);
 // REGISTER_OP_GRADIENT("SegmentMean", SegmentMeanGrad);
 // REGISTER_OP_GRADIENT("SparseSegmentSum", SparseSegmentSumGrad);
 // REGISTER_OP_GRADIENT("SparseSegmentMean", SparseSegmentMeanGrad);
+// REGISTER_OP_GRADIENT("SparseSegmentSqrtN", SparseSegmentSqrtNGrad);
 // REGISTER_OP_GRADIENT("SegmentMin", SegmentMinGrad);
 // REGISTER_OP_GRADIENT("SegmentMax", SegmentMaxGrad);
 // REGISTER_OP_GRADIENT("UnsortedSegmentSum", UnsortedSegmentSumGrad);

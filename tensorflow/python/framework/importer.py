@@ -22,7 +22,6 @@ import contextlib
 
 import tensorflow.python.platform
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -148,7 +147,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   """Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 
   This function provides a way to import a serialized TensorFlow
-  [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+  [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
   [`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
   [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
@@ -230,11 +229,10 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       op_def = op_dict[node.op]
       for attr_def in op_def.attr:
         key = attr_def.name
-        value = node.attr[key]
-        if attr_def.HasField('default_value') and value is None:
-          attr_value = attr_value_pb2.AttrValue()
-          attr_value.CopyFrom(attr_def.default_value)
-          node.attr[key] = attr_value
+        if attr_def.HasField('default_value'):
+          value = node.attr[key]
+          if value is None or value.WhichOneof('value') is None:
+            node.attr[key].CopyFrom(attr_def.default_value)
 
       output_types = _OutputTypes(node, op_dict)
       with _MaybeDevice(node.device):

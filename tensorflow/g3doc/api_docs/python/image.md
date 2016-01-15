@@ -803,10 +803,11 @@ casting.
 
 Note that converting from floating point inputs to integer types may lead to
 over/underflow problems. Set saturate to `True` to avoid such problem in
-problematic conversions. Saturation will clip the output into the allowed
-range before performing a potentially dangerous cast (i.e. when casting from
-a floating point to an integer type, or when casting from an signed to an
-unsigned type).
+problematic conversions. If enabled, saturation will clip the output into the
+allowed range before performing a potentially dangerous cast (and only before
+performing such a cast, i.e., when casting from a floating point to an integer
+type, and when casting from a signed to an unsigned type; `saturate` has no
+effect on casts between floats, or on casts that increase the type's range).
 
 ##### Args:
 

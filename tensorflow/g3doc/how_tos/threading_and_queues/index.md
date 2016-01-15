@@ -85,7 +85,7 @@ def MyLoop(coord):
 coord = Coordinator()
 
 # Create 10 threads that run 'MyLoop()'
-threads = [threading.Thread(target=MyLoop, args=(coord)) for i in xrange(10)]
+threads = [threading.Thread(target=MyLoop, args=(coord,)) for i in xrange(10)]
 
 # Start the threads and wait for all of them to stop.
 for t in threads: t.start()

@@ -156,6 +156,15 @@ class Coordinator(object):
             self._exc_info_to_raise = sys.exc_info()
         self._stop_event.set()
 
+  def clear_stop(self):
+    """Clears the stop flag.
+
+    After this is called, calls to `should_stop()` will return `False`.
+    """
+    with self._lock:
+      if self._stop_event.is_set():
+        self._stop_event.clear()
+
   def should_stop(self):
     """Check if stop was requested.
 

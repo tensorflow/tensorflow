@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_H_
 #define TENSORFLOW_PLATFORM_TEST_H_
 
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace testing {
 

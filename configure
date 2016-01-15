@@ -64,12 +64,12 @@ while true; do
   # Retry
 done
 
-# Find out where the CUDNN library is installed
+# Find out where the cuDNN library is installed
 while true; do
   fromuser=""
   if [ -z "$CUDNN_INSTALL_PATH" ]; then
     default_cudnn_path=${CUDA_TOOLKIT_PATH}
-    read -p "Please specify the location where CUDNN 6.5 V2 library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
+    read -p "Please specify the location where cuDNN v2 library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
     fromuser="1"
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
@@ -81,7 +81,7 @@ while true; do
   if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.6.5" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5" ]; then
     break
   fi
-  echo "Invalid path to CUDNN 6.5 V2 toolkit. Neither of the following two files can be found:"
+  echo "Invalid path to cuDNN v2 toolkit. Neither of the following two files can be found:"
   echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5"
   echo "$CUDNN_INSTALL_PATH/libcudnn.so.6.5"
   if [ -z "$fromuser" ]; then
@@ -96,7 +96,7 @@ cat > third_party/gpus/cuda/cuda.config <<EOF
 # at the moment.
 CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 
-# CUDNN_INSTALL_PATH refers to the CUDNN toolkit. The cudnn header and library
+# CUDNN_INSTALL_PATH refers to the cuDNN toolkit. The cuDNN header and library
 # files can be either in this directory, or under include/ and lib64/
 # directories separately.
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"

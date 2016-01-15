@@ -321,6 +321,11 @@ class ZerosLikeTest(tf.test.TestCase):
       self.assertTrue(np.array_equal(z_value, np.array([[0] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
 
+  def testZerosLikePartialShape(self):
+    d = tf.placeholder(tf.float32, shape=[None, 4, None])
+    z = tf.zeros_like(d)
+    self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
+
   def testGenZerosLike(self):
     for dtype in [tf.float32, tf.float64, tf.int32,
                   tf.uint8, tf.int16, tf.int8,
@@ -405,6 +410,11 @@ class OnesLikeTest(tf.test.TestCase):
       # Test that the value is correct
       self.assertTrue(np.array_equal(z_value, np.array([[1] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
+
+  def testOnesLikePartialShape(self):
+    d = tf.placeholder(tf.float32, shape=[None, 4, None])
+    z = tf.zeros_like(d)
+    self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
 
   def testGenOnesLike(self):
     for dtype in [tf.float32, tf.float64, tf.int32,
@@ -491,6 +501,15 @@ class FillTest(tf.test.TestCase):
     f = tf.fill(
         tf.placeholder(tf.int32, shape=(4,)), 3.0)
     self.assertEqual([None, None, None, None], f.get_shape().as_list())
+
+  def testGradient(self):
+    with self.test_session():
+      in_v = tf.constant(5.0)
+      out_shape = [3, 2]
+      out_filled = tf.fill(out_shape, in_v)
+      err = tf.test.compute_gradient_error(in_v, [],
+                                           out_filled, out_shape)
+    self.assertLess(err, 1e-3)
 
 
 class PlaceholderTest(tf.test.TestCase):

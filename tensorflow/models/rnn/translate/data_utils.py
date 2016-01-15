@@ -255,7 +255,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
       (3) path to the token-ids for English development data-set,
       (4) path to the token-ids for French development data-set,
       (5) path to the English vocabulary file,
-      (6) path to the French vocabluary file.
+      (6) path to the French vocabulary file.
   """
   # Get wmt data to the specified directory.
   train_path = get_wmt_enfr_train_set(data_dir)

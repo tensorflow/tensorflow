@@ -49,7 +49,7 @@ static string RandomSkewedString(int i, random::SimplePhilox* rnd) {
   return BigString(NumberString(i), rnd->Skewed(17));
 }
 
-class RecordioTest : public testing::Test {
+class RecordioTest : public ::testing::Test {
  private:
   class StringDest : public WritableFile {
    public:

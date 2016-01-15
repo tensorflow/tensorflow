@@ -52,6 +52,13 @@ class SessionInterface(object):
     """Runs operations in the session. See `Session.run()` for details."""
     raise NotImplementedError('Run')
 
+def _get_indexed_slices_value_from_fetches(fetched_vals):
+  return ops.IndexedSlicesValue(fetched_vals[0], fetched_vals[1], fetched_vals[2] if len(fetched_vals) == 3 else None)
+
+def _get_feeds_for_indexed_slices(feed, feed_val):
+  return list(zip(
+    [feed.values, feed.indices] if feed.dense_shape is None
+    else [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 class BaseSession(SessionInterface):
   """A class for interacting with a TensorFlow computation.
@@ -221,6 +228,14 @@ class BaseSession(SessionInterface):
            lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
        lambda feed, feed_val: list(zip(
            [feed.indices, feed.values, feed.shape], feed_val))),
+      # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
+      # IndexedSlicesValues or normal tuples.
+      (ops.IndexedSlices,
+       lambda fetch: (
+           [fetch.values, fetch.indices] if fetch.dense_shape is None
+           else [fetch.values, fetch.indices, fetch.dense_shape],
+           _get_indexed_slices_value_from_fetches),
+           _get_feeds_for_indexed_slices),
       # The default catches all types and performs no expansions.
       (object,
        lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
@@ -350,10 +365,7 @@ class BaseSession(SessionInterface):
             subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
                                                     allow_operation=False)
           except Exception as e:
-            e.message = ('Cannot interpret feed_dict key as Tensor: '
-                         + e.message)
-            e.args = (e.message,)
-            raise e
+            raise e('Cannot interpret feed_dict key as Tensor: ' + e.args[0])
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
@@ -491,7 +503,7 @@ class Session(BaseSession):
   ```
 
   The [`ConfigProto`]
-  (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+  (https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -530,7 +542,7 @@ class Session(BaseSession):
         Defaults to using an in-process engine. At present, no value
         other than the empty string is supported.
       graph: (Optional.) The `Graph` to be launched (described above).
-      config: (Optional.) A [`ConfigProto`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+      config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
         protocol buffer with configuration options for the session.
 
     """

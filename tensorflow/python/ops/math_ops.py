@@ -135,6 +135,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 
 @@sparse_segment_sum
 @@sparse_segment_mean
+@@sparse_segment_sqrt_n
 
 
 ## Sequence Comparison and Indexing
@@ -543,6 +544,7 @@ _OverrideBinaryOperatorHelper(div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 _OverrideBinaryOperatorHelper(mod, "mod")
+_OverrideBinaryOperatorHelper(pow, "pow")
 
 
 def logical_xor(x, y, name="LogicalXor"):
@@ -1053,7 +1055,7 @@ def _BatchMatMulShape(op):
   adj_a = op.get_attr("adj_x")
   b_shape = op.inputs[1].get_shape()
   adj_b = op.get_attr("adj_y")
-  if not a_shape.is_fully_defined() or not b_shape.is_fully_defined():
+  if a_shape.dims is None and b_shape.dims is None:
     return [tensor_shape.unknown_shape()]
   batch_dims = a_shape[:-2].merge_with(b_shape[:-2])
   output_rows = a_shape[-1] if adj_a else a_shape[-2]
@@ -1342,6 +1344,7 @@ def _SegmentReductionShape(op):
 
 
 @ops.RegisterShape("SparseSegmentMean")
+@ops.RegisterShape("SparseSegmentSqrtN")
 @ops.RegisterShape("SparseSegmentSum")
 def _SparseSegmentReductionShape(op):
   """Common shape function for sparse segment reduction ops."""
@@ -1355,8 +1358,10 @@ def _SparseSegmentReductionShape(op):
 
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
-def _SparseSegmentMeanGradShape(op):
-  """Shape function for the SparseSegmentMeanGrad op."""
+@ops.RegisterShape("SparseSegmentSqrtNGrad")
+# pylint: disable=invalid-name
+def _SparseSegmentReductionGradShape(op):
+  """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
   input_shape = op.inputs[0].get_shape()
   indices_shape = op.inputs[1].get_shape().with_rank(1)
   unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
@@ -1368,6 +1373,7 @@ def _SparseSegmentMeanGradShape(op):
   else:
     dim0 = None
   return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
+# pylint: enable=invalid-name
 
 
 @ops.RegisterShape("UnsortedSegmentSum")

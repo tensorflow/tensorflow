@@ -429,7 +429,7 @@ function dagreLayout(
   });
 
   // Shift all nodes and edge points to account for the left-padding amount,
-  // and the invisble bridge nodes.
+  // and the invisible bridge nodes.
   _.each(graph.nodes(), nodeName => {
     let nodeInfo = graph.node(nodeName);
     nodeInfo.x -= minX;

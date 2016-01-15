@@ -192,6 +192,8 @@ class Tensor(object):
       "__xor__",
       "__rxor__",
       "__getitem__",
+      "__pow__",
+      "__rpow__",
       # Unary.
       "__invert__",
       "__neg__",
@@ -781,6 +783,8 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
+IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
+                                            ["values", "indices", "dense_shape"])
 
 class SparseTensor(object):
   """Represents a sparse tensor.
@@ -1297,7 +1301,7 @@ class Operation(object):
 
     Returns:
       A
-      [`NodeDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
       protocol buffer.
     """
     return self._node_def
@@ -1308,7 +1312,7 @@ class Operation(object):
 
     Returns:
       An
-      [`OpDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def.proto)
+      [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
       protocol buffer.
     """
     return self._op_def
@@ -1683,7 +1687,7 @@ class Graph(object):
     """The GraphDef version of this graph.
 
     For details on the meaning of each version, see [`GraphDef`]
-    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto).
+    (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
     """
     return self._graph_def_version
 
@@ -1755,7 +1759,7 @@ class Graph(object):
         its `version` property had the given value.
 
     Returns:
-      A [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
       protocol buffer.
 
     Raises:
@@ -1783,7 +1787,7 @@ class Graph(object):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
-    (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
+    (https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
     protocol buffer.
 
     After the function has been added, you can call to the function by

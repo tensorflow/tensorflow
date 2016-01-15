@@ -50,12 +50,12 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_STRING
       }
     }
   }
   summary: "Returns x + y element-wise."
   description: "*NOTE*: Add supports broadcasting. AddN does not."
-  is_commutative: true
 }
 op {
   name: "AddN"
@@ -2400,6 +2400,9 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -2915,6 +2918,9 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -2943,6 +2949,9 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -3037,7 +3046,7 @@ op {
     }
   }
   summary: "Outputs a `Summary` protocol buffer with a histogram."
-  description: "The generated\n[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
+  description: "The generated\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
 }
 op {
   name: "IFFT2D"
@@ -3571,6 +3580,9 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -3599,6 +3611,9 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
       }
     }
   }
@@ -4385,7 +4400,7 @@ op {
     minimum: 1
   }
   summary: "Merges summaries."
-  description: "This op creates a\n[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)\nprotocol buffer that contains the union of all the values in the input\nsummaries.\n\nWhen the Op is run, it reports an `InvalidArgument` error if multiple values\nin the summaries to merge use the same tag."
+  description: "This op creates a\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nprotocol buffer that contains the union of all the values in the input\nsummaries.\n\nWhen the Op is run, it reports an `InvalidArgument` error if multiple values\nin the summaries to merge use the same tag."
 }
 op {
   name: "Min"
@@ -4633,6 +4648,9 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -6442,7 +6460,7 @@ op {
   }
   input_arg {
     name: "seq_lengths"
-    description: "1-D with length `input.dims(0)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
+    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
     type: DT_INT64
   }
   output_arg {
@@ -7895,6 +7913,79 @@ op {
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
 op {
+  name: "SparseSegmentSqrtN"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A 1-D tensor. Has same rank as `segment_ids`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "A 1-D tensor. Values should be sorted and can be repeated."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
+  description: "N is the size of the segment being reduced.\n\nRead [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments."
+}
+op {
+  name: "SparseSegmentSqrtNGrad"
+  input_arg {
+    name: "grad"
+    description: "gradient propagated to the SparseSegmentSqrtN op."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "indices passed to the corresponding SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "segment_ids passed to the corresponding SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_dim0"
+    description: "dimension 0 of \"data\" passed to SparseSegmentSqrtN op."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for SparseSegmentSqrtN."
+  description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
+}
+op {
   name: "SparseSegmentSum"
   input_arg {
     name: "data"
@@ -8669,7 +8760,7 @@ op {
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row, sorted in descending order."
+    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
     type_attr: "T"
   }
   output_arg {
@@ -8683,6 +8774,14 @@ op {
     description: "Number of top elements to look for within each row."
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
   }
   attr {
     name: "T"

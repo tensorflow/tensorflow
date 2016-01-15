@@ -41,7 +41,7 @@ void ResourceMgr::Clear() {
   containers_.clear();
 }
 
-Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                              const string& name, ResourceBase* resource) {
   {
     mutex_lock l(mu_);
@@ -58,7 +58,7 @@ Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
                                type.name());
 }
 
-Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
   mutex_lock l(mu_);
@@ -76,7 +76,7 @@ Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
   return Status::OK();
 }
 
-Status ResourceMgr::DoDelete(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
                              const string& name) {
   ResourceBase* base = nullptr;
   {

@@ -24,6 +24,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import common_shapes
@@ -56,7 +58,14 @@ class FuncRegistry(object):
     func = self._funcs[token]
     if func is None:
       raise ValueError("callback %s is not found" % token)
-    return func(*args)
+    ret = func(*args)
+    # Ensures that we return either a single np array or or a list of
+    # np array.
+    if isinstance(ret, list):
+      ret = [np.array(x) for x in ret]
+    else:
+      ret = np.array(ret)
+    return ret
 
   def size(self):
     """Returns how many functions are currently registered."""

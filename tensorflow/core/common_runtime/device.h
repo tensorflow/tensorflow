@@ -93,6 +93,21 @@ class Device : public DeviceBase {
   // at completion.
   virtual Status Sync() = 0;
 
+  // Optionally modify the device's GraphDef before execution.
+  //
+  // This method should be considered experimental and is supplied to enable
+  // prototyping of TensorFlow device implementations that need to modify
+  // the GraphDef before execution.
+  //
+  // 'library' provides access to the function library which is shared
+  // between all device partitions.
+  // 'graphdef' supplies the partition of the graph assigned to this
+  // device.
+  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
+                                   GraphDef* /*graphdef*/) {
+    return Status::OK();
+  }
+
   // Fill in the context map for the graph. Default behavior is to do
   // nothing.
   //

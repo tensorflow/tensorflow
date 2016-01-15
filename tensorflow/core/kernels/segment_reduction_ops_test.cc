@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/tensor.h"
@@ -72,13 +73,8 @@ static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &reduction_inputs;
   params.op_kernel = reduction_op.get();
-  params.output_alloc_attr = [&device, &reduction_op, &params](int index) {
-    AllocatorAttributes attr;
-    const bool on_host =
-        (reduction_op->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    return attr;
-  };
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> reduction_context(
       new OpKernelContext(params));

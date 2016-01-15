@@ -29,7 +29,7 @@ class Status {
  public:
   /// Create a success status.
   Status() : state_(NULL) {}
-  ~Status();
+  ~Status() { delete state_; }
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.

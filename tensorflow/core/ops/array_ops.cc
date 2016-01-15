@@ -603,7 +603,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 ```
 
 input: The input to reverse.
-seq_lengths: 1-D with length `input.dims(0)` and
+seq_lengths: 1-D with length `input.dims(batch_dim)` and
   `max(seq_lengths) < input.dims(seq_dim)`
 seq_dim: The dimension which is partially reversed.
 batch_dim: The dimension along which reversal is performed.

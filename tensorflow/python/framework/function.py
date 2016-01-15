@@ -102,7 +102,7 @@ def _add_op_node(op, func):
   out_index = 0
   for arg_def in op_def.output_arg:
     if arg_def.number_attr:
-      dtype = attrs[arg_def.type_attr].type
+      dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
       node.ret.append(_add_output_array_to_list(op, out_index, out_index + num,
                                                 dtype, func))
@@ -119,7 +119,7 @@ def _add_op_node(op, func):
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
-      dtype = attrs[arg_def.type_attr].type
+      dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
       node.arg.append(_add_input_list_to_array(op, inp_index, inp_index + num,
                                                dtype, func))
@@ -144,7 +144,7 @@ def graph_to_function_def(graph, name, inputs, outputs):
   """Returns `graph` as a `FunctionDef` protocol buffer.
 
   This method creates a [`FunctionDef`](
-  https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
+  https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
   protocol buffer that contains all the ops present in the graph.  The
   graph effectively becomes the body of the function.
 
@@ -189,7 +189,7 @@ def call_function(func_def, *inputs, **kwargs):
 
   `func_def` is a
   [`FunctionDef`](
-  https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/function.proto)
+  https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
   protcol buffer describing a
   TensorFlow function.  See [`define_function()`](#define_function) for an
   easy way to create one from a Python function.

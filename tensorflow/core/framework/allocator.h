@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
 
@@ -66,9 +68,11 @@ class Allocator {
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
 
-  // Convenience functions to do typed allocation.  Note that these functions
-  // do not invoke C++ constructors or destructors.  May return NULL if the
-  // tensor has too many elements to represent in a single allocation.
+  // Convenience functions to do typed allocation.  C++ constructors
+  // and destructors are invoked for complex types if necessary,
+  // depending on the concrete Allocator implementation. May return
+  // NULL if the tensor has too many elements to represent in a single
+  // allocation.
   template <typename T>
   T* Allocate(size_t num_elements) {
     return Allocate<T>(num_elements, AllocationAttributes());
@@ -86,12 +90,17 @@ class Allocator {
 
     void* p = AllocateRaw(32 /* align to 32 byte boundary */,
                           sizeof(T) * num_elements, allocation_attr);
-    return reinterpret_cast<T*>(p);
+    T* typed_p = reinterpret_cast<T*>(p);
+    if (typed_p) RunCtor<T>(typed_p, num_elements);
+    return typed_p;
   }
 
   template <typename T>
-  void Deallocate(T* ptr) {
-    DeallocateRaw(ptr);
+  void Deallocate(T* ptr, size_t num_elements) {
+    if (ptr) {
+      RunDtor<T>(ptr, num_elements);
+      DeallocateRaw(ptr);
+    }
   }
 
   // Returns true if this allocator tracks the sizes of allocations.
@@ -122,10 +131,62 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
 
+  // is_simple<T>::value if T[] can be safely constructed and destructed
+  // without running T() and ~T().  We do not use std::is_trivial<T>
+  // directly because std::complex<float> is not trival but its array
+  // can be constructed and destructed without running its default ctor
+  // and dtor.
+  template <typename T>
+  struct is_simple {
+    static const bool value = std::is_trivial<T>::value ||
+                              std::is_same<T, complex64>::value ||
+                              is_quantized<T>::value;
+  };
+
+ private:
+  // No constructors or destructors are run for simple types
+  template <typename T>
+  void RunCtor(T* p, size_t n) {
+    static_assert(is_simple<T>::value, "T is not a simple type.");
+  }
+
+  template <typename T>
+  void RunDtor(T* p, size_t n) {}
+
+  // custom constructors and destructors that can be overridden for
+  // non-standard allocators
+
+  // Runs string's default constructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunStringCtor(string* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) string();
+  }
+
+  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunStringDtor(string* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~string();
+  }
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
 };
+
+template <>
+struct Allocator::is_simple<bfloat16> {
+  static const bool value = true;
+};
+
+// Allocator-specific constructors and destructors are used for
+// strings
+template <>
+inline void Allocator::RunCtor(string* p, size_t n) {
+  RunStringCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(string* p, size_t n) {
+  RunStringDtor(p, n);
+}
 
 // A tensorflow Op may need access to different kinds of memory that
 // are not simply a function of the device to which the Op has been

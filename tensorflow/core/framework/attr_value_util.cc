@@ -54,7 +54,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kType:
       return DataType_Name(attr_value.type());
     case AttrValue::kShape:
-      return TensorShape::ShortDebugString(attr_value.shape());
+      return PartialTensorShape::DebugString(attr_value.shape());
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
@@ -97,6 +97,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
                              SummarizeTensor(attr_value.list().tensor(i)));
         }
       }
+
       strings::StrAppend(&ret, "]");
       return ret;
     }
@@ -165,10 +166,12 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
         "AttrValue had value with unexpected type 'placeholder");
   }
 
-  // If the attr type is 'list', we expect attr_value.has_list() to be true.
-  // However, proto3's attr_value.has_list() can be false when set to an empty
-  // list. So we simply check if has_list is false and some other field in
-  // attr_value is set to flag the error.
+  // If the attr type is 'list', we expect attr_value.has_list() to be
+  // true.  However, proto3's attr_value.has_list() can be false when
+  // set to an empty list for GraphDef versions <= 4. So we simply
+  // check if has_list is false and some other field in attr_value is
+  // set to flag the error.  This test can be made more strict once
+  // support for GraphDef versions <= 4 is dropped.
   if (StringPiece(type).starts_with("list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
@@ -300,7 +303,19 @@ void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
 }
 
+void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
+  value.AsProto(out->mutable_shape());
+}
+
 void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(const gtl::ArraySlice<PartialTensorShape> value,
+                  AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());

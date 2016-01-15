@@ -551,7 +551,6 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   LocalExecutorParams params;
   params.device = device_;
   params.function_library = this;
-  params.has_control_flow = false;
   params.create_kernel = create_kernel_;
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);

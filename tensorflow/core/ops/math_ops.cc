@@ -288,9 +288,14 @@ Returns element-wise smallest integer in not less than x.
   Input("x: T").Input("y: T").Output("z: T").Attr( \
       "T: {float, double, int32, complex64, int64}")
 
+// TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
-    .BINARY_MORE()
-    .SetIsCommutative()
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {float, double, uint8, int8, int16, int32, int64, complex64, "
+        "string}")
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -370,9 +375,8 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,
 // where 't has a natural total order.
-#define COMPARISON()                                  \
-  Input("x: T").Input("y: T").Output("z: bool").Attr( \
-      "T: {float, double, int32, int64}")
+#define COMPARISON() \
+  Input("x: T").Input("y: T").Output("z: bool").Attr("T: realnumbertype")
 
 REGISTER_OP("Less")
     .COMPARISON()
@@ -404,7 +408,8 @@ Returns the truth value of (x >= y) element-wise.
 
 #define COMPARISON()                                                     \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr( \
-      "T: {float, double, int32, int64, complex64, quint8, qint8, qint32}")
+      "T: {float, double, uint8, int8, int16, int32, int64, complex64, " \
+      "quint8, qint8, qint32}")
 
 REGISTER_OP("Equal")
     .COMPARISON()
@@ -914,6 +919,49 @@ grad: gradient propagated to the SparseSegmentMean op.
 indices: indices passed to the corresponding SparseSegmentMean op.
 segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
 output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+)doc");
+
+REGISTER_OP("SparseSegmentSqrtN")
+    .Input("data: T")
+    .Input("indices: int32")
+    .Input("segment_ids: int32")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+
+N is the size of the segment being reduced.
+
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
+
+indices: A 1-D tensor. Has same rank as `segment_ids`.
+
+segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+
+output: Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+
+)doc");
+
+REGISTER_OP("SparseSegmentSqrtNGrad")
+    .Input("grad: T")
+    .Input("indices: int32")
+    .Input("segment_ids: int32")
+    .Input("output_dim0: int32")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes gradients for SparseSegmentSqrtN.
+
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+
+grad: gradient propagated to the SparseSegmentSqrtN op.
+indices: indices passed to the corresponding SparseSegmentSqrtN op.
+segment_ids: segment_ids passed to the corresponding SparseSegmentSqrtN op.
+output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
 )doc");
 
 REGISTER_OP("All")

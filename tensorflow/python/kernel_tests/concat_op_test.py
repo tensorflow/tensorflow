@@ -372,6 +372,14 @@ class ConcatOpTest(tf.test.TestCase):
       concat_tuple_t = tf.concat(0, (c1, c2))
       self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
 
+  def testConcatNoScalars(self):
+    with self.test_session():
+      scalar = tf.constant(7)
+      dim = tf.placeholder(tf.int32)
+      with self.assertRaisesRegexp(
+          ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
+        tf.concat(dim, [scalar, scalar, scalar])
+
 
 if __name__ == "__main__":
   tf.test.main()

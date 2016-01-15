@@ -139,6 +139,47 @@ easier to chain operations that need to use the updated value.
   input, the values produced will all be distinct.
 
 
+- - -
+
+### `tf.cond(pred, fn1, fn2, name=None)` {#cond}
+
+Return either 'fn1()' or 'fn2()' based on the boolean predicate 'pred'.
+
+`fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
+the same number and type of outputs.
+
+##### Args:
+
+
+*  <b>`pred`</b>: A scalar determining whether to return the result of `fn1` or `fn2`.
+*  <b>`fn1`</b>: The function to be performed if pred is true.
+*  <b>`fn2`</b>: The function to be performed if pref is false.
+*  <b>`name`</b>: Optional name prefix for the returned tensors.
+
+##### Returns:
+
+  Tensors returned by the call to either `fn1` or `fn2`. If the functions
+  return a singleton list, the element is extracted from the list.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `fn1` or `fn2` is not callable.
+*  <b>`ValueError`</b>: if `fn1` and `fn2` do not return the same number of tensors, or
+              return tensors of different types.
+
+
+*  <b>`Example`</b>: 
+```python
+  x = constant(2)
+  y = constant(5)
+  def f1(): return constant(17)
+  def f2(): return constant(23)
+  r = cond(math_ops.less(x, y), f1, f2)
+  # r is set to f1()
+```
+
+
 
 ## Logical Operators
 
@@ -220,7 +261,7 @@ Returns the truth value of (x == y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -238,7 +279,7 @@ Returns the truth value of (x != y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -256,7 +297,7 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -274,7 +315,7 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -292,7 +333,7 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -310,7 +351,7 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 

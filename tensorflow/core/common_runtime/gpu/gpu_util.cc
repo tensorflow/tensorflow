@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
-//#include "base/commandlineflags.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -40,16 +39,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stream_executor_util.h"
 
-#if defined(PLATFORM_GOOGLE)
-DEFINE_int64(brain_gpu_util_debug_string_maxlen, 128,
-             "When dumping gpu memory, prints up to this many bytes.");
-
-DECLARE_bool(record_mem_types);
-#else
-tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
-bool FLAGS_EXPERIMENTAL_brain_gpu_multi_stream = false;
-extern bool FLAGS_record_mem_types;
-#endif
+// If this need to be runtime configurable, consider adding options to
+// ConfigProto.
+const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
+extern bool FLAGS_brain_gpu_record_mem_types;
 
 using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::DeviceMemory;
@@ -107,7 +100,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
           }
           tensor_ref.Unref();
           port::CopyFromArray(proto->mutable_tensor_content(), mb, num_bytes);
-          alloc->Deallocate<char>(mb);
+          alloc->Deallocate<char>(mb, num_bytes);
           done(Status::OK());
         });
   } else {
@@ -133,7 +126,7 @@ void GPUUtil::CopyViaDMA(const string& edge_name,
     const void* src_ptr = DMAHelper::base(input);
     void* dst_ptr = DMAHelper::base(output);
     VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
-    if (FLAGS_record_mem_types) {
+    if (FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc smd = ProcessState::singleton()->PtrType(src_ptr);
       ProcessState::MemDesc dmd = ProcessState::singleton()->PtrType(dst_ptr);
       VLOG(0) << "Src " << smd.DebugString() << " Dst " << dmd.DebugString();
@@ -153,16 +146,16 @@ void GPUUtil::CopyViaDMA(const string& edge_name,
     bool non_cpu_dst = (!dst_alloc_attr.on_host() &&
                         dst_device_type != DeviceType(DEVICE_CPU).type());
     if (non_cpu_src) {
-      gpu::Stream* stream = send_dev_context->stream();
-      if (stream == nullptr) {
-        done(errors::Internal("Failed to find device stream"));
-        return;
-      }
-      auto* src_dev_info = src->tensorflow_gpu_device_info();
-      CHECK(src_dev_info);
-
       if (non_cpu_dst) {
         // Device to device copy
+        gpu::Stream* stream = send_dev_context->stream();
+        if (stream == nullptr) {
+          done(errors::Internal("Failed to find device stream"));
+          return;
+        }
+        auto* src_dev_info = src->tensorflow_gpu_device_info();
+        CHECK(src_dev_info);
+
         DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
         stream->ThenMemcpy(
             &gpu_dst_ptr,

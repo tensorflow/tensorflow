@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script is a wrapper to run any build inside the docker cotainer
+# This script is a wrapper to run any build inside the docker container
 # when running ci_build.sh. It's purpose is to automate the call of ./configure.
 # Yes, this script is a workaround of a workaround.
 

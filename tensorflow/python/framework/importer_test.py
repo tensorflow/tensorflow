@@ -103,6 +103,11 @@ text_format.Merge("""
     output_arg { name: 'b' type_attr: 'T' }
     attr { name: 'T' type: 'type' }
   }
+  op {
+    name: 'OpWithDefaultAttr'
+    output_arg { name: 'a' type: DT_INT32 }
+    attr { name: 'default_float' type: 'float' default_value { f: 123.0 } }
+  }
 """, _op_list)
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
@@ -634,6 +639,15 @@ class ImportGraphDefTest(tf.test.TestCase):
              (tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX))
       with self.assertRaisesRegexp(ValueError, pat):
         tf.import_graph_def(self._MakeGraphDef("", version=1 << 30))
+
+  def testDefaultAttrsAdded(self):
+    with tf.Graph().as_default():
+      a = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'OpWithDefaultAttr' }
+          """),
+          return_elements=['A'])
+      self.assertEqual(123.0, a[0].get_attr("default_float"))
 
 
 if __name__ == '__main__':

@@ -103,6 +103,7 @@ class OpKernel {
   const NodeDef& def() const { return def_; }
   const string& name() const { return def_.name(); }
   const string& type_string() const { return def_.op(); }
+  bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
@@ -121,23 +122,33 @@ class OpKernel {
   Status InputRange(const string& input_name, int* start, int* stop) const;
   Status OutputRange(const string& output_name, int* start, int* stop) const;
 
-  // TODO(irving): At the moment, the following three functions forward to
-  // TensorShapeUtils, but they are about to become the only versions once we
-  // become scalar strict.
-  bool allow_legacy_scalars() const { return kAllowLegacyScalars; }
-
-  bool IsLegacyScalar(const TensorShape& shape) const {
-    return TensorShapeUtils::IsLegacyScalar(shape);
+  // We allow legacy scalars within Google up until GraphDef version 6.
+  // TODO(irving): Remove when we can drop support for GraphDef version 5.
+  bool allow_legacy_scalars() const {
+#if defined(PLATFORM_GOOGLE)
+    return graph_def_version_ < 6;
+#else
+    return false;
+#endif
   }
 
+  // Allow either scalars or (if allowing legacy scalars) shape (1,).
+  bool IsLegacyScalar(const TensorShape& shape) const {
+    return shape.dims() == 0 || (allow_legacy_scalars() && shape.dims() == 1 &&
+                                 shape.dim_size(0) == 1);
+  }
+
+  // Allow rank 1 or (if allowing legacy scalars) rank 0.
   bool IsLegacyVector(const TensorShape& shape) const {
-    return TensorShapeUtils::IsLegacyVector(shape);
+    return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
   }
 
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
   const DataTypeVector output_types_;
+  const int graph_def_version_;
+  const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   MemoryTypeVector input_memory_types_;
@@ -425,7 +436,9 @@ class OpKernelContext {
     DeviceBase* device = nullptr;
 
     bool track_allocations = false;
-    std::function<AllocatorAttributes(int index)> output_alloc_attr = nullptr;
+
+    // Array indexed by output number for this node
+    const AllocatorAttributes* output_attr_array = nullptr;
 
     // Shared resources accessible by this op kernel invocation.
     ResourceMgr* resource_manager = nullptr;
@@ -631,7 +644,7 @@ class OpKernelContext {
   // Tensors allocated via allocate_temp. There may be a performance
   // penalty to using a Tensor that was not allocated using
   // allocate_output. This is because allocate_output uses the
-  // AllocatorAttributes stored in output_alloc_attr for the
+  // AllocatorAttributes stored in output_attr_array for the
   // designated output. In some cases, using the wrong attributes may
   // cause an extra copy of the Tensor's buffer.
 
@@ -647,9 +660,9 @@ class OpKernelContext {
   Status allocate_output(const string& name, const TensorShape& shape,
                          Tensor** tensor) TF_MUST_USE_RESULT;
   // The following methods use the supplied attributes instead of
-  // those in output_alloc_attr. The caller is responsible for
+  // those in output_attr_array. The caller is responsible for
   // ensuring that the attributes are "compatible" with the
-  // output_alloc_attr, e.g. the tensor is allocated on the correct
+  // output_attr_array, e.g. the tensor is allocated on the correct
   // device. See comment above.
   Status allocate_output(int index, const TensorShape& shape, Tensor** tensor,
                          AllocatorAttributes attr) TF_MUST_USE_RESULT;
@@ -756,7 +769,7 @@ class OpKernelContext {
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {
-    return params_.output_alloc_attr(index);
+    return params_.output_attr_array[index];
   }
 
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators() const {
@@ -853,7 +866,8 @@ class OpKernelContext {
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr) {
-    Allocator* allocator = params_.device->GetAllocator(attr);
+    Allocator* allocator =
+        params_.device->GetStepAllocator(attr, step_resource_manager());
     if (params_.track_allocations) {
       mutex_lock lock(mu_);
       for (const auto& wrapped : wrapped_allocators_) {
@@ -1109,8 +1123,7 @@ inline Status OpKernelContext::allocate_output(int index,
                                                Tensor** output) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
-  DCHECK(params_.output_alloc_attr);
-  AllocatorAttributes attr = params_.output_alloc_attr(index);
+  AllocatorAttributes attr = output_alloc_attr(index);
   return allocate_output(index, shape, output, attr);
 }
 

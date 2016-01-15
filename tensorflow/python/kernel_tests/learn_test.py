@@ -29,6 +29,16 @@ import tensorflow as tf
 from tensorflow.python.framework import tensor_util
 
 
+def assert_summary_scope(regexp):
+  """Assert that all generated summaries match regexp."""
+  for summary in tf.get_collection(tf.GraphKeys.SUMMARIES):
+    tag = tensor_util.ConstantValue(summary.op.inputs[0])
+    assert tag is not None, 'All summaries must have constant tags'
+    tag = str(tag)
+    assert isinstance(tag[0], six.string_types), tag[0]
+    assert re.match(regexp, tag), "tag doesn't match %s: %s" % (regexp, tag)
+
+
 class FullyConnectedTest(tf.test.TestCase):
 
   def setUp(self):
@@ -36,14 +46,6 @@ class FullyConnectedTest(tf.test.TestCase):
     tf.set_random_seed(1234)
     self.input = tf.constant([[1., 2., 3.], [-4., 5., -6.]])
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
-
-  def assert_summary_scope(self, regexp):
-    for summary in tf.get_collection(tf.GraphKeys.SUMMARIES):
-      tag = tensor_util.ConstantValue(summary.op.inputs[0])
-      assert tag is not None, 'All summaries have constant tags'
-      tag = str(tag)
-      assert isinstance(tag[0], six.string_types), tag[0]
-      assert re.match(regexp, tag), "tag doesn't match %s: %s" % (regexp, tag)
 
   def test_basic_use(self):
     output = tf.learn.fully_connected(self.input, 8, activation_fn=tf.nn.relu)
@@ -65,7 +67,7 @@ class FullyConnectedTest(tf.test.TestCase):
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
                      len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
-    self.assert_summary_scope('fully_connected')
+    assert_summary_scope('fully_connected')
 
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
@@ -99,7 +101,7 @@ class FullyConnectedTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       out_value1, out_value2 = sess.run([output1, output2])
     self.assertAllClose(out_value1, out_value2)
-    self.assert_summary_scope(r'test(_\d)?/fully_connected')
+    assert_summary_scope(r'test(_\d)?/fully_connected')
 
   def test_custom_initializers(self):
     output = tf.learn.fully_connected(self.input,
@@ -180,6 +182,160 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def test_no_bias(self):
     tf.learn.fully_connected(self.input, 2, bias_init=None)
+
+    self.assertEqual(1,
+                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
+
+
+class Convolution2dTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.test.TestCase.setUp(self)
+    tf.set_random_seed(1234)
+    self.input = tf.constant(np.arange(2 * 3 * 3 * 4).reshape(
+        [2, 3, 3, 4]).astype(np.float32))
+    assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
+
+  def test_basic_use(self):
+    output = tf.learn.convolution2d(self.input, 8, (3, 3),
+                                    activation_fn=tf.nn.relu)
+
+    with tf.Session() as sess:
+      with self.assertRaises(tf.errors.FailedPreconditionError):
+        sess.run(output)
+
+      tf.initialize_all_variables().run()
+      out_value = sess.run(output)
+
+    self.assertEqual(output.get_shape().as_list(), [2, 3, 3, 8])
+    self.assertTrue(np.all(out_value >= 0),
+                    'Relu should have capped all values.')
+
+    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+                       'Some summaries should have been added.')
+    self.assertEqual(2,
+                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
+    self.assertEqual(0,
+                     len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
+    assert_summary_scope('convolution2d')
+
+  def test_variable_reuse_with_scope(self):
+    with tf.variable_scope('test') as vs:
+      output1 = tf.learn.convolution2d(self.input,
+                                       8, (3, 3),
+                                       activation_fn=tf.nn.relu)
+      output2 = tf.learn.convolution2d(self.input,
+                                       8, (3, 3),
+                                       activation_fn=tf.nn.relu)
+
+    with tf.variable_scope(vs, reuse=True):
+      output3 = tf.learn.convolution2d(self.input,
+                                       8, (3, 3),
+                                       activation_fn=tf.nn.relu)
+
+    with tf.Session() as sess:
+      tf.initialize_all_variables().run()
+      out_value1, out_value2, out_value3 = sess.run([output1, output2, output3])
+
+    self.assertFalse(np.allclose(out_value1, out_value2))
+    self.assertAllClose(out_value1, out_value3)
+
+  def test_variable_reuse_with_template(self):
+    tmpl1 = tf.make_template('test',
+                             tf.learn.convolution2d,
+                             kernel_size=(3, 3),
+                             num_output_channels=8)
+    output1 = tmpl1(self.input)
+    output2 = tmpl1(self.input)
+
+    with tf.Session() as sess:
+      tf.initialize_all_variables().run()
+      out_value1, out_value2 = sess.run([output1, output2])
+    self.assertAllClose(out_value1, out_value2)
+    assert_summary_scope(r'test(_\d)?/convolution2d')
+
+  def test_custom_initializers(self):
+    output = tf.learn.convolution2d(self.input,
+                                    2,
+                                    (3, 3),
+                                    activation_fn=tf.nn.relu,
+                                    weight_init=tf.constant_initializer(2.0),
+                                    bias_init=tf.constant_initializer(1.0),
+                                    padding='VALID')
+
+    with tf.Session() as sess:
+      tf.initialize_all_variables().run()
+      out_value = sess.run(output)
+
+    self.assertAllClose(
+        np.array([[[[1261., 1261.]]], [[[3853., 3853.]]]]), out_value)
+
+  def test_custom_collections(self):
+    tf.learn.convolution2d(self.input,
+                           2, (3, 3),
+                           activation_fn=tf.nn.relu,
+                           weight_collections=['unbiased'],
+                           bias_collections=['biased'])
+
+    self.assertEquals(1, len(tf.get_collection('unbiased')))
+    self.assertEquals(1, len(tf.get_collection('biased')))
+
+  def test_all_custom_collections(self):
+    tf.learn.convolution2d(self.input,
+                           2, (3, 3),
+                           activation_fn=tf.nn.relu,
+                           weight_collections=['unbiased', 'all'],
+                           bias_collections=['biased', 'all'])
+
+    self.assertEquals(1, len(tf.get_collection('unbiased')))
+    self.assertEquals(1, len(tf.get_collection('biased')))
+    self.assertEquals(2, len(tf.get_collection('all')))
+    self.assertEquals(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
+                      tf.get_collection('all'))
+
+  def test_no_summaries(self):
+    tf.learn.convolution2d(self.input,
+                           2, (3, 3),
+                           activation_fn=tf.nn.relu,
+                           create_summaries=False)
+    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+
+  def test_regularizer(self):
+    cnt = [0]
+    tensor = tf.constant(5.0)
+    def test_fn(_):
+      cnt[0] += 1
+      return tensor
+
+    tf.learn.convolution2d(self.input, 2, (3, 3), weight_regularizer=test_fn)
+
+    self.assertEqual([tensor],
+                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    self.assertEqual(1, cnt[0])
+
+  def test_shape_enforcement(self):
+    place = tf.placeholder(tf.float32)
+    with self.assertRaises(ValueError):
+      tf.learn.convolution2d(place, 8, (3, 3))
+    tf.learn.convolution2d(place, 8, (3, 3), num_input_channels=5)  # No error
+
+    place.set_shape([None, None, None, None])
+    with self.assertRaises(ValueError):
+      tf.learn.convolution2d(place, 8, (3, 3))
+    tf.learn.convolution2d(place, 8, (3, 3), num_input_channels=5)  # No error
+
+    place.set_shape([None, None, None, 6])
+    tf.learn.convolution2d(place, 8, (3, 3))  # No error
+    with self.assertRaises(ValueError):
+      tf.learn.convolution2d(place, 8, (3, 3), num_input_channels=5)
+
+    place = tf.placeholder(tf.float32)
+    place.set_shape([2, 6, 5])
+    with self.assertRaises(ValueError):
+      tf.learn.convolution2d(place, 8, (3, 3))
+
+  def test_no_bias(self):
+    tf.learn.convolution2d(self.input, 2, (3, 3), bias_init=None)
 
     self.assertEqual(1,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))

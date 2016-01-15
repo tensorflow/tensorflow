@@ -22,6 +22,7 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import script_ops
 
 
@@ -63,6 +64,14 @@ class PyOpTest(tf.test.TestCase):
       y, = tf.py_func(rfft, [x], [tf.complex64])
       self.assertAllClose(y.eval(), np.fft.rfft([1., 2., 3., 4.]))
 
+    # returns a python literal.
+    with self.test_session():
+      def literal(x):
+        return 1.0 if x == 0.0 else 0.0
+      x = tf.constant(0.0, tf.float64)
+      y, = tf.py_func(literal, [x], [tf.float64])
+      self.assertAllClose(y.eval(), 1.0)
+
   def testLarge(self):
     with self.test_session() as sess:
       x = tf.zeros([1000000], dtype=np.float32)
@@ -78,6 +87,16 @@ class PyOpTest(tf.test.TestCase):
         c = tf.constant([1.], tf.float32)
         _ = tf.py_func(lambda x: x + 1, [c], [tf.float32])
     self.assertTrue(script_ops._py_funcs.size() < 100)
+
+  def testError(self):
+    with self.test_session():
+      def bad(_):
+        return tf.float32  # a python object. We should fail.
+      x = tf.constant(0.0, tf.float64)
+      y, = tf.py_func(bad, [x], [tf.float64])
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported numpy type"):
+        y.eval()
 
 
 if __name__ == "__main__":

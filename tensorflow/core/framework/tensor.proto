@@ -24,8 +24,8 @@ message TensorProto {
   // to represent a constant Tensor with a single value.
   int32 version_number = 3;
 
-  // Serialized content from TensorBase::Serialize() This representation can be
-  // used for all tensor types.
+  // Serialized content from Tensor::AsProtoTensorContent(). This representation
+  // can be used for all tensor types.
   bytes tensor_content = 4;
 
   // Type specific representations that make it easy to create tensor protos in
