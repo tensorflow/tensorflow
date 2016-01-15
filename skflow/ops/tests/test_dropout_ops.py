@@ -1,4 +1,3 @@
-"""Various TensorFlow Ops."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +12,21 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import numpy as np
+import tensorflow as tf
 
-from skflow.ops.array_ops import *
-from skflow.ops.conv_ops import *
-from skflow.ops.dnn_ops import *
-from skflow.ops.dropout_ops import *
-from skflow.ops.embeddings_ops import *
-from skflow.ops.losses_ops import *
-from skflow.ops.seq2seq_ops import *
+from skflow import ops
+
+
+class DropoutTest(tf.test.TestCase):
+
+    def test_dropout_float(self):
+        with self.test_session():
+            x = tf.placeholder(tf.float32, [5, 5])
+            y = ops.dropout(x, 0.5)
+            probs = tf.get_collection(ops.DROPOUTS)
+            self.assertEqual(len(probs), 1)
+
+
+if __name__ == '__main__':
+    tf.test.main()
