@@ -17,6 +17,10 @@ void throw_exception(std::exception const& e) {}
   Input("x: T").Output("y: T").Attr( \
       "T: {float, double}")
 
+REGISTER_OP("LogGamma")
+    .UNARY_REAL()
+    .Doc(R"doc(Computes natural logarithm of the Gamma function of value element-wise.)doc");
+
 REGISTER_OP("Gamma")
     .UNARY_REAL()
     .Doc(R"doc(Computes Gamma function of value element-wise.)doc");
@@ -30,6 +34,33 @@ REGISTER_OP("Digamma")
 #include "tensorflow/core/framework/op_kernel.h"
 
 using namespace tensorflow;
+
+template <typename T>
+class LogGamma : public OpKernel {
+    public:
+    
+    explicit LogGamma(OpKernelConstruction* context) : OpKernel(context) {}
+    
+    void Compute(OpKernelContext* context) override {
+
+    const Tensor& input_tensor = context->input(0); //Grab the input tensor.
+    auto input = input_tensor.flat<T>();
+    
+    // Create an output tensor
+    Tensor* output_tensor = NULL;
+    
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(), &output_tensor));
+    auto output = output_tensor->template flat<T>();
+    
+    const int N = input.size();
+
+    for (int i = 0; i < N; i++) {
+      output(i) = lgamma( input(i) );
+    }
+        
+    
+    }
+};
 
 template <typename T>
 class Gamma : public OpKernel {
@@ -84,6 +115,18 @@ class Digamma : public OpKernel {
     
     }
 };
+
+REGISTER_KERNEL_BUILDER(
+    Name("LogGamma")
+    .Device(DEVICE_CPU)
+    .TypeConstraint<float>("T"),
+    LogGamma<float>);
+    
+REGISTER_KERNEL_BUILDER(
+    Name("LogGamma")
+    .Device(DEVICE_CPU)
+    .TypeConstraint<double>("T"),
+    LogGamma<double>);
 
 REGISTER_KERNEL_BUILDER(
     Name("Gamma")

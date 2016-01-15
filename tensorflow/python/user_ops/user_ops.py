@@ -22,7 +22,8 @@ from __future__ import print_function
 import tensorflow.python.platform
 from tensorflow.python.ops import gen_user_ops
 from tensorflow.python.ops.gen_user_ops import *
-
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops
 
 def my_fact():
   """Example of overriding the generated code for an Op."""
