@@ -94,7 +94,7 @@ string GetRendezvousKey(const string& tensor_name,
 //
 // 2) Recv nodes always complete immediately: The inputs are sent into
 //    the local rendezvous before we start the executor, so the
-//    corresonding recvs will not block.
+//    corresponding recvs will not block.
 //
 // Based on these assumptions, we can use the same thread pool for
 // both "non-blocking" and "blocking" OpKernels on Android.
