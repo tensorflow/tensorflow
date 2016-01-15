@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
@@ -361,6 +362,39 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
 }
 
-}  // namespace
+REGISTER_OP("Darth")
+    .Input("x: float")
+    .Output("y: float")
+    .Doc(R"doc(
+Darth promises one return value.
 
+x: float
+y: float
+)doc");
+
+// The DarthOp kernel violates its promise to return one-value.
+class DarthOp : public OpKernel {
+ public:
+  explicit DarthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {}
+};
+REGISTER_KERNEL_BUILDER(Name("Darth").Device(DEVICE_CPU), DarthOp);
+
+TEST(DirectSessionTest, DarthKernel) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_FLOAT, TensorShape({}));
+  vx.scalar<float>()() = 1.0;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "Darth", x);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  auto sess = CreateSession();
+  ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
+  EXPECT_TRUE(errors::IsInternal(s));
+  delete sess;
+}
+
+}  // namespace
 }  // namespace tensorflow
