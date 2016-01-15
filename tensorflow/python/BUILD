@@ -748,7 +748,6 @@ py_library(
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":training_ops",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -1080,9 +1079,9 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":protos_all_py",
         ":pywrap_tensorflow",
         ":util",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
