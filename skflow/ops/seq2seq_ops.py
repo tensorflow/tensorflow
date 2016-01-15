@@ -80,7 +80,7 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
     """RNN Decoder that creates training and sampling sub-graphs.
 
     Args:
-        decoder_inputs: Inputs for decoder, list of tensors. 
+        decoder_inputs: Inputs for decoder, list of tensors.
                         This is used only in trianing sub-graph.
         initial_state: Initial state for the decoder.
         cell: RNN cell to use for decoder.
@@ -106,7 +106,8 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
                     sampling_outputs.append(outputs[i])
                     sampling_states.append(states[i])
                 else:
-                    sampling_output, sampling_state = cell(sampling_outputs[-1], sampling_states[-1])
+                    sampling_output, sampling_state = cell(
+                        sampling_outputs[-1], sampling_states[-1])
                     sampling_outputs.append(sampling_output)
                     sampling_states.append(sampling_state)
     return outputs, states, sampling_outputs, sampling_states
