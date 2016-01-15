@@ -4,6 +4,5 @@ branch = True
 [report]
 omit = 
         */tests/*
-        */io/dask_io.py
         */io/data_feeder.py
 
