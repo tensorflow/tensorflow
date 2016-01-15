@@ -156,4 +156,13 @@ bool PartialTensorShape::IsCompatibleWith(
   return true;
 }
 
+bool PartialTensorShape::IsCompatibleWith(const TensorShape& shape) const {
+  if (dims() != shape.dims()) return false;
+  for (int i = 0; i < dims(); i++) {
+    if (dim_size(i) == -1) continue;
+    if (dim_size(i) != shape.dim_size(i)) return false;
+  }
+  return true;
+}
+
 }  // namespace tensorflow

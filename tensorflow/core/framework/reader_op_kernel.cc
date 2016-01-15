@@ -43,6 +43,7 @@ void ReaderOpKernel::Compute(OpKernelContext* ctx) {
                          *ret = factory_();
                          return Status::OK();
                        }));
+    reader->Unref();
     auto h = handle_.AccessTensor(ctx)->flat<string>();
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();

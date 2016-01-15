@@ -81,8 +81,8 @@ Here we create our pond and hit it with some rain drops.
 # Initial Conditions -- some rain drops hit a pond
 
 # Set everything to zero
-u_init = np.zeros([N, N], dtype="float32")
-ut_init = np.zeros([N, N], dtype="float32")
+u_init = np.zeros([N, N], dtype=np.float32)
+ut_init = np.zeros([N, N], dtype=np.float32)
 
 # Some rain drops hit a pond at random points
 for n in range(40):

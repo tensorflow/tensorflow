@@ -64,9 +64,9 @@ Z = X+1j*Y
 Now we define and initialize TensorFlow tensors.
 
 ```python
-xs = tf.constant(Z.astype("complex64"))
+xs = tf.constant(Z.astype(np.complex64))
 zs = tf.Variable(xs)
-ns = tf.Variable(tf.zeros_like(xs, "float32"))
+ns = tf.Variable(tf.zeros_like(xs, tf.float32))
 ```
 
 TensorFlow requires that you explicitly initialize variables before using them.
@@ -94,7 +94,7 @@ not_diverged = tf.complex_abs(zs_) < 4
 #
 step = tf.group(
   zs.assign(zs_),
-  ns.assign_add(tf.cast(not_diverged, "float32"))
+  ns.assign_add(tf.cast(not_diverged, tf.float32))
   )
 ```
 

@@ -18,7 +18,7 @@
       <script>
         var dataDir = "components/tf-tensorboard/demo/data/";
         var demoRouter = {
-          runs: dataDir + "runs.json",
+          runs: function() { return dataDir + "runs.json";},
           graph: function(run) {return dataDir + run + "-graph.pbtxt";},
           scalars: function(tag, run) {
             return dataDir + run.split("_")[0] + ".json";

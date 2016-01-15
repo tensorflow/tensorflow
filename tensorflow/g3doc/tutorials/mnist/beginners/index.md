@@ -406,7 +406,7 @@ cast to floating point numbers and then take the mean. For example,
 `[True, False, True, True]` would become `[1,0,1,1]` which would become `0.75`.
 
 ```python
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 ```
 
 Finally, we ask for our accuracy on our test data.
