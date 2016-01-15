@@ -344,10 +344,8 @@ class LooperThread(threading.Thread):
         while not self._coord.should_stop():
           self.run_loop()
       else:
-        # Next time at which to call run_loop().  The first run happens
-        # self._timer_interval_secs from now so we don't run things like
-        # periodic reporting tasks before there is anything to report.
-        next_timer_time = time.time() + self._timer_interval_secs
+        # Next time at which to call run_loop(), starts as 'now'.
+        next_timer_time = time.time()
         while not self._coord.wait_for_stop(next_timer_time - time.time()):
           next_timer_time += self._timer_interval_secs
           self.run_loop()
