@@ -1,4 +1,4 @@
-[![Travis-CI Build Status](https://travis-ci.org/google/skflow.svg?branch=master)](https://travis-ci.org/google/skflow)
+[![Travis-CI Build Status](https://travis-ci.org/tensorflow/skflow.svg?branch=master)](https://travis-ci.org/tensorflow/skflow)
 [![Codecov Status](https://codecov.io/github/tensorflow/skflow/coverage.svg?precision=2)](https://codecov.io/github/tensorflow/skflow)
 [![License](https://img.shields.io/github/license/tensorflow/skflow.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
 [![Join the chat at https://gitter.im/tensorflow/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
@@ -26,7 +26,7 @@ Support versions of dependencies:
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
 ```Bash
-pip install git+git://github.com/google/skflow.git
+pip install git+git://github.com/tensorflow/skflow.git
 ```
 
 ## Tutorial
@@ -38,7 +38,7 @@ pip install git+git://github.com/google/skflow.git
 ## Usage
 
 Below are few simple examples of the API. 
-For more examples, please see [examples](https://github.com/google/skflow/tree/master/examples).
+For more examples, please see [examples](https://github.com/tensorflow/skflow/tree/master/examples).
 
 ### General tips
 
@@ -172,10 +172,10 @@ tensorboard --logdir=/tmp/tf_examples/my_model_1
 and follow reported url.
 
 Graph visualization:
-![Text classification RNN Graph](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_graph.png)
+![Text classification RNN Graph](https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_graph.png)
 
 Loss visualization:
-![Text classification RNN Loss](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_loss.png)
+![Text classification RNN Loss](https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_loss.png)
 
 ## More examples
 
