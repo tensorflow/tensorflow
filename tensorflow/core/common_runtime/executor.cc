@@ -374,7 +374,7 @@ Status ExecutorImpl::InferAllocAttr(
   return s;
 }
 
-// The state associated with one invokation of ExecutorImpl::Run.
+// The state associated with one invocation of ExecutorImpl::Run.
 // ExecutorState dispatches nodes when they become ready and keeps
 // track of how many predecessors of a node have not done (pending_).
 class ExecutorState {

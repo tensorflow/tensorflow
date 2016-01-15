@@ -37,7 +37,7 @@ namespace {
 // types in 'supported_device_types' and returns the *first* subset of devices
 // that match.
 //
-// For example, if suported_device_types contains {GPU, CPU} and
+// For example, if supported_device_types contains {GPU, CPU} and
 // 'devices' contains CPU and GPU devices, the returned vector will
 // include *only* GPU devices, since that is higher in the priority
 // order in 'supported_device_types'.

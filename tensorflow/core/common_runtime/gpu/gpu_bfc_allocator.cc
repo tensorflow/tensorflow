@@ -420,7 +420,7 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
     }
   }
 
-  // Next show the the chunks that are in use, and also summarize their
+  // Next show the chunks that are in use, and also summarize their
   // number by size.
   std::map<size_t, int> in_use_by_size;
   for (auto& it : ptr_to_chunk_map_) {

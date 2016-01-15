@@ -36,7 +36,7 @@ class GPUUtil {
   // "tensor" is GPU-local.  "dev" is the hosting GPU.
   // "device_context" should be the context of the GPU "_Send" op
   // which provides the Tensor.
-  // Sets all necessasry fields of "proto" by transferring value
+  // Sets all necessary fields of "proto" by transferring value
   // bytes from GPU to CPU RAM. "is_dead" indicates that the
   // tensor is dead with an uninit value.
   static void SetProtoFromGPU(const Tensor& tensor, Device* dev,

@@ -279,7 +279,7 @@ void GPURegionAllocator::CheckForMemoryLeaks() {
 }
 
 // Since there's no merging of chunks once allocated, we want to
-// maximize their reusablity (which argues for fewer, larger sizes),
+// maximize their reusability (which argues for fewer, larger sizes),
 // while minimizing waste (which argues for tight-fitting sizes).
 //
 // The smallest unit of allocation is 256 bytes.
