@@ -23,6 +23,7 @@ the execution of operations and add conditional dependencies to your graph.
 @@group
 @@no_op
 @@count_up_to
+@@cond
 
 ## Logical Operators
 

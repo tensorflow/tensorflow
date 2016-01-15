@@ -184,6 +184,7 @@
   * [`add_check_numerics_ops`](../../api_docs/python/control_flow_ops.md#add_check_numerics_ops)
   * [`Assert`](../../api_docs/python/control_flow_ops.md#Assert)
   * [`check_numerics`](../../api_docs/python/control_flow_ops.md#check_numerics)
+  * [`cond`](../../api_docs/python/control_flow_ops.md#cond)
   * [`count_up_to`](../../api_docs/python/control_flow_ops.md#count_up_to)
   * [`equal`](../../api_docs/python/control_flow_ops.md#equal)
   * [`greater`](../../api_docs/python/control_flow_ops.md#greater)

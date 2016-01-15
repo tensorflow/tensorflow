@@ -146,16 +146,16 @@ void GPUUtil::CopyViaDMA(const string& edge_name,
     bool non_cpu_dst = (!dst_alloc_attr.on_host() &&
                         dst_device_type != DeviceType(DEVICE_CPU).type());
     if (non_cpu_src) {
-      gpu::Stream* stream = send_dev_context->stream();
-      if (stream == nullptr) {
-        done(errors::Internal("Failed to find device stream"));
-        return;
-      }
-      auto* src_dev_info = src->tensorflow_gpu_device_info();
-      CHECK(src_dev_info);
-
       if (non_cpu_dst) {
         // Device to device copy
+        gpu::Stream* stream = send_dev_context->stream();
+        if (stream == nullptr) {
+          done(errors::Internal("Failed to find device stream"));
+          return;
+        }
+        auto* src_dev_info = src->tensorflow_gpu_device_info();
+        CHECK(src_dev_info);
+
         DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
         stream->ThenMemcpy(
             &gpu_dst_ptr,

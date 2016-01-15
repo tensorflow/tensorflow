@@ -544,6 +544,7 @@ _OverrideBinaryOperatorHelper(div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 _OverrideBinaryOperatorHelper(mod, "mod")
+_OverrideBinaryOperatorHelper(pow, "pow")
 
 
 def logical_xor(x, y, name="LogicalXor"):

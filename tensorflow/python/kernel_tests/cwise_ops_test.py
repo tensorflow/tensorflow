@@ -30,6 +30,7 @@ import tensorflow as tf
 _ADD = lambda x, y: x + y
 _SUB = lambda x, y: x - y
 _MUL = lambda x, y: x * y
+_POW = lambda x, y: x ** y
 _TRUEDIV = lambda x, y: x / y
 _FLOORDIV = lambda x, y: x // y
 _MOD = lambda x, y: x % y
@@ -1059,6 +1060,7 @@ class MathOpsOverloadTest(tf.test.TestCase):
         (np.add, _ADD),
         (np.subtract, _SUB),
         (np.multiply, _MUL),
+        (np.power, _POW),
         (np.true_divide, _TRUEDIV),
         (np.floor_divide, _FLOORDIV),
     ]
