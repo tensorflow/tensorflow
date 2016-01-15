@@ -21,11 +21,21 @@ from skflow import ops
 class DropoutTest(tf.test.TestCase):
 
     def test_dropout_float(self):
-        with self.test_session():
+        with self.test_session() as session:
             x = tf.placeholder(tf.float32, [5, 5])
             y = ops.dropout(x, 0.5)
             probs = tf.get_collection(ops.DROPOUTS)
+            session.run(tf.initialize_all_variables())
             self.assertEqual(len(probs), 1)
+            self.assertEqual(session.run(probs[0]), 0.5)
+
+    def test_dropout_tensor(self):
+        with self.test_session():
+            x = tf.placeholder(tf.float32, [5, 5])
+            y = tf.get_variable("prob", [], initializer=tf.constant_initializer(0.5))
+            z = ops.dropout(x, y)
+            probs = tf.get_collection(ops.DROPOUTS)
+            self.assertEqual(probs, [y])
 
 
 if __name__ == '__main__':
