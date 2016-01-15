@@ -67,7 +67,7 @@ class ProcessState {
   MemDesc PtrType(const void* ptr);
 
   // Returns the one CPUAllocator used for the given numa_node.
-  // TEMPORY: ignores numa_node.
+  // TEMPORARY: ignores numa_node.
   Allocator* GetCPUAllocator(int numa_node);
 
   // Returns the one GPU allocator used for the indexed GPU.
@@ -80,7 +80,7 @@ class ProcessState {
   // used on that first call is used.
   //
   // "Allocator type" describes the type of algorithm to use for the
-  // underlying allocator.  REQURES: Must be a valid type (see
+  // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
@@ -98,7 +98,7 @@ class ProcessState {
   // interface to be used for network device memory registration.
   // "bus_id" is platform-specific.  On many platforms it
   // should be 0.  On machines with multiple PCIe buses, it should be
-  // the index of one of the PCIe buses.  If the the bus_id is invalid,
+  // the index of one of the PCIe buses.  If the bus_id is invalid,
   // results are undefined.
   typedef std::function<void(void*, size_t)> AllocVisitor;
   void AddGPUAllocVisitor(int bus_id, AllocVisitor visitor);

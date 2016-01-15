@@ -46,7 +46,7 @@ const bool FLAGS_brain_gpu_region_allocator_reset_to_nan = false;
 const bool FLAGS_brain_gpu_use_bfc_allocator = true;
 
 // If true, record attributes of memory allocations and
-// dyanmically check for appropriate use of registered memory.
+// dynamically check for appropriate use of registered memory.
 // Should only be true for debugging or diagnosis of
 // performance issues.
 bool FLAGS_brain_gpu_record_mem_types = false;

@@ -199,7 +199,7 @@ TEST(EventMgr, StreamSwitchingFlushesImmediately) {
   EXPECT_GT(initial_live_bytes, live_tensor_bytes);
 }
 
-TEST(EventMgr, ManySmallTensorsSeperateCallsFlushed) {
+TEST(EventMgr, ManySmallTensorsSeparateCallsFlushed) {
   auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
