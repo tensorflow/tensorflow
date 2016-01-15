@@ -745,7 +745,7 @@ py_library(
         ":framework",
         ":lib",
         ":ops",
-        ":protos_all_py",
+        ":protos_all_py_py_pb2",
         ":pywrap_tensorflow",
         ":training_ops",
         "//tensorflow/core:protos_all_py",
@@ -804,7 +804,7 @@ py_test(
     main = "util/protobuf/compare_test.py",
     srcs_version = "PY2AND3",
     deps = [
-        ":compare_test_proto_py",
+        ":compare_test_py_pb2",
         ":platform_test",
         ":util",
     ],
@@ -1080,6 +1080,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":protos_all_py_py_pb2",
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
