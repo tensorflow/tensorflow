@@ -58,6 +58,13 @@ class IOTest(googletest.TestCase):
         with self.assertRaises(ValueError):
             skflow.io.extract_pandas_labels(pd.DataFrame({"Test": ["A", "B"]}))
    
+    def testDaskIO(self):
+        df = pd.DataFrame(dict(a=list('aabbcc'), b=list(range(6))),
+                          index=pd.date_range(start='20100101', periods=6))
+        ddf=dd.from_pandas(df, npartitions=3)
+        extracted_ddf=extract_dask_data(ddf)
+        self.assertEqual(extracted_ddf.divisions, (0,2,4,6),
+                         "Failed with divisions = {0}".format(extracted_ddf.divisions))
 
 if __name__ == '__main__':
     tf.test.main()
