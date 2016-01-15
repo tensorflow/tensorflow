@@ -1095,6 +1095,76 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses the Cholesky decomposition if the matrices are symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
+  name: "BatchMatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations. Checks for invertibility."
+  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output\nmatrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]."
+}
+op {
+  name: "BatchMatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is ignored. If `lower` is False then the strictly\nlower triangular part of each inner-most matrix is ignored. `rhs` is a tensor\nof shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the\noutput satisfies\n\\\\(\\sum_{k=0}^{i}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].\nIf `lower` is false then the strictly then the output satisfies\n\\\\(sum_{k=i}^{K-1}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]."
+}
+op {
   name: "BatchNormWithGlobalNormalization"
   input_arg {
     name: "t"
@@ -4020,6 +4090,75 @@ op {
   }
   summary: "Calculates the inverse of a square invertible matrix."
   description: "The op uses the Cholesky decomposition if the matrix is symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+}
+op {
+  name: "MatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]` containing the tensor that solves\nmatrix * output = rhs."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations. Checks for invertibility."
+}
+op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
+  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is ignored. If `lower` is False then the\nstrictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of\nshape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `lower` is `True` then the output\nsatisfies \\\\(\\sum_{k=0}^{i}\\\\) matrix[i, k] * output[k, j] = rhs[i, j].\nIf `lower` is false then output satisfies\n\\\\(\\sum_{k=i}^{K-1}\\\\) matrix[i, k] * output[k, j] = rhs[i, j]."
 }
 op {
   name: "Max"

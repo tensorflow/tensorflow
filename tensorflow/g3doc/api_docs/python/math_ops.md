@@ -970,6 +970,123 @@ eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
 
 
 
+- - -
+
+### `tf.matrix_solve(matrix, rhs, name=None)` {#matrix_solve}
+
+Solves a system of linear equations. Checks for invertibility.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    Shape is `[M, M]`.
+*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `matrix`.
+  Shape is `[M, K]` containing the tensor that solves
+  matrix * output = rhs.
+
+
+- - -
+
+### `tf.batch_matrix_solve(matrix, rhs, name=None)` {#batch_matrix_solve}
+
+Solves systems of linear equations. Checks for invertibility.
+
+Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. Rhs is a tensor of shape
+`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output
+matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
+
+##### Args:
+
+
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    Shape is `[..., M, M]`.
+*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
+    Shape is `[..., M, K]`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+
+
+
+- - -
+
+### `tf.matrix_triangular_solve(matrix, rhs, lower=None, name=None)` {#matrix_triangular_solve}
+
+Solves a system of linear equations with an upper or lower triangular matrix by
+
+backsubstitution.
+
+`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
+upper triangular part of `matrix` is ignored. If `lower` is False then the
+strictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of
+shape [M, K]`.
+
+The output is a matrix of shape `[M, K]`. If `lower` is `True` then the output
+satisfies \\(\sum_{k=0}^{i}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+If `lower` is false then output satisfies
+\\(\sum_{k=i}^{K-1}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+
+##### Args:
+
+
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    Shape is `[M, M]`.
+*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
+*  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
+    Boolean indicating whether matrix is lower or upper triangular.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `matrix`. Shape is `[M, K]`.
+
+
+- - -
+
+### `tf.batch_matrix_triangular_solve(matrix, rhs, lower=None, name=None)` {#batch_matrix_triangular_solve}
+
+Solves systems of linear equations with upper or lower triangular matrices by
+
+backsubstitution.
+
+`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+square matrices. If `lower` is `True` then the strictly upper triangular part
+of each inner-most matrix is ignored. If `lower` is False then the strictly
+lower triangular part of each inner-most matrix is ignored. `rhs` is a tensor
+of shape [..., M, K]`.
+
+The output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the
+output satisfies
+\\(\sum_{k=0}^{i}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+If `lower` is false then the strictly then the output satisfies
+\\(sum_{k=i}^{K-1}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+
+##### Args:
+
+
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    Shape is `[..., M, M]`.
+*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
+    Shape is `[..., M, K]`.
+*  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
+    Boolean indicating whether matrix is lower or upper triangular.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
+
+
+
 ## Complex Number Functions
 
 TensorFlow provides several operations that you can use to add complex number

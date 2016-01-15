@@ -969,6 +969,8 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/lookup_table_op_test.py",
     "kernel_tests/lrn_op_py_test.py",
     "kernel_tests/matrix_inverse_op_test.py",
+    "kernel_tests/matrix_solve_op_test.py",
+    "kernel_tests/matrix_triangular_solve_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
     "kernel_tests/queue_ops_test.py",

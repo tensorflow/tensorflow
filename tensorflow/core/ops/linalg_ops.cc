@@ -160,4 +160,94 @@ output: Shape is `[..., M+1, M]`.
 T: The type of values in the input and output.
 )doc");
 
+REGISTER_OP("MatrixSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Solves a system of linear equations. Checks for invertibility.
+
+matrix: Shape is `[M, M]`.
+rhs: Shape is `[M, K]`.
+output: Shape is `[M, K]` containing the tensor that solves
+matrix * output = rhs.
+T: The type of values in the input and output.
+)doc");
+
+REGISTER_OP("BatchMatrixSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Solves systems of linear equations. Checks for invertibility.
+
+Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. Rhs is a tensor of shape
+`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output
+matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
+
+matrix: Shape is `[..., M, M]`.
+rhs: Shape is `[..., M, K]`.
+output: Shape is `[..., M, K]`.
+T: The type of values in the input and output.
+)doc");
+
+REGISTER_OP("MatrixTriangularSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("lower: bool = True")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Solves a system of linear equations with an upper or lower triangular matrix by
+backsubstitution.
+
+`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
+upper triangular part of `matrix` is ignored. If `lower` is False then the
+strictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of
+shape [M, K]`.
+
+The output is a matrix of shape `[M, K]`. If `lower` is `True` then the output
+satisfies \\(\sum_{k=0}^{i}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+If `lower` is false then output satisfies
+\\(\sum_{k=i}^{K-1}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+
+matrix: Shape is `[M, M]`.
+rhs: Shape is `[M, K]`.
+output: Shape is `[M, K]`.
+lower: Boolean indicating whether matrix is lower or upper triangular.
+T: The type of values in the input and output.
+)doc");
+
+REGISTER_OP("BatchMatrixTriangularSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("lower: bool = True")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Solves systems of linear equations with upper or lower triangular matrices by
+backsubstitution.
+
+`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+square matrices. If `lower` is `True` then the strictly upper triangular part
+of each inner-most matrix is ignored. If `lower` is False then the strictly
+lower triangular part of each inner-most matrix is ignored. `rhs` is a tensor
+of shape [..., M, K]`.
+
+The output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the
+output satisfies
+\\(\sum_{k=0}^{i}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+If `lower` is false then the strictly then the output satisfies
+\\(sum_{k=i}^{K-1}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+
+matrix: Shape is `[..., M, M]`.
+rhs: Shape is `[..., M, K]`.
+output: Shape is `[..., M, K]`.
+lower: Boolean indicating whether matrix is lower or upper triangular.
+T: The type of values in the input and output.
+)doc");
+
 }  // namespace tensorflow
