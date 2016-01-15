@@ -34,6 +34,7 @@ except ImportError:
 from skflow.trainer import TensorFlowTrainer, RestoredTrainer
 from skflow.io.data_feeder import setup_train_data_feeder
 from skflow.io.data_feeder import setup_predict_data_feeder
+from skflow.ops.dropout_ops import DROPOUTS
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -240,12 +241,13 @@ class TensorFlowEstimator(BaseEstimator):
             raise NotFittedError()
         predict_data_feeder = setup_predict_data_feeder(X)
         preds = []
+        dropouts = tf.get_collection(DROPOUTS)
+        feed_dict = {prob: 0.0 for prob in dropouts}
         for data in predict_data_feeder:
+            feed_dict[self._inp] = data
             preds.append(self._session.run(
                 self._model_predictions,
-                feed_dict={
-                    self._inp.name: data
-                }))
+                feed_dict))
         return np.concatenate(preds, axis=0)
 
     def predict(self, X, axis=1):

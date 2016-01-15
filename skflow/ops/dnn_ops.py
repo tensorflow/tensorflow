@@ -23,6 +23,8 @@ try:
 except AttributeError:
     from tensorflow.python.ops.rnn_cell import linear
 
+import skflow
+
 
 def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     """Creates fully connected deep neural network subgraph.
@@ -41,7 +43,7 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
         for i, n_units in enumerate(hidden_units):
             with tf.variable_scope('layer%d' % i):
                 tensor_in = linear(tensor_in, n_units, True)
-            tensor_in = activation(tensor_in)
-            if keep_prob:
-                tensor_in = tf.nn.dropout(tensor_in, keep_prob)
+                tensor_in = activation(tensor_in)
+                if keep_prob:
+                    tensor_in = skflow.ops.dropout(tensor_in, keep_prob)
         return tensor_in
