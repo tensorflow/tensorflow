@@ -360,7 +360,8 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
                       output_size=None, num_heads=1, loop_function=None,
-                      dtype=dtypes.float32, scope=None):
+                      dtype=dtypes.float32, scope=None,
+                      initial_state_attention=False):
   """RNN decoder with attention for the sequence-to-sequence model.
 
   Args:
@@ -380,6 +381,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         * next is a 2D Tensor of shape [batch_size x cell.input_size].
     dtype: The dtype to use for the RNN initial state (default: tf.float32).
     scope: VariableScope for the created subgraph; default: "attention_decoder".
+    initial_state_attention: If False (default), initial attentions are zero.
+      If True, initialize the attentions from the initial state and attention
+      states -- useful when we wish to resume decoding from a previously
+      stored decoder state and attention states.
 
   Returns:
     outputs: A list of the same length as decoder_inputs of 2D Tensors of shape
@@ -453,6 +458,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
              for _ in xrange(num_heads)]
     for a in attns:  # Ensure the second shape of attention vectors is set.
       a.set_shape([None, attn_size])
+    if initial_state_attention:
+      attns = attention(initial_state)
     for i in xrange(len(decoder_inputs)):
       if i > 0:
         vs.get_variable_scope().reuse_variables()
@@ -467,7 +474,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
       cell_output, new_state = cell(x, states[-1])
       states.append(new_state)
       # Run the attention mechanism.
-      attns = attention(new_state)
+      if i == 0 and initial_state_attention:
+        with vs.variable_scope(vs.get_variable_scope(), reuse=True):
+          attns = attention(new_state)
+      else:
+        attns = attention(new_state)
+
       with vs.variable_scope("AttnOutputProjection"):
         output = rnn_cell.linear([cell_output] + attns, output_size, True)
       if loop_function is not None:
@@ -482,7 +494,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
                                 cell, num_symbols, num_heads=1,
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
-                                scope=None):
+                                scope=None, initial_state_attention=False):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -506,6 +518,10 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     dtype: The dtype to use for the RNN initial states (default: tf.float32).
     scope: VariableScope for the created subgraph; defaults to
       "embedding_attention_decoder".
+    initial_state_attention: If False (default), initial attentions are zero.
+      If True, initialize the attentions from the initial state and attention
+      states -- useful when we wish to resume decoding from a previously
+      stored decoder state and attention states.
 
   Returns:
     outputs: A list of the same length as decoder_inputs of 2D Tensors with
@@ -547,14 +563,15 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
         embedding_ops.embedding_lookup(embedding, i) for i in decoder_inputs]
     return attention_decoder(
         emb_inp, initial_state, attention_states, cell, output_size=output_size,
-        num_heads=num_heads, loop_function=loop_function)
+        num_heads=num_heads, loop_function=loop_function,
+        initial_state_attention=initial_state_attention)
 
 
 def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
                                 num_encoder_symbols, num_decoder_symbols,
                                 num_heads=1, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
-                                scope=None):
+                                scope=None, initial_state_attention=False):
   """Embedding sequence-to-sequence model with attention.
 
   This model first embeds encoder_inputs by a newly created embedding (of shape
@@ -583,6 +600,9 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
     dtype: The dtype of the initial RNN state (default: tf.float32).
     scope: VariableScope for the created subgraph; defaults to
       "embedding_attention_seq2seq".
+    initial_state_attention: If False (default), initial attentions are zero.
+      If True, initialize the attentions from the initial state and attention
+      states.
 
   Returns:
     outputs: A list of the same length as decoder_inputs of 2D Tensors with
@@ -612,15 +632,17 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
       return embedding_attention_decoder(
           decoder_inputs, encoder_states[-1], attention_states, cell,
           num_decoder_symbols, num_heads, output_size, output_projection,
-          feed_previous)
+          feed_previous, initial_state_attention=initial_state_attention)
     else:  # If feed_previous is a Tensor, we construct 2 graphs and use cond.
       outputs1, states1 = embedding_attention_decoder(
           decoder_inputs, encoder_states[-1], attention_states, cell,
-          num_decoder_symbols, num_heads, output_size, output_projection, True)
+          num_decoder_symbols, num_heads, output_size, output_projection, True,
+          initial_state_attention=initial_state_attention)
       vs.get_variable_scope().reuse_variables()
       outputs2, states2 = embedding_attention_decoder(
           decoder_inputs, encoder_states[-1], attention_states, cell,
-          num_decoder_symbols, num_heads, output_size, output_projection, False)
+          num_decoder_symbols, num_heads, output_size, output_projection, False,
+          initial_state_attention=initial_state_attention)
 
       outputs = control_flow_ops.cond(feed_previous,
                                       lambda: outputs1, lambda: outputs2)
