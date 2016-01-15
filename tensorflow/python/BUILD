@@ -239,6 +239,9 @@ py_test(
 tf_gen_op_wrapper_py(
     name = "functional_ops",
     out = "ops/gen_functional_ops.py",
+    hidden = [
+        "SymbolicGradient",
+    ],
 )
 
 py_library(
@@ -718,6 +721,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":framework",
+        ":functional_ops_lib",
         ":io_ops",
         ":linalg_ops",
         ":logging_ops",

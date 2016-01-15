@@ -43,6 +43,8 @@ from tensorflow.python.ops import math_grad
 # pylint: enable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import functional_ops
+
 from tensorflow.python.platform import logging
 
 # Warn the user if we convert a sparse representation to dense with at
@@ -415,7 +417,11 @@ def gradients(ys,
         out_grads = _AggregatedGrads(grads, op, has_control_flow,
                                      aggregation_method)
         grad_fn = None
-        if any(out_grads) and op._id not in stop_ops:
+        # pylint: disable=protected-access
+        is_func_call = ops.get_default_graph()._is_function(op.type)
+        # pylint: enable=protected-access
+
+        if not is_func_call and any(out_grads) and op._id not in stop_ops:
           # A grad_fn must be defined, either as a function or as None
           # for ops that do not have gradients.
           try:
@@ -424,7 +430,7 @@ def gradients(ys,
             raise LookupError(
                 "No gradient defined for operation '%s' (op type: %s)" %
                 (op.name, op.type))
-        if grad_fn and any(out_grads):
+        if (grad_fn or is_func_call) and any(out_grads):
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
@@ -442,7 +448,17 @@ def gradients(ys,
               op_wrapper = op
               if has_control_flow:
                 op_wrapper = control_flow_ops.MakeWrapper(op)
-              in_grads = _AsList(grad_fn(op_wrapper, *out_grads))
+              if is_func_call:
+                # For function call ops, we add a 'SymbolicGradient' node to the
+                # graph to compute gradients.
+                f_in = [op.inputs[i] for i in range(len(op.inputs))] + out_grads
+                f_types = [op.outputs[i].dtype for i in range(len(op.outputs))]
+                # pylint: disable=protected-access
+                in_grads = _AsList(functional_ops._symbolic_gradient(
+                    f_in, f_types, op.type))
+                # pylint: enable=protected-access
+              else:
+                in_grads = _AsList(grad_fn(op_wrapper, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)

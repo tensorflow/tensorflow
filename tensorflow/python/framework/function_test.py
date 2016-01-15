@@ -28,7 +28,9 @@ import tensorflow as tf
 
 
 from tensorflow.python.framework import function
-from tensorflow.python.ops.functional_ops import symbolic_gradient
+# pylint: disable=unused-import
+from tensorflow.python.ops import functional_ops
+# pylint: enable=unused-import
 
 
 class FunctionTest(tf.test.TestCase):
@@ -111,10 +113,10 @@ class FunctionTest(tf.test.TestCase):
       return x * x + 1.0
 
     def XSquarePlusOneGrad(x, dy):
-      dx = symbolic_gradient(input=[x, dy],
-                             Tout=[tf.float32],
-                             f="XSquarePlusOne",
-                             name="dx")
+      dx = functional_ops._symbolic_gradient(input=[x, dy],
+                                             Tout=[tf.float32],
+                                             f="XSquarePlusOne",
+                                             name="dx")
       return dx
 
     g = tf.Graph()
@@ -143,9 +145,9 @@ class FunctionTest(tf.test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = symbolic_gradient(input=[x, y, dz],
-                                 Tout=[tf.float32] * 2,
-                                 f="Foo")
+      dx, dy = functional_ops._symbolic_gradient(input=[x, y, dz],
+                                                 Tout=[tf.float32] * 2,
+                                                 f="Foo")
       self.assertEquals(x.get_shape(), dx.get_shape())
       self.assertEquals(y.get_shape(), dy.get_shape())
 
