@@ -171,17 +171,15 @@ class DataFeeder(object):
         self.offset = 0
         self.epoch = 0
 
-    def get_feed_params_fn(self):
-        """Returns a function, that will return a dict with data feed params while training.
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
         Returns:
-            A function, that will return a dict with data feed params while training.
+            A dict with data feed params while training.
         """
-        def _feed_params_fn():
-            return {
-                'epoch': self.epoch,
-                'offset': self.offset
-            }
-        return _feed_params_fn
+        return {
+            'epoch': self.epoch,
+            'offset': self.offset
+        }
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -269,14 +267,12 @@ class StreamingDataFeeder(object):
         # Output types are floats, due to both softmaxes and regression req.
         self.output_dtype = np.float32
 
-    def get_feed_params_fn(self):
-        """Returns a function, that will return a dict with data feed params while training.
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
         Returns:
-            A function, that will return a dict with data feed params while training.
+            A dict with data feed params while training.
         """
-        def _feed_params_fn():
-            return {}
-        return _feed_params_fn
+        return {}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -355,14 +351,12 @@ class DaskDataFeeder(object):
         else:
             self.random_state = random_state
 
-    def get_feed_params_fn(self):
-        """Returns a function, that will return a dict with data feed params while training.
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
         Returns:
-            A function, that will return a dict with data feed params while training.
+            A dict with data feed params while training.
         """
-        def _feed_params_fn():
-            return {}
-        return _feed_params_fn
+        return {}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given

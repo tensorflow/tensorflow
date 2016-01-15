@@ -167,7 +167,7 @@ class TensorFlowTrainer(object):
                 if feed_params_fn:
                     feed_params = feed_params_fn()
                     if 'epoch' in feed_params and 'offset' in feed_params and feed_params['offset'] == 0:
-                        sys.stderr.write("Epoch #{}\n".format(feed_params['epoch']))
+                        print("Epoch #{}".format(feed_params['epoch']))
         return losses
 
 
