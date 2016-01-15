@@ -94,7 +94,7 @@ def loss(logits, labels):
   Returns:
     loss: Loss tensor of type float.
   """
-  # Convert from sparse integer labels in the range [0, NUM_CLASSSES)
+  # Convert from sparse integer labels in the range [0, NUM_CLASSES)
   # to 1-hot dense float vectors (that is we will have batch_size vectors,
   # each with NUM_CLASSES values, all of which are 0.0 except there will
   # be a 1.0 in the entry corresponding to the label).
