@@ -20,10 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow.python.platform
-from tensorflow.python.ops import gen_user_ops
 from tensorflow.python.ops.gen_user_ops import *
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python import ops
+
 
 def my_fact():
   """Example of overriding the generated code for an Op."""
