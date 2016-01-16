@@ -30,14 +30,16 @@ void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
 }
 
 static BCast::Vec FromShape(const TensorShape& shape) {
-  BCast::Vec ret;
-  for (int i = 0; i < shape.dims(); ++i) ret.push_back(shape.dim_size(i));
+  const int N = shape.dims();
+  BCast::Vec ret(N);
+  for (int i = 0; i < N; ++i) {
+    ret[i] = shape.dim_size(i);
+  }
   return ret;
 }
 
 static TensorShape ToShape(const BCast::Vec& vec) {
-  TensorShape shape;
-  for (auto elem : vec) shape.AddDim(elem);
+  TensorShape shape(vec);
   return shape;
 }
 
