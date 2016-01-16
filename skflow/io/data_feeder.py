@@ -44,12 +44,12 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
 
 def _data_type_filter(X, y):
     """Filter data types into acceptable format"""
-    if HAS_PANDAS:
-        X = extract_pandas_data(X)
-        y = extract_pandas_labels(y)
     if HAS_DASK:
         X = extract_dask_data(X)
         y = extract_dask_labels(y)
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
+        y = extract_pandas_labels(y)
     return X, y
 
 
@@ -72,8 +72,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     """
     X, y = _data_type_filter(X, y)
     if HAS_DASK:
-        import dask.dataframe as dd
-        if isinstance(X, dd.Series) and isinstance(y, dd.Series):
+        allowed_classes = (dd.Series, dd.DataFrame)
+        if isinstance(X, allowed_classes) and isinstance(y, allowed_classes):
             data_feeder_cls = DaskDataFeeder
         else:
             data_feeder_cls = DataFeeder

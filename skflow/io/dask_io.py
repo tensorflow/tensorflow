@@ -18,9 +18,11 @@ import numpy as np
 
 try:
     import dask.dataframe as dd
+    allowed_classes = (dd.Series, dd.DataFrame)
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
+
 
 def _add_to_index(df, start):
     """Make a new dask.dataframe where we add these values to the
@@ -53,7 +55,7 @@ def _construct_dask_df_with_divisions(df):
 
 def extract_dask_data(data):
     """Extract data from dask.Series or dask.DataFrame for predictors"""
-    if isinstance(data, dd.DataFrame) or isinstance(data, dd.Series):
+    if isinstance(data, allowed_classes):
         return _construct_dask_df_with_divisions(data)
     else:
         return data
@@ -61,7 +63,7 @@ def extract_dask_data(data):
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
-    if isinstance(labels, dd.Series) or isinstance(labels, dd.DataFrame):
+    if isinstance(labels, allowed_classes):
         if len(labels.columns) > 1:
             raise ValueError('Only one column for labels is allowed.')
         return _construct_dask_df_with_divisions(labels)
