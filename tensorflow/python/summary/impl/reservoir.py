@@ -214,7 +214,7 @@ class _ReservoirBucket(object):
       self.items = list(filter(filterFn, self.items))
       size_diff = size_before - len(self.items)
 
-      # Estimate a correction the the number of items seen
+      # Estimate a correction the number of items seen
       prop_remaining = len(self.items) / float(
           size_before) if size_before > 0 else 0
       self._num_items_seen = int(round(self._num_items_seen * prop_remaining))

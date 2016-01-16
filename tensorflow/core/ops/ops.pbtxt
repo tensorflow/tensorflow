@@ -7286,7 +7286,7 @@ op {
     name: "filename"
     type: DT_STRING
   }
-  summary: "Generate a sharded filename. The filename is printf formated as"
+  summary: "Generate a sharded filename. The filename is printf formatted as"
   description: "   %s-%05d-of-%05d, basename, shard, num_shards."
 }
 op {

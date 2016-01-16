@@ -580,7 +580,7 @@ If you encounter the following when trying to run a TensorFlow program:
 ImportError: libcudart.so.7.0: cannot open shared object file: No such file or directory
 ```
 
-Make sure you followed the the GPU installation [instructions](#optional-install-cuda-gpus-on-linux).
+Make sure you followed the GPU installation [instructions](#optional-install-cuda-gpus-on-linux).
 
 ### Pip installation issues
 

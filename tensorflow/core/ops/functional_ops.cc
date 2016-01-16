@@ -44,7 +44,7 @@ then, g is
                                      dL/dy1, dL/dy2, ..., dL/dy_M),
 
 where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
-loss function). dL/dx_i is the the partial derivative of L with respect
+loss function). dL/dx_i is the partial derivative of L with respect
 to x_i.
 
 (Needs some math expert to say the comment above better.)

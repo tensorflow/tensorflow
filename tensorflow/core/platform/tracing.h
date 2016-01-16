@@ -36,7 +36,7 @@ class Tracing {
  public:
   // This enumeration contains the identifiers of all TensorFlow
   // threadscape events and code regions.  Threadscape assigns its
-  // own identiers at runtime when we register our events and we
+  // own identifiers at runtime when we register our events and we
   // cannot know in advance what IDs it will choose.  The "RecordEvent"
   // method and "ScopedActivity" use these event IDs for consistency
   // and remap them to threadscape IDs at runtime.  This enum is limited
