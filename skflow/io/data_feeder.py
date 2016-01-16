@@ -343,7 +343,7 @@ class DaskDataFeeder(object):
             # TODO: option for with/without replacement (dev version of dask)
             sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
                                           random_state=self.random_state)
-            inp = sample[0][self.X_columns].compute()
-            out = sample[0][self.y_columns].compute()
+            inp = extract_pandas_matrix(sample[0][self.X_columns].compute()).tolist()
+            out = extract_pandas_matrix(sample[0][self.y_columns].compute()).tolist()
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn

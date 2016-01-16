@@ -30,12 +30,14 @@ def _add_to_index(df, start):
     df.index = df.index + start
     return df
 
+
 def _get_divisions(df):
     """Number of rows in each sub-dataframe"""
     lengths = df.map_partitions(len).compute()
     divisions = np.cumsum(lengths).tolist()
     divisions.insert(0, 0)
     return divisions
+
 
 def _construct_dask_df_with_divisions(df):
     """Construct the new task graph and make a new dask.dataframe around it"""
@@ -48,12 +50,14 @@ def _construct_dask_df_with_divisions(df):
     elif isinstance(df, dd.Series):
         return dd.Series(merge(dsk, df.dask), name, df.name, divisions)
 
+
 def extract_dask_data(data):
     """Extract data from dask.Series or dask.DataFrame for predictors"""
     if isinstance(data, dd.DataFrame) or isinstance(data, dd.Series):
         return _construct_dask_df_with_divisions(data)
     else:
         return data
+
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
@@ -63,4 +67,3 @@ def extract_dask_labels(labels):
         return _construct_dask_df_with_divisions(labels)
     else:
         return labels
-

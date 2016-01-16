@@ -100,9 +100,8 @@ class DataFeederTest(tf.test.TestCase):
                 MockPlaceholder(name='input'),
                 MockPlaceholder(name='output'))
             feed_dict = feed_dict_fn()
-            print(feed_dict['input'])
-            # self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-            # self.assertAllClose(feed_dict['output'], [1, 2])
+            self.assertListEqual(feed_dict['input'], [['a'], ['b']])
+            self.assertListEqual(feed_dict['output'], [['0'], ['0']])
 
 if __name__ == '__main__':
     tf.test.main()
