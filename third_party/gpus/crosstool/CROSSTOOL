@@ -107,6 +107,7 @@ toolchain {
 
   # Anticipated future default.
   linker_flag: "-no-canonical-prefixes"
+  unfiltered_cxx_flag: "-fno-canonical-system-headers"
   # Have gcc return the exit code from ld.
   linker_flag: "-pass-exit-codes"
   # Stamp the binary with a unique identifier.
