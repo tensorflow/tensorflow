@@ -116,7 +116,7 @@ py_test(
     deps = [
         ":framework_test_lib",
         ":platform_test",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -166,7 +166,7 @@ py_library(
     deps = [
         ":platform",
         ":util",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -232,7 +232,7 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -262,7 +262,7 @@ py_test(
         ":functional_ops_lib",
         ":platform_test",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -327,7 +327,7 @@ py_test(
     deps = [
         ":framework_test_lib",
         ":platform_test",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -339,7 +339,7 @@ py_test(
     deps = [
         ":framework_test_lib",
         ":platform_test",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -376,7 +376,7 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
