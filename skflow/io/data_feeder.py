@@ -324,7 +324,7 @@ class DaskDataFeeder(object):
             X_shape, y_shape, n_classes, batch_size)
         self.input_dtype, self.output_dtype = X.dtypes, y.dtypes # TODO: dtypes for dataframe
         if random_state is None:
-            self.random_state = np.random.RandomState(42)
+            self.random_state = np.random.RandomState(66)
         else:
             self.random_state = random_state
 
@@ -343,7 +343,7 @@ class DaskDataFeeder(object):
             # TODO: option for with/without replacement (dev version of dask)
             sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
                                     random_state=self.random_state)
-            inp = sample[0][self.X_columns]
-            out = sample[0][self.y_columns]
+            inp = sample[0][self.X_columns].compute()
+            out = sample[0][self.y_columns].compute()
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
