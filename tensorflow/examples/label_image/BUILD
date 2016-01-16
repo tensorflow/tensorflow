@@ -12,11 +12,26 @@ exports_files(["LICENSE"])
 
 cc_binary(
     name = "label_image",
-    srcs = ["main.cc"],
+    srcs = [
+        "command_line_flags.cc",
+        "main.cc",
+    ],
     linkopts = ["-lm"],
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_test(
+    name = "command_line_flags_test",
+    srcs = [
+        "command_line_flags.cc",
+        "command_line_flags_test.cc",
+    ],
+    deps = [
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core/platform/default/build_config:test_main",
     ],
 )
 
