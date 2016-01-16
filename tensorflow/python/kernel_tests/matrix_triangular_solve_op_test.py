@@ -46,7 +46,7 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
       self.assertEqual(np_ans.shape, out.shape)
       self.assertAllClose(np_ans, out)
 
-  def testBasicLower(self):
+  def DISABLEDtestBasicLower(self):
     # 2x2 matrices, 2x1 right-hand side.
     matrix0 = np.array([[1., 2.], [3., 4.]])
     rhs0 = np.array([[1.], [1.]])
@@ -68,7 +68,7 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
     rhs_batch = np.tile(rhs_batch, [2, 3, 1, 1])
     self._verifySolve(matrix_batch, rhs_batch)
 
-  def testBasicUpper(self):
+  def DISABLEDtestBasicUpper(self):
     # 2x2 matrices, 2x1 right-hand side.
     matrix0 = np.array([[1., 2.], [3., 4.]])
     rhs0 = np.array([[1.], [1.]])
@@ -115,7 +115,7 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
         matrix = tf.constant([[1., 0., -1.], [-1., 0., 1.], [0., -1., 1.]])
         tf.matrix_triangular_solve(matrix, matrix).eval()
 
-  def testEmpty(self):
+  def DISABLEDtestEmpty(self):
     self._verifySolve(np.empty([0, 2, 2]), np.empty([0, 2, 2]))
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]))
 
