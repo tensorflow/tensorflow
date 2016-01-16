@@ -44,7 +44,10 @@ def _construct_dask_df_with_divisions(df):
     dsk = {(name, i): (_add_to_index, (df._name, i), divisions[i]) for i in range(df.npartitions)}
     columns = df.columns
     from toolz import merge
-    return dd.DataFrame(merge(dsk, df.dask), name, columns, divisions)
+    if isinstance(df, dd.DataFrame):
+        return dd.DataFrame(merge(dsk, df.dask), name, df.columns, divisions)
+    elif isinstance(df, dd.Series):
+        return dd.Series(merge(dsk, df.dask), name, df.name, divisions)
 
 def extract_dask_data(data):
     """Extract data from dask.Series or dask.DataFrame for predictors"""
