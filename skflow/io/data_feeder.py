@@ -277,7 +277,7 @@ class StreamingDataFeeder(object):
 
 
 class DaskDataFeeder(object):
-    """Data feeder for TF trainer that reads data from dask.Series.
+    """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
 
     Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
     DaskDataFeeder will remove requirement to have full dataset in the memory and still do
