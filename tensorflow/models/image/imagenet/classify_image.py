@@ -31,6 +31,10 @@ to use this script to perform image recognition.
 https://tensorflow.org/tutorials/image_recognition/
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os.path
 import re
 import sys
