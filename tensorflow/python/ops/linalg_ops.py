@@ -100,3 +100,49 @@ def _BatchSelfAdjointEigShape(op):
   dlist[-2] += 1
   out_shape = tensor_shape.TensorShape(dlist)
   return [out_shape]
+
+
+@ops.RegisterShape("MatrixSolve")
+def _MatrixSolveShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  # The matrix must be square.
+  lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
+  # The matrix and righ-hand-side must have the same number of rows.
+  lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
+  return [[lhs_shape[0], rhs_shape[1]]]
+
+
+@ops.RegisterShape("BatchMatrixSolve")
+def _BatchMatrixSolveShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  # The matrices must be square.
+  lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
+  # The matrices and righ-hand-sides in the batch must have the same number of
+  # rows.
+  lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
+  return [lhs_shape[:-2].concatenate(rhs_shape[-1])]
+
+
+@ops.RegisterShape("MatrixTriangularSolve")
+def _MatrixTriangularSolveShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  # The matrix must be square.
+  lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
+  # The matrix and righ-hand side must have the same number of rows.
+  lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
+  return [rhs_shape]
+
+
+@ops.RegisterShape("BatchMatrixTriangularSolve")
+def _BatchMatrixTriangularSolveShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  # The matrices must be square.
+  lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
+  # The matrices and righ-hand sides in the batch must have the same number of
+  # rows.
+  lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
+  return [rhs_shape]

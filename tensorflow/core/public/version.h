@@ -53,7 +53,7 @@ limitations under the License.
 // 5. Graphs are wholly-validated during Session::Create() (7jan2016).
 // 6. TensorFlow is scalar strict within Google (current on or after 1feb2016).
 #define TF_GRAPH_DEF_VERSION_MIN 0
-#define TF_GRAPH_DEF_VERSION_MAX 6
+#define TF_GRAPH_DEF_VERSION_MAX 7
 #define TF_GRAPH_DEF_VERSION 5
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_

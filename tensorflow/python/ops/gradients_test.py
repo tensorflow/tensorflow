@@ -23,8 +23,10 @@ import warnings
 import tensorflow.python.platform
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 # pylint: disable=unused-import
@@ -40,6 +42,10 @@ from tensorflow.python.ops import nn_grad
 from tensorflow.python.ops import state_grad
 # pylint: enable=unused-import
 from tensorflow.python.ops.constant_op import constant
+# pylint: disable=unused-import
+from tensorflow.python.ops import functional_ops
+# pylint: enable=unused-import
+
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -257,6 +263,34 @@ class GradientsTest(test_util.TensorFlowTestCase):
       w = z * 3.0
       grads = gradients.gradients(z, [c])
       self.assertTrue(isinstance(grads[0], ops.Tensor))
+
+
+@function.Defun(x=tf.float32)
+def XSquarePlusOne(x):
+  return x * x + 1.0
+
+
+class FunctionGradientsTest(test_util.TensorFlowTestCase):
+
+  def testFunctionGradientsBasic(self):
+    with ops.Graph().as_default():
+      two = tf.constant([2.0], name="two")
+      y = XSquarePlusOne(two)
+      # Build gradient graph (should add SymbolicGradient node for function).
+      grads = gradients.gradients(y, two)
+
+      with self.test_session() as sess:
+        self.assertAllEqual([4.0], sess.run(grads)[0])
+
+  def testFunctionGradientsComposition(self):
+    with ops.Graph().as_default():
+      two = tf.constant([2.0], name="two")
+      y = XSquarePlusOne(XSquarePlusOne(two))
+      # Build gradient graph (should add SymbolicGradient node for function).
+      grads = gradients.gradients(y, two)
+
+      with self.test_session() as sess:
+        self.assertAllEqual([40.0], sess.run(grads)[0])
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

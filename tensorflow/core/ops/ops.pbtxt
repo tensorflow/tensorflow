@@ -1095,6 +1095,76 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses the Cholesky decomposition if the matrices are symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
+  name: "BatchMatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations. Checks for invertibility."
+  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output\nmatrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]."
+}
+op {
+  name: "BatchMatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is ignored. If `lower` is False then the strictly\nlower triangular part of each inner-most matrix is ignored. `rhs` is a tensor\nof shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the\noutput satisfies\n\\\\(\\sum_{k=0}^{i}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].\nIf `lower` is false then the strictly then the output satisfies\n\\\\(sum_{k=i}^{K-1}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]."
+}
+op {
   name: "BatchNormWithGlobalNormalization"
   input_arg {
     name: "t"
@@ -4020,6 +4090,75 @@ op {
   }
   summary: "Calculates the inverse of a square invertible matrix."
   description: "The op uses the Cholesky decomposition if the matrix is symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+}
+op {
+  name: "MatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]` containing the tensor that solves\nmatrix * output = rhs."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations. Checks for invertibility."
+}
+op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
+  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is ignored. If `lower` is False then the\nstrictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of\nshape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `lower` is `True` then the output\nsatisfies \\\\(\\sum_{k=0}^{i}\\\\) matrix[i, k] * output[k, j] = rhs[i, j].\nIf `lower` is false then output satisfies\n\\\\(\\sum_{k=i}^{K-1}\\\\) matrix[i, k] * output[k, j] = rhs[i, j]."
 }
 op {
   name: "Max"
@@ -8755,25 +8894,24 @@ op {
   name: "TopK"
   input_arg {
     name: "input"
-    description: "A `batch_size` x `classes` tensor."
+    description: "1-D or higher with last dimension at least `k`."
     type_attr: "T"
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
+    description: "The `k` largest elements along each last dimensional slice."
     type_attr: "T"
   }
   output_arg {
     name: "indices"
-    description: "A `batch_size` x `k` tensor with the index of each value within\neach row."
+    description: "The indices of `values` within the last dimension of `input`."
     type: DT_INT32
   }
   attr {
     name: "k"
     type: "int"
-    description: "Number of top elements to look for within each row."
+    description: "Number of top elements to look for along the last dimension (along each\nrow for matrices)."
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "sorted"
@@ -8798,8 +8936,56 @@ op {
       }
     }
   }
-  summary: "Returns the values and indices of the `k` largest elements for each row."
-  description: "\\\\(values_{i, j}\\\\) represents the j-th largest element in \\\\(input_i\\\\).\n\n\\\\(indices_{i, j}\\\\) gives the column index of the corresponding element,\nsuch that \\\\(input_{i, indices_{i, j}} = values_{i, j}\\\\). If two\nelements are equal, the lower-index element appears first."
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nIf `k` varies dynamically, use `TopKV2` below."
+}
+op {
+  name: "TopKV2"
+  input_arg {
+    name: "input"
+    description: "1-D or higher with last dimension at least `k`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "0-D.  Number of top elements to look for along the last dimension (along each\nrow for matrices)."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    description: "The `k` largest elements along each last dimensional slice."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "indices"
+    description: "The indices of `values` within the last dimension of `input`."
+    type: DT_INT32
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+      }
+    }
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nThis is the same as `TopK`, but takes `k` as in input rather than an attr."
 }
 op {
   name: "Transpose"
@@ -8965,6 +9151,35 @@ op {
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
+}
+op {
+  name: "UniqueWithCounts"
+  input_arg {
+    name: "x"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "idx"
+    description: "1-D."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "count"
+    description: "1-D."
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Finds unique elements in a 1-D tensor."
+  description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"
 }
 op {
   name: "Unpack"

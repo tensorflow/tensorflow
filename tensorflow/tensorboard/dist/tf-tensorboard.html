@@ -6737,7 +6737,7 @@ var TF;
       <tf-regex-group id="regex-group" regexes="{{regexes}}"></tf-regex-group>
     </div>
     <div id="underscore-categorization">
-      <paper-checkbox checked$="{{splitOnUnderscore}}">Split on underscores</paper-checkbox>
+      <paper-checkbox checked="{{splitOnUnderscore}}">Split on underscores</paper-checkbox>
     </div>
     <style>
       :host {
@@ -7565,7 +7565,7 @@ var TF;
       <div class="sidebar">
         <div class="sidebar-section">
           <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
-          <paper-checkbox id="download-option" checked$="{{_show_download_links}}">Data download links</paper-checkbox>
+          <paper-checkbox id="download-option" checked="{{_show_download_links}}">Data download links</paper-checkbox>
         </div>
         <div class="sidebar-section">
           <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>

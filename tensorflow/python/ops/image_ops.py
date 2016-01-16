@@ -152,8 +152,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import tensorflow.python.platform
 
 from tensorflow.python.framework import dtypes
@@ -164,7 +162,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -196,22 +193,26 @@ def _ImageDimensions(images):
   return images.get_shape().as_list()
 
 
-def _Check3DImage(image):
+def _Check3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
 
   Args:
     image: 3-D Tensor of shape [height, width, channels]
+    require_static: If `True`, requires that all dimensions of `image` are
+      known and non-zero.
 
   Raises:
     ValueError: if image.shape is not a [3] vector.
   """
-  if not image.get_shape().is_fully_defined():
-    raise ValueError('\'image\' must be fully defined.')
-  if image.get_shape().ndims != 3:
+  try:
+    image_shape = image.get_shape().with_rank(3)
+  except ValueError:
     raise ValueError('\'image\' must be three-dimensional.')
-  if not all(x > 0 for x in image.get_shape()):
+  if require_static and not image_shape.is_fully_defined():
+    raise ValueError('\'image\' must be fully defined.')
+  if any(x == 0 for x in image_shape):
     raise ValueError('all dims of \'image.shape\' must be > 0: %s' %
-                     image.get_shape())
+                     image_shape)
 
 
 def _CheckAtLeast3DImage(image):
@@ -250,7 +251,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror = math_ops.less(array_ops.pack([uniform_random, 1.0, 1.0]), 0.5)
   return array_ops.reverse(image, mirror)
@@ -274,7 +275,7 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror = math_ops.less(array_ops.pack([1.0, uniform_random, 1.0]), 0.5)
   return array_ops.reverse(image, mirror)
@@ -297,7 +298,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=False)
   return array_ops.reverse(image, [False, True, False])
 
 
@@ -318,7 +319,7 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=False)
   return array_ops.reverse(image, [True, False, False])
 
 
@@ -336,7 +337,7 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=False)
   return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
 
 
@@ -365,7 +366,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
       `target_*` arguments
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=True)
   height, width, depth = _ImageDimensions(image)
 
   if target_width < width:
@@ -421,7 +422,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
     `target_*` arguments
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=True)
   height, width, _ = _ImageDimensions(image)
 
   if offset_width < 0:
@@ -464,7 +465,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     Cropped and/or padded image of shape
     `[target_height, target_width, channels]`
   """
-  _Check3DImage(image)
+  _Check3DImage(image, require_static=True)
   original_height, original_width, _ = _ImageDimensions(image)
 
   if target_width <= 0:
@@ -610,9 +611,8 @@ def per_image_whitening(image):
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
   """
-  _Check3DImage(image)
-  height, width, depth = _ImageDimensions(image)
-  num_pixels = height * width * depth
+  _Check3DImage(image, require_static=False)
+  num_pixels = math_ops.reduce_prod(array_ops.shape(image))
 
   image = math_ops.cast(image, dtype=dtypes.float32)
   image_mean = math_ops.reduce_mean(image)
@@ -623,7 +623,8 @@ def per_image_whitening(image):
   stddev = math_ops.sqrt(variance)
 
   # Apply a minimum normalization that protects us against uniform images.
-  min_stddev = constant_op.constant(1.0 / math.sqrt(num_pixels))
+  min_stddev = math_ops.inv(
+      math_ops.sqrt(math_ops.cast(num_pixels, dtypes.float32)))
   pixel_value_scale = math_ops.maximum(stddev, min_stddev)
   pixel_value_offset = image_mean
 

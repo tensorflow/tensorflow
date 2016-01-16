@@ -54,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
-
 namespace {
 
 // 1-D, 0 element tensor.
@@ -1070,8 +1069,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   for (int i = 0; i < node->num_outputs(); ++i) {
     TensorValue val = ctx->release_output(i);
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
-      DCHECK(IsSwitch(node) || IsRecv(node))
-          << "Only Switch and Recv can generate new dead outputs.";
+      // Unless it's a Switch or a Recv, the node must produce a
+      // tensor value at i-th output.
+      if (!IsSwitch(node) && !IsRecv(node)) {
+        s.Update(errors::Internal("Missing ", i, "-th output from ",
+                                  SummarizeNodeDef(node->def())));
+      }
     } else {
       Entry* out = &((*outputs)[i]);
       out->has_value = true;

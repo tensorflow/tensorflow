@@ -76,6 +76,12 @@ mathematical functions for matrices to your graph.
 @@self_adjoint_eig
 @@batch_self_adjoint_eig
 
+@@matrix_solve
+@@batch_matrix_solve
+
+@@matrix_triangular_solve
+@@batch_matrix_triangular_solve
+
 ## Complex Number Functions
 
 TensorFlow provides several operations that you can use to add complex number
@@ -1359,6 +1365,8 @@ def _SparseSegmentReductionShape(op):
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
+
+
 # pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
   """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""

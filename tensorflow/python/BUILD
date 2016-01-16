@@ -239,6 +239,9 @@ py_test(
 tf_gen_op_wrapper_py(
     name = "functional_ops",
     out = "ops/gen_functional_ops.py",
+    hidden = [
+        "SymbolicGradient",
+    ],
 )
 
 py_library(
@@ -558,6 +561,8 @@ tf_gen_op_wrapper_py(
         "EluGrad",
         "SoftplusGrad",
         "SoftsignGrad",
+        "TopK",
+        "TopKV2",
         "BiasAdd",
         "Relu6",
         "AvgPool",
@@ -718,6 +723,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":framework",
+        ":functional_ops_lib",
         ":io_ops",
         ":linalg_ops",
         ":logging_ops",
@@ -965,6 +971,8 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/lookup_table_op_test.py",
     "kernel_tests/lrn_op_py_test.py",
     "kernel_tests/matrix_inverse_op_test.py",
+    "kernel_tests/matrix_solve_op_test.py",
+    "kernel_tests/matrix_triangular_solve_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
     "kernel_tests/queue_ops_test.py",

@@ -365,6 +365,54 @@ class CallOp : public AsyncOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
 };
 
+class SymbolicGradientOp : public OpKernel {
+ public:
+  SymbolicGradientOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), handle_(kInvalidHandle) {}
+
+  ~SymbolicGradientOp() override {}
+
+  void Compute(OpKernelContext* ctx) override {
+    FunctionLibraryRuntime* lib = ctx->function_library();
+    OP_REQUIRES(ctx, lib != nullptr,
+                errors::Internal("No function library is provided."));
+
+    OP_REQUIRES_OK(ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_));
+
+    FunctionLibraryRuntime::Options opts;
+    std::vector<Tensor> args;
+    args.reserve(ctx->num_inputs());
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      args.push_back(ctx->input(i));
+    }
+    std::vector<Tensor>* rets = new std::vector<Tensor>;
+    Notification n;
+    lib->Run(opts, handle_, args, rets, [ctx, rets, &n](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else {
+        CHECK_EQ(rets->size(), ctx->num_outputs());
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      n.Notify();
+    });
+    n.WaitForNotification();
+  }
+
+ private:
+  FunctionLibraryRuntime::Handle handle_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
+                        SymbolicGradientOp);
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
+                        SymbolicGradientOp);
+
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   mutex_lock l(mu_);
   CHECK_LE(0, h);
@@ -374,7 +422,7 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
-  if (ndef.op() != kGradientOp && (lib_def_->Find(ndef.op()) == nullptr)) {
+  if (lib_def_->Find(ndef.op()) == nullptr) {
     return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
                                  kernel);
   }

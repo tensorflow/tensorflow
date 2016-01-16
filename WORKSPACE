@@ -21,8 +21,8 @@ new_http_archive(
 
 new_http_archive(
   name = "eigen_archive",
-  url = "https://bitbucket.org/eigen/eigen/get/5651786.tar.gz",
-  sha256 = "57a47fa93ed4e3eef8964ca8654e463f8268f5a0c5e5520e21c69586ada61683",
+  url = "https://bitbucket.org/eigen/eigen/get/d861b41.tar.gz",
+  sha256 = "8a22dd6597243592a6cb9e5aaed3c16b94848f0f6742312c45e3bbb35d33935d",
   build_file = "eigen.BUILD",
 )
 

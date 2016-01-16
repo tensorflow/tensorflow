@@ -1783,6 +1783,16 @@ class Graph(object):
       graph.library.function.extend(self._functions.values())
     return graph
 
+  def _is_function(self, name):
+    """Tests whether 'name' is registered in this graph's function library.
+
+    Args:
+      name: string op name.
+    Returns:
+      bool indicating whether or not 'name' is registered in function library.
+    """
+    return name in self._functions
+
   def _add_function(self, function_def):
     """Adds a function to the graph.
 
