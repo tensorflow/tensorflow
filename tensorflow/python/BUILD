@@ -561,6 +561,8 @@ tf_gen_op_wrapper_py(
         "EluGrad",
         "SoftplusGrad",
         "SoftsignGrad",
+        "TopK",
+        "TopKV2",
         "BiasAdd",
         "Relu6",
         "AvgPool",

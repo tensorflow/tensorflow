@@ -585,30 +585,67 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 )doc");
 
 REGISTER_OP("TopK")
-    .Attr("k: int >= 1")
-    .Attr("sorted: bool = true")
     .Input("input: T")
     .Output("values: T")
     .Output("indices: int32")
+    .Attr("k: int >= 0")
+    .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Doc(R"doc(
-Returns the values and indices of the `k` largest elements for each row.
+Finds values and indices of the `k` largest elements for the last dimension.
 
-\\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
 
-\\(indices_{i, j}\\) gives the column index of the corresponding element,
-such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
-elements are equal, the lower-index element appears first.
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
 
-k: Number of top elements to look for within each row.
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+If `k` varies dynamically, use `TopKV2` below.
+
+input: 1-D or higher with last dimension at least `k`.
+k: Number of top elements to look for along the last dimension (along each
+  row for matrices).
 sorted: If true the resulting `k` elements will be sorted by the values in
   descending order.
-input: A `batch_size` x `classes` tensor.
-values: A `batch_size` x `k` tensor with the `k` largest elements for
-  each row.
-indices: A `batch_size` x `k` tensor with the index of each value within
-  each row.
+values: The `k` largest elements along each last dimensional slice.
+indices: The indices of `values` within the last dimension of `input`.
+)doc");
 
+REGISTER_OP("TopKV2")
+    .Input("input: T")
+    .Input("k: int32")
+    .Output("values: T")
+    .Output("indices: int32")
+    .Attr("sorted: bool = true")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Finds values and indices of the `k` largest elements for the last dimension.
+
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+This is the same as `TopK`, but takes `k` as in input rather than an attr.
+
+input: 1-D or higher with last dimension at least `k`.
+k: 0-D.  Number of top elements to look for along the last dimension (along each
+  row for matrices).
+sorted: If true the resulting `k` elements will be sorted by the values in
+  descending order.
+values: The `k` largest elements along each last dimensional slice.
+indices: The indices of `values` within the last dimension of `input`.
 )doc");
 
 }  // namespace tensorflow

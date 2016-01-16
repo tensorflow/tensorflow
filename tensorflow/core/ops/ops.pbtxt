@@ -8894,25 +8894,24 @@ op {
   name: "TopK"
   input_arg {
     name: "input"
-    description: "A `batch_size` x `classes` tensor."
+    description: "1-D or higher with last dimension at least `k`."
     type_attr: "T"
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
+    description: "The `k` largest elements along each last dimensional slice."
     type_attr: "T"
   }
   output_arg {
     name: "indices"
-    description: "A `batch_size` x `k` tensor with the index of each value within\neach row."
+    description: "The indices of `values` within the last dimension of `input`."
     type: DT_INT32
   }
   attr {
     name: "k"
     type: "int"
-    description: "Number of top elements to look for within each row."
+    description: "Number of top elements to look for along the last dimension (along each\nrow for matrices)."
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "sorted"
@@ -8937,8 +8936,56 @@ op {
       }
     }
   }
-  summary: "Returns the values and indices of the `k` largest elements for each row."
-  description: "\\\\(values_{i, j}\\\\) represents the j-th largest element in \\\\(input_i\\\\).\n\n\\\\(indices_{i, j}\\\\) gives the column index of the corresponding element,\nsuch that \\\\(input_{i, indices_{i, j}} = values_{i, j}\\\\). If two\nelements are equal, the lower-index element appears first."
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nIf `k` varies dynamically, use `TopKV2` below."
+}
+op {
+  name: "TopKV2"
+  input_arg {
+    name: "input"
+    description: "1-D or higher with last dimension at least `k`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "0-D.  Number of top elements to look for along the last dimension (along each\nrow for matrices)."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    description: "The `k` largest elements along each last dimensional slice."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "indices"
+    description: "The indices of `values` within the last dimension of `input`."
+    type: DT_INT32
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+      }
+    }
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nThis is the same as `TopK`, but takes `k` as in input rather than an attr."
 }
 op {
   name: "Transpose"
