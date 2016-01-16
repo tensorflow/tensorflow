@@ -83,6 +83,21 @@ class DataFeederTest(tf.test.TestCase):
         self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
         self.assertAllClose(feed_dict['output'], [1, 2])
 
+    def test_dask_data_feeder(self):
+        X = pd.DataFrame(dict(a=list('aabbcc')))
+        X = dd.from_pandas(X, npartitions=3)
+        y = pd.DataFrame(dict(labels=list('010011')))
+        y = dd.from_pandas(y, npartitions=3)
+        X = _construct_dask_df_with_divisions(X)
+        y = _construct_dask_df_with_divisions(y)
+
+        df = DaskDataFeeder(X, y, n_classes=2, batch_size=2)
+        feed_dict_fn = df.get_feed_dict_fn(
+            MockPlaceholder(name='input'),
+            MockPlaceholder(name='output'))
+        feed_dict = feed_dict_fn()
+
+
 
 if __name__ == '__main__':
     tf.test.main()
