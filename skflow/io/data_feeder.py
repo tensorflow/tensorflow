@@ -310,14 +310,13 @@ class DaskDataFeeder(object):
         self.y_columns = list(y.columns)
         # combine into a data frame
         self.df = dd.multi.concat([X, y], axis=1)
-
         self.n_classes = n_classes
         X_shape = tuple([X.count().compute()])
         y_shape = tuple([y.count().compute()])
         self.sample_fraction = batch_size/float(list(X_shape)[0])
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        self.input_dtype, self.output_dtype = X.dtype, y.dtype
         if random_state is None:
             self.random_state = np.random.RandomState(42)
         else:
@@ -336,8 +335,8 @@ class DaskDataFeeder(object):
         """
         def _feed_dict_fn():
             # TODO: option for with/without replacement (dev version of dask)
-            sample = self.df.random(self.sample_fraction,
-                                    random_state=self.random_state)
+            sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
+                                    random_state=self.random_state)[0]
             inp = sample[self.X_columns]
             out = sample[self.y_columns]
             return {input_placeholder.name: inp, output_placeholder.name: out}
