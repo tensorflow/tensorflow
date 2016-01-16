@@ -85,8 +85,6 @@ class DataFeederTest(tf.test.TestCase):
         self.assertAllClose(feed_dict['output'], [1, 2])
 
     def test_dask_data_feeder_one_dim(self):
-        import pandas as pd
-        import dask.dataframe as dd
         if HAS_PANDAS and HAS_DASK:
             X = pd.DataFrame(dict(a=list('aabbcc')))
             X = dd.from_pandas(X, npartitions=2)
@@ -104,8 +102,6 @@ class DataFeederTest(tf.test.TestCase):
             self.assertListEqual(feed_dict['output'], [['0'], ['0']])
 
     def test_dask_data_feeder_multi_dim(self):
-        import pandas as pd
-        import dask.dataframe as dd
         if HAS_PANDAS and HAS_DASK:
             X = pd.DataFrame(dict(a=list('aabbcc'), b=list('lkajsd')))
             X = dd.from_pandas(X, npartitions=2)
