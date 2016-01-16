@@ -746,6 +746,15 @@ def _UniqueShape(op):
   return [tensor_shape.vector(None), input_shape]
 
 
+@ops.RegisterShape("UniqueWithCounts")
+def _UniqueWithCountsShape(op):
+  """Shape function for array_ops.Unique."""
+  # The output is a vector with data-dependent length.
+  input_shape = op.inputs[0].get_shape()
+  input_shape.assert_has_rank(1)
+  return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
+
+
 @ops.RegisterShape("Diag")
 def _DiagShape(op):
   """Shape function for array_ops.diag.
