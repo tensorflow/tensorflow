@@ -1168,11 +1168,14 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
 
     bool dst_dead = false;
     bool dst_ready = false;
+    // True iff this input for dst is needed. We only set this input for
+    // dst if this flag is true. This is needed to make the thread safety
+    // analysis happy.
     bool dst_need_input = !e->IsControlEdge();
     if (IsMerge(dst_node)) {
-      // A merge node is ready if a) all control edges are enabled and a
-      // live data input becomes available, or b) all control edges are
-      // enabled and all data inputs are dead.
+      // A merge node is ready if all control inputs have arrived and either
+      // a) a live data input becomes available or b) all data inputs are dead.
+      // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
         (*pending)[dst_id] -= 2;
         int count = (*pending)[dst_id];
@@ -1184,15 +1187,14 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
           int count = (*pending)[dst_id];
           (*pending)[dst_id] |= 0x1;
           dst_ready = (count == 0);
+          dst_need_input = (count & 0x1) == 0;
         } else {
           // This is a dead data input.
           ++(*dead_count)[dst_id];
           dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
           dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
+          dst_need_input = false;
         }
-        // This input for dst is not needed if !dst_ready. We suppress the
-        // propagation to make the thread safety analysis happy.
-        dst_need_input = dst_ready;
       }
     } else {
       // A non-merge node is ready if all its inputs are ready. We wait

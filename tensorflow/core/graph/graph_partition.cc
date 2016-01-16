@@ -413,8 +413,8 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
         if (is_visited) {
           const string& parent_name = (*info)[out_parent->id()].frame_name;
           if (parent_name != frame_name || iter_level != out_info->iter_level) {
-            return errors::InvalidArgument(
-                "All inputs to Enter must be from the same frame.");
+            return errors::InvalidArgument("All inputs to node ", out->name(),
+                                           " must be from the same frame.");
           }
         } else {
           out_info->frame = out;
@@ -422,17 +422,16 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
           TF_RETURN_IF_ERROR(
               GetNodeAttr(out->def(), "frame_name", &out_info->frame_name));
           if (out_info->frame_name.empty()) {
-            return errors::InvalidArgument(
-                "Enter must have a non-empty frame name.");
+            return errors::InvalidArgument("The Enter node ", out->name(),
+                                           " must have a frame name.");
           }
           out_info->iter_level = 0;
         }
       } else if (IsNextIteration(out)) {
         if (is_visited) {
-          if (out_info->frame_name != frame_name ||
-              out_info->iter_level != (iter_level + 1)) {
-            return errors::InvalidArgument(
-                "All inputs to NextIteration must be from the same frame.");
+          if (out_info->frame_name != frame_name) {
+            return errors::InvalidArgument("All inputs to node ", out->name(),
+                                           " must be from the same frame.");
           }
         } else {
           out_info->frame = frame;
@@ -443,8 +442,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
       } else {
         if (is_visited) {
           if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to the node ",
-                                           out->name(),
+            return errors::InvalidArgument("All inputs to node ", out->name(),
                                            " must be from the same frame.");
           }
         } else {

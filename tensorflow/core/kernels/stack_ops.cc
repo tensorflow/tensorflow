@@ -161,9 +161,8 @@ class StackPopOp : public OpKernel {
     OP_REQUIRES_OK(ctx, rm->Lookup(container, stack_name, &stack));
     PersistentTensor value;
     bool has_value = stack->Pop(&value);
-    if (!has_value) {
-      errors::InvalidArgument("Calling Pop() when the stack is empty.");
-    }
+    OP_REQUIRES(ctx, has_value, errors::InvalidArgument(
+                                    "Calling Pop() when the stack is empty."));
     ctx->set_output(0, *value.AccessTensor(ctx));
   }
 };
