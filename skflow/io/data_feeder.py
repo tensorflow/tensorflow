@@ -314,10 +314,11 @@ class DaskDataFeeder(object):
 
         X_count = X.count().compute()
         if len(X_count) == 1:
-            X_shape = tuple([X.count().compute()])
+            # One-dimensional
+            X_shape = (X.count().compute(),)
         else:
-            # TODO: Support multi-dimensional
-            ValueError("Only one dimensional input for DaskDataFeeder is supported now.")
+            # Multi-dimensional
+            X_shape = (X.count().compute()[0], X.ndim)
         y_shape = tuple([y.count().compute()])
         self.sample_fraction = batch_size/float(list(X_shape)[0])
         self.input_shape, self.output_shape = _get_in_out_shape(
