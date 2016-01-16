@@ -72,6 +72,7 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     """
     X, y = _data_type_filter(X, y)
     if HAS_DASK:
+        import dask.dataframe as dd
         allowed_classes = (dd.Series, dd.DataFrame)
         if isinstance(X, allowed_classes) and isinstance(y, allowed_classes):
             data_feeder_cls = DaskDataFeeder
@@ -108,10 +109,10 @@ def setup_predict_data_feeder(X, batch_size=-1):
     Returns:
         List or iterator of parts of data to predict on.
     """
-    if HAS_PANDAS:
-        X = extract_pandas_data(X)
     if HAS_DASK:
         X = extract_dask_data(X)
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
     if _is_iterable(X):
         return _batch_data(X, batch_size)
     if len(X.shape) == 1:

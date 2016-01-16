@@ -26,7 +26,7 @@ import skflow
 
 class IOTest(googletest.TestCase):
 
-    def testPandasDataframe(self):
+    def test_pandas_dataframe(self):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
@@ -37,9 +37,9 @@ class IOTest(googletest.TestCase):
             score = accuracy_score(classifier.predict(data), labels)
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
         else:
-            print("No pandas installed. test_pandas_dataframe skipped.")
+            print("No pandas installed. pandas-related tests are skipped.")
 
-    def testPandasSeries(self):
+    def test_pandas_series(self):
         if HAS_PANDAS:
             random.seed(42)
             iris = datasets.load_iris()
@@ -49,16 +49,14 @@ class IOTest(googletest.TestCase):
             classifier.fit(data, labels)
             score = accuracy_score(classifier.predict(data), labels)
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-        else:
-            print("No pandas installed. test_pandas_series skipped.")
 
-    def testStringDataFormats(self):
+    def test_string_data_formats(self):
         with self.assertRaises(ValueError):
             skflow.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
         with self.assertRaises(ValueError):
             skflow.io.extract_pandas_labels(pd.DataFrame({"Test": ["A", "B"]}))
    
-    def testDaskIO(self):
+    def test_dask_io(self):
         if HAS_DASK and HAS_PANDAS:
             # test dask.dataframe
             df = pd.DataFrame(dict(a=list('aabbcc'), b=list(range(6))),
@@ -77,6 +75,21 @@ class IOTest(googletest.TestCase):
             # labels should only have one column
             with self.assertRaises(ValueError):
                 extract_dask_labels(ddf)
+        else:
+            print("No dask installed. dask-related tests are skipped.")
+
+    def test_dask_iris_classification(self):
+        if HAS_DASK and HAS_PANDAS:
+            random.seed(42)
+            iris = datasets.load_iris()
+            data = pd.DataFrame(iris.data)
+            data = dd.from_pandas(data, npartitions=2)
+            labels = pd.DataFrame(iris.target)
+            labels = dd.from_pandas(labels, npartitions=2)
+            classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
+            classifier.fit(data, labels)
+            score = accuracy_score(classifier.predict(data), labels)
+            self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 if __name__ == '__main__':
     tf.test.main()
