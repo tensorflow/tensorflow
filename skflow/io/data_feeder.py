@@ -277,7 +277,7 @@ class StreamingDataFeeder(object):
 
 
 class DaskDataFeeder(object):
-    """Data feeder for TF trainer that reads data from dask.Series.
+    """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
 
     Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
     DaskDataFeeder will remove requirement to have full dataset in the memory and still do
@@ -310,16 +310,21 @@ class DaskDataFeeder(object):
         self.y_columns = list(y.columns)
         # combine into a data frame
         self.df = dd.multi.concat([X, y], axis=1)
-
         self.n_classes = n_classes
-        X_shape = tuple([X.count().compute()])
+
+        X_count = X.count().compute()
+        if len(X_count) == 1:
+            X_shape = tuple([X.count().compute()])
+        else:
+            # TODO: Support multi-dimensional
+            ValueError("Only one dimensional input for DaskDataFeeder is supported now.")
         y_shape = tuple([y.count().compute()])
         self.sample_fraction = batch_size/float(list(X_shape)[0])
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        self.input_dtype, self.output_dtype = X.dtypes, y.dtypes # TODO: dtypes for dataframe
         if random_state is None:
-            self.random_state = np.random.RandomState(42)
+            self.random_state = np.random.RandomState(66)
         else:
             self.random_state = random_state
 
@@ -336,9 +341,9 @@ class DaskDataFeeder(object):
         """
         def _feed_dict_fn():
             # TODO: option for with/without replacement (dev version of dask)
-            sample = self.df.random(self.sample_fraction,
-                                    random_state=self.random_state)
-            inp = sample[self.X_columns]
-            out = sample[self.y_columns]
+            sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
+                                          random_state=self.random_state)
+            inp = extract_pandas_matrix(sample[0][self.X_columns].compute()).tolist()
+            out = extract_pandas_matrix(sample[0][self.y_columns].compute()).tolist()
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn

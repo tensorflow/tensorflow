@@ -30,6 +30,7 @@ def _add_to_index(df, start):
     df.index = df.index + start
     return df
 
+
 def _get_divisions(df):
     """Number of rows in each sub-dataframe"""
     lengths = df.map_partitions(len).compute()
@@ -37,14 +38,18 @@ def _get_divisions(df):
     divisions.insert(0, 0)
     return divisions
 
+
 def _construct_dask_df_with_divisions(df):
     """Construct the new task graph and make a new dask.dataframe around it"""
     divisions = _get_divisions(df)
     name = 'csv-index' + df._name
     dsk = {(name, i): (_add_to_index, (df._name, i), divisions[i]) for i in range(df.npartitions)}
-    columns = df.columns
     from toolz import merge
-    return dd.DataFrame(merge(dsk, df.dask), name, columns, divisions)
+    if isinstance(df, dd.DataFrame):
+        return dd.DataFrame(merge(dsk, df.dask), name, df.columns, divisions)
+    elif isinstance(df, dd.Series):
+        return dd.Series(merge(dsk, df.dask), name, df.name, divisions)
+
 
 def extract_dask_data(data):
     """Extract data from dask.Series or dask.DataFrame for predictors"""
@@ -52,6 +57,7 @@ def extract_dask_data(data):
         return _construct_dask_df_with_divisions(data)
     else:
         return data
+
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
@@ -61,4 +67,3 @@ def extract_dask_labels(labels):
         return _construct_dask_df_with_divisions(labels)
     else:
         return labels
-

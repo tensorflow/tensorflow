@@ -4,5 +4,4 @@ branch = True
 [report]
 omit = 
         */tests/*
-        */io/data_feeder.py
 
