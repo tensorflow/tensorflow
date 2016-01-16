@@ -342,7 +342,7 @@ class DaskDataFeeder(object):
         def _feed_dict_fn():
             # TODO: option for with/without replacement (dev version of dask)
             sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
-                                    random_state=self.random_state)
+                                          random_state=self.random_state)
             inp = sample[0][self.X_columns].compute()
             out = sample[0][self.y_columns].compute()
             return {input_placeholder.name: inp, output_placeholder.name: out}

@@ -42,7 +42,6 @@ def _construct_dask_df_with_divisions(df):
     divisions = _get_divisions(df)
     name = 'csv-index' + df._name
     dsk = {(name, i): (_add_to_index, (df._name, i), divisions[i]) for i in range(df.npartitions)}
-    columns = df.columns
     from toolz import merge
     if isinstance(df, dd.DataFrame):
         return dd.DataFrame(merge(dsk, df.dask), name, df.columns, divisions)
