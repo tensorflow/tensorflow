@@ -249,7 +249,7 @@ class FtrlOptimizer(optimizer.Optimizer):
         gradients.  Defaults to "Ftrl".
 
     Raises:
-      ValueError: if one of the arguments is invalid.
+      ValueError: If one of the arguments is invalid.
     """
     super(FtrlOptimizer, self).__init__(use_locking, name)
 
