@@ -308,27 +308,22 @@ class DaskDataFeeder(object):
         self.y = y
         # save column names
         self.X_columns = list(X.columns)
-        self.y_columns = max(self.X_columns)+1 # y should be appended at the end# list(y.columns)
-        self.y = self.y.rename(columns={0: self.y_columns}) # rename column to be the last one
+        if isinstance(y.columns[0], str):
+            self.y_columns = list(y.columns)
+        else:
+            self.y_columns = len(self.X_columns)+1 # y should be appended at the end
+            self.y = self.y.rename(columns={y.columns[0]: self.y_columns}) # rename column to be the last one
         # combine into a data frame
         self.df = dd.multi.concat([self.X, self.y], axis=1)
-        self.df.columns = list(X.columns)
         self.n_classes = n_classes
 
         X_count = X.count().compute()[0]
-        # if len(X_count) == 1:
-        #     # One-dimensional
-        #     X_shape = (X.count().compute(),) # should this be (len(X_count), ..)?
-        # else:
-        #     # Multi-dimensional
-        #     X_shape = (X.count().compute()[0], X.ndim)
-        X_shape = [None, 4]
-        y_shape = [None, 3] # tuple([y.count().compute()])
-        self.sample_fraction = batch_size/float(X_count)# batch_size/float(list(X_shape)[0])
+        X_shape = (X_count, len(self.X.columns))
+        y_shape = (X_count, len(self.y.columns))
+        self.sample_fraction = batch_size/float(X_count)
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        import numpy as np
-        self.input_dtype, self.output_dtype = np.dtype('float32'), np.dtype('float32')# X.dtypes, y.dtypes # TODO: dtypes for dataframe
+        self.input_dtype, self.output_dtype = self.X.dtypes[0], self.y.dtypes[self.y_columns] # should both be dtype('float32') if use pandas
         if random_state is None:
             self.random_state = np.random.RandomState(66)
         else:

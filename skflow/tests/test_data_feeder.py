@@ -90,9 +90,8 @@ class DataFeederTest(tf.test.TestCase):
             X = dd.from_pandas(X, npartitions=2)
             y = pd.DataFrame(dict(labels=list('010011')))
             y = dd.from_pandas(y, npartitions=2)
-            X = extract_dask_data(X)
-            y = extract_dask_labels(y)
-
+            # X = extract_dask_data(X)
+            # y = extract_dask_labels(y)
             df = data_feeder.DaskDataFeeder(X, y, n_classes=2, batch_size=2)
             feed_dict_fn = df.get_feed_dict_fn(
                 MockPlaceholder(name='input'),
@@ -107,9 +106,8 @@ class DataFeederTest(tf.test.TestCase):
             X = dd.from_pandas(X, npartitions=2)
             y = pd.DataFrame(dict(labels=list('010011')))
             y = dd.from_pandas(y, npartitions=2)
-            X = extract_dask_data(X)
-            y = extract_dask_labels(y)
-
+            # X = extract_dask_data(X)
+            # y = extract_dask_labels(y)
             df = data_feeder.DaskDataFeeder(X, y, n_classes=2, batch_size=2)
             feed_dict_fn = df.get_feed_dict_fn(
                 MockPlaceholder(name='input'),
