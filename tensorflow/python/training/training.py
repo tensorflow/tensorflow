@@ -158,6 +158,7 @@ from tensorflow.python.training.training_util import global_step
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
+from tensorflow.python.training.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import exponential_decay

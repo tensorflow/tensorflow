@@ -43,6 +43,7 @@ from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
 from tensorflow.core.framework.summary_pb2 import *
+from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.framework.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
