@@ -311,8 +311,9 @@ class DaskDataFeeder(object):
         if isinstance(y.columns[0], str):
             self.y_columns = list(y.columns)
         else:
-            self.y_columns = len(self.X_columns)+1 # y should be appended at the end
-            self.y = self.y.rename(columns={y.columns[0]: self.y_columns}) # rename column to be the last one
+            # deal with cases where two DFs have overlapped default numeric colnames
+            self.y_columns = len(self.X_columns)+1
+            self.y = self.y.rename(columns={y.columns[0]: self.y_columns})
         # combine into a data frame
         self.df = dd.multi.concat([self.X, self.y], axis=1)
         self.n_classes = n_classes
@@ -323,7 +324,8 @@ class DaskDataFeeder(object):
         self.sample_fraction = batch_size/float(X_count)
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = self.X.dtypes[0], self.y.dtypes[self.y_columns] # should both be dtype('float32') if use pandas
+        # TODO: dtype('float32') instead of float64 and int64
+        self.input_dtype, self.output_dtype = self.X.dtypes[0], self.y.dtypes[self.y_columns]
         if random_state is None:
             self.random_state = np.random.RandomState(66)
         else:
