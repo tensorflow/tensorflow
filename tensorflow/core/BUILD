@@ -117,10 +117,7 @@ cc_library(
     ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
-    visibility = [
-        ":friends",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
