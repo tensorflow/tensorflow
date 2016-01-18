@@ -131,6 +131,17 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
 
+  // Returns either 0 or an identifier assigned to the buffer at 'ptr'
+  // when the buffer was returned by AllocateRaw. If non-zero, the
+  // identifier differs from every other ID assigned by this
+  // allocator.
+  //
+  // REQUIRES: TracksAllocationSizes() is true.
+  //
+  // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
+  // allocated by this allocator.
+  virtual int64 AllocationId(void* ptr) { return 0; }
+
   // is_simple<T>::value if T[] can be safely constructed and destructed
   // without running T() and ~T().  We do not use std::is_trivial<T>
   // directly because std::complex<float> is not trival but its array

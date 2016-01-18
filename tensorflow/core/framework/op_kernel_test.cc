@@ -272,7 +272,7 @@ TEST_F(OpKernelTest, MatchSignatureFailes) {
 class DummyDevice : public DeviceBase {
  public:
   DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool SaveTemporaryTensors() const override { return save_; }
+  bool RequiresRecordingAccessedTensors() const override { return save_; }
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
@@ -297,7 +297,9 @@ TEST_F(OpKernelTest, SaveTempFalse) {
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
 
-  EXPECT_EQ(0, ctx->num_temps());
+  TensorReferenceVector referenced_tensors;
+  ctx->retrieve_accessed_tensors(&referenced_tensors);
+  EXPECT_EQ(0, referenced_tensors.size());
 
   delete ctx;
   delete params.device;
@@ -319,7 +321,12 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
 
-  EXPECT_EQ(1, ctx->num_temps());
+  TensorReferenceVector referenced_tensors;
+  ctx->retrieve_accessed_tensors(&referenced_tensors);
+  EXPECT_EQ(1, referenced_tensors.size());
+  for (auto& ref : referenced_tensors) {
+    ref.Unref();
+  }
 
   delete ctx;
   delete params.device;

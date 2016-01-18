@@ -211,9 +211,7 @@ Status OpKernelConstruction::allocate_persistent(
 // OpKernelContext -----------------------------------------------------------
 
 OpKernelContext::OpKernelContext(const Params& params)
-    : params_(params),
-      outputs_(params.op_kernel->output_types().size()),
-      output_allocation_types_(params.op_kernel->output_types().size()) {
+    : params_(params), outputs_(params.op_kernel->output_types().size()) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   eigen_gpu_device_ = params_.device->MakeGpuDevice(params_.op_device_context,
                                                     eigen_gpu_allocator);
@@ -225,11 +223,10 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
-  for (Tensor* t : temp_tensors_) delete t;
   delete eigen_gpu_device_;
 }
 
-Status OpKernelContext::input(const string& name, const Tensor** tensor) const {
+Status OpKernelContext::input(const string& name, const Tensor** tensor) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -243,6 +240,7 @@ Status OpKernelContext::input(const string& name, const Tensor** tensor) const {
                                    "' when immutable input was expected");
   }
   *tensor = (*params_.inputs)[start].tensor;
+  record_tensor_reference(**tensor);
   return Status::OK();
 }
 
@@ -278,6 +276,7 @@ Status OpKernelContext::mutable_input(const string& name, Tensor* tensor,
     mutex_lock l(*input_ref_mutex(start));
     *tensor = *(*params_.inputs)[start].tensor;
   }
+  record_tensor_reference(*tensor);
   return Status::OK();
 }
 
@@ -299,8 +298,7 @@ Status OpKernelContext::replace_ref_input(const string& name,
   return Status::OK();
 }
 
-Status OpKernelContext::input_list(const string& name,
-                                   OpInputList* list) const {
+Status OpKernelContext::input_list(const string& name, OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);

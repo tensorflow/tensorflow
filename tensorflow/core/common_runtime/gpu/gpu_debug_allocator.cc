@@ -130,6 +130,10 @@ size_t GPUDebugAllocator::AllocatedSize(void* ptr) {
   return base_allocator_->AllocatedSize(static_cast<char*>(ptr) - MASK_BYTES);
 }
 
+int64 GPUDebugAllocator::AllocationId(void* ptr) {
+  return base_allocator_->AllocationId(static_cast<char*>(ptr) - MASK_BYTES);
+}
+
 bool GPUDebugAllocator::CheckHeader(void* ptr) {
   return CheckMask(stream_exec_, static_cast<char*>(ptr) - MASK_BYTES,
                    before_mask);

@@ -51,6 +51,7 @@ class GPURegionAllocator : public VisitableAllocator {
   bool TracksAllocationSizes() override;
   size_t RequestedSize(void* ptr) override;
   size_t AllocatedSize(void* ptr) override;
+  int64 AllocationId(void* ptr) override;
 
  private:
   // A Chunk is the header on a single piece of memory given back
@@ -59,16 +60,21 @@ class GPURegionAllocator : public VisitableAllocator {
     char* ptr;               // pointer to granted GPU buffer.
     size_t size;             // Full size of GPU buffer.
     size_t bytes_allocated;  // Bytes asked for by client.
-    bool in_use;
+    // allocation_id is set to -1 when the chunk is not in use. It is assigned a
+    // value greater than zero before the chunk is returned from
+    // AllocateRaw, and this value is unique among values assigned by
+    // the parent allocator.
+    int64 allocation_id;
     Chunk* prev;  // Used for chaining in pool.
     Chunk* next;
     Chunk()
         : ptr(nullptr),
           size(0),
           bytes_allocated(0),
-          in_use(false),
+          allocation_id(-1),
           prev(nullptr),
           next(nullptr) {}
+    bool in_use() { return allocation_id != -1; }
   };
 
   // A Pool is a collection of same-sized Chunks.
@@ -133,6 +139,10 @@ class GPURegionAllocator : public VisitableAllocator {
   GPUAllocatorRetry retry_helper_;
   mutable mutex lock_;
   PoolMap pools_ GUARDED_BY(lock_);
+
+  // Counter containing the next unique identifier to assign to a
+  // newly-created chunk.
+  int64 next_allocation_id_ GUARDED_BY(lock_);
 
   // Owns regions.
   std::vector<Region*> regions_ GUARDED_BY(lock_);

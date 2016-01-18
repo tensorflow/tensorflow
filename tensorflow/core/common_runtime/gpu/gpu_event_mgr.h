@@ -50,8 +50,6 @@ class EventMgr {
 
   ~EventMgr();
 
-  typedef gtl::InlinedVector<TensorReference, 4> TensorReferenceVector;
-
   // Releases the references on the elements of "tensors" as soon as
   // all events currently enqueued on "stream" have completed.
   void ThenDeleteTensors(perftools::gputools::Stream* stream,

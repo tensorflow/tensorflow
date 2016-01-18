@@ -52,7 +52,11 @@ class BaseGPUDevice : public LocalDevice {
   // GPU devices require the Op Compute method to save a reference to
   // any temporary tensors that are allocated until the Op execution
   // completes.
-  bool SaveTemporaryTensors() const override { return true; }
+  bool RequiresRecordingAccessedTensors() const override { return true; }
+
+  void ConsumeListOfAccessedTensors(
+      DeviceContext* device_context,
+      const TensorReferenceVector& tensor_refs) override;
 
   Status FillContextMap(const Graph* graph,
                         DeviceContextMap* device_context_map);

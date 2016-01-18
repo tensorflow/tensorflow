@@ -1,0 +1,118 @@
+#ifndef TENSORFLOW_FRAMEWORK_UNIQUE_TENSOR_REFERENCES_H_
+#define TENSORFLOW_FRAMEWORK_UNIQUE_TENSOR_REFERENCES_H_
+
+#include <unordered_set>
+
+#include "tensorflow/core/framework/tensor_reference.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/public/tensor.h"
+
+namespace tensorflow {
+
+// Helper class to maintain a unique set of tensor references. In the
+// common case tehre are not many references, so an inline vector is
+// used for <= kInVector unique elements, defaulting to 4 since that
+// is the inlined size of TensorReferenceVector. To avoid N^2
+// operations when adding N items, any larger number of unique tensor
+// references switches to using an unordered set.
+class UniqueTensorReferences {
+ public:
+  UniqueTensorReferences() : frozen_(false) {}
+
+  ~UniqueTensorReferences() {
+    if (!frozen_) {
+      // The references were not retrieved so discard them to avoid
+      // leaking memory.
+      TensorReferenceVector refs;
+      FreezeAndReturnReferences(&refs);
+      for (auto& tensor : refs) {
+        tensor.Unref();
+      }
+    }
+  }
+
+  // Adds a reference to tensor if its buffer is not already referenced.
+  void Add(const Tensor& tensor) {
+    DCHECK(!frozen_);
+    // Do nothing if the tensor has a null buffer.
+    if (tensor.IsInitialized()) {
+      if (referenced_tensors_set_.size() > 0) {
+        // There are enough tensors that we are using a hash set to
+        // de-duplicate.
+        const TensorReference tensor_ref(tensor);
+        if (!referenced_tensors_set_.insert(tensor_ref).second) {
+          // The tensor was a duplicate, so discard the reference.
+          tensor_ref.Unref();
+        }
+      } else {
+        for (int i = 0; i < referenced_tensors_vector_.size(); ++i) {
+          if (referenced_tensors_vector_[i].SharesBufferWith(tensor)) {
+            // tensor is a duplicate, so nothing to do.
+            return;
+          }
+        }
+        referenced_tensors_vector_.push_back(TensorReference(tensor));
+        if (kInVector == referenced_tensors_vector_.size()) {
+          // There are too many tensors to keep using the N^2 algorithm
+          // so start de-duplicating using a set.
+          DCHECK_EQ(0, referenced_tensors_set_.size());
+          // Transfer the refs from the vector to the set.
+          referenced_tensors_set_.reserve(kInVector);
+          referenced_tensors_set_.insert(referenced_tensors_vector_.begin(),
+                                         referenced_tensors_vector_.end());
+          DCHECK_EQ(kInVector, referenced_tensors_set_.size());
+          referenced_tensors_vector_.clear();
+        }
+      }
+    }
+  }
+
+  // No more references may be added after this is called. The unique
+  // references are returning in out_vector.
+  void FreezeAndReturnReferences(TensorReferenceVector* out_vector) {
+    // Prevent any further additions.
+    frozen_ = true;
+    if (referenced_tensors_set_.size() > 0) {
+      DCHECK(referenced_tensors_vector_.empty());
+      out_vector->reserve(referenced_tensors_set_.size());
+      for (const auto& ref : referenced_tensors_set_) {
+        out_vector->push_back(ref);
+      }
+      referenced_tensors_set_.clear();
+    } else {
+      out_vector->reserve(referenced_tensors_vector_.size());
+      for (const auto& ref : referenced_tensors_vector_) {
+        out_vector->push_back(ref);
+      }
+      referenced_tensors_vector_.clear();
+    }
+  }
+
+ private:
+  // Up to kInVector elements are stored in reference_tensors_vector_
+  // to avoid any allocations or hash computations in the common
+  // case. When more unique elements are added they move to
+  // referenced_tensors_set_ to avoid an N^2 algorithm on insert.
+  static const int kInVector = 4;  // Must be >= 1.
+
+  struct TensorReferenceEqualFn {
+    bool operator()(const TensorReference& t1,
+                    const TensorReference& t2) const {
+      return t1.SharesBufferWith(t2);
+    }
+  };
+
+  struct TensorReferenceHashFn {
+    size_t operator()(const TensorReference& t) const { return t.BufferHash(); }
+  };
+
+  bool frozen_;
+  TensorReferenceVector referenced_tensors_vector_;
+  std::unordered_set<TensorReference, TensorReferenceHashFn,
+                     TensorReferenceEqualFn>
+      referenced_tensors_set_;
+};
+
+}  // end namespace tensorflow
+
+#endif  // TENSORFLOW_FRAMEWORK_UNIQUE_TENSOR_REFERENCES_H_

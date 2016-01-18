@@ -65,6 +65,8 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   size_t AllocatedSize(void* ptr) override;
 
+  int64 AllocationId(void* ptr) override;
+
  private:
   struct Bin;
 
@@ -86,7 +88,11 @@ class GPUBFCAllocator : public VisitableAllocator {
     // strategy is efficient.
     size_t requested_size = 0;
 
-    bool in_use = false;
+    // allocation_id is set to -1 when the chunk is not in use. It is assigned a
+    // value greater than zero before the chunk is returned from
+    // AllocateRaw, and this value is unique among values assigned by
+    // the parent allocator.
+    int64 allocation_id = -1;
     void* ptr = nullptr;  // pointer to granted GPU subbuffer.
 
     // If not null, the memory referred to by 'prev' is directly
@@ -102,12 +108,14 @@ class GPUBFCAllocator : public VisitableAllocator {
     // What bin are we in?
     Bin* bin = nullptr;
 
+    bool in_use() { return allocation_id != -1; }
+
     string DebugString(bool recurse) {
       string dbg;
       strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
                          " | Requested Size: ",
                          strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use);
+                         " | in_use: ", in_use());
       if (recurse && prev) {
         strings::StrAppend(&dbg, ", prev: ", prev->DebugString(false));
       }
@@ -171,6 +179,10 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   // Called once on each region, ASAP.
   std::vector<Visitor> region_visitors_;
+
+  // Counter containing the next unique identifier to assign to a
+  // newly-created chunk.
+  int64 next_allocation_id_ GUARDED_BY(lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 };

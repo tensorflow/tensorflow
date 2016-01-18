@@ -43,6 +43,7 @@ class GPUDebugAllocator : public VisitableAllocator {
   bool TracksAllocationSizes() override;
   size_t RequestedSize(void* ptr) override;
   size_t AllocatedSize(void* ptr) override;
+  int64 AllocationId(void* ptr) override;
 
   // For testing.
   bool CheckHeader(void* ptr);

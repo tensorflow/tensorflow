@@ -91,6 +91,13 @@ class Tensor {
     return shape().IsSameSize(b.shape());
   }
 
+  // True iff the two tensors use the same underlying refcounted storage
+  bool SharesBufferWith(const Tensor& b) const;
+
+  // The BufferHash of two tensors are equal when they share the same
+  // underlying refcounted storage
+  size_t BufferHash() const;
+
   /// Has this Tensor been initialized?
   bool IsInitialized() const;
 
