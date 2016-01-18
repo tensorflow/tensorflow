@@ -58,16 +58,16 @@ tf.app.flags.DEFINE_string("input_checkpoint", "",
                            """TensorFlow variables file to load.""")
 tf.app.flags.DEFINE_string("output_graph", "",
                            """Output 'GraphDef' file name.""")
-tf.app.flags.DEFINE_bool("input_binary", False,
-                         """Whether the input files are in binary format.""")
+tf.app.flags.DEFINE_boolean("input_binary", False,
+                            """Whether the input files are in binary format.""")
 tf.app.flags.DEFINE_string("output_node_names", "",
                            """The name of the output nodes, comma separated.""")
 tf.app.flags.DEFINE_string("restore_op_name", "save/restore_all",
                            """The name of the master restore operator.""")
 tf.app.flags.DEFINE_string("filename_tensor_name", "save/Const:0",
                            """The name of the tensor holding the save path.""")
-tf.app.flags.DEFINE_bool("clear_devices", True,
-                         """Whether to remove device specifications.""")
+tf.app.flags.DEFINE_boolean("clear_devices", True,
+                            """Whether to remove device specifications.""")
 
 
 def set_attr_dtype(node, key, value):
