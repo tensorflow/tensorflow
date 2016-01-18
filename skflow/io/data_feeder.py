@@ -292,7 +292,7 @@ class DaskDataFeeder(object):
         n_classes: indicator of how many classes the target has.
         batch_size: Mini batch size to accumulate.
         random_state: random state for RNG. Note that it will mutate so use a int value
-            for this if you want consistent sized batches. 
+            for this if you want consistent sized batches.
 
     Attributes:
         X: input features.
@@ -327,8 +327,8 @@ class DaskDataFeeder(object):
         self.sample_fraction = batch_size/float(X_count)
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        # TODO: dtype('float32') instead of float64 and int64
-        self.input_dtype, self.output_dtype = self.X.dtypes[0], self.y.dtypes[self.y_columns]
+        # self.X.dtypes[0], self.y.dtypes[self.y_columns]
+        self.input_dtype, self.output_dtype = np.float32, np.float32
         if random_state is None:
             self.random_state = 66
         else:
@@ -350,6 +350,12 @@ class DaskDataFeeder(object):
             sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
                                           random_state=self.random_state)
             inp = extract_pandas_matrix(sample[0][self.X_columns].compute()).tolist()
-            out = extract_pandas_matrix(sample[0][self.y_columns].compute()).tolist()
-            return {input_placeholder.name: inp, output_placeholder.name: out}
+            out = extract_pandas_matrix(sample[0][self.y_columns].compute())
+            # convert to correct dtype
+            inp = np.array(inp, dtype=self.input_dtype)
+            # one-hot encode out for each class for cross entropy loss
+            out = out.flatten()
+            encoded_out = np.zeros((out.size, out.max()+1), dtype=self.output_dtype)
+            encoded_out[np.arange(out.size), out] = 1
+            return {input_placeholder.name: inp, output_placeholder.name: encoded_out}
         return _feed_dict_fn

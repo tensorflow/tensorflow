@@ -84,11 +84,12 @@ class DataFeederTest(tf.test.TestCase):
         self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
         self.assertAllClose(feed_dict['output'], [1, 2])
 
-    def test_dask_data_feeder_one_dim(self):
+    def test_dask_data_feeder(self):
         if HAS_PANDAS and HAS_DASK:
-            X = pd.DataFrame(dict(a=list('aabbcc')))
+            X = pd.DataFrame(dict(a=np.array([.1, .3, .4, .6, .2, .1, .6]),
+                                  b=np.array([.7, .8, .1, .2, .5, .3, .9])))
             X = dd.from_pandas(X, npartitions=2)
-            y = pd.DataFrame(dict(labels=list('010011')))
+            y = pd.DataFrame(dict(labels=np.array([1, 0, 2, 1, 0, 1, 2])))
             y = dd.from_pandas(y, npartitions=2)
             # X = extract_dask_data(X)
             # y = extract_dask_labels(y)
@@ -97,24 +98,10 @@ class DataFeederTest(tf.test.TestCase):
                 MockPlaceholder(name='input'),
                 MockPlaceholder(name='output'))
             feed_dict = feed_dict_fn()
-            self.assertListEqual(feed_dict['input'], [['a'], ['b']])
-            self.assertListEqual(feed_dict['output'], [['0'], ['0']])
-
-    def test_dask_data_feeder_multi_dim(self):
-        if HAS_PANDAS and HAS_DASK:
-            X = pd.DataFrame(dict(a=list('aabbcc'), b=list('lkajsd')))
-            X = dd.from_pandas(X, npartitions=2)
-            y = pd.DataFrame(dict(labels=list('010011')))
-            y = dd.from_pandas(y, npartitions=2)
-            # X = extract_dask_data(X)
-            # y = extract_dask_labels(y)
-            df = data_feeder.DaskDataFeeder(X, y, n_classes=2, batch_size=2)
-            feed_dict_fn = df.get_feed_dict_fn(
-                MockPlaceholder(name='input'),
-                MockPlaceholder(name='output'))
-            feed_dict = feed_dict_fn()
-            self.assertListEqual(feed_dict['input'], [['a', 'l'], ['b', 'a']])
-            self.assertListEqual(feed_dict['output'], [['0'], ['0']])
+            self.assertAllClose(feed_dict['input'], [[ 0.40000001, 0.1],
+                                                     [ 0.60000002, 0.2]])
+            self.assertAllClose(feed_dict['output'], [[ 0., 0., 1.],
+                                                     [ 0., 1., 0.]])
 
 if __name__ == '__main__':
     tf.test.main()
