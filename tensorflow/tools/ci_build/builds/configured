@@ -27,6 +27,8 @@ COMMAND=("$@")
 export PYTHON_BIN_PATH=$(which python)
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   export TF_NEED_CUDA=1
+else
+  export TF_NEED_CUDA=0
 fi
 
 ./configure
