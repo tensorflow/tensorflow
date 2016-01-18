@@ -145,7 +145,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 
 // Computes the mapping from input/output argument name to the
 // corresponding input/output index range.  For example,
-// input "foo" coresponds to input indices
+// input "foo" corresponds to input indices
 //   [ (*inputs)["foo"].first, (*inputs)["foo"].second ).
 typedef std::unordered_map<string, std::pair<int, int>> NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,

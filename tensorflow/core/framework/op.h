@@ -71,7 +71,7 @@ class OpRegistry : public OpRegistryInterface {
   const OpDef* LookUp(const string& op_type_name,
                       Status* status) const override;
 
-  // Fills *ops with all registered OpDefss (except those with names
+  // Fills *ops with all registered OpDefs (except those with names
   // starting with '_' if include_internal == false).
   void Export(bool include_internal, OpList* ops) const;
 

@@ -44,7 +44,7 @@ class Rendezvous : public core::RefCounted {
     AllocatorAttributes alloc_attrs;
   };
 
-  // Constructs a rendezvouz key for the tensor of "name" sent from
+  // Constructs a rendezvous key for the tensor of "name" sent from
   // "src_device" to "dst_device". The tensor is generated in the frame
   // and iteration specified by "frame_iter".
   static string CreateKey(const string& src_device, uint64 src_incarnation,
