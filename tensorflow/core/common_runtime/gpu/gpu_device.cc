@@ -310,58 +310,27 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     }
     gpu::cuda::ScopedActivateExecutorContext scoped_activation{
         stream->parent(), gpu::cuda::MultiOpActivation::kYes};
-
-    if (sync_every_op_) {
-      op_kernel->Compute(context);
-      if (context->status().ok()) {
+    op_kernel->Compute(context);
+    if (context->status().ok()) {
+      if (sync_every_op_) {
         // Note: GPUUtil::Sync() only syncs the default stream.
         // We need to either sync the stream used by this op, or
         // all streams.  Given that this flag is typically used for
         // debugging it makes more sense to sync all GPU activity.
         context->SetStatus(GPUUtil::SyncAll(this));
       }
-    } else {
-      // Keep a copy of the inputs before Compute runs, in case they get
-      // deleted. TODO(misard) this will be fixed when the tracking is
-      // done right.
-      EventMgr::TensorReferenceVector tensor_refs;
-      const int N_inputs = context->num_inputs();
-      tensor_refs.reserve(N_inputs + context->num_outputs());
-      for (int ii = 0; ii < N_inputs; ++ii) {
-        if (context->has_input(ii)) {
-          if (IsRefType(context->input_dtype(ii))) {
-            Tensor in = context->mutable_input(ii, false);
-            tensor_refs.push_back(TensorReference(in));
-          } else {
-            const Tensor& in = context->input(ii);
-            tensor_refs.push_back(TensorReference(in));
-          }
-        }
-      }
-      op_kernel->Compute(context);
-      if (context->status().ok()) {
-        // The GPU kernel has been queued, but may not complete for some
-        // time.  As soon as this function completes, the caller will
-        // discard its refs on the inputs, outputs and any scratch
-        // tensors it created. Create additional refs here that will be
-        // held until the kernel completes.
-        for (int ii = 0; ii < context->num_temps(); ++ii) {
-          Tensor* temp = context->temp(ii);
-          if (vlog_2) {
-            VLOG(2) << "Saving ref to temp Tensor @ " << DMAHelper::base(temp);
-          }
-          tensor_refs.push_back(TensorReference(*temp));
-        }
-        for (int ii = 0; ii < context->num_outputs(); ++ii) {
-          Tensor* temp = context->mutable_output(ii);
-          if (nullptr != temp) {
-            tensor_refs.push_back(TensorReference(*temp));
-          }
-        }
-        em_->ThenDeleteTensors(stream, tensor_refs);
-      }
     }
   }
+}
+
+void BaseGPUDevice::ConsumeListOfAccessedTensors(
+    DeviceContext* device_context, const TensorReferenceVector& tensor_refs) {
+  GPUDeviceContext* gpu_device_context = device_contexts_[0];
+  if (device_context != nullptr) {
+    gpu_device_context = static_cast<GPUDeviceContext*>(device_context);
+  }
+  gpu::Stream* stream = gpu_device_context->stream();
+  em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
 Status BaseGPUDevice::Sync() { return GPUUtil::Sync(this); }

@@ -90,6 +90,10 @@ size_t TrackingAllocator::AllocatedSize(void* ptr) {
   return allocator_->AllocatedSize(ptr);
 }
 
+int64 TrackingAllocator::AllocationId(void* ptr) {
+  return allocator_->AllocationId(ptr);
+}
+
 std::pair<size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
   size_t high_watermark;
   size_t total_bytes;

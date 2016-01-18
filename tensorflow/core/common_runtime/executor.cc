@@ -20,10 +20,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -138,12 +139,10 @@ void SetAllEnd(NodeExecStats* nt) {
   nt->set_all_end_rel_micros(NowInUsec() - nt->all_start_micros());
 }
 
-void SetOutput(NodeExecStats* nt, int slot, AllocationType allocation_type,
-               const Tensor* v) {
+void SetOutput(NodeExecStats* nt, int slot, const Tensor* v) {
   DCHECK(v);
   NodeOutput* no = nt->add_output();
   no->set_slot(slot);
-  no->set_allocation_type(allocation_type);
   v->FillDescription(no->mutable_tensor_description());
 }
 
@@ -162,6 +161,17 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
     }
   }
 }
+
+void SetReferencedTensors(NodeExecStats* nt,
+                          const TensorReferenceVector& tensors) {
+  // be careful not to increment the reference count on any tensor
+  // while recording the information
+  for (int i = 0; i < tensors.size(); ++i) {
+    AllocationDescription* description = nt->add_referenced_tensor();
+    tensors.at(i).FillDescription(description);
+  }
+}
+
 }  // namespace nodestats
 
 struct NodeItem {
@@ -890,6 +900,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     outputs.clear();
     outputs.resize(node->num_outputs());
 
+    TensorReferenceVector accessed_tensors;
+    DeviceContext* device_context = nullptr;
     // Only execute this node if it is not dead or it is a send/recv
     // transfer node. For transfer nodes, we need to propagate the "dead"
     // bit even when the node is dead.
@@ -918,8 +930,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         // Asynchronous computes.
         auto pcopy = CopyParams(params);
         auto ctx = new OpKernelContext(*pcopy);
-        auto done = [this, tagged_node, item, first_input, ctx, stats,
-                     pcopy]() {
+        auto done = [this, tagged_node, item, first_input, ctx, stats, pcopy,
+                     device]() {
           VLOG(2) << this << " Async kernel done: "
                   << SummarizeNodeDef(item.node->def());
           if (stats_collector_) nodestats::SetOpEnd(stats);
@@ -935,7 +947,17 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           if (s.ok()) {
             PropagateOutputs(tagged_node, outputs, &ready);
           }
-          // Schedule to run all the ready ops in thread pool.
+          outputs.clear();
+          if (s.ok() && pcopy->device->RequiresRecordingAccessedTensors()) {
+            // Get the list of all tensors accessed during the execution
+            TensorReferenceVector accessed;
+            ctx->retrieve_accessed_tensors(&accessed);
+            if (stats_collector_)
+              nodestats::SetReferencedTensors(stats, accessed);
+            // callee takes ownership of the vector
+            device->ConsumeListOfAccessedTensors(ctx->op_device_context(),
+                                                 accessed);
+          }
           bool completed = NodeDone(s, item.node, ready, stats, nullptr);
           delete ctx;
           DeleteParams(pcopy);
@@ -950,8 +972,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
         if (stats_collector_) nodestats::SetOpEnd(stats);
 
-        // Processes outputs.
         s = ProcessOutputs(item, &ctx, &outputs, stats);
+        if (s.ok() && params.device->RequiresRecordingAccessedTensors()) {
+          // Get the list of all tensors accessed during the execution
+          ctx.retrieve_accessed_tensors(&accessed_tensors);
+          device_context = ctx.op_device_context();
+        }
         if (stats_collector_) nodestats::SetMemory(stats, &ctx);
       }
     }
@@ -965,6 +991,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       // Propagates outputs.
       if (s.ok()) {
         PropagateOutputs(tagged_node, outputs, &ready);
+      }
+      outputs.clear();
+      if (!accessed_tensors.empty()) {
+        if (stats_collector_)
+          nodestats::SetReferencedTensors(stats, accessed_tensors);
+        // device_context is set above in synchronous computes
+        device->ConsumeListOfAccessedTensors(device_context, accessed_tensors);
       }
       if (stats_collector_) {
         scheduled_usec = nodestats::NowInUsec();
@@ -1096,8 +1129,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           out->val = *val.tensor;
         }
         if (stats_collector_ && val.tensor->IsInitialized()) {
-          nodestats::SetOutput(stats, i, ctx->output_allocation_type(i),
-                               val.tensor);
+          nodestats::SetOutput(stats, i, val.tensor);
         }
       } else {
         s.Update(errors::Internal("Output ", i, " of type ",
@@ -1168,11 +1200,14 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
 
     bool dst_dead = false;
     bool dst_ready = false;
+    // True iff this input for dst is needed. We only set this input for
+    // dst if this flag is true. This is needed to make the thread safety
+    // analysis happy.
     bool dst_need_input = !e->IsControlEdge();
     if (IsMerge(dst_node)) {
-      // A merge node is ready if a) all control edges are enabled and a
-      // live data input becomes available, or b) all control edges are
-      // enabled and all data inputs are dead.
+      // A merge node is ready if all control inputs have arrived and either
+      // a) a live data input becomes available or b) all data inputs are dead.
+      // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
         (*pending)[dst_id] -= 2;
         int count = (*pending)[dst_id];
@@ -1184,15 +1219,14 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
           int count = (*pending)[dst_id];
           (*pending)[dst_id] |= 0x1;
           dst_ready = (count == 0);
+          dst_need_input = (count & 0x1) == 0;
         } else {
           // This is a dead data input.
           ++(*dead_count)[dst_id];
           dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
           dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
+          dst_need_input = false;
         }
-        // This input for dst is not needed if !dst_ready. We suppress the
-        // propagation to make the thread safety analysis happy.
-        dst_need_input = dst_ready;
       }
     } else {
       // A non-merge node is ready if all its inputs are ready. We wait

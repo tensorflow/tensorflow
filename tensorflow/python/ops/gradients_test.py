@@ -265,27 +265,28 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(grads[0], ops.Tensor))
 
 
-@function.Defun(x=tf.float32)
-def XSquarePlusOne(x):
-  return x * x + 1.0
-
-
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
+  @classmethod
+  def XSquarePlusOne(cls, x):
+    return x * x + 1.0
+
   def testFunctionGradientsBasic(self):
-    with ops.Graph().as_default():
+    g = ops.Graph()
+    with g.as_default():
+      f = function.Defun(x=tf.float32)(self.XSquarePlusOne)
       two = tf.constant([2.0], name="two")
-      y = XSquarePlusOne(two)
+      y = f(two)
       # Build gradient graph (should add SymbolicGradient node for function).
       grads = gradients.gradients(y, two)
-
       with self.test_session() as sess:
         self.assertAllEqual([4.0], sess.run(grads)[0])
 
   def testFunctionGradientsComposition(self):
     with ops.Graph().as_default():
+      f = function.Defun(x=tf.float32)(self.XSquarePlusOne)
       two = tf.constant([2.0], name="two")
-      y = XSquarePlusOne(XSquarePlusOne(two))
+      y = f(f(two))
       # Build gradient graph (should add SymbolicGradient node for function).
       grads = gradients.gradients(y, two)
 

@@ -41,18 +41,6 @@ def _tensor_to_argdef(t):
   return arg
 
 
-def _is_array_type_input(op, i):
-  registered_ops = op_def_registry.get_registered_ops()
-  if op not in registered_ops:
-    return False
-  op_def = registered_ops[op]
-  if i not in xrange(len(op_def.input_arg)):
-    raise TypeError("Expected arg index "
-                    "to be in [0, %d)" % len(op_def.input_arg))
-  input_arg = op_def.input_arg[i]
-  return True if input_arg.number_attr else False
-
-
 def _get_node_def_attr(op):
   # pylint: disable=protected-access
   return op._node_def.attr
@@ -93,11 +81,16 @@ def _add_output_array_to_list(op, start, limit, dtype, func):
   return arg_name
 
 
-def _add_op_node(op, func):
+def _add_op_node(graph, op, func):
   """Converts an op to a function def node and add it to `func`."""
   node = function_pb2.FunctionDef.Node()
   node.op = op.type
-  op_def = op_def_registry.get_registered_ops()[op.type]
+  # pylint: disable=protected-access
+  if graph._is_function(op.type):
+    op_def = graph._get_function(op.type).signature
+  else:
+    op_def = op_def_registry.get_registered_ops()[op.type]
+  # pylint: enable=protected-access
   attrs = _get_node_def_attr(op)
   out_index = 0
   for arg_def in op_def.output_arg:
@@ -173,10 +166,11 @@ def graph_to_function_def(graph, name, inputs, outputs):
   func.signature.output_arg.extend([_tensor_to_argdef(graph.get_tensor_by_name(
       o.name)) for o in outputs])
   func_arg_placeholders = set([i.name for i in inputs])
+  g = ops.get_default_graph()
   for op in graph.get_operations():
     tensor_name = op.values()[0].name
     if tensor_name not in func_arg_placeholders:
-      _add_op_node(op, func)
+      _add_op_node(g, op, func)
   return func
 
 
@@ -220,9 +214,8 @@ def call_function(func_def, *inputs, **kwargs):
       raise ValueError("Expected number of arguments: %d" %
                        len(func_def.signature.input_arg))
     output_types = [dtypes.DType(x.type) for x in func_def.signature.output_arg]
-    g = ops.get_default_graph()
-    g._add_function(func_def)  # pylint: disable=protected-access
     # TODO(touts): Pass compute_shapes as "try if function exists"
+    g = ops.get_default_graph()
     op = g.create_op(func_name,
                      list(inputs),
                      output_types,
@@ -248,16 +241,13 @@ def define_function(func, input_types):
   names arguments to `func`.  The value indicate the type of tensor expected
   by the function.
 
-  The returned `FunctionDef` protocol buffer can be passed to
-  `tf.add_function()` to add the function to the default graph library.  After
-  it has been added you can add calls to the function by passing it to
-  `tf.call_function()`, together with a list of tensors to use as inputs for
-  the function.
+  The returned `FunctionDef` protocol buffer is also added to the
+  default graph library.  After it has been added you can add calls to
+  the function by passing it to `tf.call_function()`, together with a
+  list of tensors to use as inputs for the function.
 
   Notes:
 
-  *  The default graph is not changed in any way: no ops are added to it, the
-     returned `FunctionDef` is not added to its function library.
   *  `func` is called once, with `placeholder` tensors of the types specified in
      `input_types` as arguments.
   *  Values returned by `func` must be tensors and they are recorded as being
@@ -294,23 +284,38 @@ def define_function(func, input_types):
 
   Raises:
     ValueError: if the arguments are invalid.
+
   """
   # TODO(touts): Lift the limitation that func can only receive Tensor args.
-  if not inspect.isfunction(func):
+  if inspect.isfunction(func):
+    func_name = func.__name__
+  elif inspect.ismethod(func):
+    func_name = func.im_self.__name__ + "." + func.__name__
+  else:
     raise ValueError("Argument must be a function")
   argspec = inspect.getargspec(func)
   if argspec.varargs or argspec.keywords or argspec.defaults:
     raise ValueError("Only functions with plain arglists are supported.")
-  if len(argspec.args) != len(input_types):
-    raise ValueError("The function must have the same number of arguments "
-                     "as the number of specified input types.")
+  if inspect.isfunction(func):
+    if len(argspec.args) != len(input_types):
+      raise ValueError("The function must have the same number of arguments "
+                       "as the number of specified input types.")
+    args = argspec.args
+  elif inspect.ismethod(func):
+    if len(argspec.args) != 1 + len(input_types):
+      raise ValueError(
+          "The class function must have the same number of arguments "
+          "as the number of specified input types.")
+    args = argspec.args[1:]  # 1st argument is the "class" type.
+
   # Create the func_def object.
-  with ops.Graph().as_default() as temp_graph:
+  temp_graph = ops.Graph()
+  with temp_graph.as_default():
     # List of placeholders for the function_def.
     inputs = []
     # Arglist to call 'func'
     kwargs = {}
-    for argname in argspec.args:
+    for argname in args:
       if argname not in input_types:
         raise ValueError("Missing type for argument: " + argname)
       argholder = array_ops.placeholder(input_types[argname], name=argname)
@@ -323,8 +328,11 @@ def define_function(func, input_types):
     # Convenience: if func only returned one value, make it a tuple.
     if not isinstance(outputs, (list, tuple)):
       outputs = (outputs,)
-    # Build and return the FunctionDef
-    return graph_to_function_def(temp_graph, func.__name__, inputs, outputs)
+  # Build the FunctionDef
+  func_def = graph_to_function_def(temp_graph, func_name, inputs, outputs)
+  g = ops.get_default_graph()
+  g._add_function(func_def)  # pylint: disable=protected-access
+  return func_def
 
 
 class Defun(object):

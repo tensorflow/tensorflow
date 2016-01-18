@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import sys
 
 import tensorflow.python.platform
 
@@ -30,6 +31,7 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
 def check_op_order(graph):
@@ -530,102 +532,6 @@ class ControlFlowTest(tf.test.TestCase):
                  ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  def testWhileGrad_1(self):
-    with self.test_session():
-      v = tf.constant(2.0, name="v")
-      c = lambda v: tf.less(v, 100.0)
-      b = tf.square
-      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
-
-      r = tf.gradients(r, v)
-      result = r[0].eval()
-      self.assertEqual(1024.0, result)
-
-  def testWhileGrad_2(self):
-    with self.test_session():
-      a = tf.constant(3.0, name="a")
-      v = tf.constant(2.0, name="v")
-      c = lambda v: tf.less(v, 100.0)
-      b = lambda v: tf.mul(v, a)
-      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
-
-      r = tf.gradients(r, a)
-      result = r[0].eval()
-      self.assertEqual(216.0, result)
-
-  def testWhileGrad_3(self):
-    with self.test_session():
-      a = tf.constant(3.0, name="a")
-      v = tf.constant(2.0, name="v")
-      c = lambda v: tf.less(v, 100.0)
-      b = lambda v: tf.mul(v, a)
-      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
-
-      r = tf.gradients(r, v)
-      result = r[0].eval()
-      self.assertEqual(81.0, result)
-
-  def testWhileGrad_4(self):
-    with self.test_session():
-      a = tf.Variable(3.0)
-      v = tf.constant(2.0, name="v")
-      c = lambda v: tf.less(v, 100.0)
-      b = lambda v: tf.mul(v, a)
-      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
-
-      r = tf.gradients(r, a)
-      tf.initialize_all_variables().run()
-      result = r[0].eval()
-      self.assertEqual(216.0, result)
-
-  def testWhileGrad_5(self):
-    with self.test_session():
-      x = tf.constant(3.0, name="x")
-      y = tf.constant(2.0, name="y")
-      c = lambda x, y: tf.less(x, 100.0)
-
-      def b(x, y):
-        y1 = tf.add(x, y)
-        x1 = tf.mul(x, y1)
-        return x1, y1
-
-      r = control_flow_ops.While(c, b, [x, y], parallel_iterations=1)
-
-      # Must use the complete r.
-      r = tf.gradients(r, x)
-      result = r[0].eval()
-      self.assertEqual(304.0, result)
-
-  def testWhileGrad_6(self):
-    with self.test_session():
-      i = tf.constant(0, name="i")
-      x = tf.constant(2.0, name="x")
-      c = lambda i, x: tf.less(i, 10)
-
-      def b(i, x):
-        x = tf.mul(x, 2.0)
-        i = tf.add(i, 1)
-        return i, x
-
-      r = control_flow_ops.While(c, b, [i, x], parallel_iterations=1)
-
-      # Must use the complete r.
-      r = tf.gradients(r, x)
-      r = r[0].eval()
-      self.assertEqual(1024.0, r)
-
-  def testWhileGrad_7(self):
-    with self.test_session():
-      v = tf.constant(2.0, name="v")
-      c = lambda v: tf.less(v, 100.0)
-      b = tf.square
-      r = control_flow_ops.While(c, b, [v], parallel_iterations=1,
-                                 back_prop=False)
-      r = tf.add(r, v)
-      r = tf.gradients(r, v)
-      result = r[0].eval()
-      self.assertEqual(1.0, result)
-
   # Microbenchmark: 10,000 iterations took 0.21s.
   def testWhile_1(self):
     with self.test_session():
@@ -742,7 +648,7 @@ class ControlFlowTest(tf.test.TestCase):
     self._testWhile_Gpu_1(use_gpu=False)
     self._testWhile_Gpu_1(use_gpu=True)
 
-  def _testWhileNested_1(self, use_gpu):
+  def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       n = tf.constant(0)
       def cpu_sum(s):
@@ -761,9 +667,9 @@ class ControlFlowTest(tf.test.TestCase):
       result = r.eval()
     self.assertEqual(225, result)
 
-  def testWhileNested_1(self):
-    self._testWhileNested_1(use_gpu=False)
-    self._testWhileNested_1(use_gpu=True)
+  def testNestedWhile_1(self):
+    self._testNestedWhile_1(use_gpu=False)
+    self._testNestedWhile_1(use_gpu=True)
 
   def testWhileWithControl_1(self):
     with self.test_session():
@@ -1062,6 +968,207 @@ class ControlFlowTest(tf.test.TestCase):
         return [ni, nx]
       _, rx = control_flow_ops.While(c1, b1, [r, x], parallel_iterations=1)
       self.assertEqual(45, rx.eval())
+
+  def testWhileGrad_Square(self):
+    with self.test_session():
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = tf.square
+      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
+
+      r = tf.gradients(r, v)
+      result = r[0].eval()
+      self.assertEqual(1024.0, result)
+
+  def _testWhileGrad_Mul(self, use_gpu, p_iters):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      a = tf.constant(3.0, name="a")
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = lambda v: tf.mul(v, a)
+      r = control_flow_ops.While(c, b, [v],
+                                 parallel_iterations=p_iters)
+
+      grad_a, grad_v = tf.gradients(r, [a, v])
+      grad_a_val, grad_v_val = sess.run([grad_a, grad_v])
+      self.assertEqual(216.0, grad_a_val)
+      self.assertEqual(81.0, grad_v_val)
+
+  def testWhileGrad_Mul(self):
+    self._testWhileGrad_Mul(use_gpu=False, p_iters=1)
+    self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
+    self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
+    self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
+
+  def testWhileGrad_Variable(self):
+    with self.test_session():
+      a = tf.Variable(3.0)
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = lambda v: tf.mul(v, a)
+      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
+
+      r = tf.gradients(r, a)
+      tf.initialize_all_variables().run()
+      result = r[0].eval()
+      self.assertEqual(216.0, result)
+
+  def testWhileGrad_ys_xs(self):
+    with self.test_session():
+      x = tf.constant(3.0, name="x")
+      y = tf.constant(2.0, name="y")
+
+      c = lambda x, y: tf.less(x, 100.0)
+      def b(x, y):
+        y1 = tf.add(x, y)
+        x1 = tf.mul(x, y1)
+        return x1, y1
+      rx, ry = control_flow_ops.While(c, b, [x, y], parallel_iterations=1)
+
+      r = tf.gradients([rx, ry], x)
+      self.assertEqual(304.0, r[0].eval())
+      r = tf.gradients([rx, ry], y)
+      self.assertEqual(124.0, r[0].eval())
+      r = tf.gradients([rx], x)
+      self.assertEqual(295.0, r[0].eval())
+      r = tf.gradients([rx], y)
+      self.assertEqual(120.0, r[0].eval())
+
+  def testWhileGrad_Dependency(self):
+    with self.test_session():
+      i = tf.constant(0, name="i")
+      x = tf.constant(2.0, name="x")
+
+      c = lambda i, x: tf.less(i, 10)
+      def b(i, x):
+        x = tf.mul(x, 2.0)
+        i = tf.add(i, 1)
+        return i, x
+      ri, rx = control_flow_ops.While(c, b, [i, x], parallel_iterations=1)
+
+      r = tf.gradients([ri, rx], x)
+      self.assertEqual(1024.0, r[0].eval())
+      r = tf.gradients([rx], x)
+      self.assertEqual(1024.0, r[0].eval())
+
+  def testWhileGrad_NoGradient(self):
+    with self.test_session():
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = tf.square
+      r = control_flow_ops.While(c, b, [v], back_prop=False)
+      r = tf.add(r, v)
+      r = tf.gradients(r, v)
+      result = r[0].eval()
+      self.assertEqual(1.0, result)
+
+  def testWhileGrad_SerialTwoLoops(self):
+    with self.test_session():
+      i = tf.constant(0, name="i")
+      x = tf.constant(2.0, name="x")
+
+      c = lambda i, x: tf.less(i, 5)
+      def b(i, x):
+        x = tf.mul(x, 2.0)
+        i = tf.add(i, 1)
+        return i, x
+      _, rx = control_flow_ops.While(c, b, [i, x], parallel_iterations=1)
+      _, rx = control_flow_ops.While(c, b, [i, rx], parallel_iterations=1)
+
+      r = tf.gradients([rx], x)
+      self.assertEqual(1024.0, r[0].eval())
+
+  def testWhileGrad_ParallelTwoLoops(self):
+    with self.test_session():
+      i = tf.constant(0, name="i")
+      x = tf.constant(2.0, name="x")
+
+      c = lambda i, x: tf.less(i, 5)
+      def b(i, x):
+        x = tf.mul(x, 2.0)
+        i = tf.add(i, 1)
+        return i, x
+      _, r1 = control_flow_ops.While(c, b, [i, x], parallel_iterations=1)
+      _, r2 = control_flow_ops.While(c, b, [i, x], parallel_iterations=1)
+      rx = tf.add(r1, r2)
+
+      r = tf.gradients([rx], x)
+      self.assertEqual(64.0, r[0].eval())
+
+  def _testNestedWhileGrad_Simple(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      v = tf.constant(1.0)
+      def inner_loop(s):
+        c = lambda x: tf.less(x, 4.0)
+        b = lambda x: tf.mul(x, 2.0)
+        return control_flow_ops.While(c, b, [s])
+      c = lambda x: tf.less(x, 2.0)
+      b = lambda x: tf.mul(inner_loop(x), 2.0)
+      r = control_flow_ops.While(c, b, [v])
+
+      r = tf.gradients(r, v)[0]
+      self.assertEqual(8.0, r.eval())
+
+  def testNestedWhileGrad_Simple(self):
+    self._testNestedWhileGrad_Simple(use_gpu=False)
+    self._testNestedWhileGrad_Simple(use_gpu=True)
+
+  def testNestedWhileGrad_SerialInner(self):
+    with self.test_session():
+      v = tf.constant(1.0)
+      def inner_loop1(s):
+        z = tf.constant(0)
+        c = lambda i, x: tf.less(i, 4)
+        b = lambda i, x: [tf.add(i, 1), tf.mul(x, 2.0)]
+        return control_flow_ops.While(c, b, [z, s])
+      def inner_loop2(s):
+        z = tf.constant(0)
+        c = lambda i, x: tf.less(i, 4)
+        b = lambda i, x: [tf.add(i, 1), tf.mul(x, 2.0)]
+        return control_flow_ops.While(c, b, [z, s])
+      c = lambda x: tf.less(x, 128.0)
+      b = lambda x: inner_loop2(inner_loop1(x)[1])[1]
+      r = control_flow_ops.While(c, b, [v])
+
+      r = tf.gradients(r, v)[0]
+      self.assertEqual(256.0, r.eval())
+
+  def testNestedWhileGrad_ParallelInner(self):
+    with self.test_session():
+      v = tf.constant(1.0)
+      def inner_loop1(s):
+        z = tf.constant(0)
+        c = lambda i, x: tf.less(i, 4)
+        b = lambda i, x: [tf.add(i, 1), tf.mul(x, 2.0)]
+        return control_flow_ops.While(c, b, [z, s])
+      def inner_loop2(s):
+        z = tf.constant(0)
+        c = lambda i, x: tf.less(i, 4)
+        b = lambda i, x: [tf.add(i, 1), tf.mul(x, 2.0)]
+        return control_flow_ops.While(c, b, [z, s])
+      c = lambda x: tf.less(x, 128.0)
+      b = lambda x: tf.mul(inner_loop1(x)[1], inner_loop2(x)[1])
+      r = control_flow_ops.While(c, b, [v])
+
+      r = tf.gradients(r, v)[0]
+      self.assertEqual(512.0, r.eval())
+
+  def _testWhileCondGrad_Simple(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      v = tf.convert_to_tensor(2.0, name="i")
+      n = tf.convert_to_tensor(100.0, name="n")
+      one = tf.convert_to_tensor(1.0, name="one")
+      c = lambda x: tf.less(x, n)
+      b = lambda x: control_flow_ops.cond(tf.constant(True),
+                                          lambda: tf.square(x),
+                                          lambda: tf.sub(x, one))
+      r = control_flow_ops.While(c, b, [v])
+      r = tf.gradients(r, v)[0]
+      self.assertEqual(1024.0, r.eval())
+
+  def testWhileCondGrad_Simple(self):
+    self._testWhileCondGrad_Simple(use_gpu=False)
+    self._testWhileCondGrad_Simple(use_gpu=True)
 
   def testFold_1(self):
     with self.test_session():

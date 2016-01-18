@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/tensor.h"
+#include "tensorflow/examples/label_image/command_line_flags.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Tensor;
@@ -223,50 +224,6 @@ Status CheckTopLabel(const std::vector<Tensor>& outputs, int expected,
   return Status::OK();
 }
 
-namespace {
-
-bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                     string* dst) {
-  if (arg.Consume(flag) && arg.Consume("=")) {
-    *dst = arg.ToString();
-    return true;
-  }
-
-  return false;
-}
-
-bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                    int32* dst) {
-  if (arg.Consume(flag) && arg.Consume("=")) {
-    char extra;
-    return (sscanf(arg.data(), "%d%c", dst, &extra) == 1);
-  }
-
-  return false;
-}
-
-bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                   bool* dst) {
-  if (arg.Consume(flag)) {
-    if (arg.empty()) {
-      *dst = true;
-      return true;
-    }
-
-    if (arg == "=true") {
-      *dst = true;
-      return true;
-    } else if (arg == "=false") {
-      *dst = false;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-}  // namespace
-
 int main(int argc, char* argv[]) {
   // These are the command-line flags the program can understand.
   // They define where the graph and input data is located, and what kind of
@@ -283,51 +240,33 @@ int main(int argc, char* argv[]) {
   int32 input_height = 299;
   int32 input_mean = 128;
   int32 input_std = 128;
-
   string input_layer = "Mul";
   string output_layer = "softmax";
   bool self_test = false;
   string root_dir = "";
-
-  std::vector<char*> unknown_flags;
-  for (int i = 1; i < argc; ++i) {
-    if (string(argv[i]) == "--") {
-      while (i < argc) {
-        unknown_flags.push_back(argv[i]);
-        ++i;
-      }
-      break;
-    }
-
-    if (ParseStringFlag(argv[i], "--image", &image) ||
-        ParseStringFlag(argv[i], "--graph", &graph) ||
-        ParseStringFlag(argv[i], "--labels", &labels) ||
-        ParseInt32Flag(argv[i], "--input_width", &input_width) ||
-        ParseInt32Flag(argv[i], "--input_height", &input_height) ||
-        ParseInt32Flag(argv[i], "--input_mean", &input_mean) ||
-        ParseInt32Flag(argv[i], "--input_std", &input_std) ||
-        ParseStringFlag(argv[i], "--input_layer", &input_layer) ||
-        ParseStringFlag(argv[i], "--output_layer", &output_layer) ||
-        ParseBoolFlag(argv[i], "--self_test", &self_test) ||
-        ParseStringFlag(argv[i], "--root_dir", &root_dir)) {
-      continue;
-    }
-
-    fprintf(stderr, "Unknown flag: %s\n", argv[i]);
+  const bool parse_result =
+      ParseFlags(&argc, argv, {Flag("image", &image),                //
+                               Flag("graph", &graph),                //
+                               Flag("labels", &labels),              //
+                               Flag("input_width", &input_width),    //
+                               Flag("input_height", &input_height),  //
+                               Flag("input_mean", &input_mean),      //
+                               Flag("input_std", &input_std),        //
+                               Flag("input_layer", &input_layer),    //
+                               Flag("output_layer", &output_layer),  //
+                               Flag("self_test", &self_test),        //
+                               Flag("root_dir", &root_dir)});
+  if (!parse_result) {
+    LOG(ERROR) << "Error parsing command-line flags.";
     return -1;
   }
 
-  // Passthrough any extra flags.
-  int dst = 1;  // Skip argv[0]
-
-  for (char* f : unknown_flags) {
-    argv[dst++] = f;
-  }
-  argv[dst++] = nullptr;
-  argc = unknown_flags.size() + 1;
-
   // We need to call this to set up global state for TensorFlow.
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1];
+    return -1;
+  }
 
   // First we load and initialize the model.
   std::unique_ptr<tensorflow::Session> session;

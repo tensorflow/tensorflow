@@ -40,7 +40,7 @@ namespace gpu = ::perftools::gputools;
 namespace tensorflow {
 
 GPURegionAllocator::GPURegionAllocator(int device_id, size_t total_bytes)
-    : device_id_(device_id), total_bytes_(total_bytes) {
+    : next_allocation_id_(1), device_id_(device_id), total_bytes_(total_bytes) {
   // Get a pointer to the stream_executor for this device
   stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
 
@@ -104,9 +104,9 @@ void* GPURegionAllocator::AllocateRawInternal(size_t alignment,
   CHECK(pool->last);
   Chunk* c = pool->first;
   CHECK(c);
-  CHECK(!c->in_use);
+  CHECK(!c->in_use());
 
-  c->in_use = true;
+  c->allocation_id = next_allocation_id_++;
   // Move c to the back of the queue.
   if (c->next != nullptr) {
     pool->first = c->next;
@@ -150,8 +150,8 @@ void GPURegionAllocator::DeallocateRawInternal(void* ptr) {
 
   Pool* pool = &(pools_[c->size]);
   // Move chunk to head of queue, and mark free.
-  DCHECK(c->in_use);
-  c->in_use = false;
+  DCHECK(c->in_use());
+  c->allocation_id = -1;
   if (c->prev) c->prev->next = c->next;
   if (c->next) c->next->prev = c->prev;
   if (pool->first == c) pool->first = c->next;
@@ -266,7 +266,7 @@ void GPURegionAllocator::CheckForMemoryLeaks() {
     const Pool& p = pool_map.second;
     Chunk* curr_chunk = p.first;
     while (curr_chunk != nullptr) {
-      if (curr_chunk->in_use) {
+      if (curr_chunk->in_use()) {
         errors.push_back(
             strings::StrCat("Unfreed chunk of size ", curr_chunk->size));
       }
@@ -334,7 +334,7 @@ void GPURegionAllocator::DumpMemoryLog() {
       // Iterate backwards (allocated chunks are last).
       Chunk* curr_chunk = p.last;
       while (curr_chunk != nullptr) {
-        if (curr_chunk->in_use) {
+        if (curr_chunk->in_use()) {
           ++chunks_in_use;
         }
         curr_chunk = curr_chunk->prev;
@@ -374,6 +374,15 @@ size_t GPURegionAllocator::AllocatedSize(void* ptr) {
       << "Asked for allocated size of pointer we never allocated: " << ptr;
   auto c = it->second;
   return c->size;
+}
+
+int64 GPURegionAllocator::AllocationId(void* ptr) {
+  mutex_lock l(lock_);
+  auto it = chunk_map_.find(ptr);
+  CHECK(it != chunk_map_.end())
+      << "Asked for allocation id of pointer we never allocated: " << ptr;
+  Chunk* c = it->second;
+  return c->allocation_id;
 }
 
 }  // namespace tensorflow

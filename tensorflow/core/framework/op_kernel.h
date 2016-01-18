@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -346,7 +347,7 @@ class OpInputList {
  public:
   typedef OpArgIterator<OpInputList, const Tensor&> Iterator;
   OpInputList() : ctx_(nullptr), start_(0), stop_(0) {}
-  OpInputList(const OpKernelContext* ctx, int start, int stop)
+  OpInputList(OpKernelContext* ctx, int start, int stop)
       : ctx_(ctx), start_(start), stop_(stop) {}
   OpInputList& operator=(const OpInputList& other) = default;
   const Tensor& operator[](int i) const;
@@ -355,7 +356,7 @@ class OpInputList {
   Iterator end() const { return Iterator(this, size()); }
 
  private:
-  const OpKernelContext* ctx_;  // not owned
+  OpKernelContext* ctx_;  // not owned
   int start_;
   int stop_;
 };
@@ -496,21 +497,21 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index) const;
+  const Tensor& input(int index);
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
   // use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // REQUIRES: the named input must not be a list.
-  Status input(const string& name, const Tensor** tensor) const;
+  Status input(const string& name, const Tensor** tensor);
 
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
-  Status input_list(const string& name, OpInputList* list) const;
+  Status input_list(const string& name, OpInputList* list);
 
   // For mutable inputs, use the following together to make sure there
   // is no concurrent access to mutable_input(), e.g.:
@@ -849,15 +850,10 @@ class OpKernelContext {
   // TODO(tucker): Add example usage.
   DeviceBase* device() const { return params_.device; }
 
-  // Access to list of temporary tensors.
-  int num_temps();
-  Tensor* temp(int index);
-
-  // Access to information about whether each output was newly
-  // allocated or copied from an existing tensor
-  AllocationType output_allocation_type(int index) const {
-    return output_allocation_types_[index];
-  }
+  // Retrieve list of referenced tensors in out_vector. Once this is
+  // called, it is not legal to reference any more tensors.  Should
+  // not be called from Op kernels.
+  void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
 
   // Per-step resource manager for use by white-listed internal ops.
   ResourceMgr* step_resource_manager() const {
@@ -883,6 +879,12 @@ class OpKernelContext {
       return allocator;
     }
   }
+
+  // Internal method to add a tensor's buffer to the list of buffers
+  // referenced during the execution of the Op, so that GPUs may
+  // accurately track the memory that may not be reused until the Op
+  // execution completes.
+  void record_tensor_reference(const Tensor& tensor);
 
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
@@ -911,8 +913,7 @@ class OpKernelContext {
   mutable mutex mu_;  // mutable so const accessors can acquire the lock
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
-  gtl::InlinedVector<AllocationType, 4> output_allocation_types_;
-  gtl::InlinedVector<Tensor*, 4> temp_tensors_;
+  UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
   bool is_output_dead_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
@@ -1048,11 +1049,27 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
   return params_.op_kernel->output_type(index);
 }
 
-inline const Tensor& OpKernelContext::input(int index) const {
+inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
+  if (params_.device->RequiresRecordingAccessedTensors()) {
+    mutex_lock l(mu_);
+    // Keep a reference to the underlying memory around.
+    referenced_tensors_.Add(tensor);
+  }
+}
+
+inline void OpKernelContext::retrieve_accessed_tensors(
+    TensorReferenceVector* out_vector) {
+  mutex_lock l(mu_);
+  referenced_tensors_.FreezeAndReturnReferences(out_vector);
+}
+
+inline const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_.inputs->size());
   DCHECK(!(*params_.inputs)[index].is_ref());
-  return *((*params_.inputs)[index].tensor);
+  const Tensor& tensor = *((*params_.inputs)[index].tensor);
+  record_tensor_reference(tensor);
+  return tensor;
 }
 
 inline Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
@@ -1061,10 +1078,14 @@ inline Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   DCHECK((*params_.inputs)[index].is_ref());
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    return *((*params_.inputs)[index].tensor);
+    Tensor& tensor = *((*params_.inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    return *((*params_.inputs)[index].tensor);
+    Tensor& tensor = *((*params_.inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
   }
 }
 
@@ -1080,6 +1101,7 @@ inline void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
     mutex_lock l(*input_ref_mutex(index));
     *(*params_.inputs)[index].tensor = tensor;
   }
+  record_tensor_reference(tensor);
 }
 
 inline void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
@@ -1138,6 +1160,7 @@ inline Status OpKernelContext::allocate_tensor(
                                      shape.DebugString());
   }
   *out_tensor = new_tensor;
+  record_tensor_reference(new_tensor);
   return Status::OK();
 }
 
@@ -1147,9 +1170,6 @@ inline Status OpKernelContext::allocate_output(int index,
                                                AllocatorAttributes attr) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was allocated by the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_ALLOCATED;
   const DataType type = params_.op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
@@ -1168,12 +1188,6 @@ inline Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
-  if (s.ok()) {
-    if (params_.device->SaveTemporaryTensors()) {
-      // keep a reference to the underlying memory around
-      temp_tensors_.push_back(new Tensor(*out_temp));
-    }
-  }
   return s;
 }
 
@@ -1185,39 +1199,25 @@ inline Status OpKernelContext::allocate_persistent(
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
     *out_persistent = PersistentTensor(persistent);
-    // This call saves a reference to the newly-allocated tensor if we
-    // are saving temporary tensors
-    Tensor* allocated = out_persistent->AccessTensor(this);
     if (out_tensor) {
-      *out_tensor = allocated;
+      *out_tensor = out_persistent->AccessTensor(this);
     }
   }
   return s;
 }
 
 inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
-  if (t.IsInitialized() && params_.device->SaveTemporaryTensors()) {
-    // keep a reference to the underlying memory around
-    temp_tensors_.push_back(new Tensor(t));
+  if (t.IsInitialized()) {
+    record_tensor_reference(t);
   }
-}
-
-inline int OpKernelContext::num_temps() { return temp_tensors_.size(); }
-
-inline Tensor* OpKernelContext::temp(int index) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, temp_tensors_.size());
-  return temp_tensors_[index];
 }
 
 inline void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was set by the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_EXISTING;
   DCHECK(!IsRefType(params_.op_kernel->output_type(index)));
   DCHECK_EQ(mutable_output(index), nullptr);
+  record_tensor_reference(tensor);
   outputs_[index] = TensorValue(new Tensor(tensor));
 }
 
@@ -1225,16 +1225,16 @@ inline void OpKernelContext::set_output_ref(int index, mutex* mu,
                                             Tensor* tensor_for_ref) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was set by reference the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_REF;
   DCHECK(IsRefType(params_.op_kernel->output_type(index)));
+  record_tensor_reference(*tensor_for_ref);
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
+  // No need to record_tensor_reference since the output must already
+  // have been set by a call that did so.
   return outputs_[index].tensor;
 }
 

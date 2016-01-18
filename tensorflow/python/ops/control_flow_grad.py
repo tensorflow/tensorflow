@@ -28,31 +28,46 @@ from tensorflow.python.ops.gen_control_flow_ops import *
 
 @ops.RegisterGradient("Switch")
 def _SwitchGrad(op, *grad):
-  op = GetRealOp(op)
-  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  """Gradients for a Switch op is calculated using a Merge op.
+
+  If the switch is a loop switch, it will be visited twice. We create
+  the merge on the first visit, and update the other input of the merge
+  on the second visit. A next_iteration is also added on second visit.
+  """
+  real_op = GetRealOp(op)
+  # pylint: disable=protected-access
+  ctxt = real_op._get_control_flow_context()
+  # pylint: enable=protected-access
   if isinstance(ctxt, WhileContext):
-    merge_op = ctxt.switch_map.get(op)
+    merge_op = op.grad_state.switch_map.get(real_op)
     if merge_op:
-      # This is the second time this Switch is visited. Update the second
-      # input to the Merge.
+      # This is the second time this Switch is visited. It comes from
+      # the non-exit branch of the Switch, so update the second input
+      # to the Merge.
+      # TODO: Need to perform shape inference with this new input.
       merge_op._update_input(1, next_iteration(grad[1]))
       return None, None
     else:
-      # This is the first time this Switch is visited. grad[1] is empty
-      # at this point. Use grad[0] for both inputs to merge, but update
-      # the second input of merge when we see this Switch the second time.
+      # This is the first time this Switch is visited. It always comes
+      # from the Exit branch, which is grad[0]. grad[1] is empty at this point.
+      # Use grad[0] for both inputs to merge for now, but update the second
+      # input of merge when we see this Switch the second time.
       merge_op = merge([grad[0], grad[0]], name="b_switch")[0]
-      ctxt.switch_map[op] = merge_op.op
+      op.grad_state.switch_map[real_op] = merge_op.op
       return merge_op, None
   elif isinstance(ctxt, CondContext):
     good_grad = grad[ctxt.branch]
     zero_grad = grad[1 - ctxt.branch]
-    dtype = good_grad.dtype
-    zero_grad = switch(zero_grad, ctxt.pred, dtype=dtype)[1 - ctxt.branch]
+    # If this Switch is wrapped, it is part of a cond within a loop. In
+    # this case, we have called ControlFlowState.ZeroLike() so grad is
+    # ready for merge. Otherwise, we need a switch to control zero_grad.
+    if not isinstance(op, ControlFlowOpWrapper):
+      dtype = good_grad.dtype
+      zero_grad = switch(zero_grad, ctxt.pred, dtype=dtype)[1 - ctxt.branch]
     return merge([good_grad, zero_grad], name="cond_grad")[0], None
   else:
-    false_grad = switch(grad[0], op.inputs[1])[0]
-    true_grad = switch(grad[1], op.inputs[1])[1]
+    false_grad = switch(grad[0], real_op.inputs[1])[0]
+    true_grad = switch(grad[1], real_op.inputs[1])[1]
     return merge([false_grad, true_grad])[0], None
 
 
@@ -63,57 +78,93 @@ def _RefSwitchGrad(op, *grad):
 
 @ops.RegisterGradient("Merge")
 def _MergeGrad(op, grad, _):
-  op = GetRealOp(op)
-  input_op = op.inputs[0].op
+  """Gradients for a Merge op are calculated using a Switch op."""
+  real_op = GetRealOp(op)
+  input_op = real_op.inputs[0].op
   # pylint: disable=protected-access
   ctxt = input_op._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(ctxt, WhileContext):
-    grad_ctxt = ctxt.grad_context
+    grad_ctxt = op.grad_state.grad_context
     return switch(grad, grad_ctxt.pivot)
   elif isinstance(ctxt, CondContext):
-    return switch(grad, ctxt.pred, name="cond_grad")
+    pred = ctxt.pred
+    if isinstance(op, ControlFlowOpWrapper):
+      # This Merge node is part of a cond within a loop.
+      # The backprop needs to have the value of this predicate for every
+      # iteration. So we must have its values accumulated in the forward, and
+      # use the accumulated values as the predicate for this backprop switch.
+      grad_state = op.grad_state
+      real_pred = grad_state.history_map.get(pred.name)
+      if not real_pred:
+        # Remember the value of pred for every iteration.
+        grad_ctxt = grad_state.grad_context
+        grad_ctxt.Exit()
+        history_pred = grad_state.AddForwardAccumulator(pred)
+        grad_ctxt.Enter()
+
+        # Add the stack pop op. If pred.op is in a (outer) CondContext,
+        # the stack pop will be guarded with a switch.
+        real_pred = grad_state.AddBackPropAccumulatedValue(history_pred, pred)
+        grad_state.history_map[pred.name] = real_pred
+        pred = real_pred
+    return switch(grad, pred, name="cond_grad")
   else:
-    num_inputs = len(op.inputs)
-    cond = [math_ops.equal(op.outputs[1], i) for i in xrange(num_inputs)]
+    num_inputs = len(real_op.inputs)
+    cond = [math_ops.equal(real_op.outputs[1], i) for i in xrange(num_inputs)]
     return [switch(grad, cond[i])[1] for i in xrange(num_inputs)]
 
 
 @ops.RegisterGradient("Exit")
 def _ExitGrad(op, grad):
+  """Gradients for an exit op are calculated using an Enter op."""
+  real_op = GetRealOp(op)
   # pylint: disable=protected-access
-  forward_ctxt = op._get_control_flow_context()
+  forward_ctxt = real_op._get_control_flow_context()
   # pylint: enable=protected-access
   if not forward_ctxt.back_prop:
+    # No gradient computation for this loop.
     return None
-  grad_ctxt = forward_ctxt.grad_context
+  grad_ctxt = op.grad_state.grad_context
   grad_ctxt.AddName(grad.name)
   return enter(grad, grad_ctxt.name, is_constant=False,
-               parallel_iterations=forward_ctxt.parallel_iterations,
+               parallel_iterations=grad_ctxt.parallel_iterations,
                name="b_exit")
 
 
 @ops.RegisterGradient("NextIteration")
 def _NextIterationGrad(_, grad):
+  """A forward next_iteration is translated into a backprop identity.
+
+  Note that the backprop next_iteration is added in switch grad.
+  """
   return grad
 
 
 @ops.RegisterGradient("Enter")
 def _EnterGrad(op, grad):
-  op = GetRealOp(op)
+  """Gradients for an Enter are calculated using an Exit op.
+
+  For loop variables, grad is the gradient so just add an exit.
+  For loop invariants, we need to add an accumulator loop.
+  """
+  real_op = GetRealOp(op)
   # pylint: disable=protected-access
-  forward_ctxt = op._get_control_flow_context()
+  forward_ctxt = real_op._get_control_flow_context()
   # pylint: enable=protected-access
-  grad_ctxt = forward_ctxt.grad_context
-  if grad_ctxt:
-    if op.get_attr("is_constant"):
-      # Add a gradient accumulator for every loop invariant.
-      result = grad_ctxt.AddBackPropAccumulateLoop(grad)
-    else:
-      result = exit(grad)
-    return result
-  else:
+  if not forward_ctxt.back_prop:
+    # The flag `back_prop` is set by users to suppress gradient
+    # computation for this loop. If the flag `back_prop` is true,
+    # no gradient computation.
     return grad
+  grad_ctxt = op.grad_state.grad_context
+  if real_op.get_attr("is_constant"):
+    # Add a gradient accumulator for each loop invariant.
+    result = grad_ctxt.AddBackPropAccumulator(grad)
+  else:
+    result = exit(grad)
+    grad_ctxt.ExitResult([result])
+  return result
 
 
 @ops.RegisterGradient("RefEnter")
@@ -123,4 +174,5 @@ def _RefEnterGrad(op, grad):
 
 @ops.RegisterGradient("LoopCond")
 def _LoopCondGrad(_):
+  """Stop backprop for the predicate of a while loop."""
   return None

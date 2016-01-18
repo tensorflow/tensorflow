@@ -264,6 +264,21 @@ REGISTER_KERNEL_BUILDER(Name("Enter")
                             .TypeConstraint<int32>("T"),
                         EnterOp);
 
+// Special GPU kernels for string.
+REGISTER_KERNEL_BUILDER(Name("Enter")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("data")
+                            .HostMemory("output")
+                            .TypeConstraint<string>("T"),
+                        EnterOp);
+
+REGISTER_KERNEL_BUILDER(Name("RefEnter")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("data")
+                            .HostMemory("output")
+                            .TypeConstraint<string>("T"),
+                        EnterOp);
+
 // An exit op has one input and one output. It exits the current
 // frame to its parent frame, and makes its input available to the
 // parent frame.

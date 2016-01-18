@@ -12,4 +12,10 @@ message AllocationDescription {
 
   // Name of the allocator used
   string allocator_name = 3;
+
+  // Identifier of the allocated buffer if known
+  int64 allocation_id = 4;
+
+  // Set if this tensor only has one remaining reference
+  bool has_single_reference = 5;
 };

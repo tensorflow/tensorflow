@@ -121,15 +121,13 @@ class FunctionTest(tf.test.TestCase):
 
     g = tf.Graph()
     with g.as_default():
-      f_def = function.define_function(XSquarePlusOne, {"x": tf.float32})
-      g._add_function(f_def)
-      g_def = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
-                                                            "dy": tf.float32})
-      g._add_function(g_def)
+      f = function.define_function(XSquarePlusOne, {"x": tf.float32})
+      g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
+                                                        "dy": tf.float32})
       epsilon = tf.constant([0.1])
       two = tf.constant([2.0])
-      call_f = function.call_function(f_def, two)
-      call_g = function.call_function(g_def, two, epsilon)
+      call_f = function.call_function(f, two)
+      call_g = function.call_function(g, two, epsilon)
 
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
@@ -262,11 +260,12 @@ class FunctionTest(tf.test.TestCase):
 
   def testFunctionDecorator(self):
 
-    @function.Defun(b=tf.int32)
-    def Minus1(b):
-      return b - 1
-
     with tf.Graph().as_default():
+
+      @function.Defun(b=tf.int32)
+      def Minus1(b):
+        return b - 1
+
       two = tf.constant([2])
       call1 = Minus1(two)
       self.assertEquals("Minus1", call1.op.name)
@@ -277,6 +276,18 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([1], sess.run(call1))
         self.assertAllEqual([0], sess.run(call2))
+
+  def testNestedFunction(self):
+    with tf.Graph().as_default():
+      @function.Defun(x=tf.float32)
+      def Cube(x):
+        return x * x * x
+      @function.Defun(x=tf.float32, y=tf.float32)
+      def CubeXPlusY(x, y):
+        return Cube(x) + y
+      z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
+      with self.test_session():
+        self.assertAllEqual(z.eval(), 25.0)
 
   def testUnrollLSTM(self):
 
@@ -289,23 +300,29 @@ class FunctionTest(tf.test.TestCase):
       new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
       return new_m, new_c
 
-    # Helper to construct a LSTM function.
-    @function.Defun(x=tf.float32,
-                    mprev=tf.float32,
-                    cprev=tf.float32,
-                    weights=tf.float32)
-    def LSTMCellFunc(x, mprev, cprev, weights):
-      return LSTMCell(x, mprev, cprev, weights)
-
     batch_size = 16
     lstm_dims = 32
     num_unroll = 100
 
     # Run one step of the unrolled lstm graph.
-    def RunStep(cell):
+    def RunStep(use_func):
       g = tf.Graph()
       start = time.time()
       with g.as_default():
+        # Helper to construct a LSTM function.
+        if use_func:
+
+          @function.Defun(x=tf.float32,
+                          mprev=tf.float32,
+                          cprev=tf.float32,
+                          weights=tf.float32)
+          def LSTMCellFunc(x, mprev, cprev, weights):
+            return LSTMCell(x, mprev, cprev, weights)
+
+          cell = LSTMCellFunc
+        else:
+          cell = LSTMCell
+
         m = tf.zeros(shape=[batch_size, lstm_dims])
         c = tf.zeros(shape=[batch_size, lstm_dims])
         weights = tf.random_uniform(
@@ -327,8 +344,8 @@ class FunctionTest(tf.test.TestCase):
         mv, cv = sess.run([m, c])
       return mv, cv
 
-    mv0, cv0 = RunStep(LSTMCell)
-    mv1, cv1 = RunStep(LSTMCellFunc)
+    mv0, cv0 = RunStep(use_func=False)
+    mv1, cv1 = RunStep(use_func=True)
     self.assertAllClose(mv0, mv1)
     self.assertAllClose(cv0, cv1)
 
