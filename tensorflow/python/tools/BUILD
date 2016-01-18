@@ -18,7 +18,7 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
 )
@@ -32,7 +32,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
