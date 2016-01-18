@@ -84,7 +84,7 @@ template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y);
 
 // Expects "x" and "y" are tensors of the same type, same shape, and
-// approxmiate equal values, each within "abs_err".
+// approximate equal values, each within "abs_err".
 template <typename T>
 void ExpectTensorNear(const Tensor& x, const Tensor& y, const T& abs_err);
 
