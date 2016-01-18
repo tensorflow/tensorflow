@@ -545,7 +545,7 @@ class OpKernelContext {
   Status mutable_input(const string& name, Tensor* tensor, bool lock_held);
 
   // Returns the named list-valued mutable input in "list", as defined
-  // in the OpDef.  If the named intput is not list-valued, returns a
+  // in the OpDef.  If the named input is not list-valued, returns a
   // one-element list. Must be used to access Ref inputs. The values
   // stored in the Tensor buffer may be modified, and modifications
   // will be visible to other Ops reading the same ref tensor.

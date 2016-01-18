@@ -53,7 +53,7 @@ class OpCompatibilityTest : public OpsTestBase {
     ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
                                 &old_out_types));
 
-    // This should be all that is needed to get compatiblity.
+    // This should be all that is needed to get compatibility.
     const OpDef* new_op_def = RegisteredOpDef();
     AddDefaultsToNodeDef(*new_op_def, node_def());
 
@@ -93,7 +93,7 @@ class OpCompatibilityTest : public OpsTestBase {
     ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
                                 &old_out_types));
 
-    // This should be all that is needed to get compatiblity.
+    // This should be all that is needed to get compatibility.
     const OpDef* new_op_def = RegisteredOpDef();
     AddDefaultsToNodeDef(*new_op_def, node_def());
 
@@ -117,7 +117,7 @@ class OpCompatibilityTest : public OpsTestBase {
     ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
                                 &old_out_types));
 
-    // This should be all that is needed to get compatiblity.
+    // This should be all that is needed to get compatibility.
     const OpDef* new_op_def = RegisteredOpDef();
     AddDefaultsToNodeDef(*new_op_def, node_def());
 

@@ -61,7 +61,7 @@ message FunctionDef {
     // 'attr' maps names defined by 'func's attr defs to attr values.
     // attr values may have placeholders which are substituted
     // recursively by concrete values when this node is instantiated.
-    // These placeholdes must name an attr listed in the FunctionDef's
+    // These placeholders must name an attr listed in the FunctionDef's
     // signature.
     map<string, AttrValue> attr = 5;
   }
