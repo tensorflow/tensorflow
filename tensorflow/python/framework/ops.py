@@ -1791,6 +1791,16 @@ class Graph(object):
     """
     return name in self._functions
 
+  def _get_function(self, name):
+    """Returns the function definition for 'name'.
+
+    Args:
+      name: string function name.
+    Returns:
+      The function def proto.
+    """
+    return self._functions[name]
+
   def _add_function(self, function_def):
     """Adds a function to the graph.
 
