@@ -33,7 +33,7 @@ std::vector<char*> CharPointerVectorFromStrings(
 TEST(CommandLineFlagsTest, BasicUsage) {
   int some_int = 10;
   bool some_switch = false;
-  string some_name = "something";
+  tensorflow::string some_name = "something";
   int argc = 4;
   std::vector<tensorflow::string> argv_strings = {
       "program_name", "--some_int=20", "--some_switch",
