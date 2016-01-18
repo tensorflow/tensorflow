@@ -47,6 +47,7 @@ def _data_type_filter(X, y):
     if HAS_DASK:
         X = extract_dask_data(X)
         y = extract_dask_labels(y)
+        print("skipped extract dask data")
     if HAS_PANDAS:
         X = extract_pandas_data(X)
         y = extract_pandas_labels(y)
@@ -290,6 +291,8 @@ class DaskDataFeeder(object):
            regression values.
         n_classes: indicator of how many classes the target has.
         batch_size: Mini batch size to accumulate.
+        random_state: random state for RNG. Note that it will mutate so use a int value
+            for this if you want consistent sized batches. 
 
     Attributes:
         X: input features.
@@ -327,7 +330,7 @@ class DaskDataFeeder(object):
         # TODO: dtype('float32') instead of float64 and int64
         self.input_dtype, self.output_dtype = self.X.dtypes[0], self.y.dtypes[self.y_columns]
         if random_state is None:
-            self.random_state = np.random.RandomState(66)
+            self.random_state = 66
         else:
             self.random_state = random_state
 
