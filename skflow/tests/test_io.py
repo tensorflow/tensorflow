@@ -87,7 +87,7 @@ class IOTest(googletest.TestCase):
             labels = pd.DataFrame(iris.target)
             labels = dd.from_pandas(labels, npartitions=2)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
-            # classifier.fit(data, labels)
+            classifier.fit(data, labels)
             # score = accuracy_score(classifier.predict(data), labels)
             # self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 

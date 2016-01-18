@@ -354,8 +354,12 @@ class DaskDataFeeder(object):
             # convert to correct dtype
             inp = np.array(inp, dtype=self.input_dtype)
             # one-hot encode out for each class for cross entropy loss
-            out = out.flatten()
-            encoded_out = np.zeros((out.size, out.max()+1), dtype=self.output_dtype)
+            if HAS_PANDAS:
+                import pandas as pd
+                if not isinstance(out, pd.Series):
+                    out = out.flatten()
+            out_max = self.y.max().compute().values[0]
+            encoded_out = np.zeros((out.size, out_max+1), dtype=self.output_dtype)
             encoded_out[np.arange(out.size), out] = 1
             return {input_placeholder.name: inp, output_placeholder.name: encoded_out}
         return _feed_dict_fn
