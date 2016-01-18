@@ -88,8 +88,9 @@ class IOTest(googletest.TestCase):
             labels = dd.from_pandas(labels, npartitions=2)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
-            # score = accuracy_score(classifier.predict(data), labels)
-            # self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+            # TODO: deal with dask data in predict
+            score = accuracy_score(classifier.predict(data.compute()), labels.compute())
+            self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 if __name__ == '__main__':
     tf.test.main()
