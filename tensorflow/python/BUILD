@@ -435,7 +435,9 @@ tf_gen_op_wrapper_py(
     hidden = [
         "Switch",
         "Merge",
+        "RefMerge",
         "Exit",
+        "RefExit",
     ],
     require_shape_functions = True,
     deps = [

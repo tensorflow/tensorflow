@@ -20,13 +20,13 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
 from tensorflow.python.ops.gen_control_flow_ops import *
 
 
-@ops.RegisterGradient("Switch")
 def _SwitchGrad(op, *grad):
   """Gradients for a Switch op is calculated using a Merge op.
 
@@ -45,14 +45,17 @@ def _SwitchGrad(op, *grad):
       # the non-exit branch of the Switch, so update the second input
       # to the Merge.
       # TODO: Need to perform shape inference with this new input.
-      merge_op._update_input(1, next_iteration(grad[1]))
+      # pylint: disable=protected-access
+      merge_op._update_input(1, control_flow_ops._NextIteration(grad[1]))
+      # pylint: enable=protected-access
       return None, None
     else:
       # This is the first time this Switch is visited. It always comes
       # from the Exit branch, which is grad[0]. grad[1] is empty at this point.
       # Use grad[0] for both inputs to merge for now, but update the second
       # input of merge when we see this Switch the second time.
-      merge_op = merge([grad[0], grad[0]], name="b_switch")[0]
+      merge_fn = control_flow_ops._Merge  # pylint: disable=protected-access
+      merge_op = merge_fn([grad[0], grad[0]], name="b_switch")[0]
       op.grad_state.switch_map[real_op] = merge_op.op
       return merge_op, None
   elif isinstance(ctxt, CondContext):
@@ -71,9 +74,8 @@ def _SwitchGrad(op, *grad):
     return merge([false_grad, true_grad])[0], None
 
 
-@ops.RegisterGradient("RefSwitch")
-def _RefSwitchGrad(op, *grad):
-  return _SwitchGrad(op, *grad)
+ops.RegisterGradient("Switch")(_SwitchGrad)
+ops.RegisterGradient("RefSwitch")(_SwitchGrad)
 
 
 @ops.RegisterGradient("Merge")
@@ -86,7 +88,9 @@ def _MergeGrad(op, grad, _):
   # pylint: enable=protected-access
   if isinstance(ctxt, WhileContext):
     grad_ctxt = op.grad_state.grad_context
-    return switch(grad, grad_ctxt.pivot)
+    # pylint: disable=protected-access
+    return control_flow_ops._SwitchRefOrTensor(grad, grad_ctxt.pivot)
+    # pylint: enable=protected-access
   elif isinstance(ctxt, CondContext):
     pred = ctxt.pred
     if isinstance(op, ControlFlowOpWrapper):
@@ -108,11 +112,21 @@ def _MergeGrad(op, grad, _):
         real_pred = grad_state.AddBackPropAccumulatedValue(history_pred, pred)
         grad_state.history_map[pred.name] = real_pred
         pred = real_pred
-    return switch(grad, pred, name="cond_grad")
+    # pylint: disable=protected-access
+    return control_flow_ops._SwitchRefOrTensor(grad, pred, name="cond_grad")
+    # pylint: enable=protected-access
   else:
     num_inputs = len(real_op.inputs)
     cond = [math_ops.equal(real_op.outputs[1], i) for i in xrange(num_inputs)]
-    return [switch(grad, cond[i])[1] for i in xrange(num_inputs)]
+    # pylint: disable=protected-access
+    return [control_flow_ops._SwitchRefOrTensor(grad, cond[i])[1]
+            for i in xrange(num_inputs)]
+    # pylint: enable=protected-access
+
+
+@ops.RegisterGradient("RefMerge")
+def _RefMergeGrad(op, grad, _):
+  return _MergeGrad(op, grad, _)
 
 
 @ops.RegisterGradient("Exit")
@@ -127,9 +141,13 @@ def _ExitGrad(op, grad):
     return None
   grad_ctxt = op.grad_state.grad_context
   grad_ctxt.AddName(grad.name)
-  return enter(grad, grad_ctxt.name, is_constant=False,
-               parallel_iterations=grad_ctxt.parallel_iterations,
-               name="b_exit")
+  enter_fn = control_flow_ops._Enter  # pylint: disable=protected-access
+  return enter_fn(grad, grad_ctxt.name, is_constant=False,
+                  parallel_iterations=grad_ctxt.parallel_iterations,
+                  name="b_exit")
+
+
+ops.RegisterGradient("RefExit")(_ExitGrad)
 
 
 @ops.RegisterGradient("NextIteration")
@@ -139,6 +157,11 @@ def _NextIterationGrad(_, grad):
   Note that the backprop next_iteration is added in switch grad.
   """
   return grad
+
+
+@ops.RegisterGradient("RefNextIteration")
+def _RefNextIterationGrad(_, grad):
+  return _NextIterationGrad(_, grad)
 
 
 @ops.RegisterGradient("Enter")

@@ -3996,7 +3996,7 @@ op {
   name: "LoopCond"
   input_arg {
     name: "input"
-    description: "= A boolean scalar, representing the branch predicate of the Switch op."
+    description: "A boolean scalar, representing the branch predicate of the Switch op."
     type: DT_BOOL
   }
   output_arg {
@@ -6124,6 +6124,27 @@ op {
   description: "The unique `frame_name` is used by the `Executor` to identify frames. If\n`is_constant` is true, `output` is a constant in the child frame; otherwise\nit may be changed in the child frame. At most `parallel_iterations` iterations\nare run in parallel in the child frame."
 }
 op {
+  name: "RefExit"
+  input_arg {
+    name: "data"
+    description: "The tensor to be made available to the parent frame."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "The same tensor as `data`."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Exits the current frame to its parent frame."
+  description: "Exit makes its input `data` available to the parent frame."
+}
+op {
   name: "RefIdentity"
   input_arg {
     name: "input"
@@ -6140,6 +6161,59 @@ op {
     type: "type"
   }
   summary: "Return the same ref tensor as the input ref tensor."
+}
+op {
+  name: "RefMerge"
+  input_arg {
+    name: "inputs"
+    description: "The input tensors, exactly one of which will become available."
+    type_attr: "T"
+    number_attr: "N"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "Will be set to the available input tensor."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "value_index"
+    description: "The index of the chosen input tensor in `inputs`."
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Forwards the value of an available tensor from `inputs` to `output`."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+}
+op {
+  name: "RefNextIteration"
+  input_arg {
+    name: "data"
+    description: "The tensor to be made available to the next iteration."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "The same tensor as `data`."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Makes its input available to the next iteration."
 }
 op {
   name: "RefSelect"

@@ -83,10 +83,10 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   } while (0)
 
   SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "");
+  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
   SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "");
+  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
+  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
   SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
   SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
   SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
