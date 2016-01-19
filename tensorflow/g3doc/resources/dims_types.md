@@ -40,7 +40,7 @@ Rank | Shape | Dimension number | Example
 1 | [D0] | 1-D | A 1-D tensor with shape [5].
 2 | [D0, D1] | 2-D | A 2-D tensor with shape [3, 4].
 3 | [D0, D1, D2] | 3-D | A 3-D tensor with shape [1, 4, 3].
-n | [D0, D1, ... Dn] | n-D | A tensor with shape [D0, D1, ... Dn].
+n | [D0, D1, ... Dn-1] | n-D | A tensor with shape [D0, D1, ... Dn-1].
 
 Shapes can be represented via Python lists / tuples of ints, or with the
 [`TensorShape` class](../api_docs/python/framework.md#TensorShape).
