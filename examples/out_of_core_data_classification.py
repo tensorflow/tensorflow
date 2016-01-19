@@ -44,8 +44,9 @@ X_test, y_test = dd.from_pandas(X_test, npartitions=2), dd.from_pandas(y_test, n
 
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 
-# Fit and predict.
+# Fit the model using training set
 classifier.fit(X_train, y_train)
+# Make predictions on each partitions of testing data
 predictions = X_test.map_partitions(classifier.predict).compute()
-score = metrics.accuracy_score(predictions, y_train.compute())
-
+# Calculate accuracy
+score = metrics.accuracy_score(predictions, y_test.compute())

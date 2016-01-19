@@ -11,6 +11,7 @@ Examples of Using skflow
 * [Example of saving and restoring models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
 * [Improving Performance Using Early Stopping with Iris Data](iris_early_stopping.py)
+* [Out-of-core Data Classification Using Dask](out_of_core_data_classification.py)
 
 
 Image classification
