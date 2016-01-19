@@ -47,7 +47,6 @@ def _data_type_filter(X, y):
     if HAS_DASK:
         X = extract_dask_data(X)
         y = extract_dask_labels(y)
-        print("skipped extract dask data")
     if HAS_PANDAS:
         X = extract_pandas_data(X)
         y = extract_pandas_labels(y)
