@@ -168,6 +168,26 @@ TEST(ConsumeLeadingDigits, Basic) {
                            "xyz");
 }
 
+void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
+                              StringPiece remaining) {
+  StringPiece v;
+  StringPiece input(s);
+  if (str_util::ConsumeNonWhitespace(&input, &v)) {
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(input, remaining);
+  } else {
+    EXPECT_EQ(expected, "");
+    EXPECT_EQ(input, remaining);
+  }
+}
+
+TEST(ConsumeNonWhitespace, Basic) {
+  TestConsumeNonWhitespace("", "", "");
+  TestConsumeNonWhitespace(" ", "", " ");
+  TestConsumeNonWhitespace("abc", "abc", "");
+  TestConsumeNonWhitespace("abc ", "abc", " ");
+}
+
 TEST(ConsumePrefix, Basic) {
   string s("abcdef");
   StringPiece input(s);
