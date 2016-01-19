@@ -383,6 +383,108 @@ handle: The handle to a stack.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("TensorArray")
+    .Input("size: int32")
+    .Attr("dtype: type")
+    .Attr("tensor_array_name: string = ''")
+    .Output("handle: Ref(string)")
+    .SetIsStateful()
+    .Doc(R"doc(
+An array of Tensors of given size, with data written via Write and read
+via Read or Pack.
+
+handle: The handle to the TensorArray.
+size: The size of the array.
+dtype: The type of the elements on the tensor_array.
+tensor_array_name: Overrides the name used for the temporary tensor_array resource. Default
+value is the name of the 'TensorArray' op (which is guaranteed unique).
+)doc");
+
+REGISTER_OP("TensorArrayGrad")
+    .Input("handle: Ref(string)")
+    .Output("grad_handle: Ref(string)")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates a TensorArray for storing the gradients of values in the given handle.
+
+If the given TensorArray gradient already exists, returns a reference to it.
+
+handle: The handle to the forward TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayWrite")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("gradient_add: bool = false")
+    .SetIsStateful()
+    .Doc(R"doc(
+Push an element onto the tensor_array.
+
+handle: The handle to a TensorArray.
+index: The position to write to inside the TensorArray.
+value: The tensor to write to the TensorArray.
+gradient_add: Used for gradient back-propagation.  If the value has already
+  been written to the handle, validate input shape and add to it.
+)doc");
+
+REGISTER_OP("TensorArrayRead")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Read an element from the TensorArray.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+value: The tensor that is read from the TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayPack")
+    .Input("handle: Ref(string)")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Pack the elements from the TensorArray.
+
+All elements must have the same shape.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+value: All of the elements in the TensorArray, concatenated along a new
+  axis (the new dimension 0).
+)doc");
+
+REGISTER_OP("TensorArrayUnpack")
+    .Input("handle: Ref(string)")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("gradient_add: bool = false")
+    .SetIsStateful()
+    .Doc(R"doc(
+Unpack the data from the input value into TensorArray elements.
+
+handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+gradient_add: Used for gradient back-propagation.  If values are already
+  written to the handle, validate shapes and add to them.
+)doc");
+
+REGISTER_OP("TensorArrayClose")
+    .Input("handle: Ref(string)")
+    .Doc(R"doc(
+Delete the TensorArray from its resource container.  This enables
+the user to close and release the resource in the middle of a step/run.
+
+handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("LookupTableFind")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")

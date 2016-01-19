@@ -684,6 +684,7 @@ filegroup(
     srcs = [
         "//tensorflow/core:kernels/aggregate_ops.cc",
         "//tensorflow/core:kernels/aggregate_ops.h",
+        "//tensorflow/core:kernels/aggregate_ops_cpu.h",
         "//tensorflow/core:kernels/assign_op.h",
         "//tensorflow/core:kernels/bias_op.cc",
         "//tensorflow/core:kernels/bias_op.h",

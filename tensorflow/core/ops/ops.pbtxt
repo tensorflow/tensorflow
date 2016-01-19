@@ -8798,6 +8798,172 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorArray"
+  input_arg {
+    name: "size"
+    description: "The size of the array."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary tensor_array resource. Default\nvalue is the name of the \'TensorArray\' op (which is guaranteed unique)."
+  }
+  summary: "An array of Tensors of given size, with data written via Write and read"
+  description: "via Read or Pack."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayClose"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Delete the TensorArray from its resource container.  This enables"
+  description: "the user to close and release the resource in the middle of a step/run."
+}
+op {
+  name: "TensorArrayGrad"
+  input_arg {
+    name: "handle"
+    description: "The handle to the forward TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Creates a TensorArray for storing the gradients of values in the given handle."
+  description: "If the given TensorArray gradient already exists, returns a reference to it."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayPack"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "value"
+    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  summary: "Pack the elements from the TensorArray."
+  description: "All elements must have the same shape."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayRead"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "value"
+    description: "The tensor that is read from the TensorArray."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  summary: "Read an element from the TensorArray."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayUnpack"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "value"
+    description: "The concatenated tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "gradient_add"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Used for gradient back-propagation.  If values are already\nwritten to the handle, validate shapes and add to them."
+  }
+  summary: "Unpack the data from the input value into TensorArray elements."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayWrite"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "index"
+    description: "The position to write to inside the TensorArray."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    description: "The tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "gradient_add"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Used for gradient back-propagation.  If the value has already\nbeen written to the handle, validate input shape and add to it."
+  }
+  summary: "Push an element onto the tensor_array."
+  is_stateful: true
+}
+op {
   name: "TextLineReader"
   output_arg {
     name: "reader_handle"

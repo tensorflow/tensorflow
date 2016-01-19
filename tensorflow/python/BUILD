@@ -466,6 +466,13 @@ tf_gen_op_wrapper_py(
         "StackPop",
         "StackPush",
         "StackClose",
+        "TensorArray",
+        "TensorArrayClose",
+        "TensorArrayGrad",
+        "TensorArrayRead",
+        "TensorArrayPack",
+        "TensorArrayUnpack",
+        "TensorArrayWrite",
     ],
     require_shape_functions = True,
 )

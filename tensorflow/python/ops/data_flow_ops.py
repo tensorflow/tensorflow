@@ -548,25 +548,71 @@ ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
 
 
+def _ScalarToVoidShape(op):
+  """Shape function for ops that take a scalar and produce no outputs."""
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
+  return []
+
 # NOTE(mrry): The following ops use higher-level information in the
 # Queue class to provide shape information.
 ops.RegisterShape("QueueDequeue")(common_shapes.unknown_shape)
 ops.RegisterShape("QueueDequeueMany")(common_shapes.unknown_shape)
 ops.RegisterShape("QueueEnqueue")(common_shapes.unknown_shape)
 ops.RegisterShape("QueueEnqueueMany")(common_shapes.unknown_shape)
-
+ops.RegisterShape("QueueClose")(_ScalarToVoidShape)
 
 ops.RegisterShape("Stack")(common_shapes.scalar_shape)
 ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
 ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
-ops.RegisterShape("StackClose")(common_shapes.unknown_shape)
+ops.RegisterShape("StackClose")(_ScalarToVoidShape)
 
 
-@ops.RegisterShape("QueueClose")
-def _ScalarToVoidShape(op):
+@ops.RegisterShape("TensorArray")
+def _TensorArrayShape(op):
+  # size is a scalar
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
+  return [tensor_shape.vector(2)]
+
+
+@ops.RegisterShape("TensorArrayRead")
+def _TensorArrayReadShape(op):
+  # handle, index, value
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
+  return [tensor_shape.unknown_shape()]
+
+
+@ops.RegisterShape("TensorArrayWrite")
+def _TensorArrayWriteShape(op):
+  # handle, index
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
+  return []
+
+
+@ops.RegisterShape("TensorArrayClose")
+def _TensorArrayCloseShape(op):
   """Shape function for ops that take a scalar and produce no outputs."""
-  unused_input_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  return []
+
+
+@ops.RegisterShape("TensorArrayGrad")
+def _TensorArrayGradShape(op):
+  """Shape function for ops that take a scalar and produce no outputs."""
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  return [tensor_shape.vector(2)]
+
+
+@ops.RegisterShape("TensorArrayPack")
+def _TensorArrayPackShape(op):
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  return [tensor_shape.unknown_shape()]
+
+
+@ops.RegisterShape("TensorArrayUnpack")
+def _TensorArrayUnpackShape(op):
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
   return []
 
 
@@ -610,8 +656,7 @@ def _DynamicStitchShape(op):
 @ops.RegisterShape("LookupTableFind")
 def _LookupTableFindShape(op):
   """Shape function for data_flow_ops._lookup_table_find."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   shape_in = op.inputs[1].get_shape()
   return [shape_in]
 
@@ -619,13 +664,12 @@ def _LookupTableFindShape(op):
 @ops.RegisterShape("LookupTableSize")
 def _LookupTableSizeShape(op):
   """Shape function for data_flow_ops._lookup_table_find."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   return [tensor_shape.scalar()]
 
 
 @ops.RegisterShape("HashTable")
-def _HashTableShape(unused_op):
+def _HashTableShape(_):
   """Shape function for data_flow_ops._hash_table."""
   return [tensor_shape.scalar()]
 
@@ -633,8 +677,7 @@ def _HashTableShape(unused_op):
 @ops.RegisterShape("InitializeTable")
 def _InitializeLookupTableShape(op):
   """Shape function for data_flow_ops._initialize_table."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   keys_shape = op.inputs[1].get_shape().with_rank(1)
-  unused_values_shape = op.inputs[2].get_shape().merge_with(keys_shape)
+  op.inputs[2].get_shape().merge_with(keys_shape)
   return []
