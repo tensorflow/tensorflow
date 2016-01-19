@@ -501,7 +501,7 @@ class DropoutWrapper(RNNCell):
   def state_size(self):
     return self._cell.state_size
 
-  def __call__(self, inputs, state):
+  def __call__(self, inputs, state, scope=None):
     """Run the cell with the declared dropouts."""
     if (not isinstance(self._input_keep_prob, float) or
         self._input_keep_prob < 1):

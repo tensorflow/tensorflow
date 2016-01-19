@@ -37,7 +37,7 @@ class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
   def state_size(self):
     return 5
 
-  def __call__(self, input_, state):
+  def __call__(self, input_, state, scope=None):
     return (input_ + 1, state + 1)
 
 
