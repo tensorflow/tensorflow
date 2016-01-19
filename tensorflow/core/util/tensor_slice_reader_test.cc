@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"

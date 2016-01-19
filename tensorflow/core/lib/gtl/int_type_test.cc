@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/port.h"
 

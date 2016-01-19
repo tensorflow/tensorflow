@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/platform/port.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 
 namespace tensorflow {
 

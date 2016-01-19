@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "perftools/gputools/executor/event.h"
+#include "perftools/gputools/executor/stream.h"
 #include "tensorflow/core/framework/config.pb.h"
 
 namespace gpu = ::perftools::gputools;

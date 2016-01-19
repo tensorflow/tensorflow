@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_def_builder.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

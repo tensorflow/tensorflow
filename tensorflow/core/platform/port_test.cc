@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <condition_variable>
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"

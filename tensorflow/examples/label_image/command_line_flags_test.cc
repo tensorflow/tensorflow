@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/examples/label_image/command_line_flags.h"
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 
 namespace {
 // The returned array is only valid for the lifetime of the input vector.

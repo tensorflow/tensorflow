@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/edgeset.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {

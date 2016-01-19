@@ -23,7 +23,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "perftools/gputools/executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"

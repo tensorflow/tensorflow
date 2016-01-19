@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 
 namespace tensorflow {
 

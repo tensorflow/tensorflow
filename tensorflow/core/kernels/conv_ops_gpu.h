@@ -18,7 +18,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/stream_executor/scratch_allocator.h"
+#include "perftools/gputools/executor/scratch_allocator.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 
 namespace tensorflow {

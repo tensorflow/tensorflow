@@ -1,6 +1,6 @@
 #include "tensorflow/core/framework/unique_tensor_references.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/tensor_c_api.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/public/tensor.h"
 
 using tensorflow::Tensor;

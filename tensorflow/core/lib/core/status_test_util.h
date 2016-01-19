@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
 #define TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/public/status.h"
 
 // Macros for testing the results of functions that return util::Status.

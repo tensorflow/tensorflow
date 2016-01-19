@@ -24,7 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"

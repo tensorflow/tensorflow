@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 
 #include <memory>
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"

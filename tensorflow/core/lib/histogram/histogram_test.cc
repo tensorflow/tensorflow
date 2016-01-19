@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include <float.h>
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/platform/logging.h"
 

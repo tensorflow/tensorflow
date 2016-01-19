@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "perftools/gputools/executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"

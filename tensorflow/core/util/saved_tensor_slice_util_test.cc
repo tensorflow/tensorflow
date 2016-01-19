@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"

@@ -35,7 +35,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/png_archive/libpng-1.2.53/png.h"
+#include "third_party/png/png.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {

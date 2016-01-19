@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/tensor.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/strings/strcat.h"

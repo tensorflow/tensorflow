@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "perftools/gputools/executor/stream.h"
+#include "perftools/gputools/executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/gpu/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"

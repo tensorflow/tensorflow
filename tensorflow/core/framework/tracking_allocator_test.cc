@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/logging.h"
 

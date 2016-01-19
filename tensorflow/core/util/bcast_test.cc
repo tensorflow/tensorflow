@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/bcast.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 

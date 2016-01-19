@@ -19,7 +19,7 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor_util.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor_util.h
 
-#include "tensorflow/stream_executor/lib/status.h"
+#include "perftools/gputools/executor/lib/status.h"
 
     namespace tensorflow {
 

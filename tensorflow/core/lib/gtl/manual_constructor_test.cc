@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

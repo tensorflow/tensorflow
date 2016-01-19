@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {

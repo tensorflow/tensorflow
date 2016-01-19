@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <deque>
 #include <vector>
-#include "tensorflow/stream_executor/stream.h"
+#include "perftools/gputools/executor/stream.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"

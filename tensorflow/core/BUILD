@@ -335,7 +335,6 @@ tf_cuda_library(
     linkstatic = 0,
     visibility = ["//visibility:public"],
     deps = [
-        "@gemmlowp//:eight_bit_int_gemm",
         ":core",
         ":lib",
         ":ops",
@@ -343,6 +342,7 @@ tf_cuda_library(
         ":stream_executor",
         "//tensorflow/models/embedding:word2vec_kernels",
         "//third_party/eigen3",
+        "//third_party/gemmlowp:eight_bit_int_gemm",
     ],
     alwayslink = 1,
 )

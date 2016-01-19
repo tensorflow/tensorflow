@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"

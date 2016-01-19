@@ -20,8 +20,8 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/stream_executor/stream_executor.h"
-#include <gtest/gtest.h>
+#include "perftools/gputools/executor/stream_executor.h"
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/equal_graph_def.h"
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"

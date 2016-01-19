@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include <gtest/gtest.h>
+#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/port.h"
 

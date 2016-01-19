@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_region_allocator.h"
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "perftools/gputools/executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/bits.h"
