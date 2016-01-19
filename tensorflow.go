@@ -4,11 +4,12 @@ package tensorflow
 import "C"
 
 import (
+	"encoding/binary"
 	"fmt"
 	"reflect"
 	"unsafe"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/golang/protobuf/proto"
 	framework "github.com/tensorflow/tensorflow/gen/core/framework"
 	tensorflow_wrap "github.com/tensorflow/tensorflow/tensorflow/go"
 )
@@ -29,6 +30,7 @@ func NewSession() (*Session, error) {
 
 type Tensor struct {
 	tensor tensorflow_wrap.TF_Tensor
+	buf    []byte
 }
 
 type TensorShape [][]int64
@@ -49,18 +51,47 @@ func NewTensor(dataType framework.DataType, shape TensorShape, data interface{})
 }
 
 func newTensor(dataType framework.DataType, shape TensorShape, data uintptr, size int) (*Tensor, error) {
-	spew.Dump(dataType, shape, data, size)
-	return &Tensor{
-		tensor: tensorflow_wrap.TF_NewTensor(tensorflow_wrap.TF_DataType(dataType), &(shape[0][0]), len(shape), data, int64(size), nil, 0),
-	}, nil
+	t := &Tensor{
+		tensor: tensorflow_wrap.TF_NewTensor_wrapper(tensorflow_wrap.TF_DataType(dataType), &(shape[0][0]), len(shape), data, int64(size)),
+	}
+
+	return t, nil
+}
+
+func encodeStrings(in []string) []byte {
+	size := 0
+	for _, s := range in {
+		size += 8
+		size += len(s)
+		size += len(proto.EncodeVarint(uint64(len(s))))
+	}
+
+	out := make([]byte, size)
+
+	dataPos := 8 * len(in)
+	data := out[dataPos:]
+	offset := 0
+	for i, s := range in {
+		inBytes := []byte(s)
+		binary.LittleEndian.PutUint64(out[i*8:], uint64(offset))
+		inLen := proto.EncodeVarint(uint64(len(s)))
+		offset += copy(data[offset:], inLen)
+		offset += copy(data[offset:], inBytes)
+	}
+	return out
 }
 
 func Constant(value interface{}) (*Tensor, error) {
 	switch v := value.(type) {
 	case string:
-		str := C.CString(v)
 		//		defer C.free(unsafe.Pointer(str))
-		return newTensor(framework.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(str)), len(v))
+		buf := encodeStrings([]string{v})
+		t, err := newTensor(framework.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), len(buf))
+		if err != nil {
+			return nil, err
+		}
+		t.buf = buf
+		return t, nil
 	default:
 		return nil, fmt.Errorf("tensorflow: unsupported type %T", value)
 	}
@@ -76,56 +107,70 @@ func statusToError(status tensorflow_wrap.TF_Status) error {
 	return nil
 }
 
-/*
-void TF_Run(TF_Session* s,
-            // Input tensors
-            const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
-            // Output tensors
-            const char** c_output_tensor_names, TF_Tensor** c_outputs,
-            int noutputs,
-            // Target nodes
-            const char** c_target_node_names, int ntargets, TF_Status* status)
-*/
-func (s *Session) Run(t *Tensor) ([]*Tensor, error) {
-	/*
-		inputs := []uintptr{t.tensor.Swigcptr()}
-		inputNames := []*C.char{C.CString("input")}
-		outputNames := []*C.char{C.CString("output")}
-		output, _ := Constant("this is the output vector")
-		outputs := []uintptr{output.tensor.Swigcptr()}
-		status := tensorflow_wrap.TF_NewStatus()
-			C.TF_Run((*C.struct_TF_Session)(s.session.Swigcptr()),
-				&(inputNames[0]), &(inputs[0]), len(inputs),
-				&(inputNames[0]), &(inputs[0]), len(outputs),
-				nil, 0, // no targets for now
-				&status,
-			)
-	*/
-
-	inputs := tensorflow_wrap.NewTensorVector()
-	inputs.Add(t.tensor)
-	output, err := Constant("this is the output vector")
-	if err != nil {
-		return nil, err
+func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
+	inputNames := tensorflow_wrap.NewStringVector()
+	inputValues := tensorflow_wrap.NewTensorVector()
+	if inputs != nil {
+		for k, v := range inputs {
+			inputValues.Add(v.tensor)
+			inputNames.Add(k)
+		}
+	}
+	outputNames := tensorflow_wrap.NewStringVector()
+	for _, n := range outputs {
+		outputNames.Add(n)
 	}
 
-	outputs := tensorflow_wrap.NewTensorVector()
-	outputs.Add(output.tensor)
-	inputNames := tensorflow_wrap.NewStringVector()
-	inputNames.Add("input")
-	outputNames := tensorflow_wrap.NewStringVector()
-	outputNames.Add("output")
 	targetNames := tensorflow_wrap.NewStringVector()
-	targetNames.Add("target")
+	for _, n := range targets {
+		targetNames.Add(n)
+	}
+
+	outputValues := tensorflow_wrap.NewTensorVector()
 	status := tensorflow_wrap.TF_NewStatus()
 
-	tensorflow_wrap.TF_Run_wrapper(s.session, inputNames, inputs, outputNames, outputs, targetNames, status)
+	tensorflow_wrap.TF_Run_wrapper(s.session, inputNames, inputValues, outputNames, outputValues, targetNames, status)
 
 	result := []*Tensor{}
-	for i := int64(0); i < outputs.Size(); i++ {
+	for i := int64(0); i < outputValues.Size(); i++ {
 		result = append(result, &Tensor{
-			tensor: outputs.Get(int(i)),
+			tensor: outputValues.Get(int(i)),
 		})
 	}
 	return result, statusToError(status)
+}
+
+func (s *Session) ExtendGraph(graph *framework.GraphDef) error {
+	status := tensorflow_wrap.TF_NewStatus()
+	buf, err := proto.Marshal(graph)
+	if err != nil {
+		return err
+	}
+	tensorflow_wrap.TF_ExtendGraph(s.session, buf, status)
+	return statusToError(status)
+}
+
+func (t *Tensor) DataType() framework.DataType {
+	return framework.DataType(tensorflow_wrap.TF_TensorType(t.tensor))
+}
+
+func (t *Tensor) NumDims() int {
+	return tensorflow_wrap.TF_NumDims(t.tensor)
+}
+
+func (t *Tensor) Dim(n int) int {
+	return int(tensorflow_wrap.TF_Dim(t.tensor, n))
+}
+
+func (t *Tensor) DataSize() int {
+	return int(tensorflow_wrap.TF_TensorByteSize(t.tensor))
+}
+
+func (t *Tensor) Data() []byte {
+	length := t.DataSize()
+	return (*[1 << 30]byte)(unsafe.Pointer(tensorflow_wrap.TF_TensorData(t.tensor)))[:length:length]
+}
+
+func (t *Tensor) String() string {
+	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
 }

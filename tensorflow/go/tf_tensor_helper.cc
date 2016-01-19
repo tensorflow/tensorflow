@@ -13,32 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "typemaps.i"
-%include "std_vector.i"
-%include "std_string.i"
+#include <vector>
 
-%{
-#include "tensorflow/core/public/tensor_c_api.h"
-#include "tensorflow/core/public/version.h"
-#include "tf_tensor_helper.h"
 #include "tf_session_helper.h"
-%}
 
-%include "typemaps.i"
+namespace tensorflow {
 
-namespace std {
-   %template(StringVector) vector<string>;
-   %template(TensorVector) vector<TF_Tensor*>;
+TF_Tensor* TF_NewTensor_wrapper(TF_DataType dtype, long long* dims, int num_dims,
+                   void* data, size_t len) {
+  
+  return TF_NewTensor(dtype, dims, num_dims, data, len, [](void *data, size_t len, void* arg){
+      puts("in tensor dealloc");
+      }, nullptr);
 }
 
-%typemap(gotype) void *proto %{[]byte%}
-%typemap(in) (const void* proto, size_t proto_len) {
-  $1 = $input.array;
-  $2 = $input.len;
-}
-
-%include "tensorflow/core/public/version.h"
-%include "tensorflow/core/public/tensor_c_api.h"
-%include "tf_tensor_helper.h"
-%include "tf_session_helper.h"
-
+}  // namespace tensorflow

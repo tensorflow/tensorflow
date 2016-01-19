@@ -27,7 +27,7 @@ void TF_Run_wrapper(TF_Session*,
                    // Input tensors
                    std::vector<std::string> input_tensor_names, std::vector<TF_Tensor*> inputs,
                    // Output tensors
-                   std::vector<std::string> output_tensor_names, std::vector<TF_Tensor*> outputs,
+                   std::vector<std::string> output_tensor_names, std::vector<TF_Tensor*> &outputs,
                    // Target nodes
                    std::vector<std::string> target_node_names,
                    // Output status
