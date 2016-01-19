@@ -65,6 +65,11 @@ size_t RemoveWhitespaceContext(StringPiece* text);
 // overflow occurred, returns false.  Otherwise, returns false.
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val);
 
+// Consume a leading token composed of non-whitespace characters only.
+// If *s starts with a non-zero number of non-whitespace characters, store
+// them in *val, advance *s past them, and return true.  Else return false.
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
+
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
 bool ConsumePrefix(StringPiece* s, StringPiece expected);

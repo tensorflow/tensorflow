@@ -311,6 +311,25 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   }
 }
 
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
+  const char* p = s->data();
+  const char* limit = p + s->size();
+  while (p < limit) {
+    const char c = *p;
+    if (isspace(c)) break;
+    p++;
+  }
+  const size_t n = p - s->data();
+  if (n > 0) {
+    val->set(s->data(), n);
+    s->remove_prefix(n);
+    return true;
+  } else {
+    val->clear();
+    return false;
+  }
+}
+
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
   result->clear();
