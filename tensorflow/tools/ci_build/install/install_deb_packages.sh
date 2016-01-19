@@ -26,6 +26,9 @@ apt-get install -y \
     python-dev \
     python-numpy \
     python-pip \
+    python3-dev \
+    python3-numpy \
+    python3-pip \
     software-properties-common \
     swig \
     unzip \
