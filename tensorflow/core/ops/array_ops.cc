@@ -75,6 +75,31 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+REGISTER_OP("ConcatOffset")
+    .Input("concat_dim: int32")
+    .Input("shape: N * int32")
+    .Output("offset: N * int32")
+    .Attr("N: int >= 2")
+    .Doc(R"doc(
+Computes offsets of concat inputs within its output.
+
+For example:
+
+```prettyprint
+# 'x' is [2, 2, 7]
+# 'y' is [2, 3, 7]
+# 'z' is [2, 5, 7]
+concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+```
+
+concat_dim: The dimension along which to concatenate.
+shape: The `N` int32 vetors representing shape of tensors being concatenated.
+output: The `N` int32 vectors representing the starting offset
+        of input tensors within the concatenated output.
+
+This is typically used by gradient computations for a concat operation.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Split")
     .Input("split_dim: int32")
@@ -568,6 +593,17 @@ For example:
 shape(t) ==> [2, 2, 3]
 ```
 
+)doc");
+
+REGISTER_OP("ShapeN")
+    .Input("input: N * T")
+    .Output("output: N * int32")
+    .Attr("N: int32")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns shape of tensors.
+
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 )doc");
 
 // --------------------------------------------------------------------------

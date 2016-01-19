@@ -357,6 +357,11 @@ def _ConcatShape(op):
     return [output_shape]
 
 
+@ops.RegisterShape("ConcatOffset")
+def _ConcatOffsetShape(op):
+  return [x.get_shape() for x in op.inputs[1:]]
+
+
 def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
 
@@ -1026,10 +1031,10 @@ def _ReverseSequenceShape(op):
 
 
 @ops.RegisterShape("Shape")
-def _ShapeShape(op):
-  """Shape function for the Shape op."""
-  input_shape = op.inputs[0].get_shape()
-  return [tensor_shape.vector(input_shape.ndims)]
+@ops.RegisterShape("ShapeN")
+def _ShapeNShape(op):
+  """Shape function for the Shape/ShapeN op."""
+  return [tensor_shape.vector(x.get_shape().ndims) for x in op.inputs]
 
 
 @ops.RegisterShape("Transpose")

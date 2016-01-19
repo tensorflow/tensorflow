@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -66,12 +67,12 @@ def _ConcatGrad(op, grad):
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
-    sizes = [array_ops.shape(x) for x in op.inputs[1:]]
-    mask, begin = _CreateDenseMaskAndBegin(sizes, concat_dim)
-    for size in sizes:
+    sizes = array_ops.shape_n(op.inputs[1:])
+    # pylint: disable=protected-access
+    offset = gen_array_ops._concat_offset(concat_dim, sizes)
+    # pylint: enable=protected-access
+    for (begin, size) in zip(offset, sizes):
       out_grads.append(array_ops.slice(grad, begin, size))
-      # Lint complains begin = begin + ...
-      begin = math_ops.add(begin, size * mask)
   elif isinstance(grad, ops.IndexedSlices):
     concat_dim_static = tensor_util.ConstantValue(concat_dim)
     if concat_dim_static is None:
@@ -118,6 +119,9 @@ def _ConcatGrad(op, grad):
     raise TypeError("Expected Tensor or IndexedSlices, got %s" % type(grad))
 
   return [None] + out_grads
+
+
+ops.NoGradient("ConcatOffset")
 
 
 @ops.RegisterGradient("Slice")
@@ -221,6 +225,9 @@ def _TransposeGrad(op, grad):
 
 
 ops.NoGradient("Shape")
+
+
+ops.NoGradient("ShapeN")
 
 
 ops.NoGradient("Rank")

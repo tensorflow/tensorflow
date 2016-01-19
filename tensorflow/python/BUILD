@@ -395,6 +395,7 @@ tf_gen_op_wrapper_py(
     name = "array_ops",
     hidden = [
         "BroadcastGradientArgs",
+        "ConcatOffset",
         "Concat",
         "Const",
         "EditDistance",

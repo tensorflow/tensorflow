@@ -61,6 +61,45 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .TypeConstraint<int32>("T"),
                         ShapeOp);
 
+class ShapeNOp : public OpKernel {
+ public:
+  explicit ShapeNOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      auto shape = ctx->input(i).shape();
+      const int dims = shape.dims();
+      Tensor* out = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
+      auto vec = out->vec<int32>();
+      for (int j = 0; j < dims; ++j) vec(j) = shape.dim_size(j);
+    }
+  }
+
+  bool IsExpensive() override { return false; }
+};
+REGISTER_KERNEL_BUILDER(Name("ShapeN").Device(DEVICE_CPU).HostMemory("output"),
+                        ShapeNOp);
+
+#define REGISTER_GPU_KERNEL(type)                         \
+  REGISTER_KERNEL_BUILDER(Name("ShapeN")                  \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          ShapeNOp)
+TF_CALL_REAL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("ShapeN")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        ShapeNOp);
+
 class RankOp : public OpKernel {
  public:
   explicit RankOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}

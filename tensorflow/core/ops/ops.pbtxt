@@ -1603,6 +1603,33 @@ op {
   summary: "Concatenates tensors along one dimension."
 }
 op {
+  name: "ConcatOffset"
+  input_arg {
+    name: "concat_dim"
+    description: "The dimension along which to concatenate."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "shape"
+    description: "The `N` int32 vetors representing shape of tensors being concatenated."
+    type: DT_INT32
+    number_attr: "N"
+  }
+  output_arg {
+    name: "offset"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  summary: "Computes offsets of concat inputs within its output."
+  description: "For example:\n\n```prettyprint\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+}
+op {
   name: "Conj"
   input_arg {
     name: "in"
@@ -7320,6 +7347,31 @@ op {
   }
   summary: "Returns the shape of a tensor."
   description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
+}
+op {
+  name: "ShapeN"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns shape of tensors."
+  description: "This operation returns N 1-D integer tensors representing shape of `input[i]s`."
 }
 op {
   name: "ShardedFilename"

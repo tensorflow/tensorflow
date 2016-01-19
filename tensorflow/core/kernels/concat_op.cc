@@ -166,4 +166,87 @@ REGISTER_KERNEL_BUILDER(Name("Concat")
 
 #endif  // GOOGLE_CUDA
 
+class ConcatOffsetOp : public OpKernel {
+ public:
+  explicit ConcatOffsetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& concat_dim = ctx->input(0);
+    OP_REQUIRES(
+        ctx, IsLegacyScalar(concat_dim.shape()),
+        errors::InvalidArgument(
+            "Concat dim tensor should be a scalar integer, but got shape ",
+            concat_dim.shape().ShortDebugString()));
+    for (int i = 1; i < ctx->num_inputs(); ++i) {
+      const Tensor& inp = ctx->input(i);
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(inp.shape()),
+                  errors::InvalidArgument("input ", i,
+                                          " should be a vector, but got shape ",
+                                          inp.shape().ShortDebugString()));
+    }
+    // Suppose a Concat() op needs to Concatenate N tensors, each of
+    // which has the same number of dimensions.  Their shapes match
+    // except the concat dimension.
+    //
+    // E.g., say, we want to concatenate 3 tensors in the 2nd
+    // dimension, and their shapes are:
+    //
+    //  [2, 2, 5, 7]
+    //  [2, 3, 5, 7]
+    //  [2, 4, 5, 7]
+    //
+    // Here, N=3, cdim=1, dims=4. The concatenated tensor has shape
+    // [2,9,5,7]. We will compute the cumulative sum along the 2nd
+    // dimension to figure out each input's offset in the concatenated
+    // output:
+    //  [0, 0, 0, 0]
+    //  [0, 2, 0, 0]
+    //  [0, 5, 0, 0]
+    const int32 N = ctx->num_inputs() - 1;
+    const Tensor& inp0 = ctx->input(1);
+    auto inp0_vec = inp0.vec<int32>();
+    const int32 cdim = concat_dim.scalar<int32>()();
+    const int32 dims = inp0.NumElements();
+    OP_REQUIRES(ctx, (0 <= cdim) && (cdim < dims),
+                errors::InvalidArgument("Concat dim is out of range: ", cdim,
+                                        " vs. ", dims));
+    int32 offset = 0;
+    for (int i = 0; i < N; ++i) {
+      const Tensor& inp = ctx->input(1 + i);
+      OP_REQUIRES(
+          ctx, dims == inp.NumElements(),
+          errors::InvalidArgument("input ", i, " should contain ", dims,
+                                  " elements, but got", inp.NumElements()));
+      auto inp_vec = inp.vec<int32>();
+      Tensor* out = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
+      auto out_vec = out->vec<int32>();
+      for (int j = 0; j < dims; ++j) {
+        if (j == cdim) {
+          out_vec(j) = offset;
+          offset += inp_vec(j);
+        } else {
+          OP_REQUIRES(
+              ctx, (inp0_vec(j) == inp_vec(j)),
+              errors::InvalidArgument("input[", i, ",", j, "] mismatch: ",
+                                      inp0_vec(j), " vs. ", inp_vec(j)));
+          out_vec(j) = 0;
+        }
+      }
+    }
+  }
+
+  bool IsExpensive() override { return false; }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset").Device(DEVICE_CPU),
+                        ConcatOffsetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("concat_dim")
+                            .HostMemory("shape")
+                            .HostMemory("offset"),
+                        ConcatOffsetOp);
+
 }  // namespace tensorflow
