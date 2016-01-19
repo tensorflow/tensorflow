@@ -86,6 +86,7 @@ def all_libraries(module_to_name, members, documented):
               prefix=PREFIX_TEXT),
       library("io_ops", "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
+                               "PaddingFIFOQueue",
                                "initialize_all_tables",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],

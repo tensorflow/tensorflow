@@ -148,6 +148,21 @@ class PartialTensorShapeUtils {
     strings::StrAppend(&result, "]");
     return result;
   }
+
+  static bool AreCompatible(
+      const gtl::ArraySlice<PartialTensorShape>& shapes0,
+      const gtl::ArraySlice<PartialTensorShape>& shapes1) {
+    if (shapes0.size() == shapes1.size()) {
+      for (int i = 0; i < shapes0.size(); ++i) {
+        if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
+          return false;
+        }
+      }
+      return true;
+    } else {
+      return false;
+    }
+  }
 };
 
 }  // namespace tensorflow

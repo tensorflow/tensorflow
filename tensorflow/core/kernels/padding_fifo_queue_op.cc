@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/fifo_queue.h"
+#include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -30,36 +30,39 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/partial_tensor_shape.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
-// Defines a FIFOQueueOp, which produces a Queue (specifically, one
-// backed by FIFOQueue) that persists across different graph
+// Defines a PaddingFIFOQueueOp, which produces a Queue (specifically, one
+// backed by PaddingFIFOQueue) that persists across different graph
 // executions, and sessions. Running this op produces a single-element
 // tensor of handles to Queues in the corresponding device.
-class FIFOQueueOp : public QueueOp {
+class PaddingFIFOQueueOp : public QueueOp {
  public:
-  explicit FIFOQueueOp(OpKernelConstruction* context) : QueueOp(context) {
+  explicit PaddingFIFOQueueOp(OpKernelConstruction* context) : QueueOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
   }
 
  protected:
   CreatorCallback GetCreator() const override {
     return [this](QueueInterface** ret) {
-      FIFOQueue* queue = new FIFOQueue(capacity_, component_types_,
-                                       component_shapes_, cinfo_.name());
+      PaddingFIFOQueue* queue = new PaddingFIFOQueue(
+          capacity_, component_types_, component_shapes_, cinfo_.name());
       *ret = queue;
       return queue->Initialize();
     };
   }
 
  private:
-  std::vector<TensorShape> component_shapes_;
-  TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueueOp);
+  std::vector<PartialTensorShape> component_shapes_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(PaddingFIFOQueueOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("FIFOQueue").Device(DEVICE_CPU), FIFOQueueOp);
+REGISTER_KERNEL_BUILDER(Name("PaddingFIFOQueue").Device(DEVICE_CPU),
+                        PaddingFIFOQueueOp);
 
 }  // namespace tensorflow

@@ -454,6 +454,7 @@ tf_gen_op_wrapper_py(
         "Mutex",
         "MutexAcquire",
         "MutexRelease",
+        "PaddingFIFOQueue",
         "QueueClose",
         "QueueDequeue",
         "QueueDequeueMany",

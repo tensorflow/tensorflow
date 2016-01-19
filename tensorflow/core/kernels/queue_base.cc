@@ -32,8 +32,8 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);
     return errors::Internal(
-        "Cannot copy slice: number of elements does not match.  Shapes are: "
-        "[element]: ",
+        "HandleSliceToElement Cannot copy slice: number of elements does not "
+        "match.  Shapes are: [element]: ",
         element->shape().DebugString(), ", [parent slice]: ",
         chip_shape.DebugString());
   }
@@ -50,8 +50,8 @@ Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
     TensorShape chip_shape = parent->shape();
     chip_shape.RemoveDim(0);
     return errors::Internal(
-        "Cannot copy slice: number of elements does not match.  Shapes are: "
-        "[element]: ",
+        "HandleElementToSlice Cannot copy slice: number of elements does not "
+        "match.  Shapes are: [element]: ",
         element.shape().DebugString(), ", [parent slice]: ",
         chip_shape.DebugString());
   }
@@ -156,7 +156,7 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
   if (specified_shapes()) {
     for (size_t i = 0; i < tuple.size(); ++i) {
-      if (!tuple[i].shape().IsSameSize(component_shapes_[i])) {
+      if (!component_shapes_[i].IsSameSize(tuple[i].shape())) {
         return errors::InvalidArgument(
             "Shape mismatch in tuple component ", i, ". Expected ",
             component_shapes_[i].ShortDebugString(), ", got ",
@@ -176,7 +176,7 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
     for (size_t i = 0; i < tuple.size(); ++i) {
       // Expected shape is [batch_size] + component_shapes_[i]
       const TensorShape expected_shape = ManyOutShape(i, batch_size);
-      if (!tuple[i].shape().IsSameSize(expected_shape)) {
+      if (!expected_shape.IsSameSize(tuple[i].shape())) {
         return errors::InvalidArgument(
             "Shape mismatch in tuple component ", i, ". Expected ",
             expected_shape.ShortDebugString(), ", got ",
@@ -331,7 +331,6 @@ void QueueBase::FlushUnlocked() {
   }
 }
 
-// Static method
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int index) {
 #define HANDLE_TYPE(DT)                                                   \
@@ -355,7 +354,8 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
-  return errors::Unimplemented("Unhandled data type: ", parent.dtype());
+  return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
+                               parent.dtype());
 }
 
 // Static method
@@ -382,7 +382,8 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
-  return errors::Unimplemented("Unhandled data type: ", element.dtype());
+  return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
+                               element.dtype());
 }
 
 }  // namespace tensorflow

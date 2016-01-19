@@ -173,6 +173,39 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("PaddingFIFOQueue")
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order.
+
+Variable-size shapes are allowed by setting the corresponding shape dimensions
+to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
+size of any given element in the minibatch.  See below for details.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types.
+  Shapes of fixed rank but variable size are allowed by setting
+  any shape dimension to -1.  In this case, the inputs' shape may vary along
+  the given dimension, and DequeueMany will pad the given dimension with
+  zeros up to the maximum shape of all elements in the given batch.
+  If the length of this attr is 0, different queue elements may have
+  different ranks and shapes, but only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("QueueEnqueue")
     .Input("handle: Ref(string)")
     .Input("components: Tcomponents")

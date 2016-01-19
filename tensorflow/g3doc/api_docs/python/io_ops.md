@@ -1153,7 +1153,7 @@ protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
 protos. These may be useful for debugging purposes, but they have no effect on
-the output. If not `None`, `names` must be the same length as `serialized`.
+the output. If not `None`, `example_names` must be the same length as `serialized`.
 
 This op parses serialized examples into a dictionary mapping keys to `Tensor`
 and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
