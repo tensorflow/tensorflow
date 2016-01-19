@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
 

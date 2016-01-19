@@ -20,13 +20,13 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "perftools/gputools/executor/stream_executor.h"
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace gpu = ::perftools::gputools;
 

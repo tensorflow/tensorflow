@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include <algorithm>
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 namespace tensorflow {
 
 TEST(CPUAllocatorTest, Simple) {

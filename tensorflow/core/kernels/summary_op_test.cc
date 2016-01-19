@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/public/tensor.h"
 

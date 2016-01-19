@@ -16,12 +16,12 @@ limitations under the License.
 // Test that verifies that various changes to an OpDef are
 // backwards-compatible.
 
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

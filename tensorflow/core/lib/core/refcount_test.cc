@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/refcount.h"
 
-#include "testing/base/public/gunit.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace core {

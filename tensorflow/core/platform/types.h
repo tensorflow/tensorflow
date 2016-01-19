@@ -32,6 +32,8 @@ limitations under the License.
 namespace tensorflow {
 
 // Define tensorflow::string to refer to appropriate platform specific type.
+// TODO(josh11b): Move this into the platform/*/integral_types.h files
+// above, and rename them platform/*/types.h.
 #if defined(PLATFORM_GOOGLE)
 using ::string;
 #else

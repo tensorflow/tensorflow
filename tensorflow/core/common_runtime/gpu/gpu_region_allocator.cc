@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_region_allocator.h"
 
-#include "perftools/gputools/executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 // If true, the CUDA gpu manager checks that all allocated memory
 // through the GPU memory pool implementation has been freed.

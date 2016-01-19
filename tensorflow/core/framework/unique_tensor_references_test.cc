@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/unique_tensor_references.h"
 
-#include "testing/base/public/gunit.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {

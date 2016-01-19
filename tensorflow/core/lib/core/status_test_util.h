@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
 #define TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
 
-#include "testing/base/public/gunit.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/status.h"
 
 // Macros for testing the results of functions that return util::Status.
@@ -30,6 +30,5 @@ limitations under the License.
 // If you want to check for particular errors, better alternatives are:
 // EXPECT_EQ(::util::Status(...expected error...), status.StripMessage());
 // EXPECT_THAT(status.ToString(), HasSubstr("expected error"));
-// Also, see testing/lib/util/status_util.h.
 
 #endif  // TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_

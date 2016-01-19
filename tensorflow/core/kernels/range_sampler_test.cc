@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/kernels/range_sampler.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {

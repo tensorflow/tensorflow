@@ -17,7 +17,6 @@ limitations under the License.
 // order to compare the reference implementation for image resizing in Python
 // Image Library.
 #include "tensorflow/core/framework/allocator.h"
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {

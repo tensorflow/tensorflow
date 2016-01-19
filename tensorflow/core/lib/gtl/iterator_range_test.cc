@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 
 #include <vector>
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace gtl {

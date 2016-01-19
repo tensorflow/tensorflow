@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 #include <set>
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace random {

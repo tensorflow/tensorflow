@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/work_sharder.h"
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/public/partial_tensor_shape.h"
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

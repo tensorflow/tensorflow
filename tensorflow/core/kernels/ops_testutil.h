@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/env.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"

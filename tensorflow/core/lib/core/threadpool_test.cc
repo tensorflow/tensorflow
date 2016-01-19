@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
-#include "testing/base/public/gunit.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/env.h"
 

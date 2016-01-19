@@ -19,13 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
 #define TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
 
-extern "C" {
-#include "third_party/jpeg/jerror.h"
-#include "third_party/jpeg/jinclude.h"
-#include "third_party/jpeg/jpeglib.h"
-#include "third_party/jpeg/transupp.h"  // for rotations
-}
-
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {

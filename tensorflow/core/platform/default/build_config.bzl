@@ -60,6 +60,9 @@ def tf_additional_lib_srcs():
       "platform/posix/*.cc",
   ]
 
+def tf_additional_stream_executor_srcs():
+  return ["platform/default/stream_executor.h"]
+
 def tf_additional_test_srcs():
   return ["platform/default/test_benchmark.cc"]
 

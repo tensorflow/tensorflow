@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
 #if GOOGLE_CUDA
 
-#include "perftools/gputools/executor/scratch_allocator.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 
@@ -82,4 +82,4 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

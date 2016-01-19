@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "testing/base/public/gunit.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace strings {

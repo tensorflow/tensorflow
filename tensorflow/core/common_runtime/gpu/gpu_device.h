@@ -20,7 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
-#include "perftools/gputools/executor/stream.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor.h"

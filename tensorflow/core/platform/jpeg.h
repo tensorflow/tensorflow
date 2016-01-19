@@ -13,15 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_STREAM_EXECUTOR_UTIL_H_
-#define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_UTIL_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_JPEG_H_
+#define TENSORFLOW_CORE_PLATFORM_JPEG_H_
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/stream_executor_util.h"
+#include "tensorflow/core/platform/google/build_config/jpeg.h"
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
+    defined(PLATFORM_GOOGLE_ANDROID)
+extern "C" {
+#include "external/jpeg_archive/jpeg-9a/jerror.h"
+#include "external/jpeg_archive/jpeg-9a/jinclude.h"
+#include "external/jpeg_archive/jpeg-9a/jpeglib.h"
+#include "external/jpeg_archive/jpeg-9a/transupp.h"  // for rotations
+}
 #else
-#include "tensorflow/core/platform/default/stream_executor_util.h"
+#error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_UTIL_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_JPEG_H_

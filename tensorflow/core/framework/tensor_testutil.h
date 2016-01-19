@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {

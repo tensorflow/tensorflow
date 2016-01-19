@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"

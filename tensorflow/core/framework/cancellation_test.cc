@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
-#include "testing/base/public/gunit.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 

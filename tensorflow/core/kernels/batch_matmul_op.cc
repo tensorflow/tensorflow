@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "perftools/gputools/executor/stream.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
