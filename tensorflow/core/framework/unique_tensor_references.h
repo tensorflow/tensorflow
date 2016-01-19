@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Helper class to maintain a unique set of tensor references. In the
-// common case tehre are not many references, so an inline vector is
+// common case there are not many references, so an inline vector is
 // used for <= kInVector unique elements, defaulting to 4 since that
 // is the inlined size of TensorReferenceVector. To avoid N^2
 // operations when adding N items, any larger number of unique tensor
