@@ -474,8 +474,8 @@ def gradients(ys,
               if is_func_call:
                 # For function call ops, we add a 'SymbolicGradient' node to the
                 # graph to compute gradients.
-                f_in = [op.inputs[i] for i in range(len(op.inputs))] + out_grads
-                f_types = [op.outputs[i].dtype for i in range(len(op.outputs))]
+                f_in = [x for x in op.inputs] + out_grads
+                f_types = [x.dtype for x in op.inputs]
                 # pylint: disable=protected-access
                 in_grads = _AsList(functional_ops._symbolic_gradient(
                     f_in, f_types, op.type))
