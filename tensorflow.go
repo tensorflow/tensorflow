@@ -1,8 +1,5 @@
 package tensorflow
 
-// #include <stdlib.h>
-import "C"
-
 import (
 	"encoding/binary"
 	"fmt"
@@ -10,26 +7,25 @@ import (
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-	framework "github.com/tensorflow/tensorflow/gen/core/framework"
-	tensorflow_wrap "github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 type Session struct {
-	session tensorflow_wrap.TF_Session
+	session tf.TF_Session
 }
 
 func NewSession() (*Session, error) {
-	status := tensorflow_wrap.TF_NewStatus()
+	status := tf.TF_NewStatus()
 	return &Session{
-		session: tensorflow_wrap.TF_NewSession(
-			tensorflow_wrap.TF_NewSessionOptions(),
+		session: tf.TF_NewSession(
+			tf.TF_NewSessionOptions(),
 			status,
 		),
 	}, statusToError(status)
 }
 
 type Tensor struct {
-	tensor tensorflow_wrap.TF_Tensor
+	tensor tf.TF_Tensor
 	buf    []byte
 }
 
@@ -39,7 +35,7 @@ var (
 	TensorShapeScalar = TensorShape{{1}}
 )
 
-func NewTensor(dataType framework.DataType, shape TensorShape, data interface{}) (*Tensor, error) {
+func NewTensor(dataType tf.DataType, shape TensorShape, data interface{}) (*Tensor, error) {
 	// TODO(tmc): ensure data is a slice
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
@@ -50,9 +46,9 @@ func NewTensor(dataType framework.DataType, shape TensorShape, data interface{})
 	return newTensor(dataType, shape, dataPtr, dataSize)
 }
 
-func newTensor(dataType framework.DataType, shape TensorShape, data uintptr, size int) (*Tensor, error) {
+func newTensor(dataType tf.DataType, shape TensorShape, data uintptr, size int) (*Tensor, error) {
 	t := &Tensor{
-		tensor: tensorflow_wrap.TF_NewTensor_wrapper(tensorflow_wrap.TF_DataType(dataType), &(shape[0][0]), len(shape), data, int64(size)),
+		tensor: tf.TF_NewTensor_wrapper(tf.TF_DataType(dataType), &(shape[0][0]), len(shape), data, int64(size)),
 	}
 
 	return t, nil
@@ -86,7 +82,7 @@ func Constant(value interface{}) (*Tensor, error) {
 	case string:
 		//		defer C.free(unsafe.Pointer(str))
 		buf := encodeStrings([]string{v})
-		t, err := newTensor(framework.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), len(buf))
+		t, err := newTensor(tf.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), len(buf))
 		if err != nil {
 			return nil, err
 		}
@@ -97,9 +93,9 @@ func Constant(value interface{}) (*Tensor, error) {
 	}
 }
 
-func statusToError(status tensorflow_wrap.TF_Status) error {
-	code := tensorflow_wrap.TF_GetCode(status)
-	message := tensorflow_wrap.TF_Message(status)
+func statusToError(status tf.TF_Status) error {
+	code := tf.TF_GetCode(status)
+	message := tf.TF_Message(status)
 
 	if code != 0 {
 		return fmt.Errorf("tensorflow: %d: %v", code, message)
@@ -108,28 +104,28 @@ func statusToError(status tensorflow_wrap.TF_Status) error {
 }
 
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
-	inputNames := tensorflow_wrap.NewStringVector()
-	inputValues := tensorflow_wrap.NewTensorVector()
+	inputNames := tf.NewStringVector()
+	inputValues := tf.NewTensorVector()
 	if inputs != nil {
 		for k, v := range inputs {
 			inputValues.Add(v.tensor)
 			inputNames.Add(k)
 		}
 	}
-	outputNames := tensorflow_wrap.NewStringVector()
+	outputNames := tf.NewStringVector()
 	for _, n := range outputs {
 		outputNames.Add(n)
 	}
 
-	targetNames := tensorflow_wrap.NewStringVector()
+	targetNames := tf.NewStringVector()
 	for _, n := range targets {
 		targetNames.Add(n)
 	}
 
-	outputValues := tensorflow_wrap.NewTensorVector()
-	status := tensorflow_wrap.TF_NewStatus()
+	outputValues := tf.NewTensorVector()
+	status := tf.TF_NewStatus()
 
-	tensorflow_wrap.TF_Run_wrapper(s.session, inputNames, inputValues, outputNames, outputValues, targetNames, status)
+	tf.TF_Run_wrapper(s.session, inputNames, inputValues, outputNames, outputValues, targetNames, status)
 
 	result := []*Tensor{}
 	for i := int64(0); i < outputValues.Size(); i++ {
@@ -140,35 +136,35 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	return result, statusToError(status)
 }
 
-func (s *Session) ExtendGraph(graph *framework.GraphDef) error {
-	status := tensorflow_wrap.TF_NewStatus()
+func (s *Session) ExtendGraph(graph *tf.GraphDef) error {
+	status := tf.TF_NewStatus()
 	buf, err := proto.Marshal(graph)
 	if err != nil {
 		return err
 	}
-	tensorflow_wrap.TF_ExtendGraph(s.session, buf, status)
+	tf.TF_ExtendGraph(s.session, buf, status)
 	return statusToError(status)
 }
 
-func (t *Tensor) DataType() framework.DataType {
-	return framework.DataType(tensorflow_wrap.TF_TensorType(t.tensor))
+func (t *Tensor) DataType() tf.DataType {
+	return tf.DataType(tf.TF_TensorType(t.tensor))
 }
 
 func (t *Tensor) NumDims() int {
-	return tensorflow_wrap.TF_NumDims(t.tensor)
+	return tf.TF_NumDims(t.tensor)
 }
 
 func (t *Tensor) Dim(n int) int {
-	return int(tensorflow_wrap.TF_Dim(t.tensor, n))
+	return int(tf.TF_Dim(t.tensor, n))
 }
 
 func (t *Tensor) DataSize() int {
-	return int(tensorflow_wrap.TF_TensorByteSize(t.tensor))
+	return int(tf.TF_TensorByteSize(t.tensor))
 }
 
 func (t *Tensor) Data() []byte {
 	length := t.DataSize()
-	return (*[1 << 30]byte)(unsafe.Pointer(tensorflow_wrap.TF_TensorData(t.tensor)))[:length:length]
+	return (*[1 << 30]byte)(unsafe.Pointer(tf.TF_TensorData(t.tensor)))[:length:length]
 }
 
 func (t *Tensor) String() string {

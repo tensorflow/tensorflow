@@ -1,4 +1,4 @@
-package tensorflow_wrap
+package tensorflow
 
 // #cgo LDFLAGS: -L${SRCDIR}/../../bazel-bin/tensorflow -ltensorflow
 // #cgo CFLAGS: -I${SRCDIR}/../../

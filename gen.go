@@ -1,3 +1,3 @@
-//go:generate protoeasy --context=tensorflow --go --out=gen tensorflow
+//go:generate bazel build //tensorflow:libtensorflow.so
 
 package tensorflow
