@@ -1372,26 +1372,49 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertIs(None, m.get_shape().ndims)
     self.assertEqual([], index.get_shape())
 
-    # All inputs known but different.
+    # All inputs known with different ranks.
+    p1 = tf.placeholder(tf.float32, shape=[1, 2])
+    p2 = tf.placeholder(tf.float32, shape=[1, 2, 3])
+    m, index = control_flow_ops.merge([p1, p2])
+    self.assertIs(None, m.get_shape().ndims)
+    self.assertEqual([], index.get_shape())
+
+    # All inputs known with some dimensions different.
     p1 = tf.placeholder(tf.float32, shape=[1, 2])
     p2 = tf.placeholder(tf.float32, shape=[2, 1])
     m, index = control_flow_ops.merge([p1, p2])
-    self.assertIs(None, m.get_shape().ndims)
+    self.assertEqual([None, None], m.get_shape().as_list())
     self.assertEqual([], index.get_shape())
 
-    # All inputs known but same.
+    p1 = tf.placeholder(tf.float32, shape=[1, 2])
+    p2 = tf.placeholder(tf.float32, shape=[None, 2])
+    m, index = control_flow_ops.merge([p1, p2])
+    self.assertEqual([None, 2], m.get_shape().as_list())
+    self.assertEqual([], index.get_shape())
+
+    p1 = tf.placeholder(tf.float32, shape=[1, 2])
+    p2 = tf.placeholder(tf.float32, shape=[2, 2])
+    m, index = control_flow_ops.merge([p1, p2])
+    self.assertEqual([None, 2], m.get_shape().as_list())
+    self.assertEqual([], index.get_shape())
+
+    # All inputs known with same dimensions.
     p1 = tf.placeholder(tf.float32, shape=[1, 2])
     p2 = tf.placeholder(tf.float32, shape=[1, 2])
     m, index = control_flow_ops.merge([p1, p2])
-    self.assertEqual([1, 2], m.get_shape())
+    self.assertEqual([1, 2], m.get_shape().as_list())
     self.assertEqual([], index.get_shape())
 
-    # Possibly the same but not guaranteed.
-    p1 = tf.placeholder(tf.float32, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32)
-    p2.set_shape([None, 2])
+    p1 = tf.placeholder(tf.float32, shape=[None, 2])
+    p2 = tf.placeholder(tf.float32, shape=[None, 2])
     m, index = control_flow_ops.merge([p1, p2])
-    self.assertIs(None, m.get_shape().ndims)
+    self.assertEqual([None, 2], m.get_shape().as_list())
+    self.assertEqual([], index.get_shape())
+
+    p1 = tf.placeholder(tf.float32, shape=[None, None])
+    p2 = tf.placeholder(tf.float32, shape=[None, None])
+    m, index = control_flow_ops.merge([p1, p2])
+    self.assertEqual([None, None], m.get_shape().as_list())
     self.assertEqual([], index.get_shape())
 
   def testRefSelect(self):
