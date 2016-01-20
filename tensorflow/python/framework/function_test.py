@@ -327,7 +327,7 @@ class FunctionTest(tf.test.TestCase):
       g = tf.Graph()
       start = time.time()
       with g.as_default():
-        _, m, c = self._BuildForward(use_func, num_unroll=1)
+        _, m, c = self._BuildForward(use_func)
       gdef = g.as_graph_def()
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
