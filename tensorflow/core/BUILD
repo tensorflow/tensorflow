@@ -91,6 +91,7 @@ cc_library(
         "lib/core/command_line_flags.h",  # TODO(vrv): Delete.
         "lib/core/errors.h",
         "lib/core/notification.h",
+        "lib/core/status.h",
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
@@ -115,6 +116,7 @@ cc_library(
         "lib/strings/str_util.h",  # TODO(josh11b): make internal
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        "platform/env.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
@@ -126,8 +128,8 @@ cc_library(
         "platform/regexp.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-        "public/env.h",  # TODO(josh11b): move to platform/
-        "public/status.h",  # TODO(josh11b): move to lib/core/
+        "public/env.h",  # Deprecated, use platform/env.h instead
+        "public/status.h",  # Deprecated: use lib/core/status.h instead
     ],
     visibility = ["//visibility:public"],
     deps = [":lib_internal"],
@@ -178,18 +180,21 @@ tf_cuda_library(
         "framework/op_def_util.h",
         "framework/op_gen_lib.h",
         "framework/op_kernel.h",
+        "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
         "framework/reader_interface.h",
         "framework/reader_op_kernel.h",
         "framework/register_types.h",
         "framework/resource_mgr.h",
+        "framework/tensor.h",
+        "framework/tensor_shape.h",
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
         "framework/type_traits.h",
         "framework/type_index.h",
         "framework/types.h",
-        # TODO(josh11b): Move these from public/ to framework/
+        # Deprecated. TODO(josh11b): Use the framework/ versions instead.
         "public/partial_tensor_shape.h",
         "public/tensor.h",
         "public/tensor_shape.h",
@@ -635,6 +640,8 @@ cc_library(
         "//tensorflow/core:android_srcs",
     ],
     hdrs = [
+        "framework/tensor.h",
+        "platform/env.h",
         "platform/logging.h",
         "platform/port.h",
         "public/env.h",
@@ -670,8 +677,8 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
-            "public/env.h",  # TODO(josh11b): move to platform/
-            "public/status.h",  # TODO(josh11b): move to lib/core/
+            "public/env.h",  # TODO(josh11b): delete this
+            "public/status.h",  # TODO(josh11b): delete this
         ] + tf_additional_lib_srcs(),
         exclude = [
             "**/*test*",
@@ -715,7 +722,8 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-            # TODO(josh11b): Move these from public/ to framework/
+            # TODO(josh11b): Delete these once everyone has switched to the
+            # framework/ versions.
             "public/partial_tensor_shape.h",
             "public/tensor.h",
             "public/tensor_shape.h",

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/version.h"
 
 %}
