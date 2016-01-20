@@ -17,7 +17,6 @@ import random
 from sklearn import datasets, metrics, cross_validation
 
 import skflow
-
 import pandas as pd
 import dask.dataframe as dd
 
@@ -33,15 +32,14 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 
 # Note that we use iris here just for demo purposes
 # You can load your own large dataset into a out-of-core dataframe
-# using dask's methods, e.g. read_csv()
+# using dask's methods, e.g. read_csv() in dask
 # details please see: http://dask.pydata.org/en/latest/dataframe.html
 
-# We first load them into pandas dataframe and then convert into dask dataframe
-X_train, y_train = pd.DataFrame(X_train), pd.DataFrame(y_train)
-X_test, y_test = pd.DataFrame(X_test), pd.DataFrame(y_test)
-X_train, y_train = dd.from_pandas(X_train, npartitions=2), dd.from_pandas(y_train, npartitions=2)
-X_test, y_test = dd.from_pandas(X_test, npartitions=2), dd.from_pandas(y_test, npartitions=2)
+# We firstly load them into pandas dataframe and then convert into dask dataframe
+X_train, y_train, X_test, y_test = [pd.DataFrame(data) for data in [X_train, y_train, X_test, y_test]]
+X_train, y_train, X_test, y_test = [dd.from_pandas(data, npartitions=2) for data in [X_train, y_train, X_test, y_test]]
 
+# Intialize a TensorFlow linear classifier
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 
 # Fit the model using training set
