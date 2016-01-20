@@ -858,22 +858,6 @@ tf_cuda_library(
 )
 
 tf_py_wrap_cc(
-    name = "client/pywraptensorflow_server_lib",
-    srcs = ["client/tensorflow_server.i"],
-    swig_includes = [
-        "lib/core/status.i",
-        "lib/core/strings.i",
-        "platform/base.i",
-    ],
-    deps = [
-        "//tensorflow/core",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_cc",
-        "//util/python:python_headers",
-    ],
-)
-
-tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
     swig_includes = [
