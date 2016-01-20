@@ -1927,6 +1927,21 @@ op {
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
 op {
+  name: "DecodeJSONExample"
+  input_arg {
+    name: "json_examples"
+    description: "Each string is a JSON object serialized according to the JSON\nmapping of the Example proto."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "binary_examples"
+    description: "Each string is a binary Example protocol buffer corresponding\nto the respective element of `json_examples`."
+    type: DT_STRING
+  }
+  summary: "Convert JSON-encoded Example records to binary protocol buffer strings."
+  description: "This op translates a tensor containing Example records, encoded using\nthe [standard JSON\nmapping](https://developers.google.com/protocol-buffers/docs/proto3#json),\ninto a tensor containing the same records encoded as binary protocol\nbuffers. The resulting tensor can then be fed to any of the other\nExample-parsing ops."
+}
+op {
   name: "DecodeJpeg"
   input_arg {
     name: "contents"

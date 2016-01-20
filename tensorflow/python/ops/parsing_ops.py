@@ -916,8 +916,8 @@ def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
           feature_list_sparse_shape_shapes + feature_list_dense_shapes)
 
 
-ops.RegisterShape("StringToNumber")(
-    common_shapes.unchanged_shape)
+ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("DecodeRaw")
