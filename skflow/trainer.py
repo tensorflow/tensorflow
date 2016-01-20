@@ -34,11 +34,11 @@ def _print_report(print_loss_buffer, global_step, epoch):
     """Prints report for given losses and global step."""
     avg_loss = np.mean(print_loss_buffer)
     if epoch:
-        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                       loss=avg_loss, epoch=epoch))
+        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss, epoch=epoch))
     else:
-        print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                       loss=avg_loss))
+        print("Step #{step}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss))
 
 
 class TensorFlowTrainer(object):
