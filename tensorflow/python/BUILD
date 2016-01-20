@@ -16,7 +16,10 @@ load("/tensorflow/core/platform/default/build_config", "tf_proto_library_py")
 
 py_library(
     name = "python",
-    srcs = ["__init__.py"],
+    srcs = [
+        "__init__.py",
+        "unsupported.py",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__pkg__"],
     deps = [
@@ -352,6 +355,7 @@ py_test(
         ":framework_test_lib",
         ":ops",
         ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

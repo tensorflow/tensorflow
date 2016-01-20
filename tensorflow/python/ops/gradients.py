@@ -80,7 +80,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.ConstantValue(value.dense_shape)
+  dense_shape_value = tensor_util.constant_value(value.dense_shape)
   if dense_shape_value is not None:
     num_elements = np.prod(dense_shape_value)
     if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:

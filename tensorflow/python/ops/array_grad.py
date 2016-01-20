@@ -74,7 +74,7 @@ def _ConcatGrad(op, grad):
     for (begin, size) in zip(offset, sizes):
       out_grads.append(array_ops.slice(grad, begin, size))
   elif isinstance(grad, ops.IndexedSlices):
-    concat_dim_static = tensor_util.ConstantValue(concat_dim)
+    concat_dim_static = tensor_util.constant_value(concat_dim)
     if concat_dim_static is None:
       raise ValueError("Can only compute IndexedSlices gradient with "
                        "statically-known concat_dim")

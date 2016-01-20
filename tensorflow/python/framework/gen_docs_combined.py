@@ -45,12 +45,13 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 
 def get_module_to_name():
-  return {tf: 'tf',
-          tf.errors: 'tf.errors',
-          tf.image: 'tf.image',
-          tf.nn: 'tf.nn',
-          tf.train: 'tf.train',
-          tf.python_io: 'tf.python_io'}
+  return {tf: "tf",
+          tf.errors: "tf.errors",
+          tf.image: "tf.image",
+          tf.nn: "tf.nn",
+          tf.train: "tf.train",
+          tf.python_io: "tf.python_io",
+          tf.unsupported: "tf.unsupported",}
 
 def all_libraries(module_to_name, members, documented):
   # A list of (filename, docs.Library) pairs representing the individual files
@@ -112,7 +113,8 @@ def all_libraries(module_to_name, members, documented):
                                "Int64List", "Example", "InferenceExample",
                                "FeatureList", "FeatureLists",
                                "RankingExample", "SequenceExample"]),
-      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT)
+      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
+      library("unsupported", "Unsupported", tf.unsupported),
   ]
 
 _hidden_symbols = ["Event", "Summary", "xrange",

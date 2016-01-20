@@ -300,7 +300,7 @@ class QueueBase(object):
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
     op = ret[0].op
-    batch_dim = tensor_shape.Dimension(tensor_util.ConstantValue(op.inputs[1]))
+    batch_dim = tensor_shape.Dimension(tensor_util.constant_value(op.inputs[1]))
     for output, shape in zip(op.values(), self._shapes):
       output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
 

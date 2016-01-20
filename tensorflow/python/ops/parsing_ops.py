@@ -391,7 +391,7 @@ def _parse_example_raw(serialized,
 
       dense_defaults_vec.append(default_value)
 
-    dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                     if isinstance(shape, (list, tuple)) else shape
                     for shape in dense_shapes]
 
@@ -825,10 +825,10 @@ def _parse_single_sequence_example_raw(serialized,
 
       context_dense_defaults_vec.append(default_value)
 
-    context_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    context_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                             if isinstance(shape, (list, tuple)) else shape
                             for shape in context_dense_shapes]
-    feature_list_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    feature_list_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                                  if isinstance(shape, (list, tuple)) else shape
                                  for shape in feature_list_dense_shapes]
 

@@ -609,9 +609,9 @@ def range(start, limit=None, delta=1, name="range"):
 
 @ops.RegisterShape("Range")
 def _RangeShape(op):
-  start_value = tensor_util.ConstantValue(op.inputs[0])
-  limit_value = tensor_util.ConstantValue(op.inputs[1])
-  delta_value = tensor_util.ConstantValue(op.inputs[2])
+  start_value = tensor_util.constant_value(op.inputs[0])
+  limit_value = tensor_util.constant_value(op.inputs[1])
+  delta_value = tensor_util.constant_value(op.inputs[2])
   if start_value is None or limit_value is None or delta_value is None:
     return [tensor_shape.vector(None)]
   else:
@@ -1280,7 +1280,7 @@ def _ArgOpShape(op):
   elif input_shape.ndims <= 1:
     return [tensor_shape.scalar()]
 
-  dimension = tensor_util.ConstantValue(op.inputs[1])
+  dimension = tensor_util.constant_value(op.inputs[1])
   if dimension is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims - 1)]
   elif 0 <= dimension and dimension < input_shape.ndims:
@@ -1306,7 +1306,7 @@ def _ArgOpShape(op):
 def _ReductionShape(op):
   """Common shape function for reduction ops."""
   input_shape = op.inputs[0].get_shape()
-  reduction_indices = tensor_util.ConstantValue(op.inputs[1])
+  reduction_indices = tensor_util.constant_value(op.inputs[1])
   keep_dims = op.get_attr("keep_dims")
   if reduction_indices is None or input_shape.ndims is None:
     if keep_dims:
@@ -1375,7 +1375,7 @@ def _SparseSegmentReductionGradShape(op):
   unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
   unused_output_dim0_shape = op.inputs[3].get_shape().merge_with(
       tensor_shape.scalar())
-  output_dim0 = tensor_util.ConstantValue(op.inputs[3])
+  output_dim0 = tensor_util.constant_value(op.inputs[3])
   if output_dim0 is not None:
     dim0 = output_dim0[0]
   else:
@@ -1393,12 +1393,12 @@ def _UnsortedSegmentSumShape(op):
   if mid is None:
     return [tensor_shape.unknown_shape()]
   else:
-    num_segments = tensor_util.ConstantValue(op.inputs[2])
+    num_segments = tensor_util.constant_value(op.inputs[2])
     return [tensor_shape.TensorShape([num_segments]).concatenate(
         data_shape[mid:])]
 
 
 @ops.RegisterShape("LinSpace")
 def _LinspaceShape(op):
-  num = tensor_util.ConstantValue(op.inputs[2])
+  num = tensor_util.constant_value(op.inputs[2])
   return [tensor_shape.vector(num)]

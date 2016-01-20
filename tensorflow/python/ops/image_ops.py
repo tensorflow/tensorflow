@@ -775,7 +775,7 @@ ops.RegisterShape('AdjustContrastv2')(
 def _ResizeShape(op):
   """Shape function for the resize_bilinear and resize_nearest_neighbor ops."""
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.ConstantValue(op.inputs[1])
+  size = tensor_util.constant_value(op.inputs[1])
   if size is not None:
     height = size[0]
     width = size[1]
@@ -810,7 +810,7 @@ def _random_cropShape(op):
   input_shape = op.inputs[0].get_shape().with_rank(3)
   unused_size_shape = op.inputs[1].get_shape().merge_with(
       tensor_shape.vector(2))
-  size = tensor_util.ConstantValue(op.inputs[1])
+  size = tensor_util.constant_value(op.inputs[1])
   if size is not None:
     height = size[0]
     width = size[1]

@@ -217,7 +217,7 @@ ops.NoGradient("RandomUniform")
 @ops.RegisterShape("RandomUniform")
 @ops.RegisterShape("RandomUniformInt")
 def _RandomShape(op):
-  shape_val = tensor_util.ConstantValue(op.inputs[0])
+  shape_val = tensor_util.constant_value(op.inputs[0])
   if shape_val is not None:
     return [tensor_shape.TensorShape(shape_val.tolist())]
   else:
