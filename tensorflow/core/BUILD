@@ -5,11 +5,11 @@
 # Public targets:
 #
 # ":protos_all" - exports all core TensorFlow protos
-#     ":protos_all_py_pb2" - py_proto_library version
+#     ":protos_all_py_pb2" - py_proto_library version (Google-internal)
 # ":lib" - exports the public non-test headers for:
 #     platform/: Platform-specific code and external dependencies
 #     lib/: Low-level libraries that are not TensorFlow-specific
-# ":test" and ":test_main" - test equivalent of ":lib".
+# ":test" - test equivalent of ":lib".
 #     This is currently public, but may be made internal in the
 #     future.  Try to avoid depending on it.
 # ":framework" - exports the public non-test headers for:
@@ -39,13 +39,9 @@
 # filegroup ":android_core_ops" - Essential kernels
 # filegroup ":android_extended_ops" - Optional kernels
 # cc_library ":android_tensorflow_lib" - Native library
-# portable_proto_library ":android_proto_lib"
-
-# TODO(josh11b): Reorder the rules in this file to match the above.
+# portable_proto_library ":android_proto_lib" (Google-internal)
 
 package(default_visibility = ["//tensorflow:internal"])
-
-package_group(name = "friends")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -71,63 +67,17 @@ load(
     "tf_cuda_tests_tags",
 )
 
-cc_library(
-    name = "lib_internal",
-    srcs = glob(
-        [
-            "lib/**/*.h",
-            "lib/**/*.cc",
-            "platform/*.h",
-            "platform/*.cc",
-            "public/env.h",  # TODO(josh11b): move to platform/
-            "public/status.h",  # TODO(josh11b): move to lib/core/
-        ] + tf_additional_lib_srcs(),
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/stream_executor.h",
-        ],
-    ),
-    hdrs = [
-        "lib/core/blocking_counter.h",
-        "lib/core/refcount.h",
-        "lib/gtl/edit_distance.h",
-        "lib/gtl/int_type.h",
-        "lib/gtl/iterator_range.h",
-        "lib/gtl/top_n.h",
-        "lib/io/iterator.h",
-        "lib/io/match.h",
-        "lib/jpeg/jpeg_handle.h",
-        "lib/png/png_io.h",
-        "lib/random/random.h",
-        "lib/random/random_distributions.h",
-        "lib/random/weighted_picker.h",
-        "lib/strings/ordered_code.h",
-        "lib/strings/regexp.h",
-        "platform/platform.h",
-        "platform/tensor_coding.h",
-        "platform/tracing.h",
-    ],
-    copts = tf_copts(),
-    linkopts = ["-ldl"],
-    deps = [
-        ":protos_all",
-        "//tensorflow/core/platform/default/build_config:platformlib",
-    ],
-)
+# -----------------------------------------------------------------------------
+# Public targets
 
-cc_library(
-    name = "lib_test_internal",
-    testonly = 1,
-    hdrs = [
-        "lib/gtl/manual_constructor.h",
-        "lib/io/block.h",
-        "lib/io/block_builder.h",
-        "lib/io/format.h",
-        "lib/random/philox_random_test_utils.h",
-        "platform/snappy.h",
-    ],
-    deps = [":lib_internal"],
+tf_proto_library(
+    name = "protos_all",
+    srcs = glob(["**/*.proto"]),
+    cc_api_version = 2,
+    go_api_version = 2,
+    java_api_version = 2,
+    py_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -183,44 +133,28 @@ cc_library(
     deps = [":lib_internal"],
 )
 
-tf_cuda_library(
-    name = "framework_internal",
-    srcs = glob(
-        [
-            "framework/**/*.h",
-            "framework/**/*.cc",
-            "util/**/*.h",
-            "util/**/*.cc",
-            # TODO(josh11b): Move these from public/ to framework/
-            "public/partial_tensor_shape.h",
-            "public/tensor.h",
-            "public/tensor_shape.h",
-        ],
-        exclude = [
-            "**/*test*",
-            "**/*main.cc",
-            "framework/fake_input.*",
-        ],
-    ),
+# Test support library needed for all tests
+# This is currently public, but may be made internal in the
+# future.  Try to avoid depending on it.
+cc_library(
+    name = "test",
+    testonly = 1,
+    srcs = [
+        "platform/test.cc",
+    ] + tf_additional_test_srcs(),
     hdrs = [
-        "framework/graph_def_util.h",
-        "framework/op_segment.h",
-        "framework/rendezvous.h",  # only needed for tests
-        "framework/tensor_reference.h",
-        "framework/tracking_allocator.h",  # only needed for tests
-        "framework/unique_tensor_references.h",
-        "util/tensor_slice_set.h",
-        "util/tensor_slice_util.h",
+        "lib/core/status_test_util.h",
+        "platform/test.h",
+        "platform/test_benchmark.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = ["-lm"],
+    visibility = ["//visibility:public"],
     deps = [
         ":lib",
         ":lib_internal",
-        ":protos_all",
-        "//third_party/eigen3",
+        "//tensorflow/core/platform/default/build_config:gtest",
     ],
-    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -283,183 +217,6 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "core_cpu_internal",
-    srcs = glob(
-        [
-            "client/**/*.cc",
-            "common_runtime/**/*.h",
-            "common_runtime/**/*.cc",
-            "graph/**/*.h",
-            "graph/**/*.cc",
-            "public/session.h",
-            "public/session_options.h",
-            "public/tensor_c_api.h",
-            "public/version.h",
-        ],
-        exclude = [
-            "**/*test*",
-            "**/*main.cc",
-            "common_runtime/gpu/*.cc",
-            "common_runtime/copy_tensor.cc",
-            "common_runtime/gpu_device_factory.cc",
-            "common_runtime/direct_session.cc",
-            "common_runtime/direct_session.h",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "common_runtime/**/*.h",
-            "graph/**/*.h",
-        ],
-        exclude = [
-            "**/*test*",
-            "common_runtime/direct_session.h",
-        ],
-    ),
-    copts = tf_copts(),
-    deps = [
-        ":copy_tensor",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "core_cpu",
-    hdrs = [
-        "common_runtime/device.h",
-        "graph/algorithm.h",
-        "graph/default_device.h",
-        "graph/graph.h",
-        "graph/graph_constructor.h",
-        "graph/graph_def_builder.h",
-        "graph/node_builder.h",
-        "public/session.h",
-        "public/session_options.h",
-        "public/tensor_c_api.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu_internal",
-    ],
-)
-
-tf_cuda_library(
-    name = "direct_session",
-    srcs = ["common_runtime/direct_session.cc"],
-    hdrs = ["common_runtime/direct_session.h"],
-    copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "copy_tensor",
-    deps = [
-        ":lib",
-        ":protos_cc",
-        ":stream_executor",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_runtime",
-    srcs = glob(
-        [
-            "common_runtime/gpu/*.h",
-            "common_runtime/gpu/*.cc",
-        ],
-        exclude = [
-            "**/*main.cc",
-            "**/*test.cc",
-        ],
-    ),
-    copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
-    linkstatic = 1,
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all",
-        ":stream_executor",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-# Test support library needed for higher-level (TensorFlow-specific) tests
-cc_library(
-    name = "testlib",
-    testonly = 1,
-    srcs = [
-        "common_runtime/kernel_benchmark_testlib.cc",
-        "framework/fake_input.cc",
-        "framework/function_testlib.cc",
-        "framework/tensor_testutil.cc",
-        "graph/testlib.cc",
-        "kernels/ops_testutil.cc",
-    ],
-    hdrs = [
-        "common_runtime/kernel_benchmark_testlib.h",
-        "framework/fake_input.h",
-        "framework/function_testlib.h",
-        "framework/tensor_testutil.h",
-        "graph/testlib.h",
-        "kernels/ops_testutil.h",
-    ],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":framework",
-        ":framework_internal",
-        ":kernels",
-        ":lib",
-        ":protos_all",
-        ":tensorflow",  # TODO(josh11b): Drop this dep?
-        ":test",
-        "//tensorflow/core/platform/default/build_config:gtest",
-    ],
-)
-
-tf_cuda_library(
-    name = "tensorflow_opensource",
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core",
-        ":direct_session",
-        ":gpu_runtime",
-        ":kernels",
-        ":lib",
-    ],
-)
-
-tf_cuda_library(
     name = "ops",
     srcs = glob(
         [
@@ -485,119 +242,6 @@ tf_cuda_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "kernels",
-    # TODO(josh11b): Pull common dependencies out into a separate library.
-    srcs = glob(
-        [
-            "kernels/**/*.cc",
-        ],
-        exclude = [
-            "kernels/**/*test*",
-            "kernels/**/*main.cc",
-            "kernels/**/*.cu.cc",
-        ],
-    ),
-    hdrs = glob(["kernels/**/*.h"]),
-    copts = tf_copts(),
-    cuda_deps = [
-        ":gpu_kernels",
-    ],
-    linkstatic = 0,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all",
-        ":stream_executor",
-        "//tensorflow/models/embedding:word2vec_kernels",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_gpu_kernel_library(
-    name = "gpu_kernels",
-    srcs = glob(
-        [
-            "kernels/**/*.h",
-            "kernels/*.cu.cc",
-            "user_ops/**/*.h",
-            "user_ops/*.cu.cc",
-        ],
-    ),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cuda",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        "//third_party/eigen3",
-    ],
-)
-
-# Test support library needed for all tests
-# This is currently public, but may be made internal in the
-# future.  Try to avoid depending on it.
-cc_library(
-    name = "test",
-    testonly = 1,
-    srcs = [
-        "platform/test.cc",
-    ] + tf_additional_test_srcs(),
-    hdrs = [
-        "lib/core/status_test_util.h",
-        "platform/test.h",
-        "platform/test_benchmark.h",
-    ],
-    copts = tf_copts(),
-    linkopts = ["-lm"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform/default/build_config:gtest",
-    ],
-)
-
-# Main program for tests
-# This is currently public, but may be made internal in the
-# future.  Try to avoid depending on it.
-cc_library(
-    name = "test_main",
-    testonly = 1,
-    srcs = ["platform/test_main.cc"],
-    copts = tf_copts(),
-    linkopts = ["-lm"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":test",
-        "//tensorflow/core/platform/default/build_config:test_main",
-    ],
-)
-
-tf_proto_library(
-    name = "protos_all",
-    srcs = glob(["**/*.proto"]),
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-    py_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
-cc_library(
-    name = "protos_cc",
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
 # Generates library per group of ops.
@@ -639,132 +283,101 @@ cc_library(
     alwayslink = 1,
 )
 
-# Low level library tests
-tf_cc_tests(
-    tests = glob(
-        [
-            "lib/**/*_test.cc",
-            "platform/**/*_test.cc",
-        ],
-        exclude = ["lib/strings/ordered_code_test.cc"],
-    ),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all",
-        ":test",
-        ":test_main",
-    ],
-)
-
-cc_test(
-    name = "lib_jpeg_jpeg_mem_unittest",
-    srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = glob(["lib/jpeg/testdata/*.jpg"]),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
-    ],
-)
-
-cc_test(
-    name = "lib_strings_ordered_code_test",
-    srcs = ["lib/strings/ordered_code_test.cc"],
-    copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
-    ],
-)
-
-# higher level tests
-tf_cc_tests(
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tests = glob(
-        [
-            "client/**/*_test.cc",
-            "common_runtime/**/*_test.cc",
-            "framework/**/*_test.cc",
-            "graph/**/*_test.cc",
-            "util/**/*_test.cc",
-        ],
-        exclude = [
-            # TODO(opensource): fix
-            "common_runtime/gpu/*_test.cc",
-            # Run by tests below
-            "common_runtime/gpu/gpu_region_allocator_test.cc",
-            "common_runtime/gpu/gpu_bfc_allocator_test.cc",
-        ],
-    ),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":kernels",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//third_party/eigen3",
-    ],
-)
-
-# GPU-related tests
-tf_cc_tests(
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    tests = glob(
-        [
-            "kernels/**/*_test.cc",
-            "user_ops/**/*_test.cc",
-            "common_runtime/gpu/*_test.cc",
-        ],
-    ),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":kernels",
-        ":lib",
-        ":lib_internal",
-        ":protos_all",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-    ],
-)
-
 tf_cuda_library(
-    name = "stream_executor",
-    srcs = tf_additional_stream_executor_srcs(),
+    name = "core_cpu",
     hdrs = [
-        "platform/cuda.h",
-        "platform/stream_executor.h",
+        "common_runtime/device.h",
+        "graph/algorithm.h",
+        "graph/default_device.h",
+        "graph/graph.h",
+        "graph/graph_constructor.h",
+        "graph/graph_def_builder.h",
+        "graph/node_builder.h",
+        "public/session.h",
+        "public/session_options.h",
+        "public/tensor_c_api.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor",
+        ":core_cpu_internal",
     ],
 )
 
 cc_library(
-    name = "cuda",
+    name = "core",
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
+        ":core_cpu",
+        ":gpu_runtime",
+    ],
+)
+
+tf_gpu_kernel_library(
+    name = "gpu_kernels",
+    srcs = glob(
+        [
+            "kernels/**/*.h",
+            "kernels/*.cu.cc",
+            "user_ops/**/*.h",
+            "user_ops/*.cu.cc",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cuda",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cuda_library(
+    name = "kernels",
+    # TODO(josh11b): Pull common dependencies out into a separate library.
+    srcs = glob(
+        [
+            "kernels/**/*.cc",
+        ],
+        exclude = [
+            "kernels/**/*test*",
+            "kernels/**/*main.cc",
+            "kernels/**/*.cu.cc",
+        ],
+    ),
+    hdrs = glob(["kernels/**/*.h"]),
+    copts = tf_copts(),
+    cuda_deps = [
+        ":gpu_kernels",
+    ],
+    linkstatic = 0,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_cpu",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all",
+        ":stream_executor",
+        "//tensorflow/models/embedding:word2vec_kernels",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "tensorflow_opensource",
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core",
+        ":direct_session",
+        ":gpu_runtime",
+        ":kernels",
+        ":lib",
     ],
 )
 
@@ -777,14 +390,44 @@ cc_library(
     ],
 )
 
+# Test support library needed for higher-level (TensorFlow-specific) tests
 cc_library(
-    name = "core",
+    name = "testlib",
+    testonly = 1,
+    srcs = [
+        "common_runtime/kernel_benchmark_testlib.cc",
+        "framework/fake_input.cc",
+        "framework/function_testlib.cc",
+        "framework/tensor_testutil.cc",
+        "graph/testlib.cc",
+        "kernels/ops_testutil.cc",
+    ],
+    hdrs = [
+        "common_runtime/kernel_benchmark_testlib.h",
+        "framework/fake_input.h",
+        "framework/function_testlib.h",
+        "framework/tensor_testutil.h",
+        "graph/testlib.h",
+        "kernels/ops_testutil.h",
+    ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":core_cpu",
-        ":gpu_runtime",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":kernels",
+        ":lib",
+        ":protos_all",
+        ":tensorflow",  # TODO(josh11b): Drop this dep?
+        ":test",
+        "//tensorflow/core/platform/default/build_config:gtest",
     ],
 )
+
+# -----------------------------------------------------------------------------
+# Public Android targets
 
 # Android-specific BUILD targets
 load("/tensorflow/tensorflow", "tf_android_core_proto_sources")
@@ -982,30 +625,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Test data
-filegroup(
-    name = "image_testdata",
-    srcs = [
-        # PNG data
-        "lib/png/testdata/lena_gray.png",
-        "lib/png/testdata/lena_rgba.png",
-        # JPEG data
-        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
-        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
-        # Corrupted JPEG files for tests
-        "lib/jpeg/testdata/bad_huffman.jpg",
-        "lib/jpeg/testdata/corrupt.jpg",
-        # -- hand-edited variant: stops at line 0
-        "lib/jpeg/testdata/corrupt34_2.jpg",
-        # -- hand-edited variant: stops at line 4
-        "lib/jpeg/testdata/corrupt34_3.jpg",
-        # -- hand-edited variant: stops after a restart marker
-        "lib/jpeg/testdata/corrupt34_4.jpg",
-    ],
-)
-
-# For portable_proto_library
-
 # Native library support for Android applications.
 # Should be built to target Android with flag --copt=-mfpu=neon.
 cc_library(
@@ -1039,6 +658,396 @@ cc_library(
         "//third_party/eigen3",
     ],
 )
+
+# -----------------------------------------------------------------------------
+# Internal targets
+
+cc_library(
+    name = "lib_internal",
+    srcs = glob(
+        [
+            "lib/**/*.h",
+            "lib/**/*.cc",
+            "platform/*.h",
+            "platform/*.cc",
+            "public/env.h",  # TODO(josh11b): move to platform/
+            "public/status.h",  # TODO(josh11b): move to lib/core/
+        ] + tf_additional_lib_srcs(),
+        exclude = [
+            "**/*test*",
+            "platform/**/cuda.h",
+            "platform/**/stream_executor.h",
+        ],
+    ),
+    hdrs = [
+        "lib/core/blocking_counter.h",
+        "lib/core/refcount.h",
+        "lib/gtl/edit_distance.h",
+        "lib/gtl/int_type.h",
+        "lib/gtl/iterator_range.h",
+        "lib/gtl/top_n.h",
+        "lib/io/iterator.h",
+        "lib/io/match.h",
+        "lib/jpeg/jpeg_handle.h",
+        "lib/png/png_io.h",
+        "lib/random/random.h",
+        "lib/random/random_distributions.h",
+        "lib/random/weighted_picker.h",
+        "lib/strings/ordered_code.h",
+        "lib/strings/regexp.h",
+        "platform/platform.h",
+        "platform/tensor_coding.h",
+        "platform/tracing.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        ":protos_all",
+        "//tensorflow/core/platform/default/build_config:platformlib",
+    ],
+)
+
+tf_cuda_library(
+    name = "framework_internal",
+    srcs = glob(
+        [
+            "framework/**/*.h",
+            "framework/**/*.cc",
+            "util/**/*.h",
+            "util/**/*.cc",
+            # TODO(josh11b): Move these from public/ to framework/
+            "public/partial_tensor_shape.h",
+            "public/tensor.h",
+            "public/tensor_shape.h",
+        ],
+        exclude = [
+            "**/*test*",
+            "**/*main.cc",
+            "framework/fake_input.*",
+        ],
+    ),
+    hdrs = [
+        "framework/graph_def_util.h",
+        "framework/op_segment.h",
+        "framework/rendezvous.h",  # only needed for tests
+        "framework/tensor_reference.h",
+        "framework/tracking_allocator.h",  # only needed for tests
+        "framework/unique_tensor_references.h",
+        "util/tensor_slice_set.h",
+        "util/tensor_slice_util.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":protos_all",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "stream_executor",
+    srcs = tf_additional_stream_executor_srcs(),
+    hdrs = [
+        "platform/cuda.h",
+        "platform/stream_executor.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor",
+    ],
+)
+
+# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+cc_library(
+    name = "protos_cc",
+    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
+)
+
+cc_library(
+    name = "copy_tensor",
+    deps = [
+        ":lib",
+        ":protos_cc",
+        ":stream_executor",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cuda_library(
+    name = "core_cpu_internal",
+    srcs = glob(
+        [
+            "client/**/*.cc",
+            "common_runtime/**/*.h",
+            "common_runtime/**/*.cc",
+            "graph/**/*.h",
+            "graph/**/*.cc",
+            "public/session.h",
+            "public/session_options.h",
+            "public/tensor_c_api.h",
+            "public/version.h",
+        ],
+        exclude = [
+            "**/*test*",
+            "**/*main.cc",
+            "common_runtime/gpu/*.cc",
+            "common_runtime/copy_tensor.cc",
+            "common_runtime/gpu_device_factory.cc",
+            "common_runtime/direct_session.cc",
+            "common_runtime/direct_session.h",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "common_runtime/**/*.h",
+            "graph/**/*.h",
+        ],
+        exclude = [
+            "**/*test*",
+            "common_runtime/direct_session.h",
+        ],
+    ),
+    copts = tf_copts(),
+    deps = [
+        ":copy_tensor",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "cuda",
+    deps = [
+        "//tensorflow/core/platform/default/build_config:cuda",
+    ],
+)
+
+tf_cuda_library(
+    name = "direct_session",
+    srcs = ["common_runtime/direct_session.cc"],
+    hdrs = ["common_runtime/direct_session.h"],
+    copts = tf_copts(),
+    cuda_deps = [
+        ":cuda",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_runtime",
+    srcs = glob(
+        [
+            "common_runtime/gpu/*.h",
+            "common_runtime/gpu/*.cc",
+        ],
+        exclude = [
+            "**/*main.cc",
+            "**/*test.cc",
+        ],
+    ),
+    copts = tf_copts(),
+    cuda_deps = [
+        ":cuda",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all",
+        ":stream_executor",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+# -----------------------------------------------------------------------------
+# Tests
+
+cc_library(
+    name = "lib_test_internal",
+    testonly = 1,
+    hdrs = [
+        "lib/gtl/manual_constructor.h",
+        "lib/io/block.h",
+        "lib/io/block_builder.h",
+        "lib/io/format.h",
+        "lib/random/philox_random_test_utils.h",
+        "platform/snappy.h",
+    ],
+    deps = [":lib_internal"],
+)
+
+# Main program for tests
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    srcs = ["platform/test_main.cc"],
+    copts = tf_copts(),
+    linkopts = ["-lm"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":test",
+        "//tensorflow/core/platform/default/build_config:test_main",
+    ],
+)
+
+# Low level library tests
+tf_cc_tests(
+    tests = glob(
+        [
+            "lib/**/*_test.cc",
+            "platform/**/*_test.cc",
+        ],
+        exclude = ["lib/strings/ordered_code_test.cc"],
+    ),
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_test(
+    name = "lib_jpeg_jpeg_mem_unittest",
+    srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
+    data = glob(["lib/jpeg/testdata/*.jpg"]),
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_test(
+    name = "lib_strings_ordered_code_test",
+    srcs = ["lib/strings/ordered_code_test.cc"],
+    copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+# higher level tests
+tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tests = glob(
+        [
+            "client/**/*_test.cc",
+            "common_runtime/**/*_test.cc",
+            "framework/**/*_test.cc",
+            "graph/**/*_test.cc",
+            "util/**/*_test.cc",
+        ],
+        exclude = [
+            # TODO(opensource): fix
+            "common_runtime/gpu/*_test.cc",
+            # Run by tests below
+            "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "common_runtime/gpu/gpu_bfc_allocator_test.cc",
+        ],
+    ),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":kernels",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+# GPU-related tests
+tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    tests = glob(
+        [
+            "kernels/**/*_test.cc",
+            "user_ops/**/*_test.cc",
+            "common_runtime/gpu/*_test.cc",
+        ],
+    ),
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":kernels",
+        ":lib",
+        ":lib_internal",
+        ":protos_all",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+    ],
+)
+
+# Test data
+filegroup(
+    name = "image_testdata",
+    srcs = [
+        # PNG data
+        "lib/png/testdata/lena_gray.png",
+        "lib/png/testdata/lena_rgba.png",
+        # JPEG data
+        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
+        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
+        # Corrupted JPEG files for tests
+        "lib/jpeg/testdata/bad_huffman.jpg",
+        "lib/jpeg/testdata/corrupt.jpg",
+        # -- hand-edited variant: stops at line 0
+        "lib/jpeg/testdata/corrupt34_2.jpg",
+        # -- hand-edited variant: stops at line 4
+        "lib/jpeg/testdata/corrupt34_3.jpg",
+        # -- hand-edited variant: stops after a restart marker
+        "lib/jpeg/testdata/corrupt34_4.jpg",
+    ],
+)
+
+# -----------------------------------------------------------------------------
+# Google-internal targets.  These must be at the end for syncrepo.
+
+# For portable_proto_library
 
 filegroup(
     name = "all_files",
