@@ -726,7 +726,7 @@ class Saver(object):
         where the variables have a different shape.
       sharded: If `True`, shard the checkpoints, one per device.
       max_to_keep: Maximum number of recent checkpoints to keep.
-        Defaults to 10,000 hours.
+        Defaults to 5.
       keep_checkpoint_every_n_hours: How often to keep checkpoints.
         Defaults to 10,000 hours.
       name: String.  Optional name to use as a prefix when adding operations.
