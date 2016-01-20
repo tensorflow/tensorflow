@@ -965,6 +965,7 @@ tf_cc_tests(
             "framework/**/*_test.cc",
             "graph/**/*_test.cc",
             "util/**/*_test.cc",
+            "ops/**/*_test.cc",
         ],
         exclude = [
             # TODO(opensource): fix
