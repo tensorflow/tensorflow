@@ -198,7 +198,8 @@ class DataFeeder(object):
             batch_indices = self.indices[self.offset: self.offset+self.batch_size]
 
             # assign input features from random indices
-            inp = [self.X[batch_indices]] if len(self.X.shape) == 1 else self.X[batch_indices]
+            inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
+                if len(self.X.shape) == 1 else self.X[batch_indices]
 
             # assign labels from random indices
             self.output_shape[0] = batch_indices.shape[0]

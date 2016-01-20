@@ -30,10 +30,14 @@ OPTIMIZER_CLS_NAMES = {
 }
 
 
-def _print_report(print_loss_buffer, global_step):
+def _print_report(print_loss_buffer, global_step, epoch):
     """Prints report for given losses and global step."""
     avg_loss = np.mean(print_loss_buffer)
-    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
+    if epoch:
+        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}".format(step=global_step,
+                                                       loss=avg_loss, epoch=epoch))
+    else:
+        print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
                                                        loss=avg_loss))
 
 
@@ -162,14 +166,12 @@ class TensorFlowTrainer(object):
                 summary_writer.add_summary(summ, global_step)
             if verbose > 0:
                 if step % print_steps == 0:
-                    _print_report(print_loss_buffer, global_step)
+                    if feed_params_fn:
+                        feed_params = feed_params_fn()
+                        epoch = feed_params['epoch'] if 'epoch' in feed_params else None
+                    _print_report(print_loss_buffer, global_step, epoch)
                     print_loss_buffer = []
-                if feed_params_fn:
-                    feed_params = feed_params_fn()
-                    if 'epoch' in feed_params \
-                            and 'offset' in feed_params \
-                            and feed_params['offset'] == 0:
-                        print("Epoch #{}".format(feed_params['epoch']))
+
         return losses
 
 
