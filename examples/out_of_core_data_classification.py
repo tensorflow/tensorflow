@@ -47,4 +47,4 @@ classifier.fit(X_train, y_train)
 # Make predictions on each partitions of testing data
 predictions = X_test.map_partitions(classifier.predict).compute()
 # Calculate accuracy
-score = metrics.accuracy_score(predictions, y_test.compute())
+score = metrics.accuracy_score(y_test.compute(), predictions)

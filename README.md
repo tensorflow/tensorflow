@@ -58,7 +58,7 @@ from sklearn import datasets, metrics
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
@@ -89,7 +89,7 @@ from sklearn import datasets, metrics
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
@@ -110,7 +110,7 @@ def my_model(X, y):
 
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 

@@ -90,5 +90,5 @@ else:
             classifier.save(model_path)
             break
 # Predict on test set
-score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))

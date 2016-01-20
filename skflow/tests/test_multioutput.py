@@ -46,7 +46,7 @@ class MultiOutputTest(googletest.TestCase):
                                                        random_state=42)
         #classifier = skflow.TensorFlowLinearClassifier(n_classes=n_classes)
         #classifier.fit(X, y)
-        #score = accuracy_score(classifier.predict(X), y)
+        #score = accuracy_score(y, classifier.predict(X))
         #self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 
