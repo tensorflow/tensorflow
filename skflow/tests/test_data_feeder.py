@@ -36,8 +36,9 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [1, 2, 1])
+
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [2, 1])
 
     def test_data_feeder_multioutput_regression(self):
         X = np.matrix([[1, 2], [3, 4]])
@@ -47,8 +48,8 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-        self.assertAllClose(feed_dict['output'], [[1, 2], [3, 4]])
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [[3, 4], [1, 2]])
 
     def test_data_feeder_multioutput_classification(self):
         X = np.matrix([[1, 2], [3, 4]])
@@ -58,13 +59,13 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-        self.assertAllClose(feed_dict['output'], [[[1, 0, 0, 0, 0],
-                                                   [0, 1, 0, 0, 0],
-                                                   [0, 0, 1, 0, 0]],
-                                                  [[0, 0, 1, 0, 0],
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0],
                                                    [0, 0, 0, 1, 0],
-                                                   [0, 0, 0, 0, 1]]])
+                                                   [0, 0, 0, 0, 1]],
+                                                  [[1, 0, 0, 0, 0],
+                                                   [0, 1, 0, 0, 0],
+                                                   [0, 0, 1, 0, 0]]])
 
     def test_streaming_data_feeder(self):
         def X_iter():
