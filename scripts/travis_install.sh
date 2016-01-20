@@ -50,7 +50,7 @@ case "$TASK" in
                 TENSORFLOW_PACKAGE_URL="https://storage.googleapis.com/tensorflow/mac/tensorflow-0.6.0-py2-none-any.whl"
             ;;
         esac
-        pip install "$TENSORFLOW_PACKAGE_URL"
+        pip install "$TENSORFLOW_PACKAGE_URL"  --ignore-installed six
 
         # Install test tools
         pip install codecov
