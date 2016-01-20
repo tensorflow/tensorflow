@@ -149,12 +149,6 @@ TensorShapeIter TensorShape::end() const {
 }
 
 string TensorShape::DebugString() const {
-  TensorShapeProto proto;
-  AsProto(&proto);
-  return proto.ShortDebugString();
-}
-
-string TensorShape::ShortDebugString() const {
   return strings::StrCat(
       "[", str_util::Join(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
 }

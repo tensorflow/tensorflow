@@ -124,13 +124,15 @@ class TensorShape {
 
   /// For error messages.
   string DebugString() const;
-  string ShortDebugString() const;
-  // TODO(vrv): Consolidate DebugString() and ShortDebugString() into one
-  // function that is not verbose and works for scalars.
+
+  /// Same as DebugString()
+  string ShortDebugString() const { return DebugString(); }
+  // TODO(irving): Remove, used to be different but isn't now.
 
   /// Same as `TensorShape(proto).ShortDebugString()` but doesn't crash for
   /// invalid protos.
   static string ShortDebugString(const TensorShapeProto& proto);
+  // TODO(irving): Rename to DebugString.
 
  private:
   // Recalculates the dimensions of this tensor after they are modified.

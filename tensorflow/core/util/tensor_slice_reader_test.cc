@@ -115,10 +115,7 @@ void SimpleFloatHelper(TensorSliceWriter::CreateBuilderFunction create_function,
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader.HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DT_FLOAT, type);
     EXPECT_FALSE(reader.HasTensor("don't exist", nullptr, nullptr));
   }
@@ -242,10 +239,7 @@ void SimpleIntXHelper(TensorSliceWriter::CreateBuilderFunction create_function,
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader.HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DataTypeToEnum<T>::v(), type);
     EXPECT_FALSE(reader.HasTensor("don't exist", nullptr, nullptr));
   }
@@ -379,10 +373,7 @@ void CachedTensorSliceReaderTesterHelper(
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader->HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DT_FLOAT, type);
     EXPECT_FALSE(reader->HasTensor("don't exist", nullptr, nullptr));
   }
