@@ -92,6 +92,7 @@
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
   * [`shape`](../../api_docs/python/array_ops.md#shape)
+  * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
   * [`slice`](../../api_docs/python/array_ops.md#slice)
   * [`split`](../../api_docs/python/array_ops.md#split)
@@ -104,6 +105,7 @@
   * [`to_int32`](../../api_docs/python/array_ops.md#to_int32)
   * [`to_int64`](../../api_docs/python/array_ops.md#to_int64)
   * [`transpose`](../../api_docs/python/array_ops.md#transpose)
+  * [`unique_with_counts`](../../api_docs/python/array_ops.md#unique_with_counts)
   * [`unpack`](../../api_docs/python/array_ops.md#unpack)
 
 * **[Math](../../api_docs/python/math_ops.md)**:
@@ -379,6 +381,7 @@
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
+  * [`SaverDef`](../../api_docs/python/train.md#SaverDef)
   * [`scalar_summary`](../../api_docs/python/train.md#scalar_summary)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)

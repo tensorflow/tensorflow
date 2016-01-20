@@ -143,10 +143,10 @@ easier to chain operations that need to use the updated value.
 
 ### `tf.cond(pred, fn1, fn2, name=None)` {#cond}
 
-Return either 'fn1()' or 'fn2()' based on the boolean predicate 'pred'.
+Return either fn1() or fn2() based on the boolean predicate `pred`.
 
 `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
-the same number and type of outputs.
+the same non-zero number and type of outputs.
 
 ##### Args:
 
@@ -261,7 +261,7 @@ Returns the truth value of (x == y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -279,7 +279,7 @@ Returns the truth value of (x != y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 

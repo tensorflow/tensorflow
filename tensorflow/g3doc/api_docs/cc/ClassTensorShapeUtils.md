@@ -8,8 +8,6 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 
 * [`static bool tensorflow::TensorShapeUtils::IsScalar(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsScalar)
 * [`static bool tensorflow::TensorShapeUtils::IsVector(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsVector)
-* [`static bool tensorflow::TensorShapeUtils::IsLegacyScalar(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsLegacyScalar)
-* [`static bool tensorflow::TensorShapeUtils::IsLegacyVector(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsLegacyVector)
 * [`static bool tensorflow::TensorShapeUtils::IsVectorOrHigher(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsVectorOrHigher)
 * [`static bool tensorflow::TensorShapeUtils::IsMatrix(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsMatrix)
 * [`static bool tensorflow::TensorShapeUtils::IsMatrixOrHigher(const TensorShape &shape)`](#static_bool_tensorflow_TensorShapeUtils_IsMatrixOrHigher)
@@ -27,18 +25,6 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 
 
 #### `static bool tensorflow::TensorShapeUtils::IsVector(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsVector}
-
-
-
-
-
-#### `static bool tensorflow::TensorShapeUtils::IsLegacyScalar(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsLegacyScalar}
-
-
-
-
-
-#### `static bool tensorflow::TensorShapeUtils::IsLegacyVector(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsLegacyVector}
 
 
 
