@@ -121,7 +121,7 @@ def collect_members(module_to_name):
           if len(fullname) == len(other_fullname):
             raise RuntimeError("Can't decide whether to use %s or %s for %s: "
                                "both full names have length %d" %
-                               (fullname, other_fullname, len(fullname)))
+                               (fullname, other_fullname, name, len(fullname)))
           if len(fullname) > len(other_fullname):
             continue  # Use the shorter full name
         members[name] = fullname, member
