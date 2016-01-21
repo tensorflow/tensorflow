@@ -1335,6 +1335,34 @@ single element vector).
 *  <b>`ValueError`</b>: if any feature is invalid.
 
 
+- - -
+
+### `tf.decode_json_example(json_examples, name=None)` {#decode_json_example}
+
+Convert JSON-encoded Example records to binary protocol buffer strings.
+
+This op translates a tensor containing Example records, encoded using
+the [standard JSON
+mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
+into a tensor containing the same records encoded as binary protocol
+buffers. The resulting tensor can then be fed to any of the other
+Example-parsing ops.
+
+##### Args:
+
+
+*  <b>`json_examples`</b>: A `Tensor` of type `string`.
+    Each string is a JSON object serialized according to the JSON
+    mapping of the Example proto.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`.
+  Each string is a binary Example protocol buffer corresponding
+  to the respective element of `json_examples`.
+
+
 
 ## Queues
 
@@ -1744,13 +1772,18 @@ Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
 
 *  <b>`tensor`</b>: Any `Tensor`.
-*  <b>`num_epochs`</b>: An integer (optional).  If specified, limits the number
+*  <b>`num_epochs`</b>: A positive integer (optional).  If specified, limits the number
     of steps the output tensor may be evaluated.
 *  <b>`name`</b>: A name for the operations (optional).
 
 ##### Returns:
 
   tensor or `OutOfRange`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `num_epochs` is invalid.
 
 
 - - -
@@ -1797,6 +1830,8 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
     produces each slice `num_epochs` times before generating
     an `OutOfRange` error. If not specified, `slice_input_producer` can cycle
     through the slices an unlimited number of times.
+*  <b>`shuffle`</b>: Boolean. If true, the integers are randomly shuffled within each
+    epoch.
 *  <b>`seed`</b>: An integer (optional). Seed used if shuffle == True.
 *  <b>`capacity`</b>: An integer. Sets the queue capacity.
 *  <b>`name`</b>: A name for the operations (optional).
@@ -1806,6 +1841,11 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
   A list of tensors, one for each element of `tensor_list`.  If the tensor
   in `tensor_list` has shape `[N, a, b, .., z]`, then the corresponding output
   tensor will have shape `[a, b, ..., z]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `slice_input_producer` produces nothing from `tensor_list`.
 
 
 - - -

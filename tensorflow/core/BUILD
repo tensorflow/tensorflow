@@ -47,15 +47,15 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "tf_copts")
-load("/tensorflow/tensorflow", "tf_cc_tests")
-load("/tensorflow/tensorflow", "tf_cuda_library")
-load("/tensorflow/tensorflow", "tf_gen_op_libs")
-load("/tensorflow/tensorflow", "tf_gpu_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_kernel_library")
 
 # For platform specific build config
 load(
-    "/tensorflow/core/platform/default/build_config",
+    "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_additional_lib_srcs",
     "tf_additional_stream_executor_srcs",
@@ -63,7 +63,7 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "/tensorflow/core/platform/default/build_config_root",
+    "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -435,7 +435,7 @@ cc_library(
 # Public Android targets
 
 # Android-specific BUILD targets
-load("/tensorflow/tensorflow", "tf_android_core_proto_sources")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
 
 # List of protos we want on android
 filegroup(
