@@ -6,6 +6,7 @@
 # Scikit Flow
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
+Library covers variety of needs from linear models to Deep Learning applications like text and image understanding.
 
 Why TensorFlow?
 * TensorFlow provides a good backbone for building different shapes of machine learning applications.
@@ -21,7 +22,7 @@ more open world of building different shapes of ML models. You can start by usin
 Support versions of dependencies:
   * Python: 2.7, 3.4+
   * Scikit learn: 0.16, 0.17, 0.18+
-  * Tensorflow: 0.5, 0.6+
+  * Tensorflow: 0.6+
 
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
