@@ -1,9 +1,7 @@
 #!/bin/bash  
 
 #  only need to run this script with the command (do not type the #)
-#  bash setup.sh
-
-
+ 
 echo "First checking the Python version"
 python --version
 
@@ -26,9 +24,6 @@ ls -lah
 echo "--------------------------------------------------------------"
 echo "Some other useful commands are cd     cd ..      dir    ls     pwd     "
 echo "."
-
-
-
 
 echo "Installing PIP and Virtual Environment"
 
@@ -64,7 +59,7 @@ echo "Kind of wasteful but it isn't on our computer anyway"
 
 deactivate
 
-git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+//git clone --recurse-submodules https://github.com/tensorflow/tensorflow
 
 
 echo "--------------------------------------------------------------"
