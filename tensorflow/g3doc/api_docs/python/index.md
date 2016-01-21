@@ -267,6 +267,7 @@
   * [`batch`](../../api_docs/python/io_ops.md#batch)
   * [`batch_join`](../../api_docs/python/io_ops.md#batch_join)
   * [`decode_csv`](../../api_docs/python/io_ops.md#decode_csv)
+  * [`decode_json_example`](../../api_docs/python/io_ops.md#decode_json_example)
   * [`decode_raw`](../../api_docs/python/io_ops.md#decode_raw)
   * [`FIFOQueue`](../../api_docs/python/io_ops.md#FIFOQueue)
   * [`FixedLenFeature`](../../api_docs/python/io_ops.md#FixedLenFeature)
@@ -392,4 +393,8 @@
 
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
+
+* **[Unsupported](../../api_docs/python/unsupported.md)**:
+  * [`constant_value`](../../api_docs/python/unsupported.md#constant_value)
+  * [`make_all`](../../api_docs/python/unsupported.md#make_all)
 

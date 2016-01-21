@@ -11,7 +11,7 @@ exports_files([
     "ACKNOWLEDGMENTS",
 ])
 
-# open source marker; do not remove
+load("//tensorflow:tensorflow.google.bzl", "tf_opensource_data")
 
 package_group(
     name = "internal",
