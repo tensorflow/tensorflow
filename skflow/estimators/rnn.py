@@ -1,4 +1,4 @@
-"""Deep Neural Network estimators."""
+"""Recurrent Neural Network estimators."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,11 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow RNN Classifier model.
 
     Parameters:
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
         n_classes: Number of classes in the target.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
@@ -63,7 +68,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
-        super(TensorFlowDNNClassifier, self).__init__(
+        super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
@@ -83,6 +88,11 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow RNN Regressor model.
 
     Parameters:
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
@@ -105,7 +115,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             round(s) to continue training. (default: None)
     """
 
-    def __init__(self, rnn_size, cell_type, input_op_fn
+    def __init__(self, rnn_size, cell_type, input_op_fn,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
@@ -114,7 +124,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
-        super(TensorFlowDNNRegressor, self).__init__(
+        super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,

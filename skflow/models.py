@@ -16,10 +16,9 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
+from tensorflow.models.rnn import rnn, rnn_cell
 
 from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
-
-from tensorflow.models.rnn import rnn_cell
 
 
 def linear_regression(X, y):
@@ -96,7 +95,25 @@ def get_dnn_model(hidden_units, target_predictor_fn):
 
 
 def get_rnn_model(rnn_size, cell_type, input_op_fn, target_predictor_fn):
+    """Returns a function that creates a RNN TensorFlow subgraph with given
+    params.
+
+    Args:
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
+        target_predictor_fn: Function that will predict target from input
+                             features. This can be logistic regression,
+                             linear regression or any other model,
+                             that takes X, y and returns predictions and loss tensors.
+
+    Returns:
+        A function that creates the subgraph.
+    """
     def rnn_estimator(X, y):
+        """RNN estimator with target predictor function on top."""
         X = input_op_fn(X)
         if cell_type == 'rnn':
             cell_fn = rnn_cell.BasicRNNCell
@@ -106,6 +123,7 @@ def get_rnn_model(rnn_size, cell_type, input_op_fn, target_predictor_fn):
             cell_fn = rnn_cell.BasicLSTMCell
         else:
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
-        cell = rcell_fn(rnn_size)
+        cell = cell_fn(rnn_size)
         _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
         return target_predictor_fn(encoding[-1], y)
+    return rnn_estimator
