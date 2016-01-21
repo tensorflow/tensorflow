@@ -75,6 +75,24 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         return models.get_dnn_model(self.hidden_units,
                                     models.logistic_regression)(X, y)
 
+    @property
+    def weights_(self):
+        """Returns weights of the DNN weight layers."""
+        weights = []
+        for layer in range(len(self.hidden_units)):
+            weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' % layer))
+        weights.append(self.get_tensor_value('logistic_regression/weights:0'))
+        return weights
+
+    @property
+    def bias_(self):
+        """Returns bias of the DNN's bias layers."""
+        biases = []
+        for layer in range(len(self.hidden_units)):
+            biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
+        biases.append(self.get_tensor_value('logistic_regression/bias:0'))
+        return biases
+
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow DNN Regressor model.
@@ -122,3 +140,22 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
                                     models.linear_regression)(X, y)
+
+    @property
+    def weights_(self):
+        """Returns weights of the DNN weight layers."""
+        weights = []
+        for layer in range(len(self.hidden_units)):
+            weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' % layer))
+        weights.append(self.get_tensor_value('linear_regression/weights:0'))
+        return weights
+
+    @property
+    def bias_(self):
+        """Returns bias of the DNN's bias layers."""
+        biases = []
+        for layer in range(len(self.hidden_units)):
+            biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
+        biases.append(self.get_tensor_value('linear_regression/bias:0'))
+        return biases
+

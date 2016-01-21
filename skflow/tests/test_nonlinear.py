@@ -31,6 +31,13 @@ class NonLinearTest(tf.test.TestCase):
         classifier.fit(iris.data, iris.target)
         score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        weights = classifier.weights_
+        self.assertEqual(weights[0].shape, (4, 10))
+        self.assertEqual(weights[1].shape, (10, 20))
+        self.assertEqual(weights[2].shape, (20, 10))
+        self.assertEqual(weights[3].shape, (10, 3))
+        biases = classifier.bias_
+        self.assertEqual(len(biases), 4)
 
     def testBoston(self):
         random.seed(42)
@@ -43,6 +50,13 @@ class NonLinearTest(tf.test.TestCase):
         score = mean_squared_error(
             boston.target, regressor.predict(boston.data))
         self.assertLess(score, 100, "Failed with score = {0}".format(score))
+        weights = regressor.weights_
+        self.assertEqual(weights[0].shape, (13, 10))
+        self.assertEqual(weights[1].shape, (10, 20))
+        self.assertEqual(weights[2].shape, (20, 10))
+        self.assertEqual(weights[3].shape, (10, 1))
+        biases = regressor.bias_
+        self.assertEqual(len(biases), 4)
 
 
 if __name__ == "__main__":
