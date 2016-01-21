@@ -1,7 +1,7 @@
 #!/bin/bash  
 # this is a bash file to help you install tenserflow 
 #run this file from a shell  ./setup_c9.sh  
-#please check it you have python <3 installed 
+#please check it you have python 2.7 <3 installed 
  
  
 echo "Installing PIP and Virtual Environment"
