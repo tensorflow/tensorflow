@@ -141,8 +141,8 @@ class Seq2SeqModel(object):
       # If we use output projection, we need to project outputs for decoding.
       if output_projection is not None:
         for b in xrange(len(buckets)):
-          self.outputs[b] = [tf.nn.xw_plus_b(output, output_projection[0],
-                                             output_projection[1])
+          self.outputs[b] = [tf.matmul(output, output_projection[0]) +
+                             output_projection[1]
                              for output in self.outputs[b]]
     else:
       self.outputs, self.losses = seq2seq.model_with_buckets(
