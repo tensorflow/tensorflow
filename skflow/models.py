@@ -95,7 +95,7 @@ def get_dnn_model(hidden_units, target_predictor_fn):
     return dnn_estimator
 
 
-def get_rnn_model(rnn_size, target_predictor_fn, cell_type='gru'):
+def get_rnn_model(rnn_size, cell_type, target_predictor_fn):
     def rnn_estimator(X, y):
         if cell_type == 'rnn':
             cell_fn = rnn_cell.BasicRNNCell
