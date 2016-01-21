@@ -21,6 +21,10 @@ from skflow.estimators.base import TensorFlowEstimator
 from skflow import models
 
 
+def null_input_op_fn(X):
+    """This function does no transformation on the inputs, used as default"""
+    return X
+
 class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow RNN Classifier model.
 
@@ -59,8 +63,8 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
-    def __init__(self, rnn_size, cell_type, input_op_fn,
-                 n_classes, tf_master="", batch_size=32,
+    def __init__(self, rnn_size, n_classes, cell_type='gru',
+                 input_op_fn=null_input_op_fn, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
@@ -115,7 +119,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             round(s) to continue training. (default: None)
     """
 
-    def __init__(self, rnn_size, cell_type, input_op_fn,
+    def __init__(self, rnn_size, cell_type='gru', input_op_fn=null_input_op_fn,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,

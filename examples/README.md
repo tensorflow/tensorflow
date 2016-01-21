@@ -23,7 +23,7 @@ Image classification
 Text classification
 -------------------
 
-* [Text Classification Using Recurrent Neural Networks on Words](text_classification.py)([Simplified Version Using Built-in RNN Model](text_classification_builtin_rnn_model.py))
+* [Text Classification Using Recurrent Neural Networks on Words](text_classification.py) (See also [Simplified Version Using Built-in RNN Model](text_classification_builtin_rnn_model.py))
 * [Text Classification Using Convolutional Neural Networks on Words](text_classification_cnn.py)
 * [Text Classification Using Recurrent Neural Networks on Characters](text_classification_character_rnn.py)
 * [Text Classification Using Convolutional Neural Networks on Characters](text_classification_character_cnn.py)
