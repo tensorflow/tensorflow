@@ -155,7 +155,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       // Expand sizes to match.
                       int64 max_val = 0;
                       for (const Tuple& t : tuples) {
-                        max_val = max(max_val, t[i].shape().dim_size(j));
+                        max_val = std::max(max_val, t[i].shape().dim_size(j));
                       }
                       shape.AddDim(max_val);
                     }
