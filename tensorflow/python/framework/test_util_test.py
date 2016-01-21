@@ -27,14 +27,28 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import logging_ops
 
+
 class TestUtilTest(test_util.TensorFlowTestCase):
+
+  def test_assert_ops_in_graph(self):
+    with self.test_session():
+      constant_op.constant(["hello", "taffy"], name="hello")
+      test_util.assert_ops_in_graph({"hello": "Const"}, ops.get_default_graph())
+
+    self.assertRaises(
+        ValueError, test_util.assert_ops_in_graph, {"bye": "Const"},
+        ops.get_default_graph())
+
+    self.assertRaises(
+        ValueError, test_util.assert_ops_in_graph, {"hello": "Variable"},
+        ops.get_default_graph())
 
   def testIsGoogleCudaEnabled(self):
     # The test doesn't assert anything. It ensures the py wrapper
