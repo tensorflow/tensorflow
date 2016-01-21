@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/session.h"
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {

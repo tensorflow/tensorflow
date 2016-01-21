@@ -159,7 +159,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   `example_names` may contain descriptive names for the corresponding serialized
   protos. These may be useful for debugging purposes, but they have no effect on
-  the output. If not `None`, `names` must be the same length as `serialized`.
+  the output. If not `None`, `example_names` must be the same length as `serialized`.
 
   This op parses serialized examples into a dictionary mapping keys to `Tensor`
   and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
@@ -391,7 +391,7 @@ def _parse_example_raw(serialized,
 
       dense_defaults_vec.append(default_value)
 
-    dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                     if isinstance(shape, (list, tuple)) else shape
                     for shape in dense_shapes]
 
@@ -825,10 +825,10 @@ def _parse_single_sequence_example_raw(serialized,
 
       context_dense_defaults_vec.append(default_value)
 
-    context_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    context_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                             if isinstance(shape, (list, tuple)) else shape
                             for shape in context_dense_shapes]
-    feature_list_dense_shapes = [tensor_util.MakeTensorShapeProto(shape)
+    feature_list_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
                                  if isinstance(shape, (list, tuple)) else shape
                                  for shape in feature_list_dense_shapes]
 
@@ -916,8 +916,8 @@ def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
           feature_list_sparse_shape_shapes + feature_list_dense_shapes)
 
 
-ops.RegisterShape("StringToNumber")(
-    common_shapes.unchanged_shape)
+ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("DecodeRaw")

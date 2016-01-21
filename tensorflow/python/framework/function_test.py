@@ -289,53 +289,45 @@ class FunctionTest(tf.test.TestCase):
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
 
-  def testUnrollLSTM(self):
+  # Helper to construct a LSTM cell graph.
+  @classmethod
+  def LSTMCell(cls, x, mprev, cprev, weights):
+    xm = tf.concat(1, [x, mprev])
+    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
+    new_c = tf.clip_by_value(new_c, -50.0, 50.0)
+    new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
+    return new_m, new_c
 
-    # Helper to construct a LSTM cell graph.
-    def LSTMCell(x, mprev, cprev, weights):
-      xm = tf.concat(1, [x, mprev])
-      i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
-      new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
-      new_c = tf.clip_by_value(new_c, -50.0, 50.0)
-      new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
-      return new_m, new_c
-
+  def _BuildForward(self, use_func=True, num_unroll=100):
     batch_size = 16
     lstm_dims = 32
-    num_unroll = 100
+    cell = FunctionTest.LSTMCell
+    if use_func:
+      cell = function.Defun(x=tf.float32,
+                            mprev=tf.float32,
+                            cprev=tf.float32,
+                            weights=tf.float32)(cell)
+    m = tf.zeros(shape=[batch_size, lstm_dims])
+    c = tf.zeros(shape=[batch_size, lstm_dims])
+    weights = tf.random_uniform(
+        [2 * lstm_dims, 4 * lstm_dims],
+        -1,
+        1,
+        seed=123456)
+    inputs = tf.random_uniform([num_unroll, batch_size, lstm_dims], seed=654321)
+    x = tf.unpack(inputs)
+    for i in range(num_unroll):
+      m, c = cell(x[i], m, c, weights)
+    return weights, m, c
 
+  def testUnrollLSTM(self):
     # Run one step of the unrolled lstm graph.
-    def RunStep(use_func):
+    def RunForward(use_func):
       g = tf.Graph()
       start = time.time()
       with g.as_default():
-        # Helper to construct a LSTM function.
-        if use_func:
-
-          @function.Defun(x=tf.float32,
-                          mprev=tf.float32,
-                          cprev=tf.float32,
-                          weights=tf.float32)
-          def LSTMCellFunc(x, mprev, cprev, weights):
-            return LSTMCell(x, mprev, cprev, weights)
-
-          cell = LSTMCellFunc
-        else:
-          cell = LSTMCell
-
-        m = tf.zeros(shape=[batch_size, lstm_dims])
-        c = tf.zeros(shape=[batch_size, lstm_dims])
-        weights = tf.random_uniform(
-            [2 * lstm_dims, 4 * lstm_dims],
-            -1,
-            1,
-            seed=123456)
-        inputs = tf.random_uniform(
-            [num_unroll, batch_size, lstm_dims],
-            seed=654321)
-        x = tf.unpack(inputs)
-        for i in range(num_unroll):
-          m, c = cell(x[i], m, c, weights)
+        _, m, c = self._BuildForward(use_func)
       gdef = g.as_graph_def()
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
@@ -343,11 +335,31 @@ class FunctionTest(tf.test.TestCase):
       with g.as_default(), tf.Session() as sess:
         mv, cv = sess.run([m, c])
       return mv, cv
-
-    mv0, cv0 = RunStep(use_func=False)
-    mv1, cv1 = RunStep(use_func=True)
+    mv0, cv0 = RunForward(use_func=False)
+    mv1, cv1 = RunForward(use_func=True)
     self.assertAllClose(mv0, mv1)
     self.assertAllClose(cv0, cv1)
+
+  def testUnrollLSTMGrad(self):
+    # Run one step of the unrolled lstm graph.
+    def RunForwarBackward(use_func):
+      g = tf.Graph()
+      start = time.time()
+      with g.as_default():
+        w, m, c = self._BuildForward(use_func)
+        loss = tf.reduce_sum(m) + tf.reduce_sum(c)
+        dw = tf.gradients([loss], [w])
+      gdef = g.as_graph_def()
+      finish = time.time()
+      print("time: ", finish - start, " txt size: ", len(str(gdef)),
+            "gdef bin size: ", len(gdef.SerializeToString()))
+      with g.as_default(), tf.Session() as sess:
+        ans = sess.run(dw)
+      return ans
+
+    ans0 = RunForwarBackward(use_func=False)
+    ans1 = RunForwarBackward(use_func=True)
+    self.assertAllClose(ans0, ans1)
 
 
 if __name__ == "__main__":

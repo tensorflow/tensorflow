@@ -166,6 +166,25 @@ feature_list_sparse_types: A list of Nfeature_list_sparse types; the data types
   DT_INT64 (Int64List), and DT_STRING (BytesList).
 )doc");
 
+REGISTER_OP("DecodeJSONExample")
+    .Input("json_examples: string")
+    .Output("binary_examples: string")
+    .Doc(R"doc(
+Convert JSON-encoded Example records to binary protocol buffer strings.
+
+This op translates a tensor containing Example records, encoded using
+the [standard JSON
+mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
+into a tensor containing the same records encoded as binary protocol
+buffers. The resulting tensor can then be fed to any of the other
+Example-parsing ops.
+
+json_examples: Each string is a JSON object serialized according to the JSON
+  mapping of the Example proto.
+binary_examples: Each string is a binary Example protocol buffer corresponding
+  to the respective element of `json_examples`.
+)doc");
+
 REGISTER_OP("DecodeCSV")
     .Input("records: string")
     .Input("record_defaults: OUT_TYPE")

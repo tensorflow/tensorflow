@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/graph/edgeset.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 class EdgeSetTest : public ::testing::Test {

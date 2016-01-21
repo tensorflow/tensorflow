@@ -28,8 +28,8 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 

@@ -2100,3 +2100,211 @@ Called when the thread starts.
 
 
 
+- - -
+
+### `class tf.train.SaverDef` {#SaverDef}
+
+
+- - -
+
+#### `tf.train.SaverDef.ByteSize()` {#SaverDef.ByteSize}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.Clear()` {#SaverDef.Clear}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.ClearExtension(extension_handle)` {#SaverDef.ClearExtension}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.ClearField(field_name)` {#SaverDef.ClearField}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.CopyFrom(other_msg)` {#SaverDef.CopyFrom}
+
+Copies the content of the specified message into the current message.
+
+The method clears the current message and then merges the specified
+message using MergeFrom.
+
+##### Args:
+
+
+*  <b>`other_msg`</b>: Message to copy into the current one.
+
+
+- - -
+
+#### `tf.train.SaverDef.FindInitializationErrors()` {#SaverDef.FindInitializationErrors}
+
+Finds required fields which are not initialized.
+
+##### Returns:
+
+  A list of strings.  Each string is a path to an uninitialized field from
+  the top-level message, e.g. "foo.bar[5].baz".
+
+
+- - -
+
+#### `tf.train.SaverDef.FromString(s)` {#SaverDef.FromString}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.HasExtension(extension_handle)` {#SaverDef.HasExtension}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.HasField(field_name)` {#SaverDef.HasField}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.IsInitialized(errors=None)` {#SaverDef.IsInitialized}
+
+Checks if all required fields of a message are set.
+
+##### Args:
+
+
+*  <b>`errors`</b>: A list which, if provided, will be populated with the field
+           paths of all missing required fields.
+
+##### Returns:
+
+  True iff the specified message has all required fields set.
+
+
+- - -
+
+#### `tf.train.SaverDef.ListFields()` {#SaverDef.ListFields}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.MergeFrom(msg)` {#SaverDef.MergeFrom}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.MergeFromString(serialized)` {#SaverDef.MergeFromString}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.ParseFromString(serialized)` {#SaverDef.ParseFromString}
+
+Parse serialized protocol buffer data into this message.
+
+Like MergeFromString(), except we clear the object first and
+do not return the value that MergeFromString returns.
+
+
+- - -
+
+#### `tf.train.SaverDef.RegisterExtension(extension_handle)` {#SaverDef.RegisterExtension}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.SerializePartialToString()` {#SaverDef.SerializePartialToString}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.SerializeToString()` {#SaverDef.SerializeToString}
+
+
+
+
+- - -
+
+#### `tf.train.SaverDef.SetInParent()` {#SaverDef.SetInParent}
+
+Sets the _cached_byte_size_dirty bit to true,
+and propagates this to our listener iff this was a state change.
+
+
+- - -
+
+#### `tf.train.SaverDef.WhichOneof(oneof_name)` {#SaverDef.WhichOneof}
+
+Returns the name of the currently set field inside a oneof, or None.
+
+
+- - -
+
+#### `tf.train.SaverDef.filename_tensor_name` {#SaverDef.filename_tensor_name}
+
+Magic attribute generated for "filename_tensor_name" proto field.
+
+
+- - -
+
+#### `tf.train.SaverDef.keep_checkpoint_every_n_hours` {#SaverDef.keep_checkpoint_every_n_hours}
+
+Magic attribute generated for "keep_checkpoint_every_n_hours" proto field.
+
+
+- - -
+
+#### `tf.train.SaverDef.max_to_keep` {#SaverDef.max_to_keep}
+
+Magic attribute generated for "max_to_keep" proto field.
+
+
+- - -
+
+#### `tf.train.SaverDef.restore_op_name` {#SaverDef.restore_op_name}
+
+Magic attribute generated for "restore_op_name" proto field.
+
+
+- - -
+
+#### `tf.train.SaverDef.save_tensor_name` {#SaverDef.save_tensor_name}
+
+Magic attribute generated for "save_tensor_name" proto field.
+
+
+- - -
+
+#### `tf.train.SaverDef.sharded` {#SaverDef.sharded}
+
+Magic attribute generated for "sharded" proto field.
+
+
+

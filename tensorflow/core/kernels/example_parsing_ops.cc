@@ -900,4 +900,37 @@ class SingleSequenceExampleParserOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
                         SingleSequenceExampleParserOp);
 
+class DecodeJSONExampleOp : public OpKernel {
+ public:
+  explicit DecodeJSONExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    resolver_.reset(protobuf::util::NewTypeResolverForDescriptorPool(
+        "type.googleapis.com", protobuf::DescriptorPool::generated_pool()));
+  }
+
+  void Compute(OpKernelContext* ctx) {
+    const Tensor* json_examples;
+    OP_REQUIRES_OK(ctx, ctx->input("json_examples", &json_examples));
+    Tensor* binary_examples;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("binary_examples", json_examples->shape(),
+                                  &binary_examples));
+
+    for (int i = 0; i < json_examples->NumElements(); ++i) {
+      const string& json_example = json_examples->flat<string>()(i);
+      auto status = protobuf::util::JsonToBinaryString(
+          resolver_.get(), "type.googleapis.com/tensorflow.Example",
+          json_example, &binary_examples->flat<string>()(i));
+      OP_REQUIRES(ctx, status.ok(),
+                  errors::InvalidArgument("Error while parsing JSON: ",
+                                          string(status.error_message())));
+    }
+  }
+
+ private:
+  std::unique_ptr<protobuf::util::TypeResolver> resolver_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("DecodeJSONExample").Device(DEVICE_CPU),
+                        DecodeJSONExampleOp);
+
 }  // namespace tensorflow

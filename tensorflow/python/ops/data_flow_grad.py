@@ -24,7 +24,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -76,3 +75,27 @@ ops.NoGradient("Stack")
 ops.NoGradient("StackPush")
 ops.NoGradient("StackPop")
 ops.NoGradient("StackClose")
+
+ops.NoGradient("TensorArray")
+ops.NoGradient("TensorArrayGrad")
+ops.NoGradient("TensorArrayClose")
+
+
+@ops.RegisterGradient("TensorArrayRead")
+def _TensorArrayReadGrad(*_):
+  raise NotImplementedError("Gradient is not implemented")
+
+
+@ops.RegisterGradient("TensorArrayWrite")
+def _TensorArrayWriteGrad(*_):
+  raise NotImplementedError("Gradient is not implemented")
+
+
+@ops.RegisterGradient("TensorArrayPack")
+def _TensorArrayPackGrad(*_):
+  raise NotImplementedError("Gradient is not implemented")
+
+
+@ops.RegisterGradient("TensorArrayUnpack")
+def _TensorArrayUnpackGrad(*_):
+  raise NotImplementedError("Gradient is not implemented")

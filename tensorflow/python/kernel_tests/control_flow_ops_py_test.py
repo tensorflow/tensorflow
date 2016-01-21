@@ -29,8 +29,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import gradients
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
@@ -68,6 +68,36 @@ def isum(s):
 
 class ControlFlowTest(tf.test.TestCase):
 
+  def testWhileWithRefsWithGradients_1(self):
+    with self.test_session() as sess:
+      x = tf.Variable(0).ref()
+      i = tf.constant(0)
+      c = lambda i, x: tf.less(i, 10)
+
+      self.assertEqual(x.dtype, tf.int32_ref)
+
+      # pylint: disable=protected-access
+      def body(i, x):
+        self.assertEqual(x.dtype, tf.int32_ref)
+        return (i+1, gen_array_ops._ref_identity(x))
+      # pylint: enable=protected-access
+
+      r = control_flow_ops.While(c, body, [i, x], parallel_iterations=5)
+
+      grad_ys = [tf.Variable(73).ref()]
+      grad = tf.gradients([r[1]], [x], grad_ys=grad_ys)
+
+      tf.initialize_all_variables().run()
+
+      self.assertEqual(r[0].dtype, tf.int32)
+      self.assertEqual(r[1].dtype, tf.int32_ref)
+
+      value_i, value_x, value_x_grad = sess.run(r + grad)
+
+    self.assertEqual(10, value_i)
+    self.assertEqual(0, value_x)
+    self.assertEqual(73, value_x_grad)
+
   def testRefIdentity(self):
     with self.test_session():
       v = tf.Variable(7)
@@ -99,7 +129,7 @@ class ControlFlowTest(tf.test.TestCase):
       v = tf.Variable(7)
 
       p = tf.constant(True)
-      v1 = control_flow_ops._SwitchRefOrTensor(v, p)
+      v1 = control_flow_ops._SwitchRefOrTensor(v.ref(), p)
       v2 = tf.assign(v1[1], 9)
       tf.initialize_all_variables().run()
       self.assertEqual(9, v2.eval())
@@ -171,7 +201,7 @@ class ControlFlowTest(tf.test.TestCase):
       dead_branch = tf.identity(switch_op[0])
 
       with self.assertRaisesWithPredicateMatch(
-          StatusNotOK, lambda e: 'The tensor returned for' in str(e)):
+          StatusNotOK, lambda e: "The tensor returned for" in str(e)):
         dead_branch.eval()
 
   def testSwitchMergeIdentity_1(self):
@@ -544,6 +574,30 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertTrue(check_op_order(n.graph))
     self.assertEqual(10000, result)
 
+  def testWhileWithRefs_1(self):
+    with self.test_session() as sess:
+      x = tf.Variable(0).ref()
+      i = tf.constant(0)
+      c = lambda i, x: tf.less(i, 100)
+
+      self.assertEqual(x.dtype, tf.int32_ref)
+
+      def b(i, x):
+        self.assertEqual(x.dtype, tf.int32_ref)
+        return (i+1, gen_array_ops._ref_identity(x))
+
+      r = control_flow_ops.While(c, b, [i, x], parallel_iterations=5)
+
+      tf.initialize_all_variables().run()
+
+      self.assertEqual(r[0].dtype, tf.int32)
+      self.assertEqual(r[1].dtype, tf.int32_ref)
+
+      value_i, value_x = sess.run(r)
+
+    self.assertEqual(100, value_i)
+    self.assertEqual(0, value_x)
+
   def testWhile_2(self):
     with self.test_session():
       s = tf.constant(0)
@@ -737,8 +791,8 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(10, name="n")
       one = tf.convert_to_tensor(1, name="one")
       c = lambda x: tf.less(x, n)
-      b = lambda x: tf.cond(tf.constant(True), lambda: tf.add(x, one),
-                            lambda: tf.sub(x, one))
+      b = lambda x: tf.cond(
+          tf.constant(True), lambda: tf.add(x, one), lambda: tf.sub(x, one))
       r = control_flow_ops.While(c, b, [i])
 
       result = r.eval()
@@ -880,7 +934,7 @@ class ControlFlowTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
 
       # Change condition to check var_b
-      def pred(i):
+      def pred(_):
         return tf.less(var_b, 10)
 
       # Change body to increment var_b
@@ -1529,6 +1583,7 @@ class TupleTest(tf.test.TestCase):
       t.eval()
 
       self.assertEquals(1, var.eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -108,6 +108,20 @@ def _Identity(data, name=None):
     return gen_array_ops._ref_identity(data, name=name)
 
 
+def _NextIteration(data, name=None):
+  if not data.dtype.is_ref_dtype:
+    return next_iteration(data, name=name)
+  else:
+    return ref_next_iteration(data, name=name)
+
+
+def _Merge(values, name=None):
+  if all([v.dtype.is_ref_dtype for v in values]):
+    return gen_control_flow_ops._ref_merge(values, name)
+  else:
+    return gen_control_flow_ops._merge(values, name)
+
+
 def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
            use_ref=True, name=None):
   """Creates or finds a child frame, and makes `data` available to it.
@@ -148,7 +162,10 @@ def exit(data, name=None):
   Returns:
     The same tensor as `data`.
   """
-  return gen_control_flow_ops._exit(data, name)
+  if data.dtype.is_ref_dtype:
+    return gen_control_flow_ops._ref_exit(data, name)
+  else:
+    return gen_control_flow_ops._exit(data, name)
 
 
 def switch(data, pred, dtype=None, name=None):
@@ -215,20 +232,20 @@ def merge(inputs, name=None):
       dense_shape property.
   """
   with ops.op_scope(inputs, name, "Merge") as name:
-    inputs = [ops.convert_to_tensor_or_indexed_slices(inp) for inp in inputs]
+    inputs = [ops.convert_to_tensor_or_indexed_slices(inp)
+              for inp in inputs]
     if all([isinstance(inp, ops.Tensor) for inp in inputs]):
-      return gen_control_flow_ops._merge(inputs, name=name)
+      return _Merge(inputs, name=name)
     else:
       inputs = math_ops._as_indexed_slices_list(inputs)
-      values, _ = gen_control_flow_ops._merge([inp.values for inp in inputs],
-                                              name=name)
-      indices, chosen_index = gen_control_flow_ops._merge(
+      values, _ = _Merge([inp.values for inp in inputs], name=name)
+      indices, chosen_index = _Merge(
           [inp.indices for inp in inputs], name="indices")
       if any(inp.dense_shape for inp in inputs):
         if not all(inp.dense_shape for inp in inputs):
           raise ValueError("Either all merged IndexedSlices must have a "
                            "dense_shape, or none must have a dense_shape.")
-        dense_shape, _ = gen_control_flow_ops._merge(
+        dense_shape, _ = _Merge(
             [inp.dense_shape for inp in inputs], name="dense_shape")
       else:
         dense_shape = None
@@ -255,7 +272,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   Raises:
     TypeError: if data is not a Tensor or IndexedSlices
   """
-  data = ops.convert_to_tensor_or_indexed_slices(data, name="data", as_ref=True)
+  data = ops.convert_to_tensor_or_indexed_slices(data, name="data")
   with ops.device(data.device):
     if isinstance(data, ops.Tensor):
       if not data.dtype.is_ref_dtype:
@@ -400,6 +417,10 @@ def _IsLoopConstantEnter(op):
   """Returns true iff op is a loop invariant."""
   is_enter = (op.type == "Enter" or op.type == "RefEnter")
   return is_enter and op.get_attr("is_constant")
+
+
+def _IsLoopExit(op):
+  return op.type == "Exit" or op.type == "RefExit"
 
 
 class GradLoopState(object):
@@ -581,7 +602,7 @@ class GradLoopState(object):
 
     # Add the stack_push op in the context of value.op.
     value_ctxt = value.op._get_control_flow_context()
-    if value.op.type == "Exit":
+    if _IsLoopExit(value.op):
       value_ctxt = value_ctxt.outer_context
     if value_ctxt == self.forward_context:
       # value is not nested in the forward context.
@@ -681,7 +702,7 @@ class GradLoopState(object):
           self._grad_context.Exit()
           outer_value = value.op.inputs[0]
           history_value = self._outer_grad_state.AddForwardAccumulator(
-                                                   outer_value)
+              outer_value)
           self._grad_context.Enter()
         else:
           # Just use the input value of this Enter node.
@@ -807,7 +828,7 @@ class ControlFlowState(object):
         outer_grad_ctxt = outer_grad_state.grad_context
         outer_grad_ctxt.Enter()
         real_val = outer_grad_state.AddBackPropAccumulatedValue(
-                                      history_val, val)
+            history_val, val)
         result = array_ops.zeros_like(real_val)
         outer_grad_ctxt.Exit()
     else:
@@ -860,7 +881,7 @@ class ControlFlowState(object):
       grad_state.grad_context.Enter()
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-                           history_shape, zero_shape, dead_branch)
+          history_shape, zero_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
 
@@ -883,7 +904,7 @@ def MaybeCreateControlFlowState(between_op_list, between_ops):
   """
   loop_state = None
   for op in between_op_list:
-    if op.type == "Exit":
+    if _IsLoopExit(op):
       if loop_state is None:
         loop_state = ControlFlowState()
       loop_state.AddWhileContext(op, between_op_list, between_ops)
@@ -892,7 +913,7 @@ def MaybeCreateControlFlowState(between_op_list, between_ops):
 
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a While loop."""
-  if op.type == "Switch":
+  if op.type == "Switch" or op.type == "RefSwitch":
     ctxt = op._get_control_flow_context()
     return ctxt and isinstance(ctxt, WhileContext)
   return False
@@ -1286,7 +1307,7 @@ class WhileContext(ControlFlowContext):
     switch_n = switch(merge_n, self._pivot)
 
     index = math_ops.add(switch_n[1], 1)
-    next_n = next_iteration(index)
+    next_n = _NextIteration(index)
     merge_n.op._update_input(1, next_n)
 
     total_iterations = exit(switch_n[0], name="f_count")
@@ -1326,7 +1347,7 @@ class WhileContext(ControlFlowContext):
 
     index = math_ops.sub(switch_count[1], one)
     self._pivot_for_body = index
-    next_count = next_iteration(index)
+    next_count = _NextIteration(index)
     merge_count.op._update_input(1, next_count)
 
     self.Exit()
@@ -1366,7 +1387,7 @@ class WhileContext(ControlFlowContext):
     switch_acc = switch(merge_acc, self._pivot)
 
     add_acc = math_ops.add(switch_acc[1], value)
-    next_acc = next_iteration(add_acc)
+    next_acc = _NextIteration(add_acc)
     merge_acc.op._update_input(1, next_acc)
 
     acc_result = exit(switch_acc[0], name="b_acc")
@@ -1385,8 +1406,7 @@ class WhileContext(ControlFlowContext):
       real_vars = [self._outer_context.AddValue(x) for x in loop_vars]
     with ops.control_dependencies(None):
       enter_vars = [_Enter(x, self._name, is_constant=False,
-                           parallel_iterations=self._parallel_iterations,
-                           use_ref=False)
+                           parallel_iterations=self._parallel_iterations)
                     for x in real_vars]
     for x in enter_vars:
       x.op._set_control_flow_context(self)  # pylint: disable=protected-access
@@ -1408,7 +1428,7 @@ class WhileContext(ControlFlowContext):
     if not isinstance(body_result, (list, _basetuple)):
       body_result = [body_result]
     result = ops.convert_n_to_tensor_or_indexed_slices(body_result)
-    next_vars = [next_iteration(x) for x in result]
+    next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
     assert len(merge_vars) == len(next_vars)
@@ -1863,6 +1883,8 @@ ops.RegisterShape("Enter")(common_shapes.unchanged_shape)
 ops.RegisterShape("Exit")(common_shapes.unknown_shape)
 ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
+ops.RegisterShape("RefExit")(common_shapes.unknown_shape)
+ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)
 
@@ -1907,6 +1929,8 @@ def _MergeShape(op):
           [input_dim.value if input_dim.value == output_dim.value else None
            for input_dim, output_dim in zip(input_shape.dims, output_shape.dims)])
     return [output_shape, tensor_shape.scalar()]
+
+ops.RegisterShape("RefMerge")(_MergeShape)
 
 
 @ops.RegisterShape("RefSelect")

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/port.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "base/thread_annotations.h"
+#include "tensorflow/core/platform/google/build_config/thread_annotations.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID)
 #include "tensorflow/core/platform/default/thread_annotations.h"
 #else

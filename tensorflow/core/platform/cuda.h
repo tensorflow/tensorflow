@@ -13,22 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PUBLIC_TENSORFLOW_SERVER_H_
-#define TENSORFLOW_PUBLIC_TENSORFLOW_SERVER_H_
+#ifndef TENSORFLOW_PLATFORM_CUDA_H_
+#define TENSORFLOW_PLATFORM_CUDA_H_
 
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/platform.h"
 
-namespace tensorflow {
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/platform/google/build_config/cuda.h"
+#else
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#endif
 
-// Initialize the TensorFlow service for this address space.
-// This is a blocking call that never returns.
-// See BUILD file for details on linkage guidelines.
-::tensorflow::Status InitTensorFlow();
-
-// Like InitTensorFlow() but returns after the Tensorflow
-// services have been launched.
-::tensorflow::Status LaunchTensorFlow();
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_PUBLIC_TENSORFLOW_SERVER_H_
+#endif  // TENSORFLOW_PLATFORM_CUDA_H_

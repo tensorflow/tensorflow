@@ -15,6 +15,14 @@
   example, the shape argument to `tf.reshape` can't be a scalar anymore).  The
   open source release was already scalar strict, so outside Google `IsScalar`
   and `IsVector` are exact replacements.
+* The following files are being removed from `tensorflow/core/public/`:
+    * `env.h` -> `../platform/env.h`
+    * `status.h` -> `../lib/core/status.h`
+    * `tensor.h` -> `../framework/tensor.h`
+    * `tensor_shape.h` -> `../framework/tensor_shape.h`
+    * `partial_tensor_shape.h` -> `../framework/partial_tensor_shape.h`
+    * `tensorflow_server.h` deleted
+
 
 ## Bug fixes
 

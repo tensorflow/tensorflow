@@ -173,6 +173,39 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("PaddingFIFOQueue")
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order.
+
+Variable-size shapes are allowed by setting the corresponding shape dimensions
+to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
+size of any given element in the minibatch.  See below for details.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types.
+  Shapes of fixed rank but variable size are allowed by setting
+  any shape dimension to -1.  In this case, the inputs' shape may vary along
+  the given dimension, and DequeueMany will pad the given dimension with
+  zeros up to the maximum shape of all elements in the given batch.
+  If the length of this attr is 0, different queue elements may have
+  different ranks and shapes, but only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("QueueEnqueue")
     .Input("handle: Ref(string)")
     .Input("components: Tcomponents")
@@ -346,6 +379,108 @@ REGISTER_OP("StackClose")
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("TensorArray")
+    .Input("size: int32")
+    .Attr("dtype: type")
+    .Attr("tensor_array_name: string = ''")
+    .Output("handle: Ref(string)")
+    .SetIsStateful()
+    .Doc(R"doc(
+An array of Tensors of given size, with data written via Write and read
+via Read or Pack.
+
+handle: The handle to the TensorArray.
+size: The size of the array.
+dtype: The type of the elements on the tensor_array.
+tensor_array_name: Overrides the name used for the temporary tensor_array resource. Default
+value is the name of the 'TensorArray' op (which is guaranteed unique).
+)doc");
+
+REGISTER_OP("TensorArrayGrad")
+    .Input("handle: Ref(string)")
+    .Output("grad_handle: Ref(string)")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates a TensorArray for storing the gradients of values in the given handle.
+
+If the given TensorArray gradient already exists, returns a reference to it.
+
+handle: The handle to the forward TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayWrite")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("gradient_add: bool = false")
+    .SetIsStateful()
+    .Doc(R"doc(
+Push an element onto the tensor_array.
+
+handle: The handle to a TensorArray.
+index: The position to write to inside the TensorArray.
+value: The tensor to write to the TensorArray.
+gradient_add: Used for gradient back-propagation.  If the value has already
+  been written to the handle, validate input shape and add to it.
+)doc");
+
+REGISTER_OP("TensorArrayRead")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Read an element from the TensorArray.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+value: The tensor that is read from the TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayPack")
+    .Input("handle: Ref(string)")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Pack the elements from the TensorArray.
+
+All elements must have the same shape.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+value: All of the elements in the TensorArray, concatenated along a new
+  axis (the new dimension 0).
+)doc");
+
+REGISTER_OP("TensorArrayUnpack")
+    .Input("handle: Ref(string)")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("gradient_add: bool = false")
+    .SetIsStateful()
+    .Doc(R"doc(
+Unpack the data from the input value into TensorArray elements.
+
+handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+gradient_add: Used for gradient back-propagation.  If values are already
+  written to the handle, validate shapes and add to them.
+)doc");
+
+REGISTER_OP("TensorArrayClose")
+    .Input("handle: Ref(string)")
+    .Doc(R"doc(
+Delete the TensorArray from its resource container.  This enables
+the user to close and release the resource in the middle of a step/run.
+
+handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
 )doc");
 
 // --------------------------------------------------------------------------

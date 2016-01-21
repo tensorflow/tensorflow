@@ -12,6 +12,8 @@ Represents an n-dimensional array of values.
   * Creates a Tensor of the given `type` and `shape`.
 * [`tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape)`](#tensorflow_Tensor_Tensor)
   * Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer.
+* [`tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)`](#tensorflow_Tensor_Tensor)
+  * Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
 * [`tensorflow::Tensor::Tensor(DataType type)`](#tensorflow_Tensor_Tensor)
   * Creates an uninitialized Tensor of the given data type.
 * [`tensorflow::Tensor::Tensor(const Tensor &other)`](#tensorflow_Tensor_Tensor)
@@ -28,6 +30,8 @@ Represents an n-dimensional array of values.
 * [`int64 tensorflow::Tensor::NumElements() const`](#int64_tensorflow_Tensor_NumElements)
   * Convenience accessor for the tensor shape.
 * [`bool tensorflow::Tensor::IsSameSize(const Tensor &b) const`](#bool_tensorflow_Tensor_IsSameSize)
+* [`bool tensorflow::Tensor::SharesBufferWith(const Tensor &b) const`](#bool_tensorflow_Tensor_SharesBufferWith)
+* [`size_t tensorflow::Tensor::BufferHash() const`](#size_t_tensorflow_Tensor_BufferHash)
 * [`bool tensorflow::Tensor::IsInitialized() const`](#bool_tensorflow_Tensor_IsInitialized)
   * Has this Tensor been initialized?
 * [`size_t tensorflow::Tensor::TotalBytes() const`](#size_t_tensorflow_Tensor_TotalBytes)
@@ -96,6 +100,12 @@ Creates a tensor with the input `type` and `shape`, using the allocator `a` to a
 
 `a` must outlive the lifetime of this Tensor .
 
+#### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)` {#tensorflow_Tensor_Tensor}
+
+Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
+
+`a` must outlive the lifetime of this Tensor .
+
 #### `tensorflow::Tensor::Tensor(DataType type)` {#tensorflow_Tensor_Tensor}
 
 Creates an uninitialized Tensor of the given data type.
@@ -145,6 +155,18 @@ Convenience accessor for the tensor shape.
 
 
 #### `bool tensorflow::Tensor::IsSameSize(const Tensor &b) const` {#bool_tensorflow_Tensor_IsSameSize}
+
+
+
+
+
+#### `bool tensorflow::Tensor::SharesBufferWith(const Tensor &b) const` {#bool_tensorflow_Tensor_SharesBufferWith}
+
+
+
+
+
+#### `size_t tensorflow::Tensor::BufferHash() const` {#size_t_tensorflow_Tensor_BufferHash}
 
 
 

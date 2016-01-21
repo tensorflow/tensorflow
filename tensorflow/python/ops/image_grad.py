@@ -70,7 +70,7 @@ def _ResizeBilinearGrad(op, grad):
 def _ResizeShape(op):
   """Shape function for the resize grad ops."""
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.ConstantValue(op.inputs[1])
+  size = tensor_util.constant_value(op.inputs[1])
   if size is not None:
     height = size[0]
     width = size[1]

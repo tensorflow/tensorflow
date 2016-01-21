@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/coding.h"
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace core {

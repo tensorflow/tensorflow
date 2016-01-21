@@ -126,14 +126,15 @@ def GetNumpyAppendFn(dtype):
   return GetFromNumpyDTypeDict(_NP_TO_APPEND_FN, dtype)
 
 
-def MakeTensorShapeProto(shape):
-  """Create a TensorShapeProto.
+# TODO(mrry,irving): Make this a method of `TensorShape`.
+def make_tensor_shape_proto(shape):
+  """Converts a list of integers to a `TensorShapeProto`.
 
   Args:
     shape: List of integers representing the dimensions of the tensor.
 
   Returns:
-    A TensorShapeProto.
+    A `TensorShapeProto`.
   """
   return tensor_shape_pb2.TensorShapeProto(
       dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
@@ -368,7 +369,7 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
-      tensor_shape=MakeTensorShapeProto(shape))
+      tensor_shape=make_tensor_shape_proto(shape))
 
   if is_same_size and numpy_dtype in _TENSOR_CONTENT_TYPES and shape_size > 1:
     tensor_proto.tensor_content = nparray.tostring()
@@ -494,7 +495,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def ConstantValue(tensor):
+def constant_value(tensor):
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -539,32 +540,38 @@ def ConstantValue(tensor):
     else:
       return None
   elif tensor.op.type == "Range":
-    start = ConstantValue(tensor.op.inputs[0])
+    start = constant_value(tensor.op.inputs[0])
     if start is None:
       return None
-    limit = ConstantValue(tensor.op.inputs[1])
+    limit = constant_value(tensor.op.inputs[1])
     if limit is None:
       return None
-    delta = ConstantValue(tensor.op.inputs[2])
+    delta = constant_value(tensor.op.inputs[2])
     if delta is None:
       return None
     return np.arange(start, limit, delta, dtype=tensor.dtype.as_numpy_dtype)
   elif tensor.op.type == "Cast":
-    pre_cast = ConstantValue(tensor.op.inputs[0])
+    pre_cast = constant_value(tensor.op.inputs[0])
     if pre_cast is None:
       return None
     cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
     return pre_cast.astype(cast_dtype.as_numpy_dtype)
   elif tensor.op.type == "Concat":
-    dim = ConstantValue(tensor.op.inputs[0])
+    dim = constant_value(tensor.op.inputs[0])
     if dim is None:
       return None
     values = []
     for x in tensor.op.inputs[1:]:
-      value = ConstantValue(x)
+      value = constant_value(x)
       if value is None:
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
   else:
     return None
+
+
+# Add some temporary backwards compatibility aliases until all downstream code
+# is changed.  TODO(irving): Remove these aliases.
+ConstantValue = constant_value
+MakeTensorShapeProto = make_tensor_shape_proto

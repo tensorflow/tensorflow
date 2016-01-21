@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace gtl {
@@ -406,7 +406,7 @@ TEST(IntSlice, Equality) {
 // Compile-asserts that the argument has the expected type.
 template <typename Expected, typename T>
 void CheckType(const T& value) {
-  testing::StaticAssertTypeEq<Expected, T>();
+  ::testing::StaticAssertTypeEq<Expected, T>();
 }
 
 TEST(IntSlice, ExposesContainerTypesAndConsts) {
@@ -416,9 +416,9 @@ TEST(IntSlice, ExposesContainerTypesAndConsts) {
   CheckType<IntSlice::const_iterator>(const_slice.end());
   CheckType<IntSlice::const_reverse_iterator>(const_slice.rbegin());
   CheckType<IntSlice::reverse_iterator>(slice.rend());
-  testing::StaticAssertTypeEq<int, IntSlice::value_type>();
-  testing::StaticAssertTypeEq<const int*, IntSlice::pointer>();
-  testing::StaticAssertTypeEq<const int&, IntSlice::const_reference>();
+  ::testing::StaticAssertTypeEq<int, IntSlice::value_type>();
+  ::testing::StaticAssertTypeEq<const int*, IntSlice::pointer>();
+  ::testing::StaticAssertTypeEq<const int&, IntSlice::const_reference>();
   EXPECT_EQ(static_cast<IntSlice::size_type>(-1), IntSlice::npos);
 }
 
@@ -586,11 +586,11 @@ TEST(MutableIntSlice, ContainerWithShallowConstDataConversion) {
 }
 
 TEST(MutableIntSlice, TypedefsAndConstants) {
-  testing::StaticAssertTypeEq<int, MutableIntSlice::value_type>();
-  testing::StaticAssertTypeEq<int*, MutableIntSlice::pointer>();
-  testing::StaticAssertTypeEq<const int*, MutableIntSlice::const_pointer>();
-  testing::StaticAssertTypeEq<int&, MutableIntSlice::reference>();
-  testing::StaticAssertTypeEq<const int&, MutableIntSlice::const_reference>();
+  ::testing::StaticAssertTypeEq<int, MutableIntSlice::value_type>();
+  ::testing::StaticAssertTypeEq<int*, MutableIntSlice::pointer>();
+  ::testing::StaticAssertTypeEq<const int*, MutableIntSlice::const_pointer>();
+  ::testing::StaticAssertTypeEq<int&, MutableIntSlice::reference>();
+  ::testing::StaticAssertTypeEq<const int&, MutableIntSlice::const_reference>();
 
   EXPECT_EQ(static_cast<MutableIntSlice::size_type>(-1), MutableIntSlice::npos);
 }

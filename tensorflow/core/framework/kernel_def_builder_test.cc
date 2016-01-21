@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

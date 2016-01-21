@@ -80,7 +80,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.ConstantValue(value.dense_shape)
+  dense_shape_value = tensor_util.constant_value(value.dense_shape)
   if dense_shape_value is not None:
     num_elements = np.prod(dense_shape_value)
     if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
@@ -408,6 +408,7 @@ def gradients(ys,
     for op in to_ops:
       # 'ready' handles the case where one output gradient relies on
       # another output's gradient.
+      # pylint: disable=protected-access
       ready = (pending_count[op._id] == 0)
       if ready and op._id not in to_ops_set:
         to_ops_set.add(op._id)
@@ -439,11 +440,13 @@ def gradients(ys,
           loop_state.EnterGradWhileContext(op)
         out_grads = _AggregatedGrads(grads, op, loop_state, aggregation_method)
         grad_fn = None
+
         # pylint: disable=protected-access
         is_func_call = ops.get_default_graph()._is_function(op.type)
         # pylint: enable=protected-access
 
         if not is_func_call and any(out_grads) and op._id not in stop_ops:
+        # pylint: enable=protected-access
           # A grad_fn must be defined, either as a function or as None
           # for ops that do not have gradients.
           try:
@@ -472,10 +475,10 @@ def gradients(ys,
               if loop_state:
                 wrapped_op = loop_state.MakeWrapper(op)
               if is_func_call:
-                # For function call ops, we add a 'SymbolicGradient' node to the
-                # graph to compute gradients.
-                f_in = [op.inputs[i] for i in range(len(op.inputs))] + out_grads
-                f_types = [op.outputs[i].dtype for i in range(len(op.outputs))]
+                # For function call ops, we add a 'SymbolicGradient'
+                # node to the graph to compute gradients.
+                f_in = [x for x in op.inputs] + out_grads
+                f_types = [x.dtype for x in op.inputs]
                 # pylint: disable=protected-access
                 in_grads = _AsList(functional_ops._symbolic_gradient(
                     f_in, f_types, op.type))
@@ -501,6 +504,7 @@ def gradients(ys,
           loop_state.ExitGradWhileContext(op)
 
       # update pending count for the inputs of op.
+      # pylint: disable=protected-access
       for x in op.inputs:
         pending_count[x.op._id] -= 1
         ready = (pending_count[x.op._id] == 0)
@@ -513,6 +517,7 @@ def gradients(ys,
         pending_count[x._id] -= 1
         if pending_count[x._id] is 0:
           queue.append(x)
+      # pylint: enable=protected-access
   return [_GetGrad(grads, x) for x in xs]
 
 

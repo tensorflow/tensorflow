@@ -25,10 +25,6 @@ limitations under the License.
 #include <string.h>
 #include <algorithm>
 
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -46,9 +42,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/status.h"

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/public/session_options.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/version.h"

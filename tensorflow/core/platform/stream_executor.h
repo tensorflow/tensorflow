@@ -13,19 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "tensorflow/python/platform/base.i"
-%import(module="tensorflow.python.pywrap_tensorflow") "tensorflow/python/lib/core/status.i"
+#ifndef TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
+#define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
 
-%{
-#include "tensorflow/core/public/tensorflow_server.h"
-%}
+#include "tensorflow/core/platform/platform.h"
 
-%ignoreall
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/platform/google/stream_executor.h"
+#else
+#include "tensorflow/core/platform/default/stream_executor.h"
+#endif
 
-%unignore tensorflow;
-%unignore tensorflow::LaunchTensorFlow;
-
-%include "tensorflow/core/public/tensorflow_server.h"
-
-%unignoreall
-
+#endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_

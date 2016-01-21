@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_segment.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {

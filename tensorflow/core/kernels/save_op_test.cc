@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"

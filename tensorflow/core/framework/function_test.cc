@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/function.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -236,25 +236,30 @@ TEST(TFunc, Body_TypeList) {
       // Nodes
       {{{"zero"}, "Const", {}, {{"value", kZero}, {"dtype", DT_INT32}}},
        {{"s"}, "Split", {"zero", "i"}, {{"num_split", 4}, {"T", DT_FLOAT}}},
-       {{"a", "b", "c", "d"},
+       {{"lst"},
         "_ArrayToList",
         {"s"},
         {{"N", 4},
          {"T", DT_FLOAT},
          {"out_types", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT}}}},
-       {{"l"}, "Mul", {"a", "b"}, {{"T", DT_FLOAT}}},
-       {{"r"}, "Mul", {"c", "d"}, {{"T", DT_FLOAT}}},
-       {{"x"}, "_ListToArray", {"l", "r"}, {{"N", 2}, {"T", DT_FLOAT}}},
+       {{"l"}, "Mul", {"lst:0", "lst:1"}, {{"T", DT_FLOAT}}},
+       {{"r"}, "Mul", {"lst:2", "lst:3"}, {{"T", DT_FLOAT}}},
+       {{"x"},
+        "_ListToArray",
+        {"l", "r"},
+        {{"N", 2},
+         {"T", DT_FLOAT},
+         {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
        {{"o"}, "AddN", {"x"}, {{"N", 2}, {"T", DT_FLOAT}}}});
 
   const char* e = R"P(
 Test(i:float) -> (o:float) {
   zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
   s = Split[T=float, num_split=4](zero, i)
-  a, b, c, d = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](s)
-  l = Mul[T=float](a, b)
-  r = Mul[T=float](c, d)
-  x = _ListToArray[N=2, T=float](l, r)
+  lst = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](s)
+  l = Mul[T=float](lst:0, lst:1)
+  r = Mul[T=float](lst:2, lst:3)
+  x = _ListToArray[N=2, T=float, Tin={float, float}](l, r)
   o = AddN[N=2, T=float](x)
 }
 )P";
@@ -472,7 +477,7 @@ TEST(InstantiateErrors, FuncRet_Mismatch) {
                           });
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Invalid ret name.\n\t In y");
+           "Invalid ret types y : float vs. double\n\t In y");
 }
 
 TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
@@ -497,7 +502,7 @@ TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
       });
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Missing attr out_types");
+           "type attr not found: out_types");
 }
 
 TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {
@@ -523,7 +528,7 @@ TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {
       });
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Wrong #ret: 0 2 1");
+           "Invalid ret types");
 }
 
 TEST(InstantiateErrors, TypeList_Missing_Arg) {
@@ -541,7 +546,8 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
           {{"y"},
            "Cond",
            {"x", "unknown"},
-           {{"out_types", DataTypeSlice{DT_FLOAT}},
+           {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+            {"out_types", DataTypeSlice{DT_FLOAT}},
             {"cond", FDH::FunctionRef("MyCond2")},
             {"then_branch", FDH::FunctionRef("MyThen2")},
             {"else_branch", FDH::FunctionRef("MyElse2")}}},

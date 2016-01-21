@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <deque>
 #include <vector>
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/tensor.h"
 

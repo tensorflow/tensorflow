@@ -146,6 +146,8 @@ class QueueBase : public QueueInterface {
     RunCallback run_callback;  // must be run while holding mu_
     bool is_cancelled;
     Tuple tuple;
+    // tuples is used by some implementations allowing dynamic shapes.
+    std::vector<Tuple> tuples;
 
     Attempt(int32 elements_requested, DoneCallback done_callback,
             OpKernelContext* context, CancellationToken cancellation_token,

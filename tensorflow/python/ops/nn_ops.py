@@ -296,7 +296,7 @@ def _TopKShape(op):
   """Shape function for TopK and TopKV2 ops."""
   input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
   if len(op.inputs) >= 2:
-    k = tensor_util.ConstantValue(op.inputs[1])
+    k = tensor_util.constant_value(op.inputs[1])
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
@@ -352,7 +352,7 @@ def _MaxPoolWithArgMaxShape(op):
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
   """Shape function for the AvgPoolGrad op."""
-  orig_input_shape = tensor_util.ConstantValue(op.inputs[0])
+  orig_input_shape = tensor_util.constant_value(op.inputs[0])
   if orig_input_shape is not None:
     return [tensor_shape.TensorShape(orig_input_shape.tolist())]
   else:
@@ -366,7 +366,7 @@ def _AvgPoolGradShape(op):
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
   """Shape function for the Conv2DBackpropFilter op."""
-  filter_shape = tensor_util.ConstantValue(op.inputs[1])
+  filter_shape = tensor_util.constant_value(op.inputs[1])
   if filter_shape is not None:
     return [tensor_shape.TensorShape(filter_shape.tolist())]
   else:
@@ -380,7 +380,7 @@ def _Conv2DBackpropFilterShape(op):
 @ops.RegisterShape("Conv2DBackpropInput")
 def _Conv2DBackpropInputShape(op):
   """Shape function for the Conv2DBackpropInput op."""
-  input_shape = tensor_util.ConstantValue(op.inputs[0])
+  input_shape = tensor_util.constant_value(op.inputs[0])
   if input_shape is not None:
     return [tensor_shape.TensorShape(input_shape.tolist())]
   else:

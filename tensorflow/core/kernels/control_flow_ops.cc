@@ -86,12 +86,9 @@ class SwitchOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CPU_SWITCH);
 TF_CALL_ALL_TYPES(REGISTER_CPU_REF_SWITCH);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SWITCH);
-REGISTER_GPU_SWITCH(int64);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_SWITCH);
 REGISTER_GPU_SWITCH(bool);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_REF_SWITCH);
-REGISTER_GPU_REF_SWITCH(int32);
-REGISTER_GPU_REF_SWITCH(int64);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_SWITCH);
 REGISTER_GPU_REF_SWITCH(bool);
 
 #undef REGISTER_CPU_SWITCH
@@ -99,17 +96,36 @@ REGISTER_GPU_REF_SWITCH(bool);
 #undef REGISTER_GPU_SWITCH
 #undef REGISTER_GPU_REF_SWITCH
 
-// A special GPU kernel for int32.
+// Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Switch")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("pred")
-                            .HostMemory("output_false")
-                            .HostMemory("output_true")
-                            .TypeConstraint<int32>("T"),
-                        SwitchOp);
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                  \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)
+
+#define REGISTER_GPU_HOST_REF_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
+                          SwitchOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_REF_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_REF_KERNEL(string);
+
+#undef REGISTER_GPU_HOST_KERNEL
+#undef REGISTER_GPU_HOST_REF_KERNEL
 
 class RefSelectOp : public OpKernel {
  public:
@@ -176,7 +192,11 @@ class MergeOp : public OpKernel {
         }
         input_seen = true;
 
-        context->set_output(0, context->input(i));
+        if (IsRefType(context->input_dtype(i))) {
+          context->forward_ref_input_to_ref_output(i, 0);
+        } else {
+          context->set_output(0, context->input(i));
+        }
         Tensor* value_index = nullptr;
         OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
                                                          &value_index));
@@ -193,6 +213,7 @@ class MergeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
+REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
 
 #define REGISTER_GPU_KERNEL(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Merge")                   \
@@ -200,21 +221,42 @@ REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
                               .TypeConstraint<type>("T")  \
                               .HostMemory("value_index"), \
                           MergeOp);
+#define REGISTER_GPU_REF_KERNEL(type)                     \
+  REGISTER_KERNEL_BUILDER(Name("RefMerge")                \
+                              .Device(DEVICE_GPU)         \
+                              .TypeConstraint<type>("T")  \
+                              .HostMemory("value_index"), \
+                          MergeOp);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
+#undef REGISTER_GPU_REF_KERNEL
 
-// A special GPU kernel for int32.
+// Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Merge")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("inputs")
-                            .HostMemory("output")
-                            .HostMemory("value_index")
-                            .TypeConstraint<int32>("T"),
-                        MergeOp);
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("Merge")                   \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("inputs")       \
+                              .HostMemory("output")       \
+                              .HostMemory("value_index")  \
+                              .TypeConstraint<type>("T"), \
+                          MergeOp);                       \
+  REGISTER_KERNEL_BUILDER(Name("RefMerge")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("inputs")       \
+                              .HostMemory("output")       \
+                              .HostMemory("value_index")  \
+                              .TypeConstraint<type>("T"), \
+                          MergeOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(string);
+
+#undef REGISTER_GPU_HOST_KERNEL
 
 // An enter op has one input and one output. It creates or finds
 // the child frame that is uniquely identified by the frame_name,
@@ -243,41 +285,45 @@ REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_CPU), EnterOp);
 
 #define REGISTER_GPU_KERNEL(type) \
   REGISTER_KERNEL_BUILDER(        \
-      Name("Enter").Device(DEVICE_GPU).TypeConstraint<type>("T"), EnterOp);
+      Name("Enter").Device(DEVICE_GPU).TypeConstraint<type>("T"), EnterOp)
 #define REGISTER_GPU_REF_KERNEL(type) \
   REGISTER_KERNEL_BUILDER(            \
-      Name("RefEnter").Device(DEVICE_GPU).TypeConstraint<type>("T"), EnterOp);
+      Name("RefEnter").Device(DEVICE_GPU).TypeConstraint<type>("T"), EnterOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
-TF_CALL_NUMBER_TYPES(REGISTER_GPU_REF_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
+REGISTER_GPU_KERNEL(bool);
+REGISTER_GPU_REF_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
-// A special GPU kernel for int32.
+// Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Enter")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        EnterOp);
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("Enter")                   \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
 
-// Special GPU kernels for string.
-REGISTER_KERNEL_BUILDER(Name("Enter")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("output")
-                            .TypeConstraint<string>("T"),
-                        EnterOp);
+#define REGISTER_GPU_HOST_REF_KERNEL(type)                \
+  REGISTER_KERNEL_BUILDER(Name("RefEnter")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
 
-REGISTER_KERNEL_BUILDER(Name("RefEnter")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("output")
-                            .TypeConstraint<string>("T"),
-                        EnterOp);
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_REF_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_REF_KERNEL(string);
+
+#undef REGISTER_GPU_HOST_KERNEL
+#undef REGISTER_GPU_HOST_REF_KERNEL
 
 // An exit op has one input and one output. It exits the current
 // frame to its parent frame, and makes its input available to the
@@ -287,7 +333,11 @@ class ExitOp : public OpKernel {
   explicit ExitOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    context->set_output(0, context->input(0));
+    if (IsRefType(context->input_dtype(0))) {
+      context->forward_ref_input_to_ref_output(0, 0);
+    } else {
+      context->set_output(0, context->input(0));
+    }
   }
 
   bool IsExpensive() override { return false; }
@@ -298,24 +348,42 @@ class ExitOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_CPU), ExitOp);
+REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_CPU), ExitOp);
 
 #define REGISTER_GPU_KERNEL(type) \
   REGISTER_KERNEL_BUILDER(        \
       Name("Exit").Device(DEVICE_GPU).TypeConstraint<type>("T"), ExitOp);
+#define REGISTER_GPU_REF_KERNEL(type) \
+  REGISTER_KERNEL_BUILDER(            \
+      Name("RefExit").Device(DEVICE_GPU).TypeConstraint<type>("T"), ExitOp);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
+#undef REGISTER_GPU_REF_KERNEL
 
-// A special GPU kernel for int32.
+// Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Exit")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        ExitOp);
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("Exit")                    \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          ExitOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("RefExit")                 \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          ExitOp);
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(string);
+
+#undef REGISTER_GPU_HOST_KERNEL
 
 // A next_iteration op has one input and one output. It makes its input
 // available to the next iteration.
@@ -324,7 +392,11 @@ class NextIterationOp : public OpKernel {
   explicit NextIterationOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    context->set_output(0, context->input(0));
+    if (IsRefType(context->input_dtype(0))) {
+      context->forward_ref_input_to_ref_output(0, 0);
+    } else {
+      context->set_output(0, context->input(0));
+    }
   }
 
   bool IsExpensive() override { return false; }
@@ -336,25 +408,43 @@ class NextIterationOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_CPU),
                         NextIterationOp);
+REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
+                        NextIterationOp);
 
-#define REGISTER_GPU_KERNEL(type)                                         \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("NextIteration").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      NextIterationOp);
+#define REGISTER_GPU_KERNEL(type)                                            \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("NextIteration").Device(DEVICE_GPU).TypeConstraint<type>("T"),    \
+      NextIterationOp);                                                      \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("RefNextIteration").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      NextIterationOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 
-// A special GPU kernel for int32.
+// Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("NextIteration")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("data")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        NextIterationOp);
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("NextIteration")           \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp);               \
+  REGISTER_KERNEL_BUILDER(Name("RefNextIteration")        \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(string);
+
+#undef REGISTER_GPU_HOST_KERNEL
 
 // A LoopCond op has one input and one output. The input is a boolean
 // scalar representing the taken branches of the "pivot" Switch that

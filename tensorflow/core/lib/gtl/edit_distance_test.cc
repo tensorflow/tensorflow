@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/edit_distance.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {

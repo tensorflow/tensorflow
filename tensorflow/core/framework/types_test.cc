@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

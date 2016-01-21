@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/gpu/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -32,12 +30,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/util.h"
-
-#include "tensorflow/core/platform/stream_executor_util.h"
 
 // If this need to be runtime configurable, consider adding options to
 // ConfigProto.
