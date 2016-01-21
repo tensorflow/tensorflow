@@ -11,7 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.google.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow/core:platform/google/build_config.bzl", "tf_proto_library_py")
 
 py_library(
