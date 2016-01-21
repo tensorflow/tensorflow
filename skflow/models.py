@@ -19,6 +19,8 @@ import tensorflow as tf
 
 from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
+from tensorflow.models.rnn import rnn_cell
+
 
 def linear_regression(X, y):
     """Creates linear regression TensorFlow subgraph.
@@ -91,3 +93,18 @@ def get_dnn_model(hidden_units, target_predictor_fn):
         layers = dnn(X, hidden_units)
         return target_predictor_fn(layers, y)
     return dnn_estimator
+
+
+def get_rnn_model(rnn_size, target_predictor_fn, cell_type='gru'):
+    def rnn_estimator(X, y):
+        if cell_type == 'rnn':
+            cell_fn = rnn_cell.BasicRNNCell
+        elif cell_type == 'gru':
+            cell_fn = rnn_cell.GRUCell
+        elif cell_type == 'lstm':
+            cell_fn = rnn_cell.BasicLSTMCell
+        else:
+            raise ValueError("cell_type {} is not supported. ".format(cell_type))
+        cell = rcell_fn(rnn_size)
+        _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
+        return target_predictor_fn(encoding[-1], y)
