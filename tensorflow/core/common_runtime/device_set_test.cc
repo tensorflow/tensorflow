@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_set.h"
 
+#include <vector>
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/status.h"
 

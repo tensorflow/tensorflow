@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
 #include <string>
+#include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"

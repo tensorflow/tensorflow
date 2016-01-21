@@ -23,6 +23,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <memory>
+#include <vector>
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"

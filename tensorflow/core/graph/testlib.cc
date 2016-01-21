@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/testlib.h"
 
+#include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"

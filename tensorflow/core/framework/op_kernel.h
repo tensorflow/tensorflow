@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"

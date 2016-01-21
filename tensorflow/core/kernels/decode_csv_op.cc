@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/parsing_ops.cc.
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"

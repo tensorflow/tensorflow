@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include <ctype.h>
+#include <vector>
 
 namespace tensorflow {
 namespace str_util {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <vector>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

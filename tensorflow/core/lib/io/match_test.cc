@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/match.h"
 #include <algorithm>
+#include <vector>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"

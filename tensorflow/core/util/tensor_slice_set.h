@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <string>  // for string
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"

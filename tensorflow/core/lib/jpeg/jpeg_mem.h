@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <functional>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/port.h"

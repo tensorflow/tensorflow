@@ -25,7 +25,6 @@ limitations under the License.
 
 #include <stdarg.h>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/port.h"

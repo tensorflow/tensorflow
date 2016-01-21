@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/public/tensor.h"

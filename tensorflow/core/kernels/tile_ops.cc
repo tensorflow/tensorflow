@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tile_ops.h"
 
+#include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_index.h"

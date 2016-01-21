@@ -31,7 +31,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
