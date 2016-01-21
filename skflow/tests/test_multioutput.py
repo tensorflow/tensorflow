@@ -19,13 +19,11 @@ import numpy as np
 from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error
 
+import tensorflow as tf
+
 import skflow
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
-
-
-class MultiOutputTest(googletest.TestCase):
+class MultiOutputTest(tf.test.TestCase):
 
     def testMultiRegression(self):
         random.seed(42)
@@ -51,4 +49,4 @@ class MultiOutputTest(googletest.TestCase):
 
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

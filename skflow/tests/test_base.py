@@ -19,13 +19,12 @@ from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import skflow
 from skflow.estimators import base
 
 
-class BaseTest(googletest.TestCase):
+class BaseTest(tf.test.TestCase):
 
     def testOneDim(self):
         random.seed(42)
@@ -119,5 +118,5 @@ class BaseTest(googletest.TestCase):
             estimator.save('/tmp/path')
 
 
-if __name__ == "__main__":
-    googletest.main()
+if __name__ == '__main__':
+    tf.test.main()

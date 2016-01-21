@@ -18,13 +18,13 @@ from sklearn import datasets
 from sklearn.grid_search import GridSearchCV
 from sklearn.metrics import accuracy_score, mean_squared_error
 
+import tensorflow as tf
+
 import skflow
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 
-class GridSearchTest(googletest.TestCase):
+class GridSearchTest(tf.test.TestCase):
 
     def testIrisDNN(self):
         random.seed(42)
@@ -40,4 +40,4 @@ class GridSearchTest(googletest.TestCase):
 
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

@@ -18,13 +18,12 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score
 
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 from skflow.io import *
 import skflow
 
 
-class IOTest(googletest.TestCase):
+class IOTest(tf.test.TestCase):
 
     def test_pandas_dataframe(self):
         if HAS_PANDAS:

@@ -13,7 +13,6 @@
 #  limitations under the License.
 
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import random
 
@@ -22,7 +21,7 @@ from sklearn.cross_validation import train_test_split
 
 import skflow
 
-class CustomDecayTest(googletest.TestCase):
+class CustomDecayTest(tf.test.TestCase):
 
     def testIrisExponentialDecay(self):
         random.seed(42)
@@ -46,4 +45,4 @@ class CustomDecayTest(googletest.TestCase):
         self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

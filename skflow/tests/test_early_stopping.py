@@ -13,7 +13,6 @@
 #  limitations under the License.
 
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import random
 
@@ -22,7 +21,7 @@ from sklearn.cross_validation import train_test_split
 
 import skflow
 
-class EarlyStoppingTest(googletest.TestCase):
+class EarlyStoppingTest(tf.test.TestCase):
 
     def testIrisES(self):
         random.seed(42)
@@ -49,4 +48,4 @@ class EarlyStoppingTest(googletest.TestCase):
         self.assertGreater(score2, score1, "No improvement using early stopping.")
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

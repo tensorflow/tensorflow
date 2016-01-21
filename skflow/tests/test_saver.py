@@ -19,12 +19,11 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import skflow
 
 
-class SaverTest(googletest.TestCase):
+class SaverTest(tf.test.TestCase):
 
     def testIris(self):
         path = '/tmp/tmp.saver'
@@ -82,4 +81,4 @@ class SaverTest(googletest.TestCase):
         
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()
