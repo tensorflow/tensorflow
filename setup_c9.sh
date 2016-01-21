@@ -1,36 +1,13 @@
 #!/bin/bash  
-
-#  only need to run this script with the command (do not type the #)
+# this is a bash file to help you install tenserflow 
+#run this file from a shell  ./setup_c9.sh  
+#please check it you have python <3 installed 
  
-echo "First checking the Python version"
-python --version
-
-echo "--------------------------------------------------------------"
-echo ". "
-
-
-echo "Now checking is pip is installed"
-
-pip list
-
-echo "--------------------------------------------------------------"
-echo ". "
-
-
-echo "next list this directory"
-pwd
-ls -lah  
-
-echo "--------------------------------------------------------------"
-echo "Some other useful commands are cd     cd ..      dir    ls     pwd     "
-echo "."
-
+ 
 echo "Installing PIP and Virtual Environment"
 
 sudo apt-get install python-pip python-dev python-virtualenv
 
-echo "--------------------------------------------------------------"
-echo ". "
 
 echo "make the tensorflow environment"
 
@@ -38,7 +15,6 @@ virtualenv --system-site-packages ~/virtual-tf
 
 echo "--------------------------------------------------------------"
 echo ". "
-
 
 echo "Activate the environemtn use deactivate to get your cursor back"
 source ~/virtual-tf/bin/activate 
@@ -59,19 +35,12 @@ echo "Kind of wasteful but it isn't on our computer anyway"
 
 deactivate
 
-//git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+#//git clone --recurse-submodules https://github.com/tensorflow/tensorflow
 
 
 echo "--------------------------------------------------------------"
 echo ". "
 
-
-
-
-echo "--------------------------------------------------------------"
-echo ". "
-
-echo "--------------------------------------------------------------"
 echo "You can close this window by clicking the close x"
 echo "Right click rocksetta files and select run "
 echo "you can also run them manually by entering the virtual environment"
