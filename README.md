@@ -6,13 +6,14 @@
 # Scikit Flow
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
-Library covers variety of needs from linear models to Deep Learning applications like text and image understanding.
 
-Why TensorFlow?
+Library covers variety of needs from linear models to *Deep Learning* applications like text and image understanding.
+
+Why *TensorFlow*?
 * TensorFlow provides a good backbone for building different shapes of machine learning applications.
 * It will continue to evolve both in the distributed direction and as general pipelinining machinery.
 
-Why Scikit Flow?
+Why *Scikit Flow*?
 * To smooth the transition from the Scikit Learn world of one-liner machine learning into the
 more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable.
 * To provide a set of reference models that would be easy to integrate with existing code.
