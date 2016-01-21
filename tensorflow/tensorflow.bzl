@@ -3,7 +3,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
-load("/tensorflow/core/platform/default/build_config_root",
+load("/tensorflow/core/platform/google/build_config_root",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds
@@ -196,7 +196,7 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
           "//tensorflow/core:stream_executor",
-      ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+      ]) + ["//tensorflow/core/platform/google/build_config:cuda_runtime_extra"],
       alwayslink=1,
       **kwargs)
 
@@ -226,7 +226,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
 
   native.cc_library(
       deps = deps + if_cuda(cuda_deps) +
-          ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+          ["//tensorflow/core/platform/google/build_config:cuda_runtime_extra"],
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 

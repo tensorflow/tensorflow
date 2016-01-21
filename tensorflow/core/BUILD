@@ -55,7 +55,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gpu_kernel_library")
 
 # For platform specific build config
 load(
-    "//tensorflow/core:platform/google/build_config.bzl",
+    "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_additional_lib_srcs",
     "tf_additional_stream_executor_srcs",
@@ -155,7 +155,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/platform/google/build_config:gtest",
     ],
 )
 
@@ -391,7 +391,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_opensource",
-        "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
+        "//tensorflow/core/platform/google/build_config:tensorflow_platform_specific",
     ],
 )
 
@@ -427,7 +427,7 @@ cc_library(
         ":protos_all_cc",
         ":tensorflow",  # TODO(josh11b): Drop this dep?
         ":test",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/platform/google/build_config:gtest",
     ],
 )
 
@@ -710,7 +710,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         ":protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/google/build_config:platformlib",
     ],
 )
 
@@ -763,14 +763,14 @@ tf_cuda_library(
         "platform/stream_executor.h",
     ],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor",
+        "//tensorflow/core/platform/google/build_config:stream_executor",
     ],
 )
 
 # TODO(josh11b): Is this needed, or can we just use ":protos_all"?
 cc_library(
     name = "protos_cc",
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
+    deps = ["//tensorflow/core/platform/google/build_config:protos_cc"],
 )
 
 cc_library(
@@ -833,7 +833,7 @@ tf_cuda_library(
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
+        "//tensorflow/core/platform/google/build_config:cuda",
     ],
 )
 
@@ -916,7 +916,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":test",
-        "//tensorflow/core/platform/default/build_config:test_main",
+        "//tensorflow/core/platform/google/build_config:test_main",
     ],
 )
 

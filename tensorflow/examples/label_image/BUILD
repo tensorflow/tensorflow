@@ -40,7 +40,7 @@ cc_test(
         ":command_line_flags",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/platform/google/build_config:gtest",
     ],
 )
 
