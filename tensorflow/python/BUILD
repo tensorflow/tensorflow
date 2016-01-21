@@ -7,12 +7,12 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "tf_cuda_library")
-load("/tensorflow/tensorflow", "tf_gen_op_wrapper_py")
-load("/tensorflow/tensorflow", "py_tests")
-load("/tensorflow/tensorflow", "cuda_py_tests")
-load("/tensorflow/tensorflow", "tf_py_wrap_cc")
-load("/tensorflow/core/platform/default/build_config", "tf_proto_library_py")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 
 py_library(
     name = "python",
