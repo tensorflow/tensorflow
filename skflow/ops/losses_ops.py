@@ -25,8 +25,8 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
         if len(labels.get_shape()) == 1:
             labels = tf.reshape(labels, [-1, 1])
         diff = labels - predictions
-        loss = tf.reduce_sum(tf.mul(diff, diff))
-        return tf.concat(1, [predictions, diff]), loss
+        loss = tf.reduce_mean(tf.mul(diff, diff))
+        return predictions, loss
 
 
 def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, name=None):
