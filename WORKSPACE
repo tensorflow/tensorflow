@@ -49,12 +49,6 @@ new_http_archive(
   build_file = "jpeg.BUILD",
 )
 
-git_repository(
-  name = "gemmlowp",
-  remote = "https://github.com/google/gemmlowp.git",
-  commit = "cc5d3a0",
-)
-
 new_http_archive(
   name = "png_archive",
   url = "https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz",
