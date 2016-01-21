@@ -94,23 +94,6 @@ class ReservoirTest(tf.test.TestCase):
       r2.AddItem('key', i)
     self.assertNotEqual(r1.Items(key), r2.Items(key))
 
-  def testFilterItemsByKey(self):
-    r = reservoir.Reservoir(100, seed=0)
-    for i in xrange(10):
-      r.AddItem('key1', i)
-      r.AddItem('key2', i)
-
-    self.assertEqual(len(r.Items('key1')), 10)
-    self.assertEqual(len(r.Items('key2')), 10)
-
-    self.assertEqual(r.FilterItems(lambda x: x <= 7, 'key2'), 2)
-    self.assertEqual(len(r.Items('key2')), 8)
-    self.assertEqual(len(r.Items('key1')), 10)
-
-    self.assertEqual(r.FilterItems(lambda x: x <= 3, 'key1'), 6)
-    self.assertEqual(len(r.Items('key1')), 4)
-    self.assertEqual(len(r.Items('key2')), 8)
-
 
 class ReservoirBucketTest(tf.test.TestCase):
 

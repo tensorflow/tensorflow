@@ -26,8 +26,6 @@ import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import googletest
-from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator as ea
 
 
@@ -96,7 +94,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def setUp(self):
     super(MockingEventAccumulatorTest, self).setUp()
-    self.stubs = googletest.StubOutForTesting()
     self.empty = {ea.IMAGES: [],
                   ea.SCALARS: [],
                   ea.HISTOGRAMS: [],
@@ -110,7 +107,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ea.EventAccumulator = _FakeAccumulatorConstructor
 
   def tearDown(self):
-    self.stubs.CleanUp()
     ea.EventAccumulator = self._real_constructor
     ea._GeneratorFromPath = self._real_generator
 
@@ -380,9 +376,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     If a step value is observed to be lower than what was previously seen,
     this should force a discard of all previous items that are outdated.
     """
-    warnings = []
-    self.stubs.Set(logging, 'warn', warnings.append)
-
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
@@ -396,45 +389,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddScalar('s1', wall_time=1, step=201, value=20)
     gen.AddScalar('s1', wall_time=1, step=301, value=20)
     acc.Reload()
-    ## Check that we have discarded 200 and 300 from s1
-    self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
-
-    ## Check that the logging message is correct
-    self.assertEqual(warnings, [ea._GetPurgeMessage(300, 1, 101, 1, 2, 0, 0, 0)
-                               ])
-
-  def testEventsDiscardedPerTagAfterRestart(self):
-    """Tests that event discards after restart, only affect the misordered tag.
-
-    If a step value is observed to be lower than what was previously seen,
-    this should force a discard of all previous items that are outdated, but
-    only for the out of order tag. Other tags should remain unaffected.
-    """
-    warnings = []
-    self.stubs.Set(logging, 'warn', warnings.append)
-
-    gen = _EventGenerator()
-    acc = ea.EventAccumulator(gen)
-    gen.AddScalar('s1', wall_time=1, step=100, value=20)
-    gen.AddScalar('s1', wall_time=1, step=200, value=20)
-    gen.AddScalar('s1', wall_time=1, step=300, value=20)
-    gen.AddScalar('s1', wall_time=1, step=101, value=20)
-    gen.AddScalar('s1', wall_time=1, step=201, value=20)
-    gen.AddScalar('s1', wall_time=1, step=301, value=20)
-
-    gen.AddScalar('s2', wall_time=1, step=101, value=20)
-    gen.AddScalar('s2', wall_time=1, step=201, value=20)
-    gen.AddScalar('s2', wall_time=1, step=301, value=20)
-
-    acc.Reload()
     ## Check that we have discarded 200 and 300
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
-    self.assertEqual(warnings, [ea._GetPurgeMessage(300, 1, 101, 1, 2, 0, 0, 0)
-                               ])
-
-    ## Check that s1 discards do not affect s2
-    ## i.e. check that only events from the out of order tag are discarded
-    self.assertEqual([x.step for x in acc.Scalars('s2')], [101, 201, 301])
 
   def testOnlySummaryEventsTriggerDiscards(self):
     """Test that file version event doesnt trigger data purge."""

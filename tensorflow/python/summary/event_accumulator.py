@@ -178,7 +178,25 @@ class EventAccumulator(object):
         ## TODO(danmane): Have this check for restart events explicitly
         if (event.step < self.most_recent_step and
             event.HasField('summary')):
-          self._Purge(event)
+
+          ## Keep data in reservoirs that has a step less than event.step
+          _NotExpired = lambda x: x.step < event.step
+          num_expired_scalars = self._scalars.FilterItems(_NotExpired)
+          num_expired_histograms = self._histograms.FilterItems(_NotExpired)
+          num_expired_compressed_histograms = self._compressed_histograms.FilterItems(
+              _NotExpired)
+          num_expired_images = self._images.FilterItems(_NotExpired)
+
+          purge_msg = (
+              'Detected out of order event.step likely caused by a Tensorflow '
+              'restart. Purging expired events from Tensorboard display '
+              'between the previous step: {} (timestamp: {}) and current step:'
+              ' {} (timestamp: {}). Removing {} scalars, {} histograms, {} '
+              'compressed histograms, and {} images.').format(
+                  self.most_recent_step, self.most_recent_wall_time, event.step,
+                  event.wall_time, num_expired_scalars, num_expired_histograms,
+                  num_expired_compressed_histograms, num_expired_images)
+          logging.warn(purge_msg)
         else:
           self.most_recent_step = event.step
           self.most_recent_wall_time = event.wall_time
@@ -451,53 +469,6 @@ class EventAccumulator(object):
         height=image.height
     )
     self._images.AddItem(tag, event)
-
-  def _Purge(self, event):
-    """Purge all events that have occurred after the given event.step.
-
-    Purge all events that occurred after the given event.step, but only for
-    the tags that the event has. Non-sequential event.steps suggest that a
-    Tensorflow restart occured, and we discard the out-of-order events to
-    display a consistent view in TensorBoard.
-
-    Previously, the purge logic discarded all events after event.step (not just
-    within the affected tags), but this caused problems where race conditions in
-    supervisor caused many events to be unintentionally discarded.
-
-    Args:
-      event: The event to use as reference for the purge. All events with
-        the same tags, but with a greater event.step will be purged.
-    """
-
-    def _GetExpiredList(value):
-      ## Keep data in reservoirs that has a step less than event.step
-      _NotExpired = lambda x: x.step < event.step
-      return [x.FilterItems(_NotExpired, value.tag)
-              for x in (self._scalars, self._histograms,
-                        self._compressed_histograms, self._images)]
-
-    expired_per_tag = [_GetExpiredList(value) for value in event.summary.value]
-    expired_per_type = [sum(x) for x in zip(*expired_per_tag)]
-
-    if sum(expired_per_type) > 0:
-      purge_msg = _GetPurgeMessage(self.most_recent_step,
-                                   self.most_recent_wall_time, event.step,
-                                   event.wall_time, *expired_per_type)
-      logging.warn(purge_msg)
-
-
-def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
-                     event_wall_time, num_expired_scalars, num_expired_histos,
-                     num_expired_comp_histos, num_expired_images):
-  """Return the string message associated with TensorBoard purges."""
-  return ('Detected out of order event.step likely caused by '
-          'a TensorFlow restart. Purging expired events from Tensorboard'
-          ' display between the previous step: {} (timestamp: {}) and '
-          'current step: {} (timestamp: {}). Removing {} scalars, {} '
-          'histograms, {} compressed histograms, and {} images.').format(
-              most_recent_step, most_recent_wall_time, event_step,
-              event_wall_time, num_expired_scalars, num_expired_histos,
-              num_expired_comp_histos, num_expired_images)
 
 
 def _GeneratorFromPath(path):
