@@ -45,7 +45,7 @@ def linear_regression(X, y):
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
-def logistic_regression(X, y):
+def logistic_regression(X, y, class_weight=None):
     """Creates logistic regression TensorFlow subgraph.
 
     Args:
@@ -53,6 +53,9 @@ def logistic_regression(X, y):
            shape should be [batch_size, n_features].
         y: tensor or placeholder for target,
            shape should be [batch_size, n_classes].
+        class_weight: tensor, [n_classes], where for each class
+                      it has weight of the class. If not provided
+                      all ones are used.
 
     Returns:
         Predictions and loss tensors.
@@ -65,7 +68,8 @@ def logistic_regression(X, y):
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
         tf.histogram_summary('logistic_regression.weights', weights)
         tf.histogram_summary('logistic_regression.bias', bias)
-        return softmax_classifier(X, y, weights, bias)
+        return softmax_classifier(X, y, weights, bias,
+                                  class_weight=class_weight)
 
 
 def get_dnn_model(hidden_units, target_predictor_fn):
