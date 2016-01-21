@@ -24,7 +24,7 @@ from skflow import models
 class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow Linear Regression model."""
 
-    def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=50, optimizer="SGD",
+    def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
@@ -52,7 +52,7 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
 
-    def __init__(self, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
+    def __init__(self, n_classes, tf_master="", batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):

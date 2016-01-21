@@ -77,7 +77,8 @@ class TensorFlowEstimator(BaseEstimator):
             to be saved. The default value of 10,000 hours effectively disables the feature.
     """
 
-    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
+    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
+                 steps=200, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
                  num_cores=4, verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
