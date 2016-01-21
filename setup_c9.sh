@@ -30,8 +30,8 @@ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensor
 echo "--------------------------------------------------------------"
 echo ". "
 
-echo "Unfortunately on cloud 9 Pip hides the TensorFlow folder so lets clone it for our use"
-echo "Kind of wasteful but it isn't on our computer anyway"
+#echo "Unfortunately on cloud 9 Pip hides the TensorFlow folder so lets clone it for our use"
+#echo "Kind of wasteful but it isn't on our computer anyway"
 
 deactivate
 
