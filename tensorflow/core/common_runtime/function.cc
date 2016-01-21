@@ -1024,10 +1024,18 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return !candidates.empty();
 }
 
+string NewName(const Node* n, bool pretty) {
+  if (pretty) {
+    return strings::StrCat(n->type_string(), n->id());
+  } else {
+    return strings::StrCat("n", n->id());
+  }
+}
+
 // TODO(zhifengc): Maybe this should be the default Graph::AsGraphDef.
 // and stash the original NodeDef name as an attr for documentation
 // purpose.
-static void ToGraphDef(const Graph* g, GraphDef* gdef) {
+void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
   std::vector<int> pending(g->num_node_ids());
@@ -1050,7 +1058,7 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     }
     if (!n->IsOp()) continue;
     NodeDef* ndef = gdef->add_node();
-    ndef->set_name(strings::StrCat("n", n->id()));
+    ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
     *(ndef->mutable_attr()) = n->def().attr();
     inputs.clear();
@@ -1071,16 +1079,16 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     // to be unique and stable after optimization rewrites. Therefore,
     // we use "n<node id>" instead.
     for (const Edge* e : inputs) {
+      const string srcname = NewName(e->src(), pretty);
       if (e == nullptr) {
         ndef->add_input("unknown");
       } else if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
-        ndef->add_input(strings::StrCat("^n", e->src()->id()));
+        ndef->add_input(strings::StrCat("^", srcname));
       } else if (e->src_output() == 0) {
-        ndef->add_input(strings::StrCat("n", e->src()->id()));
+        ndef->add_input(srcname);
       } else {
-        ndef->add_input(
-            strings::StrCat("n", e->src()->id(), ":", e->src_output()));
+        ndef->add_input(strings::StrCat(srcname, ":", e->src_output()));
       }
     }
   }
