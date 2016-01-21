@@ -120,11 +120,9 @@ std::vector<Tensor> ConcatGrad(int dim, const Tensor& x0, const Tensor& x1,
   auto sess = NewSession();
   TF_CHECK_OK(sess->Create(gdef));
   std::vector<Tensor> out;
-  TF_CHECK_OK(sess->Run({{"dim", test::AsTensor<int32>({dim})},
-                         {"x0:0", x0},
-                         {"x1:0", x1},
-                         {"dy:0", dy}},
-                        {"dx:0", "dx:1", "dx:2"}, {}, &out));
+  TF_CHECK_OK(sess->Run(
+      {{"dim", test::AsScalar(dim)}, {"x0:0", x0}, {"x1:0", x1}, {"dy:0", dy}},
+      {"dx:0", "dx:1", "dx:2"}, {}, &out));
   CHECK_EQ(out.size(), 3);
   TF_CHECK_OK(sess->Close());
   delete sess;
@@ -139,7 +137,7 @@ TEST_F(ArrayGradTest, ConcatGrad) {
   Tensor dy(DT_FLOAT, {2, 4, 5});
   test::FillIota<float>(&dy, 0);
   auto dx = ConcatGrad(1, x0, x1, dy);
-  test::ExpectTensorEqual<int32>(dx[0], test::AsTensor<int32>({0}));
+  test::ExpectTensorEqual<int32>(dx[0], test::AsScalar(0));
   test::ExpectClose(
       dx[1],
       test::AsTensor<float>({0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9.,
@@ -169,7 +167,7 @@ std::vector<Tensor> SplitGrad(int dim, const Tensor& x, const Tensor& dy0,
   auto sess = NewSession();
   TF_CHECK_OK(sess->Create(gdef));
   std::vector<Tensor> out;
-  TF_CHECK_OK(sess->Run({{"dim", test::AsTensor<int32>({dim})},
+  TF_CHECK_OK(sess->Run({{"dim", test::AsScalar(dim)},
                          {"x:0", x},
                          {"dy0:0", dy0},
                          {"dy1:0", dy1}},
@@ -188,7 +186,7 @@ TEST_F(ArrayGradTest, SplitGrad) {
   test::FillIota<float>(&dy0, 0);
   test::FillIota<float>(&dy1, 100);
   auto dx = SplitGrad(1, x, dy0, dy1);
-  test::ExpectTensorEqual<int32>(dx[0], test::AsTensor<int32>({0}));
+  test::ExpectTensorEqual<int32>(dx[0], test::AsScalar(0));
   test::ExpectClose(
       dx[1], test::AsTensor<float>(
                  {0.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8.,   9.,
