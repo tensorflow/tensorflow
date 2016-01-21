@@ -788,7 +788,7 @@ tf_cuda_library(
     srcs = glob(
         [
             "client/**/*.cc",
-            "common_runtime/**/*.h",
+            "common_runtime/**/*.h",  # TODO(josh11b): exclude common_runtime/gpu/
             "common_runtime/**/*.cc",
             "graph/**/*.h",
             "graph/**/*.cc",
@@ -809,7 +809,7 @@ tf_cuda_library(
     ),
     hdrs = glob(
         [
-            "common_runtime/**/*.h",
+            "common_runtime/**/*.h",  # TODO(josh11b): exclude common_runtime/gpu/
             "graph/**/*.h",
         ],
         exclude = [
