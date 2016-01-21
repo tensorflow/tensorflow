@@ -65,6 +65,15 @@ class NonLinearTest(tf.test.TestCase):
         # TODO: Add test case once we have data set in the repo
         classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=5, cell_type='gru', input_op_fn=input_op_fn, n_classes=3)
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=5, cell_type='rnn', input_op_fn=input_op_fn, n_classes=3)
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=5, cell_type='lstm', input_op_fn=input_op_fn, n_classes=3)
+        with self.assertRaises(ValueError):
+            classifier = skflow.TensorFlowRNNClassifier(
+                rnn_size=5, cell_type='invalid_type',
+                input_op_fn=input_op_fn, n_classes=3)
+            classifier._model_fn(data, labels)
         classifier = skflow.TensorFlowRNNRegressor(
             rnn_size=5, cell_type='gru', input_op_fn=input_op_fn, n_classes=0)
 
