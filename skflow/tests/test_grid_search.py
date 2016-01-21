@@ -35,7 +35,7 @@ class GridSearchTest(googletest.TestCase):
             {'hidden_units': [[5, 5], [10, 10]],
              'learning_rate': [0.1, 0.01]})
         grid_search.fit(iris.data, iris.target)
-        score = accuracy_score(grid_search.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, grid_search.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 

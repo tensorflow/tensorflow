@@ -35,7 +35,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testCustomModel(self):
@@ -50,7 +50,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     
     def testDNN(self):
@@ -62,7 +62,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testNoFolder(self):

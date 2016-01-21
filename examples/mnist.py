@@ -35,7 +35,7 @@ mnist = input_data.read_data_sets('MNIST_data')
 classifier = skflow.TensorFlowLinearClassifier(
     n_classes=10, batch_size=100, steps=1000, learning_rate=0.01)
 classifier.fit(mnist.train.images, mnist.train.labels)
-score = metrics.accuracy_score(classifier.predict(mnist.test.images), mnist.test.labels)
+score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
 print('Accuracy: {0:f}'.format(score))
 
 ### Convolutional network
@@ -62,6 +62,5 @@ classifier = skflow.TensorFlowEstimator(
     model_fn=conv_model, n_classes=10, batch_size=100, steps=20000,
     learning_rate=0.001)
 classifier.fit(mnist.train.images, mnist.train.labels)
-score = metrics.accuracy_score(classifier.predict(mnist.test.images), mnist.test.labels)
+score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
 print('Accuracy: {0:f}'.format(score))
-

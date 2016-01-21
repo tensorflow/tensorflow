@@ -37,14 +37,14 @@ class EarlyStoppingTest(googletest.TestCase):
         classifier1 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                     n_classes=3, steps=800)
         classifier1.fit(X_train, y_train)
-        score1 = metrics.accuracy_score(classifier1.predict(X_test), y_test)
+        score1 = metrics.accuracy_score(y_test, classifier1.predict(X_test))
 
         # classifier with early stopping - improved accuracy on testing set
         classifier2 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                     n_classes=3, steps=1000,
                                                     early_stopping_rounds=200)
         classifier2.fit(X_train, y_train)
-        score2 = metrics.accuracy_score(classifier2.predict(X_test), y_test)
+        score2 = metrics.accuracy_score(y_test, classifier2.predict(X_test))
 
         self.assertGreater(score2, score1, "No improvement using early stopping.")
 

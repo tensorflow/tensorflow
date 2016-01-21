@@ -31,6 +31,6 @@ def my_model(X, y):
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3,
     steps=1000)
 classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
 

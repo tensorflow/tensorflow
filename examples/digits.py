@@ -42,5 +42,5 @@ classifier = skflow.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
                                         steps=500, learning_rate=0.05,
                                         batch_size=128)
 classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))

@@ -41,7 +41,7 @@ class BaseTest(googletest.TestCase):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testIrisSummaries(self):
@@ -49,7 +49,7 @@ class BaseTest(googletest.TestCase):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target, logdir='/tmp/skflow_tests/')
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 
@@ -59,9 +59,9 @@ class BaseTest(googletest.TestCase):
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
             learning_rate=0.05, continue_training=True)
         classifier.fit(iris.data, iris.target)
-        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
+        score1 = accuracy_score(iris.target, classifier.predict(iris.data))
         classifier.fit(iris.data, iris.target)
-        score2 = accuracy_score(classifier.predict(iris.data), iris.target)
+        score2 = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score2, score1,
                            "Failed with score = {0}".format(score2))
 
@@ -84,8 +84,8 @@ class BaseTest(googletest.TestCase):
 
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3, steps=100)
         classifier.fit(iris_data(), iris_target())
-        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
-        score2 = accuracy_score(classifier.predict(iris_predict_data()), iris.target)
+        score1 = accuracy_score(iris.target, classifier.predict(iris.data))
+        score2 = accuracy_score(iris.target, classifier.predict(iris_predict_data()))
         self.assertGreater(score1, 0.5, "Failed with score = {0}".format(score1))
         self.assertEqual(score2, score1, "Scores from {0} iterator doesn't "
                                          "match score {1} from full "

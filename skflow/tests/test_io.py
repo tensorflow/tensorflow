@@ -34,7 +34,7 @@ class IOTest(googletest.TestCase):
             labels = pd.DataFrame(iris.target)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
-            score = accuracy_score(classifier.predict(data), labels)
+            score = accuracy_score(labels, classifier.predict(data))
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
         else:
             print("No pandas installed. pandas-related tests are skipped.")
@@ -47,7 +47,7 @@ class IOTest(googletest.TestCase):
             labels = pd.Series(iris.target)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
-            score = accuracy_score(classifier.predict(data), labels)
+            score = accuracy_score(labels, classifier.predict(data))
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def test_string_data_formats(self):
@@ -89,7 +89,7 @@ class IOTest(googletest.TestCase):
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
             predictions = data.map_partitions(classifier.predict).compute()
-            score = accuracy_score(predictions, labels.compute())
+            score = accuracy_score(labels.compute(), predictions)
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 if __name__ == '__main__':

@@ -87,6 +87,6 @@ classifier = skflow.TensorFlowEstimator(model_fn=cnn_model, n_classes=15,
 # Continuesly train for 1000 steps & predict on test set.
 while True:
     classifier.fit(X_train, y_train, logdir='/tmp/tf_examples/word_cnn')
-    score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+    score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print('Accuracy: {0:f}'.format(score))
 

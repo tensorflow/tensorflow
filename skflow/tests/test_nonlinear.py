@@ -31,7 +31,7 @@ class NonLinearTest(googletest.TestCase):
         classifier = skflow.TensorFlowDNNClassifier(
             hidden_units=[10, 20, 10], n_classes=3)
         classifier.fit(iris.data, iris.target)
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testBoston(self):
