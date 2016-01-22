@@ -167,10 +167,21 @@ class DataFeeder(object):
         self.input_shape, self.output_shape = _get_in_out_shape(
             self.X.shape, self.y.shape, n_classes, batch_size)
         self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
-        if random_state is None:
-            self.random_state = np.random.RandomState(42)
-        else:
-            self.random_state = random_state
+        self.random_state = np.random.RandomState(42) if random_state is None else random_state
+        self.indices = self.random_state.permutation(self.X.shape[0])
+        self.offset = 0
+        self.epoch = 0
+
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {
+            'epoch': self.epoch,
+            'offset': self.offset,
+            'batch_size': self.batch_size
+        }
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -184,14 +195,18 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
+            # take random indices
+            batch_indices = self.indices[self.offset: self.offset+self.batch_size]
+
+            # assign input features from random indices
+            inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
+                if len(self.X.shape) == 1 else self.X[batch_indices]
+
+            # assign labels from random indices
+            self.output_shape[0] = batch_indices.shape[0]
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
-            for i in xrange(self.batch_size):
-                sample = self.random_state.randint(0, self.X.shape[0])
-                if len(self.X.shape) == 1:
-                    inp[i, :] = [self.X[sample]]
-                else:
-                    inp[i, :] = self.X[sample, :]
+            for i in xrange(out.shape[0]):
+                sample = batch_indices[i]
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
                         out.itemset((i, self.y[sample]), 1.0)
@@ -200,6 +215,14 @@ class DataFeeder(object):
                             out.itemset(tuple([i, idx, value]), 1.0)
                 else:
                     out[i] = self.y[sample]
+
+            # move offset and reset it if necessary
+            self.offset += self.batch_size
+            if self.offset >= self.X.shape[0]:
+                self.indices = self.random_state.permutation(self.X.shape[0])
+                self.offset = 0
+                self.epoch += 1
+
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
@@ -246,6 +269,13 @@ class StreamingDataFeeder(object):
             self.input_dtype = np.float32
         # Output types are floats, due to both softmaxes and regression req.
         self.output_dtype = np.float32
+
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {'batch_size': self.batch_size}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -332,6 +362,14 @@ class DaskDataFeeder(object):
             self.random_state = 66
         else:
             self.random_state = random_state
+        self.batch_size = batch_size
+
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {'batch_size': self.batch_size}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
