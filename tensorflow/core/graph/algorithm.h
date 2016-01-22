@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/graph/graph.h"
 

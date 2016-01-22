@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"

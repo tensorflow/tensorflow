@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/edgeset.h"
 
+#include <vector>
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
 

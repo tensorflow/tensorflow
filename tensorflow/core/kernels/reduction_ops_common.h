@@ -250,7 +250,7 @@ class ReductionOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& data = ctx->input(0);
     const Tensor& axes = ctx->input(1);
-    VLOG(1) << "data shape: " << data.shape().ShortDebugString();
+    VLOG(1) << "data shape: " << data.shape().DebugString();
     VLOG(1) << "axes      : " << axes.SummarizeValue(10);
 
     ReductionHelper helper;

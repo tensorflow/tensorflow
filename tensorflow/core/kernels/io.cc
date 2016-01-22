@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/kernels/io.h"
 
 #include "tensorflow/core/framework/op_kernel.h"

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
 #define TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"

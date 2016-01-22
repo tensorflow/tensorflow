@@ -41,7 +41,7 @@ class EncodePngOp : public OpKernel {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() == 3,
                 errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
     const int64 channels = image.dim_size(2);
     OP_REQUIRES(context, channels == 1 || channels == 3 || channels == 4,
                 errors::InvalidArgument(

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"

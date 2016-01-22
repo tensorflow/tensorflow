@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/block.h"
 #include "tensorflow/core/lib/io/block_builder.h"

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"

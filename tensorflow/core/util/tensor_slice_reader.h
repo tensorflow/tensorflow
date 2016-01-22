@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"

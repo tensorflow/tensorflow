@@ -37,7 +37,7 @@ class ReshapeOp : public OpKernel {
     // Preliminary validation of sizes.
     OP_REQUIRES(context, IsLegacyVector(sizes.shape()),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
-                                        sizes.shape().ShortDebugString()));
+                                        sizes.shape().DebugString()));
     const int64 num_dims = sizes.NumElements();
 
     // Compute the output shape.  Determine product of specified

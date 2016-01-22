@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_constructor.h"
 
+#include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"

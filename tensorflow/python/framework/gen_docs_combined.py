@@ -120,7 +120,8 @@ def all_libraries(module_to_name, members, documented):
 _hidden_symbols = ["Event", "Summary", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "SessionInterface",
-                   "BaseSession", "NameAttrList", "AttrValue"]
+                   "BaseSession", "NameAttrList", "AttrValue",
+                   "TensorArray"]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <limits>
 
+#include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

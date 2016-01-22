@@ -219,7 +219,7 @@ Status PaddingFIFOQueue::ValidateTuple(const Tuple& tuple) {
       return errors::InvalidArgument("Shape mismatch in tuple component ", i,
                                      ". Expected ",
                                      partial_shapes_[i].DebugString(), ", got ",
-                                     tuple[i].shape().ShortDebugString());
+                                     tuple[i].shape().DebugString());
     }
   }
   return Status::OK();
@@ -236,7 +236,7 @@ Status PaddingFIFOQueue::ValidateManyTuple(const Tuple& tuple) {
       return errors::InvalidArgument("Shape mismatch in tuple component ", i,
                                      ". Expected ",
                                      expected_shape.DebugString(), ", got ",
-                                     tuple[i].shape().ShortDebugString());
+                                     tuple[i].shape().DebugString());
     }
   }
   return Status::OK();

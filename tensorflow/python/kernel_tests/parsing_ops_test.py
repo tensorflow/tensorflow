@@ -523,7 +523,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             [[5, 6, 7]],
             [[8, 9, 10]]], dtype=np.int64),
         "b": np.array([  # outer dimension is time, inside are 2x2 matrices
-            [[b"r00", b"r01"], [b"r10", b"r11"]]], dtype=np.str),
+            [[b"r00", b"r01"], [b"r10", b"r11"]]], dtype=bytes),
         "c": np.array([  # outer dimension is time, inside are 2-vectors
             [3, 4],
             [-1, 2]], dtype=np.float32),

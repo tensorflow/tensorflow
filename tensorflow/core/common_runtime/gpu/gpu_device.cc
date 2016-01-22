@@ -24,6 +24,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"

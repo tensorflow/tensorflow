@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

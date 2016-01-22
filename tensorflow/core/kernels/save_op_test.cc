@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"

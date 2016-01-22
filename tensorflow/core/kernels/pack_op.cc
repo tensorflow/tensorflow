@@ -51,8 +51,8 @@ class PackOp : public OpKernel {
       OP_REQUIRES(c, values[0].shape().IsSameSize(values[i].shape()),
                   errors::InvalidArgument(
                       "Shapes of all inputs must match: values[0].shape = ",
-                      values[0].shape().ShortDebugString(), " != values[", i,
-                      "].shape = ", values[i].shape().ShortDebugString()));
+                      values[0].shape().DebugString(), " != values[", i,
+                      "].shape = ", values[i].shape().DebugString()));
     }
 
     TensorShape output_shape(values[0].shape());

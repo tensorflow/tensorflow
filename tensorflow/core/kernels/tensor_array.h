@@ -69,10 +69,11 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 class TensorArray : public ResourceBase {
  public:
   TensorArray(const DataType& dtype, const Tensor& handle, int32 N)
-      : dtype_(dtype), handle_(handle), tensor_array_(N) {}
+      : dead_(false), dtype_(dtype), handle_(handle), tensor_array_(N) {}
 
   Status Write(const int32 index, const PersistentTensor& value) {
     mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfDead());
     if (index < 0 || index >= tensor_array_.size()) {
       return errors::InvalidArgument("Tried to write to index ", index,
                                      " but array size is: ",
@@ -91,6 +92,7 @@ class TensorArray : public ResourceBase {
   Status WriteOrAdd(OpKernelContext* ctx, const int32 index,
                     PersistentTensor value) {
     mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfDead());
     if (index < 0 || index >= tensor_array_.size()) {
       return errors::InvalidArgument("Tried to write to index ", index,
                                      " but array size is: ",
@@ -101,10 +103,10 @@ class TensorArray : public ResourceBase {
       const Tensor* current = tensor_array_[index].AccessTensor(ctx);
       const Tensor* add = value.AccessTensor(ctx);
       if (!current->shape().IsSameSize(add->shape())) {
-        return errors::InvalidArgument(
-            "Cannot add to index ", index, " because shapes are inconsistent: ",
-            current->shape().ShortDebugString(), " vs. ",
-            add->shape().ShortDebugString());
+        return errors::InvalidArgument("Cannot add to index ", index,
+                                       " because shapes are inconsistent: ",
+                                       current->shape().DebugString(), " vs. ",
+                                       add->shape().DebugString());
       }
       return tensor_array::TensorArrayWriteOrAdd<T, Device>(ctx, sum, current,
                                                             add);
@@ -116,6 +118,7 @@ class TensorArray : public ResourceBase {
 
   Status Read(const int32 index, PersistentTensor* value) {
     mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfDead());
     if (index < 0 || index >= tensor_array_.size()) {
       return errors::InvalidArgument("Tried to read from index ", index,
                                      " but array size is: ",
@@ -132,20 +135,39 @@ class TensorArray : public ResourceBase {
 
   inline int32 Size() {
     mutex_lock l(mu_);
+    DCHECK(!dead_);
     return tensor_array_.size();
+  }
+
+  inline Status LockedReturnIfDead() const {
+    if (dead_) {
+      return errors::InvalidArgument("Tensor ", handle_.vec<string>()(1),
+                                     " has already been closed.");
+    }
+    return Status::OK();
   }
 
   DataType ElemType() { return dtype_; }
 
   string DebugString() override {
     mutex_lock l(mu_);
+    DCHECK(!dead_);
     return strings::StrCat("TensorArray[", tensor_array_.size(), "]");
+  }
+
+  inline bool IsDead() const { return dead_; }
+
+  void ClearAndMarkDead() {
+    mutex_lock l(mu_);
+    tensor_array_.clear();
+    dead_ = true;
   }
 
   mutex* mu() { return &mu_; }
   Tensor* handle() { return &handle_; }
 
  private:
+  bool dead_;  // Marks that the tensor_array_ has been cleared.
   mutex mu_;
   DataType dtype_;
   Tensor handle_;

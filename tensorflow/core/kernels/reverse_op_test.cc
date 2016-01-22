@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"

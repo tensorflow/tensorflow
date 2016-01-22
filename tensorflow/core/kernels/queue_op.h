@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_QUEUE_OP_H_
 
 #include <deque>
-#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"

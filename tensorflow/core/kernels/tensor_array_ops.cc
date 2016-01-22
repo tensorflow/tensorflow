@@ -44,9 +44,11 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace tensorflow {
 
 Status GetHandle(const string& input_name, OpKernelContext* ctx,
-                 string* container, string* table_handle) {
+                 string* container, string* ta_handle) {
   {
     Tensor tensor;
+    // Assuming that input_name is at position 0 for puposes of
+    // has_input.
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, false));
     if (tensor.NumElements() != 2) {
       return errors::InvalidArgument(
@@ -55,19 +57,29 @@ Status GetHandle(const string& input_name, OpKernelContext* ctx,
     }
     auto h = tensor.flat<string>();
     *container = h(0);
-    *table_handle = h(1);
+    *ta_handle = h(1);
   }
   return Status::OK();
 }
 
 Status GetTensorArray(const string& input_name, OpKernelContext* ctx,
-                      TensorArray** table) {
+                      TensorArray** tensor_array) {
   string container;
-  string table_handle;
-  TF_RETURN_IF_ERROR(GetHandle(input_name, ctx, &container, &table_handle));
+  string ta_handle;
+  TF_RETURN_IF_ERROR(GetHandle(input_name, ctx, &container, &ta_handle));
   ResourceMgr* rm = ctx->step_resource_manager();
   if (rm == nullptr) return errors::Internal("No per-step resource manager.");
-  return rm->Lookup(container, table_handle, table);
+  TF_RETURN_IF_ERROR(rm->Lookup(container, ta_handle, tensor_array));
+  return Status::OK();
+}
+
+Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
+  const Tensor* flow_control;
+  TF_RETURN_IF_ERROR(ctx->input("flow_in", &flow_control));
+  if (set_output) {
+    TF_RETURN_IF_ERROR(ctx->set_output("flow_out", *flow_control));
+  }
+  return Status::OK();
 }
 
 // Virtual class for shared behavior between TensorArrayOp and
@@ -230,6 +242,8 @@ class TensorArrayWriteOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
+
     const Tensor* tensor_index;
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("index", &tensor_index));
@@ -296,6 +310,8 @@ class TensorArrayReadOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
+
     const Tensor* tensor_index;
     OP_REQUIRES_OK(ctx, ctx->input("index", &tensor_index));
 
@@ -355,6 +371,8 @@ class TensorArrayPackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
+
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
     const int32 array_size = tensor_array->Size();
@@ -457,6 +475,8 @@ class TensorArrayUnpackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
+
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
 
@@ -548,18 +568,16 @@ class TensorArrayCloseOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor Ttensor_array_handle = ctx->mutable_input(0, false);
-    OP_REQUIRES(
-        ctx, Ttensor_array_handle.NumElements() == 2,
-        errors::InvalidArgument(
-            "TensorArray handle must have two elements, but had shape: ",
-            Ttensor_array_handle.shape().DebugString()));
-    const string& container = Ttensor_array_handle.flat<string>()(0);
-    const string& tensor_array_name = Ttensor_array_handle.flat<string>()(1);
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
-    OP_REQUIRES_OK(ctx, rm->Delete<TensorArray>(container, tensor_array_name));
+    TensorArray* tensor_array;
+    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    // Instead of deleting this TA from the ResourceManager, we just
+    // clear it away and mark it as dead.  The remaining memory
+    // consumed store its mutex and handle Tensor.  This will be
+    // cleared out at the end of the step anyway, so it's fine to keep
+    // it around temporarily.  The next call to GetTensorArray will
+    // fail because GetTensorArray checks to see if the TensorArray is
+    // dead or not.
+    tensor_array->ClearAndMarkDead();
   }
 };
 

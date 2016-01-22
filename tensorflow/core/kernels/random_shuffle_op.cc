@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/random_ops.cc.
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_util.h"

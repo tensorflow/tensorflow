@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"

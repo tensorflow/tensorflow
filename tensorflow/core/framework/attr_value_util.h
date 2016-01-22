@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
 #include <string>
+#include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"

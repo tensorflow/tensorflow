@@ -99,6 +99,12 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 // to nodes *g.
 void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g);
 
+// Convert the Graph of a function to a GraphDef.
+//
+// Handles renaming of nodes to avoid duplicate names which may
+// be present after various rewriting operations.
+void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
+
 // Given a numerical function "f", returns another numerical function
 // "g", such that if "f" takes N inputs and produces M outputs, "g"
 // takes N + M inputs and produces N outputs. I.e., if

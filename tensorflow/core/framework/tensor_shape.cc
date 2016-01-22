@@ -39,12 +39,12 @@ Status TensorShape::IsValidShape(const TensorShapeProto& proto) {
   int64 num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
-      return errors::InvalidArgument("Shape ", ShortDebugString(proto),
+      return errors::InvalidArgument("Shape ", DebugString(proto),
                                      " has negative dimensions");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
-      return errors::InvalidArgument("Shape ", ShortDebugString(proto),
+      return errors::InvalidArgument("Shape ", DebugString(proto),
                                      " is too large (more than ", kMaxElements,
                                      " entries)");
     }
@@ -153,7 +153,7 @@ string TensorShape::DebugString() const {
       "[", str_util::Join(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
 }
 
-string TensorShape::ShortDebugString(const TensorShapeProto& proto) {
+string TensorShape::DebugString(const TensorShapeProto& proto) {
   string s = "[";
   bool first = true;
   for (const auto& d : proto.dim()) {

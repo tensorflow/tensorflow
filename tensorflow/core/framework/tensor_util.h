@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/tensor.h"
 
+#include <vector>
 namespace tensorflow {
 namespace tensor {
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/queue_base.h"
 
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
@@ -93,7 +94,7 @@ string QueueBase::ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.ShortDebugString());
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
     first = false;
   }
   strings::StrAppend(&result, "]");
@@ -159,8 +160,8 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
       if (!component_shapes_[i].IsSameSize(tuple[i].shape())) {
         return errors::InvalidArgument(
             "Shape mismatch in tuple component ", i, ". Expected ",
-            component_shapes_[i].ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+            component_shapes_[i].DebugString(), ", got ",
+            tuple[i].shape().DebugString());
       }
     }
   }
@@ -177,10 +178,10 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
       // Expected shape is [batch_size] + component_shapes_[i]
       const TensorShape expected_shape = ManyOutShape(i, batch_size);
       if (!expected_shape.IsSameSize(tuple[i].shape())) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            expected_shape.ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+        return errors::InvalidArgument("Shape mismatch in tuple component ", i,
+                                       ". Expected ",
+                                       expected_shape.DebugString(), ", got ",
+                                       tuple[i].shape().DebugString());
       }
     }
   } else {
