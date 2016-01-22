@@ -50,7 +50,7 @@ class TileOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().ShortDebugString()));
+                                multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",
@@ -196,7 +196,7 @@ class TileGradientOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().ShortDebugString()));
+                                multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",

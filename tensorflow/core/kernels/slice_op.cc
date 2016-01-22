@@ -75,9 +75,8 @@ static void SharedValidation(OpKernelContext* context,
                    size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input.dims(), ", but got shapes ",
-          begin_tensor.shape().ShortDebugString(), " and ",
-          size_tensor.shape().ShortDebugString(), " instead."));
+          input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
+          " and ", size_tensor.shape().DebugString(), " instead."));
 
   const int input_dims = input.dims();
   *begin = IntTensorToInt64Vec(begin_tensor);

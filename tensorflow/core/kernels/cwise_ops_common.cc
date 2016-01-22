@@ -25,8 +25,8 @@ BinaryOpShared::BinaryOpShared(OpKernelConstruction* ctx, DataType out,
 
 void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
   ctx->SetStatus(errors::Unimplemented(
-      "Broadcast between ", ctx->input(0).shape().ShortDebugString(), " and ",
-      ctx->input(1).shape().ShortDebugString(), " is not supported yet."));
+      "Broadcast between ", ctx->input(0).shape().DebugString(), " and ",
+      ctx->input(1).shape().DebugString(), " is not supported yet."));
 }
 
 static BCast::Vec FromShape(const TensorShape& shape) {
@@ -48,8 +48,8 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
             FromShape(ctx->input(1).shape())) {
   if (!bcast.IsValid()) {
     ctx->SetStatus(errors::InvalidArgument(
-        "Incompatible shapes: ", ctx->input(0).shape().ShortDebugString(),
-        " vs. ", ctx->input(1).shape().ShortDebugString()));
+        "Incompatible shapes: ", ctx->input(0).shape().DebugString(), " vs. ",
+        ctx->input(1).shape().DebugString()));
     return;
   }
   OP_REQUIRES_OK(ctx,

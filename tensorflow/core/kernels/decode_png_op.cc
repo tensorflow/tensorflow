@@ -42,7 +42,7 @@ class DecodePngOp : public OpKernel {
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
                 errors::InvalidArgument("contents must be scalar, got shape ",
-                                        contents.shape().ShortDebugString()));
+                                        contents.shape().DebugString()));
 
     // Start decoding image to get shape details
     const StringPiece data = contents.scalar<string>()();

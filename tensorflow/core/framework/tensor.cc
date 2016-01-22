@@ -571,8 +571,8 @@ size_t Tensor::BufferHash() const {
 
 string Tensor::DebugString() const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
-                         shape().ShortDebugString(), " values: ",
-                         SummarizeValue(3), ">");
+                         shape().DebugString(), " values: ", SummarizeValue(3),
+                         ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

@@ -111,7 +111,7 @@ Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
   PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
   if (obj == nullptr) {
     return errors::Internal("Failed to allocate np array: ",
-                            t.shape().ShortDebugString());
+                            t.shape().DebugString());
   }
   PyArrayObject* np_array = reinterpret_cast<PyArrayObject*>(obj);
   CHECK(DataTypeCanUseMemcpy(t.dtype()));

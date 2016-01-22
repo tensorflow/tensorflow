@@ -126,10 +126,10 @@ class Conv2DOp : public BinaryOp<T> {
     // For 2D convolution, there should be 4 dimensions.
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     OP_REQUIRES(context, filter.dims() == 4,
                 errors::InvalidArgument("filter must be 4-dimensional: ",
-                                        filter.shape().ShortDebugString()));
+                                        filter.shape().DebugString()));
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.

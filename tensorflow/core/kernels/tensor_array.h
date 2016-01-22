@@ -103,10 +103,10 @@ class TensorArray : public ResourceBase {
       const Tensor* current = tensor_array_[index].AccessTensor(ctx);
       const Tensor* add = value.AccessTensor(ctx);
       if (!current->shape().IsSameSize(add->shape())) {
-        return errors::InvalidArgument(
-            "Cannot add to index ", index, " because shapes are inconsistent: ",
-            current->shape().ShortDebugString(), " vs. ",
-            add->shape().ShortDebugString());
+        return errors::InvalidArgument("Cannot add to index ", index,
+                                       " because shapes are inconsistent: ",
+                                       current->shape().DebugString(), " vs. ",
+                                       add->shape().DebugString());
       }
       return tensor_array::TensorArrayWriteOrAdd<T, Device>(ctx, sum, current,
                                                             add);

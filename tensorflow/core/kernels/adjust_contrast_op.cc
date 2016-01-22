@@ -48,20 +48,20 @@ class AdjustContrastOp : public OpKernel {
     const Tensor& max_value = context->input(3);
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const int64 height = input.dim_size(input.dims() - 3);
     const int64 width = input.dim_size(input.dims() - 2);
     const int64 channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().ShortDebugString()));
+                                        factor.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_value.shape()),
                 errors::InvalidArgument("min_value must be scalar: ",
-                                        min_value.shape().ShortDebugString()));
+                                        min_value.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_value.shape()),
                 errors::InvalidArgument("max_value must be scalar: ",
-                                        max_value.shape().ShortDebugString()));
+                                        max_value.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -147,14 +147,14 @@ class AdjustContrastOpv2 : public OpKernel {
     const Tensor& factor = context->input(1);
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const int64 height = input.dim_size(input.dims() - 3);
     const int64 width = input.dim_size(input.dims() - 2);
     const int64 channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().ShortDebugString()));
+                                        factor.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

@@ -43,13 +43,13 @@ class DynamicPartitionOp_Shared : public OpKernel {
                                   OpOutputList* Tout) {
     OP_REQUIRES_OK(c, c->input("data", data));
     OP_REQUIRES_OK(c, c->input("partitions", partitions));
-    OP_REQUIRES(c, TensorShapeUtils::StartsWith((*data)->shape(),
-                                                (*partitions)->shape()),
-                errors::InvalidArgument(
-                    "data.shape must start with partitions.shape, ",
-                    "got data.shape = ", (*data)->shape().ShortDebugString(),
-                    ", partitions.shape = ",
-                    (*partitions)->shape().ShortDebugString()));
+    OP_REQUIRES(
+        c,
+        TensorShapeUtils::StartsWith((*data)->shape(), (*partitions)->shape()),
+        errors::InvalidArgument(
+            "data.shape must start with partitions.shape, ",
+            "got data.shape = ", (*data)->shape().DebugString(),
+            ", partitions.shape = ", (*partitions)->shape().DebugString()));
 
     // Count how many occurrences of each partition id we have in partitions
     gtl::InlinedVector<int, 32> partition_count(num_partitions_);

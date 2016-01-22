@@ -129,10 +129,15 @@ class TensorShape {
   string ShortDebugString() const { return DebugString(); }
   // TODO(irving): Remove, used to be different but isn't now.
 
-  /// Same as `TensorShape(proto).ShortDebugString()` but doesn't crash for
+  /// Same as `TensorShape(proto).DebugString()` but doesn't crash for
   /// invalid protos.
-  static string ShortDebugString(const TensorShapeProto& proto);
-  // TODO(irving): Rename to DebugString.
+  static string DebugString(const TensorShapeProto& proto);
+
+  /// Same as DebugString()
+  static string ShortDebugString(const TensorShapeProto& proto) {
+    return DebugString(proto);
+  }
+  // TODO(irving): Remove in favor of DebugString
 
  private:
   // Recalculates the dimensions of this tensor after they are modified.

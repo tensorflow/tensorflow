@@ -41,10 +41,10 @@ class UnpackOp : public OpKernel {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
-    OP_REQUIRES(
-        context, input_shape.dims() > 0 && input_shape.dim_size(0) == num,
-        errors::InvalidArgument("Input shape must start with ", num, ", got ",
-                                input_shape.ShortDebugString()));
+    OP_REQUIRES(context,
+                input_shape.dims() > 0 && input_shape.dim_size(0) == num,
+                errors::InvalidArgument("Input shape must start with ", num,
+                                        ", got ", input_shape.DebugString()));
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(0);
