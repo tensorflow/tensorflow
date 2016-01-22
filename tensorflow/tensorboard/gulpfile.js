@@ -121,16 +121,17 @@ gulp.task('watch', ['compile.all', 'tslint-permissive'], function() {
 });
 
 gulp.task('server', function() {
-  gulp.src('.')
-    .pipe(server({
-      host: options.h,
-      port: options.p,
-      livereload: {
-        enable: true,
-        port: 27729 + options.p
-      },
-      directoryListing: true,
-    }));
+  gulp.src('.').pipe(server({
+    host: options.h,
+    port: options.p,
+    livereload: {
+      enable: true,
+      // Don't livereload on .ts changes, since they aren't loaded by browser.
+      filter: function(filePath, cb) { cb(!(/\.ts$/.test(filePath))); },
+      port: 27729 + options.p
+    },
+    directoryListing: true,
+  }));
 });
 
 /**
