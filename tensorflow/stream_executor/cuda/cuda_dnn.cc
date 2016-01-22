@@ -187,7 +187,6 @@ bool IsCudnnR2() {
   __macro(cudnnDestroyFilterDescriptor)                   \
   __macro(cudnnCreateConvolutionDescriptor)               \
   __macro(cudnnCreatePoolingDescriptor)                   \
-  __macro(cudnnAddTensor)                                 \
   __macro(cudnnDestroyPoolingDescriptor)                  \
   __macro(cudnnSetConvolution2dDescriptor)                \
   __macro(cudnnDestroyConvolutionDescriptor)              \
@@ -196,8 +195,6 @@ bool IsCudnnR2() {
   __macro(cudnnSetStream)                                 \
   __macro(cudnnActivationForward)                         \
   __macro(cudnnConvolutionForward)                        \
-  __macro(cudnnConvolutionBackwardData)                   \
-  __macro(cudnnConvolutionBackwardFilter)                 \
   __macro(cudnnGetConvolutionForwardWorkspaceSize)        \
   __macro(cudnnTransformTensor)                           \
   __macro(cudnnPoolingForward)                            \
@@ -205,6 +202,22 @@ bool IsCudnnR2() {
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+
+// clang-format off
+#if CUDNN_VERSION >= 4000
+#define CUDNN_DNN_ROUTINE_EACH_R2(__macro)                \
+  __macro(cudnnAddTensor_v2)                              \
+  __macro(cudnnConvolutionBackwardData_v2)                \
+  __macro(cudnnConvolutionBackwardFilter_v2)
+#else
+#define CUDNN_DNN_ROUTINE_EACH_R2(__macro)                \
+  __macro(cudnnAddTensor)                                 \
+  __macro(cudnnConvolutionBackwardData)                   \
+  __macro(cudnnConvolutionBackwardFilter)
+#endif
+// clang-format on
+
+CUDNN_DNN_ROUTINE_EACH_R2(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format off
 #if CUDNN_VERSION >= 3000
@@ -667,7 +680,11 @@ bool CudnnSupport::DoConvolveBackwardData(
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
+#if CUDNN_VERSION >= 4000
+    status = dynload::cudnnConvolutionBackwardData_v2(
+#else
     status = dynload::cudnnConvolutionBackwardData(
+#endif
         parent_, ToHandle(dnn_handle_), &alpha, filter.handle(),
         filter_data.opaque(), out_back_4d.handle(),
         backward_output_data.opaque(), conv.handle(), &beta,
@@ -798,7 +815,11 @@ bool CudnnSupport::DoConvolveBackwardFilter(
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
+#if CUDNN_VERSION >= 4000
+    status = dynload::cudnnConvolutionBackwardFilter_v2(
+#else
     status = dynload::cudnnConvolutionBackwardFilter(
+#endif
         parent_, ToHandle(dnn_handle_), &alpha, input_4d.handle(),
         input_data.opaque(), out_back_4d.handle(),
         backward_output_data.opaque(), conv.handle(), &beta, filter.handle(),
@@ -1069,7 +1090,11 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
+#if CUDNN_VERSION >= 4000
+    status = dynload::cudnnAddTensor_v2(
+#else
     status = dynload::cudnnAddTensor(
+#endif
         parent_, ToHandle(dnn_handle_), CUDNN_ADD_SAME_C, &alpha,
         bias_descriptor.handle(), biases.opaque(), &beta,
         input_descriptor.handle(), output_data->opaque());
