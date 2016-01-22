@@ -87,6 +87,16 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
                                     self.input_op_fn,
                                     models.logistic_regression)(X, y)
 
+    @property
+    def bias_(self):
+        """Returns bias of the rnn layer."""
+        return self.get_tensor_value('logistic_regression/bias:0')
+
+    @property
+    def weights_(self):
+        """Returns weights of the rnn layer."""
+        return self.get_tensor_value('logistic_regression/weights:0')
+
 
 class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow RNN Regressor model.
@@ -142,3 +152,13 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
                                     self.input_op_fn,
                                     models.linear_regression)(X, y)
+
+    @property
+    def bias_(self):
+        """Returns bias of the rnn layer."""
+        return self.get_tensor_value('linear_regression/bias:0')
+
+    @property
+    def weights_(self):
+        """Returns weights of the rnn layer."""
+        return self.get_tensor_value('linear_regression/weights:0')
