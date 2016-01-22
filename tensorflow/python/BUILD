@@ -699,7 +699,6 @@ py_library(
         "ops/gen_string_ops.py",
         "ops/gen_summary_ops.py",
         "ops/gradients.py",
-        "ops/histogram_ops.py",
         "ops/image_grad.py",
         "ops/image_ops.py",
         "ops/init_ops.py",
