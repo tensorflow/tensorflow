@@ -1,10 +1,13 @@
 #!/bin/bash  
 # original instructions are located in https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md
 # this is a bash file to help you install tenserflow 
-#run this file from a shell  ./setup_c9.sh  
-python -v
+#run this file from a shell   
+#Make sure you use a capital V, or you will launch Python in verbose mode;
+
 echo "please check if you have python version <3, otherwise follow these instructions https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md
 "
+python -V 
+
 #Install pip (or pip3 for python3) if it is not already installed:
 # Ubuntu/Linux 64-bit
 echo "Installing PIP and Virtual Environment"
@@ -15,24 +18,24 @@ echo "do you like to use python virtual environment(1) or not(0)?"
 read env
  
 ################################Normal installation##########################
-if [ env -eq 0 ]; 
+if [ $env -eq 0 ]; 
 then
 echo "Install TensorFlow without python Env:"
 echo "do you like to install Tensorflow for CPU (0) or GPU (1)?"
 read choice
-if [ $choice-eq 0 ]; 
+if [ $choice -eq 0 ]; 
 then
 # Ubuntu/Linux 64-bit, CPU only:
  sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-elif [ $choice-eq 1 ]; then
+elif [ $choice -eq 1 ]; then
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 else "bad choice, restart"
 fi
 echo "--------------------------------------------------------------"
 fi
 ################################Using virtual Env installation##########################
-if [ env -eq 1 ]; 
+if [ $env -eq 1 ]; 
 then
 echo "make the tensorflow environment"
 
@@ -59,13 +62,13 @@ source ~/tensorflow/bin/activate  # If using bash
 
 echo "do you like to install Tensorflow for CPU (0) or GPU (1)?"
 read choice
-if [ $choice-eq 0 ]; 
+if [ $choice -eq 0 ]; 
 then
 # Ubuntu/Linux 64-bit, CPU only:
  sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-elif [ $choice-eq 1 ]; then
+elif [ $choice -eq 1 ]; then
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
 else "bad choice, restart"
 fi
 echo "--------------------------------------------------------------"
