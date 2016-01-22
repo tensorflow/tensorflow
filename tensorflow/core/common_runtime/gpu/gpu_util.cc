@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
@@ -105,91 +106,48 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   }
 }
 
-typedef ProcessState::MemDesc PMD;
+// static
+void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
+                                 DeviceContext* recv_dev_context, Device* src,
+                                 Device* dst,
+                                 AllocatorAttributes src_alloc_attr,
+                                 AllocatorAttributes dst_alloc_attr,
+                                 const Tensor* input, Tensor* output,
+                                 StatusCallback done) {
+  const void* src_ptr = DMAHelper::base(input);
+  void* dst_ptr = DMAHelper::base(output);
+  VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
+  const size_t total_bytes = input->TotalBytes();
 
-/*static*/
-void GPUUtil::CopyViaDMA(const string& edge_name,
-                         DeviceContext* send_dev_context,
-                         DeviceContext* recv_dev_context, Device* src,
-                         Device* dst, AllocatorAttributes src_alloc_attr,
-                         AllocatorAttributes dst_alloc_attr,
-                         const Tensor* input, Tensor* output,
-                         StatusCallback done) {
-  port::Tracing::ScopedAnnotation annotation(edge_name);
-  VLOG(1) << "CopyViaDMA " << edge_name;
-  size_t total_bytes = input->TotalBytes();
-  // Note that 0-size tensors have no backing buffer.
-  if (total_bytes > 0) {
-    const void* src_ptr = DMAHelper::base(input);
-    void* dst_ptr = DMAHelper::base(output);
-    VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
-    if (FLAGS_brain_gpu_record_mem_types) {
-      ProcessState::MemDesc smd = ProcessState::singleton()->PtrType(src_ptr);
-      ProcessState::MemDesc dmd = ProcessState::singleton()->PtrType(dst_ptr);
-      VLOG(0) << "Src " << smd.DebugString() << " Dst " << dmd.DebugString();
-      if (smd.loc == PMD::CPU && dmd.loc == PMD::GPU && (!smd.gpu_registered)) {
-        LOG(WARNING) << "CPU -> GPU no reg for " << edge_name;
-      }
-      if (dmd.loc == PMD::CPU && smd.loc == PMD::GPU && (!dmd.gpu_registered)) {
-        LOG(WARNING) << "GPU -> CPU no reg for " << edge_name;
-      }
-    }
-
-    auto src_device_type = src->attributes().device_type();
-    auto dst_device_type = dst->attributes().device_type();
-
-    bool non_cpu_src = (!src_alloc_attr.on_host() &&
-                        src_device_type != DeviceType(DEVICE_CPU).type());
-    bool non_cpu_dst = (!dst_alloc_attr.on_host() &&
-                        dst_device_type != DeviceType(DEVICE_CPU).type());
-    if (non_cpu_src) {
-      if (non_cpu_dst) {
-        // Device to device copy
-        gpu::Stream* stream = send_dev_context->stream();
-        if (stream == nullptr) {
-          done(errors::Internal("Failed to find device stream"));
-          return;
-        }
-        auto* src_dev_info = src->tensorflow_gpu_device_info();
-        CHECK(src_dev_info);
-
-        DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-        stream->ThenMemcpy(
-            &gpu_dst_ptr,
-            DeviceMemoryBase{const_cast<void*>(src_ptr), total_bytes},
-            total_bytes);
-        if (dst_device_type == DeviceType(DEVICE_GPU).type()) {
-          // Use of input may outlive stack scope, so keep a ref.
-          TensorReference input_ref(*input);
-          src_dev_info->event_mgr->ThenExecute(
-              stream, [done, stream, input_ref]() {
-                input_ref.Unref();
-                if (!stream->ok()) {
-                  done(errors::Internal("GPU->GPU Memcpy failed"));
-                } else {
-                  done(Status::OK());
-                }
-              });
-        }
-        send_dev_context->MaintainLifetimeOnStream(input, stream);
-      } else {
-        // Device to host copy.
-        return send_dev_context->CopyDeviceTensorToCPU(input, edge_name, src,
-                                                       output, done);
-      }
-    } else if (non_cpu_dst) {
-      // Host to Device copy.
-      // Note that this is already an async copy.
-      recv_dev_context->CopyCPUTensorToDevice(input, dst, output, done);
-    } else {
-      memcpy(dst_ptr, src_ptr, total_bytes);
-      done(Status::OK());
-    }
-  } else {
-    // buffer is empty
-    done(Status::OK());
+  gpu::Stream* stream = send_dev_context->stream();
+  if (stream == nullptr) {
+    done(errors::Internal("Failed to find device stream"));
+    return;
   }
+  auto* src_dev_info = src->tensorflow_gpu_device_info();
+  CHECK(src_dev_info);
+
+  DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
+  stream->ThenMemcpy(&gpu_dst_ptr,
+                     DeviceMemoryBase{const_cast<void*>(src_ptr), total_bytes},
+                     total_bytes);
+  if (dst->attributes().device_type() == DeviceType(DEVICE_GPU).type()) {
+    // Use of input may outlive stack scope, so keep a ref.
+    TensorReference input_ref(*input);
+    src_dev_info->event_mgr->ThenExecute(stream, [done, stream, input_ref]() {
+      input_ref.Unref();
+      if (!stream->ok()) {
+        done(errors::Internal("GPU->GPU Memcpy failed"));
+      } else {
+        done(Status::OK());
+      }
+    });
+  }
+  send_dev_context->MaintainLifetimeOnStream(input, stream);
 }
+
+static CopyTensor::Registration register_gpu_gpu_copy(
+    DEVICE_GPU, DEVICE_GPU, GPUUtil::DeviceToDeviceCopy);
 
 void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                                  const DeviceContext* device_context,
