@@ -9004,6 +9004,11 @@ op {
     type: DT_STRING
     is_ref: true
   }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
   output_arg {
     name: "value"
     description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
@@ -9030,6 +9035,11 @@ op {
     name: "index"
     type: DT_INT32
   }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
   output_arg {
     name: "value"
     description: "The tensor that is read from the TensorArray."
@@ -9055,6 +9065,16 @@ op {
     name: "value"
     description: "The concatenated tensor to write to the TensorArray."
     type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
   }
   attr {
     name: "T"
@@ -9088,6 +9108,16 @@ op {
     name: "value"
     description: "The tensor to write to the TensorArray."
     type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
   }
   attr {
     name: "T"
