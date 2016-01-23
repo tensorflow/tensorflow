@@ -30,11 +30,15 @@ OPTIMIZER_CLS_NAMES = {
 }
 
 
-def _print_report(print_loss_buffer, global_step):
+def _print_report(print_loss_buffer, global_step, epoch):
     """Prints report for given losses and global step."""
     avg_loss = np.mean(print_loss_buffer)
-    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                       loss=avg_loss))
+    if epoch:
+        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss, epoch=epoch))
+    else:
+        print("Step #{step}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss))
 
 
 class TensorFlowTrainer(object):
@@ -106,7 +110,8 @@ class TensorFlowTrainer(object):
 
     def train(self, sess, feed_dict_fn, steps,
               summary_writer=None, summaries=None,
-              print_steps=0, verbose=1, early_stopping_rounds=None):
+              print_steps=0, verbose=1, early_stopping_rounds=None,
+              feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -120,6 +125,7 @@ class TensorFlowTrainer(object):
             early_stopping_rounds: Activates early stopping if this is not None.
                 Loss needs to decrease at least every every <early_stopping_rounds>
                 round(s) to continue training. (default: None)
+            feed_params_fn: params about data feeder state (epoch, offset)
 
         Returns:
             List of losses for each step.
@@ -160,8 +166,12 @@ class TensorFlowTrainer(object):
                 summary_writer.add_summary(summ, global_step)
             if verbose > 0:
                 if step % print_steps == 0:
-                    _print_report(print_loss_buffer, global_step)
+                    if feed_params_fn:
+                        feed_params = feed_params_fn()
+                        epoch = feed_params['epoch'] if 'epoch' in feed_params else None
+                    _print_report(print_loss_buffer, global_step, epoch)
                     print_loss_buffer = []
+
         return losses
 
 

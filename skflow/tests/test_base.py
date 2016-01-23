@@ -56,7 +56,7 @@ class BaseTest(tf.test.TestCase):
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
-            learning_rate=0.05, continue_training=True, steps=100)
+            learning_rate=0.01, continue_training=True, steps=250)
         classifier.fit(iris.data, iris.target)
         score1 = accuracy_score(iris.target, classifier.predict(iris.data))
         classifier.fit(iris.data, iris.target)
@@ -93,7 +93,7 @@ class BaseTest(tf.test.TestCase):
     def testIris_proba(self):
         random.seed(42)
         iris = datasets.load_iris()
-        classifier = skflow.TensorFlowClassifier(n_classes=3)
+        classifier = skflow.TensorFlowClassifier(n_classes=3, steps=250)
         classifier.fit(iris.data, iris.target)
         score = log_loss(iris.target, classifier.predict_proba(iris.data))
         self.assertLess(score, 0.8, "Failed with score = {0}".format(score))
