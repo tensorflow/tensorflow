@@ -125,17 +125,6 @@ class GPUBFCAllocator : public VisitableAllocator {
       return dbg;
     }
   };
-
-  Chunk* AllocateNewChunk(size_t num_bytes);
-  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void RemoveFreeChunkFromBin(Chunk* c);
-  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
-  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
   // A Bin is a collection of similar-sized free chunks.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
@@ -151,12 +140,25 @@ class GPUBFCAllocator : public VisitableAllocator {
       }
     };
 
+    typedef std::set<Chunk*, ChunkComparator> FreeChunkSet;
     // List of free chunks within the bin, sorted by chunk size.
     // Chunk * not owned.
-    std::set<Chunk*, ChunkComparator> free_chunks;
+    FreeChunkSet free_chunks;
 
     explicit Bin(size_t bs) : bin_size(bs) {}
   };
+
+  Chunk* AllocateNewChunk(size_t num_bytes);
+  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
+                                  const Bin::FreeChunkSet::iterator& c);
+  void RemoveFreeChunkFromBin(Chunk* c);
+  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   GPUAllocatorRetry retry_helper_;
 
