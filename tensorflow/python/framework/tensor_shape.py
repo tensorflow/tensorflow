@@ -611,7 +611,10 @@ class TensorShape(object):
     Raises:
       ValueError: If `self` does not represent a shape with the given `rank`.
     """
-    return self.merge_with(unknown_shape(ndims=rank))
+    try:
+      return self.merge_with(unknown_shape(ndims=rank))
+    except ValueError:
+      raise ValueError("Shape %s must have rank %d" % (self, rank))
 
   def with_rank_at_least(self, rank):
     """Returns a shape based on `self` with at least the given rank.

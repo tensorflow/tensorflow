@@ -67,7 +67,7 @@ class VariableOp : public OpKernel {
 
     string DebugString() override {
       return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                             tensor_.shape().ShortDebugString());
+                             tensor_.shape().DebugString());
     }
 
    private:

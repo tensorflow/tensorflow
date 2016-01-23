@@ -215,7 +215,7 @@ class Coordinator(object):
     """Wait till the Coordinator is told to stop.
 
     Args:
-      timeout: float.  Sleep for up to that many seconds waiting for
+      timeout: Float.  Sleep for up to that many seconds waiting for
         should_stop() to become True.
 
     Returns:
@@ -229,7 +229,7 @@ class Coordinator(object):
     Blocks until all `threads` have terminated or `request_stop()` is called.
 
     After the threads stop, if an `exc_info` was passed to `request_stop`, that
-    exception is re-reaised.
+    exception is re-raised.
 
     Grace period handling: When `request_stop()` is called, threads are given
     'stop_grace_period_secs' seconds to terminate.  If any of them is still
@@ -289,7 +289,7 @@ class LooperThread(threading.Thread):
     """Create a LooperThread.
 
     Args:
-      coord: a Coordinator.
+      coord: A Coordinator.
       timer_interval_secs: Time boundaries at which to call Run(), or None
         if it should be called back to back.
       target: Optional callable object that will be executed in the thread.
@@ -344,10 +344,8 @@ class LooperThread(threading.Thread):
         while not self._coord.should_stop():
           self.run_loop()
       else:
-        # Next time at which to call run_loop().  The first run happens
-        # self._timer_interval_secs from now so we don't run things like
-        # periodic reporting tasks before there is anything to report.
-        next_timer_time = time.time() + self._timer_interval_secs
+        # Next time at which to call run_loop(), starts as 'now'.
+        next_timer_time = time.time()
         while not self._coord.wait_for_stop(next_timer_time - time.time()):
           next_timer_time += self._timer_interval_secs
           self.run_loop()

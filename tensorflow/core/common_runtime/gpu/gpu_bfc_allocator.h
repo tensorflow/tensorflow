@@ -21,7 +21,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -65,6 +65,8 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   size_t AllocatedSize(void* ptr) override;
 
+  int64 AllocationId(void* ptr) override;
+
  private:
   struct Bin;
 
@@ -86,7 +88,11 @@ class GPUBFCAllocator : public VisitableAllocator {
     // strategy is efficient.
     size_t requested_size = 0;
 
-    bool in_use = false;
+    // allocation_id is set to -1 when the chunk is not in use. It is assigned a
+    // value greater than zero before the chunk is returned from
+    // AllocateRaw, and this value is unique among values assigned by
+    // the parent allocator.
+    int64 allocation_id = -1;
     void* ptr = nullptr;  // pointer to granted GPU subbuffer.
 
     // If not null, the memory referred to by 'prev' is directly
@@ -102,12 +108,14 @@ class GPUBFCAllocator : public VisitableAllocator {
     // What bin are we in?
     Bin* bin = nullptr;
 
+    bool in_use() { return allocation_id != -1; }
+
     string DebugString(bool recurse) {
       string dbg;
       strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
                          " | Requested Size: ",
                          strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use);
+                         " | in_use: ", in_use());
       if (recurse && prev) {
         strings::StrAppend(&dbg, ", prev: ", prev->DebugString(false));
       }
@@ -117,17 +125,6 @@ class GPUBFCAllocator : public VisitableAllocator {
       return dbg;
     }
   };
-
-  Chunk* AllocateNewChunk(size_t num_bytes);
-  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void RemoveFreeChunkFromBin(Chunk* c);
-  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
-  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
   // A Bin is a collection of similar-sized free chunks.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
@@ -143,12 +140,25 @@ class GPUBFCAllocator : public VisitableAllocator {
       }
     };
 
+    typedef std::set<Chunk*, ChunkComparator> FreeChunkSet;
     // List of free chunks within the bin, sorted by chunk size.
     // Chunk * not owned.
-    std::set<Chunk*, ChunkComparator> free_chunks;
+    FreeChunkSet free_chunks;
 
     explicit Bin(size_t bs) : bin_size(bs) {}
   };
+
+  Chunk* AllocateNewChunk(size_t num_bytes);
+  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
+                                  const Bin::FreeChunkSet::iterator& c);
+  void RemoveFreeChunkFromBin(Chunk* c);
+  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   GPUAllocatorRetry retry_helper_;
 
@@ -171,6 +181,10 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   // Called once on each region, ASAP.
   std::vector<Visitor> region_visitors_;
+
+  // Counter containing the next unique identifier to assign to a
+  // newly-created chunk.
+  int64 next_allocation_id_ GUARDED_BY(lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 };

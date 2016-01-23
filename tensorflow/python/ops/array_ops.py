@@ -325,7 +325,7 @@ def _UnpackShape(op):
 
 @ops.RegisterShape("Concat")
 def _ConcatShape(op):
-  concat_dim = tensor_util.ConstantValue(op.inputs[0])
+  concat_dim = tensor_util.constant_value(op.inputs[0])
   if concat_dim is None:
     # Return an unknown shape with the same rank as the inputs, or an
     # unknown rank if no input's rank is known.
@@ -355,6 +355,11 @@ def _ConcatShape(op):
           concat_dim + 1:].merge_with(value_shape[concat_dim + 1:])
       output_shape = before.concatenate(at).concatenate(after)
     return [output_shape]
+
+
+@ops.RegisterShape("ConcatOffset")
+def _ConcatOffsetShape(op):
+  return [x.get_shape() for x in op.inputs[1:]]
 
 
 def sparse_mask(a, mask_indices, name=None):
@@ -433,7 +438,12 @@ def split(split_dim, num_split, value, name="split"):
 
 @ops.RegisterShape("Reverse")
 def _ReverseShape(op):
-  return [op.inputs[0].get_shape().with_rank_at_most(8)]
+  dims_shape = op.inputs[1].get_shape().with_rank(1)
+  input_shape = op.inputs[0].get_shape().with_rank(dims_shape[0])
+  if input_shape.ndims is not None and input_shape.ndims > 8:
+    raise ValueError(
+        "tf.reverse() does not work on tensors with more than 8 dimensions")
+  return [input_shape]
 
 
 def transpose(a, perm=None, name="transpose"):
@@ -703,8 +713,8 @@ def _SliceShape(op):
   ndims = rank_vector_shape.num_elements()
   if ndims is not None:
     input_shape.assert_has_rank(ndims)
-  begin_value = tensor_util.ConstantValue(op.inputs[1])
-  sizes_value = tensor_util.ConstantValue(op.inputs[2])
+  begin_value = tensor_util.constant_value(op.inputs[1])
+  sizes_value = tensor_util.constant_value(op.inputs[2])
   if sizes_value is not None:
     returned_dims = []
     for i, slice_size in enumerate(sizes_value.ravel()):
@@ -739,6 +749,15 @@ def _UniqueShape(op):
   input_shape = op.inputs[0].get_shape()
   input_shape.assert_has_rank(1)
   return [tensor_shape.vector(None), input_shape]
+
+
+@ops.RegisterShape("UniqueWithCounts")
+def _UniqueWithCountsShape(op):
+  """Shape function for array_ops.Unique."""
+  # The output is a vector with data-dependent length.
+  input_shape = op.inputs[0].get_shape()
+  input_shape.assert_has_rank(1)
+  return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
 
 
 @ops.RegisterShape("Diag")
@@ -776,7 +795,7 @@ def _ExpandDimsShape(op):
   input_shape = op.inputs[0].get_shape()
   if input_shape.dims is None:
     return [tensor_shape.unknown_shape()]
-  dim = tensor_util.ConstantValue(op.inputs[1])
+  dim = tensor_util.constant_value(op.inputs[1])
   input_ndims = input_shape.ndims
   if dim < -input_ndims - 1 or dim > input_ndims:
     raise ValueError(
@@ -846,7 +865,7 @@ def _ReshapeShape(op):
   else:
     num_elements = tensor_shape.Dimension(None)
   new_shape_shape = op.inputs[1].get_shape().with_rank_at_most(1)
-  new_shape = tensor_util.ConstantValue(op.inputs[1])
+  new_shape = tensor_util.constant_value(op.inputs[1])
   if new_shape is None:
     # Attempt to infer the rank of the output from the length of
     # new_shape.
@@ -889,7 +908,7 @@ def _ReshapeShape(op):
 @ops.RegisterShape("BroadcastGradientArgs")
 def _BroadcastGradientArgsShape(op):
   """Shape function for the BroadcastGradientArgs op."""
-  # TODO(mrry): Implement ConstantValue for BroadcastGradientArgs?
+  # TODO(mrry): Implement constant_value for BroadcastGradientArgs?
   op.inputs[0].get_shape().assert_has_rank(1)
   op.inputs[1].get_shape().assert_has_rank(1)
   return [tensor_shape.vector(None), tensor_shape.vector(None)]
@@ -910,7 +929,7 @@ def _FillShape(op):
   """
   dimensions_shape = op.inputs[0].get_shape().with_rank_at_most(1)
   op.inputs[1].get_shape().assert_is_compatible_with(tensor_shape.scalar())
-  fill_dims = tensor_util.ConstantValue(op.inputs[0])
+  fill_dims = tensor_util.constant_value(op.inputs[0])
   if fill_dims is None:
     # Attempt to infer the rank of the output from the length of
     # dimensions.
@@ -962,7 +981,7 @@ def _PadShape(op):
   input_shape = input_shape.with_rank(paddings_shape[0].value)
   paddings_shape = paddings_shape.merge_with(
       tensor_shape.matrix(input_shape.ndims, 2))
-  paddings = tensor_util.ConstantValue(op.inputs[1])
+  paddings = tensor_util.constant_value(op.inputs[1])
   if paddings is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
   else:
@@ -1012,10 +1031,10 @@ def _ReverseSequenceShape(op):
 
 
 @ops.RegisterShape("Shape")
-def _ShapeShape(op):
-  """Shape function for the Shape op."""
-  input_shape = op.inputs[0].get_shape()
-  return [tensor_shape.vector(input_shape.ndims)]
+@ops.RegisterShape("ShapeN")
+def _ShapeNShape(op):
+  """Shape function for the Shape/ShapeN op."""
+  return [tensor_shape.vector(x.get_shape().ndims) for x in op.inputs]
 
 
 @ops.RegisterShape("Transpose")
@@ -1043,7 +1062,7 @@ def _TransposeShape(op):
   input_shape = op.inputs[0].get_shape()
   transpose_shape = op.inputs[1].get_shape().merge_with(tensor_shape.vector(
       input_shape.ndims))
-  transpose_vec = tensor_util.ConstantValue(op.inputs[1])
+  transpose_vec = tensor_util.constant_value(op.inputs[1])
   if transpose_vec is None:
     return [tensor_shape.unknown_shape(ndims=transpose_shape[0].value)]
   else:
@@ -1054,7 +1073,7 @@ def _TransposeShape(op):
 @ops.RegisterShape("Split")
 def _SplitShape(op):
   """Shape function for the Split op."""
-  split_dim = tensor_util.ConstantValue(op.inputs[0])
+  split_dim = tensor_util.constant_value(op.inputs[0])
   num_split = len(op.outputs)
   input_shape = op.inputs[1].get_shape()
   if split_dim is None:
@@ -1095,7 +1114,7 @@ def _TileShape(op):
   """
   multiples_shape = op.inputs[1].get_shape().with_rank_at_most(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape.num_elements())
-  multiples = tensor_util.ConstantValue(op.inputs[1])
+  multiples = tensor_util.constant_value(op.inputs[1])
   if multiples is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
   else:
@@ -1111,7 +1130,7 @@ def _TileGradShape(op):
   """Shape function for the TileGrad op."""
   multiples_shape = op.inputs[1].get_shape().with_rank_at_most(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape.num_elements())
-  multiples = tensor_util.ConstantValue(op.inputs[1])
+  multiples = tensor_util.constant_value(op.inputs[1])
   if multiples is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
   else:
@@ -1211,8 +1230,8 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 @ops.RegisterShape("EditDistance")
 def _EditDistanceShape(op):
   """Shape function for the EditDistance op."""
-  hypothesis_shape = tensor_util.ConstantValue(op.inputs[2])
-  truth_shape = tensor_util.ConstantValue(op.inputs[5])
+  hypothesis_shape = tensor_util.constant_value(op.inputs[2])
+  truth_shape = tensor_util.constant_value(op.inputs[5])
   if hypothesis_shape is not None and truth_shape is not None:
     if len(hypothesis_shape) != len(truth_shape):
       raise ValueError(

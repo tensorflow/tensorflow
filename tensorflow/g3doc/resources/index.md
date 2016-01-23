@@ -1,6 +1,5 @@
 # Additional Resources
 
-
 ## TensorFlow WhitePaper
 
 Additional details about the TensorFlow programming model and the underlying
@@ -21,11 +20,17 @@ endorsed by or otherwise affiliated with Google. When referring to our marks,
 please include the following attribution statement: "TensorFlow, the TensorFlow
 logo and any related marks are trademarks of Google Inc."
 
+### What is TensorFlow used for?
+
+We keep a list of projects that use TensorFlow [here](uses.md). If you made
+something amazing with TensorFlow, we'd like to hear about it!
+
 ## Community
 
 ### Development
 
-The source is hosted on GitHub: <https://github.com/tensorflow/tensorflow>.
+The source code for TensorFlow is hosted on GitHub:
+<https://github.com/tensorflow/tensorflow>.
 
 If you are interested in contributing to TensorFlow please
 [review the contributing guide](
@@ -36,12 +41,14 @@ https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md).
 For help and support, technical or algorithmic questions, please submit
 your questions to Stack Overflow:
 <https://stackoverflow.com/questions/tagged/tensorflow>.
-Please do not use the mailing list or issue tracker for support.
+You may also find answers in our [FAQ](faq.md), our [glossary](glossary.md), or
+in the [shapes, sizes and types guide](dims_types.md). Please do not use the
+mailing list or issue tracker for support.
 
 ### Discussions
 
 For general discussions, please join the [TensorFlow discuss mailing list](
-  https://groups.google.com/a/tensorflow.org/d/forum/discuss).
+https://groups.google.com/a/tensorflow.org/d/forum/discuss).
 This list is intended for general discussions about TensorFlow development and
 directions, not as a help forum. Instead, direct your questions to
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow), and
@@ -53,10 +60,15 @@ Please report bugs, feature requests and installation / compatibility issues on
 the [TensorFlow issues tracker](
 https://github.com/tensorflow/tensorflow/issues) on GitHub.
 If you need help with using TensorFlow, please do not use the issue
-tracker for that. Instead, direct your questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).
+tracker for that. Instead, direct your questions to
+[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).
 
 ## Versioning
 
 TensorFlow uses [Semantic Versioning 2.0](http://semver.org).  For details on
 the versioning of our public API and binary compatibility, see the [versioning
 document](versions.md).
+
+## Roadmap
+
+A roadmap containing what we're working on at the moment is [here](roadmap.md).

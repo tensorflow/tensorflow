@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/status.h"
 
 // TODO(josh11b): Test setting the "device" field of a NodeDef.

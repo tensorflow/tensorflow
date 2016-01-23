@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 class DummyKernel : public tensorflow::OpKernel {
@@ -272,7 +272,7 @@ TEST_F(OpKernelTest, MatchSignatureFailes) {
 class DummyDevice : public DeviceBase {
  public:
   DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool SaveTemporaryTensors() const override { return save_; }
+  bool RequiresRecordingAccessedTensors() const override { return save_; }
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
@@ -297,7 +297,9 @@ TEST_F(OpKernelTest, SaveTempFalse) {
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
 
-  EXPECT_EQ(0, ctx->num_temps());
+  TensorReferenceVector referenced_tensors;
+  ctx->retrieve_accessed_tensors(&referenced_tensors);
+  EXPECT_EQ(0, referenced_tensors.size());
 
   delete ctx;
   delete params.device;
@@ -319,7 +321,12 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
 
-  EXPECT_EQ(1, ctx->num_temps());
+  TensorReferenceVector referenced_tensors;
+  ctx->retrieve_accessed_tensors(&referenced_tensors);
+  EXPECT_EQ(1, referenced_tensors.size());
+  for (auto& ref : referenced_tensors) {
+    ref.Unref();
+  }
 
   delete ctx;
   delete params.device;
@@ -690,7 +697,7 @@ TEST_F(GetAttrTest, Shape) {
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape", "shape_proto"});
   EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(), "dim { size: 3 }");
-  EXPECT_EQ("[3]", get_attr_kernel->shape.ShortDebugString());
+  EXPECT_EQ("[3]", get_attr_kernel->shape.DebugString());
 
   op_kernel = ExpectSuccess(
       "GetAttrShape", DEVICE_CPU,
@@ -704,8 +711,8 @@ TEST_F(GetAttrTest, Shape) {
   EXPECT_EQ(get_attr_kernel->shape_proto_list[1].ShortDebugString(),
             "dim { size: 4 }");
   ASSERT_EQ(2, get_attr_kernel->shape_list.size());
-  EXPECT_EQ("[2]", get_attr_kernel->shape_list[0].ShortDebugString());
-  EXPECT_EQ("[4]", get_attr_kernel->shape_list[1].ShortDebugString());
+  EXPECT_EQ("[2]", get_attr_kernel->shape_list[0].DebugString());
+  EXPECT_EQ("[4]", get_attr_kernel->shape_list[1].DebugString());
 }
 
 REGISTER_OP("GetAttrType").Attr("attr_name: string").Attr("a: type");

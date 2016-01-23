@@ -143,10 +143,10 @@ easier to chain operations that need to use the updated value.
 
 ### `tf.cond(pred, fn1, fn2, name=None)` {#cond}
 
-Return either 'fn1()' or 'fn2()' based on the boolean predicate 'pred'.
+Return either fn1() or fn2() based on the boolean predicate `pred`.
 
 `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
-the same number and type of outputs.
+the same non-zero number and type of outputs.
 
 ##### Args:
 

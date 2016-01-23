@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

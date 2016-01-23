@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
@@ -36,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 
 #include <deque>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -365,6 +366,54 @@ class CallOp : public AsyncOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
 };
 
+class SymbolicGradientOp : public OpKernel {
+ public:
+  SymbolicGradientOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), handle_(kInvalidHandle) {}
+
+  ~SymbolicGradientOp() override {}
+
+  void Compute(OpKernelContext* ctx) override {
+    FunctionLibraryRuntime* lib = ctx->function_library();
+    OP_REQUIRES(ctx, lib != nullptr,
+                errors::Internal("No function library is provided."));
+
+    OP_REQUIRES_OK(ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_));
+
+    FunctionLibraryRuntime::Options opts;
+    std::vector<Tensor> args;
+    args.reserve(ctx->num_inputs());
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      args.push_back(ctx->input(i));
+    }
+    std::vector<Tensor>* rets = new std::vector<Tensor>;
+    Notification n;
+    lib->Run(opts, handle_, args, rets, [ctx, rets, &n](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else {
+        CHECK_EQ(rets->size(), ctx->num_outputs());
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      n.Notify();
+    });
+    n.WaitForNotification();
+  }
+
+ private:
+  FunctionLibraryRuntime::Handle handle_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
+                        SymbolicGradientOp);
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
+                        SymbolicGradientOp);
+
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   mutex_lock l(mu_);
   CHECK_LE(0, h);
@@ -374,7 +423,7 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
-  if (ndef.op() != kGradientOp && (lib_def_->Find(ndef.op()) == nullptr)) {
+  if (lib_def_->Find(ndef.op()) == nullptr) {
     return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
                                  kernel);
   }
@@ -976,10 +1025,18 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return !candidates.empty();
 }
 
+string NewName(const Node* n, bool pretty) {
+  if (pretty) {
+    return strings::StrCat(n->type_string(), n->id());
+  } else {
+    return strings::StrCat("n", n->id());
+  }
+}
+
 // TODO(zhifengc): Maybe this should be the default Graph::AsGraphDef.
 // and stash the original NodeDef name as an attr for documentation
 // purpose.
-static void ToGraphDef(const Graph* g, GraphDef* gdef) {
+void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
   std::vector<int> pending(g->num_node_ids());
@@ -1002,7 +1059,7 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     }
     if (!n->IsOp()) continue;
     NodeDef* ndef = gdef->add_node();
-    ndef->set_name(strings::StrCat("n", n->id()));
+    ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
     *(ndef->mutable_attr()) = n->def().attr();
     inputs.clear();
@@ -1023,16 +1080,16 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     // to be unique and stable after optimization rewrites. Therefore,
     // we use "n<node id>" instead.
     for (const Edge* e : inputs) {
+      const string srcname = NewName(e->src(), pretty);
       if (e == nullptr) {
         ndef->add_input("unknown");
       } else if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
-        ndef->add_input(strings::StrCat("^n", e->src()->id()));
+        ndef->add_input(strings::StrCat("^", srcname));
       } else if (e->src_output() == 0) {
-        ndef->add_input(strings::StrCat("n", e->src()->id()));
+        ndef->add_input(srcname);
       } else {
-        ndef->add_input(
-            strings::StrCat("n", e->src()->id(), ":", e->src_output()));
+        ndef->add_input(strings::StrCat(srcname, ":", e->src_output()));
       }
     }
   }

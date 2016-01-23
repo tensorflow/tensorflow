@@ -142,7 +142,7 @@ class Optimizer(object):
         for the optimizer.
 
     Raises:
-      ValueError: if name is malformed.
+      ValueError: If name is malformed.
     """
     if not name:
       raise ValueError("Must specify the optimizer name")
@@ -179,7 +179,7 @@ class Optimizer(object):
       was not `None`, that operation also increments `global_step`.
 
     Raises:
-      ValueError: if some of the variables are not `Variable` objects.
+      ValueError: If some of the variables are not `Variable` objects.
     """
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
@@ -255,8 +255,8 @@ class Optimizer(object):
       was not None, that operation also increments `global_step`.
 
     Raises:
-      TypeError: if `grads_and_vars` is malformed.
-      ValueError: if none of the variables have gradients.
+      TypeError: If `grads_and_vars` is malformed.
+      ValueError: If none of the variables have gradients.
     """
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
@@ -331,9 +331,10 @@ class Optimizer(object):
     """Asserts tensors are all valid types (see `_valid_dtypes`).
 
     Args:
-      tensors: tensors to check.
+      tensors: Tensors to check.
+
     Raises:
-      ValueError: if any tensor is not a valid type.
+      ValueError: If any tensor is not a valid type.
     """
     valid_dtypes = self._valid_dtypes()
     for t in tensors:
@@ -408,7 +409,7 @@ class Optimizer(object):
       update_ops: List of `Operation` objects to update variables.  This list
         contains the values returned by the `_apply_dense()` and
         `_apply_sparse()` calls.
-      name_scope: string.  Name to use for the returned operation.
+      name_scope: String.  Name to use for the returned operation.
 
     Returns:
       The operation to apply updates.

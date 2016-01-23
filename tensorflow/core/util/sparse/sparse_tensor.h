@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <limits>
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -211,7 +212,7 @@ class SparseTensor {
     }
   }
 
-  // Helper for Split() that retuerns the shape given a slice index.
+  // Helper for Split() that returns the shape given a slice index.
   static inline int GetSliceShape(const int slice_index, const int split_size,
                                   const int residual) {
     CHECK_GT(split_size, 0);

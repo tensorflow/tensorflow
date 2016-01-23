@@ -17,9 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include <vector>
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -186,14 +187,14 @@ class UnsortedSegmentSumOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyScalar(num_segments.shape()),
         errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                num_segments.shape().ShortDebugString()));
+                                num_segments.shape().DebugString()));
 
-    OP_REQUIRES(context,
-                TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
-                errors::InvalidArgument(
-                    "data.shape = ", data.shape().ShortDebugString(),
-                    " does not start with segment_ids.shape = ",
-                    segment_ids.shape().ShortDebugString()));
+    OP_REQUIRES(
+        context,
+        TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
+        errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
+                                " does not start with segment_ids.shape = ",
+                                segment_ids.shape().DebugString()));
 
     const auto segment_flat = segment_ids.flat<Index>();
     const int32 N = segment_flat.dimension(0);

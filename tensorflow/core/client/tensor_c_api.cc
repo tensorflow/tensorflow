@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/public/tensor_c_api.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"

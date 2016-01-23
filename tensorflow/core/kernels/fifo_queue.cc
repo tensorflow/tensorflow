@@ -52,10 +52,10 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kEnqueue, token); });
+        token, [this, cm, token]() { Cancel(kEnqueue, cm, token); });
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
-          1, callback, ctx, token,
+          1, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
@@ -110,10 +110,10 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kEnqueue, token); });
+        token, [this, cm, token]() { Cancel(kEnqueue, cm, token); });
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
-          batch_size, callback, ctx, token,
+          batch_size, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
@@ -156,11 +156,11 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kDequeue, token); });
+        token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
-          1, [callback]() { callback(Tuple()); }, ctx, token,
+          1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             const int32 s = queues_[0].size();
             if (closed_ && s == 0) {
@@ -240,11 +240,11 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kDequeue, token); });
+        token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
-          num_elements, [callback]() { callback(Tuple()); }, ctx, token,
+          num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 s = queues_[0].size();
             if (closed_ && s < attempt->elements_requested) {

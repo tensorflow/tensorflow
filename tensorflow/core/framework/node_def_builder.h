@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
 
 #include <functional>
+#include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"

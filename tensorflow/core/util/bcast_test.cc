@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/bcast.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

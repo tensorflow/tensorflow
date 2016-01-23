@@ -40,14 +40,14 @@ class ResizeNearestNeighborOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto sizes = shape_t.vec<int32>();
     OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
@@ -101,16 +101,16 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
 
     // Grab and validate the output shape:
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto sizes = shape_t.vec<int32>();
     OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,

@@ -24,9 +24,11 @@ CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
 COMMAND=("$@")
 
-export PYTHON_BIN_PATH=$(which python)
+export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which python)}"
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   export TF_NEED_CUDA=1
+else
+  export TF_NEED_CUDA=0
 fi
 
 ./configure

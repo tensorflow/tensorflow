@@ -17,7 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "py_tests")
+load("//tensorflow:tensorflow.bzl", "py_tests")
 
 cc_library(
     name = "ackermann_op_lib",

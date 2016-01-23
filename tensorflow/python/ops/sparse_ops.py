@@ -296,7 +296,7 @@ def _SparseSplitShape(op):
 
 @ops.RegisterShape("SparseToDense")
 def _SparseToDenseShape(op):
-  input_shape = tensor_util.ConstantValue(op.inputs[1])
+  input_shape = tensor_util.constant_value(op.inputs[1])
   if input_shape is not None:
     if np.ndim(input_shape) > 1:
       raise ValueError("Input shape should be a vector")

@@ -30,7 +30,7 @@ class AssertOp : public OpKernel {
     const Tensor& cond = ctx->input(0);
     OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
                 errors::InvalidArgument("In[0] should be a scalar: ",
-                                        cond.shape().ShortDebugString()));
+                                        cond.shape().DebugString()));
 
     if (cond.scalar<bool>()()) {
       return;

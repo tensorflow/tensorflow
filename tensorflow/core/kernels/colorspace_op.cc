@@ -45,7 +45,7 @@ class RGBToHSVOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() >= 1,
                 errors::InvalidArgument("input must be at least 1D",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     auto channels = input.dim_size(input.dims() - 1);
     OP_REQUIRES(context, channels == 3,
                 errors::FailedPrecondition(
@@ -84,7 +84,7 @@ class HSVToRGBOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() >= 1,
                 errors::InvalidArgument("input must be at least 1D",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     auto channels = input.dim_size(input.dims() - 1);
     OP_REQUIRES(context, channels == 3,
                 errors::FailedPrecondition(

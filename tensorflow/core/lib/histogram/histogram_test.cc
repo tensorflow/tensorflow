@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include <float.h>
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace histogram {

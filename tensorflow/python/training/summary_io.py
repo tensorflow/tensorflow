@@ -105,7 +105,7 @@ class SummaryWriter(object):
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
 
-    This method wraps the provided summary in an `Event` procotol buffer
+    This method wraps the provided summary in an `Event` protocol buffer
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
@@ -178,8 +178,8 @@ class _EventLoggerThread(threading.Thread):
     """Creates an _EventLoggerThread.
 
     Args:
-      queue: a Queue from which to dequeue events.
-      ev_writer: an event writer. Used to log brain events for
+      queue: A Queue from which to dequeue events.
+      ev_writer: An event writer. Used to log brain events for
        the visualizer.
       flush_secs: How often, in seconds, to flush the
         pending file to disk.

@@ -57,11 +57,11 @@ class RMSPropOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
-      decay: discounting factor for the history/coming gradient
-      momentum: a scalar tensor.
-      epsilon: small value to avoid zero denominator.
+      decay: Discounting factor for the history/coming gradient
+      momentum: A scalar tensor.
+      epsilon: Small value to avoid zero denominator.
       use_locking: If True use locks for update operation.
-      name: Optional name prefic for the operations created when applying
+      name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
     """
     super(RMSPropOptimizer, self).__init__(use_locking, name)

@@ -256,20 +256,20 @@ class ShapeTest(test_util.TensorFlowTestCase):
       unknown / unknown  # pylint: disable=pointless-statement
 
   def testConvertFromProto(self):
-    proto = tensor_util.MakeTensorShapeProto([])
+    proto = tensor_util.make_tensor_shape_proto([])
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.as_shape(proto))
 
-    proto = tensor_util.MakeTensorShapeProto([1, 37, 42])
+    proto = tensor_util.make_tensor_shape_proto([1, 37, 42])
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.as_shape(proto))
 
     partial_proto_shape = tensor_shape.as_shape(
-        tensor_util.MakeTensorShapeProto([-1, 37, 42]))
+        tensor_util.make_tensor_shape_proto([-1, 37, 42]))
     partial_shape = tensor_shape.TensorShape([None, 37, 42])
     self.assertNotEqual(partial_proto_shape, partial_shape)
     self.assertEqual(partial_proto_shape[0].value, None)

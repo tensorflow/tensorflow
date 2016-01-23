@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/ops_util.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

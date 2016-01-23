@@ -289,6 +289,32 @@ class FlipTest(test_util.TensorFlowTestCase):
         y_tf = y.eval()
         self.assertAllEqual(y_tf, y_np)
 
+  def testPartialShapes(self):
+    p_unknown_rank = array_ops.placeholder(dtypes.uint8)
+    p_unknown_dims = array_ops.placeholder(dtypes.uint8,
+                                           shape=[None, None, None])
+    p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
+
+    p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
+    p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
+
+    for op in [image_ops.flip_left_right,
+               image_ops.flip_up_down,
+               image_ops.random_flip_left_right,
+               image_ops.random_flip_up_down,
+               image_ops.transpose_image]:
+      transformed_unknown_rank = op(p_unknown_rank)
+      self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
+      transformed_unknown_dims = op(p_unknown_dims)
+      self.assertEqual(3, transformed_unknown_dims.get_shape().ndims)
+      transformed_unknown_width = op(p_unknown_width)
+      self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
+
+      with self.assertRaisesRegexp(ValueError, 'must be three-dimensional'):
+        op(p_wrong_rank)
+      with self.assertRaisesRegexp(ValueError, 'must be > 0'):
+        op(p_zero_dim)
+
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
 

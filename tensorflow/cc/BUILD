@@ -8,8 +8,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "tf_copts")
-load("/tensorflow/tensorflow", "tf_gen_op_wrappers_cc")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 cc_library(
     name = "cc_op_gen_main",

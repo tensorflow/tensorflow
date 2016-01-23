@@ -41,14 +41,14 @@ class ResizeBilinearOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto Svec = shape_t.vec<int32>();
     // Initialize shape to the batch size of the input, then add
@@ -136,7 +136,7 @@ class ResizeBilinearOpGrad : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     // ResizeBilinear always produces float images, so the input gradient is
     // always a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
@@ -145,10 +145,9 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     // The second argument is the original input to resize_bilinear.
     const Tensor& original_image = context->input(1);
-    OP_REQUIRES(
-        context, original_image.dims() == 4,
-        errors::InvalidArgument("original_image must be 4-dimensional",
-                                original_image.shape().ShortDebugString()));
+    OP_REQUIRES(context, original_image.dims() == 4,
+                errors::InvalidArgument("original_image must be 4-dimensional",
+                                        original_image.shape().DebugString()));
 
     // Allocate output and initialize to zeros.
     const int64 batch_size = input.dim_size(0);

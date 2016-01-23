@@ -35,7 +35,7 @@ namespace tensorflow {
 
 namespace {
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
 }
 }  // namespace
 
@@ -227,7 +227,7 @@ Node* GraphConstructor::MakeNode(const NodeDef& node_def) {
 static int CountNodes(Graph* g) {
   int nodes = 0;
   for (Node* node : g->nodes()) {
-    VLOG(1) << node;  // Dummy use to avoid compiler warning
+    VLOG(3) << node;  // Dummy use to avoid compiler warning
     nodes++;
   }
   return nodes;

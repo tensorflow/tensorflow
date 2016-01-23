@@ -1095,6 +1095,76 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses the Cholesky decomposition if the matrices are symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
+  name: "BatchMatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations. Checks for invertibility."
+  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output\nmatrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]."
+}
+op {
+  name: "BatchMatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[..., M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[..., M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is ignored. If `lower` is False then the strictly\nlower triangular part of each inner-most matrix is ignored. `rhs` is a tensor\nof shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the\noutput satisfies\n\\\\(\\sum_{k=0}^{i}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].\nIf `lower` is false then the strictly then the output satisfies\n\\\\(sum_{k=i}^{K-1}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]."
+}
+op {
   name: "BatchNormWithGlobalNormalization"
   input_arg {
     name: "t"
@@ -1533,6 +1603,33 @@ op {
   summary: "Concatenates tensors along one dimension."
 }
 op {
+  name: "ConcatOffset"
+  input_arg {
+    name: "concat_dim"
+    description: "The dimension along which to concatenate."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "shape"
+    description: "The `N` int32 vetors representing shape of tensors being concatenated."
+    type: DT_INT32
+    number_attr: "N"
+  }
+  output_arg {
+    name: "offset"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  summary: "Computes offsets of concat inputs within its output."
+  description: "For example:\n\n```prettyprint\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+}
+op {
   name: "Conj"
   input_arg {
     name: "in"
@@ -1828,6 +1925,21 @@ op {
   }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
+}
+op {
+  name: "DecodeJSONExample"
+  input_arg {
+    name: "json_examples"
+    description: "Each string is a JSON object serialized according to the JSON\nmapping of the Example proto."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "binary_examples"
+    description: "Each string is a binary Example protocol buffer corresponding\nto the respective element of `json_examples`."
+    type: DT_STRING
+  }
+  summary: "Convert JSON-encoded Example records to binary protocol buffer strings."
+  description: "This op translates a tensor containing Example records, encoded using\nthe [standard JSON\nmapping](https://developers.google.com/protocol-buffers/docs/proto3#json),\ninto a tensor containing the same records encoded as binary protocol\nbuffers. The resulting tensor can then be fed to any of the other\nExample-parsing ops."
 }
 op {
   name: "DecodeJpeg"
@@ -3899,7 +4011,7 @@ op {
   name: "LoopCond"
   input_arg {
     name: "input"
-    description: "= A boolean scalar, representing the branch predicate of the Switch op."
+    description: "A boolean scalar, representing the branch predicate of the Switch op."
     type: DT_BOOL
   }
   output_arg {
@@ -4020,6 +4132,75 @@ op {
   }
   summary: "Calculates the inverse of a square invertible matrix."
   description: "The op uses the Cholesky decomposition if the matrix is symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+}
+op {
+  name: "MatrixSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]` containing the tensor that solves\nmatrix * output = rhs."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations. Checks for invertibility."
+}
+op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    description: "Shape is `[M, M]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Shape is `[M, K]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "Boolean indicating whether matrix is lower or upper triangular."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of values in the input and output."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
+  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is ignored. If `lower` is False then the\nstrictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of\nshape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `lower` is `True` then the output\nsatisfies \\\\(\\sum_{k=0}^{i}\\\\) matrix[i, k] * output[k, j] = rhs[i, j].\nIf `lower` is false then output satisfies\n\\\\(\\sum_{k=i}^{K-1}\\\\) matrix[i, k] * output[k, j] = rhs[i, j]."
 }
 op {
   name: "Max"
@@ -4709,6 +4890,59 @@ op {
   }
   summary: "Pads a tensor with zeros."
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```prettyprint\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
+}
+op {
+  name: "PaddingFIFOQueue"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types.\nShapes of fixed rank but variable size are allowed by setting\nany shape dimension to -1.  In this case, the inputs\' shape may vary along\nthe given dimension, and DequeueMany will pad the given dimension with\nzeros up to the maximum shape of all elements in the given batch.\nIf the length of this attr is 0, different queue elements may have\ndifferent ranks and shapes, but only one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements in first-in first-out order."
+  description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
+  is_stateful: true
 }
 op {
   name: "ParseExample"
@@ -5905,6 +6139,27 @@ op {
   description: "The unique `frame_name` is used by the `Executor` to identify frames. If\n`is_constant` is true, `output` is a constant in the child frame; otherwise\nit may be changed in the child frame. At most `parallel_iterations` iterations\nare run in parallel in the child frame."
 }
 op {
+  name: "RefExit"
+  input_arg {
+    name: "data"
+    description: "The tensor to be made available to the parent frame."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "The same tensor as `data`."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Exits the current frame to its parent frame."
+  description: "Exit makes its input `data` available to the parent frame."
+}
+op {
   name: "RefIdentity"
   input_arg {
     name: "input"
@@ -5921,6 +6176,59 @@ op {
     type: "type"
   }
   summary: "Return the same ref tensor as the input ref tensor."
+}
+op {
+  name: "RefMerge"
+  input_arg {
+    name: "inputs"
+    description: "The input tensors, exactly one of which will become available."
+    type_attr: "T"
+    number_attr: "N"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "Will be set to the available input tensor."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "value_index"
+    description: "The index of the chosen input tensor in `inputs`."
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Forwards the value of an available tensor from `inputs` to `output`."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+}
+op {
+  name: "RefNextIteration"
+  input_arg {
+    name: "data"
+    description: "The tensor to be made available to the next iteration."
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    description: "The same tensor as `data`."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Makes its input available to the next iteration."
 }
 op {
   name: "RefSelect"
@@ -7130,6 +7438,31 @@ op {
   description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
 }
 op {
+  name: "ShapeN"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns shape of tensors."
+  description: "This operation returns N 1-D integer tensors representing shape of `input[i]s`."
+}
+op {
   name: "ShardedFilename"
   input_arg {
     name: "basename"
@@ -7147,7 +7480,7 @@ op {
     name: "filename"
     type: DT_STRING
   }
-  summary: "Generate a sharded filename. The filename is printf formated as"
+  summary: "Generate a sharded filename. The filename is printf formatted as"
   description: "   %s-%05d-of-%05d, basename, shard, num_shards."
 }
 op {
@@ -8606,6 +8939,202 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorArray"
+  input_arg {
+    name: "size"
+    description: "The size of the array."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary tensor_array resource. Default\nvalue is the name of the \'TensorArray\' op (which is guaranteed unique)."
+  }
+  summary: "An array of Tensors of given size, with data written via Write and read"
+  description: "via Read or Pack."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayClose"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Delete the TensorArray from its resource container.  This enables"
+  description: "the user to close and release the resource in the middle of a step/run."
+}
+op {
+  name: "TensorArrayGrad"
+  input_arg {
+    name: "handle"
+    description: "The handle to the forward TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Creates a TensorArray for storing the gradients of values in the given handle."
+  description: "If the given TensorArray gradient already exists, returns a reference to it."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayPack"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  summary: "Pack the elements from the TensorArray."
+  description: "All elements must have the same shape."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayRead"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    description: "The tensor that is read from the TensorArray."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  summary: "Read an element from the TensorArray."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayUnpack"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "value"
+    description: "The concatenated tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "gradient_add"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Used for gradient back-propagation.  If values are already\nwritten to the handle, validate shapes and add to them."
+  }
+  summary: "Unpack the data from the input value into TensorArray elements."
+  is_stateful: true
+}
+op {
+  name: "TensorArrayWrite"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "index"
+    description: "The position to write to inside the TensorArray."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    description: "The tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "gradient_add"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Used for gradient back-propagation.  If the value has already\nbeen written to the handle, validate input shape and add to it."
+  }
+  summary: "Push an element onto the tensor_array."
+  is_stateful: true
+}
+op {
   name: "TextLineReader"
   output_arg {
     name: "reader_handle"
@@ -8755,25 +9284,24 @@ op {
   name: "TopK"
   input_arg {
     name: "input"
-    description: "A `batch_size` x `classes` tensor."
+    description: "1-D or higher with last dimension at least `k`."
     type_attr: "T"
   }
   output_arg {
     name: "values"
-    description: "A `batch_size` x `k` tensor with the `k` largest elements for\neach row."
+    description: "The `k` largest elements along each last dimensional slice."
     type_attr: "T"
   }
   output_arg {
     name: "indices"
-    description: "A `batch_size` x `k` tensor with the index of each value within\neach row."
+    description: "The indices of `values` within the last dimension of `input`."
     type: DT_INT32
   }
   attr {
     name: "k"
     type: "int"
-    description: "Number of top elements to look for within each row."
+    description: "Number of top elements to look for along the last dimension (along each\nrow for matrices)."
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "sorted"
@@ -8798,8 +9326,56 @@ op {
       }
     }
   }
-  summary: "Returns the values and indices of the `k` largest elements for each row."
-  description: "\\\\(values_{i, j}\\\\) represents the j-th largest element in \\\\(input_i\\\\).\n\n\\\\(indices_{i, j}\\\\) gives the column index of the corresponding element,\nsuch that \\\\(input_{i, indices_{i, j}} = values_{i, j}\\\\). If two\nelements are equal, the lower-index element appears first."
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nIf `k` varies dynamically, use `TopKV2` below."
+}
+op {
+  name: "TopKV2"
+  input_arg {
+    name: "input"
+    description: "1-D or higher with last dimension at least `k`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "0-D.  Number of top elements to look for along the last dimension (along each\nrow for matrices)."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    description: "The `k` largest elements along each last dimensional slice."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "indices"
+    description: "The indices of `values` within the last dimension of `input`."
+    type: DT_INT32
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true the resulting `k` elements will be sorted by the values in\ndescending order."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+      }
+    }
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nThis is the same as `TopK`, but takes `k` as in input rather than an attr."
 }
 op {
   name: "Transpose"
@@ -8965,6 +9541,35 @@ op {
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
+}
+op {
+  name: "UniqueWithCounts"
+  input_arg {
+    name: "x"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "idx"
+    description: "1-D."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "count"
+    description: "1-D."
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Finds unique elements in a 1-D tensor."
+  description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"
 }
 op {
   name: "Unpack"

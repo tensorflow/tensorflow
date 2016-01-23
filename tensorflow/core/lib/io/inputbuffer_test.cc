@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
 
+#include <vector>
 #include "tensorflow/core/public/env.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"

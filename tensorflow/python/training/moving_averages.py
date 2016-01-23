@@ -268,7 +268,7 @@ class ExponentialMovingAverage(object):
       var: A `Variable` object.
 
     Returns:
-      A string: the name of the variable that will be used or was used
+      A string: The name of the variable that will be used or was used
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """

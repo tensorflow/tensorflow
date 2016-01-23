@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 
+#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
@@ -28,7 +30,9 @@ namespace tensorflow {
 // IMPORTANT: If you do not call Unref(), you will likely leak tensor memory.
 class TensorReference {
  public:
-  explicit TensorReference(const Tensor& tensor) : buf_(tensor.buf_) {
+  // Take the reference of the root buffer so the size will be more accurate
+  explicit TensorReference(const Tensor& tensor)
+      : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
     if (buf_) buf_->Ref();
   }
 
@@ -44,6 +48,23 @@ class TensorReference {
     return 128 + (buf_ ? buf_->size() : 0);
   }
 
+  void FillDescription(AllocationDescription* description) const {
+    if (buf_) buf_->FillAllocationDescription(description);
+  }
+
+  // Convenience function for de-duplicating tensor references.
+  bool SharesBufferWith(const TensorReference& t) const {
+    return buf_ == t.buf_;
+  }
+
+  // Convenience function for de-duplicating tensor references.
+  bool SharesBufferWith(const Tensor& t) const {
+    return buf_ == (t.buf_ ? t.buf_->root_buffer() : nullptr);
+  }
+
+  // Convenience function for de-duplicating tensor references.
+  size_t BufferHash() const { return std::hash<TensorBuffer*>()(buf_); }
+
   // A constructor used only for tests
   explicit TensorReference(TensorBuffer* test_buffer) : buf_(test_buffer) {
     if (buf_) buf_->Ref();
@@ -52,6 +73,8 @@ class TensorReference {
  private:
   TensorBuffer* buf_;
 };
+
+typedef gtl::InlinedVector<TensorReference, 4> TensorReferenceVector;
 
 }  // namespace tensorflow
 

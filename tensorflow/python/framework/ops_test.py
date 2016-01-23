@@ -965,5 +965,50 @@ class GraphDefVersionTest(test_util.TensorFlowTestCase):
           self.assertEqual(version, v)
 
 
+# NOTE(petewarden): Dummy stats registrations for ops used in the tests.
+@ops.RegisterStatistics("a", "weight_parameters")
+def _calc_a_weight_params(unused_graph, unused_node):
+  return ops.OpStats("weight_parameters", 10)
+
+
+@ops.RegisterStatistics("a", "flops")
+def _calc_a_forward_flops(unused_graph, unused_node):
+  return ops.OpStats("flops", 20)
+
+
+class StatisticsTest(test_util.TensorFlowTestCase):
+
+  def testRegisteredNode(self):
+    graph = ops.Graph()
+    node = ops._NodeDef("a", "an_a")
+    weight_params = ops.get_stats_for_node_def(graph, node, "weight_parameters")
+    self.assertEqual(10, weight_params.value)
+    flops = ops.get_stats_for_node_def(graph, node, "flops")
+    self.assertEqual(20, flops.value)
+    missing_stat = ops.get_stats_for_node_def(graph, node, "missing_stat")
+    self.assertEqual(None, missing_stat.value)
+
+  def testUnregisteredNode(self):
+    graph = ops.Graph()
+    node = ops._NodeDef("b", "a_b")
+    weight_params = ops.get_stats_for_node_def(graph, node, "weight_params")
+    self.assertEqual(None, weight_params.value)
+
+  def testAccumulateStatistics(self):
+    weight_params_total = ops.OpStats("weight_parameters")
+    self.assertEqual(None, weight_params_total.value)
+    flops_total = ops.OpStats("flops")
+    self.assertEqual(None, flops_total.value)
+    first_weight_params = ops.OpStats("weight_parameters", 100)
+    weight_params_total += first_weight_params
+    self.assertEqual(100, weight_params_total.value)
+    second_flops = ops.OpStats("flops", 3)
+    flops_total += second_flops
+    self.assertEqual(3, flops_total.value)
+    second_weight_params = ops.OpStats("weight_parameters", 200)
+    weight_params_total += second_weight_params
+    self.assertEqual(300, weight_params_total.value)
+
+
 if __name__ == "__main__":
   googletest.main()

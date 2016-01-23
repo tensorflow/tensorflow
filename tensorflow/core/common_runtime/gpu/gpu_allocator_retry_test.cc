@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 
-#include <gtest/gtest.h>
+#include <vector>
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/env.h"
 

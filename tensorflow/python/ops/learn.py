@@ -93,7 +93,7 @@ def xavier_initializer(n_inputs, n_outputs, uniform=True):
 
 def _assert_summary_tag_unique(tag):
   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES):
-    old_tag = tensor_util.ConstantValue(summary.op.inputs[0])
+    old_tag = tensor_util.constant_value(summary.op.inputs[0])
     if tag == str(old_tag):
       raise ValueError('Conflict with summary tag: %s exists on summary %s %s' %
                        (tag, summary, old_tag))

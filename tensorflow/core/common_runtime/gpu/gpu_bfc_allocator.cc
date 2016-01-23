@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -27,13 +25,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
 GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
-    : device_id_(device_id) {
+    : device_id_(device_id), next_allocation_id_(1) {
   // Get a pointer to the stream_executor for this device
   stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
 
@@ -74,7 +73,7 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
   GPUBFCAllocator::Chunk* c = new GPUBFCAllocator::Chunk();
   c->ptr = gpu_mem.opaque();
   c->size = gpu_memory_size_;
-  c->in_use = false;
+  c->allocation_id = -1;
   c->prev = nullptr;
   c->next = nullptr;
 
@@ -160,12 +159,14 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
     Bin* b = it->second;
-    for (GPUBFCAllocator::Chunk* chunk : b->free_chunks) {
-      DCHECK(!chunk->in_use);
+    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
+         ++citer) {
+      GPUBFCAllocator::Chunk* chunk = (*citer);
+      DCHECK(!chunk->in_use());
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, so remove
         // it from the free bin structure prior to using.
-        RemoveFreeChunkFromBin(chunk);
+        RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
         // If we can break the size of the chunk into two reasonably
         // large pieces, do so.
@@ -179,7 +180,9 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
         // The requested size of the returned chunk is what the user
         // has allocated.
         chunk->requested_size = num_bytes;
-        chunk->in_use = true;
+        // Assign a unique id and increment the id counter, marking the
+        // chunk as being in use.
+        chunk->allocation_id = next_allocation_id_++;
 
         VLOG(4) << "Returning: " << chunk->ptr;
         return chunk->ptr;
@@ -200,7 +203,7 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
 }
 
 void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::Chunk* c, size_t num_bytes) {
-  CHECK(!c->in_use && !c->bin);
+  CHECK(!c->in_use() && !c->bin);
 
   // Create a new chunk starting num_bytes after c
   GPUBFCAllocator::Chunk* new_chunk = new GPUBFCAllocator::Chunk();
@@ -213,7 +216,7 @@ void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::Chunk* c, size_t num_bytes) {
   c->size = num_bytes;
 
   // The new chunk is not in use.
-  new_chunk->in_use = false;
+  new_chunk->allocation_id = -1;
 
   // Maintain the pointers.
   // c <-> c_neighbor becomes
@@ -259,7 +262,7 @@ void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
 void GPUBFCAllocator::Merge(GPUBFCAllocator::Chunk* c1,
                             GPUBFCAllocator::Chunk* c2) {
   // We can only merge chunks that are not in use.
-  CHECK(!c1->in_use && !c2->in_use);
+  CHECK(!c1->in_use() && !c2->in_use());
 
   // c1's prev doesn't change, still points to the same ptr, and is
   // still not in use.
@@ -289,7 +292,7 @@ void GPUBFCAllocator::DeleteChunk(Chunk* c) {
 }
 
 void GPUBFCAllocator::InsertFreeChunkIntoBin(GPUBFCAllocator::Chunk* c) {
-  CHECK(!c->in_use && !c->bin);
+  CHECK(!c->in_use() && !c->bin);
   auto it = bins_.lower_bound(c->size);
   CHECK(it != bins_.end()) << " Tried to reassign to non-existent bin for size "
                            << c->size;
@@ -298,18 +301,27 @@ void GPUBFCAllocator::InsertFreeChunkIntoBin(GPUBFCAllocator::Chunk* c) {
   new_bin->free_chunks.insert(c);
 }
 
+void GPUBFCAllocator::RemoveFreeChunkIterFromBin(
+    GPUBFCAllocator::Bin::FreeChunkSet* free_chunks,
+    const GPUBFCAllocator::Bin::FreeChunkSet::iterator& citer) {
+  GPUBFCAllocator::Chunk* c = *citer;
+  CHECK(!c->in_use() && c->bin);
+  free_chunks->erase(citer);
+  c->bin = nullptr;
+}
+
 void GPUBFCAllocator::RemoveFreeChunkFromBin(GPUBFCAllocator::Chunk* c) {
-  CHECK(!c->in_use && c->bin);
+  CHECK(!c->in_use() && c->bin);
   int count = c->bin->free_chunks.erase(c);
   CHECK(count > 0) << "Could not find chunk in bin";
   c->bin = nullptr;
 }
 
 void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
-  CHECK(c->in_use && !c->bin);
+  CHECK(c->in_use() && !c->bin);
 
   // Mark the chunk as no longer in use
-  c->in_use = false;
+  c->allocation_id = -1;
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
@@ -317,7 +329,7 @@ void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
 
   // If the next chunk is free, coalesce the two, if the result would
   // fit in an existing bin.
-  if (c->next && !c->next->in_use) {
+  if (c->next && !c->next->in_use()) {
     VLOG(8) << "Chunk at " << c->next->ptr << " merging with c " << c->ptr;
 
     chunk_to_reassign = c;
@@ -328,7 +340,7 @@ void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
   }
 
   // If the previous chunk is free, coalesce the two
-  if (c->prev && !c->prev->in_use) {
+  if (c->prev && !c->prev->in_use()) {
     VLOG(8) << "Chunk at " << c->ptr << " merging into c->prev "
             << c->prev->ptr;
 
@@ -369,6 +381,15 @@ size_t GPUBFCAllocator::AllocatedSize(void* ptr) {
   return c->size;
 }
 
+int64 GPUBFCAllocator::AllocationId(void* ptr) {
+  mutex_lock l(lock_);
+  auto it = ptr_to_chunk_map_.find(ptr);
+  CHECK(it != ptr_to_chunk_map_.end())
+      << "Asked for allocation id of pointer we never allocated: " << ptr;
+  GPUBFCAllocator::Chunk* c = it->second;
+  return c->allocation_id;
+}
+
 void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // For each bin: tally up the total number of chunks and bytes.
   // Note that bins hold only free chunks.
@@ -385,7 +406,7 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
       total_bytes_in_bin += c->size;
       total_requested_bytes_in_bin += c->requested_size;
       ++total_chunks_in_bin;
-      if (c->in_use) {
+      if (c->in_use()) {
         total_bytes_in_use += c->size;
         total_requested_bytes_in_use += c->requested_size;
         ++total_chunks_in_use;

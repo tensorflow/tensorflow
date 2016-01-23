@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
-#include <gtest/gtest.h>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"

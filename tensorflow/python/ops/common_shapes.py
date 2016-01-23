@@ -119,13 +119,14 @@ def get2d_conv_output_size(input_height, input_width, filter_height,
     return input_height, input_width
   else:
     if filter_height > input_height or filter_width > input_width:
-      raise ValueError("filter must not be larger than the input: ",
-                       "Filter: [", filter_height, "x", filter_width, "] ",
-                       "Input: [", input_height, "x", input_width, "] ")
+      raise ValueError(
+          "filter must not be larger than the input: "
+          "Filter: [%sx%s] Input: [%sx%s]"
+          % (filter_height, filter_width, input_height, input_width))
     if row_stride > filter_height or col_stride > filter_width:
       raise ValueError("stride must be less than or equal to filter size",
-                       "stride: [", row_stride, "x", col_stride, "] ",
-                       "filter: [", filter_height, "x", filter_width, "] ")
+                       "stride: [%sx%s] filter: [%sx%s]"
+                       % (row_stride, col_stride, filter_height, filter_width))
 
     # Compute number of rows in the output, based on the padding.
     if input_height.value is None or filter_height.value is None:

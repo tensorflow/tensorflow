@@ -17,11 +17,13 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 
+#include <vector>
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/port.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "testing/base/public/benchmark.h"
+#include "tensorflow/core/platform/google/build_config/benchmark.h"
 
 #else
 #define BENCHMARK(n)                                            \

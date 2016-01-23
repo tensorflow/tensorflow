@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_H_
 #define TENSORFLOW_PLATFORM_TEST_H_
 
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
+#include "tensorflow/core/platform/google/build_config/gunit.h"
+#else
+#include <gtest/gtest.h>
+#endif
 
 namespace tensorflow {
 namespace testing {

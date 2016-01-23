@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include <string>
-#include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/graph/graph.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/status.h"
 
 namespace tensorflow {

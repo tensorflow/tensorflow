@@ -42,7 +42,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
 
   def _EventsReader(self, test_dir):
     event_paths = glob.glob(os.path.join(test_dir, "event*"))
-    # If the tests runs multiple time in the same directory we can have
+    # If the tests runs multiple times in the same directory we can have
     # more than one matching event file.  We only want to read the last one.
     self.assertTrue(event_paths)
     return tf.train.summary_iterator(event_paths[-1])

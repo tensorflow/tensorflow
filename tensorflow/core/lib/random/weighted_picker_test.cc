@@ -18,7 +18,6 @@ limitations under the License.
 #include <string.h>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cfloat>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/range_sampler.h"
