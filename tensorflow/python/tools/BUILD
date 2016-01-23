@@ -46,7 +46,6 @@ py_binary(
     main = "graph_metrics.py",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//third_party/py/six",
     ],
 )
 
