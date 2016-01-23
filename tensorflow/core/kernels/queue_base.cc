@@ -197,7 +197,8 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
   return Status::OK();
 }
 
-void QueueBase::Cancel(Action action, CancellationToken token) {
+void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,
+                       CancellationToken token) {
   DoneCallback callback = nullptr;
   {
     mutex_lock lock(mu_);
@@ -205,7 +206,8 @@ void QueueBase::Cancel(Action action, CancellationToken token) {
         action == kEnqueue ? &enqueue_attempts_ : &dequeue_attempts_;
 
     for (Attempt& attempt : *attempts) {
-      if (attempt.cancellation_token == token) {
+      if (attempt.cancellation_manager == cancellation_manager &&
+          attempt.cancellation_token == token) {
         if (!attempt.is_cancelled) {
           attempt.is_cancelled = true;
           if (action == kEnqueue) {
@@ -256,7 +258,7 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
     {
       mutex_lock lock(mu_);
       enqueue_attempts_.emplace_back(
-          0, callback, ctx, CancellationManager::kInvalidToken,
+          0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
           [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(

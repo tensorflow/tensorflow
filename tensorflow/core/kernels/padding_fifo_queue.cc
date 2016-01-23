@@ -88,11 +88,11 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kDequeue, token); });
+        token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
-          num_elements, [callback]() { callback(Tuple()); }, ctx, token,
+          num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 s = queues_[0].size();
             if (closed_ && s < attempt->elements_requested) {

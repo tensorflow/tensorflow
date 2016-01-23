@@ -106,7 +106,8 @@ class QueueBase : public QueueInterface {
   static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                    int index);
 
-  void Cancel(Action action, CancellationToken token);
+  void Cancel(Action action, CancellationManager* cancellation_manager,
+              CancellationToken token);
 
   // Helper for cancelling all pending Enqueue(Many) operations when
   // Close is called with cancel_pending_enqueues.
@@ -142,6 +143,7 @@ class QueueBase : public QueueInterface {
     int32 elements_requested;
     DoneCallback done_callback;  // must be run outside mu_
     OpKernelContext* context;
+    CancellationManager* cancellation_manager;  // not owned
     CancellationToken cancellation_token;
     RunCallback run_callback;  // must be run while holding mu_
     bool is_cancelled;
@@ -150,11 +152,12 @@ class QueueBase : public QueueInterface {
     std::vector<Tuple> tuples;
 
     Attempt(int32 elements_requested, DoneCallback done_callback,
-            OpKernelContext* context, CancellationToken cancellation_token,
-            RunCallback run_callback)
+            OpKernelContext* context, CancellationManager* cancellation_manager,
+            CancellationToken cancellation_token, RunCallback run_callback)
         : elements_requested(elements_requested),
           done_callback(done_callback),
           context(context),
+          cancellation_manager(cancellation_manager),
           cancellation_token(cancellation_token),
           run_callback(run_callback),
           is_cancelled(false) {}

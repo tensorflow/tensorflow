@@ -773,23 +773,13 @@ cc_library(
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
-cc_library(
-    name = "copy_tensor",
-    deps = [
-        ":lib",
-        ":protos_cc",
-        ":stream_executor",
-        "//third_party/eigen3",
-    ],
-)
-
 tf_cuda_library(
     name = "core_cpu_internal",
     srcs = glob(
         [
             "client/**/*.cc",
-            "common_runtime/**/*.h",  # TODO(josh11b): exclude common_runtime/gpu/
-            "common_runtime/**/*.cc",
+            "common_runtime/*.h",
+            "common_runtime/*.cc",
             "graph/**/*.h",
             "graph/**/*.cc",
             "public/session.h",
@@ -800,8 +790,6 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
-            "common_runtime/gpu/*.cc",
-            "common_runtime/copy_tensor.cc",
             "common_runtime/gpu_device_factory.cc",
             "common_runtime/direct_session.cc",
             "common_runtime/direct_session.h",
@@ -809,7 +797,7 @@ tf_cuda_library(
     ),
     hdrs = glob(
         [
-            "common_runtime/**/*.h",  # TODO(josh11b): exclude common_runtime/gpu/
+            "common_runtime/*.h",
             "graph/**/*.h",
         ],
         exclude = [
@@ -819,7 +807,6 @@ tf_cuda_library(
     ),
     copts = tf_copts(),
     deps = [
-        ":copy_tensor",
         ":framework",
         ":framework_internal",
         ":lib",
@@ -861,7 +848,6 @@ tf_cuda_library(
     name = "gpu_runtime",
     srcs = glob(
         [
-            "common_runtime/gpu/*.h",
             "common_runtime/gpu/*.cc",
         ],
         exclude = [
@@ -869,6 +855,7 @@ tf_cuda_library(
             "**/*test.cc",
         ],
     ),
+    hdrs = glob(["common_runtime/gpu/*.h"]),
     copts = tf_copts(),
     cuda_deps = [
         ":cuda",
@@ -1020,6 +1007,7 @@ tf_cc_tests(
         ":direct_session",
         ":framework",
         ":framework_internal",
+        ":gpu_runtime",
         ":kernels",
         ":lib",
         ":lib_internal",

@@ -38,6 +38,17 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "graph_metrics",
+    srcs = [
+        "graph_metrics.py",
+    ],
+    main = "graph_metrics.py",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

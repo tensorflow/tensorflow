@@ -1530,6 +1530,144 @@ def set_shapes_for_outputs(op):
     output.set_shape(s)
 
 
+class OpStats(object):
+  """A holder for statistics about an operator.
+
+  This class holds information about the resource requirements for an op,
+  including the size of its weight parameters on-disk and how many FLOPS it
+  requires to execute forward inference.
+
+  If you define a new operation, you can create a function that will return a
+  set of information about its usage of the CPU and disk space when serialized.
+  The function itself takes a Graph object that's been set up so you can call
+  methods like get_tensor_by_name to help calculate the results, and a NodeDef
+  argument.
+
+  """
+
+  def __init__(self, statistic_type, value=None):
+    """Sets up the initial placeholders for the statistics."""
+    self.statistic_type = statistic_type
+    self.value = value
+
+  @property
+  def statistic_type(self):
+    return self._statistic_type
+
+  @statistic_type.setter
+  def statistic_type(self, statistic_type):
+    self._statistic_type = statistic_type
+
+  @property
+  def value(self):
+    return self._value
+
+  @value.setter
+  def value(self, value):
+    self._value = value
+
+  def __iadd__(self, other):
+    if other.statistic_type != self.statistic_type:
+      raise ValueError("Can't add an OpStat of type %s to one of %s.",
+                       self.statistic_type, other.statistic_type)
+    if self.value is None:
+      self.value = other.value
+    elif other.value is not None:
+      self._value += other.value
+    return self
+
+_stats_registry = registry.Registry("statistical functions")
+
+
+class RegisterStatistics(object):
+  """A decorator for registering the statistics function for an op type.
+
+  This decorator is very similar to the RegisterShapes class, and can be defined
+  for an op type so that it gives a report on the resources used by an instance
+  of an operator, in the form of an OpStats object.
+
+  Well-known types of statistics include these so far:
+
+  - weight_parameters: For operations like MatMul, Conv, and BiasAdd that take
+    learned weights as inputs, this statistic captures how many numerical values
+    are used. This is good to know because the weights take up most of the size
+    of a typical serialized graph on disk.
+
+  - flops: When running a graph, the bulk of the computation happens doing
+    numerical calculations like matrix multiplications. This type allows a node
+    to return how many floating-point operations it takes to complete. The
+    total number of FLOPs for a graph is a good guide to its expected latency.
+
+  You can add your own statistics just by picking a new type string, registering
+  functions for the ops you care about, and then calling something like
+  python/tools/graph_metrics.py with the new type as an argument.
+
+  If a statistic for an op is registered multiple times, a KeyError will be
+  raised.
+
+  For example, you can define a new metric called doohickey for a Foo operation
+  by placing this in your code:
+
+  ```python
+  @ops.RegisterStatistics("Foo", "doohickey")
+  def _calc_foo_bojangles(unused_graph, unused_node_def):
+    return ops.OpStats("doohickey", 20)
+  ```
+
+  Then in client code you can retrieve the value by making this call:
+
+  ```python
+  doohickey = ops.get_stats_for_node_def(graph, node_def, "doohickey")
+  ```
+
+  If the NodeDef is for an op with a registered doohickey function, you'll get
+  back the calculated amount in doohickey.value, or None if it's not defined.
+
+  """
+
+  def __init__(self, op_type, statistic_type):
+    """Saves the `op_type` as the `Operation` type."""
+    if not isinstance(op_type, six.string_types):
+      raise TypeError("op_type must be a string.")
+    if "," in op_type:
+      raise TypeError("op_type must not contain a comma.")
+    self._op_type = op_type
+    if not isinstance(statistic_type, six.string_types):
+      raise TypeError("statistic_type must be a string.")
+    if "," in statistic_type:
+      raise TypeError("statistic_type must not contain a comma.")
+    self._statistic_type = statistic_type
+
+  def __call__(self, f):
+    """Registers "f" as the statistics function for "op_type"."""
+    _stats_registry.register(f, self._op_type + "," + self._statistic_type)
+    return f
+
+
+def get_stats_for_node_def(graph, node, statistic_type):
+  """Looks up the node's statistics function in the registry and calls it.
+
+  This function takes a Graph object and a NodeDef from a GraphDef, and if
+  there's an associated statistics method, calls it and returns a result. If no
+  function has been registered for the particular node type, it returns an empty
+  statistics object.
+
+  Args:
+    graph: A Graph object that's been set up with the node's graph.
+    node: A NodeDef describing the operator.
+    statistic_type: A string identifying the statistic we're interested in.
+  Returns:
+    An OpStats object containing information about resource usage.
+  """
+
+  try:
+    stats_func = _stats_registry.lookup(node.op + "," + statistic_type)
+    result = stats_func(graph, node)
+  except LookupError:
+    result = OpStats(statistic_type)
+  return result
+
+
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
