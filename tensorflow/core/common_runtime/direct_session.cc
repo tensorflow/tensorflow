@@ -543,7 +543,7 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (auto partition : partitions) {
+  for (auto&& partition : partitions) {
     const string& partition_name = partition.first;
 
     GraphDef* graph_def = &partition.second;
