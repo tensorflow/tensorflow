@@ -94,7 +94,8 @@ def get_dnn_model(hidden_units, target_predictor_fn):
     return dnn_estimator
 
 
-def get_rnn_model(rnn_size, cell_type, input_op_fn, target_predictor_fn):
+def get_rnn_model(rnn_size, cell_type, input_op_fn,
+                  bidirection, target_predictor_fn):
     """Returns a function that creates a RNN TensorFlow subgraph with given
     params.
 
@@ -104,6 +105,7 @@ def get_rnn_model(rnn_size, cell_type, input_op_fn, target_predictor_fn):
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
         target_predictor_fn: Function that will predict target from input
                              features. This can be logistic regression,
                              linear regression or any other model,
@@ -123,7 +125,14 @@ def get_rnn_model(rnn_size, cell_type, input_op_fn, target_predictor_fn):
             cell_fn = rnn_cell.BasicLSTMCell
         else:
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
-        cell = cell_fn(rnn_size)
-        _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
+        if bidirection:
+            # forward direction cell
+            rnn_fw_cell = cell_fn(rnn_size)
+            # backward direction cell
+            rnn_bw_cell = cell_fn(rnn_size)
+            encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell)
+        else:
+            cell = cell_fn(rnn_size)
+            _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
         return target_predictor_fn(encoding[-1], y)
     return rnn_estimator

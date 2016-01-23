@@ -34,6 +34,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
         n_classes: Number of classes in the target.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
@@ -64,7 +65,8 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
      """
 
     def __init__(self, rnn_size, n_classes, cell_type='gru',
-                 input_op_fn=null_input_op_fn, tf_master="", batch_size=32,
+                 input_op_fn=null_input_op_fn, bidirection=False,
+                 tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
@@ -72,6 +74,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
+        self.bidirection = bidirection
         super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -84,7 +87,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
-                                    self.input_op_fn,
+                                    self.input_op_fn, self.bidirection,
                                     models.logistic_regression)(X, y)
 
     @property
@@ -107,6 +110,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
@@ -129,7 +133,8 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             round(s) to continue training. (default: None)
     """
 
-    def __init__(self, rnn_size, cell_type='gru', input_op_fn=null_input_op_fn,
+    def __init__(self, rnn_size, cell_type='gru',
+                 input_op_fn=null_input_op_fn, bidirection=False,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
@@ -138,6 +143,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
+        self.bidirection = bidirection
         super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -150,7 +156,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
-                                    self.input_op_fn,
+                                    self.input_op_fn, self.bidirection,
                                     models.linear_regression)(X, y)
 
     @property
