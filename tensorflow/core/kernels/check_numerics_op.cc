@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <math.h>
 #include <algorithm>
+#include <numeric>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
