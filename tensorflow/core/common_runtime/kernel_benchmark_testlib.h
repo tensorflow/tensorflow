@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Device;
-class SessionOptions;
+struct SessionOptions;
 
 namespace test {
 
