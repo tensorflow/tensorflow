@@ -47,6 +47,12 @@ static int g_image_mean;  // The image mean.
 
 using namespace tensorflow;
 
+inline static int64 CurrentThreadTimeUs() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 JNIEXPORT jint JNICALL
 TENSORFLOW_METHOD(initializeTensorflow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager,
@@ -152,8 +158,13 @@ static void GetTopN(
 }
 
 static std::string ClassifyImage(const RGBA* const bitmap_src,
-                            const int in_stride,
-                            const int width, const int height) {
+                                 const int in_stride,
+                                 const int width, const int height) {
+  // Very basic benchmarking functionality.
+  static int num_runs = 0;
+  static int64 timing_total_us = 0;
+  ++num_runs;
+
   // Create input tensor
   tensorflow::Tensor input_tensor(
       tensorflow::DT_FLOAT,
@@ -184,9 +195,16 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   std::vector<tensorflow::Tensor> output_tensors;
   std::vector<std::string> output_names({"output:0"});
 
+  const int64 start_time = CurrentThreadTimeUs();
   tensorflow::Status s =
       session->Run(input_tensors, output_names, {}, &output_tensors);
-  VLOG(0) << "End computing.";
+  const int64 end_time = CurrentThreadTimeUs();
+
+  const int64 elapsed_time_inf = end_time - start_time;
+  timing_total_us += elapsed_time_inf;
+  VLOG(0) << "End computing. Ran in " << elapsed_time_inf / 1000 << "ms ("
+          << (timing_total_us / num_runs / 1000) << "ms avg over " << num_runs
+          << " runs)";
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
