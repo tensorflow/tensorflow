@@ -556,8 +556,3 @@ def constant_value(tensor):
     return np.concatenate(values, axis=dim)
   else:
     return None
-
-
-# Add some temporary backwards compatibility aliases until all downstream code
-# is changed.  TODO(irving): Remove these aliases.
-ConstantValue = constant_value
