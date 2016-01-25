@@ -1,5 +1,4 @@
 #include "tensorflow/core/framework/op.h"
-#include "boost/math/special_functions/gamma.hpp"
 #include "boost/math/special_functions/digamma.hpp"
 
 #include "boost/exception/error_info.hpp"
