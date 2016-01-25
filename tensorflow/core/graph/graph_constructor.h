@@ -22,6 +22,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Options specific to constant folding optimizations.
+struct ConstantFoldingOptions {
+  // If "consider" is not a nullptr, then only constant fold a node "n" if
+  // consider(n) returns true.
+  std::function<bool(const Node*)> consider = nullptr;
+};
+
 // Construct a graph *g out of a GraphDef gdef. Returns non-OK on
 // error, in which case *g is left in an incomplete state.
 struct GraphConstructorOptions {
@@ -43,6 +50,11 @@ struct GraphConstructorOptions {
   // not nullptr, then only consider nodes for CSE for which
   // "cse_consider_function(node)" returns true.
   std::function<bool(const Node*)> cse_consider_function = nullptr;
+
+  // If true, perform constant folding on the graph.
+  bool optimizer_do_constant_folding = false;
+
+  ConstantFoldingOptions constant_folding_opts;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);

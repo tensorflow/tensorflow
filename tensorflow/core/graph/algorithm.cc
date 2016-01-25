@@ -61,6 +61,44 @@ void DFS(const Graph& g, std::function<void(Node*)> enter,
   }
 }
 
+void ReverseDFS(const Graph& g, std::function<void(Node*)> enter,
+                std::function<void(Node*)> leave) {
+  // Stack of work to do.
+  struct Work {
+    Node* node;
+    bool leave;  // Are we entering or leaving n?
+  };
+  std::vector<Work> stack;
+  stack.push_back(Work{g.sink_node(), false});
+
+  std::vector<bool> visited(g.num_node_ids(), false);
+  while (!stack.empty()) {
+    Work w = stack.back();
+    stack.pop_back();
+
+    Node* n = w.node;
+    if (w.leave) {
+      leave(n);
+      continue;
+    }
+
+    if (visited[n->id()]) continue;
+    visited[n->id()] = true;
+    if (enter) enter(n);
+
+    // Arrange to call leave(n) when all done with descendants.
+    if (leave) stack.push_back(Work{n, true});
+
+    // Arrange to work on parents.
+    for (Node* in : n->in_nodes()) {
+      if (!visited[in->id()]) {
+        // Note; we must not mark as visited until we actually process it.
+        stack.push_back(Work{in, false});
+      }
+    }
+  }
+}
+
 void GetPostOrder(const Graph& g, std::vector<Node*>* order) {
   order->clear();
   DFS(g, nullptr, [order](Node* n) { order->push_back(n); });

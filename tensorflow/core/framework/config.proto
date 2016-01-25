@@ -34,6 +34,9 @@ message GraphOptions {
   // If true, use control flow to schedule the activation of Recv nodes.
   // (Currently ignored.)
   bool enable_recv_scheduling = 2;
+
+  // If true, perform constant folding optimization on the graph.
+  bool do_constant_folding = 3;
 };
 
 // Session configuration parameters.

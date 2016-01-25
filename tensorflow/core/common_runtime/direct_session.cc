@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -455,25 +456,34 @@ Status DirectSession::CreateGraphs(
   if (options_.config.has_graph_options()) {
     opts.optimizer_do_cse = !options_.config.graph_options()
                                  .skip_common_subexpression_elimination();
+    opts.optimizer_do_constant_folding =
+        options_.config.graph_options().do_constant_folding();
   } else {
     opts.optimizer_do_cse = true;
+  }
+
+  std::unordered_set<StringPiece, StringPiece::Hasher> keep_nodes;
+  for (const string& feed : feeds) {
+    keep_nodes.insert(ParseTensorName(feed).first);
+  }
+  for (const string& fetch : fetches) {
+    keep_nodes.insert(ParseTensorName(fetch).first);
+  }
+  for (const string& target_node : target_nodes) {
+    keep_nodes.insert(target_node);
   }
 
   if (opts.optimizer_do_cse) {
     // Prevent CSE from eliminating nodes that will be required during
     // RewriteGraphForExecution, below.
-    std::unordered_set<StringPiece, StringPiece::Hasher> no_cse_nodes;
-    for (const string& feed : feeds) {
-      no_cse_nodes.insert(ParseTensorName(feed).first);
-    }
-    for (const string& fetch : fetches) {
-      no_cse_nodes.insert(ParseTensorName(fetch).first);
-    }
-    for (const string& target_node : target_nodes) {
-      no_cse_nodes.insert(target_node);
-    }
-    opts.cse_consider_function = [no_cse_nodes](const Node* n) {
-      return n->type_string() != "Const" && !no_cse_nodes.count(n->name());
+    opts.cse_consider_function = [&keep_nodes](const Node* n) {
+      return n->IsConstant() && !keep_nodes.count(n->name());
+    };
+  }
+
+  if (opts.optimizer_do_constant_folding) {
+    opts.constant_folding_opts.consider = [&keep_nodes](const Node* n) {
+      return keep_nodes.count(n->name()) > 0;
     };
   }
 
@@ -487,6 +497,16 @@ Status DirectSession::CreateGraphs(
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
+
+  if (opts.optimizer_do_constant_folding) {
+    bool constant_folded =
+        DoConstantFolding(opts.constant_folding_opts, graph.get());
+    VLOG(2) << (constant_folded ? "Folded some constants"
+                                : "Found no constant folding opportunity");
+  }
+
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
 
   // Run the simple placer after rewriting the graph.
   std::unordered_map<string, int32> node_name_to_cost_map;

@@ -58,6 +58,20 @@ Status RewriteGraphForExecution(
     const gtl::ArraySlice<string>& target_node_names,
     const DeviceAttributes& device_info);
 
+typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
+
+// Augment "*g" by adding special "fetch" nodes that connect to the
+// tensor outputs specified in "fetch_outputs" to retrieve the output
+// of the tensors.  The new nodes added are set up to execute on
+// "client_device_name", and are returned in "*fetch_nodes".
+//
+// Return OK on success.  On error, return false and sets *error to
+// an appropriate error message (and *g is left in an indeterminate
+// state).
+Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
+                    const gtl::ArraySlice<string>& fetch_outputs,
+                    NameIndex* name_index, std::vector<Node*>* fetch_nodes);
+
 }  // namespace subgraph
 }  // namespace tensorflow
 
