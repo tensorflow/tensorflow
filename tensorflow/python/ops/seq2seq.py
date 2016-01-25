@@ -73,6 +73,34 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 
 
+def _extract_argmax_and_embed(embedding, output_projection=None,
+                              update_embedding=True):
+  """Get a loop_function that extracts the previous symbol and embeds it.
+
+  Args:
+    embedding: embedding tensor for symbols.
+    output_projection: None or a pair (W, B). If provided, each fed previous
+      output will first be multiplied by W and added B.
+    update_embedding: Boolean; if False, the gradients will not propagate
+      through the embeddings.
+
+  Returns:
+    A loop function.
+  """
+  def loop_function(prev, _):
+    if output_projection is not None:
+      prev = nn_ops.xw_plus_b(
+          prev, output_projection[0], output_projection[1])
+    prev_symbol = math_ops.argmax(prev, 1)
+    # Note that gradients will not propagate through the second parameter of
+    # embedding_lookup.
+    emb_prev = embedding_ops.embedding_lookup(embedding, prev_symbol)
+    if not update_embedding:
+      emb_prev = array_ops.stop_gradient(emb_prev)
+    return emb_prev
+  return loop_function
+
+
 def rnn_decoder(decoder_inputs, initial_state, cell, loop_function=None,
                 scope=None):
   """RNN decoder for the sequence-to-sequence model.
@@ -107,14 +135,13 @@ def rnn_decoder(decoder_inputs, initial_state, cell, loop_function=None,
     for i, inp in enumerate(decoder_inputs):
       if loop_function is not None and prev is not None:
         with variable_scope.variable_scope("loop_function", reuse=True):
-          # We do not propagate gradients over the loop function.
-          inp = array_ops.stop_gradient(loop_function(prev, i))
+          inp = loop_function(prev, i)
       if i > 0:
         variable_scope.get_variable_scope().reuse_variables()
       output, state = cell(inp, state)
       outputs.append(output)
       if loop_function is not None:
-        prev = array_ops.stop_gradient(output)
+        prev = output
   return outputs, state
 
 
@@ -182,7 +209,7 @@ def tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
 
 def embedding_rnn_decoder(decoder_inputs, initial_state, cell, num_symbols,
                           output_projection=None, feed_previous=False,
-                          scope=None):
+                          update_embedding_for_previous=True, scope=None):
   """RNN decoder with embedding and a pure-decoding option.
 
   Args:
@@ -200,6 +227,11 @@ def embedding_rnn_decoder(decoder_inputs, initial_state, cell, num_symbols,
       In effect, this implements a greedy decoder. It can also be used
       during training to emulate http://arxiv.org/abs/1506.03099.
       If False, decoder_inputs are used as given (the standard decoder case).
+    update_embedding_for_previous: Boolean; if False and feed_previous=True,
+      only the embedding for the first symbol of decoder_inputs (the "GO"
+      symbol) will be updated by back propagation. Embeddings for the symbols
+      generated from the decoder itself remain unchanged. This parameter has
+      no effect if feed_previous=False.
     scope: VariableScope for the created subgraph; defaults to
       "embedding_rnn_decoder".
 
@@ -227,16 +259,9 @@ def embedding_rnn_decoder(decoder_inputs, initial_state, cell, num_symbols,
     with ops.device("/cpu:0"):
       embedding = variable_scope.get_variable("embedding",
                                               [num_symbols, cell.input_size])
-
-    def extract_argmax_and_embed(prev, _):
-      """Loop_function that extracts the symbol from prev and embeds it."""
-      if output_projection is not None:
-        prev = nn_ops.xw_plus_b(
-            prev, output_projection[0], output_projection[1])
-      prev_symbol = array_ops.stop_gradient(math_ops.argmax(prev, 1))
-      return embedding_ops.embedding_lookup(embedding, prev_symbol)
-
-    loop_function = extract_argmax_and_embed if feed_previous else None
+    loop_function = _extract_argmax_and_embed(
+        embedding, output_projection,
+        update_embedding_for_previous) if feed_previous else None
     emb_inp = (
         embedding_ops.embedding_lookup(embedding, i) for i in decoder_inputs)
     return rnn_decoder(emb_inp, initial_state, cell,
@@ -306,7 +331,8 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
         outputs, state = embedding_rnn_decoder(
             decoder_inputs, encoder_state, cell, num_decoder_symbols,
             output_projection=output_projection,
-            feed_previous=feed_previous_bool)
+            feed_previous=feed_previous_bool,
+            update_embedding_for_previous=False)
         return outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
@@ -372,25 +398,19 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
     emb_decoder_inputs = [embedding_ops.embedding_lookup(embedding, x)
                           for x in decoder_inputs]
 
-    def extract_argmax_and_embed(prev, _):
-      """Loop_function that extracts the symbol from prev and embeds it."""
-      if output_projection is not None:
-        prev = nn_ops.xw_plus_b(
-            prev, output_projection[0], output_projection[1])
-      prev_symbol = array_ops.stop_gradient(math_ops.argmax(prev, 1))
-      return embedding_ops.embedding_lookup(embedding, prev_symbol)
-
     if output_projection is None:
       cell = rnn_cell.OutputProjectionWrapper(cell, num_symbols)
 
     if isinstance(feed_previous, bool):
-      loop_function = extract_argmax_and_embed if feed_previous else None
+      loop_function = _extract_argmax_and_embed(
+          embedding, output_projection, True) if feed_previous else None
       return tied_rnn_seq2seq(emb_encoder_inputs, emb_decoder_inputs, cell,
                               loop_function=loop_function, dtype=dtype)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
-      loop_function = extract_argmax_and_embed if feed_previous_bool else None
+      loop_function = _extract_argmax_and_embed(
+        embedding, output_projection, False) if feed_previous_bool else None
       reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=reuse):
@@ -523,7 +543,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
       # If loop_function is set, we use it instead of decoder_inputs.
       if loop_function is not None and prev is not None:
         with variable_scope.variable_scope("loop_function", reuse=True):
-          inp = array_ops.stop_gradient(loop_function(prev, i))
+          inp = loop_function(prev, i)
       # Merge input and previous attentions into one vector of the right size.
       x = rnn_cell.linear([inp] + attns, cell.input_size, True)
       # Run the RNN.
@@ -539,8 +559,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
       with variable_scope.variable_scope("AttnOutputProjection"):
         output = rnn_cell.linear([cell_output] + attns, output_size, True)
       if loop_function is not None:
-        # We do not propagate gradients over the loop function.
-        prev = array_ops.stop_gradient(output)
+        prev = output
       outputs.append(output)
 
   return outputs, state
@@ -549,8 +568,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
 def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
                                 cell, num_symbols, num_heads=1,
                                 output_size=None, output_projection=None,
-                                feed_previous=False, dtype=dtypes.float32,
-                                scope=None, initial_state_attention=False):
+                                feed_previous=False,
+                                update_embedding_for_previous=True,
+                                dtype=dtypes.float32, scope=None,
+                                initial_state_attention=False):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -571,6 +592,11 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
       In effect, this implements a greedy decoder. It can also be used
       during training to emulate http://arxiv.org/abs/1506.03099.
       If False, decoder_inputs are used as given (the standard decoder case).
+    update_embedding_for_previous: Boolean; if False and feed_previous=True,
+      only the embedding for the first symbol of decoder_inputs (the "GO"
+      symbol) will be updated by back propagation. Embeddings for the symbols
+      generated from the decoder itself remain unchanged. This parameter has
+      no effect if feed_previous=False.
     dtype: The dtype to use for the RNN initial states (default: tf.float32).
     scope: VariableScope for the created subgraph; defaults to
       "embedding_attention_decoder".
@@ -602,17 +628,9 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     with ops.device("/cpu:0"):
       embedding = variable_scope.get_variable("embedding",
                                               [num_symbols, cell.input_size])
-
-    def extract_argmax_and_embed(prev, _):
-      """Loop_function that extracts the symbol from prev and embeds it."""
-      if output_projection is not None:
-        prev = nn_ops.xw_plus_b(
-            prev, output_projection[0], output_projection[1])
-      prev_symbol = array_ops.stop_gradient(math_ops.argmax(prev, 1))
-      emb_prev = embedding_ops.embedding_lookup(embedding, prev_symbol)
-      return emb_prev
-
-    loop_function = extract_argmax_and_embed if feed_previous else None
+    loop_function = _extract_argmax_and_embed(
+        embedding, output_projection,
+        update_embedding_for_previous) if feed_previous else None
     emb_inp = [
         embedding_ops.embedding_lookup(embedding, i) for i in decoder_inputs]
     return attention_decoder(
@@ -700,6 +718,7 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
             num_decoder_symbols, num_heads=num_heads, output_size=output_size,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
+            update_embedding_for_previous=False,
             initial_state_attention=initial_state_attention)
         return outputs + [state]
 
