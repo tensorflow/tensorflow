@@ -123,6 +123,7 @@ TEST(TypesTest, QuantizedTypes) {
 
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT8));
   EXPECT_FALSE(DataTypeIsQuantized(DT_UINT8));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_UINT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT32));
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));

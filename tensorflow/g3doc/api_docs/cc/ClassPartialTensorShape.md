@@ -29,10 +29,10 @@ Manages the partially known dimensions of a Tensor and their sizes.
 * [`bool tensorflow::PartialTensorShape::AsTensorShape(TensorShape *tensor_shape) const`](#bool_tensorflow_PartialTensorShape_AsTensorShape)
 * [`string tensorflow::PartialTensorShape::DebugString() const`](#string_tensorflow_PartialTensorShape_DebugString)
   * For error messages.
-* [`static bool tensorflow::PartialTensorShape::IsValid(const TensorShapeProto &proto)`](#static_bool_tensorflow_PartialTensorShape_IsValid)
+* [`bool tensorflow::PartialTensorShape::IsValid(const TensorShapeProto &proto)`](#bool_tensorflow_PartialTensorShape_IsValid)
   * Returns `true` iff `proto` is a valid partial tensor shape.
-* [`static Status tensorflow::PartialTensorShape::IsValidShape(const TensorShapeProto &proto)`](#static_Status_tensorflow_PartialTensorShape_IsValidShape)
-* [`static string tensorflow::PartialTensorShape::DebugString(const TensorShapeProto &proto)`](#static_string_tensorflow_PartialTensorShape_DebugString)
+* [`Status tensorflow::PartialTensorShape::IsValidShape(const TensorShapeProto &proto)`](#Status_tensorflow_PartialTensorShape_IsValidShape)
+* [`string tensorflow::PartialTensorShape::DebugString(const TensorShapeProto &proto)`](#string_tensorflow_PartialTensorShape_DebugString)
 * [`Status tensorflow::PartialTensorShape::MakePartialShape(const T *dims, int n, PartialTensorShape *out)`](#Status_tensorflow_PartialTensorShape_MakePartialShape)
   * Returns a ` PartialTensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[n-1]`. Values of -1 are considered "unknown".
 
@@ -128,19 +128,19 @@ For error messages.
 
 
 
-#### `static bool tensorflow::PartialTensorShape::IsValid(const TensorShapeProto &proto)` {#static_bool_tensorflow_PartialTensorShape_IsValid}
+#### `bool tensorflow::PartialTensorShape::IsValid(const TensorShapeProto &proto)` {#bool_tensorflow_PartialTensorShape_IsValid}
 
 Returns `true` iff `proto` is a valid partial tensor shape.
 
 
 
-#### `static Status tensorflow::PartialTensorShape::IsValidShape(const TensorShapeProto &proto)` {#static_Status_tensorflow_PartialTensorShape_IsValidShape}
+#### `Status tensorflow::PartialTensorShape::IsValidShape(const TensorShapeProto &proto)` {#Status_tensorflow_PartialTensorShape_IsValidShape}
 
 
 
 Returns `OK` iff `proto` is a valid tensor shape, and a descriptive error status otherwise.
 
-#### `static string tensorflow::PartialTensorShape::DebugString(const TensorShapeProto &proto)` {#static_string_tensorflow_PartialTensorShape_DebugString}
+#### `string tensorflow::PartialTensorShape::DebugString(const TensorShapeProto &proto)` {#string_tensorflow_PartialTensorShape_DebugString}
 
 
 

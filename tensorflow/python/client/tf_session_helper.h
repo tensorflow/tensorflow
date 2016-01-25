@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/public/status.h"
@@ -83,6 +84,11 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
 // PY_ARRAY_UNIQUE_SYMBOL can be safely defined in a .cc file to
 // avoid weird linking issues.
 void ImportNumpy();
+
+// Convenience wrapper around EqualGraphDef to make it easier to wrap.
+// Returns an explanation if a difference is found, or the empty string
+// for no difference.
+string EqualGraphDefWrapper(const string& actual, const string& expected);
 
 }  // namespace tensorflow
 

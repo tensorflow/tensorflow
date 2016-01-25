@@ -70,6 +70,8 @@ class GPUBFCAllocator : public VisitableAllocator {
  private:
   struct Bin;
 
+  void MaybeInitialize() EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
                             bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);

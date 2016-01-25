@@ -28,10 +28,13 @@ cc_library(
 
 cc_binary(
     name = "ackermann_op.so",
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [

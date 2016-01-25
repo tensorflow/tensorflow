@@ -33,6 +33,7 @@ import six
 from google.protobuf import text_format
 
 from tensorflow.core.framework import config_pb2
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
@@ -41,6 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import logging
+from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
 
 
@@ -70,6 +72,33 @@ def assert_ops_in_graph(expected_ops, graph):
         "Not all expected ops are present. Expected %s, found %s" % (
             expected_ops.keys(), actual_ops.keys()))
   return actual_ops
+
+
+def assert_equal_graph_def(actual, expected):
+  """Asserts that two `GraphDef`s are (mostly) the same.
+
+  Compares two `GraphDef` protos for equality, ignoring versions and ordering of
+  nodes, attrs, and control inputs.  Node names are used to match up nodes
+  between the graphs, so the naming of nodes must be consistent.
+
+  Args:
+    actual: The `GraphDef` we have.
+    expected: The `GraphDef` we expected.
+
+  Raises:
+    AssertionError: If the `GraphDef`s do not match.
+    TypeError: If either argument is not a `GraphDef`.
+  """
+  if not isinstance(actual, graph_pb2.GraphDef):
+    raise TypeError("Expected tf.GraphDef for actual, got %s" %
+                    type(actual).__name__)
+  if not isinstance(expected, graph_pb2.GraphDef):
+    raise TypeError("Expected tf.GraphDef for expected, got %s" %
+                    type(expected).__name__)
+  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+                                                expected.SerializeToString())
+  if diff:
+    raise AssertionError(compat.as_str(diff))
 
 
 def IsGoogleCudaEnabled():

@@ -21,8 +21,9 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/graph/equal_graph_def.h"
+#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/port.h"
 
 namespace tensorflow {
@@ -102,6 +103,9 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT8:
       *out_tf_datatype = TF_UINT8;
       break;
+    case NPY_UINT16:
+      *out_tf_datatype = TF_UINT16;
+      break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
       break;
@@ -146,6 +150,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
+      break;
+    case TF_UINT16:
+      *out_pyarray_type = NPY_UINT16;
       break;
     case TF_INT8:
       *out_pyarray_type = NPY_INT8;
@@ -552,5 +559,18 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
 }
 
 void ImportNumpy() { import_array1(); }
+
+string EqualGraphDefWrapper(const string& actual, const string& expected) {
+  GraphDef actual_def;
+  if (!actual_def.ParseFromString(actual)) {
+    return "actual is not a valid serialized GraphDef";
+  }
+  GraphDef expected_def;
+  if (!expected_def.ParseFromString(expected)) {
+    return "expected is not a valid serialized GraphDef";
+  }
+  string diff;
+  return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
+}
 
 }  // namespace tensorflow

@@ -670,11 +670,11 @@ checkpoints per device.
 *  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
 *  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
-*  <b>`max_to_keep`</b>: maximum number of recent checkpoints to keep.
-    Defaults to 10,000 hours.
+*  <b>`max_to_keep`</b>: Maximum number of recent checkpoints to keep.
+    Defaults to 5.
 *  <b>`keep_checkpoint_every_n_hours`</b>: How often to keep checkpoints.
     Defaults to 10,000 hours.
-*  <b>`name`</b>: string.  Optional name to use as a prefix when adding operations.
+*  <b>`name`</b>: String.  Optional name to use as a prefix when adding operations.
 *  <b>`restore_sequentially`</b>: A `Bool`, which if true, causes restore of different
     variables to happen sequentially within each device.  This can lower
     memory usage when restoring very large models.
@@ -710,7 +710,7 @@ path can be passed directly to a call to `restore()`.
 
 
 *  <b>`sess`</b>: A Session to use to save the variables.
-*  <b>`save_path`</b>: string.  Path to the checkpoint filename.  If the saver is
+*  <b>`save_path`</b>: String.  Path to the checkpoint filename.  If the saver is
     `sharded`, this is the prefix of the sharded checkpoint filename.
 *  <b>`global_step`</b>: If provided the global step number is appended to
     `save_path` to create the checkpoint filename. The optional argument
@@ -731,6 +731,7 @@ path can be passed directly to a call to `restore()`.
 
 
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
+*  <b>`ValueError`</b>: If `latest_filename` contains path components.
 
 
 - - -
@@ -856,7 +857,7 @@ proto.
 
 *  <b>`save_dir`</b>: Directory where the model was saved.
 *  <b>`model_checkpoint_path`</b>: The checkpoint file.
-*  <b>`all_model_checkpoint_paths`</b>: list of strings.  Paths to all not-yet-deleted
+*  <b>`all_model_checkpoint_paths`</b>: List of strings.  Paths to all not-yet-deleted
     checkpoints, sorted from oldest to newest.  If this is a non-empty list,
     the last element must be equal to model_checkpoint_path.  These paths
     are also saved in the CheckpointState proto.
@@ -1417,7 +1418,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
@@ -1464,7 +1465,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.

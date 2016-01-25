@@ -369,6 +369,7 @@
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
+  * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`global_norm`](../../api_docs/python/train.md#global_norm)
   * [`global_step`](../../api_docs/python/train.md#global_step)
   * [`GradientDescentOptimizer`](../../api_docs/python/train.md#GradientDescentOptimizer)

@@ -8,7 +8,7 @@ May be useful to clients who wish to override just part of the functionality of 
 
 * [`tensorflow::EnvWrapper::EnvWrapper(Env *t)`](#tensorflow_EnvWrapper_EnvWrapper)
   * Initializes an EnvWrapper that delegates all calls to *t.
-* [`virtual tensorflow::EnvWrapper::~EnvWrapper()`](#virtual_tensorflow_EnvWrapper_EnvWrapper)
+* [`tensorflow::EnvWrapper::~EnvWrapper()`](#tensorflow_EnvWrapper_EnvWrapper)
 * [`Env* tensorflow::EnvWrapper::target() const`](#Env_tensorflow_EnvWrapper_target)
   * Returns the target to which this Env forwards all calls.
 * [`Status tensorflow::EnvWrapper::NewRandomAccessFile(const string &f, RandomAccessFile **r) override`](#Status_tensorflow_EnvWrapper_NewRandomAccessFile)
@@ -50,7 +50,7 @@ Initializes an EnvWrapper that delegates all calls to *t.
 
 
 
-#### `virtual tensorflow::EnvWrapper::~EnvWrapper()` {#virtual_tensorflow_EnvWrapper_EnvWrapper}
+#### `tensorflow::EnvWrapper::~EnvWrapper()` {#tensorflow_EnvWrapper_EnvWrapper}
 
 
 
