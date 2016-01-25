@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import tensorflow.python.platform
 
+from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -256,20 +256,23 @@ class ShapeTest(test_util.TensorFlowTestCase):
       unknown / unknown  # pylint: disable=pointless-statement
 
   def testConvertFromProto(self):
-    proto = tensor_util.make_tensor_shape_proto([])
+    def make_tensor_shape_proto(shape):
+      return tensor_shape_pb2.TensorShapeProto(
+          dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
+    proto = make_tensor_shape_proto([])
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.as_shape(proto))
 
-    proto = tensor_util.make_tensor_shape_proto([1, 37, 42])
+    proto = make_tensor_shape_proto([1, 37, 42])
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.as_shape(proto))
 
     partial_proto_shape = tensor_shape.as_shape(
-        tensor_util.make_tensor_shape_proto([-1, 37, 42]))
+        make_tensor_shape_proto([-1, 37, 42]))
     partial_shape = tensor_shape.TensorShape([None, 37, 42])
     self.assertNotEqual(partial_proto_shape, partial_shape)
     self.assertEqual(partial_proto_shape[0].value, None)
