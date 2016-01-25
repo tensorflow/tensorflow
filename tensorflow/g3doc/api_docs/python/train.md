@@ -88,7 +88,7 @@ This must be called by the constructors of subclasses.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if name is malformed.
+*  <b>`ValueError`</b>: If name is malformed.
 
 
 
@@ -126,7 +126,7 @@ of using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if some of the variables are not `Variable` objects.
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 - - -
@@ -191,8 +191,8 @@ applies gradients.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `grads_and_vars` is malformed.
-*  <b>`ValueError`</b>: if none of the variables have gradients.
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
 
 
 
@@ -298,6 +298,8 @@ Construct a new gradient descent optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
+(http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+
 See http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
 
 - - -
@@ -351,6 +353,8 @@ Construct a new Momentum optimizer.
 ### `class tf.train.AdamOptimizer` {#AdamOptimizer}
 
 Optimizer that implements the Adam algorithm.
+
+(http://arxiv.org/pdf/1412.6980v7.pdf).
 
 See http://arxiv.org/pdf/1412.6980v7.pdf.
 
@@ -453,7 +457,7 @@ using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if one of the arguments is invalid.
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 
@@ -462,6 +466,8 @@ using this function.
 ### `class tf.train.RMSPropOptimizer` {#RMSPropOptimizer}
 
 Optimizer that implements the RMSProp algorithm.
+
+(http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
 
 See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
 
@@ -475,11 +481,11 @@ Construct a new RMSProp optimizer.
 
 
 *  <b>`learning_rate`</b>: A Tensor or a floating point value.  The learning rate.
-*  <b>`decay`</b>: discounting factor for the history/coming gradient
-*  <b>`momentum`</b>: a scalar tensor.
-*  <b>`epsilon`</b>: small value to avoid zero denominator.
+*  <b>`decay`</b>: Discounting factor for the history/coming gradient
+*  <b>`momentum`</b>: A scalar tensor.
+*  <b>`epsilon`</b>: Small value to avoid zero denominator.
 *  <b>`use_locking`</b>: If True use locks for update operation.
-*  <b>`name`</b>: Optional name prefic for the operations created when applying
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients. Defaults to "RMSProp".
 
 
@@ -826,7 +832,7 @@ optimizer.minimize(...my loss..., global_step=global_step)
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals.
-*  <b>`name`</b>: string.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
 
 ##### Returns:
 
@@ -1014,7 +1020,7 @@ to restore the variable from the moving average value with:
 
 ##### Returns:
 
-  A string: the name of the variable that will be used or was used
+  A string: The name of the variable that will be used or was used
   by the `ExponentialMovingAverage class` to hold the moving average of
   `var`.
 
@@ -1197,7 +1203,7 @@ Wait for threads to terminate.
 Blocks until all `threads` have terminated or `request_stop()` is called.
 
 After the threads stop, if an `exc_info` was passed to `request_stop`, that
-exception is re-reaised.
+exception is re-raised.
 
 Grace period handling: When `request_stop()` is called, threads are given
 'stop_grace_period_secs' seconds to terminate.  If any of them is still
@@ -1290,7 +1296,7 @@ Wait till the Coordinator is told to stop.
 ##### Args:
 
 
-*  <b>`timeout`</b>: float.  Sleep for up to that many seconds waiting for
+*  <b>`timeout`</b>: Float.  Sleep for up to that many seconds waiting for
     should_stop() to become True.
 
 ##### Returns:
@@ -1718,7 +1724,7 @@ the event file:
 
 Adds a `Summary` protocol buffer to the event file.
 
-This method wraps the provided summary in an `Event` procotol buffer
+This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
@@ -1916,7 +1922,7 @@ Create a LooperThread.
 ##### Args:
 
 
-*  <b>`coord`</b>: a Coordinator.
+*  <b>`coord`</b>: A Coordinator.
 *  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
     if it should be called back to back.
 *  <b>`target`</b>: Optional callable object that will be executed in the thread.
@@ -2306,5 +2312,28 @@ Magic attribute generated for "save_tensor_name" proto field.
 
 Magic attribute generated for "sharded" proto field.
 
+
+
+- - -
+
+### `tf.train.generate_checkpoint_state_proto(save_dir, model_checkpoint_path, all_model_checkpoint_paths=None)` {#generate_checkpoint_state_proto}
+
+Generates a checkpoint state proto.
+
+##### Args:
+
+
+*  <b>`save_dir`</b>: Directory where the model was saved.
+*  <b>`model_checkpoint_path`</b>: The checkpoint file.
+*  <b>`all_model_checkpoint_paths`</b>: List of strings.  Paths to all not-yet-deleted
+    checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+    the last element must be equal to model_checkpoint_path.  These paths
+    are also saved in the CheckpointState proto.
+
+##### Returns:
+
+  CheckpointState proto with model_checkpoint_path and
+  all_model_checkpoint_paths updated to either absolute paths or
+  relative paths to the current save_dir.
 
 

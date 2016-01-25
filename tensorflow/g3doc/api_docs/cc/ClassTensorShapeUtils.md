@@ -14,7 +14,7 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 * [`static Status tensorflow::TensorShapeUtils::MakeShape(const T *dims, int n, TensorShape *out)`](#static_Status_tensorflow_TensorShapeUtils_MakeShape)
   * Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
 * [`static string tensorflow::TensorShapeUtils::ShapeListString(const gtl::ArraySlice< TensorShape > &shapes)`](#static_string_tensorflow_TensorShapeUtils_ShapeListString)
-* [`static bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)`](#static_bool_tensorflow_TensorShapeUtils_StartsWith)
+* [`bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)`](#bool_tensorflow_TensorShapeUtils_StartsWith)
 
 ##Member Details
 
@@ -60,7 +60,7 @@ Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[
 
 
 
-#### `static bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)` {#static_bool_tensorflow_TensorShapeUtils_StartsWith}
+#### `bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)` {#bool_tensorflow_TensorShapeUtils_StartsWith}
 
 
 

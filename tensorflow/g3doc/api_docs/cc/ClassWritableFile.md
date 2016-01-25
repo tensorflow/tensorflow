@@ -7,7 +7,7 @@ The implementation must provide buffering since callers may append small fragmen
 ##Member Summary
 
 * [`tensorflow::WritableFile::WritableFile()`](#tensorflow_WritableFile_WritableFile)
-* [`virtual tensorflow::WritableFile::~WritableFile()`](#virtual_tensorflow_WritableFile_WritableFile)
+* [`tensorflow::WritableFile::~WritableFile()`](#tensorflow_WritableFile_WritableFile)
 * [`virtual Status tensorflow::WritableFile::Append(const StringPiece &data)=0`](#virtual_Status_tensorflow_WritableFile_Append)
 * [`virtual Status tensorflow::WritableFile::Close()=0`](#virtual_Status_tensorflow_WritableFile_Close)
 * [`virtual Status tensorflow::WritableFile::Flush()=0`](#virtual_Status_tensorflow_WritableFile_Flush)
@@ -21,7 +21,7 @@ The implementation must provide buffering since callers may append small fragmen
 
 
 
-#### `virtual tensorflow::WritableFile::~WritableFile()` {#virtual_tensorflow_WritableFile_WritableFile}
+#### `tensorflow::WritableFile::~WritableFile()` {#tensorflow_WritableFile_WritableFile}
 
 
 

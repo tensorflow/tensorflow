@@ -1134,6 +1134,8 @@ The following `DType` objects are defined:
 
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
+* `tf.uint16`: 16-bit unsigned integer.
+* `tf.int16`: 16-bit signed integer.
 * `tf.int32`: 32-bit signed integer.
 * `tf.int64`: 64-bit signed integer.
 
@@ -1858,20 +1860,20 @@ Returns a list of Dimensions, or None if the shape is unspecified.
 
 - - -
 
-#### `tf.TensorShape.as_list(to_proto=False)` {#TensorShape.as_list}
+#### `tf.TensorShape.as_list()` {#TensorShape.as_list}
 
 Returns a list of integers or None for each dimension.
-
-If `to_proto` is True, returns -1 instead of None for unknown dimensions.
-
-##### Args:
-
-
-*  <b>`to_proto`</b>: boolean.  Determines how unknown dimensions are treated.
 
 ##### Returns:
 
   A list of integers or None for each dimension.
+
+
+- - -
+
+#### `tf.TensorShape.as_proto()` {#TensorShape.as_proto}
+
+Returns this shape as a `TensorShapeProto`.
 
 
 - - -
@@ -2077,13 +2079,6 @@ Creates a new TensorShape with the given dimensions.
 
 *  <b>`dims`</b>: A list of Dimensions, or None if the shape is unspecified.
 *  <b>`DEPRECATED`</b>: A single integer is treated as a singleton list.
-
-
-- - -
-
-#### `tf.TensorShape.as_dimension_list()` {#TensorShape.as_dimension_list}
-
-DEPRECATED: use `as_list()`.
 
 
 - - -

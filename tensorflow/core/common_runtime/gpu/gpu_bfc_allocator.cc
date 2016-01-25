@@ -39,21 +39,6 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
   // Allocate the requested amount of memory.
   gpu_memory_size_ = total_memory;
 
-  LOG(INFO) << "Allocating " << strings::HumanReadableNumBytes(gpu_memory_size_)
-            << " bytes.";
-  gpu::DeviceMemory<char> gpu_mem =
-      stream_exec_->AllocateArray<char>(gpu_memory_size_);
-
-  QCHECK(gpu_mem != nullptr)
-      << " Could not allocate GPU device memory for device " << device_id
-      << ". Tried to allocate "
-      << strings::HumanReadableNumBytes(gpu_memory_size_);
-  base_ptr_ = gpu_mem.opaque();
-  LOG(INFO) << "GPU " << device_id << " memory begins at " << base_ptr_
-            << " extends to "
-            << static_cast<void*>(
-                   (static_cast<char*>(base_ptr_) + gpu_memory_size_));
-
   // Create a bunch of bins of various good sizes.
 
   // Covers allocations of exactly 256 bytes (the minimum size).
@@ -67,6 +52,38 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
               << strings::HumanReadableNumBytes(bin_size);
     bins_.insert(std::make_pair(bin_size, new Bin(bin_size)));
   }
+}
+
+GPUBFCAllocator::~GPUBFCAllocator() {
+  // Return memory back.
+  if (base_ptr_) {
+    gpu::DeviceMemoryBase gpu_ptr{base_ptr_};
+    stream_exec_->Deallocate(&gpu_ptr);
+  }
+
+  gtl::STLDeleteValues(&bins_);
+  gtl::STLDeleteValues(&ptr_to_chunk_map_);
+}
+
+void GPUBFCAllocator::MaybeInitialize() {
+  if (base_ptr_ != nullptr) {
+    return;
+  }
+
+  LOG(INFO) << "Allocating " << strings::HumanReadableNumBytes(gpu_memory_size_)
+            << " bytes.";
+  gpu::DeviceMemory<char> gpu_mem =
+      stream_exec_->AllocateArray<char>(gpu_memory_size_);
+
+  QCHECK(gpu_mem != nullptr)
+      << " Could not allocate GPU device memory for device " << device_id_
+      << ". Tried to allocate "
+      << strings::HumanReadableNumBytes(gpu_memory_size_);
+  base_ptr_ = gpu_mem.opaque();
+  LOG(INFO) << "GPU " << device_id_ << " memory begins at " << base_ptr_
+            << " extends to "
+            << static_cast<void*>(
+                   (static_cast<char*>(base_ptr_) + gpu_memory_size_));
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -81,17 +98,6 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
 
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(c);
-}
-
-GPUBFCAllocator::~GPUBFCAllocator() {
-  // Return memory back.
-  if (base_ptr_) {
-    gpu::DeviceMemoryBase gpu_ptr{base_ptr_};
-    stream_exec_->Deallocate(&gpu_ptr);
-  }
-
-  gtl::STLDeleteValues(&bins_);
-  gtl::STLDeleteValues(&ptr_to_chunk_map_);
 }
 
 void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
@@ -155,6 +161,8 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
 
   mutex_lock l(lock_);
+  MaybeInitialize();
+
   for (; it != bins_.end(); ++it) {
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
