@@ -369,6 +369,7 @@ py_test(
         ":framework_test_lib",
         ":ops",
         ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

@@ -262,6 +262,7 @@ tensorflow::ImportNumpy();
 %rename(TF_Run) tensorflow::TF_Run_wrapper;
 %unignore tensorflow;
 %unignore TF_Run;
+%unignore EqualGraphDefWrapper;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

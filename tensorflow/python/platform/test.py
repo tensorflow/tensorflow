@@ -22,6 +22,7 @@ from tensorflow.python.platform.googletest import GetTempDir
 from tensorflow.python.platform.googletest import main
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import IsGoogleCudaEnabled as IsBuiltWithCuda
+from tensorflow.python.framework.test_util import assert_equal_graph_def
 
 from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
 from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
