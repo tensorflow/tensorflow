@@ -125,12 +125,11 @@ elif [ $choice -eq 1 ]; then
    fi
 else "bad choice, restart"
 fi
-echo "********************************"
 ###############
 deactivate
 
 fi
- 
+
 echo "To use TensorFlow later you will have to activate the Virtualenv environment again:"
 echo "$ source ~/tensorflow/bin/activate   If using bash."
 echo "$ source ~/tensorflow/bin/activate.csh   If using csh."
