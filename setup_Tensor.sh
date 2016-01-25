@@ -1,5 +1,5 @@
 #!/bin/bash 
-echo "befor runing this script please clone the tensorflow project from github: git clone https://github.com/tensorflow/tensorflow.git"
+echo "before runing this script please clone the tensorflow project from github: git clone https://github.com/tensorflow/tensorflow.git"
 # original instructions are located in https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md
 # this is a bash file to help newbies to install tenserflow 
 # run this file from a shell   cd shell location and ./setup_tensor.sh
