@@ -153,7 +153,7 @@ class PartialTensorShapeUtils {
       const gtl::ArraySlice<PartialTensorShape>& shapes0,
       const gtl::ArraySlice<PartialTensorShape>& shapes1) {
     if (shapes0.size() == shapes1.size()) {
-      for (int i = 0; i < shapes0.size(); ++i) {
+      for (size_t i = 0; i < shapes0.size(); ++i) {
         if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
           return false;
         }

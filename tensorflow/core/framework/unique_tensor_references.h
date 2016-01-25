@@ -60,7 +60,7 @@ class UniqueTensorReferences {
           tensor_ref.Unref();
         }
       } else {
-        for (int i = 0; i < referenced_tensors_vector_.size(); ++i) {
+        for (size_t i = 0; i < referenced_tensors_vector_.size(); ++i) {
           if (referenced_tensors_vector_[i].SharesBufferWith(tensor)) {
             // tensor is a duplicate, so nothing to do.
             return;
