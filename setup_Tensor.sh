@@ -8,14 +8,13 @@ echo "Tensofrlow installation has started"
 
 echo "choose your package installer yum(CentOS, Fedora, OpenSuse, RedHat), zypper, apt-get(Debian,ubuntu...), yast(opensuse),....."
 read installer
-echo "TensorFlow is available only for 32bit architechture"
 
 MACHINE_TYPE=`uname -m`
 if [ ${MACHINE_TYPE} == 'x86_64' ]; 
 then
  echo "Your Proc architecture is x86_64" 
 else
- echo "you have a 32-bit processor, TensorFlow could not be installed" 
+echo "TensorFlow is available only for 64 bit architechture"
  exit 0
 
 fi
