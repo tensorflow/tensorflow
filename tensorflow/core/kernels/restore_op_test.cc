@@ -168,7 +168,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
-    OpKernelContext ctx(params);
+    OpKernelContext ctx(&params);
     op->Compute(&ctx);
     EXPECT_OK(ctx.status());
   }
@@ -392,7 +392,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
-    OpKernelContext ctx(params);
+    OpKernelContext ctx(&params);
     op->Compute(&ctx);
     EXPECT_OK(ctx.status());
   }

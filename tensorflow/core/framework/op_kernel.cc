@@ -211,11 +211,13 @@ Status OpKernelConstruction::allocate_persistent(
 
 // OpKernelContext -----------------------------------------------------------
 
-OpKernelContext::OpKernelContext(const Params& params)
-    : params_(params), outputs_(params.op_kernel->output_types().size()) {
+OpKernelContext::OpKernelContext(Params* params)
+    : params_(params), outputs_(params_->op_kernel->output_types().size()) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
-  eigen_gpu_device_ = params_.device->MakeGpuDevice(params_.op_device_context,
-                                                    eigen_gpu_allocator);
+  params_->ensure_eigen_gpu_device();
+  params_->device->ReinitializeGpuDevice(params_->eigen_gpu_device,
+                                         params_->op_device_context,
+                                         eigen_gpu_allocator);
 }
 
 OpKernelContext::~OpKernelContext() {
@@ -224,30 +226,29 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
-  delete eigen_gpu_device_;
 }
 
 Status OpKernelContext::input(const string& name, const Tensor** tensor) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued input name '",
                                    name,
                                    "' when single-valued input was "
                                    "expected");
   }
-  if ((*params_.inputs)[start].is_ref()) {
+  if ((*params_->inputs)[start].is_ref()) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
                                    "' when immutable input was expected");
   }
-  *tensor = (*params_.inputs)[start].tensor;
+  *tensor = (*params_->inputs)[start].tensor;
   record_tensor_reference(**tensor);
   return Status::OK();
 }
 
 Status OpKernelContext::input_ref_mutex(const string& name, mutex** out_mutex) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued input name '",
                                    name,
@@ -260,22 +261,22 @@ Status OpKernelContext::input_ref_mutex(const string& name, mutex** out_mutex) {
 Status OpKernelContext::mutable_input(const string& name, Tensor* tensor,
                                       bool lock_held) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued input name '",
                                    name,
                                    "' when single-valued input was expected");
   }
-  if (!(*params_.inputs)[start].is_ref()) {
+  if (!(*params_->inputs)[start].is_ref()) {
     return errors::InvalidArgument("OpKernel used immutable input name '", name,
                                    "' when ref input was expected");
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    *tensor = *(*params_.inputs)[start].tensor;
+    *tensor = *(*params_->inputs)[start].tensor;
   } else {
     mutex_lock l(*input_ref_mutex(start));
-    *tensor = *(*params_.inputs)[start].tensor;
+    *tensor = *(*params_->inputs)[start].tensor;
   }
   record_tensor_reference(*tensor);
   return Status::OK();
@@ -285,13 +286,13 @@ Status OpKernelContext::replace_ref_input(const string& name,
                                           const Tensor& tensor,
                                           bool lock_held) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued input name '",
                                    name,
                                    "' when single-valued input was expected");
   }
-  if (!(*params_.inputs)[start].is_ref()) {
+  if (!(*params_->inputs)[start].is_ref()) {
     return errors::InvalidArgument("OpKernel used immutable input name '", name,
                                    "' when ref input was expected");
   }
@@ -301,7 +302,7 @@ Status OpKernelContext::replace_ref_input(const string& name,
 
 Status OpKernelContext::input_list(const string& name, OpInputList* list) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
   return Status::OK();
 }
@@ -309,14 +310,14 @@ Status OpKernelContext::input_list(const string& name, OpInputList* list) {
 Status OpKernelContext::mutable_input_list(const string& name,
                                            OpMutableInputList* list) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpMutableInputList(this, start, stop);
   return Status::OK();
 }
 
 Status OpKernelContext::output_list(const string& name, OpOutputList* list) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   *list = OpOutputList(this, start, stop);
   return Status::OK();
 }
@@ -325,7 +326,7 @@ Status OpKernelContext::allocate_output(const string& name,
                                         const TensorShape& shape,
                                         Tensor** tensor) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -340,7 +341,7 @@ Status OpKernelContext::allocate_output(const string& name,
                                         Tensor** tensor,
                                         AllocatorAttributes attr) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -352,7 +353,7 @@ Status OpKernelContext::allocate_output(const string& name,
 
 Status OpKernelContext::set_output(const string& name, const Tensor& tensor) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -366,7 +367,7 @@ Status OpKernelContext::set_output(const string& name, const Tensor& tensor) {
 Status OpKernelContext::set_output_ref(const string& name, mutex* mu,
                                        Tensor* tensor_for_ref) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -379,7 +380,7 @@ Status OpKernelContext::set_output_ref(const string& name, mutex* mu,
 
 Status OpKernelContext::mutable_output(const string& name, Tensor** tensor) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -392,7 +393,7 @@ Status OpKernelContext::mutable_output(const string& name, Tensor** tensor) {
 
 Status OpKernelContext::release_output(const string& name, TensorValue* value) {
   int start, stop;
-  TF_RETURN_IF_ERROR(params_.op_kernel->OutputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued output name '",
                                    name,
@@ -404,7 +405,7 @@ Status OpKernelContext::release_output(const string& name, TensorValue* value) {
 }
 
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
-  const auto& inputs = *params_.inputs;
+  const auto& inputs = *params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
     if (!inputs[0]->IsSameSize(*(inputs[i].tensor))) {
       SetStatus(errors::InvalidArgument(
@@ -421,10 +422,10 @@ bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
 Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                                        const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
-  for (const TensorValue& t : *params_.inputs) {
+  for (const TensorValue& t : *params_->inputs) {
     inputs.push_back(t.is_ref() ? MakeRefType(t->dtype()) : t->dtype());
   }
-  DataTypeVector outputs = params_.op_kernel->output_types();
+  DataTypeVector outputs = params_->op_kernel->output_types();
   return MatchSignatureHelper(expected_inputs, expected_outputs, inputs,
                               outputs);
 }
