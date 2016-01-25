@@ -71,7 +71,7 @@ class BaseSaverBuilder(object):
 
     Args:
       filename_tensor: String Tensor.
-      vars_to_save: a list of BaseSaverBuilder.VarToSave objects.
+      vars_to_save: A list of BaseSaverBuilder.VarToSave objects.
 
     Returns:
       An Operation that save the variables.
@@ -91,7 +91,7 @@ class BaseSaverBuilder(object):
 
     Args:
       filename_tensor: String Tensor.
-      var_to_save: a BaseSaverBuilder.VarToSave object.
+      var_to_save: A BaseSaverBuilder.VarToSave object.
       preferred_shard: Int.  Shard to open first when loading a sharded file.
 
     Returns:
@@ -109,9 +109,9 @@ class BaseSaverBuilder(object):
     """Append sharding information to a filename.
 
     Args:
-      filename_tensor: a string tensor.
-      shard: integer.  The shard for the filename.
-      num_shards: an int Tensor for the number of shards.
+      filename_tensor: A string tensor.
+      shard: Integer.  The shard for the filename.
+      num_shards: An int Tensor for the number of shards.
 
     Returns:
       A string tensor.
@@ -124,7 +124,7 @@ class BaseSaverBuilder(object):
 
     Args:
       filename_tensor: String Tensor.
-      vars_to_save: a list of _VarToSave objects.
+      vars_to_save: A list of _VarToSave objects.
 
     Returns:
       A tensor with the filename used to save.
@@ -167,7 +167,7 @@ class BaseSaverBuilder(object):
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
-      vars_to_save: a list of _VarToSave objects.
+      vars_to_save: A list of _VarToSave objects.
       restore_sequentially: True if we want to restore variables sequentially
         within a shard.
       reshape: True if we want to reshape loaded tensors to the shape of
@@ -244,7 +244,7 @@ class BaseSaverBuilder(object):
     It can happen if the devices as unspecified.
 
     Args:
-      vars_to_save: a list of BaseSaverBuilder.VarToSave objects.
+      vars_to_save: A list of BaseSaverBuilder.VarToSave objects.
 
     Returns:
       A list of tuples: (device_name, BaseSaverBuilder.VarToSave) tuples.
@@ -309,9 +309,9 @@ class BaseSaverBuilder(object):
       A list of BaseSaverBuilder.VarToSave objects.
 
     Raises:
-      TypeError: if any of the keys are not strings or any of the
+      TypeError: If any of the keys are not strings or any of the
         values are not one of Tensor or Variable.
-      ValueError: if the same variable is given in more than one value
+      ValueError: If the same variable is given in more than one value
         (this also applies to slices of SlicedVariables).
     """
     if not isinstance(names_to_variables, dict):
@@ -393,13 +393,13 @@ class BaseSaverBuilder(object):
         and only some times.
       sharded: If True, shard the checkpoints, one per device that has
         Variable nodes.
-      max_to_keep: maximum number of checkpoints to keep.  As new checkpoints
+      max_to_keep: Maximum number of checkpoints to keep.  As new checkpoints
         are created, old ones are deleted.  If None or 0, no checkpoints are
         deleted.  Presently the number is only roughly enforced.  For example
         in case of restarts more than max_to_keep checkpoints may be kept.
       keep_checkpoint_every_n_hours: How often checkpoints should be kept.
         Defaults to 10,000 hours.
-      name: string.  Optional name to use as a prefix when adding operations.
+      name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
 
@@ -458,6 +458,50 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
+def generate_checkpoint_state_proto(save_dir,
+                                    model_checkpoint_path,
+                                    all_model_checkpoint_paths=None):
+  """Generates a checkpoint state proto.
+
+  Args:
+    save_dir: Directory where the model was saved.
+    model_checkpoint_path: The checkpoint file.
+    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
+      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+      the last element must be equal to model_checkpoint_path.  These paths
+      are also saved in the CheckpointState proto.
+
+  Returns:
+    CheckpointState proto with model_checkpoint_path and
+    all_model_checkpoint_paths updated to either absolute paths or
+    relative paths to the current save_dir.
+  """
+  if all_model_checkpoint_paths is None:
+    all_model_checkpoint_paths = []
+
+  if (not all_model_checkpoint_paths or
+      all_model_checkpoint_paths[-1] != model_checkpoint_path):
+    logging.info("%s is not in all_model_checkpoint_paths. Manually adding it.",
+                 model_checkpoint_path)
+    all_model_checkpoint_paths.append(model_checkpoint_path)
+
+  # Relative paths need to be rewritten to be relative to the "save_dir"
+  # if model_checkpoint_path already contains "save_dir".
+  if not os.path.isabs(save_dir):
+    if not os.path.isabs(model_checkpoint_path):
+      model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
+    for i in range(len(all_model_checkpoint_paths)):
+      p = all_model_checkpoint_paths[i]
+      if not os.path.isabs(p):
+        all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
+
+  coord_checkpoint_proto = CheckpointState(
+      model_checkpoint_path=model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths)
+
+  return coord_checkpoint_proto
+
+
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
                             all_model_checkpoint_paths=None,
@@ -470,7 +514,7 @@ def update_checkpoint_state(save_dir,
   Args:
     save_dir: Directory where the model was saved.
     model_checkpoint_path: The checkpoint file.
-    all_model_checkpoint_paths: list of strings.  Paths to all not-yet-deleted
+    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
       checkpoints, sorted from oldest to newest.  If this is a non-empty list,
       the last element must be equal to model_checkpoint_path.  These paths
       are also saved in the CheckpointState proto.
@@ -480,24 +524,19 @@ def update_checkpoint_state(save_dir,
   Raises:
     RuntimeError: If the save paths conflict.
   """
-  if all_model_checkpoint_paths is None:
-    all_model_checkpoint_paths = []
-  elif all_model_checkpoint_paths[-1] != model_checkpoint_path:
-    logging.warning(
-        "%s is not in all_model_checkpoint_paths! Manually adding it.",
-        model_checkpoint_path)
-    all_model_checkpoint_paths.append(model_checkpoint_path)
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
-  if coord_checkpoint_filename == model_checkpoint_path:
+  ckpt = generate_checkpoint_state_proto(
+      save_dir,
+      model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths)
+
+  if coord_checkpoint_filename == ckpt.model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  coord_checkpoint_proto = CheckpointState(
-      model_checkpoint_path=model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
   f = gfile.FastGFile(coord_checkpoint_filename, mode="w")
-  f.write(text_format.MessageToString(coord_checkpoint_proto))
+  f.write(text_format.MessageToString(ckpt))
   f.close()
 
 
@@ -527,6 +566,16 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       f = gfile.FastGFile(coord_checkpoint_filename, mode="r")
       ckpt = CheckpointState()
       text_format.Merge(f.read(), ckpt)
+      # For relative model_checkpoint_path and all_model_checkpoint_paths,
+      # prepend checkpoint_dir.
+      if not os.path.isabs(checkpoint_dir):
+        if not os.path.isabs(ckpt.model_checkpoint_path):
+          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+                                                    ckpt.model_checkpoint_path)
+        for i in range(len(ckpt.all_model_checkpoint_paths)):
+          p = ckpt.all_model_checkpoint_paths[i]
+          if not os.path.isabs(p):
+            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except IOError:
     # It's ok if the file cannot be read
     return None
@@ -676,11 +725,11 @@ class Saver(object):
       reshape: If `True`, allows restoring parameters from a checkpoint
         where the variables have a different shape.
       sharded: If `True`, shard the checkpoints, one per device.
-      max_to_keep: maximum number of recent checkpoints to keep.
-        Defaults to 10,000 hours.
+      max_to_keep: Maximum number of recent checkpoints to keep.
+        Defaults to 5.
       keep_checkpoint_every_n_hours: How often to keep checkpoints.
         Defaults to 10,000 hours.
-      name: string.  Optional name to use as a prefix when adding operations.
+      name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A `Bool`, which if true, causes restore of different
         variables to happen sequentially within each device.  This can lower
         memory usage when restoring very large models.
@@ -833,7 +882,7 @@ class Saver(object):
 
     Args:
       sess: A Session to use to save the variables.
-      save_path: string.  Path to the checkpoint filename.  If the saver is
+      save_path: String.  Path to the checkpoint filename.  If the saver is
         `sharded`, this is the prefix of the sharded checkpoint filename.
       global_step: If provided the global step number is appended to
         `save_path` to create the checkpoint filename. The optional argument
@@ -851,9 +900,14 @@ class Saver(object):
 
     Raises:
       TypeError: If `sess` is not a `Session`.
+      ValueError: If `latest_filename` contains path components.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
+
+    if os.path.split(latest_filename)[0]:
+      raise ValueError("'latest_filename' must not contain path components")
+
     if global_step is not None:
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
@@ -905,9 +959,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    checkpoint_pattern = os.path.join(
-        checkpoint_dir, ckpt.model_checkpoint_path)
-    if gfile.Glob(checkpoint_pattern):
-      return checkpoint_pattern
+    if gfile.Glob(ckpt.model_checkpoint_path):
+      return ckpt.model_checkpoint_path
 
   return None

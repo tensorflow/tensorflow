@@ -168,7 +168,7 @@ performs the following:
 
 1. Flattens the filter to a 2-D matrix with shape
    `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the the input tensor to form a *virtual*
+2. Extracts image patches from the input tensor to form a *virtual*
    tensor of shape `[batch, out_height, out_width,
    filter_height * filter_width * in_channels]`.
 3. For each patch, right-multiplies the filter matrix and the image patch

@@ -55,7 +55,7 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then the spatial semantics of the
 convolution ops are as follows: first, according to the padding scheme chosen
@@ -63,7 +63,7 @@ as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
 For the `'SAME'` padding, the output height and width are computed as:
 
     out_height = ceil(float(in_height) / float(strides[1]))
-    out_width  = ceil(float(in_width) / float(stides[2]))
+    out_width  = ceil(float(in_width) / float(strides[2]))
 
 and the padding on the top and left are computed as:
 
@@ -85,7 +85,7 @@ same number of pixels on both sides.
 For the `'VALID`' padding, the output height and width are computed as:
 
     out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
-    out_width  = ceil(float(in_width - filter_width + 1) / float(stides[2]))
+    out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
 
 and the padding values are always zero. The output is then computed as
 

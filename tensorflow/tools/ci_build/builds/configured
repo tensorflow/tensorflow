@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script is a wrapper to run any build inside the docker cotainer
+# This script is a wrapper to run any build inside the docker container
 # when running ci_build.sh. It's purpose is to automate the call of ./configure.
 # Yes, this script is a workaround of a workaround.
 
@@ -24,9 +24,11 @@ CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
 COMMAND=("$@")
 
-export PYTHON_BIN_PATH=$(which python)
+export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which python)}"
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   export TF_NEED_CUDA=1
+else
+  export TF_NEED_CUDA=0
 fi
 
 ./configure

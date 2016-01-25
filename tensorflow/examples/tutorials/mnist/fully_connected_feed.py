@@ -46,7 +46,7 @@ flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
 
 
 def placeholder_inputs(batch_size):
-  """Generate placeholder variables to represent the the input tensors.
+  """Generate placeholder variables to represent the input tensors.
 
   These placeholders are used as inputs by the rest of the model building
   code and will be fed from the downloaded data in the .run() loop, below.

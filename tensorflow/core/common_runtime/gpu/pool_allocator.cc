@@ -47,7 +47,7 @@ PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
 PoolAllocator::~PoolAllocator() { Clear(); }
 
 namespace {
-// Pools contain Chunks allocatated from the underlying Allocator.
+// Pools contain Chunks allocated from the underlying Allocator.
 // Chunk alignment is always on kPoolAlignment boundaries.  Each Chunk
 // begins with a descriptor (ChunkPrefix) that gives its size and a
 // pointer to itself.  The pointer returned to the user is just past
@@ -56,7 +56,7 @@ namespace {
 // pointer and also re-write the ChunkPrefix.chunk_ptr value
 // immediately before it.  This way the Chunk address and size can be
 // recovered from the returned user pointer, regardless of alignment.
-// Note that this deferencing of the pointers means that we cannot
+// Note that this dereferencing of the pointers means that we cannot
 // handle GPU memory, only CPU memory.
 struct ChunkPrefix {
   size_t num_bytes;

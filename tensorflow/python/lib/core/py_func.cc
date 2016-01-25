@@ -24,6 +24,14 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 
+// Return type of import_array() changed between Python 2 and 3
+// NUMPY_IMPORT_ARRAY_RETVAL is NULL for Python 3
+#if PY_MAJOR_VERSION >= 3
+#define NUMPY_IMPORT_ARRAY_RETURN_TYPE int
+#else
+#define NUMPY_IMPORT_ARRAY_RETURN_TYPE void
+#endif
+
 namespace tensorflow {
 namespace {
 
@@ -39,7 +47,7 @@ PyObject* GetPyTrampoline() {
 }
 
 // Module initialization (mainly import numpy) if needed.
-void InitIfNeeded() {
+NUMPY_IMPORT_ARRAY_RETURN_TYPE InitIfNeeded() {
   mutex_lock l(mu);
   if (!initialized) {
     PyGILState_STATE py_threadstate;

@@ -90,7 +90,7 @@ bool RemoveListArrayConverter(Graph* g);
 // multiple times by calling ExpandInlineFunctions a few times.
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 
-// Applies graph rewrite optimzation such as inlining, dead code
+// Applies graph rewrite optimization such as inlining, dead code
 // removal, etc.
 //
 // **g is a graph constructed based on the runtime library 'lib'.

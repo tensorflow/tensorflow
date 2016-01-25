@@ -169,7 +169,7 @@ void WriteCCOp(const OpDef& op_def, WritableFile* h, WritableFile* cc) {
                      R"comment(  .WithName(StringPiece): Set the Node's name
   .WithDevice(StringPiece): Set the Node's requested device
   .WithControlInput(Node*) / .WithControlInputs({Node*, ...}):
-    Add control depencies on the specified Node(s).
+    Add control dependencies on the specified Node(s).
 
 Returns a pointer to the created Node)comment");
 

@@ -5,7 +5,7 @@
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
 
 <!--
-tf-image-grid creates a grid for examining image data. The columsn correspond
+tf-image-grid creates a grid for examining image data. The columns correspond
 to runs and the rows correspond to tags. Each cell is an image.
 
 Structurally, it makes extensive use of flexbox for layout: it has a top-level
@@ -153,7 +153,7 @@ is high)
       _getTags: function(runToImages) {
         return _.chain(runToImages.base).values().flatten().union().value();
       },
-      _getRuns(runToImages) {
+      _getRuns: function(runToImages) {
         var r2i = runToImages.base;
         return _.keys(r2i).filter(function(x) {return r2i[x].length > 0;});
       },

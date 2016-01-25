@@ -71,7 +71,7 @@ dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   given in dense_keys.
   The number of elements in the Feature corresponding to dense_key[j]
   must always equal dense_shapes[j].NumEntries().
-  If dense_shapes[j] == (D0, D1, ..., DN) then the the shape of output
+  If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
   Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
   The dense outputs are just the inputs row-stacked by batch.
 sparse_keys: A list of Nsparse string Tensors (scalars).

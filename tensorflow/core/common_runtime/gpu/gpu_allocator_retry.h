@@ -32,7 +32,7 @@ class GPUAllocatorRetry {
   // then wait up to 'max_millis_to_wait' milliseconds, retrying each
   // time a call to DeallocateRaw() is detected, until either a good
   // pointer is returned or the deadline is exhausted.  If the
-  // deadline is exahusted, try one more time with 'verbose_failure'
+  // deadline is exhausted, try one more time with 'verbose_failure'
   // set to true.  The value returned is either the first good pointer
   // obtained from 'alloc_func' or nullptr.
   void* AllocateRaw(std::function<void*(size_t alignment, size_t num_bytes,

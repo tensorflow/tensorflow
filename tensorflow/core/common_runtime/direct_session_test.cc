@@ -95,7 +95,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
-  // The first output should be initiailzed and have the correct
+  // The first output should be initialized and have the correct
   // output.
   auto mat = outputs[0].matrix<float>();
   ASSERT_TRUE(outputs[0].IsInitialized());

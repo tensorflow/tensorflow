@@ -13,12 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A very simple MNIST classifer, modified to display data in TensorBoard.
+"""A very simple MNIST classifier, modified to display data in TensorBoard.
 
 See extensive documentation for the original model at
 http://tensorflow.org/tutorials/mnist/beginners/index.md
 
-See documentaion on the TensorBoard specific pieces at
+See documentation on the TensorBoard specific pieces at
 http://tensorflow.org/how_tos/summaries_and_tensorboard/index.md
 
 If you modify this file, please update the exerpt in
@@ -53,7 +53,7 @@ def main(_):
   W = tf.Variable(tf.zeros([784, 10]), name='weights')
   b = tf.Variable(tf.zeros([10], name='bias'))
 
-  # use a name scope to organize nodes in the graph visualizer
+  # Use a name scope to organize nodes in the graph visualizer
   with tf.name_scope('Wx_b'):
     y = tf.nn.softmax(tf.matmul(x, W) + b)
 
@@ -85,7 +85,7 @@ def main(_):
   # Train the model, and feed in test data and record summaries every 10 steps
 
   for i in range(FLAGS.max_steps):
-    if i % 10 == 0:  # Record summary data, and the accuracy
+    if i % 10 == 0:  # Record summary data and the accuracy
       if FLAGS.fake_data:
         batch_xs, batch_ys = mnist.train.next_batch(
             100, fake_data=FLAGS.fake_data)

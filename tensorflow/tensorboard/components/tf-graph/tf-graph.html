@@ -229,7 +229,7 @@ Polymer({
       renderNode.node.include = tf.graph.InclusionType.INCLUDE;
     } else {
       renderNode.node.include =
-       this.renderHierarchy.isNodeAuxilliary(renderNode)
+       this.renderHierarchy.isNodeAuxiliary(renderNode)
           ? tf.graph.InclusionType.INCLUDE : tf.graph.InclusionType.EXCLUDE;
     }
 

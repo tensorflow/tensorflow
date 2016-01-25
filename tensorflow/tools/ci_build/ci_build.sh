@@ -76,7 +76,9 @@ docker run \
     -e "CI_BUILD_GID=$(id -g $USER)" \
     -v ${WORKSPACE}:/tensorflow \
     -w /tensorflow \
-    ${BUILD_TAG}.${CONTAINER_TYPE} \
+    ${CI_BUILD_DOCKER_RUN_EXTRA_PARAMETERS[@]} \
+    "${BUILD_TAG}.${CONTAINER_TYPE}" \
+    ${CI_BUILD_DOCKER_RUN_COMMAND_PREFIX[@]} \
     "tensorflow/tools/ci_build/builds/with_the_same_user" \
         "tensorflow/tools/ci_build/builds/configured" \
-        "${CONTAINER_TYPE}" "${COMMAND[@]}"
+        "${CONTAINER_TYPE}" ${COMMAND[@]}

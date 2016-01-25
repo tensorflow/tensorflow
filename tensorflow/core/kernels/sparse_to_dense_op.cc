@@ -20,6 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>

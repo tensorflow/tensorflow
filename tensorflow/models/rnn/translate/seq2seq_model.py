@@ -141,9 +141,10 @@ class Seq2SeqModel(object):
       # If we use output projection, we need to project outputs for decoding.
       if output_projection is not None:
         for b in xrange(len(buckets)):
-          self.outputs[b] = [tf.nn.xw_plus_b(output, output_projection[0],
-                                             output_projection[1])
-                             for output in self.outputs[b]]
+          self.outputs[b] = [
+              tf.matmul(output, output_projection[0]) + output_projection[1]
+              for output in self.outputs[b]
+          ]
     else:
       self.outputs, self.losses = seq2seq.model_with_buckets(
           self.encoder_inputs, self.decoder_inputs, targets,
@@ -184,7 +185,7 @@ class Seq2SeqModel(object):
       average perplexity, and the outputs.
 
     Raises:
-      ValueError: if length of enconder_inputs, decoder_inputs, or
+      ValueError: if length of encoder_inputs, decoder_inputs, or
         target_weights disagrees with bucket size for the specified bucket_id.
     """
     # Check if the sizes match.

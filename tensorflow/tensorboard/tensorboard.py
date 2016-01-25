@@ -22,11 +22,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import BaseHTTPServer
 import functools
 import os
 import socket
-import SocketServer
+
+from six.moves import BaseHTTPServer
+from six.moves import socketserver
 
 import tensorflow.python.platform
 
@@ -44,7 +45,7 @@ TensorBoard will look to find TensorFlow event files that it can display.
 TensorBoard will recursively walk the directory structure rooted at logdir,
 looking for .*tfevents.* files.
 
-You may also pass a comma seperated list of log directories, and TensorBoard
+You may also pass a comma separated list of log directories, and TensorBoard
 will watch each directory. You can also assign names to individual log
 directories by putting a colon between the name and the path, as in
 
@@ -112,7 +113,7 @@ def ParseEventFilesFlag(flag_value):
   return files
 
 
-class ThreadedHTTPServer(SocketServer.ThreadingMixIn,
+class ThreadedHTTPServer(socketserver.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
   """A threaded HTTP server."""
   daemon = True
@@ -155,7 +156,7 @@ def main(unused_argv=None):
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
   print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-  print('(You can navigate to http://localhost:%d)' % FLAGS.port)
+  print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
   server.serve_forever()
 
 

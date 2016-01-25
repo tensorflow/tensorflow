@@ -212,7 +212,7 @@ class SparseTensor {
     }
   }
 
-  // Helper for Split() that retuerns the shape given a slice index.
+  // Helper for Split() that returns the shape given a slice index.
   static inline int GetSliceShape(const int slice_index, const int split_size,
                                   const int residual) {
     CHECK_GT(split_size, 0);

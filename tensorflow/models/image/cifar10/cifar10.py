@@ -230,7 +230,7 @@ def inference(images):
     weights = _variable_with_weight_decay('weights', shape=[dim, 384],
                                           stddev=0.04, wd=0.004)
     biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu_layer(reshape, weights, biases, name=scope.name)
+    local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
     _activation_summary(local3)
 
   # local4
@@ -238,7 +238,7 @@ def inference(images):
     weights = _variable_with_weight_decay('weights', shape=[384, 192],
                                           stddev=0.04, wd=0.004)
     biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu_layer(local3, weights, biases, name=scope.name)
+    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
     _activation_summary(local4)
 
   # softmax, i.e. softmax(WX + b)
@@ -247,7 +247,7 @@ def inference(images):
                                           stddev=1/192.0, wd=0.0)
     biases = _variable_on_cpu('biases', [NUM_CLASSES],
                               tf.constant_initializer(0.0))
-    softmax_linear = tf.nn.xw_plus_b(local4, weights, biases, name=scope.name)
+    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
 
   return softmax_linear
@@ -301,7 +301,7 @@ def _add_loss_summaries(total_loss):
   losses = tf.get_collection('losses')
   loss_averages_op = loss_averages.apply(losses + [total_loss])
 
-  # Attach a scalar summmary to all individual losses and the total loss; do the
+  # Attach a scalar summary to all individual losses and the total loss; do the
   # same for the averaged version of the losses.
   for l in losses + [total_loss]:
     # Name each loss as '(raw)' and name the moving average version of the loss
@@ -384,5 +384,5 @@ def maybe_download_and_extract():
                                              reporthook=_progress)
     print()
     statinfo = os.stat(filepath)
-    print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
+    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)

@@ -1908,9 +1908,10 @@ def _MergeShape(op):
   first output that is one of those inputs, and a second scalar
   output.
 
-  This function conservatively assumes that if any of its inputs is
-  not fully defined, the output shape is unknown. If all of the inputs
-  have the exact same known shape, the output must have that shape.
+  If all input shapes are known and have the same rank, the output
+  shape must have that rank, otherwise the output shape is unknown.
+  Each output dimension is specified only if that dimension in all
+  inputs are the same.
 
   Args:
     op: A Merge Operation.
@@ -1919,16 +1920,20 @@ def _MergeShape(op):
     A single-element list containing the Shape of the Merge op.
 
   """
-  first_input_shape = op.inputs[0].get_shape()
-  if first_input_shape.is_fully_defined():
+  output_shape = op.inputs[0].get_shape()
+  if output_shape.dims is None:
+    return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
+  else:
     for input_ in op.inputs[1:]:
       input_shape = input_.get_shape()
-      if (not input_shape.is_fully_defined()
-          or not input_shape.is_compatible_with(first_input_shape)):
+      if input_shape.dims is None or input_shape.ndims != output_shape.ndims:
         return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
-    return [first_input_shape, tensor_shape.scalar()]
-  else:
-    return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
+      else:
+        output_shape = tensor_shape.TensorShape(
+            [input_dim.value if input_dim.value == output_dim.value else None
+             for input_dim, output_dim in zip(input_shape.dims,
+                                              output_shape.dims)])
+    return [output_shape, tensor_shape.scalar()]
 
 ops.RegisterShape("RefMerge")(_MergeShape)
 

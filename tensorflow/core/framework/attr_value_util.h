@@ -36,7 +36,7 @@ string SummarizeAttrValue(const AttrValue& attr_value);
 // Generates an error if attr_value doesn't have the indicated attr type.
 Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
 
-// Converts a text proto value from "text" into the the field of *out
+// Converts a text proto value from "text" into the field of *out
 // indicated by "type" (e.g. from the type field of an AttrDef).
 // Examples:
 // * If type:"int" and text:"-14", then *out is set to "i: -14"

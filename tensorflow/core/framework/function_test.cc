@@ -296,8 +296,8 @@ REGISTER_OP("Cond")
 output = Cond(input) ? then_branch(input) : else_branch(input)
 
 cond: A function takes 'input' and returns a scalar.
-then_branch: A funcion takes 'input' and returns 'output'.
-else_branch: A funcion takes 'input' and returns 'output'.
+then_branch: A function takes 'input' and returns 'output'.
+else_branch: A function takes 'input' and returns 'output'.
 )doc");
 
 TEST(TFunc, Body_Array_List_Converter) {

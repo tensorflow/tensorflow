@@ -57,7 +57,7 @@ class TensorSliceSet {
 
   // Query about a new slice: checks if we have data for "slice" and if we have
   // the data and "data" is not nullptr, fill "data" with the slice data. The
-  // caller needs to make sure "data" point to a large eough buffer.
+  // caller needs to make sure "data" point to a large enough buffer.
   // TODO(yangke): avoid unnecessary copying by using a core::RefCounted
   // pointer.
   bool Query(const TensorSlice& slice, float* data) const;
