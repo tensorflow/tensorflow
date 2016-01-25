@@ -23,7 +23,6 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import constant_op
@@ -391,8 +390,7 @@ def _parse_example_raw(serialized,
 
       dense_defaults_vec.append(default_value)
 
-    dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
-                    if isinstance(shape, (list, tuple)) else shape
+    dense_shapes = [tensor_shape.as_shape(shape).as_proto()
                     for shape in dense_shapes]
 
     # pylint: disable=protected-access
@@ -825,11 +823,9 @@ def _parse_single_sequence_example_raw(serialized,
 
       context_dense_defaults_vec.append(default_value)
 
-    context_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
-                            if isinstance(shape, (list, tuple)) else shape
+    context_dense_shapes = [tensor_shape.as_shape(shape).as_proto()
                             for shape in context_dense_shapes]
-    feature_list_dense_shapes = [tensor_util.make_tensor_shape_proto(shape)
-                                 if isinstance(shape, (list, tuple)) else shape
+    feature_list_dense_shapes = [tensor_shape.as_shape(shape).as_proto()
                                  for shape in feature_list_dense_shapes]
 
     # pylint: disable=protected-access

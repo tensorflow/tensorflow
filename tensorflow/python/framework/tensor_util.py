@@ -24,6 +24,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 # TODO(opensource): Add support for pyx_library in the open-source build.
@@ -124,20 +125,6 @@ def GetNumpyAppendFn(dtype):
     else:
       return SlowAppendObjectArrayToTensorProto
   return GetFromNumpyDTypeDict(_NP_TO_APPEND_FN, dtype)
-
-
-# TODO(mrry,irving): Make this a method of `TensorShape`.
-def make_tensor_shape_proto(shape):
-  """Converts a list of integers to a `TensorShapeProto`.
-
-  Args:
-    shape: List of integers representing the dimensions of the tensor.
-
-  Returns:
-    A `TensorShapeProto`.
-  """
-  return tensor_shape_pb2.TensorShapeProto(
-      dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
 
 
 def TensorShapeProtoToList(shape):
@@ -369,7 +356,7 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
-      tensor_shape=make_tensor_shape_proto(shape))
+      tensor_shape=tensor_shape.as_shape(shape).as_proto())
 
   if is_same_size and numpy_dtype in _TENSOR_CONTENT_TYPES and shape_size > 1:
     tensor_proto.tensor_content = nparray.tostring()
@@ -574,4 +561,3 @@ def constant_value(tensor):
 # Add some temporary backwards compatibility aliases until all downstream code
 # is changed.  TODO(irving): Remove these aliases.
 ConstantValue = constant_value
-MakeTensorShapeProto = make_tensor_shape_proto

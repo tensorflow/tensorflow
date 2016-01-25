@@ -22,6 +22,9 @@
     * `tensor_shape.h` -> `../framework/tensor_shape.h`
     * `partial_tensor_shape.h` -> `../framework/partial_tensor_shape.h`
     * `tensorflow_server.h` deleted
+* For C++ API users: `TensorShape::ShortDebugString` has been renamed to
+  `DebugString`, and the previous `DebugString` behavior is gone (it was
+  needlessly verbose and produced a confusing empty string for scalars).
 
 
 ## Bug fixes
