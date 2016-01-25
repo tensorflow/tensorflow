@@ -4,7 +4,7 @@
 # run this file from a shell   cd shell location and ./setup_tensor.sh
 echo "Tensofrlow installation required tools has started"
 
-#you could check get GPU information with lspci | grep -i --color 'vga|3d|2d'
+#you could check get GPU information with lspci | grep -i --color 'nvidia'
 
 
 echo "choose your package installer yum(CentOS, Fedora, OpenSuse, RedHat), zypper, apt-get(Debian,ubuntu...), yast(opensuse),....."
