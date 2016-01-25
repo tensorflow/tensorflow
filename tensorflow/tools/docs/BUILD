@@ -6,12 +6,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 package(
-    default_copts = [
-        "-Wthread-safety-analysis",
-    ],
-    default_hdrs_check = "strict",
     default_visibility = ["//tensorflow:__subpackages__"],
-    features = ["no_layering_check"],
 )
 
 py_binary(
