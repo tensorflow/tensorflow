@@ -85,7 +85,8 @@ module TF {
           let idx: number = _.sortedIndex(xs, x);
           if (idx === 0 || idx === data.length) {
             // Only find a point when the cursor is inside the range of the data
-            // if the cursor is to the left or right of all the data, don't attach.
+            // if the cursor is to the left or right of all the data, don't
+            // attach.
             return;
           }
           let previous = data[idx - 1];

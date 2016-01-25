@@ -1926,13 +1926,13 @@ def _MergeShape(op):
   else:
     for input_ in op.inputs[1:]:
       input_shape = input_.get_shape()
-      if (input_shape.dims is None or
-          input_shape.ndims != output_shape.ndims):
+      if input_shape.dims is None or input_shape.ndims != output_shape.ndims:
         return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
       else:
         output_shape = tensor_shape.TensorShape(
-          [input_dim.value if input_dim.value == output_dim.value else None
-           for input_dim, output_dim in zip(input_shape.dims, output_shape.dims)])
+            [input_dim.value if input_dim.value == output_dim.value else None
+             for input_dim, output_dim in zip(input_shape.dims,
+                                              output_shape.dims)])
     return [output_shape, tensor_shape.scalar()]
 
 ops.RegisterShape("RefMerge")(_MergeShape)

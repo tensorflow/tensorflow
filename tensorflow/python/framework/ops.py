@@ -786,6 +786,10 @@ class IndexedSlices(object):
 IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
                                             ["values", "indices", "dense_shape"])
 
+IndexedSlicesValue = collections.namedtuple(
+    "IndexedSlicesValue", ["values", "indices", "dense_shape"])
+
+
 class SparseTensor(object):
   """Represents a sparse tensor.
 
