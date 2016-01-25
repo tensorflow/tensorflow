@@ -13,6 +13,11 @@ exports_files([
 
 # open source marker; do not remove
 
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -37,17 +42,15 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+# -------------------------------------------
+# New rules should be added above this target.
+# -------------------------------------------
 cc_binary(
     name = "libtensorflow.so",
     linkshared = 1,
     deps = [
         "//tensorflow/core:tensorflow",
     ],
-)
-
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
 )
 
 py_library(
