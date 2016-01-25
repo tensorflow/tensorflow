@@ -1,9 +1,10 @@
 #!/bin/bash 
-echo "before runing this script please clone the tensorflow project from github: git clone https://github.com/tensorflow/tensorflow.git"
 # original instructions are located in https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md
 # this is a bash file to help newbies to install tenserflow 
 # run this file from a shell   cd shell location and ./setup_tensor.sh
-echo "Tensofrlow installation has started"
+echo "Tensofrlow installation required tools has started"
+
+#you could check get GPU information with lspci | grep -i --color 'vga|3d|2d'
 
 
 echo "choose your package installer yum(CentOS, Fedora, OpenSuse, RedHat), zypper, apt-get(Debian,ubuntu...), yast(opensuse),....."
@@ -50,6 +51,7 @@ echo "python $version is installed"
 echo "Installing PIP and Virtual Environment"
 
 sudo $installer install python-pip python-dev python-virtualenv
+
 
 echo "do you like to use python virtual environment(1) or not(0)?"
 read env
