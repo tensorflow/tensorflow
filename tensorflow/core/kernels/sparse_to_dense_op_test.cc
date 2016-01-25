@@ -258,7 +258,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(&params));
   op->Compute(sparse_context.get());
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {

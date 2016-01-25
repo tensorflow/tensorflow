@@ -292,7 +292,7 @@ TEST_F(OpKernelTest, SaveTempFalse) {
                      TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
-  OpKernelContext* ctx = new OpKernelContext(params);
+  OpKernelContext* ctx = new OpKernelContext(&params);
 
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
@@ -316,7 +316,7 @@ TEST_F(OpKernelTest, SaveTempTrue) {
                      TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
-  OpKernelContext* ctx = new OpKernelContext(params);
+  OpKernelContext* ctx = new OpKernelContext(&params);
 
   Tensor t;
   EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));

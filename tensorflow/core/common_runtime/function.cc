@@ -539,9 +539,13 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   return Status::OK();
 }
 
-static void DumpGraph(const char* label, const Graph* g) {
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << label << ": " << std::endl << DebugString(g);
+static void DumpGraph(StringPiece label, const Graph* g) {
+  // TODO(zhifengc): Change Graph to record #nodes.
+  VLOG(1) << "Graph " << label << " #edges " << g->edges().size();
+  if (VLOG_IS_ON(2)) {
+    for (const auto& line : str_util::Split(DebugString(g), '\n')) {
+      VLOG(2) << "|| " << line;
+    }
   }
 }
 
@@ -567,6 +571,13 @@ static void SimplifyGraph(Graph* g) {
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
+  for (const Node* n : (*g)->nodes()) {
+    if (n->IsControlFlow()) {
+      VLOG(2) << "Skip OptimizeGraph due to control flow ops.";
+      return;
+    }
+  }
+
   DumpGraph("Initial", *g);
 
   // Run SimplifyGraph at least once to rewrite away ops such as
@@ -693,32 +704,33 @@ FunctionLibraryRuntime* NewFunctionLibraryRuntime(
 
 bool RemoveDeadNodes(Graph* g) {
   std::vector<bool> visited(g->num_node_ids(), false);
-  visited[Graph::kSourceId] = true;
-  visited[Graph::kSinkId] = true;
   std::deque<Node*> q;
   for (auto n : g->nodes()) {
-    if (n->op_def().is_stateful()) {
-      visited[n->id()] = true;
-    } else if (n->type_string() == kArgOp) {
-      visited[n->id()] = true;
-    } else if (n->type_string() == kRetOp) {
-      visited[n->id()] = true;
+    if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
+        n->op_def().is_stateful()) {
       q.push_back(n);
+      visited[n->id()] = true;
     }
   }
   while (!q.empty()) {
     const Node* n = q.front();
     q.pop_front();
-    visited[n->id()] = true;
     for (auto e : n->in_edges()) {
-      q.push_back(e->src());
+      Node* p = e->src();
+      if (!visited[p->id()]) {
+        q.push_back(p);
+        visited[p->id()] = true;
+      }
     }
   }
   bool removed_any = false;
-  for (Node* n : g->nodes()) {
-    if (!visited[n->id()]) {
-      g->RemoveNode(n);
-      removed_any = true;
+  for (std::size_t i = 0; i < visited.size(); ++i) {
+    if (!visited[i]) {
+      Node* n = g->FindNodeId(i);
+      if (n) {
+        g->RemoveNode(n);
+        removed_any = true;
+      }
     }
   }
   return removed_any;
@@ -741,7 +753,7 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if ((n->type_string() == "Identity") && GetTheOnlyDataEdge(n->in_edges())) {
+    if ((n->IsIdentity()) && GetTheOnlyDataEdge(n->in_edges())) {
       matches.push_back(n);
     }
   }
@@ -962,7 +974,7 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   // NoOp node "output_control_node". "output_control_node" depends on
   // all identity nodes added above. And nodes previously depend on
   // "callee" is changed to depend on "output_control_node".
-  std::vector<Node*> outputs(caller->num_inputs());
+  std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
     Endpoint data;  // Data input for the ret node.
@@ -1009,7 +1021,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
     if (!s.ok()) {
       // Either "node" is a primitive op, or the instantiation failed.
       if (errors::IsNotFound(s)) {
-        VLOG(2) << "ExpandInlineFunctions " << s;
+        VLOG(3) << "ExpandInlineFunctions " << s;
       } else {
         LOG(ERROR) << "ExpandInlineFunctions " << s;
       }

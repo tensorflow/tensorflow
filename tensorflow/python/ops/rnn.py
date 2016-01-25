@@ -231,12 +231,13 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   name = scope or "BiRNN"
   # Forward direction
   with vs.variable_scope(name + "_FW"):
-    output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype, sequence_length)
+    output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype,
+                       sequence_length)
 
   # Backward direction
   with vs.variable_scope(name + "_BW"):
-    tmp, _ = rnn(
-        cell_bw, _reverse_seq(inputs, sequence_length), initial_state_bw, dtype, sequence_length)
+    tmp, _ = rnn(cell_bw, _reverse_seq(inputs, sequence_length),
+                 initial_state_bw, dtype, sequence_length)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [array_ops.concat(1, [fw, bw])

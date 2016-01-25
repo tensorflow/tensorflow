@@ -22,10 +22,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import BaseHTTPServer
 import functools
 import os
 import socket
+
+from six.moves import BaseHTTPServer
 from six.moves import socketserver
 
 import tensorflow.python.platform

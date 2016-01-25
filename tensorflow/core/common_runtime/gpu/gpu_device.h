@@ -38,8 +38,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class EigenAllocator;
-
 class BaseGPUDevice : public LocalDevice {
  public:
   BaseGPUDevice(const SessionOptions& options, const string& name,
@@ -74,8 +72,10 @@ class BaseGPUDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   // The caller owns the returned device.
-  const PerOpGpuDevice* MakeGpuDevice(DeviceContext* dc,
-                                      Allocator* allocator) override;
+  PerOpGpuDevice* MakeGpuDevice() override;
+
+  void ReinitializeGpuDevice(PerOpGpuDevice* device, DeviceContext* dc,
+                             Allocator* allocator) override;
 
  protected:
   Allocator* gpu_allocator_;  // not owned
@@ -90,7 +90,8 @@ class BaseGPUDevice : public LocalDevice {
   const bool sync_every_op_ = false;
   std::unique_ptr<EventMgr> em_;
 
-  const PerOpGpuDevice* NewDevice(int stream_id, Allocator* allocator);
+  void ReinitializeDevice(PerOpGpuDevice* device, int stream_id,
+                          Allocator* allocator);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

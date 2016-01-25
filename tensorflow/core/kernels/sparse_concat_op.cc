@@ -16,9 +16,11 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <numeric>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

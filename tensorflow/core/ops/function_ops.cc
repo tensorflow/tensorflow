@@ -29,6 +29,7 @@ REGISTER_OP("_Arg")
     .Output("output: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
+    .SetIsStateful()
     .Doc(R"doc(
 A graph node which represents an argument to a function.
 
@@ -40,6 +41,7 @@ REGISTER_OP("_Retval")
     .Input("input: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
+    .SetIsStateful()
     .Doc(R"doc(
 A graph node which represents a return value of a function.
 

@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Session;
-class SessionOptions;
+struct SessionOptions;
 
 class SessionFactory {
  public:

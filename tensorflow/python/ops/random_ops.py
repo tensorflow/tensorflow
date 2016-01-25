@@ -219,10 +219,10 @@ ops.NoGradient("RandomUniform")
 def _RandomShape(op):
   shape_val = tensor_util.constant_value(op.inputs[0])
   if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val.tolist())]
+    return [tensor_shape.TensorShape(shape_val)]
   else:
-    shape_shape = op.inputs[0].get_shape().with_rank_at_most(1)
-    return [tensor_shape.unknown_shape(ndims=shape_shape.num_elements())]
+    shape_shape = op.inputs[0].get_shape().with_rank(1)
+    return [tensor_shape.unknown_shape(ndims=shape_shape[0].value)]
 
 
 ops.RegisterShape("RandomShuffle")(common_shapes.unchanged_shape)

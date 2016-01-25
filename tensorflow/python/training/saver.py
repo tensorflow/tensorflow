@@ -481,9 +481,8 @@ def generate_checkpoint_state_proto(save_dir,
 
   if (not all_model_checkpoint_paths or
       all_model_checkpoint_paths[-1] != model_checkpoint_path):
-    logging.info(
-        "%s is not in all_model_checkpoint_paths. Manually adding it.",
-        model_checkpoint_path)
+    logging.info("%s is not in all_model_checkpoint_paths. Manually adding it.",
+                 model_checkpoint_path)
     all_model_checkpoint_paths.append(model_checkpoint_path)
 
   # Relative paths need to be rewritten to be relative to the "save_dir"
@@ -528,7 +527,8 @@ def update_checkpoint_state(save_dir,
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
   ckpt = generate_checkpoint_state_proto(
-      save_dir, model_checkpoint_path,
+      save_dir,
+      model_checkpoint_path,
       all_model_checkpoint_paths=all_model_checkpoint_paths)
 
   if coord_checkpoint_filename == ckpt.model_checkpoint_path:
@@ -570,8 +570,8 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       # prepend checkpoint_dir.
       if not os.path.isabs(checkpoint_dir):
         if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(
-              checkpoint_dir, ckpt.model_checkpoint_path)
+          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+                                                    ckpt.model_checkpoint_path)
         for i in range(len(ckpt.all_model_checkpoint_paths)):
           p = ckpt.all_model_checkpoint_paths[i]
           if not os.path.isabs(p):

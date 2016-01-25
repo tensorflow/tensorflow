@@ -24,18 +24,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import BaseHTTPServer
 import csv
 import gzip
 import imghdr
 import json
 import mimetypes
 import os
-from six import BytesIO
-from six.moves.urllib import parse as urlparse
 
+from six import BytesIO
+from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves.urllib import parse as urlparse
+
+from tensorflow import compat
+
 from google.protobuf import text_format
 import tensorflow.python.platform
 

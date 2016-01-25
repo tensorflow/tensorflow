@@ -211,7 +211,7 @@ def _get_sharded_variable(name, shape, initializer, dtype, num_shards):
 
 
 def _matmul_with_sharded_variable(tensor, sharded_tensor):
-  """Multiply tensor with each tensor in sharded_tensor and column-concatenated"""
+  """Multiply tensor with each tensor in sharded_tensor, column-concatenated."""
   return array_ops.concat(1, [math_ops.matmul(tensor, shard)
                               for shard in sharded_tensor])
 
