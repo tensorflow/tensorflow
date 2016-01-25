@@ -31,7 +31,7 @@ from tensorflow.python.ops import array_ops
 
 
 def _make_argname_from_tensor_name(name):
-  return re.sub(":0$", "", name).replace(":", "_")
+  return re.sub(":0$", "", name).replace(":", "_o")
 
 
 def _tensor_to_argdef(t):

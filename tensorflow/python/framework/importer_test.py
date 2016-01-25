@@ -592,7 +592,7 @@ class ImportGraphDefTest(tf.test.TestCase):
     with tf.Graph().as_default() as g:
       input_placeholder = tf.placeholder(tf.float32, shape=[32, 100])
       weights_var = tf.Variable(tf.truncated_normal([100, 10]), name="weights")
-      biases_var = tf.Variable(tf.zeros(10), name="biases")
+      biases_var = tf.Variable(tf.zeros([10]), name="biases")
       activations, loss = tf.import_graph_def(
           gdef,
           input_map={"input:0": input_placeholder,

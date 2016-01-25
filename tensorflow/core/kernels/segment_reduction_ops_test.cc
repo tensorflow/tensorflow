@@ -77,7 +77,7 @@ static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
   test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> reduction_context(
-      new OpKernelContext(params));
+      new OpKernelContext(&params));
 
   reduction_op->Compute(reduction_context.get());
   TF_CHECK_OK(reduction_context->status());

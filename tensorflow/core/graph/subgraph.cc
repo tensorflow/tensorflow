@@ -148,7 +148,15 @@ static Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
     VLOG(2) << "Found fetch node for " << t;
 
     // Validate output_index
-    if (id.second >= n->num_outputs()) {
+    if (n->num_outputs() == 0) {
+      return errors::InvalidArgument(
+          "Tried to fetch data for '", t,
+          "', which produces no output.  To run to a node but not fetch any "
+          "data, pass '",
+          t,
+          "' as an argument to the 'target_node_names' argument of the "
+          "Session::Run API.");
+    } else if (id.second >= n->num_outputs()) {
       return errors::InvalidArgument("FetchOutputs ", t,
                                      ": output index too large, must be < ",
                                      n->num_outputs());

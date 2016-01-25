@@ -82,6 +82,7 @@ class OpsTestBase : public ::testing::Test {
   ~OpsTestBase() override {
     gtl::STLDeleteElements(&tensors_);
     context_.reset(nullptr);
+    params_.reset(nullptr);
   }
 
   void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
@@ -150,17 +151,21 @@ class OpsTestBase : public ::testing::Test {
   //
   // Returns the context's status after running the operation.
   Status RunOpKernel() {
-    OpKernelContext::Params params;
-    params.device = device_.get();
-    params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs_;
-    params.op_kernel = kernel_.get();
-    std::vector<AllocatorAttributes> attrs;
-    test::SetOutputAttrs(&params, &attrs);
-    checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
-    params.slice_reader_cache = &slice_reader_cache_wrapper;
+    // Make sure the old OpKernelContext is deleted before the Params
+    // it was using.
+    context_.reset(nullptr);
 
-    context_.reset(new OpKernelContext(params));
+    params_.reset(new OpKernelContext::Params);
+    params_.get()->device = device_.get();
+    params_.get()->frame_iter = FrameAndIter(0, 0);
+    params_.get()->inputs = &inputs_;
+    params_.get()->op_kernel = kernel_.get();
+    std::vector<AllocatorAttributes> attrs;
+    test::SetOutputAttrs(params_.get(), &attrs);
+    checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
+    params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+
+    context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());
     return context_->status();
   }
@@ -206,6 +211,7 @@ class OpsTestBase : public ::testing::Test {
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
 
+  std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
 
  private:

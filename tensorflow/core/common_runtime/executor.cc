@@ -823,6 +823,9 @@ namespace {
 OpKernelContext::Params* CopyParams(const OpKernelContext::Params& p) {
   OpKernelContext::Params* ret = new OpKernelContext::Params;
   *ret = p;
+  // Ensure the copy of Params will make a new eigen GPU device if
+  // necessary.
+  ret->eigen_gpu_device = nullptr;
   ret->inputs = new TensorValueVec(*p.inputs);
   ret->input_device_contexts = new DeviceContextVec(*p.input_device_contexts);
   ret->input_alloc_attrs = new AllocatorAttributeVec(*p.input_alloc_attrs);
@@ -831,6 +834,8 @@ OpKernelContext::Params* CopyParams(const OpKernelContext::Params& p) {
 
 // Helpers to delete 'p' and copies made by CopyParams.
 void DeleteParams(OpKernelContext::Params* p) {
+  // No need to delete p->eigen_gpu_device since that is deleted in
+  // p's destructor
   delete p->inputs;
   delete p->input_device_contexts;
   delete p->input_alloc_attrs;
@@ -929,7 +934,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       if (async) {
         // Asynchronous computes.
         auto pcopy = CopyParams(params);
-        auto ctx = new OpKernelContext(*pcopy);
+        auto ctx = new OpKernelContext(pcopy);
         auto done = [this, tagged_node, item, first_input, ctx, stats, pcopy,
                      device]() {
           VLOG(2) << this << " Async kernel done: "
@@ -967,7 +972,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         device->ComputeAsync(async, ctx, done);
       } else {
         // Synchronous computes.
-        OpKernelContext ctx(params);
+        OpKernelContext ctx(&params);
         if (stats_collector_) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
         if (stats_collector_) nodestats::SetOpEnd(stats);

@@ -707,10 +707,9 @@ def _ScalarShape(unused_op):
 def _SliceShape(op):
   """Shape function for array_ops.slice."""
   input_shape = op.inputs[0].get_shape()
-  begin_shape = op.inputs[1].get_shape().with_rank_at_most(1)
-  sizes_shape = op.inputs[2].get_shape().with_rank_at_most(1)
-  rank_vector_shape = begin_shape.merge_with(sizes_shape)
-  ndims = rank_vector_shape.num_elements()
+  begin_shape = op.inputs[1].get_shape().with_rank(1)
+  sizes_shape = op.inputs[2].get_shape().with_rank(1)
+  ndims = begin_shape.merge_with(sizes_shape)[0].value
   if ndims is not None:
     input_shape.assert_has_rank(ndims)
   begin_value = tensor_util.constant_value(op.inputs[1])
@@ -864,12 +863,12 @@ def _ReshapeShape(op):
       num_elements *= dim
   else:
     num_elements = tensor_shape.Dimension(None)
-  new_shape_shape = op.inputs[1].get_shape().with_rank_at_most(1)
+  new_shape_shape = op.inputs[1].get_shape().with_rank(1)
   new_shape = tensor_util.constant_value(op.inputs[1])
   if new_shape is None:
     # Attempt to infer the rank of the output from the length of
     # new_shape.
-    return [tensor_shape.unknown_shape(ndims=new_shape_shape.num_elements())]
+    return [tensor_shape.unknown_shape(ndims=new_shape_shape[0].value)]
   new_shape = np.reshape(new_shape, -1).tolist()
   if -1 not in new_shape:
     # The new shape is fully defined.
@@ -927,13 +926,13 @@ def _FillShape(op):
   Returns:
     A single-element list containing the shape of the output.
   """
-  dimensions_shape = op.inputs[0].get_shape().with_rank_at_most(1)
+  dimensions_shape = op.inputs[0].get_shape().with_rank(1)
   op.inputs[1].get_shape().assert_is_compatible_with(tensor_shape.scalar())
   fill_dims = tensor_util.constant_value(op.inputs[0])
   if fill_dims is None:
     # Attempt to infer the rank of the output from the length of
     # dimensions.
-    return [tensor_shape.unknown_shape(ndims=dimensions_shape.num_elements())]
+    return [tensor_shape.unknown_shape(ndims=dimensions_shape[0].value)]
   else:
     return [tensor_shape.TensorShape(fill_dims.tolist())]
 
@@ -1112,8 +1111,8 @@ def _TileShape(op):
   Returns:
     A single-element list containing the shape of the output.
   """
-  multiples_shape = op.inputs[1].get_shape().with_rank_at_most(1)
-  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape.num_elements())
+  multiples_shape = op.inputs[1].get_shape().with_rank(1)
+  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0].value)
   multiples = tensor_util.constant_value(op.inputs[1])
   if multiples is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
@@ -1128,8 +1127,8 @@ def _TileShape(op):
 @ops.RegisterShape("TileGrad")
 def _TileGradShape(op):
   """Shape function for the TileGrad op."""
-  multiples_shape = op.inputs[1].get_shape().with_rank_at_most(1)
-  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape.num_elements())
+  multiples_shape = op.inputs[1].get_shape().with_rank(1)
+  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0])
   multiples = tensor_util.constant_value(op.inputs[1])
   if multiples is None:
     return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
