@@ -146,6 +146,15 @@ class FullyConnectedTest(tf.test.TestCase):
                              create_summaries=False)
     self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
 
+  # Verify fix of a bug where no_summaries + activation_fn=None led to a
+  # NoneType exception.
+  def test_no_summaries_no_activation(self):
+    tf.learn.fully_connected(self.input,
+                             2,
+                             activation_fn=None,
+                             create_summaries=False)
+    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+
   def test_regularizer(self):
     cnt = [0]
     tensor = tf.constant(5.0)
