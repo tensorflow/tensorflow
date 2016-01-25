@@ -53,6 +53,8 @@ string DataTypeString(DataType dtype) {
       return "int32";
     case DT_UINT8:
       return "uint8";
+    case DT_UINT16:
+      return "uint16";
     case DT_INT16:
       return "int16";
     case DT_INT8:
@@ -107,6 +109,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "uint8") {
     *dt = DT_UINT8;
     return true;
+  } else if (sp == "uint16") {
+    *dt = DT_UINT16;
+    return true;
   } else if (sp == "int16") {
     *dt = DT_INT16;
     return true;
@@ -159,15 +164,16 @@ string DataTypeSliceString(const DataTypeSlice types) {
 }
 
 DataTypeVector AllTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32,     DT_UINT8,   DT_INT16,
-          DT_INT8,  DT_STRING, DT_COMPLEX64, DT_INT64,   DT_BOOL,
-          DT_QINT8, DT_QUINT8, DT_QINT16,    DT_QUINT16, DT_QINT32};
+  return {DT_FLOAT,  DT_DOUBLE, DT_INT32,     DT_UINT8, DT_INT16, DT_UINT16,
+          DT_INT8,   DT_STRING, DT_COMPLEX64, DT_INT64, DT_BOOL,  DT_QINT8,
+          DT_QUINT8, DT_QINT16, DT_QUINT16,   DT_QINT32};
 }
 
 #if !defined(__ANDROID__)
 
 DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64, DT_UINT8, DT_INT16, DT_INT8};
+  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,
+          DT_UINT8, DT_INT16,  DT_INT8,  DT_UINT16};
 }
 
 DataTypeVector QuantizedTypes() {
@@ -175,13 +181,14 @@ DataTypeVector QuantizedTypes() {
 }
 
 DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64,  DT_UINT8,   DT_INT16,
-          DT_INT8,  DT_QINT8,  DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
+  return {DT_FLOAT,  DT_DOUBLE,  DT_INT32, DT_INT64, DT_UINT8,
+          DT_UINT16, DT_UINT16,  DT_INT8,  DT_QINT8, DT_QUINT8,
+          DT_QINT16, DT_QUINT16, DT_QINT32};
 }
 
 DataTypeVector NumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE,    DT_INT64, DT_INT32,  DT_UINT8, DT_INT16,
-          DT_INT8,  DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32};
+  return {DT_FLOAT, DT_DOUBLE, DT_INT64,     DT_INT32, DT_UINT8,  DT_UINT16,
+          DT_INT16, DT_INT8,   DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32};
 }
 
 #else  // defined(__ANDROID__)
@@ -211,6 +218,7 @@ bool DataTypeCanUseMemcpy(DataType dt) {
     case DT_DOUBLE:
     case DT_INT32:
     case DT_UINT8:
+    case DT_UINT16:
     case DT_INT16:
     case DT_INT8:
     case DT_COMPLEX64:

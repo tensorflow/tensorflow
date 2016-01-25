@@ -185,6 +185,7 @@ PROTO_TRAITS(float, float, float);
 PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
 PROTO_TRAITS(uint8, int32, int);
+PROTO_TRAITS(uint16, int32, int);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(int64, int64, int64);
@@ -356,6 +357,7 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(double, SINGLE_ARG(STMTS))                   \
     CASE(int32, SINGLE_ARG(STMTS))                    \
     CASE(uint8, SINGLE_ARG(STMTS))                    \
+    CASE(uint16, SINGLE_ARG(STMTS))                   \
     CASE(int16, SINGLE_ARG(STMTS))                    \
     CASE(int8, SINGLE_ARG(STMTS))                     \
     CASE(string, SINGLE_ARG(STMTS))                   \
@@ -537,6 +539,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
         CASE(DT_DOUBLE);
         CASE(DT_INT32);
         CASE(DT_UINT8);
+        CASE(DT_UINT16);
         CASE(DT_INT16);
         CASE(DT_INT8);
         CASE(DT_INT64);

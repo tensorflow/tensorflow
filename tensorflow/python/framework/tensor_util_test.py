@@ -166,6 +166,7 @@ class TensorUtilTest(tf.test.TestCase):
     for dtype, nptype in [
         (tf.int32, np.int32),
         (tf.uint8, np.uint8),
+        (tf.uint16, np.uint16),
         (tf.int16, np.int16),
         (tf.int8, np.int8)]:
       # Test with array.
@@ -188,6 +189,7 @@ class TensorUtilTest(tf.test.TestCase):
         (tf.int64, np.int64),
         (tf.int32, np.int32),
         (tf.uint8, np.uint8),
+        (tf.uint16, np.uint16),
         (tf.int16, np.int16),
         (tf.int8, np.int8)]:
       t = tensor_util.make_tensor_proto([10], shape=[3, 4], dtype=dtype)

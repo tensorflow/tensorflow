@@ -87,6 +87,7 @@ typedef enum {
   TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.  Only for cast ops.
   TF_QINT16 = 15,    // Quantized int16
   TF_QUINT16 = 16,   // Quantized uint16
+  TF_UINT16 = 17,
 } TF_DataType;
 
 // --------------------------------------------------------------------------
