@@ -33,7 +33,7 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 
-#include "tensorflow/core/framework/graph.proto.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/public/status.h"
