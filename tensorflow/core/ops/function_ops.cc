@@ -29,6 +29,7 @@ REGISTER_OP("_Arg")
     .Output("output: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
+    .SetIsStateful()
     .Doc(R"doc(
 A graph node which represents an argument to a function.
 
@@ -54,7 +55,6 @@ REGISTER_OP("_ListToArray")
     .Attr("Tin: list(type)")
     .Attr("T: type")
     .Attr("N: int >= 1")
-    .SetIsStateful()
     .Doc(R"doc(
 Converts a list of tensors to an array of tensors.
 )doc");
@@ -65,7 +65,6 @@ REGISTER_OP("_ArrayToList")
     .Attr("T: type")
     .Attr("N: int >= 1")
     .Attr("out_types: list(type)")
-    .SetIsStateful()
     .Doc(R"doc(
 Converts an array of tensors to a list of tensors.
 )doc");
