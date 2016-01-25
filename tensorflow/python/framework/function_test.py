@@ -404,9 +404,9 @@ class UnrollLSTMTest(tf.test.TestCase):
     mv1 = RunForward("cell")
     mv2 = RunForward("loop")
     mv3 = RunForward("loop10")
-    self.assertAllClose(mv0, mv1)
-    self.assertAllClose(mv0, mv2)
-    self.assertAllClose(mv0, mv3)
+    self.assertAllClose(mv0, mv1, rtol=1e-4)
+    self.assertAllClose(mv0, mv2, rtol=1e-4)
+    self.assertAllClose(mv0, mv3, rtol=1e-4)
 
   def testUnrollLSTMGrad(self):
     # Run one step of the unrolled lstm graph.
@@ -430,9 +430,9 @@ class UnrollLSTMTest(tf.test.TestCase):
     d1 = RunForwardBackward("cell")
     d2 = RunForwardBackward("loop")
     d3 = RunForwardBackward("loop10")
-    self.assertAllClose(d0, d1)
-    self.assertAllClose(d0, d2)
-    self.assertAllClose(d0, d3)
+    self.assertAllClose(d0, d1, rtol=1e-4)
+    self.assertAllClose(d0, d2, rtol=1e-4)
+    self.assertAllClose(d0, d3, rtol=1e-4)
 
 
 if __name__ == "__main__":
