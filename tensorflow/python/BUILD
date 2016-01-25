@@ -33,6 +33,7 @@ py_library(
         ":platform_test",
         ":summary",
         ":training",
+        "//tensorflow/contrib:contrib_py",
     ],
 )
 
@@ -237,6 +238,17 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "contrib_test",
+    srcs = ["framework/contrib_test.py"],
+    main = "framework/contrib_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1125,17 +1137,6 @@ py_binary(
         ":docs",
         ":platform",
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-sh_test(
-    name = "gen_docs_test",
-    size = "small",
-    srcs = [
-        "framework/gen_docs_test.sh",
-    ],
-    data = [
-        ":gen_docs_combined",
     ],
 )
 

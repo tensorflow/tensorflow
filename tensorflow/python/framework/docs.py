@@ -15,8 +15,7 @@
 
 """Updates generated docs from Python doc comments.
 
-Both updates the files in the file-system and executes g4 commands to
-make sure any changes are ready to be submitted.
+Updates the documentation files.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -264,7 +263,10 @@ class Library(Document):
     if argspec.defaults:
       for arg, default in zip(
           argspec.args[first_arg_with_default:], argspec.defaults):
-        args_list.append("%s=%r" % (arg, default))
+        if callable(default):
+          args_list.append("%s=%s" % (arg, default.__name__))
+        else:
+          args_list.append("%s=%r" % (arg, default))
     if argspec.varargs:
       args_list.append("*" + argspec.varargs)
     if argspec.keywords:
@@ -405,7 +407,7 @@ class Library(Document):
         print(l, file=f)
 
   def _write_class_markdown_to_file(self, f, name, cls):
-    """Write the class doc to 'f'.
+    """Write the class doc to `f`.
 
     Args:
       f: File to write to.
