@@ -45,6 +45,11 @@ cc_binary(
     ],
 )
 
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+)
+
 py_library(
     name = "tensorflow_py",
     srcs = ["__init__.py"],
