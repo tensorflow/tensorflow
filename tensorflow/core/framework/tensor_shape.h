@@ -143,7 +143,7 @@ class TensorShape {
 
 struct TensorShapeDim {
   explicit TensorShapeDim(int64 s) : size(s) {}
-  int size;
+  int64 size;
 };
 
 class TensorShapeIter {

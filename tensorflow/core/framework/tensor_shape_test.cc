@@ -86,5 +86,17 @@ TEST(TensorShapeTest, SetDimForEmptyTensor) {
   EXPECT_EQ(1400, s.num_elements());
 }
 
+TEST(TensorShapeTest, AppendShape64BitIndices) {
+  TensorShape s({10, 2147483648});
+
+  EXPECT_EQ(10, s.dim_size(0));
+  EXPECT_EQ(2147483648, s.dim_size(1));
+
+  TensorShape s2;
+  s2.AppendShape(s);
+  EXPECT_EQ(10, s2.dim_size(0));
+  EXPECT_EQ(2147483648, s2.dim_size(1));
+}
+
 }  // namespace
 }  // namespace tensorflow
