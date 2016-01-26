@@ -296,8 +296,8 @@ static Status CopyStringToPyArrayElement(PyArrayObject* pyarray, void* i_ptr,
                                          TF_Tensor* tensor,
                                          tensorflow::int64 num_elements,
                                          tensorflow::int64 i) {
-  const char* ptr;
-  tensorflow::uint64 len;
+  const char* ptr = nullptr;
+  tensorflow::uint64 len = 0;
   TF_RETURN_IF_ERROR(
       TF_StringTensor_GetPtrAndLen(tensor, num_elements, i, &ptr, &len));
   auto py_string = tensorflow::make_safe(PyBytes_FromStringAndSize(ptr, len));
@@ -329,7 +329,7 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
   }
 
   // Convert TensorFlow dtype to numpy type descriptor.
-  int type_num;
+  int type_num = -1;
   TF_RETURN_IF_ERROR(
       TF_DataType_to_PyArray_TYPE(TF_TensorType(tensor), &type_num));
   PyArray_Descr* descr = PyArray_DescrFromType(type_num);
@@ -449,7 +449,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
     PyArrayObject* array = inputs[i].second;
 
     // Convert numpy dtype to TensorFlow dtype.
-    TF_DataType dtype;
+    TF_DataType dtype = TF_FLOAT;
     *out_status = PyArray_TYPE_to_TF_DataType(array, &dtype);
     if (!out_status->ok()) {
       return;

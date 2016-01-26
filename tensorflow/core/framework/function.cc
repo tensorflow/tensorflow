@@ -214,7 +214,7 @@ Status BuildNodeOutputIndex(const FunctionDef::Node& node,
     TF_RETURN_IF_ERROR(
         AddRetName(name_info, node.ret(i),
                    {false, arg_index, start, is_type_list, dtypes}));
-    for (int j = 0; j < dtypes.size(); ++j) {
+    for (int j = 0; j < static_cast<int>(dtypes.size()); ++j) {
       TF_RETURN_IF_ERROR(
           AddRetName(name_info, strings::StrCat(node.ret(i), ":", j),
                      {false, arg_index, start + j, false, {dtypes[j]}}));
@@ -255,7 +255,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
                                        DataTypeSliceString(dtypes), " vs. ",
                                        DataTypeSliceString(item->dtypes), ".");
       }
-      for (int j = 0; j < dtypes.size(); ++j) {
+      for (size_t j = 0; j < dtypes.size(); ++j) {
         if (item->is_func_arg) {
           gnode->add_input(Name(item->nid + j));
         } else {
@@ -264,7 +264,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
       }
       ++fnode_arg_index;
     } else {
-      for (int j = 0; j < dtypes.size(); ++j) {
+      for (size_t j = 0; j < dtypes.size(); ++j) {
         const NameInfoItem* item =
             gtl::FindOrNull(name_info, fnode.arg(fnode_arg_index + j));
         if (item == nullptr) {
@@ -323,7 +323,7 @@ Status AddReturnNode(const OpDef::ArgDef& ret_def,
                                    DataTypeVectorString(item->dtypes));
   }
   GraphDef* gdef = &result->gdef;
-  for (int i = 0; i < dtypes.size(); ++i) {
+  for (size_t i = 0; i < dtypes.size(); ++i) {
     NodeDef* gnode = gdef->add_node();
     gnode->set_name(Name(gdef->node_size() - 1));
     gnode->set_op("_Retval");

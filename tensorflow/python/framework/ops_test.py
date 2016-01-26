@@ -956,10 +956,10 @@ class GraphDefVersionTest(test_util.TensorFlowTestCase):
 
   def testGraphDefVersion(self):
     """Test that the graphdef version is plumbed through to kernels."""
-    for version in range(versions.GRAPH_DEF_VERSION_MIN,
-                         versions.GRAPH_DEF_VERSION_MAX + 1):
+    for version in range(versions.GRAPH_DEF_VERSION_MIN_PRODUCER,
+                         versions.GRAPH_DEF_VERSION + 2):
       with ops.Graph().as_default() as g:
-        g.graph_def_version = version
+        g.graph_def_versions.producer = version
         with self.test_session(graph=g):
           v = test_ops.graph_def_version().eval()
           self.assertEqual(version, v)

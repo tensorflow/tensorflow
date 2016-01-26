@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
 
 #define EIGEN_USE_GPU
 
@@ -54,4 +54,4 @@ bool MaxPoolBackwardNoMask(const float* bottom_data, const int batch,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_

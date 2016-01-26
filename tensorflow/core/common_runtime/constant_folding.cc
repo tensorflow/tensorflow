@@ -278,7 +278,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   params.create_kernel = [device, constant_graph](const NodeDef& ndef,
                                                   OpKernel** kernel) {
     return CreateNonCachedKernel(device, nullptr, ndef,
-                                 constant_graph->version(), kernel);
+                                 constant_graph->versions().producer(), kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
   Executor* executor;

@@ -116,8 +116,10 @@ for op_def in _op_list.op:
 
 class ImportGraphDefTest(tf.test.TestCase):
 
-  def _MakeGraphDef(self, text, version=tf.GRAPH_DEF_VERSION):
-    text = "version: %d\n%s" % (version, text)
+  def _MakeGraphDef(self, text, producer=tf.GRAPH_DEF_VERSION,
+                    min_consumer=tf.GRAPH_DEF_VERSION_MIN_CONSUMER):
+    text = "versions: { producer: %d min_consumer: %d };\n%s" % (
+        producer, min_consumer, text)
     ret = tf.GraphDef()
     text_format.Merge(text, ret)
     return ret
@@ -617,28 +619,41 @@ class ImportGraphDefTest(tf.test.TestCase):
       g.eval()
 
   def testVersion(self):
-    for version in tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX:
-      with tf.Graph().as_default():
-        a, = tf.import_graph_def(
-            self._MakeGraphDef("node { name: 'A' op: 'Oii' }", version=version),
-            return_elements=['A'])
-        self.assertEqual(a.graph.graph_def_version, version)
+    v0 = tf.GRAPH_DEF_VERSION_MIN_CONSUMER
+    v2 = tf.GRAPH_DEF_VERSION
+    v1 = (v0 + v2) // 2
+    for producer in v0, v1, v2:
+      for min_consumer in v0, v1, v2:
+        with tf.Graph().as_default():
+          a, = tf.import_graph_def(
+              self._MakeGraphDef("node { name: 'A' op: 'Oii' }",
+                                 producer=producer, min_consumer=min_consumer),
+              return_elements=['A'])
+          self.assertEqual(a.graph.graph_def_versions.producer, producer)
+          self.assertEqual(a.graph.graph_def_versions.min_consumer,
+                           min_consumer)
 
   def testVersionLow(self):
-    with tf.Graph().as_default():
-      pat = (r"^GraphDef version -1 is no longer supported: TensorFlow \S+ "
-             r"needs %d <= version <= %d.  Please regenerate your graph.$" %
-             (tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX))
-      with self.assertRaisesRegexp(ValueError, pat):
-        tf.import_graph_def(self._MakeGraphDef("", version=-1))
+    with tf.Graph().as_default() as g:
+      pat = (r"GraphDef producer version -1 below min producer %d supported "
+             r"by TensorFlow \S+\.  Please regenerate your graph.$" %
+             tf.GRAPH_DEF_VERSION_MIN_PRODUCER)
+      tf.import_graph_def(self._MakeGraphDef("", producer=-1))
+      x = tf.constant(7)  # Need at least one op to get a C++ graph generated
+      with self.test_session(graph=g) as sess:
+        with self.assertRaisesRegexp(Exception, pat):
+          sess.run(x)
 
   def testVersionHigh(self):
-    with tf.Graph().as_default():
-      pat = (r"^GraphDef version \d+ is not yet supported: TensorFlow \S+ "
-             r"needs %d <= version <= %d.  Please upgrade TensorFlow.$" %
-             (tf.GRAPH_DEF_VERSION_MIN, tf.GRAPH_DEF_VERSION_MAX))
-      with self.assertRaisesRegexp(ValueError, pat):
-        tf.import_graph_def(self._MakeGraphDef("", version=1 << 30))
+    with tf.Graph().as_default() as g:
+      pat = (r"GraphDef min consumer version %d above current version %d "
+             r"for TensorFlow \S+\.  Please upgrade TensorFlow\.$" %
+             (1 << 30, tf.GRAPH_DEF_VERSION))
+      tf.import_graph_def(self._MakeGraphDef("", min_consumer=1 << 30))
+      x = tf.constant(7)  # Need at least one op to get a C++ graph generated
+      with self.test_session(graph=g) as sess:
+        with self.assertRaisesRegexp(Exception, pat):
+          sess.run(x)
 
   def testDefaultAttrsAdded(self):
     with tf.Graph().as_default():

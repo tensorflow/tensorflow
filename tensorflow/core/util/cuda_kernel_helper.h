@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
+#ifndef TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
+#define TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
 
 #if GOOGLE_CUDA
 
@@ -73,4 +73,4 @@ __device__ __host__ inline T ldg(const T* address) {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
+#endif  // TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_

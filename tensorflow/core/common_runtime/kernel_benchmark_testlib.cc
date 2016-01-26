@@ -61,7 +61,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   rendez_ = NewLocalRendezvous();
 
-  const int graph_def_version = g->version();
+  const int graph_def_version = g->versions().producer();
 
   LocalExecutorParams params;
   params.device = device_;

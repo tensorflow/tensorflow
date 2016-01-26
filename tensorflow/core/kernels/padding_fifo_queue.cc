@@ -359,7 +359,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(
     const gtl::ArraySlice<PartialTensorShape>& partial_shapes) {
   std::vector<TensorShape> shapes(partial_shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
+  for (size_t i = 0; i < shapes.size(); ++i) {
     const PartialTensorShape& partial = partial_shapes[i];
     TensorShape& shape = shapes[i];
     for (int64 s : partial.dim_sizes()) shape.AddDim(s < 0 ? 0 : s);

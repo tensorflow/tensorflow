@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/protobuf.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/protobuf.h
@@ -30,4 +30,4 @@ namespace tensorflow {
 namespace protobuf = ::google::protobuf;
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_
