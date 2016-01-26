@@ -20,7 +20,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
 
 #include "tensorflow/core/platform/jpeg.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace jpeg {
