@@ -21,15 +21,15 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {

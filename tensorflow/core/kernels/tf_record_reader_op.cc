@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
