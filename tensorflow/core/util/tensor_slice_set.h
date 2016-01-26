@@ -26,12 +26,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"       // for Status
 #include "tensorflow/core/lib/core/stringpiece.h"  // for StringPiece
-#include "tensorflow/core/platform/port.h"         // for int64
-#include "tensorflow/core/public/status.h"         // for Status
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"        // for int64
 
 namespace tensorflow {
 
