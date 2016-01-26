@@ -328,6 +328,7 @@ value: 0-D (scalar). Value to fill the returned tensor.
 REGISTER_OP("Gather")
     .Input("params: Tparams")
     .Input("indices: Tindices")
+    .Attr("validate_indices: bool = true")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
