@@ -20,8 +20,8 @@ limitations under the License.
 #include <functional>
 #include <thread>
 #include <vector>
+#include <memory>
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/public/env.h"
 
@@ -48,25 +48,17 @@ class ThreadPool {
   virtual ~ThreadPool();
 
   // Schedule fn() for execution in the pool of threads.
+  // Note that not all implementations guarantee the order in which
+  // jobs will be run on a single worker thread, and so jobs scheduled
+  // simultaneously should not have ordering dependencies between them.
   virtual void Schedule(std::function<void()> fn);
 
   virtual bool HasPendingClosures() const;
 
+  struct Impl;
+
  private:
-  struct Waiter;
-  struct Item {
-    std::function<void()> fn;
-    uint64 id;
-  };
-
-  void WorkerLoop();
-
-  const string name_;
-  mutable mutex mu_;
-  std::vector<Thread*> threads_;  // All threads
-  std::vector<Waiter*> waiters_;  // Stack of waiting threads.
-  std::deque<Item> pending_;      // Queue of pending work
-
+  std::unique_ptr<Impl> impl_;
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
 
