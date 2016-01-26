@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
 #define TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/build_config/thread_annotations.h"

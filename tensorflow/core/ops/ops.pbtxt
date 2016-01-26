@@ -3004,6 +3004,13 @@ op {
     type_attr: "Tparams"
   }
   attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
     name: "Tparams"
     type: "type"
   }
