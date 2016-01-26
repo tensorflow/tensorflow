@@ -43,7 +43,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
 
