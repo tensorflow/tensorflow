@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
