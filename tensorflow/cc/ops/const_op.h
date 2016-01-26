@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_OPS_CONST_OP_H_
 #define TENSORFLOW_CC_OPS_CONST_OP_H_
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace ops {
