@@ -630,43 +630,15 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-TENSORFLOW_ANDROID_SRCS = [
-    "//tensorflow/core:android_core_ops",
-    "//tensorflow/core:android_extended_ops",
-    "//tensorflow/core:android_srcs",
-]
-
-config_setting(
-    name = "android_32",
-    values = {
-        "crosstool_top": "//android_ndk_repository/toolchains/gcc_4_8:everything",
-    },
-)
-
-config_setting(
-    name = "android_64",
-    values = {
-        "crosstool_top": "//android_ndk_repository/toolchains/gcc_4_9:everything",
-    },
-)
-
-config_setting(
-    name = "android_bazel",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
-)
-
 # Native library support for Android applications.
 # Should be built to target Android with flag --copt=-mfpu=neon.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = select({
-        ":android_32": TENSORFLOW_ANDROID_SRCS,
-        ":android_64": TENSORFLOW_ANDROID_SRCS,
-        ":android_bazel": TENSORFLOW_ANDROID_SRCS,
-        "//conditions:default": [],
-    }),
+    srcs = [
+        "//tensorflow/core:android_core_ops",
+        "//tensorflow/core:android_extended_ops",
+        "//tensorflow/core:android_srcs",
+    ],
     hdrs = [
         "framework/tensor.h",
         "platform/env.h",

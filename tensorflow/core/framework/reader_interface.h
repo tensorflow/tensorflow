@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <complex>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

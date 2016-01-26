@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 

@@ -27,7 +27,7 @@ limitations under the License.
 //   includes running the constructor and destructor of T[], encoding
 //   an decoding T[] into/from a Cord, etc.
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {

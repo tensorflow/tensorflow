@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/colors.h"
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

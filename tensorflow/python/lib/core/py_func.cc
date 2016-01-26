@@ -311,7 +311,7 @@ class PyFuncOp : public AsyncOpKernel {
                                   " values, but expects to see ",
                                   ctx->num_outputs(), " values."),
           done);
-      for (int i = 0; i < call->out.size(); ++i) {
+      for (size_t i = 0; i < call->out.size(); ++i) {
         const auto& t = call->out[i];
         OP_REQUIRES_ASYNC(
             ctx, t.dtype() == output_type(i),

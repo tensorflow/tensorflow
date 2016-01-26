@@ -163,7 +163,7 @@ Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
   TF_RETURN_IF_ERROR(AddArgName(name_info, arg_def.name(),
                                 {true, arg_index, 0, is_type_list, dtypes}));
   // Creates dtypes.size() nodes in the gdef.
-  for (int i = 0; i < dtypes.size(); ++i) {
+  for (size_t i = 0; i < dtypes.size(); ++i) {
     TF_RETURN_IF_ERROR(AddArgName(name_info,
                                   strings::StrCat(arg_def.name(), ":", i),
                                   {true, arg_index, 0, false, {dtypes[i]}}));

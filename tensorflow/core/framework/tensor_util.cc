@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 
 #include <vector>
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace tensor {

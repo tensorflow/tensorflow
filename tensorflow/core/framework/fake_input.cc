@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace {

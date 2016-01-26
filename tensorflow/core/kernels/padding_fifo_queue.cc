@@ -179,7 +179,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   attempt->tuple.emplace_back(element);
                 }
 
-                for (int index = 0; index < tuples.size(); ++index) {
+                for (size_t index = 0; index < tuples.size(); ++index) {
                   for (int i = 0; i < num_components(); ++i) {
                     if (dynamic_shape[i]) {
                       // Slightly slower copy operation
