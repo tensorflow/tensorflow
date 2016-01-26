@@ -50,7 +50,7 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
 // the whole remaining string if "delim" is not found.  "*s" is advanced
 // past the string returned plus the delimiter (if found).
 static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
-  for (int offset = 0; offset < s->size(); offset++) {
+  for (size_t offset = 0; offset < s->size(); offset++) {
     if ((*s)[offset] == delim) {
       StringPiece result(s->data(), offset);
       s->remove_prefix(offset + 1);  // +1: remove delim, as well

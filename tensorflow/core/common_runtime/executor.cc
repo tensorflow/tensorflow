@@ -166,7 +166,7 @@ void SetReferencedTensors(NodeExecStats* nt,
                           const TensorReferenceVector& tensors) {
   // be careful not to increment the reference count on any tensor
   // while recording the information
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     AllocationDescription* description = nt->add_referenced_tensor();
     tensors.at(i).FillDescription(description);
   }
