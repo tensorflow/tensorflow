@@ -7,11 +7,6 @@ import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/function.proto";
 
 // Represents the graph of operations
-// TODO(sanjay): Also want to put the following somewhere:
-// * random_seed
-// * replicas: Do we stamp them out in python itself?
-// * where to load parameters
-// * optimizer info? does it go with the parameter layers/ops?
 message GraphDef {
   repeated NodeDef node = 1;
 
