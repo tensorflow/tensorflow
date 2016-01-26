@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {

@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace io {

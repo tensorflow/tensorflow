@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 #include <set>
 #include <string>
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/core/platform/test.h"
 

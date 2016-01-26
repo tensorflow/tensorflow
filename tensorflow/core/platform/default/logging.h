@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <sstream>
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 const int INFO = 0;            // base_logging::INFO;

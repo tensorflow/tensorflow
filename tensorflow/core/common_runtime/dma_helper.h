@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_DMA_HELPER_H_
 #define TENSORFLOW_COMMON_RUNTIME_DMA_HELPER_H_
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 

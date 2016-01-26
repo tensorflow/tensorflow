@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/reader_interface.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 

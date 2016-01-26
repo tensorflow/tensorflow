@@ -19,8 +19,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/lib/gtl/int_type.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

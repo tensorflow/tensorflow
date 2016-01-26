@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/block.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace table {

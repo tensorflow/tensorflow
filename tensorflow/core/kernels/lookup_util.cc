@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 namespace lookup {
