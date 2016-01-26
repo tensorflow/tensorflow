@@ -13,6 +13,16 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+py_library(
+    name = "freeze_graph_lib",
+    srcs = ["freeze_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
@@ -35,6 +45,15 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "graph_metrics_lib",
+    srcs = ["graph_metrics.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
     ],
 )
 
