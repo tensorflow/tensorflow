@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Return type of import_array() changed between Python 2 and 3
 // NUMPY_IMPORT_ARRAY_RETVAL is NULL for Python 3
