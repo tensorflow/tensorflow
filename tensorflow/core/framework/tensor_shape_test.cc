@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 #include "tensorflow/core/platform/test.h"
 
