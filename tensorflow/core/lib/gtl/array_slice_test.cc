@@ -528,7 +528,7 @@ TEST(MutableIntSlice, InlinedVectorConversion) {
     }
     MutableIntSlice v = &inline_vec;  // Test assignment
     static_cast<void>(v);
-    TestImplicitConversion(&inline_vec, inline_vec.data(), inline_vec.size());
+    TestImplicitConversion(&inline_vec, inline_vec.array(), inline_vec.size());
   }
 }
 
