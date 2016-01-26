@@ -36,10 +36,18 @@ limitations under the License.
 
 // TODO(josh11b): Public API functions for exporting the above.
 
-// Supported GraphDef compatibility versions (the version field in graph.proto).
-// Newly created graphs use TF_GRAPH_DEF_VERSION, but all versions from
-// TF_GRAPH_DEF_VERSION_MIN to TF_GRAPH_DEF_VERSION_MAX are supported, with
-// different semantics depending on the version.
+// GraphDef compatibility versions (the versions field in graph.proto).
+//
+// Each graph has producer and min_consumer versions, and each
+// consumer has its own version and a min_producer.  In addition, graphs can
+// mark specific consumer versions as bad (to prevent bugs from executing).
+// A consumer will execute a graph if the consumer's version is at least the
+// graph's min_consumer, the graph's producer version is at least the consumer's
+// min_producer, and the consumer version isn't specifically disallowed by the
+// graph.
+//
+// By default, newly created graphs have producer version TF_GRAPH_DEF_VERSION
+// min_consumer TF_GRAPH_DEF_MIN_CONSUMER, and no other bad consumer versions.
 //
 // Version history:
 //
@@ -51,9 +59,10 @@ limitations under the License.
 //    parsing more strict with respect to empty list values (see
 //    111635679, 7jan2016).
 // 5. Graphs are wholly-validated during Session::Create() (7jan2016).
-// 6. TensorFlow is scalar strict within Google (current on or after 1feb2016).
-#define TF_GRAPH_DEF_VERSION_MIN 0
-#define TF_GRAPH_DEF_VERSION_MAX 7
+// 6. TensorFlow is scalar strict within Google (reserved, will be turned on
+//    once the GraphDef version rewrite settles).
+#define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
+#define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
 #define TF_GRAPH_DEF_VERSION 5
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_

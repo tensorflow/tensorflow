@@ -33,6 +33,7 @@ import tensorflow.python.platform
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
@@ -1737,7 +1738,7 @@ class Graph(object):
   @@seed
   @@unique_name
   @@version
-  @@graph_def_version
+  @@graph_def_versions
 
   @@create_op
   @@gradient_override_map
@@ -1778,8 +1779,10 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
-    # Default GraphDef version
-    self._graph_def_version = versions.GRAPH_DEF_VERSION
+    # Default GraphDef versions
+    self._graph_def_versions = versions_pb2.VersionDef(
+        producer=versions.GRAPH_DEF_VERSION,
+        min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1823,27 +1826,16 @@ class Graph(object):
     return self._next_id_counter
 
   @property
-  def graph_def_version(self):
-    """The GraphDef version of this graph.
+  def graph_def_versions(self):
+    """The GraphDef version information of this graph.
 
     For details on the meaning of each version, see [`GraphDef`]
     (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
-    """
-    return self._graph_def_version
 
-  @graph_def_version.setter
-  def graph_def_version(self, version):
-    if not (versions.GRAPH_DEF_VERSION_MIN <= version <=
-            versions.GRAPH_DEF_VERSION_MAX):
-      low = version < versions.GRAPH_DEF_VERSION_MIN
-      raise ValueError(
-          "GraphDef version %d is %s supported: TensorFlow %s needs %d <= "
-          "version <= %d.  Please %s." %
-          (version, "no longer" if low else "not yet",
-           versions.__version__, versions.GRAPH_DEF_VERSION_MIN,
-           versions.GRAPH_DEF_VERSION_MAX,
-           "regenerate your graph" if low else "upgrade TensorFlow"))
-    self._graph_def_version = version
+    Returns:
+      A `VersionDef`.
+    """
+    return self._graph_def_versions
 
   @property
   def seed(self):
@@ -1906,7 +1898,7 @@ class Graph(object):
       ValueError: If the `graph_def` would be too large.
     """
     graph = graph_pb2.GraphDef()
-    graph.version = self._graph_def_version
+    graph.versions.CopyFrom(self._graph_def_versions)
     bytesize = 0
     for op_id in sorted(self._nodes_by_id):
       op = self._nodes_by_id[op_id]

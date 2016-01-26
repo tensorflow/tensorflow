@@ -5,15 +5,21 @@ package tensorflow;
 
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/function.proto";
+import "tensorflow/core/framework/versions.proto";
 
 // Represents the graph of operations
 message GraphDef {
   repeated NodeDef node = 1;
 
-  // Compatibility version of the graph.  See core/public/version.h for version
-  // history.  The GraphDef version is distinct from the TensorFlow version.
-  // Each release of TensorFlow will support a range of GraphDef versions.
-  int32 version = 3;
+  // Compatibility versions of the graph.  See core/public/version.h for version
+  // history.  The GraphDef version is distinct from the TensorFlow version, and
+  // each release of TensorFlow will support a range of GraphDef versions.
+  VersionDef versions = 4;
+
+  // Deprecated single version field; use versions above instead.  Since all
+  // GraphDef changes before "versions" was introduced were forward
+  // compatible, this field is entirely ignored.
+  int32 version = 3 [deprecated = true];
 
   // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
   //

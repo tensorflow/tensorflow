@@ -184,10 +184,34 @@ Status DirectSession::Extend(const GraphDef& graph) {
 }
 
 Status DirectSession::ExtendLocked(const GraphDef& graph) {
-  if (graph_created_ && graph_def_.version() != graph.version()) {
-    return errors::InvalidArgument("Incompatible GraphDef versions in Extend: ",
-                                   graph_def_.version(), " != ",
-                                   graph.version());
+  // Merge versions
+  if (graph_def_.has_versions()) {
+    if (graph_def_.versions().producer() != graph.versions().producer()) {
+      return errors::InvalidArgument(
+          "Can't extend GraphDef at version ", graph_def_.versions().producer(),
+          " with graph at version ", graph.versions().producer());
+    }
+    VersionDef* versions = graph_def_.mutable_versions();
+    versions->set_min_consumer(
+        std::max(versions->min_consumer(), graph.versions().min_consumer()));
+    if (graph.versions().bad_consumers_size()) {
+      // Add new bad_consumers that aren't already marked bad.
+      //
+      // Note: This implementation is quadratic time if there are many calls to
+      // ExtendLocked with many bad consumers.  Since this is unlikely, and
+      // fixing it would require data structures outside of this routine,
+      // quadratic time it is.
+      auto* bad_consumers = versions->mutable_bad_consumers();
+      const std::unordered_set<int> existing(bad_consumers->begin(),
+                                             bad_consumers->end());
+      for (const int v : graph.versions().bad_consumers()) {
+        if (existing.find(v) == existing.end()) {
+          bad_consumers->Add(v);
+        }
+      }
+    }
+  } else {
+    graph_def_.mutable_versions()->CopyFrom(graph.versions());
   }
 
   const int node_size_before_merge = graph_def_.node_size();
@@ -206,7 +230,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
     return s;
   }
 
-  if (graph_def_.version() >= 5) {
+  if (graph_def_.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
     TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, &fdefs));
@@ -358,7 +382,7 @@ Status DirectSession::GetOrCreateExecutors(
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
-    const int graph_def_version = partition_graph->version();
+    const int graph_def_version = partition_graph->versions().producer();
 
     Device* device;
     s = device_mgr_->LookupDevice(partition_name, &device);

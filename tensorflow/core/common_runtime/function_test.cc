@@ -77,7 +77,7 @@ class FunctionTest : public ::testing::Test {
     opts.expect_device_spec = false;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, result.gdef, g));
 
-    const int version = g->version();
+    const int version = g->versions().producer();
     LocalExecutorParams params;
     params.device = device_;
     params.create_kernel = [this, version](const NodeDef& ndef,

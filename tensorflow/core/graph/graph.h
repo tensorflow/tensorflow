@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -228,16 +229,14 @@ class Graph {
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
   // The graph can hold ops found in registry.
-  //
-  // The version defaults to TF_GRAPH_DEF_VERSION.
   explicit Graph(const OpRegistryInterface* registry);
   ~Graph();
 
   static const int kControlSlot = -1;
 
-  // The GraphDef version of this graph (see graph.proto).
-  int version() const { return version_; }
-  void set_version(int version) { version_ = version; }
+  // The GraphDef version range of this graph (see graph.proto).
+  const VersionDef& versions() const { return versions_; }
+  void set_versions(const VersionDef& versions) { versions_ = versions; }
 
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
@@ -321,8 +320,8 @@ class Graph {
   // Registry of all known ops.  Not owned.
   const OpRegistryInterface* const ops_;
 
-  // GraphDef version
-  int version_;
+  // GraphDef versions
+  VersionDef versions_;
 
   // Allocator which will give us good locality.
   core::Arena arena_;

@@ -171,9 +171,11 @@ class TensorFlowTestCase(googletest.TestCase):
                      type(expected_message_maybe_ascii) + " and " +
                      type(message))
 
-  def assertProtoEqualsVersion(self, expected, actual,
-                               version=versions.GRAPH_DEF_VERSION):
-    expected = "version: %d\n%s" % (version, expected)
+  def assertProtoEqualsVersion(
+      self, expected, actual, producer=versions.GRAPH_DEF_VERSION,
+      min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER):
+    expected = "versions { producer: %d min_consumer: %d };\n%s" % (
+        producer, min_consumer, expected)
     self.assertProtoEquals(expected, actual)
 
   def assertStartsWith(self, actual, expected_start, msg=None):
