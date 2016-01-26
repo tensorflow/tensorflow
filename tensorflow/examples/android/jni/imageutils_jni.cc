@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/examples/android/jni/rgb2yuv.h"
 #include "tensorflow/examples/android/jni/yuv2rgb.h"
 

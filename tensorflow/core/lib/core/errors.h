@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace errors {
