@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_MATCH_H_
 
 #include <vector>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 class Env;
