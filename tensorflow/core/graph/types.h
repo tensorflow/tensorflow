@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPH_TYPES_H_
 
 #include "tensorflow/core/lib/gtl/int_type.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
