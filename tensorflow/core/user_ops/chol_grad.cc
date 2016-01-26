@@ -32,7 +32,7 @@ class CholeskyGrad : public OpKernel {
 
     //Grab the input tensors.
     const Tensor& input_tensor_l = context->input(0); ;
-    const Tensor& input_tensor_l_bar = context->input(1); 
+    const Tensor& input_tensor_f = context->input(1); 
     
     //Check that input tensors represent a matrix.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_tensor_l.shape()), errors::InvalidArgument("In[0] is not a matrix"));
@@ -65,26 +65,6 @@ class CholeskyGrad : public OpKernel {
     output_matrix = input_matrix_f.template triangularView<Eigen::Lower>();
     
     output_matrix(N-1,N-1) /= 2 * input_matrix_l(N-1,N-1);
-    
-    /*
-     Inputs:
-          L NxN lower-triangular matrix, resulting from chol(A, 'lower'),
-                where A is a symmetric +ve definite matrix
-      L_bar NxN df/dL for some scalar function f
-
-    Outputs:
-      A_bar NxN tril(df/dA)
-    */
-    
-    /* Indexing from 1 because matlab code.
-    for J = N:-1:1
-    L_bar(J,J) = L_bar(J,J) - L(J+1:N,J)'*L_bar(J+1:N,J) / L(J,J);
-    L_bar(J:N,J) = L_bar(J:N,J) / L(J,J);
-    L_bar(J,1:J-1) = L_bar(J,1:J-1) - L_bar(J:N,J)'*L(J:N,1:J-1);
-    L_bar(J+1:N,1:J-1) = L_bar(J+1:N,1:J-1) - L_bar(J+1:N,J)*L(J,1:J-1);
-    %L_bar(J,J) = 0.5 * L_bar(J,J); % can take out of loop if like.
-    end
-    */
     
     for ( int k = N-2; k>=0; k--)
     {
