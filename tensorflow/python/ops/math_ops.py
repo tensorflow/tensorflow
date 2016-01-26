@@ -82,9 +82,6 @@ mathematical functions for matrices to your graph.
 @@matrix_triangular_solve
 @@batch_matrix_triangular_solve
 
-@@matrix_solve_ls
-@@batch_matrix_solve_ls
-
 ## Complex Number Functions
 
 TensorFlow provides several operations that you can use to add complex number

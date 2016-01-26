@@ -993,6 +993,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_DOUBLE
@@ -1066,6 +1067,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -1091,6 +1093,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -1121,6 +1124,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -1130,47 +1134,6 @@ op {
   }
   summary: "Solves systems of linear equations. Checks for invertibility."
   description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output\nmatrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]."
-}
-op {
-  name: "BatchMatrixSolveLs"
-  input_arg {
-    name: "matrix"
-    description: "Shape is `[..., M, N]`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "rhs"
-    description: "Shape is `[..., M, K]`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "l2_regularizer"
-    type: DT_DOUBLE
-  }
-  output_arg {
-    name: "output"
-    description: "Shape is `[..., N, K]`."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "fast"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  summary: "Solves multiple linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape `[..., M, K]`. The output\nis a tensor shape `[..., N, K]` where each output matrix solves each of\nthe equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :] in the\nleast squares sense.\n\nBelow we will use the following notation for each pair of\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` then the solution is computed using the rank revealing QR\ndecomposition with column pivoting. This will always compute a least-squares\nsolution that minimizes the residual norm \\\\(||A X - B||_F^2\\\\), even when\n\\\\(A\\\\) is rank deficient or ill-conditioned. Notice: The current version does\nnot compute a minimum norm solution. If `fast` is `False` then `l2_regularizer`\nis ignored."
 }
 op {
   name: "BatchMatrixTriangularSolve"
@@ -1200,6 +1163,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -1372,6 +1336,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_DOUBLE
@@ -1528,6 +1493,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_DOUBLE
@@ -4157,6 +4123,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -4181,6 +4148,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -4211,6 +4179,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -4219,47 +4188,6 @@ op {
     }
   }
   summary: "Solves a system of linear equations. Checks for invertibility."
-}
-op {
-  name: "MatrixSolveLs"
-  input_arg {
-    name: "matrix"
-    description: "Shape is `[M, N]`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "rhs"
-    description: "Shape is `[M, K]`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "l2_regularizer"
-    type: DT_DOUBLE
-  }
-  output_arg {
-    name: "output"
-    description: "Shape is `[N, K]` containing the tensor that solves\n`matrix * output = rhs` in the least-squares sense."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "fast"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  summary: "Solves a linear least-squares problem."
-  description: "Below we will use the following notation\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\),\nwhich (for \\\\(\\lambda = 0\\\\)) is the minimum-norm solution to the\nunder-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\),\nsubject to \\\\(A Z = B\\\\).\nNotice that the fast path is only numerically stable when \\\\(A\\\\) is\nnumerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\)\nor \\\\(\\lambda\\\\) is sufficiently large.\n\nIf `fast` is `False` then the solution is computed using the rank revealing QR\ndecomposition with column pivoting. This will always compute a least-squares\nsolution that minimizes the residual norm \\\\(||A X - B||_F^2 \\\\), even when\n\\\\( A \\\\) is rank deficient or ill-conditioned. Notice: The current version\ndoes not compute a minimum norm solution. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
@@ -4289,6 +4217,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_FLOAT
@@ -7467,6 +7396,7 @@ op {
   attr {
     name: "T"
     type: "type"
+    description: "The type of values in the input and output."
     allowed_values {
       list {
         type: DT_DOUBLE
