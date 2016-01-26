@@ -108,9 +108,9 @@ def _MatrixSolveShape(op):
   rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrix must be square.
   lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
-  # The matrix and righ-hand-side must have the same number of rows.
+  # The matrix and right-hand side must have the same number of rows.
   lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
-  return [[lhs_shape[0], rhs_shape[1]]]
+  return [[lhs_shape[1], rhs_shape[1]]]
 
 
 @ops.RegisterShape("BatchMatrixSolve")
@@ -119,7 +119,7 @@ def _BatchMatrixSolveShape(op):
   rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
   # The matrices must be square.
   lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
-  # The matrices and righ-hand-sides in the batch must have the same number of
+  # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
   return [lhs_shape[:-2].concatenate(rhs_shape[-1])]
@@ -146,3 +146,134 @@ def _BatchMatrixTriangularSolveShape(op):
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
   return [rhs_shape]
+
+
+@ops.RegisterShape("MatrixSolveLs")
+def _MatrixSolveLsShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  # The matrix and right-hand side must have the same number of rows.
+  lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
+  return [[lhs_shape[1], rhs_shape[1]]]
+
+
+@ops.RegisterShape("BatchMatrixSolveLs")
+def _BatchMatrixSolveLsShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  # The matrices and right-hand sides in the batch must have the same number of
+  # rows.
+  lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
+  return [lhs_shape[:-3].concatenate([lhs_shape[-1], rhs_shape[-1]])]
+
+
+def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
+  r"""Solves a linear least-squares problem.
+
+  Below we will use the following notation
+  `matrix`=\\(A \in \Re^{m \times n}\\),
+  `rhs`=\\(B  \in \Re^{m \times k}\\),
+  `output`=\\(X  \in \Re^{n \times k}\\),
+  `l2_regularizer`=\\(\lambda\\).
+
+  If `fast` is `True`, then the solution is computed by solving the normal
+  equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+  \\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the regularized
+  least-squares problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}}
+  ||A Z - B||_F^2 + \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is
+  computed as \\(X = A^T (A A^T + \lambda I)^{-1} B\\),
+  which (for \\(\lambda = 0\\)) is the minimum-norm solution to the
+  under-determined linear system, i.e.
+  \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\),
+  subject to \\(A Z = B\\).
+  Notice that the fast path is only numerically stable when \\(A\\) is
+  numerically full rank and has a condition number
+  \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\)
+  or \\(\lambda\\) is sufficiently large.
+
+  If `fast` is `False` then the solution is computed using the rank revealing
+  QR decomposition with column pivoting. This will always compute a
+  least-squares solution that minimizes the residual norm
+  \\(||A X - B||_F^2 \\), even when \\(A\\) is rank deficient or
+  ill-conditioned. Notice: The current version does not compute a minimum norm
+  solution. If `fast` is `False` then `l2_regularizer` is ignored.
+
+  Args:
+    matrix: 2-D `Tensor` of shape `[M, N]`.
+    rhs: 2-D `Tensor` of shape is `[M, K]`.
+    l2_regularizer: 0-D  `double` `Tensor`. Ignored if `fast=False`.
+    fast: bool. Defaults to `True`.
+    name: string, optional name of the operation.
+
+  Returns:
+    output: Matrix of shape `[N, K]` containing the matrix that solves
+      `matrix * output = rhs` in the least-squares sense.
+  """
+  return gen_linalg_ops.matrix_solve_ls(matrix,
+                                        rhs,
+                                        l2_regularizer,
+                                        fast=fast,
+                                        name=name)
+
+
+def batch_matrix_solve_ls(matrix,
+                          rhs,
+                          l2_regularizer=0.0,
+                          fast=True,
+                          name=None):
+  r"""Solves multiple linear least-squares problems.
+
+  `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+  form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
+  inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
+  `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
+  matrices that solve the equations
+  `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
+  sense.
+
+  Below we will use the following notation for each pair of
+  matrix and right-hand sides in the batch:
+
+  `matrix`=\\(A \in \Re^{m \times n}\\),
+  `rhs`=\\(B  \in \Re^{m \times k}\\),
+  `output`=\\(X  \in \Re^{n \times k}\\),
+  `l2_regularizer`=\\(\lambda\\).
+
+  If `fast` is `True`, then the solution is computed by solving the normal
+  equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+  \\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
+  problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||A Z - B||_F^2 +
+  \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
+  \\(X = A^T (A A^T + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is
+  the minimum-norm solution to the under-determined linear system, i.e.
+  \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\), subject to
+  \\(A Z = B\\). Notice that the fast path is only numerically stable when
+  \\(A\\) is numerically full rank and has a condition number
+  \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\) or\\(\lambda\\)
+  is sufficiently large.
+
+  If `fast` is `False` then the solution is computed using the rank revealing
+  QR decomposition with column pivoting. This will always compute a
+  least-squares solution that minimizes the residual norm \\(||A X - B||_F^2\\),
+  even when \\(A\\) is rank deficient or ill-conditioned. Notice: The current
+  version does not compute a minimum norm solution. If `fast` is `False` then
+  `l2_regularizer` is ignored.
+
+  Args:
+    matrix: `Tensor` of shape `[..., M, N]`.
+    rhs: `Tensor` of shape `[..., M, K]`.
+    l2_regularizer: 0-D `double` `Tensor`. Ignored if `fast=False`.
+    fast: bool. Defaults to `True`.
+    name: string, optional name of the operation.
+
+  Returns:
+    output: `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form
+      `M`-by-`K` matrices that solve the equations
+      `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
+      squares sense.
+  """
+  return gen_linalg_ops.batch_matrix_solve_ls(matrix,
+                                              rhs,
+                                              l2_regularizer,
+                                              fast=fast,
+                                              name=name)
