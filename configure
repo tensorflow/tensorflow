@@ -92,7 +92,7 @@ while true; do
 done
 
 cat > third_party/gpus/cuda/cuda.config <<EOF
-# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requries Cuda 7.0
+# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requires Cuda 7.0
 # at the moment.
 CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 

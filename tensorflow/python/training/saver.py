@@ -481,9 +481,8 @@ def generate_checkpoint_state_proto(save_dir,
 
   if (not all_model_checkpoint_paths or
       all_model_checkpoint_paths[-1] != model_checkpoint_path):
-    logging.info(
-        "%s is not in all_model_checkpoint_paths. Manually adding it.",
-        model_checkpoint_path)
+    logging.info("%s is not in all_model_checkpoint_paths. Manually adding it.",
+                 model_checkpoint_path)
     all_model_checkpoint_paths.append(model_checkpoint_path)
 
   # Relative paths need to be rewritten to be relative to the "save_dir"
@@ -528,7 +527,8 @@ def update_checkpoint_state(save_dir,
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
   ckpt = generate_checkpoint_state_proto(
-      save_dir, model_checkpoint_path,
+      save_dir,
+      model_checkpoint_path,
       all_model_checkpoint_paths=all_model_checkpoint_paths)
 
   if coord_checkpoint_filename == ckpt.model_checkpoint_path:
@@ -570,8 +570,8 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       # prepend checkpoint_dir.
       if not os.path.isabs(checkpoint_dir):
         if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(
-              checkpoint_dir, ckpt.model_checkpoint_path)
+          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+                                                    ckpt.model_checkpoint_path)
         for i in range(len(ckpt.all_model_checkpoint_paths)):
           p = ckpt.all_model_checkpoint_paths[i]
           if not os.path.isabs(p):
@@ -726,7 +726,7 @@ class Saver(object):
         where the variables have a different shape.
       sharded: If `True`, shard the checkpoints, one per device.
       max_to_keep: Maximum number of recent checkpoints to keep.
-        Defaults to 10,000 hours.
+        Defaults to 5.
       keep_checkpoint_every_n_hours: How often to keep checkpoints.
         Defaults to 10,000 hours.
       name: String.  Optional name to use as a prefix when adding operations.
@@ -856,7 +856,9 @@ class Saver(object):
     return list(self._CheckpointFilename(p) for p in self._last_checkpoints)
 
   def set_last_checkpoints(self, last_checkpoints):
-    """Sets the list of old checkpoint filenames.
+    """DEPRECATED: Use set_last_checkpoints_with_time.
+
+    Sets the list of old checkpoint filenames.
 
     Args:
       last_checkpoints: A list of checkpoint filenames.
@@ -869,6 +871,19 @@ class Saver(object):
     # deleted.  This is both safe and backwards compatible to a previous
     # version of the code which used s[1] as the "timestamp".
     self._last_checkpoints = [(s, np.inf) for s in last_checkpoints]
+
+  def set_last_checkpoints_with_time(self, last_checkpoints_with_time):
+    """Sets the list of old checkpoint filenames and timestamps.
+
+    Args:
+      last_checkpoints_with_time: A list of tuples of checkpoint filenames and
+        timestamps.
+
+    Raises:
+      AssertionError: If last_checkpoints_with_time is not a list.
+    """
+    assert isinstance(last_checkpoints_with_time, list)
+    self._last_checkpoints = last_checkpoints_with_time
 
   def save(self, sess, save_path, global_step=None, latest_filename=None):
     """Saves variables.

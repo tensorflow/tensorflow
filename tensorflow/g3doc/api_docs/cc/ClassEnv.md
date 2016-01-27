@@ -9,7 +9,7 @@ All Env implementations are safe for concurrent access from multiple threads wit
 ##Member Summary
 
 * [`tensorflow::Env::Env()`](#tensorflow_Env_Env)
-* [`virtual tensorflow::Env::~Env()`](#virtual_tensorflow_Env_Env)
+* [`tensorflow::Env::~Env()`](#tensorflow_Env_Env)
 * [`virtual Status tensorflow::Env::NewRandomAccessFile(const string &fname, RandomAccessFile **result)=0`](#virtual_Status_tensorflow_Env_NewRandomAccessFile)
   * Creates a brand new random access read-only file with the specified name.
 * [`virtual Status tensorflow::Env::NewWritableFile(const string &fname, WritableFile **result)=0`](#virtual_Status_tensorflow_Env_NewWritableFile)
@@ -51,7 +51,7 @@ All Env implementations are safe for concurrent access from multiple threads wit
 
 
 
-#### `virtual tensorflow::Env::~Env()` {#virtual_tensorflow_Env_Env}
+#### `tensorflow::Env::~Env()` {#tensorflow_Env_Env}
 
 
 

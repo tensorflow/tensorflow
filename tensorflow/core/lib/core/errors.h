@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace errors {
@@ -33,7 +33,7 @@ template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
   *status = ::tensorflow::Status(
       status->code(),
-      strings::StrCat(status->error_message(), "\n\t", args...));
+      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...));
 }
 
 // For propagating errors when calling a function.
@@ -58,14 +58,14 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
 
-#define DECLARE_ERROR(FUNC, CONST)                           \
-  template <typename... Args>                                \
-  inline ::tensorflow::Status FUNC(Args... args) {           \
-    return ::tensorflow::Status(::tensorflow::error::CONST,  \
-                                strings::StrCat(args...));   \
-  }                                                          \
-  inline bool Is##FUNC(const ::tensorflow::Status& status) { \
-    return status.code() == ::tensorflow::error::CONST;      \
+#define DECLARE_ERROR(FUNC, CONST)                                       \
+  template <typename... Args>                                            \
+  inline ::tensorflow::Status FUNC(Args... args) {                       \
+    return ::tensorflow::Status(::tensorflow::error::CONST,              \
+                                ::tensorflow::strings::StrCat(args...)); \
+  }                                                                      \
+  inline bool Is##FUNC(const ::tensorflow::Status& status) {             \
+    return status.code() == ::tensorflow::error::CONST;                  \
   }
 
 DECLARE_ERROR(Cancelled, CANCELLED)

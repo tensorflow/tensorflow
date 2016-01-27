@@ -24,11 +24,12 @@ limitations under the License.
 #include <unistd.h>
 
 #include <thread>
+#include <vector>
 
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 

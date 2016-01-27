@@ -24,7 +24,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -45,9 +45,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
@@ -447,7 +447,7 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> context(new OpKernelContext(&params));
 
   op->Compute(context.get());
   tensorflow::testing::StartTiming();
@@ -527,7 +527,8 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> avgpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
   tensorflow::testing::StartTiming();
@@ -631,7 +632,8 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> avgpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
   tensorflow::testing::StartTiming();
@@ -717,7 +719,8 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> maxpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> maxpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(maxpool_context.get());
   tensorflow::testing::StartTiming();
@@ -891,7 +894,7 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(&params));
 
   op->Compute(relu_context.get());
   tensorflow::testing::StartTiming();
@@ -959,7 +962,8 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> softmax_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> softmax_context(
+      new OpKernelContext(&params));
 
   op->Compute(softmax_context.get());
   tensorflow::testing::StartTiming();

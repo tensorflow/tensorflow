@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_UTIL_H_
 #define TENSORFLOW_UTIL_UTIL_H_
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 

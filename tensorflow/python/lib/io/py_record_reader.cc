@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

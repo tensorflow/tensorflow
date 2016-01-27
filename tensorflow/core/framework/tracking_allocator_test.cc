@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 

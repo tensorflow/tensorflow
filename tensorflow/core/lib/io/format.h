@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <stdint.h>
 #include <string>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/table_builder.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 class RandomAccessFile;

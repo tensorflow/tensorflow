@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -61,8 +62,8 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
     }
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
-    // mutliple existing slices can be patched together to output the slice.
+    // We didn't find any exact match but there is still a possibility that
+    // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these
     // intersections cover the entire slice. We rely on the fact that the
@@ -118,7 +119,7 @@ bool TensorSliceSet::QueryMeta(
     results->emplace_back(std::make_pair(info->slice, info->tag));
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
+    // We didn't find any exact match but there is still a possibility that
     // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these

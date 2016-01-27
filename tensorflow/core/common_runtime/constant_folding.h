@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_DMA_HELPER_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_DMA_HELPER_H_
+#ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
-#include "tensorflow/core/public/tensor.h"
-
-// For internal use only.  Visibility should be limited to brain/framework.
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 
 namespace tensorflow {
-class DMAHelper {
- public:
-  static bool CanUseDMA(const Tensor* t) { return t->CanUseDMA(); }
-  static const void* base(const Tensor* t) { return t->base<const void>(); }
-  static void* base(Tensor* t) { return t->base<void>(); }
-  static TensorBuffer* buffer(Tensor* t) { return t->buf_; }
-  static const TensorBuffer* buffer(const Tensor* t) { return t->buf_; }
-};
+
+// Perform constant folding optimization on "graph".
+// Looks for nodes in "graph" that can be completely evaluated statically, i.e.,
+// that are only dependent on constants. Evaluates those nodes on a CPU device
+// and replaces those nodes with the result of the evaluation.
+// Returns true if and only if "graph" has been mutated.
+bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph);
+
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_DMA_HELPER_H_
+
+#endif  // TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_

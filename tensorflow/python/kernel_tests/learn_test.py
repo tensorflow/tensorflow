@@ -32,7 +32,7 @@ from tensorflow.python.framework import tensor_util
 def assert_summary_scope(regexp):
   """Assert that all generated summaries match regexp."""
   for summary in tf.get_collection(tf.GraphKeys.SUMMARIES):
-    tag = tensor_util.ConstantValue(summary.op.inputs[0])
+    tag = tf.unsupported.constant_value(summary.op.inputs[0])
     assert tag is not None, 'All summaries must have constant tags'
     tag = str(tag)
     assert isinstance(tag[0], six.string_types), tag[0]
@@ -143,6 +143,15 @@ class FullyConnectedTest(tf.test.TestCase):
     tf.learn.fully_connected(self.input,
                              2,
                              activation_fn=tf.nn.relu,
+                             create_summaries=False)
+    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+
+  # Verify fix of a bug where no_summaries + activation_fn=None led to a
+  # NoneType exception.
+  def test_no_summaries_no_activation(self):
+    tf.learn.fully_connected(self.input,
+                             2,
+                             activation_fn=None,
                              create_summaries=False)
     self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
 

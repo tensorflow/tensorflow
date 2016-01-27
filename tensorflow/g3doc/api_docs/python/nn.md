@@ -27,7 +27,7 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -82,7 +82,7 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -99,7 +99,7 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -235,7 +235,7 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then the spatial semantics of the
 convolution ops are as follows: first, according to the padding scheme chosen
@@ -296,7 +296,7 @@ performs the following:
 
 1. Flattens the filter to a 2-D matrix with shape
    `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the the input tensor to form a *virtual*
+2. Extracts image patches from the input tensor to form a *virtual*
    tensor of shape `[batch, out_height, out_width,
    filter_height * filter_width * in_channels]`.
 3. For each patch, right-multiplies the filter matrix and the image patch
@@ -665,7 +665,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -837,36 +837,36 @@ Since they are nondifferentiable, they are typically used at evaluation time.
 
 - - -
 
-### `tf.nn.top_k(input, k, sorted=None, name=None)` {#top_k}
+### `tf.nn.top_k(input, k=1, sorted=True, name=None)` {#top_k}
 
-Returns the values and indices of the `k` largest elements for each row.
+Finds values and indices of the `k` largest entries for the last dimension.
 
-\\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
 
-\\(indices_{i, j}\\) gives the column index of the corresponding element,
-such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
-elements are equal, the lower-index element appears first.
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
-    A `batch_size` x `classes` tensor.
-*  <b>`k`</b>: An `int` that is `>= 1`.
-    Number of top elements to look for within each row.
-*  <b>`sorted`</b>: An optional `bool`. Defaults to `True`.
-    If true the resulting `k` elements will be sorted by the values in
+*  <b>`input`</b>: 1-D or higher `Tensor` with last dimension at least `k`.
+*  <b>`k`</b>: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
+    dimension (along each row for matrices).
+*  <b>`sorted`</b>: If true the resulting `k` elements will be sorted by the values in
     descending order.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (values, indices).
 
-*  <b>`values`</b>: A `Tensor`. Has the same type as `input`. A `batch_size` x `k` tensor with the `k` largest elements for
-    each row.
-*  <b>`indices`</b>: A `Tensor` of type `int32`. A `batch_size` x `k` tensor with the index of each value within
-    each row.
+*  <b>`values`</b>: The `k` largest elements along each last dimensional slice.
+*  <b>`indices`</b>: The indices of `values` within the last dimension of `input`.
 
 
 - - -
@@ -1205,7 +1205,7 @@ compute them approximately.
 
 - - -
 
-### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=[], seed=None, name=None)` {#fixed_unigram_candidate_sampler}
+### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=(), seed=None, name=None)` {#fixed_unigram_candidate_sampler}
 
 Samples a set of classes using the provided (fixed) base distribution.
 

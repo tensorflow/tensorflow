@@ -1,4 +1,3 @@
-#!/bin/bash -eux
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 
-DIR=$TEST_SRCDIR/tensorflow/python
-$DIR/gen_docs_combined --out_dir $TEST_TMPDIR
-echo "PASS"
+"""This module includes unsupported and experimental features which are exposed
+but not part of the supported public API.  Anything in this module can change
+without notice, even across a patch release.
+
+## Utilities
+
+@@constant_value
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import tensorflow.python.platform
+from tensorflow.python.util.all_util import make_all
+
+# pylint: disable=unused-import
+from tensorflow.python.framework.tensor_util import constant_value
+
+__all__ = make_all(__name__)

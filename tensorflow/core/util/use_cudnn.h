@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The utility to check whether we have Cudnn depenedency.
+// The utility to check whether we have Cudnn dependency.
 
 #ifndef TENSORFLOW_UTIL_USE_CUDNN_H_
 #define TENSORFLOW_UTIL_USE_CUDNN_H_

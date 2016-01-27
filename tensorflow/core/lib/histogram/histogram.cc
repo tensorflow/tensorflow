@@ -16,11 +16,12 @@ limitations under the License.
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include <float.h>
 #include <math.h>
+#include <vector>
 #include "tensorflow/core/framework/summary.pb.h"
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 namespace tensorflow {
 namespace histogram {
 

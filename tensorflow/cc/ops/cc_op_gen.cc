@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -169,7 +169,7 @@ void WriteCCOp(const OpDef& op_def, WritableFile* h, WritableFile* cc) {
                      R"comment(  .WithName(StringPiece): Set the Node's name
   .WithDevice(StringPiece): Set the Node's requested device
   .WithControlInput(Node*) / .WithControlInputs({Node*, ...}):
-    Add control depencies on the specified Node(s).
+    Add control dependencies on the specified Node(s).
 
 Returns a pointer to the created Node)comment");
 
@@ -307,11 +307,11 @@ void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
                       "#define ",
                       guard, R"header(
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 namespace ops {

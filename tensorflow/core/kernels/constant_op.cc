@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -146,11 +146,11 @@ class FillOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyVector(Tdims.shape()),
         errors::InvalidArgument("dims must be a vector of int32, got shape ",
-                                Tdims.shape().ShortDebugString()));
+                                Tdims.shape().DebugString()));
     const Tensor& Tvalue = context->input(1);
     OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
                 errors::InvalidArgument("value must be a scalar, got shape ",
-                                        Tvalue.shape().ShortDebugString()));
+                                        Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<int32>();
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,

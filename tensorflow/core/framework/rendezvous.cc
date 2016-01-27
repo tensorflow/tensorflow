@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -24,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -49,7 +50,7 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
 // the whole remaining string if "delim" is not found.  "*s" is advanced
 // past the string returned plus the delimiter (if found).
 static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
-  for (int offset = 0; offset < s->size(); offset++) {
+  for (size_t offset = 0; offset < s->size(); offset++) {
     if ((*s)[offset] == delim) {
       StringPiece result(s->data(), offset);
       s->remove_prefix(offset + 1);  // +1: remove delim, as well

@@ -536,7 +536,7 @@ class PlaceholderTest(tf.test.TestCase):
 
       with self.assertRaisesOpError(
           "must feed a value for placeholder tensor 'p' with dtype float and "
-          "shape dim { size: 10 } dim { size: 10 }"):
+          r"shape \[10,10\]"):
         p_identity.eval()
 
       with self.assertRaisesWithPredicateMatch(

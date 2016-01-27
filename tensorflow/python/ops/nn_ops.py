@@ -15,6 +15,7 @@
 
 """Wrappers for primitive Neural Net (NN) Operations."""
 
+# pylint: disable=invalid-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,6 +23,7 @@ from __future__ import print_function
 import tensorflow.python.platform
 import numpy as np
 
+from tensorflow.python.client import graph_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -296,7 +298,7 @@ def _TopKShape(op):
   """Shape function for TopK and TopKV2 ops."""
   input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
   if len(op.inputs) >= 2:
-    k = tensor_util.ConstantValue(op.inputs[1])
+    k = tensor_util.constant_value(op.inputs[1])
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
@@ -352,7 +354,7 @@ def _MaxPoolWithArgMaxShape(op):
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
   """Shape function for the AvgPoolGrad op."""
-  orig_input_shape = tensor_util.ConstantValue(op.inputs[0])
+  orig_input_shape = tensor_util.constant_value(op.inputs[0])
   if orig_input_shape is not None:
     return [tensor_shape.TensorShape(orig_input_shape.tolist())]
   else:
@@ -366,7 +368,7 @@ def _AvgPoolGradShape(op):
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
   """Shape function for the Conv2DBackpropFilter op."""
-  filter_shape = tensor_util.ConstantValue(op.inputs[1])
+  filter_shape = tensor_util.constant_value(op.inputs[1])
   if filter_shape is not None:
     return [tensor_shape.TensorShape(filter_shape.tolist())]
   else:
@@ -380,7 +382,7 @@ def _Conv2DBackpropFilterShape(op):
 @ops.RegisterShape("Conv2DBackpropInput")
 def _Conv2DBackpropInputShape(op):
   """Shape function for the Conv2DBackpropInput op."""
-  input_shape = tensor_util.ConstantValue(op.inputs[0])
+  input_shape = tensor_util.constant_value(op.inputs[0])
   if input_shape is not None:
     return [tensor_shape.TensorShape(input_shape.tolist())]
   else:
@@ -397,6 +399,60 @@ def _MaxPoolGradShape(op):
   """Shape function for the MaxPoolGrad op."""
   orig_input_shape = op.inputs[0].get_shape().with_rank(4)
   return [orig_input_shape]
+
+
+@ops.RegisterStatistics("Conv2D", "flops")
+def _calc_conv_flops(graph, node):
+  """Calculates the compute resources needed for Conv2D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_in_depth = int(filter_shape[2])
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (output_count * filter_in_depth * filter_height *
+                               filter_width * 2))
+
+
+@ops.RegisterStatistics("Conv2D", "weight_parameters")
+def _calc_conv_weight_params(graph, node):
+  """Calculates the on-disk size of the weights for Conv2D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_in_depth = int(filter_shape[2])
+  filter_out_depth = int(filter_shape[3])
+  return ops.OpStats("weight_parameters", (filter_height * filter_width *
+                                           filter_in_depth * filter_out_depth))
+
+
+@ops.RegisterStatistics("BiasAdd", "flops")
+def _calc_bias_add_flops(graph, node):
+  """Calculates the computing needed for BiasAdd."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  input_count = np.prod(input_shape.as_list())
+  return ops.OpStats("flops", input_count)
+
+
+@ops.RegisterStatistics("BiasAdd", "weight_parameters")
+def _calc_bias_add_weight_params(graph, node):
+  """Calculates the on-disk weight parameters for BiasAdd."""
+  bias_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[1])
+  bias_shape.assert_is_fully_defined()
+  bias_count = np.prod(bias_shape.as_list())
+  return ops.OpStats("weight_parameters", bias_count)
 
 
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name

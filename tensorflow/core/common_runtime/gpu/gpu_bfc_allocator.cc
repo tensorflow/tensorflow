@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -26,7 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace gpu = ::perftools::gputools;
 
@@ -39,21 +38,6 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
 
   // Allocate the requested amount of memory.
   gpu_memory_size_ = total_memory;
-
-  LOG(INFO) << "Allocating " << strings::HumanReadableNumBytes(gpu_memory_size_)
-            << " bytes.";
-  gpu::DeviceMemory<char> gpu_mem =
-      stream_exec_->AllocateArray<char>(gpu_memory_size_);
-
-  QCHECK(gpu_mem != nullptr)
-      << " Could not allocate GPU device memory for device " << device_id
-      << ". Tried to allocate "
-      << strings::HumanReadableNumBytes(gpu_memory_size_);
-  base_ptr_ = gpu_mem.opaque();
-  LOG(INFO) << "GPU " << device_id << " memory begins at " << base_ptr_
-            << " extends to "
-            << static_cast<void*>(
-                   (static_cast<char*>(base_ptr_) + gpu_memory_size_));
 
   // Create a bunch of bins of various good sizes.
 
@@ -68,6 +52,38 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
               << strings::HumanReadableNumBytes(bin_size);
     bins_.insert(std::make_pair(bin_size, new Bin(bin_size)));
   }
+}
+
+GPUBFCAllocator::~GPUBFCAllocator() {
+  // Return memory back.
+  if (base_ptr_) {
+    gpu::DeviceMemoryBase gpu_ptr{base_ptr_};
+    stream_exec_->Deallocate(&gpu_ptr);
+  }
+
+  gtl::STLDeleteValues(&bins_);
+  gtl::STLDeleteValues(&ptr_to_chunk_map_);
+}
+
+void GPUBFCAllocator::MaybeInitialize() {
+  if (base_ptr_ != nullptr) {
+    return;
+  }
+
+  LOG(INFO) << "Allocating " << strings::HumanReadableNumBytes(gpu_memory_size_)
+            << " bytes.";
+  gpu::DeviceMemory<char> gpu_mem =
+      stream_exec_->AllocateArray<char>(gpu_memory_size_);
+
+  QCHECK(gpu_mem != nullptr)
+      << " Could not allocate GPU device memory for device " << device_id_
+      << ". Tried to allocate "
+      << strings::HumanReadableNumBytes(gpu_memory_size_);
+  base_ptr_ = gpu_mem.opaque();
+  LOG(INFO) << "GPU " << device_id_ << " memory begins at " << base_ptr_
+            << " extends to "
+            << static_cast<void*>(
+                   (static_cast<char*>(base_ptr_) + gpu_memory_size_));
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
@@ -82,17 +98,6 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
 
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(c);
-}
-
-GPUBFCAllocator::~GPUBFCAllocator() {
-  // Return memory back.
-  if (base_ptr_) {
-    gpu::DeviceMemoryBase gpu_ptr{base_ptr_};
-    stream_exec_->Deallocate(&gpu_ptr);
-  }
-
-  gtl::STLDeleteValues(&bins_);
-  gtl::STLDeleteValues(&ptr_to_chunk_map_);
 }
 
 void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
@@ -156,16 +161,20 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
 
   mutex_lock l(lock_);
+  MaybeInitialize();
+
   for (; it != bins_.end(); ++it) {
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
     Bin* b = it->second;
-    for (GPUBFCAllocator::Chunk* chunk : b->free_chunks) {
+    for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
+         ++citer) {
+      GPUBFCAllocator::Chunk* chunk = (*citer);
       DCHECK(!chunk->in_use());
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, so remove
         // it from the free bin structure prior to using.
-        RemoveFreeChunkFromBin(chunk);
+        RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
         // If we can break the size of the chunk into two reasonably
         // large pieces, do so.
@@ -298,6 +307,15 @@ void GPUBFCAllocator::InsertFreeChunkIntoBin(GPUBFCAllocator::Chunk* c) {
   Bin* new_bin = it->second;
   c->bin = new_bin;
   new_bin->free_chunks.insert(c);
+}
+
+void GPUBFCAllocator::RemoveFreeChunkIterFromBin(
+    GPUBFCAllocator::Bin::FreeChunkSet* free_chunks,
+    const GPUBFCAllocator::Bin::FreeChunkSet::iterator& citer) {
+  GPUBFCAllocator::Chunk* c = *citer;
+  CHECK(!c->in_use() && c->bin);
+  free_chunks->erase(citer);
+  c->bin = nullptr;
 }
 
 void GPUBFCAllocator::RemoveFreeChunkFromBin(GPUBFCAllocator::Chunk* c) {

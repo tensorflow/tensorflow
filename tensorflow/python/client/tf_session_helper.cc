@@ -21,9 +21,10 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/graph/equal_graph_def.h"
+#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -102,6 +103,9 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT8:
       *out_tf_datatype = TF_UINT8;
       break;
+    case NPY_UINT16:
+      *out_tf_datatype = TF_UINT16;
+      break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
       break;
@@ -146,6 +150,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
+      break;
+    case TF_UINT16:
+      *out_pyarray_type = NPY_UINT16;
       break;
     case TF_INT8:
       *out_pyarray_type = NPY_INT8;
@@ -289,8 +296,8 @@ static Status CopyStringToPyArrayElement(PyArrayObject* pyarray, void* i_ptr,
                                          TF_Tensor* tensor,
                                          tensorflow::int64 num_elements,
                                          tensorflow::int64 i) {
-  const char* ptr;
-  tensorflow::uint64 len;
+  const char* ptr = nullptr;
+  tensorflow::uint64 len = 0;
   TF_RETURN_IF_ERROR(
       TF_StringTensor_GetPtrAndLen(tensor, num_elements, i, &ptr, &len));
   auto py_string = tensorflow::make_safe(PyBytes_FromStringAndSize(ptr, len));
@@ -322,7 +329,7 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
   }
 
   // Convert TensorFlow dtype to numpy type descriptor.
-  int type_num;
+  int type_num = -1;
   TF_RETURN_IF_ERROR(
       TF_DataType_to_PyArray_TYPE(TF_TensorType(tensor), &type_num));
   PyArray_Descr* descr = PyArray_DescrFromType(type_num);
@@ -442,7 +449,7 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
     PyArrayObject* array = inputs[i].second;
 
     // Convert numpy dtype to TensorFlow dtype.
-    TF_DataType dtype;
+    TF_DataType dtype = TF_FLOAT;
     *out_status = PyArray_TYPE_to_TF_DataType(array, &dtype);
     if (!out_status->ok()) {
       return;
@@ -480,8 +487,8 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
       // inputs_safe destructor.
       py_inputs_safe[i].reset();
     } else {
-      size_t size;
-      void* encoded;
+      size_t size = 0;
+      void* encoded = nullptr;
       Status s = EncodePyBytesArray(array, nelems, &size, &encoded);
       if (!s.ok()) {
         *out_status = s;
@@ -552,5 +559,18 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
 }
 
 void ImportNumpy() { import_array1(); }
+
+string EqualGraphDefWrapper(const string& actual, const string& expected) {
+  GraphDef actual_def;
+  if (!actual_def.ParseFromString(actual)) {
+    return "actual is not a valid serialized GraphDef";
+  }
+  GraphDef expected_def;
+  if (!expected_def.ParseFromString(expected)) {
+    return "expected is not a valid serialized GraphDef";
+  }
+  string diff;
+  return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
+}
 
 }  // namespace tensorflow

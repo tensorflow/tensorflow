@@ -20,6 +20,33 @@ namespace tensorflow {
 
 typedef FunctionDefHelper FDH;
 
+Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      "SoftmaxGrad",
+      // Arg defs
+      {"x: T", "grad_softmax: T"},
+      // Ret val defs
+      {"grad_x: T"},
+      // Attr defs
+      {{"T: {float, double}"}},
+      // Nodes
+      // Based on _SoftmaxGrad in nn_grad.py.
+      {
+        {{"softmax"}, "Softmax", {"x"}, {{"T", "$T"}}},
+        {{"n0"}, "Mul", {"grad_softmax", "softmax"}, {{"T", "$T"}}},
+        FDH::Const<int32>("indices", {1}),
+        {{"n1"}, "Sum", {"n0", "indices"}, {{"T", "$T"}}},
+        FDH::Const<int32>("newshape", {-1, 1}),
+        {{"n2"}, "Reshape", {"n1", "newshape"}, {{"T", "$T"}}},
+        {{"n3"}, "Sub", {"grad_softmax", "n2"}, {{"T", "$T"}}},
+        {{"grad_x"}, "Mul", {"n3", "softmax"}, {{"T", "$T"}}}
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Softmax", SoftmaxGrad);
+
 Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(

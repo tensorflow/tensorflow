@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/version.h"
 
 %}
@@ -36,8 +36,8 @@ tensorflow::ImportNumpy();
 // TensorFlow version and GraphDef versions
 %constant const char* __version__ = TF_VERSION_STRING;
 %constant int GRAPH_DEF_VERSION = TF_GRAPH_DEF_VERSION;
-%constant int GRAPH_DEF_VERSION_MIN = TF_GRAPH_DEF_VERSION_MIN;
-%constant int GRAPH_DEF_VERSION_MAX = TF_GRAPH_DEF_VERSION_MAX;
+%constant int GRAPH_DEF_VERSION_MIN_CONSUMER = TF_GRAPH_DEF_VERSION_MIN_CONSUMER;
+%constant int GRAPH_DEF_VERSION_MIN_PRODUCER = TF_GRAPH_DEF_VERSION_MIN_PRODUCER;
 
 // Release the Python GIL for the duration of most methods.
 %exception {
@@ -262,6 +262,7 @@ tensorflow::ImportNumpy();
 %rename(TF_Run) tensorflow::TF_Run_wrapper;
 %unignore tensorflow;
 %unignore TF_Run;
+%unignore EqualGraphDefWrapper;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

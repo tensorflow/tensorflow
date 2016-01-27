@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_builder.h"
 
+#include <vector>
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"

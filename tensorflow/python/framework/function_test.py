@@ -26,10 +26,10 @@ import time
 import numpy as np
 import tensorflow as tf
 
-
 from tensorflow.python.framework import function
 # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops
+
 # pylint: enable=unused-import
 
 
@@ -279,75 +279,160 @@ class FunctionTest(tf.test.TestCase):
 
   def testNestedFunction(self):
     with tf.Graph().as_default():
+
       @function.Defun(x=tf.float32)
       def Cube(x):
         return x * x * x
+
       @function.Defun(x=tf.float32, y=tf.float32)
       def CubeXPlusY(x, y):
         return Cube(x) + y
+
       z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
 
+
+class UnrollLSTMTest(tf.test.TestCase):
+  BATCH_SIZE = 16
+  LSTM_DIMS = 32
+  NUM_UNROLL = 100
+
+  def _Weights(self):
+    dims = self.LSTM_DIMS
+    return tf.random_uniform([2 * dims, 4 * dims], -1, 1, seed=123456)
+
+  def _Input(self):
+    return tf.random_uniform(
+        [self.NUM_UNROLL, self.BATCH_SIZE, self.LSTM_DIMS],
+        seed=654321)
+
+  # Helper to construct a LSTM cell graph.
+  @classmethod
+  def LSTMCell(cls, x, mprev, cprev, weights):
+    xm = tf.concat(1, [x, mprev])
+    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
+    new_c = tf.clip_by_value(new_c, -50.0, 50.0)
+    new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
+    return new_m, new_c
+
+  def _BuildForward(self, weights, inp, mode="cell"):
+
+    def Loop(cell, w, i):
+      x = tf.unpack(i, self.NUM_UNROLL)
+      m = tf.zeros_like(x[0])
+      c = tf.zeros_like(x[0])
+      for i in range(self.NUM_UNROLL):
+        m, c = cell(x[i], m, c, w)
+      return m
+
+    cell = UnrollLSTMTest.LSTMCell
+    if mode == "complete":
+      # Constructs the complete graph in python.
+      return Loop(cell, weights, inp)
+
+    cell = function.Defun(x=tf.float32,
+                          mprev=tf.float32,
+                          cprev=tf.float32,
+                          weights=tf.float32)(cell)
+    if mode == "cell":
+      # Just represent the LSTM as a function.
+      return Loop(cell, weights, inp)
+
+    if mode == "loop":
+      # Wraps the whole loop as a function.
+      @function.Defun(w=tf.float32, i=tf.float32)
+      def LSTMLoop(w, i):
+        return Loop(cell, w, i)
+
+      return LSTMLoop(weights, inp)
+
+    if mode == "loop10":
+      # Wraps 10 lstm steps into one function, and the whole loop
+      # into another calling the formers.
+
+      # Groups 10 steps at a time):
+      # TODO(zhifengc): Any way to make the syntax less hideous?
+      @function.Defun(m=tf.float32,
+                      c=tf.float32,
+                      w=tf.float32,
+                      x0=tf.float32,
+                      x1=tf.float32,
+                      x2=tf.float32,
+                      x3=tf.float32,
+                      x4=tf.float32,
+                      x5=tf.float32,
+                      x6=tf.float32,
+                      x7=tf.float32,
+                      x8=tf.float32,
+                      x9=tf.float32)
+      def Loop10(w, m, c, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9):
+        for x in [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9]:
+          m, c = cell(x, m, c, w)
+        return m, c
+
+      @function.Defun(weights=tf.float32, inp=tf.float32)
+      def LSTMLoop10(weights, inp):
+        x = tf.unpack(inp, self.NUM_UNROLL)
+        m = tf.zeros_like(x[0])
+        c = tf.zeros_like(x[0])
+        assert self.NUM_UNROLL % 10 == 0
+        for i in range(0, self.NUM_UNROLL, 10):
+          m, c = Loop10(weights, m, c, *x[i:i + 10])
+        return m
+
+      return LSTMLoop10(weights, inp)
+
   def testUnrollLSTM(self):
-
-    # Helper to construct a LSTM cell graph.
-    def LSTMCell(x, mprev, cprev, weights):
-      xm = tf.concat(1, [x, mprev])
-      i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
-      new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
-      new_c = tf.clip_by_value(new_c, -50.0, 50.0)
-      new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
-      return new_m, new_c
-
-    batch_size = 16
-    lstm_dims = 32
-    num_unroll = 100
-
     # Run one step of the unrolled lstm graph.
-    def RunStep(use_func):
+    def RunForward(mode):
       g = tf.Graph()
       start = time.time()
       with g.as_default():
-        # Helper to construct a LSTM function.
-        if use_func:
-
-          @function.Defun(x=tf.float32,
-                          mprev=tf.float32,
-                          cprev=tf.float32,
-                          weights=tf.float32)
-          def LSTMCellFunc(x, mprev, cprev, weights):
-            return LSTMCell(x, mprev, cprev, weights)
-
-          cell = LSTMCellFunc
-        else:
-          cell = LSTMCell
-
-        m = tf.zeros(shape=[batch_size, lstm_dims])
-        c = tf.zeros(shape=[batch_size, lstm_dims])
-        weights = tf.random_uniform(
-            [2 * lstm_dims, 4 * lstm_dims],
-            -1,
-            1,
-            seed=123456)
-        inputs = tf.random_uniform(
-            [num_unroll, batch_size, lstm_dims],
-            seed=654321)
-        x = tf.unpack(inputs)
-        for i in range(num_unroll):
-          m, c = cell(x[i], m, c, weights)
+        weights = self._Weights()
+        inp = self._Input()
+        m = self._BuildForward(weights, inp, mode)
       gdef = g.as_graph_def()
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
             "gdef bin size: ", len(gdef.SerializeToString()))
       with g.as_default(), tf.Session() as sess:
-        mv, cv = sess.run([m, c])
-      return mv, cv
+        return sess.run(m)
 
-    mv0, cv0 = RunStep(use_func=False)
-    mv1, cv1 = RunStep(use_func=True)
-    self.assertAllClose(mv0, mv1)
-    self.assertAllClose(cv0, cv1)
+    mv0 = RunForward("complete")
+    mv1 = RunForward("cell")
+    mv2 = RunForward("loop")
+    mv3 = RunForward("loop10")
+    self.assertAllClose(mv0, mv1, rtol=1e-4)
+    self.assertAllClose(mv0, mv2, rtol=1e-4)
+    self.assertAllClose(mv0, mv3, rtol=1e-4)
+
+  def testUnrollLSTMGrad(self):
+    # Run one step of the unrolled lstm graph.
+    def RunForwardBackward(mode):
+      g = tf.Graph()
+      start = time.time()
+      with g.as_default():
+        weights = self._Weights()
+        inp = self._Input()
+        m = self._BuildForward(weights, inp, mode)
+        loss = tf.reduce_sum(tf.square(m))
+        dw = tf.gradients([loss], [weights])
+      gdef = g.as_graph_def()
+      finish = time.time()
+      print("time: ", finish - start, " txt size: ", len(str(gdef)),
+            "gdef bin size: ", len(gdef.SerializeToString()))
+      with g.as_default(), tf.Session() as sess:
+        return sess.run(dw)
+
+    d0 = RunForwardBackward("complete")
+    d1 = RunForwardBackward("cell")
+    d2 = RunForwardBackward("loop")
+    d3 = RunForwardBackward("loop10")
+    self.assertAllClose(d0, d1, rtol=1e-4)
+    self.assertAllClose(d0, d2, rtol=1e-4)
+    self.assertAllClose(d0, d3, rtol=1e-4)
 
 
 if __name__ == "__main__":

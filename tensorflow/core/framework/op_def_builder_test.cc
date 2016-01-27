@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -113,11 +113,12 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
   ExpectSuccess(b().Attr("a:numbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8, DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+                "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_QINT8, DT_QUINT8, "
+                "DT_QINT32] } } }");
   ExpectSuccess(b().Attr("a:realnumbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8] } } }");
+                "DT_UINT16, DT_INT8] } } }");
   ExpectSuccess(b().Attr("a:quantizedtype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16]} } }");
@@ -170,7 +171,7 @@ TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
       b().Attr("a:list(realnumbertype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
       "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-      "DT_INT8] } } }");
+      "DT_UINT16, DT_INT8] } } }");
   ExpectSuccess(
       b().Attr("a:list(quantizedtype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "

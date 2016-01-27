@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/kernels/io.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -26,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"

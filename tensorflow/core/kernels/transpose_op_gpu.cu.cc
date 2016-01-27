@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/kernels/transpose_op_functor.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace functor {

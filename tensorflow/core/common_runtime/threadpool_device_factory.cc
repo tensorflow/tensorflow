@@ -16,6 +16,7 @@ limitations under the License.
 // Register a factory that provides CPU devices.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
+#include <vector>
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/public/session_options.h"

@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 
-#include <gtest/gtest.h>
+#include <vector>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 

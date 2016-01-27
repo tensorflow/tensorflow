@@ -31,8 +31,8 @@ import tensorflow as tf
 import inspect
 import traceback
 
+# pylint: disable=g-import-not-at-top
 try:
-  # pylint: disable=g-import-not-at-top
   import tensorflow.python.platform
   from tensorflow.core.framework.graph_pb2 import *
 except ImportError:
@@ -47,6 +47,9 @@ from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.framework.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Import things out of contrib
+from tensorflow import contrib
+
 # Framework
 from tensorflow.python.framework.framework_lib import *
 from tensorflow.python.framework.versions import *
@@ -58,12 +61,13 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
-# Bring learn, nn, image_ops, user_ops, compat as a subpackages
+# Bring in subpackages
 from tensorflow.python.ops import learn
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python import unsupported
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -79,8 +83,9 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
 # Don't export modules except for the few we really want
-_whitelist = set([app, compat, errors, flags, image, learn, logging, nn,
-                  python_io, resource_loader, test, train, user_ops])
+_whitelist = set([app, compat, contrib, errors, flags, image, learn, logging, nn,
+                  python_io, resource_loader, test, train, unsupported,
+                  user_ops])
 # TODO(b/25561952): tf.tensor_util is DEPRECATED.  Please avoid.
 _whitelist.update([tensor_util])  # pylint: disable=undefined-variable
 __all__ = [name for name, x in locals().items() if not name.startswith('_') and

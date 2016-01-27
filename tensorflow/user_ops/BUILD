@@ -17,7 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "py_tests")
+load("//tensorflow:tensorflow.bzl", "py_tests")
 
 cc_library(
     name = "ackermann_op_lib",
@@ -28,10 +28,13 @@ cc_library(
 
 cc_binary(
     name = "ackermann_op.so",
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [

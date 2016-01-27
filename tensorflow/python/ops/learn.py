@@ -93,7 +93,7 @@ def xavier_initializer(n_inputs, n_outputs, uniform=True):
 
 def _assert_summary_tag_unique(tag):
   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES):
-    old_tag = tensor_util.ConstantValue(summary.op.inputs[0])
+    old_tag = tensor_util.constant_value(summary.op.inputs[0])
     if tag == str(old_tag):
       raise ValueError('Conflict with summary tag: %s exists on summary %s %s' %
                        (tag, summary, old_tag))
@@ -291,7 +291,7 @@ def fully_connected(x,
     x: The input `Tensor`.
     num_output_nodes: The size of the output.
     activation_fn: A function that requires a single Tensor that is applied as a
-      non-linearity. If None is used, then this is a linear layer.
+      non-linearity. If None is used, do not apply any activation.
     weight_init: An optional initialization. If not specified, uses Xavier
       initialization (see `tf.learn.xavier_initializer`).
     bias_init: An initializer for the bias, defaults to 0. Set to`None` in order
@@ -358,7 +358,7 @@ def fully_connected(x,
     if create_summaries:
       return _apply_activation_with_summaries(y, activation_fn)
     else:
-      return activation_fn(y)
+      return y if activation_fn is None else activation_fn(y)
 
 
 def convolution2d(x,
@@ -489,4 +489,4 @@ def convolution2d(x,
     if create_summaries:
       return _apply_activation_with_summaries(y, activation_fn)
     else:
-      return activation_fn(y)
+      return y if activation_fn is None else activation_fn(y)

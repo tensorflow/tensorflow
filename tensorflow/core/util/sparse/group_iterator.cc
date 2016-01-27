@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/sparse/group_iterator.h"
 
+#include <vector>
 namespace tensorflow {
 namespace sparse {
 

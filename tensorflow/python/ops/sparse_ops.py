@@ -296,14 +296,14 @@ def _SparseSplitShape(op):
 
 @ops.RegisterShape("SparseToDense")
 def _SparseToDenseShape(op):
-  input_shape = tensor_util.ConstantValue(op.inputs[1])
+  input_shape = tensor_util.constant_value(op.inputs[1])
   if input_shape is not None:
     if np.ndim(input_shape) > 1:
       raise ValueError("Input shape should be a vector")
-    return [tensor_shape.TensorShape(input_shape.tolist())]
+    return [tensor_shape.TensorShape(input_shape)]
   else:
-    input_shape_shape = op.inputs[1].get_shape().with_rank_at_most(1)
-    return [tensor_shape.unknown_shape(ndims=input_shape_shape.num_elements())]
+    input_shape_shape = op.inputs[1].get_shape().with_rank(1)
+    return [tensor_shape.unknown_shape(ndims=input_shape_shape[0].value)]
 
 
 def sparse_to_dense(sparse_indices,

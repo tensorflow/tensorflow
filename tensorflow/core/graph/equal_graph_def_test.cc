@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/graph/equal_graph_def.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -91,8 +91,8 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   EXPECT_FALSE(Match());
   EXPECT_EQ(strings::StrCat(
                 "Found unexpected node 'B = Input[]()' not in expected graph:\n"
-                "version = ",
-                TF_GRAPH_DEF_VERSION, ";\nA = Input[]();\n"),
+                "versions = producer: ",
+                TF_GRAPH_DEF_VERSION, ";\n", "A = Input[]();\n"),
             diff_);
 }
 

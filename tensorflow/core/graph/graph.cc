@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -83,10 +84,10 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   } while (0)
 
   SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "");
+  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
   SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "");
+  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
+  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
   SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
   SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
   SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
@@ -140,7 +141,10 @@ Node::Properties::~Properties() {}
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops), version_(TF_GRAPH_DEF_VERSION), arena_(8 << 10 /* 8kB */) {
+    : ops_(ops), arena_(8 << 10 /* 8kB */) {
+  versions_.set_producer(TF_GRAPH_DEF_VERSION);
+  versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+
   // Source and sink have no endpoints, just control edges.
   NodeDef def;
   def.set_name("_SOURCE");
@@ -281,7 +285,7 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 
 void Graph::ToGraphDef(GraphDef* graph_def) const {
   graph_def->Clear();
-  graph_def->set_version(version());
+  graph_def->mutable_versions()->CopyFrom(versions());
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (const Node* node : nodes()) {

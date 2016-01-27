@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -75,9 +75,13 @@ void Partition(const GraphDef& graph_def,
   CHECK(s.ok()) << s;
 
   // Check versions
-  EXPECT_EQ(graph_def.version(), TF_GRAPH_DEF_VERSION);
+  EXPECT_EQ(graph_def.versions().producer(), TF_GRAPH_DEF_VERSION);
+  EXPECT_EQ(graph_def.versions().min_consumer(),
+            TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
   for (auto& it : *partitions) {
-    EXPECT_EQ(graph_def.version(), it.second.version());
+    EXPECT_EQ(graph_def.versions().producer(), it.second.versions().producer());
+    EXPECT_EQ(graph_def.versions().min_consumer(),
+              it.second.versions().min_consumer());
   }
 }
 

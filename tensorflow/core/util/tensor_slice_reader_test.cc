@@ -15,16 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -116,10 +115,7 @@ void SimpleFloatHelper(TensorSliceWriter::CreateBuilderFunction create_function,
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader.HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DT_FLOAT, type);
     EXPECT_FALSE(reader.HasTensor("don't exist", nullptr, nullptr));
   }
@@ -243,10 +239,7 @@ void SimpleIntXHelper(TensorSliceWriter::CreateBuilderFunction create_function,
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader.HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DataTypeToEnum<T>::v(), type);
     EXPECT_FALSE(reader.HasTensor("don't exist", nullptr, nullptr));
   }
@@ -380,10 +373,7 @@ void CachedTensorSliceReaderTesterHelper(
     TensorShape shape;
     DataType type;
     EXPECT_TRUE(reader->HasTensor("test", &shape, &type));
-    EXPECT_EQ(
-        "dim { size: 4 } "
-        "dim { size: 5 }",
-        shape.DebugString());
+    EXPECT_EQ("[4,5]", shape.DebugString());
     EXPECT_EQ(DT_FLOAT, type);
     EXPECT_FALSE(reader->HasTensor("don't exist", nullptr, nullptr));
   }

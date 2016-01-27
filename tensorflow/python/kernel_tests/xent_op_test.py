@@ -70,7 +70,7 @@ class XentTest(tf.test.TestCase):
     np_labels = np.array(
         [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(np.float32)
     self.assertRaisesRegexp(
-        ValueError, "must have the same rank",
+        ValueError, "must have rank 2",
         tf.nn.softmax_cross_entropy_with_logits, np_features, np_labels)
 
   def testNpXent(self):

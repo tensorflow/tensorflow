@@ -148,6 +148,17 @@ class MatMulTest(tf.test.TestCase):
     self._testCpuMatmul(x, y)
     self._testGpuMatmul(x, y)
 
+  def testShapeErrors(self):
+    a = tf.placeholder(tf.float32, [32, 37])
+    b = tf.placeholder(tf.float32, [36, 2])
+    c = tf.placeholder(tf.float32, [37])
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Dimensions Dimension\(37\) and Dimension\(36\) are not compatible"):
+      tf.matmul(a, b)
+    with self.assertRaisesRegexp(ValueError, "must have rank 2"):
+      tf.matmul(a, c)
+
 
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.
 class MatMulGradientTest(tf.test.TestCase):

@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#ifndef TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#define TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -51,4 +51,4 @@ class PyRecordWriter {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#endif  // TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_

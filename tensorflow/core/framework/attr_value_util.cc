@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <vector>
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -88,7 +89,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
           strings::StrAppend(
-              &ret, TensorShape::ShortDebugString(attr_value.list().shape(i)));
+              &ret, TensorShape::DebugString(attr_value.list().shape(i)));
         }
       } else if (attr_value.list().tensor_size() > 0) {
         for (int i = 0; i < attr_value.list().tensor_size(); ++i) {

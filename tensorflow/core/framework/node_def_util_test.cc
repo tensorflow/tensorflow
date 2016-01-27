@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -150,8 +150,8 @@ TEST(NodeDefUtilTest, Out) {
   AddNodeAttr("T", DT_STRING, &bad);
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
-                "values: float, double, int64, int32, uint8, int16, int8, "
-                "complex64, qint8, quint8, qint32");
+                "values: float, double, int64, int32, uint8, uint16, int16, "
+                "int8, complex64, qint8, quint8, qint32");
 }
 
 TEST(NodeDefUtilTest, Enum) {

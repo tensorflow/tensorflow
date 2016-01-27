@@ -42,7 +42,7 @@ class SummaryImageOp : public OpKernel {
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(bad_color_.shape()),
         errors::InvalidArgument("bad_color must be a vector, got shape ",
-                                bad_color_.shape().ShortDebugString()));
+                                bad_color_.shape().DebugString()));
   }
 
   void Compute(OpKernelContext* c) override {

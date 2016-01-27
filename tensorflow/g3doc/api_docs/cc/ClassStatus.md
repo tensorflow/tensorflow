@@ -24,7 +24,7 @@
   * If ` ok() `, stores `new_status` into `*this`. If `!ok()`, preserves the current status, but may augment with additional information about `new_status`.
 * [`string tensorflow::Status::ToString() const`](#string_tensorflow_Status_ToString)
   * Return a string representation of this status suitable for printing. Returns the string `"OK"` for success.
-* [`static Status tensorflow::Status::OK()`](#static_Status_tensorflow_Status_OK)
+* [`return tensorflow::Status::OK()`](#return_tensorflow_Status_OK)
 
 ##Member Details
 
@@ -100,7 +100,7 @@ Return a string representation of this status suitable for printing. Returns the
 
 
 
-#### `static Status tensorflow::Status::OK()` {#static_Status_tensorflow_Status_OK}
+#### `return tensorflow::Status::OK()` {#return_tensorflow_Status_OK}
 
 
 

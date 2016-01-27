@@ -13,15 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_UTIL_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_UTIL_H_
+#ifndef TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_
+#define TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor_util.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor_util.h
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor.h
 
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
-    namespace tensorflow {
+namespace tensorflow {
 
 namespace gpu = ::perftools::gputools;
 
@@ -34,4 +42,4 @@ inline Status FromStreamExecutorStatus(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_UTIL_H_
+#endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_

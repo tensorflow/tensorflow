@@ -12,6 +12,8 @@ Represents an n-dimensional array of values.
   * Creates a Tensor of the given `type` and `shape`.
 * [`tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape)`](#tensorflow_Tensor_Tensor)
   * Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer.
+* [`tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)`](#tensorflow_Tensor_Tensor)
+  * Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
 * [`tensorflow::Tensor::Tensor(DataType type)`](#tensorflow_Tensor_Tensor)
   * Creates an uninitialized Tensor of the given data type.
 * [`tensorflow::Tensor::Tensor(const Tensor &other)`](#tensorflow_Tensor_Tensor)
@@ -28,6 +30,8 @@ Represents an n-dimensional array of values.
 * [`int64 tensorflow::Tensor::NumElements() const`](#int64_tensorflow_Tensor_NumElements)
   * Convenience accessor for the tensor shape.
 * [`bool tensorflow::Tensor::IsSameSize(const Tensor &b) const`](#bool_tensorflow_Tensor_IsSameSize)
+* [`bool tensorflow::Tensor::SharesBufferWith(const Tensor &b) const`](#bool_tensorflow_Tensor_SharesBufferWith)
+* [`size_t tensorflow::Tensor::BufferHash() const`](#size_t_tensorflow_Tensor_BufferHash)
 * [`bool tensorflow::Tensor::IsInitialized() const`](#bool_tensorflow_Tensor_IsInitialized)
   * Has this Tensor been initialized?
 * [`size_t tensorflow::Tensor::TotalBytes() const`](#size_t_tensorflow_Tensor_TotalBytes)
@@ -74,7 +78,7 @@ Represents an n-dimensional array of values.
   * A human-readable summary of the tensor suitable for debugging.
 * [`void tensorflow::Tensor::FillDescription(TensorDescription *description) const`](#void_tensorflow_Tensor_FillDescription)
 * [`StringPiece tensorflow::Tensor::tensor_data() const`](#StringPiece_tensorflow_Tensor_tensor_data)
-  * Returns a `StringPiece` mapping the current tensor&apos;s buffer.
+  * Returns a ` StringPiece ` mapping the current tensor&apos;s buffer.
 
 ##Member Details
 
@@ -88,11 +92,17 @@ Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
 
 Creates a Tensor of the given `type` and `shape`.
 
-The underlying buffer is allocated using a `CPUAllocator`.
+The underlying buffer is allocated using a ` CPUAllocator `.
 
 #### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
 Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer.
+
+`a` must outlive the lifetime of this Tensor .
+
+#### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)` {#tensorflow_Tensor_Tensor}
+
+Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
 
 `a` must outlive the lifetime of this Tensor .
 
@@ -130,7 +140,7 @@ Returns the shape of the tensor.
 
 Convenience accessor for the tensor shape.
 
-For all shape accessors, see comments for relevant methods of ` TensorShape ` in ` tensor_shape.h `.
+For all shape accessors, see comments for relevant methods of ` TensorShape ` in `tensor_shape.h`.
 
 #### `int64 tensorflow::Tensor::dim_size(int d) const` {#int64_tensorflow_Tensor_dim_size}
 
@@ -145,6 +155,18 @@ Convenience accessor for the tensor shape.
 
 
 #### `bool tensorflow::Tensor::IsSameSize(const Tensor &b) const` {#bool_tensorflow_Tensor_IsSameSize}
+
+
+
+
+
+#### `bool tensorflow::Tensor::SharesBufferWith(const Tensor &b) const` {#bool_tensorflow_Tensor_SharesBufferWith}
+
+
+
+
+
+#### `size_t tensorflow::Tensor::BufferHash() const` {#size_t_tensorflow_Tensor_BufferHash}
 
 
 
@@ -379,10 +401,10 @@ Fill in the `TensorDescription` proto with metadata about the tensor that is use
 
 #### `StringPiece tensorflow::Tensor::tensor_data() const` {#StringPiece_tensorflow_Tensor_tensor_data}
 
-Returns a `StringPiece` mapping the current tensor&apos;s buffer.
+Returns a ` StringPiece ` mapping the current tensor&apos;s buffer.
 
-The returned `StringPiece` may point to memory location on devices that the CPU cannot address directly.
+The returned ` StringPiece ` may point to memory location on devices that the CPU cannot address directly.
 
-NOTE: The underlying tensor buffer is refcounted, so the lifetime of the contents mapped by the `StringPiece` matches the lifetime of the buffer; callers should arrange to make sure the buffer does not get destroyed while the `StringPiece` is still used.
+NOTE: The underlying tensor buffer is refcounted, so the lifetime of the contents mapped by the ` StringPiece ` matches the lifetime of the buffer; callers should arrange to make sure the buffer does not get destroyed while the ` StringPiece ` is still used.
 
 REQUIRES: `DataTypeCanUseMemcpy( dtype() )`.

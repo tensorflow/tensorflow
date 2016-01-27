@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -484,7 +485,7 @@ Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
       // Attr defs
       {{"T: {float, double}"}},
       {
-        // keep_dims because we need to do x == y, which requries x
+        // keep_dims because we need to do x == y, which requires x
         // and y are broadcastable.
         {{"y"}, op, {"x", "i"}, {{"T", "$T"}, {"keep_dims", true}}},
         {{"mask"}, "Equal", {"x", "y"}, {{"T", "$T"}}},

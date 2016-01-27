@@ -388,6 +388,7 @@ class TensorShape(object):
   @@ndims
   @@dims
   @@as_list
+  @@as_proto
   @@is_compatible_with
   @@is_fully_defined
 
@@ -611,7 +612,10 @@ class TensorShape(object):
     Raises:
       ValueError: If `self` does not represent a shape with the given `rank`.
     """
-    return self.merge_with(unknown_shape(ndims=rank))
+    try:
+      return self.merge_with(unknown_shape(ndims=rank))
+    except ValueError:
+      raise ValueError("Shape %s must have rank %d" % (self, rank))
 
   def with_rank_at_least(self, rank):
     """Returns a shape based on `self` with at least the given rank.
@@ -727,26 +731,20 @@ class TensorShape(object):
     if not self.is_fully_defined():
       raise ValueError("Shape %s is not fully defined" % self)
 
-  def as_dimension_list(self):
-    """DEPRECATED: use `as_list()`."""
-    if self.dims is None:
-      raise ValueError("Shape %s does not have a rank" % self)
-
-    return self.as_list(to_proto=True)
-
-  def as_list(self, to_proto=False):
+  def as_list(self):
     """Returns a list of integers or None for each dimension.
-
-    If `to_proto` is True, returns -1 instead of None for unknown dimensions.
-
-    Args:
-      to_proto: boolean.  Determines how unknown dimensions are treated.
 
     Returns:
       A list of integers or None for each dimension.
     """
-    return [dim.value if not (to_proto and dim.value is None) else -1
-            for dim in self._dims]
+    return [dim.value for dim in self._dims]
+
+  def as_proto(self):
+    """Returns this shape as a `TensorShapeProto`."""
+    return tensor_shape_pb2.TensorShapeProto(dim=[
+        tensor_shape_pb2.TensorShapeProto.Dim(
+            size=-1 if d.value is None else d.value)
+        for d in self._dims])
 
   def __eq__(self, other):
     """Returns True if `self` is equivalent to `other`."""

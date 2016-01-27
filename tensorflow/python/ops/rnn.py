@@ -167,8 +167,12 @@ def _reverse_seq(input_seq, lengths):
   if lengths is None:
     return list(reversed(input_seq))
 
+  for input_ in input_seq:
+    input_.set_shape(input_.get_shape().with_rank(2))
+
   # Join into (time, batch_size, depth)
   s_joined = array_ops.pack(input_seq)
+
   # Reverse along dimension 0
   s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
   # Split again into list
@@ -227,11 +231,13 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   name = scope or "BiRNN"
   # Forward direction
   with vs.variable_scope(name + "_FW"):
-    output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype)
+    output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype,
+                       sequence_length)
+
   # Backward direction
   with vs.variable_scope(name + "_BW"):
-    tmp, _ = rnn(
-        cell_bw, _reverse_seq(inputs, sequence_length), initial_state_bw, dtype)
+    tmp, _ = rnn(cell_bw, _reverse_seq(inputs, sequence_length),
+                 initial_state_bw, dtype, sequence_length)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [array_ops.concat(1, [fw, bw])

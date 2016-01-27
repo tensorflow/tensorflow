@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
@@ -36,6 +36,7 @@ TEST(TensorTest, DataType_Traits) {
   EXPECT_TRUE(std::is_trivial<double>::value);
   EXPECT_TRUE(std::is_trivial<int32>::value);
   EXPECT_TRUE(std::is_trivial<uint8>::value);
+  EXPECT_TRUE(std::is_trivial<uint16>::value);
   EXPECT_TRUE(std::is_trivial<int16>::value);
   EXPECT_TRUE(std::is_trivial<int8>::value);
   EXPECT_TRUE(std::is_trivial<int64>::value);
@@ -112,6 +113,17 @@ TEST(Tensor_Float, Simple) {
     }
   }
   TestCopies<float>(t);
+}
+
+TEST(Tensor_UInt16, Simple) {
+  Tensor t(DT_UINT16, TensorShape({2, 2}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<uint16>()(a, b) = uint16(a * b);
+    }
+  }
+  TestCopies<uint16>(t);
 }
 
 TEST(Tensor_QInt8, Simple) {
@@ -342,6 +354,14 @@ TEST(Tensor_Int32, SimpleWithHelper) {
   t2.flat<int32>() = t1.flat<int32>() * 2;
   Tensor t3 = test::AsTensor<int32>({0, 2, 4, 6, 8, 10}, t1.shape());
   test::ExpectTensorEqual<int32>(t2, t3);
+}
+
+TEST(Tensor_UInt16, SimpleWithHelper) {
+  Tensor t1 = test::AsTensor<uint16>({0, 1, 2, 3, 4, 5}, {2, 3});
+  Tensor t2(t1.dtype(), t1.shape());
+  t2.flat<uint16>() = t1.flat<uint16>() * uint16(2);
+  Tensor t3 = test::AsTensor<uint16>({0, 2, 4, 6, 8, 10}, t1.shape());
+  test::ExpectTensorEqual<uint16>(t2, t3);
 }
 
 TEST(Tensor_QInt8, SimpleWithHelper) {

@@ -37,6 +37,8 @@ class DType(object):
 
   * `tf.int8`: 8-bit signed integer.
   * `tf.uint8`: 8-bit unsigned integer.
+  * `tf.uint16`: 16-bit unsigned integer.
+  * `tf.int16`: 16-bit signed integer.
   * `tf.int32`: 32-bit signed integer.
   * `tf.int64`: 64-bit signed integer.
 
@@ -252,6 +254,7 @@ float64 = DType(types_pb2.DT_DOUBLE)
 double = float64
 int32 = DType(types_pb2.DT_INT32)
 uint8 = DType(types_pb2.DT_UINT8)
+uint16 = DType(types_pb2.DT_UINT16)
 int16 = DType(types_pb2.DT_INT16)
 int8 = DType(types_pb2.DT_INT8)
 string = DType(types_pb2.DT_STRING)
@@ -269,6 +272,7 @@ float64_ref = DType(types_pb2.DT_DOUBLE_REF)
 double_ref = float64_ref
 int32_ref = DType(types_pb2.DT_INT32_REF)
 uint8_ref = DType(types_pb2.DT_UINT8_REF)
+uint16_ref = DType(types_pb2.DT_UINT16_REF)
 int16_ref = DType(types_pb2.DT_INT16_REF)
 int8_ref = DType(types_pb2.DT_INT8_REF)
 string_ref = DType(types_pb2.DT_STRING_REF)
@@ -290,6 +294,7 @@ _INTERN_TABLE = {
     types_pb2.DT_DOUBLE: float64,
     types_pb2.DT_INT32: int32,
     types_pb2.DT_UINT8: uint8,
+    types_pb2.DT_UINT16: uint16,
     types_pb2.DT_INT16: int16,
     types_pb2.DT_INT8: int8,
     types_pb2.DT_STRING: string,
@@ -306,6 +311,7 @@ _INTERN_TABLE = {
     types_pb2.DT_DOUBLE_REF: float64_ref,
     types_pb2.DT_INT32_REF: int32_ref,
     types_pb2.DT_UINT8_REF: uint8_ref,
+    types_pb2.DT_UINT16_REF: uint16_ref,
     types_pb2.DT_INT16_REF: int16_ref,
     types_pb2.DT_INT8_REF: int8_ref,
     types_pb2.DT_STRING_REF: string_ref,
@@ -327,6 +333,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_DOUBLE: "float64",
     types_pb2.DT_INT32: "int32",
     types_pb2.DT_UINT8: "uint8",
+    types_pb2.DT_UINT16: "uint16",
     types_pb2.DT_INT16: "int16",
     types_pb2.DT_INT8: "int8",
     types_pb2.DT_STRING: "string",
@@ -343,6 +350,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_DOUBLE_REF: "float64_ref",
     types_pb2.DT_INT32_REF: "int32_ref",
     types_pb2.DT_UINT8_REF: "uint8_ref",
+    types_pb2.DT_UINT16_REF: "uint16_ref",
     types_pb2.DT_INT16_REF: "int16_ref",
     types_pb2.DT_INT8_REF: "int8_ref",
     types_pb2.DT_STRING_REF: "string_ref",
@@ -384,6 +392,7 @@ _NP_TO_TF = frozenset([
     (np.int32, int32),
     (np.int64, int64),
     (np.uint8, uint8),
+    (np.uint16, uint16),
     (np.int16, int16),
     (np.int8, int8),
     (np.complex64, complex64),
@@ -401,6 +410,7 @@ _TF_TO_NP = {
     types_pb2.DT_DOUBLE: np.float64,
     types_pb2.DT_INT32: np.int32,
     types_pb2.DT_UINT8: np.uint8,
+    types_pb2.DT_UINT16: np.uint16,
     types_pb2.DT_INT16: np.int16,
     types_pb2.DT_INT8: np.int8,
     # NOTE(touts): For strings we use np.object as it supports variable length
@@ -421,6 +431,7 @@ _TF_TO_NP = {
     types_pb2.DT_DOUBLE_REF: np.float64,
     types_pb2.DT_INT32_REF: np.int32,
     types_pb2.DT_UINT8_REF: np.uint8,
+    types_pb2.DT_UINT16_REF: np.uint16,
     types_pb2.DT_INT16_REF: np.int16,
     types_pb2.DT_INT8_REF: np.int8,
     types_pb2.DT_STRING_REF: np.object,

@@ -24,13 +24,14 @@ limitations under the License.
 
 #include <string>  // for string
 #include <unordered_map>
+#include <vector>
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"       // for Status
 #include "tensorflow/core/lib/core/stringpiece.h"  // for StringPiece
-#include "tensorflow/core/platform/port.h"         // for int64
-#include "tensorflow/core/public/status.h"         // for Status
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"        // for int64
 
 namespace tensorflow {
 
@@ -56,7 +57,7 @@ class TensorSliceSet {
 
   // Query about a new slice: checks if we have data for "slice" and if we have
   // the data and "data" is not nullptr, fill "data" with the slice data. The
-  // caller needs to make sure "data" point to a large eough buffer.
+  // caller needs to make sure "data" point to a large enough buffer.
   // TODO(yangke): avoid unnecessary copying by using a core::RefCounted
   // pointer.
   bool Query(const TensorSlice& slice, float* data) const;

@@ -16,7 +16,6 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -24,14 +23,15 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -258,7 +258,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> sparse_context(new OpKernelContext(&params));
   op->Compute(sparse_context.get());
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {

@@ -1,16 +1,31 @@
+/* Copyright 2016 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #ifndef TENSORFLOW_FRAMEWORK_UNIQUE_TENSOR_REFERENCES_H_
 #define TENSORFLOW_FRAMEWORK_UNIQUE_TENSOR_REFERENCES_H_
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
 // Helper class to maintain a unique set of tensor references. In the
-// common case tehre are not many references, so an inline vector is
+// common case there are not many references, so an inline vector is
 // used for <= kInVector unique elements, defaulting to 4 since that
 // is the inlined size of TensorReferenceVector. To avoid N^2
 // operations when adding N items, any larger number of unique tensor
@@ -45,7 +60,7 @@ class UniqueTensorReferences {
           tensor_ref.Unref();
         }
       } else {
-        for (int i = 0; i < referenced_tensors_vector_.size(); ++i) {
+        for (size_t i = 0; i < referenced_tensors_vector_.size(); ++i) {
           if (referenced_tensors_vector_[i].SharesBufferWith(tensor)) {
             // tensor is a duplicate, so nothing to do.
             return;

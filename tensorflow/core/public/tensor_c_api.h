@@ -30,7 +30,7 @@ limitations under the License.
 // * Objects are always passed around as pointers to opaque structs
 //   and these structs are allocated/deallocated via the API.
 // * TF_Status holds error information.  It is an object type
-//   and threfore is passed around as a pointer to an opaque
+//   and therefore is passed around as a pointer to an opaque
 //   struct as mentioned above.
 // * Every call that has a TF_Status* argument clears it on success
 //   and fills it with error info on failure.
@@ -87,6 +87,7 @@ typedef enum {
   TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.  Only for cast ops.
   TF_QINT16 = 15,    // Quantized int16
   TF_QUINT16 = 16,   // Quantized uint16
+  TF_UINT16 = 17,
 } TF_DataType;
 
 // --------------------------------------------------------------------------

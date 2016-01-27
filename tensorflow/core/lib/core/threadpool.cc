@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace thread {
