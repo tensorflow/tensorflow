@@ -897,7 +897,8 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the constructor is used. If that one is `None` too, a
-`UniformUnitScalingInitializer` will be used.
+`UniformUnitScalingInitializer` will be used. The initializer can also be
+a Tensor, in which case the variable is initialized to this value and shape.
 
 ##### Args:
 

@@ -487,8 +487,8 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
       // inputs_safe destructor.
       py_inputs_safe[i].reset();
     } else {
-      size_t size;
-      void* encoded;
+      size_t size = 0;
+      void* encoded = nullptr;
       Status s = EncodePyBytesArray(array, nelems, &size, &encoded);
       if (!s.ok()) {
         *out_status = s;
