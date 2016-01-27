@@ -107,7 +107,7 @@ void SimpleFloatHelper(TensorSliceWriter::CreateBuilderFunction create_function,
   // Now we need to read the tensor slices
   const string filepattern = strings::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, open_function);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
 
   // We query some of the tensors
@@ -231,7 +231,7 @@ void SimpleIntXHelper(TensorSliceWriter::CreateBuilderFunction create_function,
   // Now we need to read the tensor slices
   const string filepattern = strings::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, open_function);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
 
   // We query some of the tensors

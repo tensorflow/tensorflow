@@ -36,12 +36,12 @@ class DynamicPartitionOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "DynamicPartition")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_INT32))
-                  .Attr("num_partitions", 4)
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "DynamicPartition")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("num_partitions", 4)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -53,7 +53,7 @@ TEST_F(DynamicPartitionOpTest, Simple_OneD) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({6}), {0, 13, 2, 39, 4, 17});
   AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output sizes
   {  // Output 0
@@ -86,7 +86,7 @@ TEST_F(DynamicPartitionOpTest, Simple_TwoD) {
       TensorShape({6, 3}),
       {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17});
   AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output sizes
   {  // Output 0
@@ -117,7 +117,7 @@ TEST_F(DynamicPartitionOpTest, SomeOutputsEmpty) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({6}), {0, 13, 2, 39, 4, 17});
   AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 2, 0, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   TensorShape empty_one_dim;
   empty_one_dim.AddDim(0);

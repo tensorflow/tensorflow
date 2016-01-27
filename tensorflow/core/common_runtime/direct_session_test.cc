@@ -84,7 +84,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   Initialize({3, 2, -1, 0});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
@@ -92,7 +92,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   std::vector<string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
   Status s = session->Run(inputs, output_names, target_nodes, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
   // The first output should be initialized and have the correct
@@ -107,7 +107,7 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
 
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   //
@@ -121,7 +121,7 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
 
   // Run the graph
   Status s = session->Run(inputs, output_names, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
   auto mat = outputs[0].matrix<float>();
@@ -135,7 +135,7 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
@@ -172,7 +172,7 @@ TEST_F(DirectSessionMinusAXTest, TestPerSessionThreads) {
   std::unique_ptr<Session> session(NewSession(options));
 
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
@@ -204,7 +204,7 @@ TEST_F(DirectSessionMinusAXTest, TwoCreateCallsFails) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Second is not.
   ASSERT_FALSE(session->Create(def_).ok());
@@ -239,7 +239,7 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<Tensor> outputs;
@@ -252,8 +252,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
   test::graph::ToGraphDef(&graph, &def);
   session.reset(CreateSession());
-  ASSERT_OK(session->Create(def));
-  ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
+  TF_ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
 }
 
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
@@ -278,18 +278,18 @@ TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
   // Initialize the variable
   Status s = session->Run(inputs, {init->name()}, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   // Get the variable's data
   s = session->Run(inputs, {var->name() + ":0"}, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
   ASSERT_EQ(1, outputs.size());
   ASSERT_TRUE(outputs[0].IsInitialized());
   EXPECT_EQ(20.0, outputs[0].flat<float>()(0));
@@ -315,7 +315,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<Tensor> outputs;
 
@@ -389,7 +389,7 @@ TEST(DirectSessionTest, DarthKernel) {
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
   auto sess = CreateSession();
-  ASSERT_OK(sess->Create(def));
+  TF_ASSERT_OK(sess->Create(def));
   std::vector<Tensor> outputs;
   auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
   EXPECT_TRUE(errors::IsInternal(s));

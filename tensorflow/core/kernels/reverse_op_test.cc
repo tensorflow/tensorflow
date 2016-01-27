@@ -39,12 +39,12 @@ class ReverseOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType data_type) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Reverse")
-                  .Input(FakeInput(data_type))
-                  .Input(FakeInput())
-                  .Attr("T", data_type)
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "Reverse")
+                     .Input(FakeInput(data_type))
+                     .Input(FakeInput())
+                     .Attr("T", data_type)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -52,7 +52,7 @@ TEST_F(ReverseOpTest, Reverse_0) {
   MakeOp(DT_FLOAT);
   AddInputFromArray<float>(TensorShape({}), {3});
   AddInputFromArray<bool>(TensorShape({}), {true});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor* output = GetOutput(0);
   Tensor expected(allocator(), DT_FLOAT, TensorShape({}));
@@ -71,7 +71,7 @@ TEST_F(ReverseOpTest, Reverse_234) {
                             15, 16, 17, 18, 19, 20, 21, 22, 23});
   AddInputFromArray<bool>(TensorShape({3}), {true, false, true});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor* params_tensor = GetOutput(0);
@@ -96,7 +96,7 @@ TEST_F(ReverseOpTest, Reverse_1234) {
                             15, 16, 17, 18, 19, 20, 21, 22, 23});
   AddInputFromArray<bool>(TensorShape({4}), {true, true, false, true});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor* params_tensor = GetOutput(0);

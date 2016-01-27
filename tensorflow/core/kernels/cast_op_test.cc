@@ -40,12 +40,12 @@ class CastOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType src, DataType dst) {
     RequireDefaultOps();
-    EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
-                  .Input(FakeInput(src))
-                  .Attr("SrcT", src)
-                  .Attr("DstT", dst)
-                  .Finalize(node_def()));
-    EXPECT_OK(InitOp());
+    TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
+                     .Input(FakeInput(src))
+                     .Attr("SrcT", src)
+                     .Attr("DstT", dst)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
   }
 
   template <typename IN, typename OUT>
@@ -54,7 +54,7 @@ class CastOpTest : public OpsTestBase {
     DataType out_type = DataTypeToEnum<OUT>::v();
     MakeOp(in_type, out_type);
     AddInputFromArray<IN>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), out_type, TensorShape({1, 2, 2, 1}));
     test::FillValues<OUT>(&expected, {1, 2, 3, 4});
     test::ExpectTensorEqual<OUT>(expected, *GetOutput(0));

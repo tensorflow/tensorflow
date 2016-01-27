@@ -36,11 +36,11 @@ class ResizeNearestNeighborOpTest : public OpsTestBase {
  protected:
   ResizeNearestNeighborOpTest() {
     RequireDefaultOps();
-    EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_INT32))
-                  .Finalize(node_def()));
-    EXPECT_OK(InitOp());
+    TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
   }
 };
 
@@ -50,7 +50,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
 
@@ -67,7 +67,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
 
@@ -87,7 +87,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {2, 5});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 5, 1}));
 
@@ -106,7 +106,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To5x2) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {5, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 5, 2, 1}));
 
@@ -128,7 +128,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To4x4) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
 
@@ -152,7 +152,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2x2x2To2x3x3x2) {
   AddInputFromArray<float>(TensorShape({2, 2, 2, 2}),
                            {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 3, 2}));
 

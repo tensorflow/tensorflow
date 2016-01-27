@@ -41,7 +41,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -56,7 +56,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(

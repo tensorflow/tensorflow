@@ -32,7 +32,7 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_def_));
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call
@@ -50,7 +50,7 @@ class NodeDefBuilderTest : public ::testing::Test {
                      DataTypeSlice expected_out_types, StringPiece proto) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (!status.ok()) return;
     NodeDef expected;
     protobuf::TextFormat::ParseFromString(strings::StrCat("name: 'n' ", proto),
@@ -60,7 +60,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     DataTypeVector in_types, out_types;
     status =
         InOutTypesForNode(node_def, builder.op_def(), &in_types, &out_types);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (!status.ok()) return;
     EXPECT_EQ(DataTypeSliceString(expected_in_types),
               DataTypeVectorString(in_types));
@@ -68,7 +68,7 @@ class NodeDefBuilderTest : public ::testing::Test {
               DataTypeVectorString(out_types));
 
     status = ValidateNodeDef(node_def, op_def_);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
   }
 
   // Calls Finalize() and verifies it returns an error.
