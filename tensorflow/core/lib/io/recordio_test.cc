@@ -115,7 +115,7 @@ class RecordioTest : public ::testing::Test {
 
   void Write(const string& msg) {
     ASSERT_TRUE(!reading_) << "Write() after starting to read";
-    ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
+    TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
   }
 
   size_t WrittenBytes() const { return dest_.contents_.size(); }

@@ -40,11 +40,11 @@ class GatherOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType index_type) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Gather")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(index_type))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "Gather")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(index_type))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -54,7 +54,7 @@ TEST_F(GatherOpTest, ScalarIndices) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({}), {3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({}));
@@ -69,7 +69,7 @@ TEST_F(GatherOpTest, Simple_TwoD32) {
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 0, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 3}));
@@ -84,7 +84,7 @@ TEST_F(GatherOpTest, Simple_TwoD64) {
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int64>(TensorShape({4}), {0, 4, 0, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 3}));
@@ -98,7 +98,7 @@ TEST_F(GatherOpTest, HighRank) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
   AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 0, 2, 3, 0});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));

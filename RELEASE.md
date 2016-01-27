@@ -28,6 +28,9 @@
 * `GraphOptions.skip_common_subexpression_elimination` has been removed. All
   graph optimizer options are now specified via
   `GraphOptions.OptimizerOptions`.
+* ASSERT_OK / EXPECT_OK macros conflicted with external projects, so they were
+  renamed TF_ASSERT_OK, TF_EXPECT_OK.  The existing macros are currently
+  maintained for short-term compatibility but will be removed.
 
 ## Bug fixes
 

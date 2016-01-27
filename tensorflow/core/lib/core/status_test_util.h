@@ -19,8 +19,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 
-// Macros for testing the results of functions that return util::Status.
+// Macros for testing the results of functions that return tensorflow::Status.
+#define TF_EXPECT_OK(statement) \
+  EXPECT_EQ(::tensorflow::Status::OK(), (statement))
+#define TF_ASSERT_OK(statement) \
+  ASSERT_EQ(::tensorflow::Status::OK(), (statement))
 
+// These are deprecated and will be removed, since they conflict with
+// macros for related projects (e.g., protobuf).
 #define EXPECT_OK(statement) EXPECT_EQ(::tensorflow::Status::OK(), (statement))
 #define ASSERT_OK(statement) ASSERT_EQ(::tensorflow::Status::OK(), (statement))
 

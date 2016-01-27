@@ -39,7 +39,7 @@ class ValidateOpDefTest : public ::testing::Test {
   Status TestBuilder(const OpDefBuilder& builder) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (!status.ok()) {
       return status;
     } else {
@@ -58,16 +58,16 @@ class ValidateOpDefTest : public ::testing::Test {
 };
 
 TEST_F(ValidateOpDefTest, OpDefValid) {
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Input("a: int32")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Output("a: bool")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("t: type").Input("a: t")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int = 3")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5 = 3")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: numbertype")));
-  EXPECT_OK(TestBuilder(OpDefBuilder("Uppercase")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Input("a: int32")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Output("a: bool")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("t: type").Input("a: t")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int = 3")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5 = 3")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: numbertype")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("Uppercase")));
 }
 
 TEST_F(ValidateOpDefTest, InvalidName) {
@@ -167,16 +167,17 @@ TEST_F(ValidateOpDefTest, BadAttrDefault) {
 
   // default_value {} is indistinguishable from default_value{ list{} } (one
   // with an empty list) in proto3 semantics.
-  EXPECT_OK(
+  TF_EXPECT_OK(
       TestProto("name: 'GoodAttrDef' attr { name: 'a' "
                 "type: 'list(int)' default_value { } }"));
 
   // Empty lists are allowed:
-  EXPECT_OK(
+  TF_EXPECT_OK(
       TestProto("name: 'GoodAttrDef' attr { name: 'a' "
                 "type: 'list(int)' default_value { list { } } }"));
   // Builder should make the same proto:
-  EXPECT_OK(TestBuilder(OpDefBuilder("GoodAttrDef").Attr("a: list(int) = []")));
+  TF_EXPECT_OK(
+      TestBuilder(OpDefBuilder("GoodAttrDef").Attr("a: list(int) = []")));
 
   // Unless there is a minimum length specified:
   ExpectFailure(TestProto("name: 'BadAttrDef' attr { name: 'a' "
@@ -224,7 +225,7 @@ TEST_F(ValidateOpDefTest, BadAttrMin) {
       TestProto("name: 'BadAttrMin' attr { name: 'a' "
                 "type: 'list(string)' has_minimum: true minimum: -5 }"),
       "list type must have a non-negative minimum, not -5");
-  EXPECT_OK(
+  TF_EXPECT_OK(
       TestProto("name: 'GoodAttrMin' attr { name: 'a' type: 'list(string)' "
                 "has_minimum: true minimum: 1 }"));
   ExpectFailure(TestProto("name: 'NoHasMin' attr { name: 'a' "
@@ -235,7 +236,7 @@ TEST_F(ValidateOpDefTest, BadAttrMin) {
 
 TEST_F(ValidateOpDefTest, BadAttrAllowed) {
   // Is in list of allowed types.
-  EXPECT_OK(TestBuilder(
+  TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: numbertype = DT_INT32")));
   // Not in list of allowed types.
   ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
@@ -246,7 +247,7 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
                       .Attr("x: list(realnumbertype) = [DT_COMPLEX64]")),
       "attr 'x' of complex64 is not in the list of allowed values");
   // Is in list of allowed strings.
-  EXPECT_OK(TestBuilder(
+  TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: {'foo', 'bar'} = 'bar'")));
   // Not in list of allowed strings.
   ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
@@ -300,13 +301,13 @@ TEST_F(ValidateOpDefTest, BadArgType) {
                 "attr { name: 'n' type: 'int' has_minimum: true minimum: 1 }"),
       "Attr 'x' used as type_attr for input 'a' has type list(type)");
   // But list(type) is fine as the type of an arg without a number_attr:
-  EXPECT_OK(TestProto(
+  TF_EXPECT_OK(TestProto(
       "name: 'Arg' input_arg { name: 'a' type_list_attr: 'x' } "
       "attr { name: 'x' type: 'list(type)' } attr { name: 'n' type: 'int' "
       "has_minimum: true minimum: 1 }"));
 
   // number_attr
-  EXPECT_OK(TestProto(
+  TF_EXPECT_OK(TestProto(
       "name: 'Arg' input_arg { name: 'a' type: DT_INT32 number_attr: 'n' } "
       "attr { name: 'n' type: 'int' has_minimum: true minimum: 0 }"));
 
