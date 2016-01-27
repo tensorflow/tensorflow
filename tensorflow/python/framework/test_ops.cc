@@ -67,7 +67,7 @@ class GraphDefVersionOp : public OpKernel {
     : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor* output;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     output->scalar<int>()() = graph_def_version_;
   }
