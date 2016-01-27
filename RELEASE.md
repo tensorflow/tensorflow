@@ -33,6 +33,8 @@
   maintained for short-term compatibility but will be removed.
 * The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
   just the final state instead of the list of all states.
+* `tf.scatter_update` now no longer guarantees that lexicographically largest
+  index be used for update when duplicate entires exist.
 
 
 ## Bug fixes
