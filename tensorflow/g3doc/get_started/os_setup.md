@@ -294,7 +294,7 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
-[above](#pip-installation). 
+[above](#pip-installation).
 
 ### Clone the TensorFlow repository
 
