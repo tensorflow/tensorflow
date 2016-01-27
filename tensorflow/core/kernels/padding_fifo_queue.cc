@@ -285,7 +285,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
   slice_indices[0] = index;
   Eigen::DSizes<Eigen::DenseIndex, NDIMS + 1> slice_size;
   slice_size[0] = 1;
-  for (int i = 1; i < slice_size.size(); ++i) {
+  for (size_t i = 1; i < slice_size.size(); ++i) {
     slice_size[i] = element_t.dimension(i - 1);
   }
   parent_t.slice(slice_indices, slice_size) = element_t.reshape(slice_size);

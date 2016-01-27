@@ -33,7 +33,7 @@ class DiagonalGenerator {
   T operator()(
       const Eigen::array<Eigen::DenseIndex, DoubleNumDims>& coordinates) const {
     Eigen::array<Eigen::DenseIndex, NumDims> index;
-    for (int i = 0; i < NumDims; ++i) {
+    for (size_t i = 0; i < NumDims; ++i) {
       if (coordinates[i] != coordinates[NumDims + i]) {
         return T(0);
       }
