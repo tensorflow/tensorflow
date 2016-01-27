@@ -159,7 +159,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gtl {

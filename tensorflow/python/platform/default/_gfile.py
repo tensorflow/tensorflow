@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import errno
 import functools
 import glob as _glob
@@ -380,3 +381,24 @@ def Walk(top, topdown=1, onerror=None):
     (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
   """
   return os.walk(top, topdown=topdown, onerror=onerror)
+
+
+def Stat(path):   # pylint: disable=invalid-name
+  """Gets the status of a file.
+
+  Args:
+    path: The file to call Stat() on.
+
+  Does the equivalent of Stat() on the specified "path" and return file
+  properties.
+
+  Returns:
+    An object whose attributes give information on the file.
+
+  Raises:
+    OSError: If "path" does not exist.
+  """
+  statinfo = os.stat(path)
+  filestat = collections.namedtuple('FileStat', ['mtime'])
+  filestat.mtime = statinfo.st_mtime
+  return filestat

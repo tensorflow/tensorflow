@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/format.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/lib/io/two_level_iterator.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace table {

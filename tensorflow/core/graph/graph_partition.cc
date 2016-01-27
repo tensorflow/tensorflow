@@ -1102,7 +1102,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   // Set versions
   for (auto& it : *partitions) {
-    it.second.set_version(g->version());
+    it.second.mutable_versions()->CopyFrom(g->versions());
   }
 
   // Set the start times for recvs at the very end.

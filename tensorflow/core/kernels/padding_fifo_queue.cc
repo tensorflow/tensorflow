@@ -19,15 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -179,7 +179,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   attempt->tuple.emplace_back(element);
                 }
 
-                for (int index = 0; index < tuples.size(); ++index) {
+                for (size_t index = 0; index < tuples.size(); ++index) {
                   for (int i = 0; i < num_components(); ++i) {
                     if (dynamic_shape[i]) {
                       // Slightly slower copy operation
@@ -359,7 +359,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(
     const gtl::ArraySlice<PartialTensorShape>& partial_shapes) {
   std::vector<TensorShape> shapes(partial_shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
+  for (size_t i = 0; i < shapes.size(); ++i) {
     const PartialTensorShape& partial = partial_shapes[i];
     TensorShape& shape = shapes[i];
     for (int64 s : partial.dim_sizes()) shape.AddDim(s < 0 ? 0 : s);

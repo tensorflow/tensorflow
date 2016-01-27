@@ -1059,7 +1059,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   }
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
-  gdef->set_version(g->version());
+  gdef->mutable_versions()->CopyFrom(g->versions());
   while (!ready.empty()) {
     const Node* n = ready.front();
     ready.pop_front();

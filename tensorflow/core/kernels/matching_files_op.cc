@@ -19,10 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/match.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 

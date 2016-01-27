@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gtl {

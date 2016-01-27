@@ -26,6 +26,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/tensor_shape.proto",
         "//tensorflow/core:framework/tensor_slice.proto",
         "//tensorflow/core:framework/types.proto",
+        "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
 	]

@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 

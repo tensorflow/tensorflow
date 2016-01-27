@@ -60,7 +60,8 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `UniformUnitScalingInitializer`.
+    `UniformUnitScalingInitializer`. If initializer is a Tensor, we use
+    it as a value and derive the shape from the initializer.
 
     Args:
       name: the name of the new or existing variable.
@@ -81,9 +82,17 @@ class _VariableStore(object):
         when reusing a variable and specifying a conflicting shape,
         or when violating reuse during variable creation.
     """
+    # Set to true if initializer is a constant.
+    initializing_from_value = False
+    if initializer is not None and isinstance(initializer, ops.Tensor):
+      initializing_from_value = True
+    if shape is not None and initializing_from_value:
+      raise ValueError("If initializer is a constant, do not specify shape.")
+
     should_check = reuse is not None
     dtype = dtypes.as_dtype(dtype)
     shape = tensor_shape.as_shape(shape)
+
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if should_check and not reuse:
@@ -106,15 +115,18 @@ class _VariableStore(object):
     if should_check and reuse:
       raise ValueError("Under-sharing: Variable %s does not exist, disallowed."
                        " Did you mean to set reuse=None in VarScope?" % name)
-    if not shape.is_fully_defined():
+    if not shape.is_fully_defined() and not initializing_from_value:
       raise ValueError("Shape of a new variable (%s) must be fully defined, "
                        "but instead was %s." % (name, shape))
     if initializer is None:
       initializer = init_ops.uniform_unit_scaling_initializer()
     # Clear control dependencies while creating the initializer ops.
     with ops.control_dependencies(None):
-      with ops.name_scope(name + "/Initializer/"):
-        init_val = initializer(shape.as_list(), dtype=dtype)
+      if initializing_from_value:
+        init_val = initializer
+      else:
+        with ops.name_scope(name + "/Initializer/"):
+          init_val = initializer(shape.as_list(), dtype=dtype)
       v = variables.Variable(init_val, name=name, trainable=trainable,
                              collections=collections)
     self._vars[name] = v
@@ -217,7 +229,8 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
 
   If initializer is `None` (the default), the default initializer passed in
   the constructor is used. If that one is `None` too, a
-  `UniformUnitScalingInitializer` will be used.
+  `UniformUnitScalingInitializer` will be used. The initializer can also be
+  a Tensor, in which case the variable is initialized to this value and shape.
 
   Args:
     name: the name of the new or existing variable.

@@ -19,8 +19,8 @@ limitations under the License.
 // This file contains utilities for various operations.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {

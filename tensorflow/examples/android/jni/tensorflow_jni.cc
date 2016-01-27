@@ -26,13 +26,13 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/examples/android/jni/jni_utils.h"
 
 // Global variables that holds the Tensorflow classifier.

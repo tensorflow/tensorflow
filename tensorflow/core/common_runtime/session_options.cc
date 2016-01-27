@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/session_options.h"
 
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 

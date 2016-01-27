@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Return type of import_array() changed between Python 2 and 3
 // NUMPY_IMPORT_ARRAY_RETVAL is NULL for Python 3
@@ -108,7 +108,7 @@ Status TfDTypeToNpDType(const DataType& tf, int* np) {
 // Creates a numpy array in 'ret' and copies the content of tensor 't'
 // into 'ret'.
 Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
-  int typenum;
+  int typenum = -1;
   TF_RETURN_IF_ERROR(TfDTypeToNpDType(t.dtype(), &typenum));
   PyArray_Descr* descr = PyArray_DescrFromType(typenum);
   CHECK(descr);
@@ -148,7 +148,7 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
   CHECK(lst);
   for (int64 i = 0; i < n; ++i) {
     const Tensor& t = call->ins[i];
-    PyObject* a;
+    PyObject* a = nullptr;
     Status s = ConvertTensorToNdarray(t, &a);
     if (!s.ok()) {
       Py_DECREF(lst);
@@ -306,12 +306,12 @@ class PyFuncOp : public AsyncOpKernel {
       std::unique_ptr<PyCall> delete_me(call);
       OP_REQUIRES_OK_ASYNC(ctx, s, done);
       OP_REQUIRES_ASYNC(
-          ctx, call->out.size() == ctx->num_outputs(),
+          ctx, static_cast<int32>(call->out.size()) == ctx->num_outputs(),
           errors::InvalidArgument(token_, " returns ", call->out.size(),
                                   " values, but expects to see ",
                                   ctx->num_outputs(), " values."),
           done);
-      for (int i = 0; i < call->out.size(); ++i) {
+      for (size_t i = 0; i < call->out.size(); ++i) {
         const auto& t = call->out[i];
         OP_REQUIRES_ASYNC(
             ctx, t.dtype() == output_type(i),

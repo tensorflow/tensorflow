@@ -856,7 +856,9 @@ class Saver(object):
     return list(self._CheckpointFilename(p) for p in self._last_checkpoints)
 
   def set_last_checkpoints(self, last_checkpoints):
-    """Sets the list of old checkpoint filenames.
+    """DEPRECATED: Use set_last_checkpoints_with_time.
+
+    Sets the list of old checkpoint filenames.
 
     Args:
       last_checkpoints: A list of checkpoint filenames.
@@ -869,6 +871,19 @@ class Saver(object):
     # deleted.  This is both safe and backwards compatible to a previous
     # version of the code which used s[1] as the "timestamp".
     self._last_checkpoints = [(s, np.inf) for s in last_checkpoints]
+
+  def set_last_checkpoints_with_time(self, last_checkpoints_with_time):
+    """Sets the list of old checkpoint filenames and timestamps.
+
+    Args:
+      last_checkpoints_with_time: A list of tuples of checkpoint filenames and
+        timestamps.
+
+    Raises:
+      AssertionError: If last_checkpoints_with_time is not a list.
+    """
+    assert isinstance(last_checkpoints_with_time, list)
+    self._last_checkpoints = last_checkpoints_with_time
 
   def save(self, sess, save_path, global_step=None, latest_filename=None):
     """Saves variables.

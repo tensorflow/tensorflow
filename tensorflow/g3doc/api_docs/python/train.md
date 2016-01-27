@@ -94,7 +94,7 @@ This must be called by the constructors of subclasses.
 
 - - -
 
-#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, name=None)` {#Optimizer.minimize}
+#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None)` {#Optimizer.minimize}
 
 Add operations to minimize `loss` by updating `var_list`.
 
@@ -116,6 +116,8 @@ of using this function.
     `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
 
 ##### Returns:
@@ -131,7 +133,7 @@ of using this function.
 
 - - -
 
-#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None)` {#Optimizer.compute_gradients}
+#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False)` {#Optimizer.compute_gradients}
 
 Compute gradients of `loss` for the variables in `var_list`.
 
@@ -152,6 +154,8 @@ given variable.
     `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 
 ##### Returns:
 

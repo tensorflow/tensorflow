@@ -278,7 +278,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   params.create_kernel = [device, constant_graph](const NodeDef& ndef,
                                                   OpKernel** kernel) {
     return CreateNonCachedKernel(device, nullptr, ndef,
-                                 constant_graph->version(), kernel);
+                                 constant_graph->versions().producer(), kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
   Executor* executor;
@@ -323,7 +323,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   }
   // Fetch the constant nodes and replace the corresponding nodes in the
   // original graph with those constants.
-  for (int c = 0; c < fetch_nodes.size(); ++c) {
+  for (size_t c = 0; c < fetch_nodes.size(); ++c) {
     Tensor output;
     bool is_dead;
     string tensor_name;

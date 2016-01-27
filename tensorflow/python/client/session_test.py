@@ -572,8 +572,11 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testGraphDef(self):
     with session.Session() as sess:
-      self.assertProtoEquals('version: %d' % versions.GRAPH_DEF_VERSION,
-                             sess.graph_def)
+      self.assertProtoEquals(
+          'versions { producer: %d min_consumer: %d }' % (
+              versions.GRAPH_DEF_VERSION,
+              versions.GRAPH_DEF_VERSION_MIN_CONSUMER),
+          sess.graph_def)
       c = constant_op.constant(5.0, name='c')
       self.assertEquals(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')
