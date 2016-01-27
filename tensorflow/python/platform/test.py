@@ -20,6 +20,7 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.platform.googletest import GetTempDir
 from tensorflow.python.platform.googletest import main
+from tensorflow.python.platform.googletest import StubOutForTesting
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import IsGoogleCudaEnabled as IsBuiltWithCuda
 from tensorflow.python.framework.test_util import assert_equal_graph_def
