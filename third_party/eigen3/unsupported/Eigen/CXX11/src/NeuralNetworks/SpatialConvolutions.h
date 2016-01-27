@@ -19,17 +19,18 @@ namespace internal {
 // TODO: Consolidate this part of the code with the image patch extraction code
 // since they are both very similar.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols, typename ArgType, typename Device,
-          typename Scalar, typename Index,
+          typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t,
           int Side, size_t packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
-class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
+class TensorContractionInputMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
 {
  public:
-  typedef TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> Self;
-  typedef TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> SubMapper;
+  typedef TensorContractionInputMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> Self;
+  typedef TensorContractionSubMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> SubMapper;
   typedef SubMapper VectorMapper;
   typedef SubMapper LinearMapper;
+  typedef Scalar_ Scalar;
   typedef typename packet_traits<Scalar>::type Packet;
 
   TensorContractionInputMapper(const TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>& tensor,
@@ -371,14 +372,14 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
 
 
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols, typename ArgType, typename Device,
-          typename Scalar, typename Index,
+          typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t,
           int Side, size_t packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
-class TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
+class TensorContractionSubMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
 {
  public:
- public:
+  typedef Scalar_ Scalar;
   typedef typename packet_traits<Scalar>::type Packet;
   typedef typename packet_traits<Scalar>::half HalfPacket;
 
