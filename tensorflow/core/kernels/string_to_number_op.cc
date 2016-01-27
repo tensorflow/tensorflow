@@ -48,7 +48,7 @@ class StringToNumberOp : public OpKernel {
                                             &output_tensor));
     auto output_flat = output_tensor->flat<OutputType>();
 
-    for (std::size_t i = 0; i < input_flat.size(); ++i) {
+    for (int i = 0; i < input_flat.size(); ++i) {
       const char* s = input_flat(i).data();
       Convert(s, &output_flat(i), context);
     }
