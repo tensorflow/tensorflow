@@ -399,10 +399,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ## Check that we have discarded 200 and 300 from s1
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
 
-    ## Check that the logging message is correct
-    self.assertEqual(warnings, [ea._GetPurgeMessage(300, 1, 101, 1, 2, 0, 0, 0)
-                               ])
-
   def testEventsDiscardedPerTagAfterRestart(self):
     """Tests that event discards after restart, only affect the misordered tag.
 
@@ -429,8 +425,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc.Reload()
     ## Check that we have discarded 200 and 300
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
-    self.assertEqual(warnings, [ea._GetPurgeMessage(300, 1, 101, 1, 2, 0, 0, 0)
-                               ])
 
     ## Check that s1 discards do not affect s2
     ## i.e. check that only events from the out of order tag are discarded
