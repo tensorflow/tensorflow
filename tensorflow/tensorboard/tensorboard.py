@@ -26,10 +26,10 @@ import functools
 import os
 import socket
 
+import tensorflow.python.platform
+
 from six.moves import BaseHTTPServer
 from six.moves import socketserver
-
-import tensorflow.python.platform
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags

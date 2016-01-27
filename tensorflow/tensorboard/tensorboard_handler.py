@@ -31,20 +31,20 @@ import json
 import mimetypes
 import os
 
+import tensorflow.python.platform
+
 from six import BytesIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 
-from tensorflow import compat
-
 from google.protobuf import text_format
-import tensorflow.python.platform
 
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.util import compat
 from tensorflow.tensorboard import float_wrapper
 
 
