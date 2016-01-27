@@ -35,19 +35,18 @@ class Seq2SeqTest(tf.test.TestCase):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         inp = [tf.constant(0.5, shape=[2, 2]) for _ in xrange(2)]
-        _, enc_states = tf.nn.rnn(
+        _, enc_state = tf.nn.rnn(
             tf.nn.rnn_cell.GRUCell(2), inp, dtype=tf.float32)
         dec_inp = [tf.constant(0.4, shape=[2, 2]) for _ in xrange(3)]
         cell = tf.nn.rnn_cell.OutputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(2), 4)
-        dec, mem = tf.nn.seq2seq.rnn_decoder(dec_inp, enc_states[-1], cell)
+        dec, mem = tf.nn.seq2seq.rnn_decoder(dec_inp, enc_state, cell)
         sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 4))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 2))
 
   def testBasicRNNSeq2Seq(self):
@@ -63,8 +62,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 4))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 2))
 
   def testTiedRNNSeq2Seq(self):
@@ -80,8 +78,8 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 4))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
+        self.assertEqual(len(res), 1)
         self.assertEqual(res[0].shape, (2, 2))
 
   def testEmbeddingRNNDecoder(self):
@@ -89,17 +87,17 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         inp = [tf.constant(0.5, shape=[2, 2]) for _ in xrange(2)]
         cell = tf.nn.rnn_cell.BasicLSTMCell(2)
-        _, enc_states = tf.nn.rnn(cell, inp, dtype=tf.float32)
+        _, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in xrange(3)]
-        dec, mem = tf.nn.seq2seq.embedding_rnn_decoder(dec_inp, enc_states[-1],
+        dec, mem = tf.nn.seq2seq.embedding_rnn_decoder(dec_inp, enc_state,
                                                        cell, 4)
         sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 2))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
+        self.assertEqual(len(res), 1)
         self.assertEqual(res[0].shape, (2, 4))
 
   def testEmbeddingRNNSeq2Seq(self):
@@ -115,8 +113,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 5))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 4))
 
         # Test externally provided output projection.
@@ -161,8 +158,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 5))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 4))
 
         # Test externally provided output projection.
@@ -198,20 +194,19 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         cell = tf.nn.rnn_cell.GRUCell(2)
         inp = [tf.constant(0.5, shape=[2, 2]) for _ in xrange(2)]
-        enc_outputs, enc_states = tf.nn.rnn(cell, inp, dtype=tf.float32)
+        enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
         attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
                                     for e in enc_outputs])
         dec_inp = [tf.constant(0.4, shape=[2, 2]) for _ in xrange(3)]
         dec, mem = tf.nn.seq2seq.attention_decoder(
-            dec_inp, enc_states[-1],
+            dec_inp, enc_state,
             attn_states, cell, output_size=4)
         sess.run([tf.initialize_all_variables()])
         res = sess.run(dec)
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 4))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 2))
 
   def testAttentionDecoder2(self):
@@ -219,12 +214,12 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         cell = tf.nn.rnn_cell.GRUCell(2)
         inp = [tf.constant(0.5, shape=[2, 2]) for _ in xrange(2)]
-        enc_outputs, enc_states = tf.nn.rnn(cell, inp, dtype=tf.float32)
+        enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
         attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
                                     for e in enc_outputs])
         dec_inp = [tf.constant(0.4, shape=[2, 2]) for _ in xrange(3)]
         dec, mem = tf.nn.seq2seq.attention_decoder(
-            dec_inp, enc_states[-1],
+            dec_inp, enc_state,
             attn_states, cell, output_size=4,
             num_heads=2)
         sess.run([tf.initialize_all_variables()])
@@ -232,8 +227,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 4))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 2))
 
   def testEmbeddingAttentionDecoder(self):
@@ -241,12 +235,12 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         inp = [tf.constant(0.5, shape=[2, 2]) for _ in xrange(2)]
         cell = tf.nn.rnn_cell.GRUCell(2)
-        enc_outputs, enc_states = tf.nn.rnn(cell, inp, dtype=tf.float32)
+        enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
         attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
                                     for e in enc_outputs])
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in xrange(3)]
         dec, mem = tf.nn.seq2seq.embedding_attention_decoder(
-            dec_inp, enc_states[-1],
+            dec_inp, enc_state,
             attn_states, cell, 4,
             output_size=3)
         sess.run([tf.initialize_all_variables()])
@@ -254,8 +248,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 3))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 2))
 
   def testEmbeddingAttentionSeq2Seq(self):
@@ -271,8 +264,7 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(len(res), 3)
         self.assertEqual(res[0].shape, (2, 5))
 
-        res = sess.run(mem)
-        self.assertEqual(len(res), 4)
+        res = sess.run([mem])
         self.assertEqual(res[0].shape, (2, 4))
 
         # Test externally provided output projection.
