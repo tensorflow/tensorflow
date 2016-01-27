@@ -476,15 +476,8 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, Graph*>* outputs) {
   std::unique_ptr<FunctionLibraryDefinition> fdefs;
   std::unique_ptr<Graph> graph;
-  GraphConstructorOptions opts;
-  if (options_.config.has_graph_options()) {
-    opts.optimizer_do_cse = !options_.config.graph_options()
-                                 .skip_common_subexpression_elimination();
-    opts.optimizer_do_constant_folding =
-        options_.config.graph_options().do_constant_folding();
-  } else {
-    opts.optimizer_do_cse = true;
-  }
+  GraphConstructorOptions opts{
+      options_.config.graph_options().optimizer_options()};
 
   std::unordered_set<StringPiece, StringPiece::Hasher> keep_nodes;
   for (const string& feed : feeds) {

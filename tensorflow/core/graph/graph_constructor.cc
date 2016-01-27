@@ -382,7 +382,41 @@ bool GraphConstructor::TypeValidateEdge(const Edge* edge) {
   return true;
 }
 
+static void SetDoCSE(const GraphOptions::OptimizerOptions& optimizer_opt,
+                     bool force, GraphConstructorOptions* graph_opt) {
+  graph_opt->optimizer_do_cse =
+      force || optimizer_opt.do_common_subexpression_elimination();
+}
+
+static void SetDoConstantFolding(
+    const GraphOptions::OptimizerOptions& optimizer_opt, bool force,
+    GraphConstructorOptions* graph_opt) {
+  graph_opt->optimizer_do_constant_folding =
+      force || optimizer_opt.do_constant_folding();
+}
+
 }  // namespace
+
+// ----------------------------------------------------------------------------
+// GraphConstructorOptions functions
+// ----------------------------------------------------------------------------
+
+GraphConstructorOptions::GraphConstructorOptions(
+    const GraphOptions::OptimizerOptions& opts) {
+  // Set the individually specified options first.
+  SetDoCSE(opts, false, this);
+  SetDoConstantFolding(opts, false, this);
+
+  // Set options that the level signifies
+  if (opts.opt_level() == GraphOptions::OptimizerOptions::L0) {
+    // No optimizations performed.
+  } else if (opts.opt_level() == GraphOptions::OptimizerOptions::L1) {
+    SetDoCSE(opts, true, this);
+  } else if (opts.opt_level() == GraphOptions::OptimizerOptions::L2) {
+    SetDoCSE(opts, true, this);
+    SetDoConstantFolding(opts, true, this);
+  }
+}
 
 // ----------------------------------------------------------------------------
 // ConvertGraphDefToGraph

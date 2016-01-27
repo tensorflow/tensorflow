@@ -25,7 +25,9 @@
 * For C++ API users: `TensorShape::ShortDebugString` has been renamed to
   `DebugString`, and the previous `DebugString` behavior is gone (it was
   needlessly verbose and produced a confusing empty string for scalars).
-
+* `GraphOptions.skip_common_subexpression_elimination` has been removed. All
+  graph optimizer options are now specified via
+  `GraphOptions.OptimizerOptions`.
 
 ## Bug fixes
 

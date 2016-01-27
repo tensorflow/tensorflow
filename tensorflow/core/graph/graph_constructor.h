@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
 #define TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
 
+#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,6 +33,9 @@ struct ConstantFoldingOptions {
 // Construct a graph *g out of a GraphDef gdef. Returns non-OK on
 // error, in which case *g is left in an incomplete state.
 struct GraphConstructorOptions {
+  explicit GraphConstructorOptions(
+      const GraphOptions::OptimizerOptions& opts = Level0());
+
   // If true, allows internal ops in the GraphDef.
   bool allow_internal_ops = false;
 
@@ -55,6 +59,12 @@ struct GraphConstructorOptions {
   bool optimizer_do_constant_folding = false;
 
   ConstantFoldingOptions constant_folding_opts;
+
+  static GraphOptions::OptimizerOptions Level0() {
+    GraphOptions::OptimizerOptions ret;
+    ret.set_opt_level(GraphOptions::OptimizerOptions::L0);
+    return ret;
+  }
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
