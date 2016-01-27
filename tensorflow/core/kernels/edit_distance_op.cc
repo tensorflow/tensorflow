@@ -144,7 +144,7 @@ class EditDistanceOp : public OpKernel {
     std::iota(group_dims.begin(), group_dims.end(), 0);
 
     TensorShape output_shape;
-    for (int d = 0; d < group_dims.size(); ++d) {
+    for (size_t d = 0; d < group_dims.size(); ++d) {
       output_shape.AddDim(std::max(hypothesis_st_shape.dim_size(d),
                                    truth_st_shape.dim_size(d)));
     }

@@ -59,10 +59,9 @@ limitations under the License.
 //    parsing more strict with respect to empty list values (see
 //    111635679, 7jan2016).
 // 5. Graphs are wholly-validated during Session::Create() (7jan2016).
-// 6. TensorFlow is scalar strict within Google (reserved, will be turned on
-//    once the GraphDef version rewrite settles).
+// 6. TensorFlow is scalar strict within Google (27jan2016).
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 5
+#define TF_GRAPH_DEF_VERSION 6
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_
