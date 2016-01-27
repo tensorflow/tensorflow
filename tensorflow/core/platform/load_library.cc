@@ -49,6 +49,24 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
   return Status::OK();
 }
 
+string FormatLibraryFileName(const string& name, const string& version) {
+  string file_name;
+#if defined(__APPLE__)
+  if (version.size() == 0) {
+    file_name = "lib" + name + ".dylib";
+  } else {
+    file_name = "lib" + name + "." + version + ".dylib";
+  }
+#else
+  if (version.size() == 0) {
+    file_name = "lib" + name + ".so";
+  } else {
+    file_name = "lib" + name + ".so" + "." + version;
+  }
+#endif
+  return file_name;
+}
+
 }  // namespace internal
 
 }  // namespace tensorflow

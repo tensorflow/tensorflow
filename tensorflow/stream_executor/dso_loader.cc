@@ -25,7 +25,7 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
-#include "tensorflow/core/platform/
+#include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -47,7 +47,7 @@ string GetCudaVersion() { return ""; }
 string GetCudnnVersion() { return ""; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cublas", GetCudaVersion()),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cublas", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
@@ -57,34 +57,34 @@ string GetCudnnVersion() { return ""; }
   // different version number than other CUDA libraries.  See b/22397368 for
   // some details about the complications surrounding this.
   return GetDsoHandle(
-      FindDsoPath(tensorflow::port::FormatLibraryFileName("cudnn", GetCudnnVersion()),
+      FindDsoPath(tensorflow::internal::FormatLibraryFileName("cudnn", GetCudnnVersion()),
                               GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cufft", GetCudaToolkitVersion()),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cufft", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("curand", GetCudaVersion()),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("curand", GetCudaVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::port::FormatLibraryFileName("cuda", ""),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", ""),
                                   GetCudaDriverLibraryPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
   return GetDsoHandle(
-      FindDsoPath(tensorflow::port::FormatLibraryFileName("cupti", GetCudaVersion()),
-                                                          GetCudaCuptiLibraryPath()),
-                  dso_handle);
+      FindDsoPath(tensorflow::internal::FormatLibraryFileName("cupti", GetCudaVersion()),
+                  GetCudaCuptiLibraryPath()),
+      dso_handle);
 }
 
 /* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
