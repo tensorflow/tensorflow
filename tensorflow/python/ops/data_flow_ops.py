@@ -557,12 +557,13 @@ class TensorArray(object):
   """
 
   def __init__(
-      self, dtype, size, tensor_array_name=None, handle=None, name=None):
+      self, dtype, size=None, tensor_array_name=None, handle=None, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
     Args:
       dtype: (required) data type of the TensorArray.
-      size: (required) int32 scalar `Tensor`: the size of the TensorArray.
+      size: (optional) int32 scalar `Tensor`: the size of the TensorArray.
+        Required if handle is not provided.
       tensor_array_name: (optional) Python string: the name of the TensorArray.
         This is used when creating the TensorArray handle.  If this value is
         set, handle should be None.
@@ -572,10 +573,15 @@ class TensorArray(object):
 
     Raises:
       ValueError: if both handle and tensor_array_name are provided.
+      TypeError: if handle is provided but is not a Tensor.
     """
     if handle and tensor_array_name:
       raise ValueError(
           "Cannot construct with both handle and tensor_array_name")
+    if handle and not isinstance(handle, ops.Tensor):
+      raise TypeError("Handle must be a Tensor")
+    if handle is None and size is None:
+      raise ValueError("Size must be provided if handle is not provided")
 
     with ops.op_scope([handle, size], name, "TensorArray") as scope:
       if handle:
@@ -587,7 +593,6 @@ class TensorArray(object):
 
       self._flow = constant_op.constant(0, dtype=_dtypes.float32)
       self._dtype = dtype
-      self._gradient_add = False
 
   @property
   def flow(self):
@@ -599,50 +604,50 @@ class TensorArray(object):
     """The reference to the TensorArray."""
     return self._handle
 
-  def grad(self):
-    g = TensorArray(
-        dtype=self._dtype,
-        size=-1,
-        handle=gen_data_flow_ops._tensor_array_grad(self._handle))
-    g._gradient_add = True
+  def grad(self, source):
+    g_handle = gen_data_flow_ops._tensor_array_grad(
+        handle=self._handle, source=source)
+    g = TensorArray(dtype=self._dtype, size=None, handle=g_handle)
     return g
 
-  def read(self, index):
+  def read(self, index, name=None):
     """Read the value at location `index` in the TensorArray."""
     value = gen_data_flow_ops._tensor_array_read(
-        handle=self._handle, index=index, flow_in=self._flow, dtype=self._dtype)
+        handle=self._handle, index=index, flow_in=self._flow, dtype=self._dtype,
+        name=name)
     return value
 
-  def write(self, index, value):
+  def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray."""
     flow_out = gen_data_flow_ops._tensor_array_write(
         handle=self._handle, index=index, value=value, flow_in=self._flow,
-        gradient_add=self._gradient_add)
+        name=name)
     # Size below is ignored
     ta = TensorArray(dtype=self._dtype, size=-1, handle=self._handle)
-    ta._gradient_add = self._gradient_add
     ta._flow = flow_out
     return ta
 
-  def pack(self):
+  def pack(self, name=None):
     """Return the values in the TensorArray as a packed `Tensor`."""
     value = gen_data_flow_ops._tensor_array_pack(
-        handle=self._handle, flow_in=self._flow, dtype=self._dtype)
+        handle=self._handle, flow_in=self._flow, dtype=self._dtype,
+        name=name)
+
     return value
 
-  def unpack(self, value):
+  def unpack(self, value, name=None):
     """Packs the values of a `Tensor` in the TensorArray."""
     flow_out = gen_data_flow_ops._tensor_array_unpack(
         handle=self._handle, value=value, flow_in=self._flow,
-        gradient_add=self._gradient_add)
+        name=name)
     ta = TensorArray(dtype=self._dtype, size=-1, handle=self._handle)
-    ta._gradient_add = self._gradient_add
     ta._flow = flow_out
     return ta
 
-  def close(self):
+  def close(self, name=None):
     """Close the current TensorArray."""
-    return gen_data_flow_ops._tensor_array_close(handle=self._handle)
+    return gen_data_flow_ops._tensor_array_close(
+        handle=self._handle, name=name)
 
 
 ops.NoGradient("LookupTableFind")
