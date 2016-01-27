@@ -294,7 +294,7 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 
 When installing from source you will build a pip wheel that you then install
 using pip. You'll need pip for that, so install it as described
-[above](#pip-installation).
+[above](#pip-installation). 
 
 ### Clone the TensorFlow repository
 
@@ -303,7 +303,9 @@ $ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
 ```
 
 `--recurse-submodules` is required to fetch the protobuf library that TensorFlow
-depends on.
+depends on. Note that these instructions will install the latest master branch
+of tensorflow. If you want to install a specific branch (such as a release branch),
+pass `-b <branchname>` to the `git clone` command.
 
 ### Installation for Linux
 
