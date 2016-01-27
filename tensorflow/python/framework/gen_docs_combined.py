@@ -117,7 +117,7 @@ def all_libraries(module_to_name, members, documented):
       library("unsupported", "Unsupported", tf.unsupported),
   ]
 
-_hidden_symbols = ["Event", "Summary", "xrange",
+_hidden_symbols = ["Event", "LogMessage", "Summary", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "SessionInterface",
                    "BaseSession", "NameAttrList", "AttrValue",
