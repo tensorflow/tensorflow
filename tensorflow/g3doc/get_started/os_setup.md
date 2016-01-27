@@ -66,11 +66,21 @@ $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tenso
 For python3:
 
 ```bash
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, python3.4.x:
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled:
+# Ubuntu/Linux 64-bit, CPU only, python3.5.x:
+$ sudo wget https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+$ sudo mv tensorflow-0.6.0-cp34-none-linux_x86_64.whl tensorflow-0.6.0-cp35-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade tensorflow-0.6.0-cp35-none-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU enabled, python3.4.x:
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU only, python3.5.x:
+$ sudo wget https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+$ sudo mv tensorflow-0.6.0-cp34-none-linux_x86_64.whl tensorflow-0.6.0-cp35-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade tensorflow-0.6.0-cp35-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
