@@ -6,18 +6,60 @@ echo "Tensofrlow installation required tools has started"
 
 #you could check get GPU information with lspci | grep -i --color 'nvidia'
 
+gathering_sys_information()
+{
+     VERSION=`cat $1 | tr "\n" ' ' | sed s/.*VERSION.*=\ // `
+ 
+if [ "${OS}" = "SunOS" ] ; then
+    OS=Solaris
+    ARCH=`uname -p` 
+    OSSTR="${OS} ${REV}(${ARCH} `uname -v`)"
+elif [ "${OS}" = "AIX" ] ; then
+    OSSTR="${OS} `oslevel` (`oslevel -r`)"
+elif [ "${OS}" = "Linux" ] ; then
+    KERNEL=`uname -r`
+    if [ -f /etc/redhat-release ] ; then
+        DIST='RedHat'
+        PSUEDONAME=`cat /etc/redhat-release | sed s/.*\(// | sed s/\)//`
+        REV=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
+    elif [ -f /etc/SuSE-release ] ; then
+        DIST=`cat /etc/SuSE-release | tr "\n" ' '| sed s/VERSION.*//`
+        REV=`cat /etc/SuSE-release | tr "\n" ' ' | sed s/.*=\ //`
+    elif [ -f /etc/mandrake-release ] ; then
+        DIST='Mandrake'
+        PSUEDONAME=`cat /etc/mandrake-release | sed s/.*\(// | sed s/\)//`
+        REV=`cat /etc/mandrake-release | sed s/.*release\ // | sed s/\ .*//`
+    elif [ -f /etc/debian_version ] ; then
+        DIST="Debian `cat /etc/debian_version`"
+        REV=""
 
-echo "choose your package installer yum(CentOS, Fedora, OpenSuse, RedHat), zypper, apt-get(Debian,ubuntu...), yast(opensuse),....."
+    fi
+    if [ -f /etc/UnitedLinux-release ] ; then
+        DIST="${DIST}[`cat /etc/UnitedLinux-release | tr "\n" ' ' | sed s/VERSION.*//`]"
+    fi
+
+    OSSTR="${OS} ${DIST} ${REV}(${PSUEDONAME} ${KERNEL} ${MACH})"
+
+fi
+
+return ${OSSTR}
+}
+
+echo "your system is $gathering_sys_information"
 read installer
+
+wich_installer()
+{
+ return installer;
+}
 
 MACHINE_TYPE=`uname -m`
 if [ ${MACHINE_TYPE} == 'x86_64' ]; 
 then
  echo "Your Proc architecture is x86_64" 
 else
-echo "TensorFlow is available only for 64 bit architechture"
+ echo "TensorFlow is available only for 64 bit architechture"
  exit 0
-
 fi
 
 #**************************************
