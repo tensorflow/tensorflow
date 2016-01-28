@@ -33,7 +33,7 @@ assert(isequal(size(L_bar), [N N]));
 
 % Blocksize. Should be chosen more actively, as by LAPACK's ILAENV routine tuned
 % for the current machine.
-NB = 32;
+NB = 2;
 
 for Ji = (N-NB+1):-NB:(1-NB+1)
     J = max(1, Ji);
