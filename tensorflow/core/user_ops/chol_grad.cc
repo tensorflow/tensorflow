@@ -95,7 +95,7 @@ class CholeskyGrad : public OpKernel {
     for ( int k = N-1; k>=0; k--)
     {
         output_matrix(k,k) -= (input_matrix_l.block( k+1,k , N-(k+1), 1 ).adjoint() * output_matrix.block( k+1,k , N-(k+1), 1 ) )(0,0) / input_matrix_l(k,k);
-        output_matrix.block(k,k,N-k,1) = output_matrix.block(k,k,N-k,1) / input_matrix_l( k,k) ;
+        output_matrix.block(k,k,N-k,1) /= input_matrix_l( k,k) ;
         output_matrix.block(k,0,1,k) -=output_matrix.block(k,k,N-k,1).adjoint() * input_matrix_l.block(k,0,N-k,k);
         output_matrix.block(k+1,0,N-(k+1),k) -= output_matrix.block(k+1, k , N-(k+1), 1 ) * input_matrix_l.block( k, 0, 1, k ) ; 
         output_matrix(k,k) *= 0.5;
