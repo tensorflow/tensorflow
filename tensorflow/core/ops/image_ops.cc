@@ -23,6 +23,7 @@ REGISTER_OP("ResizeArea")
     .Input("size: int32")
     .Output("resized_images: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using area interpolation.
 
@@ -31,6 +32,9 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -41,6 +45,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("size: int32")
     .Output("resized_images: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using bicubic interpolation.
 
@@ -49,6 +54,9 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -102,12 +110,16 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("size: int32")
     .Output("resized_images: T")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using nearest neighbor interpolation.
 
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -118,12 +130,16 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Input("size: int32")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Computes the gradient of nearest neighbor interpolation.
 
 grads: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
   original input size.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
 output: 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
   with respect to the input image.
 )doc");
