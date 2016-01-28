@@ -5,7 +5,23 @@ import scipy.linalg as linalg
 
 from scipy.linalg.blas import dsymv
 
-#Reference Python implementation ported from Iain Murray Matlab code.
+#Reference Python implementation ported from Iain Murray Matlab code. Blocked version.
+def chol_rev( L, L_bar ):
+    N = L.shape[0]
+    NB = 2
+    A_bar = np.tril( L_bar )
+    for Ji in range( (N-NB+1), (1-NB+1)-1, -NB ):
+        J = max(1, Ji);
+        JB = NB - (J - Ji); # corrected block-size        
+        A_bar[ (J+JB-1):, (J-1):(J+JB-1) ] = np.linalg.solve( L[(J-1):(J+JB-1), (J-1):(J+JB-1)].T, A_bar[ (J+JB-1):, (J-1):(J+JB-1)].T ).T
+        A_bar[ (J-1):(J+JB-1), (J-1):(J+JB-1)] = A_bar[(J-1):J+JB-1, (J-1):J+JB-1] - np.tril( np.dot( A_bar[(J+JB-1):, (J-1):J+JB-1].T, L[(J+JB-1):, (J-1):J+JB-1] ) )
+        A_bar[ (J+JB-1):N, 0:(J-1)]  = A_bar[(J+JB-1):N, 0:J-1] - np.dot( A_bar[(J+JB-1):N, (J-1):J+JB-1], L[(J-1):J+JB-1, 0:J-1] )
+        A_bar[ (J-1):(J+JB-1), 0:(J-1) ] = A_bar[ (J-1):J+JB-1, 0:J-1 ] - np.dot( A_bar[ (J+JB-1):N, (J-1):J+JB-1].T , L[(J+JB-1):N, 0:J-1] )
+        A_bar[ (J-1):(J+JB-1), (J-1):(J+JB-1) ] = chol_rev_unblocked(L[(J-1):(J+JB-1), (J-1):(J+JB-1)], A_bar[(J-1):(J+JB-1), (J-1):(J+JB-1)] )
+        A_bar[ (J-1):(J+JB-1), 0:(J-1) ] = A_bar[ (J-1):(J+JB-1), 0:(J-1) ] - np.dot( (A_bar[(J-1):(J+JB-1), (J-1):(J+JB-1)] + A_bar[(J-1):(J+JB-1), (J-1):(J+JB-1)].T ),L[(J-1):(J+JB-1), 0:(J-1) ] );
+    return A_bar
+
+#Reference Python implementation ported from Iain Murray Matlab code. Unblocked version.
 def chol_rev_unblocked( L, L_bar ):
     N = L.shape[0]
     A_bar = np.tril( L_bar )
@@ -31,16 +47,18 @@ def cholesky_grad_python(L,g):
         return (dL + dL.T)/2.
 
 class CholeskyReferenceTest(tf.test.TestCase):
-  def testCholeskyReference(self):
-    nDim = 3      
+  def testCholeskyReferenceA(self):
+    nDim = 8      
     rng = np.random.RandomState(1)
     raw_a = np.tril( rng.rand(nDim,nDim) )
     raw_g = np.tril( rng.rand(nDim,nDim) )      
     with self.test_session():
-      murray = chol_rev_unblocked( raw_a, raw_g.copy() )
+      murray_blocked = chol_rev( raw_a, raw_g)
+      murray_unblocked = chol_rev_unblocked( raw_a, raw_g)
       hips = cholesky_grad_python( raw_a, raw_g )
-      self.assertAllClose( 0.5*(murray+murray.T) , hips )
-
+      self.assertAllClose( murray_blocked, murray_unblocked )
+      self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
+      
 class CholeskyGradTest(tf.test.TestCase):
   def testCholeskyGrad(self):
     nDim = 4      
