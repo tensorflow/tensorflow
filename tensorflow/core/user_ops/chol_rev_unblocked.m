@@ -32,7 +32,7 @@ for J = N:-1:1
     L_bar(J:N,J) = L_bar(J:N,J) / L(J,J);
     L_bar(J,1:J-1) = L_bar(J,1:J-1) - L_bar(J:N,J)'*L(J:N,1:J-1);
     L_bar(J+1:N,1:J-1) = L_bar(J+1:N,1:J-1) - L_bar(J+1:N,J)*L(J,1:J-1);
-    %L_bar(J,J) = 0.5 * L_bar(J,J); % can take out of loop if like.
+    L_bar(J,J) = 0.5 * L_bar(J,J); % can take out of loop if like.
 end
-L_bar(1:(N+1):end) = 0.5*L_bar(1:(N+1):end); % can put back in loop if like.
+%L_bar(1:(N+1):end) = 0.5*L_bar(1:(N+1):end); % can put back in loop if like.
 
