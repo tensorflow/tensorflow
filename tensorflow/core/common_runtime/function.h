@@ -90,10 +90,6 @@ bool RemoveListArrayConverter(Graph* g);
 // multiple times by calling ExpandInlineFunctions a few times.
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 
-// Dump the contents of the "graph" to log files if the logging level is
-// sufficiently high.
-void DumpGraph(StringPiece label, const Graph* g);
-
 // Applies graph rewrite optimization such as inlining, dead code
 // removal, etc.
 //
