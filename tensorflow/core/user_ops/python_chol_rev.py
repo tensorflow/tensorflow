@@ -12,11 +12,9 @@ def chol_rev_unblocked( L, L_bar ):
     return A_bar
 
 if __name__ == "__main__":
-    N = 3 
+    N = 4 
     a = np.tril( (np.array( range( 1, N**2+1, 1) )**2).reshape( N, N ).T *1. )
     b = np.tril( np.array( range( 1, N**2+1, 1) ).reshape( N, N ).T *2. )
     print "a ", a
     print "b ", b
-    print "chol_rev_unblocked( a , b ) ", chol_rev_unblocked( a , b.copy() )
-    print "a ", a
-    print "b, ", b
+    print "chol_rev_unblocked( a , b ) ", chol_rev_unblocked( a , b )
