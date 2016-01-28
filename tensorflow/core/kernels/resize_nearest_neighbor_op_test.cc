@@ -36,11 +36,25 @@ class ResizeNearestNeighborOpTest : public OpsTestBase {
  protected:
   ResizeNearestNeighborOpTest() {
     RequireDefaultOps();
-    TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_INT32))
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
+    EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
+                  .Input(FakeInput(DT_FLOAT))
+                  .Input(FakeInput(DT_INT32))
+                  .Attr("align_corners", false)
+                  .Finalize(node_def()));
+    EXPECT_OK(InitOp());
+  }
+};
+
+class ResizeNearestNeighborOpAlignCornersTest : public OpsTestBase {
+ protected:
+  ResizeNearestNeighborOpAlignCornersTest() {
+    RequireDefaultOps();
+    EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
+                  .Input(FakeInput(DT_FLOAT))
+                  .Input(FakeInput(DT_INT32))
+                  .Attr("align_corners", true)
+                  .Finalize(node_def()));
+    EXPECT_OK(InitOp());
   }
 };
 
@@ -51,6 +65,24 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected, {1});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+       TestNearest2x2AlignCornersTo1x1) {
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
 
@@ -81,6 +113,70 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+       TestNearestAlignCorners2x2To3x3) {
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1, 1, 2,
+     1, 1, 2,
+     3, 3, 4});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeNearestNeighborOpTest, TestNearest3x3To2x2) {
+  // Input:
+  //  1, 2, 3
+  //  4, 5, 6
+  //  7, 8, 9
+  AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1, 2,
+     4, 5});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+       TestNearestAlignCorners3x3To2x2) {
+  // Input:
+  //  1, 2, 3
+  //  4, 5, 6
+  //  7, 8, 9
+  AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1, 3,
+     7, 9});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   // Input:
   //  1, 2
@@ -95,6 +191,55 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   test::FillValues<float>(&expected,
     {1, 1, 1, 2, 2,
      3, 3, 3, 4, 4});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeNearestNeighborOpTest, TestNearestNeighbor4x4To3x3) {
+  // Input:
+  //  1,  2,  3,  4
+  //  5,  6,  7,  8
+  //  9, 10, 11, 12
+  // 13, 14, 15, 16
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1,  2,  3,
+     5,  6,  7,
+     9, 10, 11});
+
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+       TestNearestNeighborAlignCorners4x4To3x3) {
+  // Input:
+  //  1,  2,  3,  4
+  //  5,  6,  7,  8
+  //  9, 10, 11, 12
+  // 13, 14, 15, 16
+  AddInputFromArray<float>(
+      TensorShape({1, 4, 4, 1}),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    { 1,  2,  4,
+      5,  6,  8,
+     13, 14, 16});
 
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));

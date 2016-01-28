@@ -17,6 +17,7 @@ package org.tensorflow.demo;
 
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
+import android.os.Trace;
 import android.util.Log;
 
 import java.util.ArrayList;
@@ -48,6 +49,8 @@ public class TensorflowClassifier implements Classifier {
 
   @Override
   public List<Recognition> recognizeImage(final Bitmap bitmap) {
+    // Log this method so that it can be analyzed with systrace.
+    Trace.beginSection("Recognize");
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();
     for (final String result : classifyImageBmp(bitmap).split("\n")) {
       Log.i(TAG, "Parsing [" + result + "]");
@@ -69,6 +72,7 @@ public class TensorflowClassifier implements Classifier {
         recognitions.add(new Recognition(id, title, confidence, null));
       }
     }
+    Trace.endSection();
     return recognitions;
   }
 

@@ -6575,6 +6575,14 @@ op {
       }
     }
   }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
+  }
   summary: "Resize `images` to `size` using area interpolation."
   description: "Input images can be of different types but output images are always float."
 }
@@ -6609,6 +6617,14 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
   }
   summary: "Resize `images` to `size` using bicubic interpolation."
   description: "Input images can be of different types but output images are always float."
@@ -6725,6 +6741,14 @@ op {
       }
     }
   }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
+  }
   summary: "Resize `images` to `size` using nearest neighbor interpolation."
 }
 op {
@@ -6756,6 +6780,14 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale grads by (orig_height - 1) / (height - 1), which\nexactly aligns the 4 corners of grads and original_image. If false, rescale by\norig_height / height. Treat similarly the width dimension."
   }
   summary: "Computes the gradient of nearest neighbor interpolation."
 }

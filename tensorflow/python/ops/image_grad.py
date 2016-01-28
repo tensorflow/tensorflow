@@ -38,7 +38,9 @@ def _ResizeNearestNeighborGrad(op, grad):
   """
   # pylint: disable=protected-access
   grads = gen_image_ops._resize_nearest_neighbor_grad(
-      grad, op.inputs[0].get_shape()[1:3])
+      grad,
+      op.inputs[0].get_shape()[1:3],
+      align_corners=op.get_attr("align_corners"))
   # pylint: enable=protected-access
   return [grads, None]
 

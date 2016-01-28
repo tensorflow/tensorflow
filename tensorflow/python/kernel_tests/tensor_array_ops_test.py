@@ -27,15 +27,15 @@ import tensorflow as tf
 
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import tensor_array_ops
 
 
 class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayWriteRead(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       w0 = h.write(0, [[4.0, 5.0]])
@@ -58,7 +58,7 @@ class TensorArrayTest(tf.test.TestCase):
   def _testTensorArrayWritePack(self, tf_dtype, use_gpu):
     dtype = tf_dtype.as_numpy_dtype()
     with self.test_session(use_gpu=use_gpu):
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf_dtype, tensor_array_name="foo", size=3)
 
       if tf_dtype == tf.string:
@@ -89,7 +89,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def testTensorArrayUnpackWrongMajorSizeFails(self):
     with self.test_session():
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       with self.assertRaisesOpError(
@@ -99,7 +99,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def testTensorArrayPackNotAllValuesAvailableFails(self):
     with self.test_session():
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       with self.assertRaisesOpError(
@@ -110,7 +110,7 @@ class TensorArrayTest(tf.test.TestCase):
   def _testTensorArrayUnpackRead(self, tf_dtype, use_gpu):
     dtype = tf_dtype.as_numpy_dtype()
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf_dtype, tensor_array_name="foo", size=3)
 
       if tf_dtype == tf.string:
@@ -154,7 +154,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorGradArrayWriteRead(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
       g_h = h.grad("grad")
 
@@ -188,7 +188,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorGradAccessTwiceReceiveSameObject(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
       g_h_0 = h.grad("grad")
       g_h_1 = h.grad("grad")
@@ -207,7 +207,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayWriteWrongIndexOrDataTypeFails(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       # Test writing the wrong datatype
@@ -231,7 +231,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayReadWrongIndexOrDataTypeFails(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       w0 = h.write(0, [[4.0, 5.0]])
@@ -266,7 +266,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayWriteMultipleFails(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
 
       with self.assertRaisesOpError(
@@ -280,12 +280,12 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testMultiTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      h1 = data_flow_ops.TensorArray(
+      h1 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="foo")
       w1 = h1.write(0, 4.0)
       r1 = w1.read(0)
 
-      h2 = data_flow_ops.TensorArray(
+      h2 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="bar")
 
       w2 = h2.write(0, 5.0)
@@ -299,10 +299,10 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testDuplicateTensorArrayFails(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h1 = data_flow_ops.TensorArray(
+      h1 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="foo")
       c1 = h1.write(0, 4.0)
-      h2 = data_flow_ops.TensorArray(
+      h2 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="foo")
       c2 = h2.write(0, 5.0)
       with self.assertRaises(errors.AlreadyExistsError):
@@ -314,7 +314,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayGradientWriteReadType(self, use_gpu, dtype):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.as_dtype(dtype), tensor_array_name="foo", size=3)
 
       c = lambda x: np.array(x, dtype=dtype)
@@ -357,7 +357,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testTensorArrayGradientUnpackRead(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=2)
 
       value = tf.constant([[1.0, -1.0], [10.0, -10.0]])
@@ -381,7 +381,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testCloseTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
       c1 = h.close()
       sess.run(c1)
@@ -392,7 +392,7 @@ class TensorArrayTest(tf.test.TestCase):
 
   def _testWriteCloseTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
       w0 = h.write(0, [[4.0, 5.0]])
       w1 = w0.write(1, [3.0])
@@ -412,7 +412,7 @@ class TensorArrayTest(tf.test.TestCase):
       v0 = tf.identity(np.arange(3*5, dtype=np.float32).reshape(3, 5))
       var = tf.Variable(np.arange(100, 105, dtype=np.float32))
       state0 = tf.identity([1.0] * 5)
-      h = data_flow_ops.TensorArray(
+      h = tensor_array_ops.TensorArray(
           dtype=tf.float32, tensor_array_name="foo", size=3)
       time_0 = tf.identity(0)
 
@@ -485,7 +485,7 @@ class TensorArrayTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       a = tf.identity(np.arange(3*5, dtype=np.float32).reshape(3, 5) + 1)
       b = tf.identity(np.arange(3*5, dtype=np.float32).reshape(3, 5) + 1 + 3*5)
-      ta = data_flow_ops.TensorArray(dtype=tf.float32, size=2)
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32, size=2)
       ta = ta.write(0, a, name="write_a")
       ta = ta.write(1, b, name="write_b")
       c = (ta.read(0, name="read_a_0") +  # a + b

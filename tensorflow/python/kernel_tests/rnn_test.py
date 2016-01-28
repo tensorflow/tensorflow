@@ -68,7 +68,7 @@ class RNNTest(tf.test.TestCase):
     max_length = 8  # unrolled up to this length
     inputs = max_length * [
         tf.placeholder(tf.float32, shape=(batch_size, input_size))]
-    outputs, states = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+    outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
     self.assertEqual(len(outputs), len(inputs))
     for out, inp in zip(outputs, inputs):
       self.assertEqual(out.get_shape(), inp.get_shape())
@@ -76,7 +76,7 @@ class RNNTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=False) as sess:
       input_value = np.random.randn(batch_size, input_size)
-      values = sess.run(outputs + [states[-1]],
+      values = sess.run(outputs + [state],
                         feed_dict={inputs[0]: input_value})
 
       # Outputs
@@ -98,7 +98,7 @@ class RNNTest(tf.test.TestCase):
     inputs = max_length * [
         tf.placeholder(tf.float32, shape=(batch_size, input_size))]
     with tf.variable_scope("share_scope"):
-      outputs, states = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
     with tf.variable_scope("drop_scope"):
       dropped_outputs, _ = tf.nn.rnn(
           full_dropout_cell, inputs, dtype=tf.float32)
@@ -109,7 +109,7 @@ class RNNTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=False) as sess:
       input_value = np.random.randn(batch_size, input_size)
-      values = sess.run(outputs + [states[-1]],
+      values = sess.run(outputs + [state],
                         feed_dict={inputs[0]: input_value})
       full_dropout_values = sess.run(dropped_outputs,
                                      feed_dict={inputs[0]: input_value})
@@ -128,31 +128,29 @@ class RNNTest(tf.test.TestCase):
     inputs = max_length * [
         tf.placeholder(tf.float32, shape=(batch_size, input_size))]
     with tf.variable_scope("drop_scope"):
-      dynamic_outputs, dynamic_states = tf.nn.rnn(
+      dynamic_outputs, dynamic_state = tf.nn.rnn(
           cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
     self.assertEqual(len(dynamic_outputs), len(inputs))
-    self.assertEqual(len(dynamic_states), len(inputs))
 
     with self.test_session(use_gpu=False) as sess:
       input_value = np.random.randn(batch_size, input_size)
       dynamic_values = sess.run(dynamic_outputs,
                                 feed_dict={inputs[0]: input_value,
                                            sequence_length: [2, 3]})
-      dynamic_state_values = sess.run(dynamic_states,
+      dynamic_state_values = sess.run([dynamic_state],
                                       feed_dict={inputs[0]: input_value,
                                                  sequence_length: [2, 3]})
 
       # fully calculated for t = 0, 1, 2
       for v in dynamic_values[:3]:
         self.assertAllClose(v, input_value + 1.0)
-      for vi, v in enumerate(dynamic_state_values[:3]):
-        self.assertAllEqual(v, 1.0 * (vi + 1) *
-                            np.ones((batch_size, input_size)))
       # zeros for t = 3+
       for v in dynamic_values[3:]:
         self.assertAllEqual(v, np.zeros_like(input_value))
-      for v in dynamic_state_values[3:]:
-        self.assertAllEqual(v, np.zeros_like(input_value))
+      # final state is frozen from state at max(sequence_lengths) == 2
+      self.assertAllEqual(
+          dynamic_state_values[0],
+          1.0 * (2 + 1) * np.ones((batch_size, input_size)))
 
 
 class LSTMTest(tf.test.TestCase):
@@ -219,7 +217,7 @@ class LSTMTest(tf.test.TestCase):
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
       with tf.variable_scope("share_scope"):
-        outputs, states = tf.nn.state_saving_rnn(
+        outputs, state = tf.nn.state_saving_rnn(
             cell, inputs, state_saver=state_saver, state_name="save_lstm")
       self.assertEqual(len(outputs), len(inputs))
       for out in outputs:
@@ -228,7 +226,7 @@ class LSTMTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       input_value = np.random.randn(batch_size, input_size)
       (last_state_value, saved_state_value) = sess.run(
-          [states[-1], state_saver.saved_state],
+          [state, state_saver.saved_state],
           feed_dict={inputs[0]: input_value})
       self.assertAllEqual(last_state_value, saved_state_value)
 
@@ -340,10 +338,10 @@ class LSTMTest(tf.test.TestCase):
           initializer=initializer, num_proj=num_proj)
 
       with tf.variable_scope("noshard_scope"):
-        outputs_noshard, states_noshard = tf.nn.rnn(
+        outputs_noshard, state_noshard = tf.nn.rnn(
             cell_noshard, inputs, dtype=tf.float32)
       with tf.variable_scope("shard_scope"):
-        outputs_shard, states_shard = tf.nn.rnn(
+        outputs_shard, state_shard = tf.nn.rnn(
             cell_shard, inputs, dtype=tf.float32)
 
       self.assertEqual(len(outputs_noshard), len(inputs))
@@ -354,8 +352,8 @@ class LSTMTest(tf.test.TestCase):
       feeds = dict((x, input_value) for x in inputs)
       values_noshard = sess.run(outputs_noshard, feed_dict=feeds)
       values_shard = sess.run(outputs_shard, feed_dict=feeds)
-      state_values_noshard = sess.run(states_noshard, feed_dict=feeds)
-      state_values_shard = sess.run(states_shard, feed_dict=feeds)
+      state_values_noshard = sess.run([state_noshard], feed_dict=feeds)
+      state_values_shard = sess.run([state_shard], feed_dict=feeds)
       self.assertEqual(len(values_noshard), len(values_shard))
       self.assertEqual(len(state_values_noshard), len(state_values_shard))
       for (v_noshard, v_shard) in zip(values_noshard, values_shard):
@@ -389,22 +387,21 @@ class LSTMTest(tf.test.TestCase):
           initializer=initializer)
       dropout_cell = tf.nn.rnn_cell.DropoutWrapper(cell, 0.5, seed=0)
 
-      outputs, states = tf.nn.rnn(
+      outputs, state = tf.nn.rnn(
           dropout_cell, inputs, sequence_length=sequence_length,
           initial_state=cell.zero_state(batch_size, tf.float64))
 
       self.assertEqual(len(outputs), len(inputs))
-      self.assertEqual(len(outputs), len(states))
 
       tf.initialize_all_variables().run(feed_dict={sequence_length: [2, 3]})
       input_value = np.asarray(np.random.randn(batch_size, input_size),
                                dtype=np.float64)
       values = sess.run(outputs, feed_dict={inputs[0]: input_value,
                                             sequence_length: [2, 3]})
-      state_values = sess.run(states, feed_dict={inputs[0]: input_value,
+      state_value = sess.run([state], feed_dict={inputs[0]: input_value,
                                                  sequence_length: [2, 3]})
       self.assertEqual(values[0].dtype, input_value.dtype)
-      self.assertEqual(state_values[0].dtype, input_value.dtype)
+      self.assertEqual(state_value[0].dtype, input_value.dtype)
 
   def testSharingWeightsWithReuse(self):
     num_units = 3

@@ -98,6 +98,11 @@ void GPUBFCAllocator::MaybeInitialize() {
 
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(c);
+
+  // Invoke visitors on newly allocated region.
+  for (auto visitor : region_visitors_) {
+    visitor(base_ptr_, gpu_memory_size_);
+  }
 }
 
 void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
@@ -366,7 +371,9 @@ void GPUBFCAllocator::AddAllocVisitor(Visitor visitor) {
   VLOG(1) << "AddVisitor";
   mutex_lock l(lock_);
   region_visitors_.push_back(visitor);
-  visitor(base_ptr_, gpu_memory_size_);
+  if (base_ptr_ != nullptr) {
+    visitor(base_ptr_, gpu_memory_size_);
+  }
 }
 
 bool GPUBFCAllocator::TracksAllocationSizes() { return true; }

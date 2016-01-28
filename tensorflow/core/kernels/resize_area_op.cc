@@ -34,7 +34,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Device, typename T>
 class ResizeAreaOp : public OpKernel {
  public:
-  explicit ResizeAreaOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit ResizeAreaOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -72,8 +74,14 @@ class ResizeAreaOp : public OpKernel {
                                         TensorShape({channels}), &sum_tensor));
     typename TTypes<float, 1>::Tensor sum_data = sum_tensor.vec<float>();
 
-    const float height_scale = in_height / static_cast<float>(out_height);
-    const float width_scale = in_width / static_cast<float>(out_width);
+    const float height_scale =
+        (align_corners_ && out_height > 1)
+            ? (in_height - 1) / static_cast<float>(out_height - 1)
+            : in_height / static_cast<float>(out_height);
+    const float width_scale =
+        (align_corners_ && out_width > 1)
+            ? (in_width - 1) / static_cast<float>(out_width - 1)
+            : in_width / static_cast<float>(out_width);
 
     // When using this algorithm for downsizing, the target pixel value is the
     // weighted average of all the source pixels. The weight is determined by
@@ -135,6 +143,9 @@ class ResizeAreaOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 #define REGISTER_KERNEL(T)                            \

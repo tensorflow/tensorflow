@@ -31,6 +31,9 @@
 * ASSERT_OK / EXPECT_OK macros conflicted with external projects, so they were
   renamed TF_ASSERT_OK, TF_EXPECT_OK.  The existing macros are currently
   maintained for short-term compatibility but will be removed.
+* The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
+  just the final state instead of the list of all states.
+
 
 ## Bug fixes
 
