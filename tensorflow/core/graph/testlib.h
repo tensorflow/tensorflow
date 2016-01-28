@@ -147,6 +147,9 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
+// Computes the args needed broadcast gradient function.
+Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

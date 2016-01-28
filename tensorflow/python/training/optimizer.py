@@ -234,8 +234,9 @@ class Optimizer(object):
         raise TypeError("Argument is not a tf.Variable: %s" % var)
     if not var_list:
       raise ValueError("No variables to optimize")
+    var_refs = [v.ref() for v in var_list]
     grads = gradients.gradients(
-        loss, var_list, gate_gradients=(gate_gradients == Optimizer.GATE_OP),
+        loss, var_refs, gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
     if gate_gradients == Optimizer.GATE_GRAPH:

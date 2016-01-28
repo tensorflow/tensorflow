@@ -23,8 +23,8 @@ namespace tensorflow {
 TEST(Status, OK) {
   EXPECT_EQ(Status::OK().code(), error::OK);
   EXPECT_EQ(Status::OK().error_message(), "");
-  EXPECT_OK(Status::OK());
-  ASSERT_OK(Status::OK());
+  TF_EXPECT_OK(Status::OK());
+  TF_ASSERT_OK(Status::OK());
   EXPECT_EQ(Status::OK(), Status());
   Status s;
   EXPECT_TRUE(s.ok());

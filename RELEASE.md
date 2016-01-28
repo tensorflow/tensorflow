@@ -25,6 +25,14 @@
 * For C++ API users: `TensorShape::ShortDebugString` has been renamed to
   `DebugString`, and the previous `DebugString` behavior is gone (it was
   needlessly verbose and produced a confusing empty string for scalars).
+* `GraphOptions.skip_common_subexpression_elimination` has been removed. All
+  graph optimizer options are now specified via
+  `GraphOptions.OptimizerOptions`.
+* ASSERT_OK / EXPECT_OK macros conflicted with external projects, so they were
+  renamed TF_ASSERT_OK, TF_EXPECT_OK.  The existing macros are currently
+  maintained for short-term compatibility but will be removed.
+* The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
+  just the final state instead of the list of all states.
 
 
 ## Bug fixes

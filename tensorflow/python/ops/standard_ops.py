@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import state_grad
+from tensorflow.python.ops import tensor_array_grad
 
 from tensorflow.python.ops.array_ops import *
 from tensorflow.python.ops.clip_ops import *

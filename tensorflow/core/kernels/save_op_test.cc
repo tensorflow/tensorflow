@@ -39,7 +39,7 @@ class SaveOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
     RequireDefaultOps();
-    ASSERT_OK(
+    TF_ASSERT_OK(
         NodeDefBuilder("myop", "Save")
             .Input(FakeInput())
             .Input(FakeInput())
@@ -47,7 +47,7 @@ class SaveOpTest : public OpsTestBase {
                               DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_INT64,
                               DT_STRING, DT_COMPLEX64}))
             .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -111,12 +111,12 @@ TEST_F(SaveOpTest, Simple) {
     return complex64(100 + x, 200 + x);
   });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   // We expect to find all saved tensors
   {
@@ -344,14 +344,14 @@ class SaveSlicesOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput(
-                      {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8, DT_QINT32}))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput(
+                         {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8, DT_QINT32}))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -407,12 +407,12 @@ TEST_F(SaveSlicesOpTest, Slices) {
     return *reinterpret_cast<qint32*>(&x) * qint8(2);
   });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   // We expect to find all saved tensors
   {
@@ -504,13 +504,13 @@ class SaveOpSlices2Test : public OpsTestBase {
  protected:
   void MakeOp() {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput({DT_INT32, DT_INT32, DT_FLOAT}))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput({DT_INT32, DT_INT32, DT_FLOAT}))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -551,12 +551,12 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
   AddInput<float>(TensorShape({2, 4}),
                   [](int x) -> float { return static_cast<float>(x) / 10; });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   {
     // Reload the two slices of "four_by_sixteen" into that tensor.

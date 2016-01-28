@@ -117,16 +117,14 @@ class PTBModel(object):
     # from tensorflow.models.rnn import rnn
     # inputs = [tf.squeeze(input_, [1])
     #           for input_ in tf.split(1, num_steps, inputs)]
-    # outputs, states = rnn.rnn(cell, inputs, initial_state=self._initial_state)
+    # outputs, state = rnn.rnn(cell, inputs, initial_state=self._initial_state)
     outputs = []
-    states = []
     state = self._initial_state
     with tf.variable_scope("RNN"):
       for time_step in range(num_steps):
         if time_step > 0: tf.get_variable_scope().reuse_variables()
         (cell_output, state) = cell(inputs[:, time_step, :], state)
         outputs.append(cell_output)
-        states.append(state)
 
     output = tf.reshape(tf.concat(1, outputs), [-1, size])
     softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
@@ -137,7 +135,7 @@ class PTBModel(object):
                                             [tf.ones([batch_size * num_steps])],
                                             vocab_size)
     self._cost = cost = tf.reduce_sum(loss) / batch_size
-    self._final_state = states[-1]
+    self._final_state = state
 
     if not is_training:
       return

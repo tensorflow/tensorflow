@@ -34,7 +34,9 @@ template <typename Device, typename T>
 class ResizeNearestNeighborOp : public OpKernel {
  public:
   explicit ResizeNearestNeighborOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -71,8 +73,14 @@ class ResizeNearestNeighborOp : public OpKernel {
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
 
-    const float height_scale = in_height / static_cast<float>(out_height);
-    const float width_scale = in_width / static_cast<float>(out_width);
+    const float height_scale =
+        (align_corners_ && out_height > 1)
+            ? (in_height - 1) / static_cast<float>(out_height - 1)
+            : in_height / static_cast<float>(out_height);
+    const float width_scale =
+        (align_corners_ && out_width > 1)
+            ? (in_width - 1) / static_cast<float>(out_width - 1)
+            : in_width / static_cast<float>(out_width);
 
     for (int b = 0; b < batch_size; ++b) {
       for (int y = 0; y < out_height; ++y) {
@@ -88,13 +96,18 @@ class ResizeNearestNeighborOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 template <typename Device, typename T>
 class ResizeNearestNeighborOpGrad : public OpKernel {
  public:
   explicit ResizeNearestNeighborOpGrad(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     // Grab and validate the input:
@@ -135,8 +148,14 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
 
-    const float height_scale = out_height / static_cast<float>(in_height);
-    const float width_scale = out_width / static_cast<float>(in_width);
+    const float height_scale =
+        (align_corners_ && in_height > 1)
+            ? (out_height - 1) / static_cast<float>(in_height - 1)
+            : out_height / static_cast<float>(in_height);
+    const float width_scale =
+        (align_corners_ && in_width > 1)
+            ? (out_width - 1) / static_cast<float>(in_width - 1)
+            : out_width / static_cast<float>(in_width);
 
     for (int c = 0; c < channels; ++c) {
       for (int y = 0; y < out_height; ++y) {
@@ -164,6 +183,9 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 #define REGISTER_KERNEL(T)                                        \
