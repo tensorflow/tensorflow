@@ -310,7 +310,7 @@ Status ExecutorImpl::SetAllocAttrs() {
       }
     }
 
-    for (int out = 0; out < n->num_outputs(); out++) {
+    for (size_t out = 0; out < n->num_outputs(); out++) {
       OpKernel* op_kernel = item->kernel;
       DCHECK_LT(out, op_kernel->output_memory_types().size());
       bool on_host = op_kernel->output_memory_types()[out] == HOST_MEMORY;
@@ -1033,7 +1033,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
   *is_input_dead = false;
 
   bool is_merge = IsMerge(node);
-  for (int i = 0; i < node->num_inputs(); ++i) {
+  for (size_t i = 0; i < node->num_inputs(); ++i) {
     const bool expect_ref = IsRefType(node->input_type(i));
     Entry* entry = first_input + i;
     (*input_device_contexts)[i] = entry->device_context;
@@ -1104,7 +1104,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     device_context = dc_it->second;
   }
 
-  for (int i = 0; i < node->num_outputs(); ++i) {
+  for (size_t i = 0; i < node->num_outputs(); ++i) {
     TensorValue val = ctx->release_output(i);
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, the node must produce a
@@ -1216,7 +1216,7 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
       if (e->IsControlEdge()) {
         (*pending)[dst_id] -= 2;
         int count = (*pending)[dst_id];
-        dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+        dst_dead = (static_cast<size_t>((*dead_count)[dst_id]) == dst_node->num_inputs());
         dst_ready = (count == 1) || ((count == 0) && dst_dead);
       } else {
         if (outputs[src_slot].has_value) {
@@ -1228,7 +1228,7 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
         } else {
           // This is a dead data input.
           ++(*dead_count)[dst_id];
-          dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+          dst_dead = (static_cast<size_t>((*dead_count)[dst_id]) == dst_node->num_inputs());
           dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
           dst_need_input = false;
         }
@@ -1603,11 +1603,11 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
           if (e->IsControlEdge()) {
             (*pending)[dst_id] -= 2;
             int count = (*pending)[dst_id];
-            dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+            dst_dead = (static_cast<size_t>((*dead_count)[dst_id]) == dst_node->num_inputs());
             dst_ready = (count == 1) || ((count == 0) && dst_dead);
           } else {
             ++(*dead_count)[dst_id];
-            dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+            dst_dead = (static_cast<size_t>((*dead_count)[dst_id]) == dst_node->num_inputs());
             dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
           }
         } else {

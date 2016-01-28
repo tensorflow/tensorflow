@@ -152,7 +152,7 @@ struct Helper<string> {
   // stored in buffer "in".
   static int64 TotalBytes(TensorBuffer* in, int n) {
     int64 tot = in->size();
-    DCHECK_EQ(tot, sizeof(string) * n);
+    DCHECK_EQ(static_cast<size_t>(tot), sizeof(string) * n);
     const string* p = in->base<const string>();
     for (int i = 0; i < n; ++i, ++p) tot += p->size();
     return tot;

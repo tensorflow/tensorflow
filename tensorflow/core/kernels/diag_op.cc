@@ -28,7 +28,7 @@ class DiagonalGenerator {
   explicit DiagonalGenerator(const Tensor& diagonal) : diagonal_(diagonal) {
     static_assert(DoubleNumDims == 2 * NumDims,
                   "The second size must be the double of the first size.");
-    CHECK_EQ(diagonal.dims(), NumDims);
+    CHECK_EQ(static_cast<size_t>(diagonal.dims()), NumDims);
   }
   T operator()(
       const Eigen::array<Eigen::DenseIndex, DoubleNumDims>& coordinates) const {

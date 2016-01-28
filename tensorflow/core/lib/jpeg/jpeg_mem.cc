@@ -540,7 +540,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
         row_pointer[0] = reinterpret_cast<JSAMPLE*>(const_cast<JSAMPLE*>(r));
       }
     }
-    CHECK_EQ(jpeg_write_scanlines(&cinfo, row_pointer, 1), 1);
+    CHECK_EQ(jpeg_write_scanlines(&cinfo, row_pointer, 1), 1u);
   }
   jpeg_finish_compress(&cinfo);
 

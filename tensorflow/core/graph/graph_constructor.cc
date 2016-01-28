@@ -283,7 +283,7 @@ void GraphConstructor::Convert() {
           has_data_back_edge = true;
           inputs.push_back(InputInfo(id.first, src_node, id.second));
         } else {
-          if (id.second >= src_node->num_outputs()) {
+          if (static_cast<size_t>(id.second) >= src_node->num_outputs()) {
             SetNodeError(
                 node_def,
                 strings::StrCat("Connecting to invalid output ", id.second,

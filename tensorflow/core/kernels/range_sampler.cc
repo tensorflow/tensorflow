@@ -83,7 +83,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
   int num_tries;
 
   if (unique) {
-    CHECK_LE(batch_size + avoided_values.size(), range_);
+    CHECK_LE(static_cast<int64>(batch_size + avoided_values.size()), range_);
     std::unordered_set<int64> used(batch_size);
     used.insert(avoided_values.begin(), avoided_values.end());
     int num_picked = 0;
@@ -97,7 +97,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
       }
     }
   } else {
-    CHECK_EQ(avoided_values.size(), 0)
+    CHECK_EQ(avoided_values.size(), size_t{0})
         << "avoided_values only supported with unique=true";
     for (int i = 0; i < batch_size; i++) {
       batch[i] = Sample(rnd);
@@ -106,7 +106,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
   }
   // Compute the expected counts of the batch and the extra values
   if (batch_expected_count.size() > 0) {
-    CHECK_EQ(batch_size, batch_expected_count.size());
+    CHECK_EQ(static_cast<size_t>(batch_size), batch_expected_count.size());
     for (int i = 0; i < batch_size; i++) {
       batch_expected_count[i] =
           ExpectedCountHelper(Probability(batch[i]), batch_size, num_tries);
@@ -133,12 +133,12 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
     batch[i] = i;
   }
   if (batch_expected_count.size() > 0) {
-    CHECK_EQ(batch_size, batch_expected_count.size());
+    CHECK_EQ(static_cast<size_t>(batch_size), batch_expected_count.size());
     for (int i = 0; i < batch_size; i++) {
       batch_expected_count[i] = 1;
     }
   }
-  CHECK_EQ(0, avoided_values.size());
+  CHECK_EQ(size_t{0}, avoided_values.size());
   CHECK_EQ(extras.size(), extras_expected_count.size());
   for (size_t i = 0; i < extras.size(); i++) {
     extras_expected_count[i] = 1;
@@ -242,7 +242,7 @@ FixedUnigramSampler::FixedUnigramSampler(Env* env, int64 range,
   FillReservedIds(num_reserved_ids);
   // TODO(vanhoucke): make this non-crashing.
   TF_CHECK_OK(LoadFromFile(env, vocab_file, distortion));
-  CHECK_EQ(range, weights_.size());
+  CHECK_EQ(static_cast<size_t>(range), weights_.size());
   dist_sampler_.reset(new random::DistributionSampler(weights_));
 }
 
@@ -258,7 +258,7 @@ FixedUnigramSampler::FixedUnigramSampler(int64 range,
   FillReservedIds(num_reserved_ids);
   LoadFromUnigrams(unigrams, distortion);
   // TODO(vanhoucke): make this non-crashing.
-  CHECK_EQ(range, weights_.size());
+  CHECK_EQ(static_cast<size_t>(range), weights_.size());
   dist_sampler_.reset(new random::DistributionSampler(weights_));
 }
 

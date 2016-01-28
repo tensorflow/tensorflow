@@ -74,11 +74,11 @@ class Node {
   const OpDef& op_def() const { return *props_->op_def_; }
 
   // input and output types
-  int num_inputs() const { return props_->input_types_.size(); }
+  size_t num_inputs() const { return props_->input_types_.size(); }
   DataType input_type(int i) const { return props_->input_types_[i]; }
   const DataTypeVector& input_types() const { return props_->input_types_; }
 
-  int num_outputs() const { return props_->output_types_.size(); }
+  size_t num_outputs() const { return props_->output_types_.size(); }
   DataType output_type(int o) const { return props_->output_types_[o]; }
   const DataTypeVector& output_types() const { return props_->output_types_; }
 

@@ -798,7 +798,7 @@ class OpKernelContext {
 
   AllocatorAttributes input_alloc_attr(int index) const {
     DCHECK_GE(index, 0);
-    DCHECK_LT(index, params_->input_alloc_attrs->size());
+    DCHECK_LT(static_cast<size_t>(index), params_->input_alloc_attrs->size());
     return (*params_->input_alloc_attrs)[index];
   }
 
@@ -1065,7 +1065,7 @@ class OpKernelRegistrar {
 
 inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   const TensorValue& value((*params_->inputs)[index]);
   if (value.is_ref()) {
     return MakeRefType(value->dtype());
@@ -1076,7 +1076,7 @@ inline DataType OpKernelContext::input_dtype(int index) const {
 
 inline DataType OpKernelContext::expected_output_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->op_kernel->output_types().size());
+  DCHECK_LT(static_cast<size_t>(index), params_->op_kernel->output_types().size());
   return params_->op_kernel->output_type(index);
 }
 
@@ -1096,7 +1096,7 @@ inline void OpKernelContext::retrieve_accessed_tensors(
 
 inline const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   DCHECK(!(*params_->inputs)[index].is_ref());
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
   record_tensor_reference(tensor);
@@ -1105,7 +1105,7 @@ inline const Tensor& OpKernelContext::input(int index) {
 
 inline Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   DCHECK((*params_->inputs)[index].is_ref());
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
@@ -1123,7 +1123,7 @@ inline Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
 inline void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
                                                bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   DCHECK((*params_->inputs)[index].is_ref());
   // should only modify the tensor while holding the mutex
   if (lock_held) {
@@ -1138,7 +1138,7 @@ inline void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
 inline void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                                                              int output_index) {
   DCHECK_GE(input_index, 0);
-  DCHECK_LT(input_index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(input_index), params_->inputs->size());
   DCHECK((*params_->inputs)[input_index].is_ref());
   set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
                  (*params_->inputs)[input_index].tensor);
@@ -1146,7 +1146,7 @@ inline void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
 
 inline void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   DCHECK((*params_->inputs)[index].is_ref());
   // should only modify the tensor while holding the mutex
   if (lock_held) {
@@ -1160,13 +1160,13 @@ inline void OpKernelContext::delete_ref_input(int index, bool lock_held) {
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   return (*params_->inputs)[index].tensor != nullptr;
 }
 
 inline mutex* OpKernelContext::input_ref_mutex(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->inputs->size());
   DCHECK((*params_->inputs)[index].is_ref());
   return (*params_->inputs)[index].mutex_if_ref;
 }
@@ -1200,7 +1200,7 @@ inline Status OpKernelContext::allocate_output(int index,
                                                Tensor** output,
                                                AllocatorAttributes attr) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(static_cast<size_t>(index), outputs_.size());
   const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
@@ -1245,7 +1245,7 @@ inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
 
 inline void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(static_cast<size_t>(index), outputs_.size());
   DCHECK(!IsRefType(params_->op_kernel->output_type(index)));
   DCHECK_EQ(mutable_output(index), nullptr);
   record_tensor_reference(tensor);
@@ -1255,7 +1255,7 @@ inline void OpKernelContext::set_output(int index, const Tensor& tensor) {
 inline void OpKernelContext::set_output_ref(int index, mutex* mu,
                                             Tensor* tensor_for_ref) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(static_cast<size_t>(index), outputs_.size());
   DCHECK(IsRefType(params_->op_kernel->output_type(index)));
   record_tensor_reference(*tensor_for_ref);
   outputs_[index] = TensorValue(mu, tensor_for_ref);
@@ -1263,7 +1263,7 @@ inline void OpKernelContext::set_output_ref(int index, mutex* mu,
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(static_cast<size_t>(index), outputs_.size());
   // No need to record_tensor_reference since the output must already
   // have been set by a call that did so.
   return outputs_[index].tensor;
@@ -1271,7 +1271,7 @@ inline Tensor* OpKernelContext::mutable_output(int index) {
 
 inline TensorValue OpKernelContext::release_output(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(static_cast<size_t>(index), outputs_.size());
   TensorValue value = outputs_[index];
   outputs_[index] = TensorValue();
   return value;
@@ -1287,7 +1287,7 @@ T* OpKernelContext::op_device_context() {
 template <typename T>
 T* OpKernelContext::input_device_context(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->input_device_contexts->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->input_device_contexts->size());
   static_assert(std::is_base_of<DeviceContext, T>::value,
                 "T is not a subclass of DeviceContext");
   return static_cast<T*>((*params_->input_device_contexts)[index]);
@@ -1295,7 +1295,7 @@ T* OpKernelContext::input_device_context(int index) {
 
 inline DeviceContext* OpKernelContext::input_device_context(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->input_device_contexts->size());
+  DCHECK_LT(static_cast<size_t>(index), params_->input_device_contexts->size());
   return (*params_->input_device_contexts)[index];
 }
 

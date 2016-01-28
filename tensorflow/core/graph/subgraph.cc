@@ -65,7 +65,7 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
     }
     const Node* n = iter->second;
     DCHECK_EQ(n->name(), id.first);
-    if (id.second >= n->num_outputs()) {
+    if (static_cast<size_t>(id.second) >= n->num_outputs()) {
       return errors::InvalidArgument(
           "FeedInputs: ", t, " should have output index < ", n->num_outputs());
     }
@@ -190,7 +190,7 @@ Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
           t,
           "' as an argument to the 'target_node_names' argument of the "
           "Session::Run API.");
-    } else if (id.second >= n->num_outputs()) {
+    } else if (static_cast<size_t>(id.second) >= n->num_outputs()) {
       return errors::InvalidArgument("FetchOutputs ", t,
                                      ": output index too large, must be < ",
                                      n->num_outputs());

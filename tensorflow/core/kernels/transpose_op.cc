@@ -142,7 +142,7 @@ void TransposeTensor(const Device& device, const Tensor& input,
                      const gtl::ArraySlice<int64> input_shape,
                      gtl::ArraySlice<int32> permutation, Tensor* output) {
   const int dims = input_shape.size();
-  CHECK(permutation.size() == dims);
+  CHECK(permutation.size() == static_cast<size_t>(dims));
   if (input.NumElements() == 0) {
     return;
   }

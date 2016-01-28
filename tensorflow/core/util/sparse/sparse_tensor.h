@@ -99,7 +99,7 @@ class SparseTensor {
   //
   // See the README.md in this directory for more usage information.
   GroupIterable group(const VarDimArray& group_ix) {
-    CHECK_LE(group_ix.size(), dims_);
+    CHECK_LE(group_ix.size(), static_cast<size_t>(dims_));
     for (std::size_t di = 0; di < group_ix.size(); ++di) {
       CHECK_GE(group_ix[di], 0) << "Group dimension out of range";
       CHECK_LT(group_ix[di], dims_) << "Group dimension out of range";
@@ -239,7 +239,7 @@ template <typename T>
 void SparseTensor::Reorder(const VarDimArray& order) {
   CHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "Reorder requested with the wrong datatype";
-  CHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank";
+  CHECK_EQ(order.size(), static_cast<size_t>(dims_)) << "Order length must be SparseTensor rank";
   auto ix_t = ix_.matrix<int64>();
   auto vals_t = vals_.vec<T>();
 
@@ -267,7 +267,7 @@ void SparseTensor::Reorder(const VarDimArray& order) {
   //   https://en.wikipedia.org/wiki/Cyclic_permutation
   // This is N swaps, 2*N comparisons.
   for (std::size_t n = 0; n + 1 < permutation.size(); ++n) {
-    while (n != permutation[n]) {
+    while (n != static_cast<size_t>(permutation[n])) {
       std::size_t r = permutation[n];
       std::swap_ranges(&(ix_t(n, 0)), &(ix_t(n + 1, 0)), &(ix_t(r, 0)));
       std::swap(vals_t(n), vals_t(r));
@@ -340,7 +340,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 template <typename T>
 SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
-  CHECK_GE(tensors.size(), 1) << "Cannot concat 0 SparseTensors";
+  CHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   CHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
   auto order_0 = tensors[0].order();

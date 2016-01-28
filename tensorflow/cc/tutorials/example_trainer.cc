@@ -114,7 +114,7 @@ void ConcurrentSteps(const Options* opts, int session_index) {
         outputs.clear();
         TF_CHECK_OK(
             session->Run({{"x", x}}, {"y:0", "y_normalized:0"}, {}, &outputs));
-        CHECK_EQ(2, outputs.size());
+        CHECK_EQ(size_t{2}, outputs.size());
 
         const Tensor& y = outputs[0];
         const Tensor& y_norm = outputs[1];
