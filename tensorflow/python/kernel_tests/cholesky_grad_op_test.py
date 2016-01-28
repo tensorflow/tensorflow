@@ -5,6 +5,18 @@ import scipy.linalg as linalg
 
 from scipy.linalg.blas import dsymv
 
+#Reference Python implementation ported from Iain Murray Matlab code.
+def chol_rev_unblocked( L, L_bar ):
+    N = L.shape[0]
+    A_bar = np.tril( L_bar )
+    for J in range(N-1,-1,-1):
+        A_bar[J,J] = A_bar[J,J] - np.dot(L[J+1:N,J].T,A_bar[J+1:N,J] ) / L[J,J]
+        A_bar[J:N,J] = A_bar[J:N,J] / L[J,J]
+        A_bar[J,0:J] = A_bar[J,0:J] - np.dot(A_bar[J:N,J].T , L[J:N,0:J] )
+        A_bar[J+1:N,0:J] = A_bar[J+1:N,0:J] - np.outer(A_bar[J+1:N,J],L[J,0:J] )
+        A_bar[J,J] = 0.5 * A_bar[J,J];
+    return A_bar
+
 #Reference Python implementation taken from HIPS autograd which was originally based on Sheffield GPy.
 def cholesky_grad_python(L,g):
 	N = L.shape[0]
@@ -17,6 +29,17 @@ def cholesky_grad_python(L,g):
             dL[k,k] -= np.dot(dL[k+1:,k], L[k+1:,k])
             dL[k,k] /= 2 * L[k,k]
         return (dL + dL.T)/2.
+
+class CholeskyReferenceTest(tf.test.TestCase):
+  def testCholeskyReference(self):
+    nDim = 3      
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.rand(nDim,nDim) )
+    raw_g = np.tril( rng.rand(nDim,nDim) )      
+    with self.test_session():
+      murray = chol_rev_unblocked( raw_a, raw_g.copy() )
+      hips = cholesky_grad_python( raw_a, raw_g )
+      self.assertAllClose( 0.5*(murray+murray.T) , hips )
 
 class CholeskyGradTest(tf.test.TestCase):
   def testCholeskyGrad(self):
