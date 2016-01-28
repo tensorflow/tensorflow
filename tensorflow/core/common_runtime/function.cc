@@ -539,7 +539,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   return Status::OK();
 }
 
-static void DumpGraph(StringPiece label, const Graph* g) {
+void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(1) << "Graph " << label << " #edges " << g->edges().size();
   if (VLOG_IS_ON(2)) {

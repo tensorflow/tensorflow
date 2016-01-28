@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/tensor.h"
@@ -60,26 +61,39 @@ class ConstantFoldingTest : public ::testing::Test {
     test::ExpectClose(t, test::AsTensor(values, shape));
   }
 
+  template <typename T>
+  void ExpectNodeEqual(const Node* n, gtl::ArraySlice<T> values,
+                       TensorShape shape) {
+    EXPECT_TRUE(n->IsConstant());
+    const TensorProto* tensor_proto;
+    EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor_proto));
+    DataType dtype;
+    EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+    Tensor t(dtype);
+    EXPECT_TRUE(t.FromProto(*tensor_proto));
+    test::ExpectTensorEqual<T>(t, test::AsTensor(values, shape));
+  }
+
 // Construct the following graph
 //    s1  s2
 //    |    |
 //    m1   m2
 //    / \ / \
 //   a   b   c
-#define SIMPLE_GRAPH                                                         \
-  Reset();                                                                   \
-  Graph* g = g_.get();                                                       \
-  Node* a = Constant<float>({1.0, 0.0, 0.0, 1.0}, {2, 2});                   \
-  Node* b = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});                   \
-  Node* c = Constant<float>({0.0, 1.0, 1.0, 0.0}, {2, 2});                   \
-  g->AddControlEdge(g->source_node(), a);                                    \
-  g->AddControlEdge(g->source_node(), b);                                    \
-  g->AddControlEdge(g->source_node(), c);                                    \
-  Node* m1 = test::graph::Matmul(g, a, b, false, false);                     \
-  Node* s1 = test::graph::Send(g_.get(), m1, "m1", "sender", 0, "receiver"); \
-  Node* m2 = test::graph::Matmul(g, b, c, false, false);                     \
-  Node* s2 = test::graph::Send(g_.get(), m2, "m2", "sender", 0, "receiver"); \
-  g->AddControlEdge(s1, g->sink_node());                                     \
+#define SIMPLE_GRAPH                                                  \
+  Reset();                                                            \
+  Graph* g = g_.get();                                                \
+  Node* a = Constant<float>({1.0, 0.0, 0.0, 1.0}, {2, 2});            \
+  Node* b = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});            \
+  Node* c = Constant<float>({0.0, 1.0, 1.0, 0.0}, {2, 2});            \
+  g->AddControlEdge(g->source_node(), a);                             \
+  g->AddControlEdge(g->source_node(), b);                             \
+  g->AddControlEdge(g->source_node(), c);                             \
+  Node* m1 = test::graph::Matmul(g, a, b, false, false);              \
+  Node* s1 = test::graph::Send(g, m1, "m1", "sender", 0, "receiver"); \
+  Node* m2 = test::graph::Matmul(g, b, c, false, false);              \
+  Node* s2 = test::graph::Send(g, m2, "m2", "sender", 0, "receiver"); \
+  g->AddControlEdge(s1, g->sink_node());                              \
   g->AddControlEdge(s2, g->sink_node());
 
   std::unique_ptr<Graph> g_;
@@ -112,6 +126,63 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   // s2's input should still be m2
   EXPECT_EQ(1, s2->num_inputs());
   EXPECT_EQ(*(s2->in_nodes().begin()), m2);
+}
+#undef SIMPLE_GRAPH
+
+TEST_F(ConstantFoldingTest, TwoOutputs) {
+  Reset();
+  Graph* g = g_.get();
+  Node* s0 = Constant<int>({1}, {1});
+  Node* s1 = Constant<int>({2, 2}, {2});
+  g->AddControlEdge(g->source_node(), s0);
+  g->AddControlEdge(g->source_node(), s1);
+  Node* b = test::graph::BroadcastGradientArgs(g, s0, s1);
+  Node* b0 = test::graph::Send(g, test::graph::Identity(g, b, 0),
+                               strings::StrCat(b->name(), "0"), "sender", 0,
+                               "receiver");
+  Node* b1 = test::graph::Send(g, test::graph::Identity(g, b, 1),
+                               strings::StrCat(b->name(), "1"), "sender", 0,
+                               "receiver");
+  g->AddControlEdge(b0, g->sink_node());
+  g->AddControlEdge(b1, g->sink_node());
+
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, g));
+  EXPECT_EQ(1, b0->num_inputs());
+  ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
+  EXPECT_EQ(1, b1->num_inputs());
+  ExpectNodeEqual<int>(*(b1->in_nodes().begin()), {}, {0});
+}
+
+TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
+  Reset();
+  Graph* g = g_.get();
+  Node* s0 = Constant<int>({1}, {1});
+  Node* s1 = Constant<int>({2, 2}, {2});
+  g->AddControlEdge(g->source_node(), s0);
+  g->AddControlEdge(g->source_node(), s1);
+  Node* b = test::graph::BroadcastGradientArgs(g, s0, s1);
+  Node* b0 = test::graph::Send(g, test::graph::Identity(g, b, 0),
+                               strings::StrCat(b->name(), "0"), "sender", 0,
+                               "receiver");
+  Node* b1_ident = test::graph::Identity(g, b, 1);
+  Node* b1 = test::graph::Send(g, b1_ident, strings::StrCat(b->name(), "1"),
+                               "sender", 0, "receiver");
+  g->AddControlEdge(b0, g->sink_node());
+  g->AddControlEdge(b1, g->sink_node());
+
+  ConstantFoldingOptions opts;
+  opts.consider = [b1_ident](const Node* n) { return b1_ident != n; };
+  EXPECT_TRUE(DoConstantFolding(opts, g));
+  // 0th output of b should have been folded.
+  EXPECT_EQ(1, b0->num_inputs());
+  ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
+  // 1st output of b should still be b1_ident. However, b1_ident's input must
+  // have been replaced with a constant.
+  EXPECT_EQ(1, b1->num_inputs());
+  EXPECT_EQ(*(b1->in_nodes().begin()), b1_ident);
+
+  EXPECT_EQ(1, b1_ident->num_inputs());
+  ExpectNodeEqual<int>(*(b1_ident->in_nodes().begin()), {}, {0});
 }
 
 }  // namespace
