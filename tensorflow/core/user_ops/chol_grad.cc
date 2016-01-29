@@ -73,7 +73,7 @@ class CholeskyGrad : public OpKernel {
         lcl_size_t J = std::max<size_t>(1, Ji);
         lcl_size_t JB = NB - (J - Ji);
 
-        //output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB) = input_matrix_l.block( J-1, J-1, JB, JB ).adjoint().template triangularView<Eigen::Upper>().solve( output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB ).adjoint() ).adjoint();
+        output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB) = input_matrix_l.block( J-1, J-1, JB, JB ).adjoint().template triangularView<Eigen::Upper>().solve( output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB ).adjoint() ).adjoint();
         output_matrix.block( J-1, J-1, JB, JB ) -= (output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB).adjoint() * input_matrix_l.block( J+JB-1, J-1, N - (J+JB-1), JB ) ).template triangularView<Eigen::Lower>();
         output_matrix.block( (J+JB-1), 0, N - (J+JB-1), J-1 )  -=  output_matrix.block( (J+JB-1), J-1, N - (J+JB-1), JB ) * input_matrix_l.block( J-1, 0, JB, J-1 );
         output_matrix.block( J-1, 0, JB, J-1) -= output_matrix.block( (J+JB-1), J-1, N - (J+JB-1), JB ).adjoint() * input_matrix_l.block( (J+JB-1), 0, N - (J+JB-1), J-1 ) ;
