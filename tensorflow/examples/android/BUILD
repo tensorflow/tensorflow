@@ -58,7 +58,11 @@ cc_binary(
 
 cc_library(
     name = "tensorflow_native_libs",
-    srcs = [
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
         ":libpthread.so",
         ":libtensorflow_demo.so",
     ],
