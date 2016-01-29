@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -41,7 +41,7 @@ class EncodePngOp : public OpKernel {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() == 3,
                 errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
     const int64 channels = image.dim_size(2);
     OP_REQUIRES(context, channels == 1 || channels == 3 || channels == 4,
                 errors::InvalidArgument(

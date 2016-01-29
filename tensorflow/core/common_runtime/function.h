@@ -90,6 +90,10 @@ bool RemoveListArrayConverter(Graph* g);
 // multiple times by calling ExpandInlineFunctions a few times.
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 
+// Dump the contents of the "graph" to log files if the logging level is
+// sufficiently high.
+void DumpGraph(StringPiece label, const Graph* g);
+
 // Applies graph rewrite optimization such as inlining, dead code
 // removal, etc.
 //
@@ -98,6 +102,12 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
 void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g);
+
+// Convert the Graph of a function to a GraphDef.
+//
+// Handles renaming of nodes to avoid duplicate names which may
+// be present after various rewriting operations.
+void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 
 // Given a numerical function "f", returns another numerical function
 // "g", such that if "f" takes N inputs and produces M outputs, "g"

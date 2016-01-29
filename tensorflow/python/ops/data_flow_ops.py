@@ -567,55 +567,6 @@ ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
 ops.RegisterShape("StackClose")(_ScalarToVoidShape)
 
 
-@ops.RegisterShape("TensorArray")
-def _TensorArrayShape(op):
-  # size is a scalar
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.vector(2)]
-
-
-@ops.RegisterShape("TensorArrayRead")
-def _TensorArrayReadShape(op):
-  # handle, index, value
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("TensorArrayWrite")
-def _TensorArrayWriteShape(op):
-  # handle, index
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return []
-
-
-@ops.RegisterShape("TensorArrayClose")
-def _TensorArrayCloseShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  return []
-
-
-@ops.RegisterShape("TensorArrayGrad")
-def _TensorArrayGradShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  return [tensor_shape.vector(2)]
-
-
-@ops.RegisterShape("TensorArrayPack")
-def _TensorArrayPackShape(op):
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("TensorArrayUnpack")
-def _TensorArrayUnpackShape(op):
-  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
-  return []
-
-
 @ops.RegisterShape("DynamicPartition")
 def _DynamicPartitionShape(op):
   """Shape function for data_flow_ops.dynamic_partition."""

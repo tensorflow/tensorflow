@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 

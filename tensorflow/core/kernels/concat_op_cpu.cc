@@ -15,8 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_op.h"
+#include <vector>
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {

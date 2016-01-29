@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
-
-#include "tensorflow/core/public/session_options.h"
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -77,7 +77,7 @@ static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
   test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> reduction_context(
-      new OpKernelContext(params));
+      new OpKernelContext(&params));
 
   reduction_op->Compute(reduction_context.get());
   TF_CHECK_OK(reduction_context->status());

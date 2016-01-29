@@ -26,6 +26,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/tensor_shape.proto",
         "//tensorflow/core:framework/tensor_slice.proto",
         "//tensorflow/core:framework/types.proto",
+        "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
 	]
@@ -39,7 +40,10 @@ def if_cuda(a, b=[]):
 
 
 def tf_copts():
-  return ["-pthread", "-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] + if_cuda(["-DGOOGLE_CUDA=1"])
+  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
+          if_cuda(["-DGOOGLE_CUDA=1"]) +
+          select({"//tensorflow:darwin": [],
+                  "//conditions:default": ["-pthread"]}))
 
 
 # Given a list of "op_lib_names" (a list of files in the ops directory

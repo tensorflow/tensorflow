@@ -27,7 +27,7 @@ limitations under the License.
 //   includes running the constructor and destructor of T[], encoding
 //   an decoding T[] into/from a Cord, etc.
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -185,6 +185,7 @@ PROTO_TRAITS(float, float, float);
 PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
 PROTO_TRAITS(uint8, int32, int);
+PROTO_TRAITS(uint16, int32, int);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(int64, int64, int64);
@@ -356,6 +357,7 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(double, SINGLE_ARG(STMTS))                   \
     CASE(int32, SINGLE_ARG(STMTS))                    \
     CASE(uint8, SINGLE_ARG(STMTS))                    \
+    CASE(uint16, SINGLE_ARG(STMTS))                   \
     CASE(int16, SINGLE_ARG(STMTS))                    \
     CASE(int8, SINGLE_ARG(STMTS))                     \
     CASE(string, SINGLE_ARG(STMTS))                   \
@@ -537,6 +539,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
         CASE(DT_DOUBLE);
         CASE(DT_INT32);
         CASE(DT_UINT8);
+        CASE(DT_UINT16);
         CASE(DT_INT16);
         CASE(DT_INT8);
         CASE(DT_INT64);
@@ -571,8 +574,8 @@ size_t Tensor::BufferHash() const {
 
 string Tensor::DebugString() const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
-                         shape().ShortDebugString(), " values: ",
-                         SummarizeValue(3), ">");
+                         shape().DebugString(), " values: ", SummarizeValue(3),
+                         ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

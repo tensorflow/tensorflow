@@ -29,7 +29,7 @@ namespace {
 
 OpDef ToOpDef(const OpDefBuilder& builder) {
   OpDef op_def;
-  EXPECT_OK(builder.Finalize(&op_def));
+  TF_EXPECT_OK(builder.Finalize(&op_def));
   return op_def;
 }
 
@@ -41,7 +41,7 @@ NodeDef ToNodeDef(const string& text) {
 
 NodeDef ToNodeDef(const NodeDefBuilder& builder) {
   NodeDef node_def;
-  EXPECT_OK(builder.Finalize(&node_def));
+  TF_EXPECT_OK(builder.Finalize(&node_def));
   return node_def;
 }
 
@@ -150,8 +150,8 @@ TEST(NodeDefUtilTest, Out) {
   AddNodeAttr("T", DT_STRING, &bad);
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
-                "values: float, double, int64, int32, uint8, int16, int8, "
-                "complex64, qint8, quint8, qint32");
+                "values: float, double, int64, int32, uint8, uint16, int16, "
+                "int8, complex64, qint8, quint8, qint32");
 }
 
 TEST(NodeDefUtilTest, Enum) {
@@ -339,7 +339,7 @@ TEST(NameRangesForNodeTest, Simple) {
   NameRangeMap inputs, outputs;
   const NodeDef node_def = ToNodeDef(
       NodeDefBuilder("simple", &op_def).Input(FakeInput()).Input(FakeInput()));
-  EXPECT_OK(NameRangesForNode(node_def, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 1}}, {"b", {1, 2}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}, {"d", {1, 2}}}), outputs);
 
@@ -360,7 +360,7 @@ TEST(NameRangesForNodeTest, Polymorphic) {
   const NodeDef node_def1 = ToNodeDef(NodeDefBuilder("poly", &op_def)
                                           .Input(FakeInput(DT_INT32))
                                           .Input(FakeInput(DT_INT32)));
-  EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 1}}, {"b", {1, 2}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}}), outputs);
   EXPECT_EQ("poly = Polymorphic[T=DT_INT32](a, b)",
@@ -369,7 +369,7 @@ TEST(NameRangesForNodeTest, Polymorphic) {
   const NodeDef node_def2 = ToNodeDef(NodeDefBuilder("poly", &op_def)
                                           .Input(FakeInput(DT_BOOL))
                                           .Input(FakeInput(DT_BOOL)));
-  EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 1}}, {"b", {1, 2}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}}), outputs);
   EXPECT_EQ("poly = Polymorphic[T=DT_BOOL](a, b)", SummarizeNodeDef(node_def2));
@@ -390,7 +390,7 @@ TEST(NameRangesForNodeTest, NRepeats) {
                                           .Input(FakeInput(4, DT_INT32))
                                           .Input(FakeInput(4, DT_FLOAT))
                                           .Attr("M", 3));
-  EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 4}}, {"b", {4, 8}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}, {"d", {1, 5}}, {"e", {5, 8}}}),
             outputs);
@@ -402,7 +402,7 @@ TEST(NameRangesForNodeTest, NRepeats) {
                                           .Input(FakeInput(2, DT_INT32))
                                           .Input(FakeInput(2, DT_DOUBLE))
                                           .Attr("M", 7));
-  EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 2}}, {"b", {2, 4}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}, {"d", {1, 3}}, {"e", {3, 10}}}),
             outputs);
@@ -430,7 +430,7 @@ TEST(NameRangesForNodeTest, TypeList) {
                     .Input(FakeInput({DT_BOOL, DT_FLOAT}))
                     .Input(FakeInput(4, DT_FLOAT))
                     .Attr("T3", {DT_INT32, DT_DOUBLE, DT_STRING}));
-  EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def1, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 2}}, {"b", {2, 6}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 4}}, {"d", {4, 7}}, {"e", {7, 9}}}),
             outputs);
@@ -444,7 +444,7 @@ TEST(NameRangesForNodeTest, TypeList) {
                                           .Input(FakeInput(7, DT_INT32))
                                           .Input(FakeInput({DT_DOUBLE}))
                                           .Attr("T3", {DT_DOUBLE, DT_STRING}));
-  EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
+  TF_EXPECT_OK(NameRangesForNode(node_def2, op_def, &inputs, &outputs));
   EXPECT_EQ(NameRangeMap({{"a", {0, 7}}, {"b", {7, 8}}}), inputs);
   EXPECT_EQ(NameRangeMap({{"c", {0, 1}}, {"d", {1, 3}}, {"e", {3, 10}}}),
             outputs);

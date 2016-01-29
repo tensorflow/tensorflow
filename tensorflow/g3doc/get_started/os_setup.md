@@ -303,7 +303,9 @@ $ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
 ```
 
 `--recurse-submodules` is required to fetch the protobuf library that TensorFlow
-depends on.
+depends on. Note that these instructions will install the latest master branch
+of tensorflow. If you want to install a specific branch (such as a release branch),
+pass `-b <branchname>` to the `git clone` command.
 
 ### Installation for Linux
 
@@ -408,7 +410,7 @@ you invoke the bazel build command.
 From the root of your source tree, run:
 
 ```bash
-$ bazel build -c opt --config=cuda --spawn_strategy=standalone //tensorflow/cc:tutorials_example_trainer
+$ bazel build -c opt --config=cuda //tensorflow/cc:tutorials_example_trainer
 
 $ bazel-bin/tensorflow/cc/tutorials_example_trainer --use_gpu
 # Lots of output. This tutorial iteratively calculates the major eigenvalue of
@@ -510,10 +512,10 @@ Do you wish to build TensorFlow with GPU support? [y/N]
 When building from source, you will still build a pip package and install that.
 
 ```bash
-$ bazel build -c opt --spawn_strategy=standalone //tensorflow/tools/pip_package:build_pip_package
+$ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
 
 # To build with GPU support:
-$ bazel build -c opt --config=cuda --spawn_strategy=standalone //tensorflow/tools/pip_package:build_pip_package
+$ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
@@ -531,7 +533,7 @@ system directories, run the following commands inside the TensorFlow root
 directory:
 
 ```bash
-bazel build -c opt --spawn_strategy=standalone //tensorflow/tools/pip_package:build_pip_package
+bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
 mkdir _python_build
 cd _python_build
 ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .

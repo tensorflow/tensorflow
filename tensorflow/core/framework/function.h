@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -126,7 +127,7 @@ class FunctionDefHelper {
     n.attr.push_back({"dtype", dtype});
     int64 num = vals.size();
     Tensor t(dtype, TensorShape({num}));
-    for (int i = 0; i < vals.size(); ++i) {
+    for (size_t i = 0; i < vals.size(); ++i) {
       t.flat<T>()(i) = vals[i];
     }
     n.attr.push_back({"value", t});

@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -95,17 +94,17 @@ class LRNFloatTest : public OpsTestBase {
 };
 
 TEST_F(LRNFloatTest, Depth96) {
-  ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")
-                .Input(FakeInput())
-                .Attr("depth_radius", 5)
-                .Attr("bias", 1.0f)
-                .Attr("alpha", 0.1f)
-                .Attr("beta", 2.0f)
-                .Finalize(node_def()));
-  ASSERT_OK(InitOp());
+  TF_ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")
+                   .Input(FakeInput())
+                   .Attr("depth_radius", 5)
+                   .Attr("bias", 1.0f)
+                   .Attr("alpha", 0.1f)
+                   .Attr("beta", 2.0f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 96}),
                   [this](int i) -> float { return i + 1; });
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 
   // Output for Node 0 with Value 1:
@@ -131,17 +130,17 @@ TEST_F(LRNFloatTest, Depth96) {
 }
 
 TEST_F(LRNFloatTest, Depth16) {
-  ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")
-                .Input(FakeInput())
-                .Attr("depth_radius", 5)
-                .Attr("bias", 1.0f)
-                .Attr("alpha", 0.1f)
-                .Attr("beta", 2.0f)
-                .Finalize(node_def()));
-  ASSERT_OK(InitOp());
+  TF_ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")
+                   .Input(FakeInput())
+                   .Attr("depth_radius", 5)
+                   .Attr("bias", 1.0f)
+                   .Attr("alpha", 0.1f)
+                   .Attr("beta", 2.0f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 16}),
                   [this](int i) -> float { return i + 1; });
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 
   // Output for Node 0 with Value 1:
@@ -174,17 +173,17 @@ static double RndGaussian(random::SimplePhilox* rnd) {
 
 #define TCASE(NAME, DEPTH, BATCH, DEPTH_RADIUS, BIAS, ALPHA, BETA)           \
   TEST_F(LRNFloatTest, NAME) {                                               \
-    ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")                                \
-                  .Input(FakeInput())                                        \
-                  .Attr("depth_radius", (DEPTH_RADIUS))                      \
-                  .Attr("bias", (BIAS))                                      \
-                  .Attr("alpha", ((ALPHA) / 10))                             \
-                  .Attr("beta", (BETA))                                      \
-                  .Finalize(node_def()));                                    \
-    ASSERT_OK(InitOp());                                                     \
+    TF_ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")                             \
+                     .Input(FakeInput())                                     \
+                     .Attr("depth_radius", (DEPTH_RADIUS))                   \
+                     .Attr("bias", (BIAS))                                   \
+                     .Attr("alpha", ((ALPHA) / 10))                          \
+                     .Attr("beta", (BETA))                                   \
+                     .Finalize(node_def()));                                 \
+    TF_ASSERT_OK(InitOp());                                                  \
     AddInput<float>(TensorShape({BATCH, 1, 1, DEPTH}),                       \
                     [this](int i) -> float { return RndGaussian(&rand_); }); \
-    ASSERT_OK(RunOpKernel());                                                \
+    TF_ASSERT_OK(RunOpKernel());                                             \
     EXPECT_TRUE(Compare());                                                  \
   }
 

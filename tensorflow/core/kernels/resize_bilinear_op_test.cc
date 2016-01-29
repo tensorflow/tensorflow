@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -33,12 +33,12 @@ class ResizeBilinearOpTest : public OpsTestBase {
  protected:
   ResizeBilinearOpTest() {
     RequireDefaultOps();
-    EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_INT32))
-                  .Attr("align_corners", false)
-                  .Finalize(node_def()));
-    EXPECT_OK(InitOp());
+    TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("align_corners", false)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
   }
 };
 
@@ -46,12 +46,12 @@ class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
  protected:
   ResizeBilinearOpAlignCornersTest() {
     RequireDefaultOps();
-    EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_INT32))
-                  .Attr("align_corners", true)
-                  .Finalize(node_def()));
-    EXPECT_OK(InitOp());
+    TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("align_corners", true)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
   }
 };
 
@@ -61,7 +61,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To1x1) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // When scaling down, we have to arbitrarily pick a pixel from the
   // original input. In this case, we choose the top/left most pixel.
@@ -76,7 +76,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // When scaling down, we have to arbitrarily pick a pixel from the
   // original input. In this case, we choose the top/left most pixel.
@@ -91,7 +91,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
 
@@ -111,7 +111,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To3x3) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
 
@@ -136,7 +136,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear3x3To2x2) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<int32>(TensorShape({2}), {2, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
 
@@ -157,7 +157,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners3x3To2x2) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<int32>(TensorShape({2}), {2, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
 
@@ -178,7 +178,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear3x3To4x4) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
   // clang-format off
@@ -202,7 +202,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear4x4To3x3) {
       TensorShape({1, 4, 4, 1}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
 
@@ -226,7 +226,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners4x4To3x3) {
       TensorShape({1, 4, 4, 1}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
 
@@ -248,7 +248,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3Batch2) {
   // repeated twice
   AddInputFromArray<float>(TensorShape({2, 2, 2, 1}), {1, 2, 3, 4, 1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 3, 1}));
   // clang-format off
@@ -264,7 +264,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2x2To3x3x2) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 2}),
                            {1, -1, 2, -2, 3, -3, 4, -4});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 2}));
   // clang-format off
@@ -290,7 +290,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
   // clang-format off

@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gtl {
@@ -528,7 +528,7 @@ TEST(MutableIntSlice, InlinedVectorConversion) {
     }
     MutableIntSlice v = &inline_vec;  // Test assignment
     static_cast<void>(v);
-    TestImplicitConversion(&inline_vec, inline_vec.array(), inline_vec.size());
+    TestImplicitConversion(&inline_vec, inline_vec.data(), inline_vec.size());
   }
 }
 

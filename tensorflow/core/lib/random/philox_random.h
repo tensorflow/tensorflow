@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Function qualifiers that need to work on both CPU and GPU.
 #ifdef __CUDA_ARCH__

@@ -25,5 +25,22 @@ message Event {
     GraphDef graph_def = 4;
     // A summary was generated.
     Summary summary = 5;
+    // The user output a log message. Not all messages are logged, only ones
+    // generated via the Python tensorboard_logging module.
+    LogMessage log_message = 6;
   }
+}
+
+// Protocol buffer used for logging messages to the events file.
+message LogMessage {
+  enum Level {
+    UNKNOWN = 0;
+    DEBUG = 10;
+    INFO = 20;
+    WARN = 30;
+    ERROR = 40;
+    FATAL = 50;
+  }
+  Level level = 1;
+  string message = 2;
 }

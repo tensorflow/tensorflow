@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import time
 
 from tensorflow.python.platform.default import _gfile as gfile
 from tensorflow.python.platform.default import _googletest as googletest
@@ -162,6 +163,15 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     self.assertTrue(gfile.Exists(self.tmp + "error_dir"))
     gfile.DeleteRecursively(self.tmp + "error_dir")
     self.assertFalse(gfile.Exists(self.tmp + "error_dir"))
+
+  def testStat(self):
+    with gfile.GFile(self.tmp + "test_stat", "w"):
+      pass
+    creation_time = time.time()
+    statinfo = gfile.Stat(self.tmp + "test_stat")
+    # Test the modification timestamp is within 20 seconds of closing the file.
+    self.assertLessEqual(statinfo.mtime, creation_time + 10)
+    self.assertGreaterEqual(statinfo.mtime, creation_time - 10)
 
 
 if __name__ == "__main__":

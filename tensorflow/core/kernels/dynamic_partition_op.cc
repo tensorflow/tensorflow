@@ -15,11 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -42,13 +43,13 @@ class DynamicPartitionOp_Shared : public OpKernel {
                                   OpOutputList* Tout) {
     OP_REQUIRES_OK(c, c->input("data", data));
     OP_REQUIRES_OK(c, c->input("partitions", partitions));
-    OP_REQUIRES(c, TensorShapeUtils::StartsWith((*data)->shape(),
-                                                (*partitions)->shape()),
-                errors::InvalidArgument(
-                    "data.shape must start with partitions.shape, ",
-                    "got data.shape = ", (*data)->shape().ShortDebugString(),
-                    ", partitions.shape = ",
-                    (*partitions)->shape().ShortDebugString()));
+    OP_REQUIRES(
+        c,
+        TensorShapeUtils::StartsWith((*data)->shape(), (*partitions)->shape()),
+        errors::InvalidArgument(
+            "data.shape must start with partitions.shape, ",
+            "got data.shape = ", (*data)->shape().DebugString(),
+            ", partitions.shape = ", (*partitions)->shape().DebugString()));
 
     // Count how many occurrences of each partition id we have in partitions
     gtl::InlinedVector<int, 32> partition_count(num_partitions_);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 
+#include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/op.h"
@@ -27,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -60,7 +61,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   rendez_ = NewLocalRendezvous();
 
-  const int graph_def_version = g->version();
+  const int graph_def_version = g->versions().producer();
 
   LocalExecutorParams params;
   params.device = device_;

@@ -215,7 +215,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   with ops.op_scope(input_map.values(), name, 'import'):
     g = ops.get_default_graph()
-    g.graph_def_version = graph_def.version
+    g.graph_def_versions.CopyFrom(graph_def.versions)
 
     with ops.name_scope('_inputs'):
       input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}

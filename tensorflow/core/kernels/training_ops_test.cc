@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 

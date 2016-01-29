@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <set>
+#include <vector>
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -49,6 +50,21 @@ class GraphTest : public ::testing::Test {
     EXPECT_EQ(Stringify(expected_out), Stringify(out));
   }
 
+  void VerifyGraphStats() {
+    int nodes = 0;
+    for (const Node* n : graph_.nodes()) {
+      VLOG(1) << n->id();
+      ++nodes;
+    }
+    EXPECT_EQ(nodes, graph_.num_nodes());
+    int edges = 0;
+    for (const Edge* e : graph_.edges()) {
+      VLOG(1) << e->id();
+      ++edges;
+    }
+    EXPECT_EQ(edges, graph_.num_edges());
+  }
+
   Node* AddNodeWithName(const string& name) {
     Node* node;
     TF_CHECK_OK(NodeBuilder(name, "NoOp").Finalize(&graph_, &node));
@@ -78,6 +94,7 @@ TEST_F(GraphTest, Constructor) {
   VerifyNodes(source, {}, {sink});
   VerifyNodes(sink, {source}, {});
   EXPECT_EQ(2, graph_.num_node_ids());
+  VerifyGraphStats();
 }
 
 TEST_F(GraphTest, RemoveThenAdd) {
@@ -91,6 +108,7 @@ TEST_F(GraphTest, RemoveThenAdd) {
   Node* d = AddNodeWithName("D");
   EXPECT_NE(b_id, d->id());  // Ids should not be reused.
   EXPECT_EQ(6, graph_.num_node_ids());
+  VerifyGraphStats();
 }
 
 TEST_F(GraphTest, InNodesAndOutNodes) {
@@ -126,6 +144,7 @@ TEST_F(GraphTest, InNodesAndOutNodes) {
   VerifyNodes(graph_.sink_node(), {a, graph_.source_node()}, {});  // no more c
   EXPECT_EQ(6, graph_.num_node_ids());
   EXPECT_EQ(5, graph_.num_edge_ids());
+  VerifyGraphStats();
 }
 
 TEST_F(GraphTest, NodeIteration) {
@@ -165,6 +184,7 @@ TEST_F(GraphTest, NodeIteration) {
     actual.insert(node->DebugString());
   }
   EXPECT_EQ(expected, actual);
+  VerifyGraphStats();
 }
 
 static void CheckType(Node* node, bool b) {
@@ -182,6 +202,7 @@ TEST_F(GraphTest, Type) {
   CheckType(graph_.source_node(), graph_.source_node()->IsSource());
   CheckType(graph_.sink_node(), graph_.sink_node()->IsSink());
   CheckType(op, op->IsOp());
+  VerifyGraphStats();
 }
 
 // Convert edge iteration results into a sorted string.
@@ -214,6 +235,7 @@ TEST_F(GraphTest, EdgeIteration) {
 
   graph_.AddEdge(a, 1, a, 0);
   EXPECT_EQ("0->1;0->2;2->2;2->3;3->1;", EdgeIter(graph_));
+  VerifyGraphStats();
 }
 
 TEST_F(GraphTest, NewName) {

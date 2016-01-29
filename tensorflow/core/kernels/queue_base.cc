@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/queue_base.h"
 
+#include <vector>
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -93,7 +94,7 @@ string QueueBase::ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.ShortDebugString());
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
     first = false;
   }
   strings::StrAppend(&result, "]");
@@ -159,8 +160,8 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
       if (!component_shapes_[i].IsSameSize(tuple[i].shape())) {
         return errors::InvalidArgument(
             "Shape mismatch in tuple component ", i, ". Expected ",
-            component_shapes_[i].ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+            component_shapes_[i].DebugString(), ", got ",
+            tuple[i].shape().DebugString());
       }
     }
   }
@@ -177,10 +178,10 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
       // Expected shape is [batch_size] + component_shapes_[i]
       const TensorShape expected_shape = ManyOutShape(i, batch_size);
       if (!expected_shape.IsSameSize(tuple[i].shape())) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            expected_shape.ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+        return errors::InvalidArgument("Shape mismatch in tuple component ", i,
+                                       ". Expected ",
+                                       expected_shape.DebugString(), ", got ",
+                                       tuple[i].shape().DebugString());
       }
     }
   } else {
@@ -196,7 +197,8 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
   return Status::OK();
 }
 
-void QueueBase::Cancel(Action action, CancellationToken token) {
+void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,
+                       CancellationToken token) {
   DoneCallback callback = nullptr;
   {
     mutex_lock lock(mu_);
@@ -204,7 +206,8 @@ void QueueBase::Cancel(Action action, CancellationToken token) {
         action == kEnqueue ? &enqueue_attempts_ : &dequeue_attempts_;
 
     for (Attempt& attempt : *attempts) {
-      if (attempt.cancellation_token == token) {
+      if (attempt.cancellation_manager == cancellation_manager &&
+          attempt.cancellation_token == token) {
         if (!attempt.is_cancelled) {
           attempt.is_cancelled = true;
           if (action == kEnqueue) {
@@ -255,7 +258,7 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
     {
       mutex_lock lock(mu_);
       enqueue_attempts_.emplace_back(
-          0, callback, ctx, CancellationManager::kInvalidToken,
+          0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
           [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(

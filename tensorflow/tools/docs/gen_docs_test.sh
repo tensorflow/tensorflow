@@ -14,6 +14,21 @@
 # limitations under the License.
 # ==============================================================================
 
-DIR=$TEST_SRCDIR/tensorflow/python
-$DIR/gen_docs_combined --out_dir $TEST_TMPDIR
+TFDIR=$TEST_SRCDIR/tensorflow
+DOXYGEN=doxygen
+DOXYGEN_CONFIG="tf-doxy_for_md-config"
+TMP_DIR=/tmp/tensorflow-docs
+mkdir -p $TMP_DIR/python
+mkdir -p $TMP_DIR/xml
+mkdir -p $TMP_DIR/cc
+
+pushd $TFDIR
+python/gen_docs_combined --out_dir=$TMP_DIR/python
+
+# TODO(wicke): this does not work well inside the build/test jail
+#$DOXYGEN "tools/docs/$DOXYGEN_CONFIG"
+#tools/docs/gen_cc_md \
+#    --out_dir=$TMP_DIR/cc \
+#    --src_dir=$TMP_DIR/xml
+popd
 echo "PASS"

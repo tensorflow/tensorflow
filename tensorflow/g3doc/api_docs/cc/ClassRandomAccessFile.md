@@ -7,7 +7,7 @@ A file abstraction for randomly reading the contents of a file.
 ##Member Summary
 
 * [`tensorflow::RandomAccessFile::RandomAccessFile()`](#tensorflow_RandomAccessFile_RandomAccessFile)
-* [`virtual tensorflow::RandomAccessFile::~RandomAccessFile()`](#virtual_tensorflow_RandomAccessFile_RandomAccessFile)
+* [`tensorflow::RandomAccessFile::~RandomAccessFile()`](#tensorflow_RandomAccessFile_RandomAccessFile)
 * [`virtual Status tensorflow::RandomAccessFile::Read(uint64 offset, size_t n, StringPiece *result, char *scratch) const =0`](#virtual_Status_tensorflow_RandomAccessFile_Read)
   * Reads up to `n` bytes from the file starting at `offset`.
 
@@ -19,7 +19,7 @@ A file abstraction for randomly reading the contents of a file.
 
 
 
-#### `virtual tensorflow::RandomAccessFile::~RandomAccessFile()` {#virtual_tensorflow_RandomAccessFile_RandomAccessFile}
+#### `tensorflow::RandomAccessFile::~RandomAccessFile()` {#tensorflow_RandomAccessFile_RandomAccessFile}
 
 
 

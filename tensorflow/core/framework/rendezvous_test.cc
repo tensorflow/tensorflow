@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -24,14 +26,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -46,7 +46,7 @@ TEST(RendezvousTest, Key) {
             "var0;"
             "0:0");
   Rendezvous::ParsedKey parsed;
-  EXPECT_OK(Rendezvous::ParseKey(key, &parsed));
+  TF_EXPECT_OK(Rendezvous::ParseKey(key, &parsed));
   EXPECT_EQ(parsed.src_device, "/job:mnist/replica:1/task:2/CPU:0");
   EXPECT_EQ(parsed.src_incarnation, 7890);
   EXPECT_EQ(parsed.src.type, "CPU");
@@ -98,11 +98,11 @@ string V(const Tensor& tensor) {
 
 TEST_F(LocalRendezvousTest, SendRecv) {
   Rendezvous::Args args;
-  ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
+  TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
   EXPECT_TRUE(errors::IsAborted(rendez_->Send("foo", args, V("hello"), false)));
   Tensor val(DT_STRING);
   bool is_dead = false;
-  ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
+  TF_ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
   EXPECT_EQ("hello", V(val));
 }
 
@@ -110,12 +110,12 @@ TEST_F(LocalRendezvousTest, RecvSend) {
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(10000);
     Rendezvous::Args args;
-    ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
+    TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
   });
   Tensor val(DT_STRING);
   bool is_dead = false;
   Rendezvous::Args args;
-  ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
+  TF_ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
   EXPECT_EQ("hello", V(val));
 }
 
@@ -124,16 +124,16 @@ TEST_F(LocalRendezvousTest, DuplicateWaiterRecv) {
     Tensor t(DT_STRING);
     bool is_dead = false;
     Rendezvous::Args args;
-    ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
-    ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
+    TF_ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
+    TF_ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
   });
   Env::Default()->SleepForMicroseconds(1000000);
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
   EXPECT_TRUE(errors::IsAborted(rendez_->Recv("foo", args, &val, &val_dead)));
-  ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
-  ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
+  TF_ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
+  TF_ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
 }
 
@@ -142,15 +142,15 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
     Tensor t(DT_STRING);
     bool is_dead = false;
     Rendezvous::Args args;
-    ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
-    ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
+    TF_ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
+    TF_ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
   });
   Env::Default()->SleepForMicroseconds(1000000);
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
-  ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
+  TF_ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
+  TF_ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
   EXPECT_TRUE(errors::IsAborted(rendez_->Recv("foo", args, &val, &val_dead)));
 }
@@ -174,8 +174,8 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       random::SimplePhilox rnd(&philox);
       Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
       Rendezvous::Args args;
-      ASSERT_OK(rendez_->Send(strings::StrCat(i), args, V(strings::StrCat(i)),
-                              false));
+      TF_ASSERT_OK(rendez_->Send(strings::StrCat(i), args,
+                                 V(strings::StrCat(i)), false));
     });
     SchedClosure([this, &state, i]() {
       random::PhiloxRandom philox(testing::RandomSeed() + N + i, 17);
@@ -184,7 +184,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       Tensor val(DT_STRING);
       bool val_dead = false;
       Rendezvous::Args args;
-      ASSERT_OK(rendez_->Recv(strings::StrCat(i), args, &val, &val_dead));
+      TF_ASSERT_OK(rendez_->Recv(strings::StrCat(i), args, &val, &val_dead));
       EXPECT_EQ(strings::StrCat(i), V(val));
       bool done = false;
       {
@@ -255,7 +255,7 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   Rendezvous::Args args;
   args.device_context = new DummyDeviceContext(123);
 
-  ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
+  TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
 
   Notification n;
   Rendezvous::Args args1;

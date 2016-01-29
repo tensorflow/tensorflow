@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
+#include <vector>
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"

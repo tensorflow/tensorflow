@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -46,9 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -183,10 +184,34 @@ Status DirectSession::Extend(const GraphDef& graph) {
 }
 
 Status DirectSession::ExtendLocked(const GraphDef& graph) {
-  if (graph_created_ && graph_def_.version() != graph.version()) {
-    return errors::InvalidArgument("Incompatible GraphDef versions in Extend: ",
-                                   graph_def_.version(), " != ",
-                                   graph.version());
+  // Merge versions
+  if (graph_def_.has_versions()) {
+    if (graph_def_.versions().producer() != graph.versions().producer()) {
+      return errors::InvalidArgument(
+          "Can't extend GraphDef at version ", graph_def_.versions().producer(),
+          " with graph at version ", graph.versions().producer());
+    }
+    VersionDef* versions = graph_def_.mutable_versions();
+    versions->set_min_consumer(
+        std::max(versions->min_consumer(), graph.versions().min_consumer()));
+    if (graph.versions().bad_consumers_size()) {
+      // Add new bad_consumers that aren't already marked bad.
+      //
+      // Note: This implementation is quadratic time if there are many calls to
+      // ExtendLocked with many bad consumers.  Since this is unlikely, and
+      // fixing it would require data structures outside of this routine,
+      // quadratic time it is.
+      auto* bad_consumers = versions->mutable_bad_consumers();
+      const std::unordered_set<int> existing(bad_consumers->begin(),
+                                             bad_consumers->end());
+      for (const int v : graph.versions().bad_consumers()) {
+        if (existing.find(v) == existing.end()) {
+          bad_consumers->Add(v);
+        }
+      }
+    }
+  } else {
+    graph_def_.mutable_versions()->CopyFrom(graph.versions());
   }
 
   const int node_size_before_merge = graph_def_.node_size();
@@ -205,7 +230,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
     return s;
   }
 
-  if (graph_def_.version() >= 5) {
+  if (graph_def_.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
     TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, &fdefs));
@@ -357,7 +382,7 @@ Status DirectSession::GetOrCreateExecutors(
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
-    const int graph_def_version = partition_graph->version();
+    const int graph_def_version = partition_graph->versions().producer();
 
     Device* device;
     s = device_mgr_->LookupDevice(partition_name, &device);
@@ -451,29 +476,31 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, Graph*>* outputs) {
   std::unique_ptr<FunctionLibraryDefinition> fdefs;
   std::unique_ptr<Graph> graph;
-  GraphConstructorOptions opts;
-  if (options_.config.has_graph_options()) {
-    opts.optimizer_do_cse = !options_.config.graph_options()
-                                 .skip_common_subexpression_elimination();
-  } else {
-    opts.optimizer_do_cse = true;
+  GraphConstructorOptions opts{
+      options_.config.graph_options().optimizer_options()};
+
+  std::unordered_set<StringPiece, StringPiece::Hasher> keep_nodes;
+  for (const string& feed : feeds) {
+    keep_nodes.insert(ParseTensorName(feed).first);
+  }
+  for (const string& fetch : fetches) {
+    keep_nodes.insert(ParseTensorName(fetch).first);
+  }
+  for (const string& target_node : target_nodes) {
+    keep_nodes.insert(target_node);
   }
 
   if (opts.optimizer_do_cse) {
     // Prevent CSE from eliminating nodes that will be required during
     // RewriteGraphForExecution, below.
-    std::unordered_set<StringPiece, StringPiece::Hasher> no_cse_nodes;
-    for (const string& feed : feeds) {
-      no_cse_nodes.insert(ParseTensorName(feed).first);
-    }
-    for (const string& fetch : fetches) {
-      no_cse_nodes.insert(ParseTensorName(fetch).first);
-    }
-    for (const string& target_node : target_nodes) {
-      no_cse_nodes.insert(target_node);
-    }
-    opts.cse_consider_function = [no_cse_nodes](const Node* n) {
-      return n->type_string() != "Const" && !no_cse_nodes.count(n->name());
+    opts.cse_consider_function = [&keep_nodes](const Node* n) {
+      return n->IsConstant() && !keep_nodes.count(n->name());
+    };
+  }
+
+  if (opts.optimizer_do_constant_folding) {
+    opts.constant_folding_opts.consider = [&keep_nodes](const Node* n) {
+      return keep_nodes.count(n->name()) > 0;
     };
   }
 
@@ -487,6 +514,16 @@ Status DirectSession::CreateGraphs(
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
+
+  if (opts.optimizer_do_constant_folding) {
+    bool constant_folded =
+        DoConstantFolding(opts.constant_folding_opts, graph.get());
+    VLOG(2) << (constant_folded ? "Folded some constants"
+                                : "Found no constant folding opportunity");
+  }
+
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
 
   // Run the simple placer after rewriting the graph.
   std::unordered_map<string, int32> node_name_to_cost_map;
@@ -543,7 +580,7 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (auto partition : partitions) {
+  for (auto&& partition : partitions) {
     const string& partition_name = partition.first;
 
     GraphDef* graph_def = &partition.second;

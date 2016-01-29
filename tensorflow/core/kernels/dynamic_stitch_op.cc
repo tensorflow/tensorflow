@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
@@ -67,20 +67,19 @@ class DynamicStitchOp : public OpKernel {
       const Tensor& data = data_inputs[input_num];
       OP_REQUIRES(
           c, TensorShapeUtils::StartsWith(data.shape(), indices.shape()),
-          errors::InvalidArgument(
-              "data[", input_num, "].shape = ", data.shape().ShortDebugString(),
-              " does not start with indices[", input_num, "].shape = ",
-              indices.shape().ShortDebugString()));
+          errors::InvalidArgument("data[", input_num, "].shape = ",
+                                  data.shape().DebugString(),
+                                  " does not start with indices[", input_num,
+                                  "].shape = ", indices.shape().DebugString()));
       OP_REQUIRES(
           c, input_num == 0 || SameExtraShape(data0, indices0, data, indices),
           errors::InvalidArgument(
               "Need data[0].shape[", indices0.dims(), ":] = data[", input_num,
               "].shape[", indices.dims(), ":], got data[0].shape = ",
-              data0.shape().ShortDebugString(), ", data[", input_num,
-              "].shape = ", data.shape().ShortDebugString(),
-              ", indices[0].shape = ", indices0.shape().ShortDebugString(),
-              ", indices[", input_num, "].shape = ",
-              indices.shape().ShortDebugString()));
+              data0.shape().DebugString(), ", data[", input_num, "].shape = ",
+              data.shape().DebugString(), ", indices[0].shape = ",
+              indices0.shape().DebugString(), ", indices[", input_num,
+              "].shape = ", indices.shape().DebugString()));
     }
 
     // Allocate result tensor of shape

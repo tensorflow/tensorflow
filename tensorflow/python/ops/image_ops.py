@@ -540,8 +540,7 @@ def resize_images(images,
     new_width: integer.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
     align_corners: bool. If true, exactly align all 4 cornets of the input and
-                   output. Defaults to `false`. Only implemented for bilinear
-                   interpolation method so far.
+                   output. Defaults to `false`.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -574,12 +573,17 @@ def resize_images(images,
                                            [new_height, new_width],
                                            align_corners=align_corners)
   elif method == ResizeMethod.NEAREST_NEIGHBOR:
-    images = gen_image_ops.resize_nearest_neighbor(images, [new_height,
-                                                            new_width])
+    images = gen_image_ops.resize_nearest_neighbor(images,
+                                                   [new_height, new_width],
+                                                   align_corners=align_corners)
   elif method == ResizeMethod.BICUBIC:
-    images = gen_image_ops.resize_bicubic(images, [new_height, new_width])
+    images = gen_image_ops.resize_bicubic(images,
+                                          [new_height, new_width],
+                                          align_corners=align_corners)
   elif method == ResizeMethod.AREA:
-    images = gen_image_ops.resize_area(images, [new_height, new_width])
+    images = gen_image_ops.resize_area(images,
+                                       [new_height, new_width],
+                                       align_corners=align_corners)
   else:
     raise ValueError('Resize method is not implemented.')
 

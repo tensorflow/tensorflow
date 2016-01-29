@@ -194,11 +194,7 @@ def _MakeShape(v, arg_name):
                         str(v))
         break
     return v
-  s = tensor_shape.as_shape(v)
-  ret = tensor_shape_pb2.TensorShapeProto()
-  for i in s.as_dimension_list():
-    ret.dim.add(size = i)
-  return ret
+  return tensor_shape.as_shape(v).as_proto()
 
 
 def _MakeTensor(v, arg_name):

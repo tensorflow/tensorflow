@@ -18,8 +18,11 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -28,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
@@ -125,10 +126,10 @@ class Conv2DOp : public BinaryOp<T> {
     // For 2D convolution, there should be 4 dimensions.
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     OP_REQUIRES(context, filter.dims() == 4,
                 errors::InvalidArgument("filter must be 4-dimensional: ",
-                                        filter.shape().ShortDebugString()));
+                                        filter.shape().DebugString()));
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.

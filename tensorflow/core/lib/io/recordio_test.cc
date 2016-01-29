@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace io {
@@ -115,7 +115,7 @@ class RecordioTest : public ::testing::Test {
 
   void Write(const string& msg) {
     ASSERT_TRUE(!reading_) << "Write() after starting to read";
-    ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
+    TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
   }
 
   size_t WrittenBytes() const { return dest_.contents_.size(); }

@@ -17,11 +17,10 @@ limitations under the License.
 #define TENSORFLOW_UTIL_BCAST_H_
 
 #include <algorithm>
-#include <vector>
 
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

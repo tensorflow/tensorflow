@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#define TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
 
 #include <deque>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -106,7 +106,8 @@ class QueueBase : public QueueInterface {
   static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                    int index);
 
-  void Cancel(Action action, CancellationToken token);
+  void Cancel(Action action, CancellationManager* cancellation_manager,
+              CancellationToken token);
 
   // Helper for cancelling all pending Enqueue(Many) operations when
   // Close is called with cancel_pending_enqueues.
@@ -142,6 +143,7 @@ class QueueBase : public QueueInterface {
     int32 elements_requested;
     DoneCallback done_callback;  // must be run outside mu_
     OpKernelContext* context;
+    CancellationManager* cancellation_manager;  // not owned
     CancellationToken cancellation_token;
     RunCallback run_callback;  // must be run while holding mu_
     bool is_cancelled;
@@ -150,11 +152,12 @@ class QueueBase : public QueueInterface {
     std::vector<Tuple> tuples;
 
     Attempt(int32 elements_requested, DoneCallback done_callback,
-            OpKernelContext* context, CancellationToken cancellation_token,
-            RunCallback run_callback)
+            OpKernelContext* context, CancellationManager* cancellation_manager,
+            CancellationToken cancellation_token, RunCallback run_callback)
         : elements_requested(elements_requested),
           done_callback(done_callback),
           context(context),
+          cancellation_manager(cancellation_manager),
           cancellation_token(cancellation_token),
           run_callback(run_callback),
           is_cancelled(false) {}
@@ -167,4 +170,4 @@ class QueueBase : public QueueInterface {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_

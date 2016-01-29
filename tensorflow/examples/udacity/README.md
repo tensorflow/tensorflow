@@ -26,7 +26,17 @@ Building a local Docker container
 Running the local container
 ---------------------------
 
+To run a disposable container:  
+
     docker run -p 8888:8888 -it --rm $USER/assignments
+
+Note the above command will create an ephemeral container and all data stored in the container will be lost when the container stops.
+
+To avoid losing work between sessions in the container, it is recommended that you mount the `tensorflow/examples/udacity` directory into the container:
+
+    docker run -p 8888:8888 -v </path/to/tensorflow/examples/udacity>:/notebooks -it --rm $USER/assignments
+
+This will allow you to save work and have access to generated files on the host filesystem.
 
 Pushing a Google Cloud release
 ------------------------------

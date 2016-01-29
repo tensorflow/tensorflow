@@ -41,7 +41,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -56,7 +56,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -113,11 +113,12 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
   ExpectSuccess(b().Attr("a:numbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8, DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+                "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_QINT8, DT_QUINT8, "
+                "DT_QINT32] } } }");
   ExpectSuccess(b().Attr("a:realnumbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8] } } }");
+                "DT_UINT16, DT_INT8] } } }");
   ExpectSuccess(b().Attr("a:quantizedtype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16]} } }");
@@ -170,7 +171,7 @@ TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
       b().Attr("a:list(realnumbertype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
       "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-      "DT_INT8] } } }");
+      "DT_UINT16, DT_INT8] } } }");
   ExpectSuccess(
       b().Attr("a:list(quantizedtype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "

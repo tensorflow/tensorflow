@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 
 #include <deque>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -538,9 +539,13 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   return Status::OK();
 }
 
-static void DumpGraph(const char* label, const Graph* g) {
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << label << ": " << std::endl << DebugString(g);
+void DumpGraph(StringPiece label, const Graph* g) {
+  // TODO(zhifengc): Change Graph to record #nodes.
+  VLOG(1) << "Graph " << label << " #edges " << g->edges().size();
+  if (VLOG_IS_ON(2)) {
+    for (const auto& line : str_util::Split(DebugString(g), '\n')) {
+      VLOG(2) << "|| " << line;
+    }
   }
 }
 
@@ -566,6 +571,13 @@ static void SimplifyGraph(Graph* g) {
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
+  for (const Node* n : (*g)->nodes()) {
+    if (n->IsControlFlow()) {
+      VLOG(2) << "Skip OptimizeGraph due to control flow ops.";
+      return;
+    }
+  }
+
   DumpGraph("Initial", *g);
 
   // Run SimplifyGraph at least once to rewrite away ops such as
@@ -692,32 +704,33 @@ FunctionLibraryRuntime* NewFunctionLibraryRuntime(
 
 bool RemoveDeadNodes(Graph* g) {
   std::vector<bool> visited(g->num_node_ids(), false);
-  visited[Graph::kSourceId] = true;
-  visited[Graph::kSinkId] = true;
   std::deque<Node*> q;
   for (auto n : g->nodes()) {
-    if (n->op_def().is_stateful()) {
-      visited[n->id()] = true;
-    } else if (n->type_string() == kArgOp) {
-      visited[n->id()] = true;
-    } else if (n->type_string() == kRetOp) {
-      visited[n->id()] = true;
+    if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
+        n->op_def().is_stateful()) {
       q.push_back(n);
+      visited[n->id()] = true;
     }
   }
   while (!q.empty()) {
     const Node* n = q.front();
     q.pop_front();
-    visited[n->id()] = true;
     for (auto e : n->in_edges()) {
-      q.push_back(e->src());
+      Node* p = e->src();
+      if (!visited[p->id()]) {
+        q.push_back(p);
+        visited[p->id()] = true;
+      }
     }
   }
   bool removed_any = false;
-  for (Node* n : g->nodes()) {
-    if (!visited[n->id()]) {
-      g->RemoveNode(n);
-      removed_any = true;
+  for (std::size_t i = 0; i < visited.size(); ++i) {
+    if (!visited[i]) {
+      Node* n = g->FindNodeId(i);
+      if (n) {
+        g->RemoveNode(n);
+        removed_any = true;
+      }
     }
   }
   return removed_any;
@@ -740,7 +753,7 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if ((n->type_string() == "Identity") && GetTheOnlyDataEdge(n->in_edges())) {
+    if ((n->IsIdentity()) && GetTheOnlyDataEdge(n->in_edges())) {
       matches.push_back(n);
     }
   }
@@ -961,7 +974,7 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   // NoOp node "output_control_node". "output_control_node" depends on
   // all identity nodes added above. And nodes previously depend on
   // "callee" is changed to depend on "output_control_node".
-  std::vector<Node*> outputs(caller->num_inputs());
+  std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
     Endpoint data;  // Data input for the ret node.
@@ -1008,7 +1021,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
     if (!s.ok()) {
       // Either "node" is a primitive op, or the instantiation failed.
       if (errors::IsNotFound(s)) {
-        VLOG(2) << "ExpandInlineFunctions " << s;
+        VLOG(3) << "ExpandInlineFunctions " << s;
       } else {
         LOG(ERROR) << "ExpandInlineFunctions " << s;
       }
@@ -1024,10 +1037,18 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return !candidates.empty();
 }
 
+string NewName(const Node* n, bool pretty) {
+  if (pretty) {
+    return strings::StrCat(n->type_string(), n->id());
+  } else {
+    return strings::StrCat("n", n->id());
+  }
+}
+
 // TODO(zhifengc): Maybe this should be the default Graph::AsGraphDef.
 // and stash the original NodeDef name as an attr for documentation
 // purpose.
-static void ToGraphDef(const Graph* g, GraphDef* gdef) {
+void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
   std::vector<int> pending(g->num_node_ids());
@@ -1038,7 +1059,7 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
   }
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
-  gdef->set_version(g->version());
+  gdef->mutable_versions()->CopyFrom(g->versions());
   while (!ready.empty()) {
     const Node* n = ready.front();
     ready.pop_front();
@@ -1050,7 +1071,7 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     }
     if (!n->IsOp()) continue;
     NodeDef* ndef = gdef->add_node();
-    ndef->set_name(strings::StrCat("n", n->id()));
+    ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
     *(ndef->mutable_attr()) = n->def().attr();
     inputs.clear();
@@ -1071,16 +1092,16 @@ static void ToGraphDef(const Graph* g, GraphDef* gdef) {
     // to be unique and stable after optimization rewrites. Therefore,
     // we use "n<node id>" instead.
     for (const Edge* e : inputs) {
+      const string srcname = NewName(e->src(), pretty);
       if (e == nullptr) {
         ndef->add_input("unknown");
       } else if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
-        ndef->add_input(strings::StrCat("^n", e->src()->id()));
+        ndef->add_input(strings::StrCat("^", srcname));
       } else if (e->src_output() == 0) {
-        ndef->add_input(strings::StrCat("n", e->src()->id()));
+        ndef->add_input(srcname);
       } else {
-        ndef->add_input(
-            strings::StrCat("n", e->src()->id(), ":", e->src_output()));
+        ndef->add_input(strings::StrCat(srcname, ":", e->src_output()));
       }
     }
   }

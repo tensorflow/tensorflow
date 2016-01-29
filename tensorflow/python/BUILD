@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 
 py_library(
@@ -32,6 +33,7 @@ py_library(
         ":platform_test",
         ":summary",
         ":training",
+        "//tensorflow/contrib:contrib_py",
     ],
 )
 
@@ -239,6 +241,17 @@ py_test(
     ],
 )
 
+py_test(
+    name = "contrib_test",
+    srcs = ["framework/contrib_test.py"],
+    main = "framework/contrib_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "functional_ops",
     out = "ops/gen_functional_ops.py",
@@ -250,6 +263,7 @@ tf_gen_op_wrapper_py(
 py_library(
     name = "functional_ops_lib",
     srcs = ["ops/functional_ops.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":functional_ops",
     ],
@@ -368,6 +382,7 @@ py_test(
         ":framework_test_lib",
         ":ops",
         ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -699,6 +714,7 @@ py_library(
         "ops/gen_string_ops.py",
         "ops/gen_summary_ops.py",
         "ops/gradients.py",
+        "ops/histogram_ops.py",
         "ops/image_grad.py",
         "ops/image_ops.py",
         "ops/init_ops.py",
@@ -727,6 +743,8 @@ py_library(
         "ops/string_ops.py",
         "ops/summary_ops.py",
         "ops/template.py",
+        "ops/tensor_array_grad.py",
+        "ops/tensor_array_ops.py",
         "ops/variable_scope.py",
         "ops/variables.py",
         "user_ops/user_ops.py",
@@ -806,7 +824,7 @@ tf_proto_library_py(
     deps = [":public_protos_py"],
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "public_protos",
     srcs = ["training/saver.proto"],
     visibility = ["//visibility:public"],
@@ -972,6 +990,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/matrix_inverse_op_test.py",
     "kernel_tests/matrix_solve_op_test.py",
     "kernel_tests/matrix_triangular_solve_op_test.py",
+    "kernel_tests/matrix_solve_ls_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
     "kernel_tests/queue_ops_test.py",
@@ -1123,17 +1142,6 @@ py_binary(
         ":docs",
         ":platform",
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-sh_test(
-    name = "gen_docs_test",
-    size = "small",
-    srcs = [
-        "framework/gen_docs_test.sh",
-    ],
-    data = [
-        ":gen_docs_combined",
     ],
 )
 

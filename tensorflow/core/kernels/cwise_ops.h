@@ -614,7 +614,7 @@ struct BinaryFunctor {
 
 template <int NDIMS>
 bool AllOne(const typename Eigen::array<Eigen::DenseIndex, NDIMS>& a) {
-  for (int i = 0; i < a.size(); ++i) {
+  for (size_t i = 0; i < a.size(); ++i) {
     if (a[i] != 1) return false;
   }
   return true;

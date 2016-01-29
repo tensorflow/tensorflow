@@ -20,12 +20,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_op.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -82,8 +82,8 @@ class ConcatOp : public OpKernel {
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.ShortDebugString(), " vs. shape[", i, "] = ",
-              in.shape().ShortDebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              in.shape().DebugString()));
       for (int j = 0; j < input_dims; ++j) {
         if (j == concat_dim) {
           continue;
@@ -92,8 +92,8 @@ class ConcatOp : public OpKernel {
             c, in.dim_size(j) == input_shape.dim_size(j),
             errors::InvalidArgument(
                 "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.ShortDebugString(), " vs. shape[", i, "] = ",
-                in.shape().ShortDebugString()));
+                input_shape.DebugString(), " vs. shape[", i, "] = ",
+                in.shape().DebugString()));
       }
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -176,13 +176,13 @@ class ConcatOffsetOp : public OpKernel {
         ctx, IsLegacyScalar(concat_dim.shape()),
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim.shape().ShortDebugString()));
+            concat_dim.shape().DebugString()));
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       const Tensor& inp = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(inp.shape()),
                   errors::InvalidArgument("input ", i,
                                           " should be a vector, but got shape ",
-                                          inp.shape().ShortDebugString()));
+                                          inp.shape().DebugString()));
     }
     // Suppose a Concat() op needs to Concatenate N tensors, each of
     // which has the same number of dimensions.  Their shapes match

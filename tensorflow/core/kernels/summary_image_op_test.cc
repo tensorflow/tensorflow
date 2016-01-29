@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -23,17 +22,17 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -52,12 +51,12 @@ class SummaryImageOpTest : public OpsTestBase {
  protected:
   void MakeOp(int max_images) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "ImageSummary")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Attr("max_images", max_images)
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ImageSummary")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Attr("max_images", max_images)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 
   void CheckAndRemoveEncodedImages(Summary* summary) {
@@ -84,7 +83,7 @@ TEST_F(SummaryImageOpTest, ThreeGrayImagesOutOfFive4dInput) {
   AddInputFromArray<string>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({5, 2, 1, 1}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
   Tensor* out_tensor = GetOutput(0);
@@ -107,7 +106,7 @@ TEST_F(SummaryImageOpTest, OneGrayImage4dInput) {
   AddInputFromArray<string>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({5 /*batch*/, 2, 1, 1 /*depth*/}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
   Tensor* out_tensor = GetOutput(0);
@@ -139,7 +138,7 @@ TEST_F(SummaryImageOpTest, OneColorImage4dInput) {
           /* r4, c0, RGB */ 1.0, 1.0, 0.0,
           /* r4, c1, RGB */ 1.0, 0.0, 1.0,
       });
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
   Tensor* out_tensor = GetOutput(0);

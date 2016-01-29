@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/match.h"
 #include <algorithm>
+#include <vector>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace io {
@@ -45,14 +46,14 @@ TEST(GetMatchingFiles, Simple) {
   EXPECT_EQ(Match(env, "thereisnosuchfile*"), "");
 
   // Populate a few files
-  EXPECT_OK(WriteStringToFile(Env::Default(),
-                              JoinPath(testing::TmpDir(), "match-00"), ""));
-  EXPECT_OK(WriteStringToFile(Env::Default(),
-                              JoinPath(testing::TmpDir(), "match-0a"), ""));
-  EXPECT_OK(WriteStringToFile(Env::Default(),
-                              JoinPath(testing::TmpDir(), "match-01"), ""));
-  EXPECT_OK(WriteStringToFile(Env::Default(),
-                              JoinPath(testing::TmpDir(), "match-aaa"), ""));
+  TF_EXPECT_OK(WriteStringToFile(Env::Default(),
+                                 JoinPath(testing::TmpDir(), "match-00"), ""));
+  TF_EXPECT_OK(WriteStringToFile(Env::Default(),
+                                 JoinPath(testing::TmpDir(), "match-0a"), ""));
+  TF_EXPECT_OK(WriteStringToFile(Env::Default(),
+                                 JoinPath(testing::TmpDir(), "match-01"), ""));
+  TF_EXPECT_OK(WriteStringToFile(Env::Default(),
+                                 JoinPath(testing::TmpDir(), "match-aaa"), ""));
 
   EXPECT_EQ(Match(env, "match-*"), "match-00,match-01,match-0a,match-aaa");
   EXPECT_EQ(Match(env, "match-0[0-9]"), "match-00,match-01");

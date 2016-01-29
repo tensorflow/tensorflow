@@ -91,8 +91,8 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   EXPECT_FALSE(Match());
   EXPECT_EQ(strings::StrCat(
                 "Found unexpected node 'B = Input[]()' not in expected graph:\n"
-                "version = ",
-                TF_GRAPH_DEF_VERSION, ";\nA = Input[]();\n"),
+                "versions = producer: ",
+                TF_GRAPH_DEF_VERSION, ";\n", "A = Input[]();\n"),
             diff_);
 }
 

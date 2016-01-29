@@ -23,6 +23,7 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import state_ops
 
@@ -165,6 +166,7 @@ class TensorUtilTest(tf.test.TestCase):
     for dtype, nptype in [
         (tf.int32, np.int32),
         (tf.uint8, np.uint8),
+        (tf.uint16, np.uint16),
         (tf.int16, np.int16),
         (tf.int8, np.int8)]:
       # Test with array.
@@ -187,6 +189,7 @@ class TensorUtilTest(tf.test.TestCase):
         (tf.int64, np.int64),
         (tf.int32, np.int32),
         (tf.uint8, np.uint8),
+        (tf.uint16, np.uint16),
         (tf.int16, np.int16),
         (tf.int8, np.int8)]:
       t = tensor_util.make_tensor_proto([10], shape=[3, 4], dtype=dtype)
@@ -351,8 +354,8 @@ class TensorUtilTest(tf.test.TestCase):
     t = tensor_util.make_tensor_proto([10, 20, 30, 40], shape=[2, 2])
     self.assertTrue(tensor_util.ShapeEquals(t, [2, 2]))
     self.assertTrue(tensor_util.ShapeEquals(t, (2, 2)))
-    self.assertTrue(
-        tensor_util.ShapeEquals(t, tensor_util.make_tensor_shape_proto([2, 2])))
+    self.assertTrue(tensor_util.ShapeEquals(
+        t, tensor_shape.as_shape([2, 2]).as_proto()))
     self.assertFalse(tensor_util.ShapeEquals(t, [5, 3]))
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))

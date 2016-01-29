@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 #include "tensorflow/core/platform/test.h"
 
@@ -84,6 +84,18 @@ TEST(TensorShapeTest, SetDimForEmptyTensor) {
   EXPECT_EQ(0, s.num_elements());
   s.set_dim(1, 7);
   EXPECT_EQ(1400, s.num_elements());
+}
+
+TEST(TensorShapeTest, AppendShape64BitIndices) {
+  TensorShape s({10, 2147483648});
+
+  EXPECT_EQ(10, s.dim_size(0));
+  EXPECT_EQ(2147483648, s.dim_size(1));
+
+  TensorShape s2;
+  s2.AppendShape(s);
+  EXPECT_EQ(10, s2.dim_size(0));
+  EXPECT_EQ(2147483648, s2.dim_size(1));
 }
 
 }  // namespace

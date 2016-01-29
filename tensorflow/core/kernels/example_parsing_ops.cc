@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include <vector>
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -75,8 +76,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
             "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of int64 values != expected.  "
             "values size: ",
-            values.value_size(), " but output shape: ",
-            shape.ShortDebugString());
+            values.value_size(), " but output shape: ", shape.DebugString());
       }
       auto out_p = out->flat<int64>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
@@ -89,8 +89,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
             "Name: ", name, ", Key: ", key, ", Index: ", out_index,
             ".  Number of float values != expected.  "
             "values size: ",
-            values.value_size(), " but output shape: ",
-            shape.ShortDebugString());
+            values.value_size(), " but output shape: ", shape.DebugString());
       }
       auto out_p = out->flat<float>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
@@ -103,8 +102,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
             "Name: ", name, ", Key ", key, ", Index: ", out_index,
             ".  Number of bytes values != expected.  "
             "Values size: ",
-            values.value_size(), " but output shape: ",
-            shape.ShortDebugString());
+            values.value_size(), " but output shape: ", shape.DebugString());
       }
       auto out_p = out->flat<string>().data() + offset;
       std::transform(values.value().data(),
@@ -278,7 +276,7 @@ class ExampleParserOp : public OpKernel {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsVector(names->shape()),
           errors::InvalidArgument("Expected names to be a vector, got shape: ",
-                                  names->shape().ShortDebugString()));
+                                  names->shape().DebugString()));
       OP_REQUIRES(
           ctx, names->NumElements() == serialized->NumElements(),
           errors::InvalidArgument(
@@ -290,7 +288,7 @@ class ExampleParserOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized->shape()),
                 errors::InvalidArgument(
                     "Expected serialized to be a vector, got shape: ",
-                    serialized->shape().ShortDebugString()));
+                    serialized->shape().DebugString()));
     OP_REQUIRES(ctx, dense_defaults.size() == num_dense_,
                 errors::InvalidArgument(
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
@@ -302,12 +300,11 @@ class ExampleParserOp : public OpKernel {
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(
-            ctx, def_value.shape() == dense_shapes_[d],
-            errors::InvalidArgument("def_value[", d, "].shape() == ",
-                                    def_value.shape().ShortDebugString(),
-                                    " != dense_shapes_[", d, "] == ",
-                                    dense_shapes_[d].ShortDebugString()));
+        OP_REQUIRES(ctx, def_value.shape() == dense_shapes_[d],
+                    errors::InvalidArgument("def_value[", d, "].shape() == ",
+                                            def_value.shape().DebugString(),
+                                            " != dense_shapes_[", d, "] == ",
+                                            dense_shapes_[d].DebugString()));
         OP_REQUIRES(ctx, def_value.dtype() == dense_types_[d],
                     errors::InvalidArgument(
                         "dense_defaults[", d, "].dtype() == ",
@@ -555,7 +552,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                   errors::InvalidArgument(
                       "Expected context_dense_keys[", di,
                       "] to be a vector, got shape: ",
-                      context_dense_keys[di].shape().ShortDebugString()));
+                      context_dense_keys[di].shape().DebugString()));
       context_dense_keys_t[di] = context_dense_keys[di].scalar<string>()();
     }
     for (int di = 0; di < num_context_sparse_; ++di) {
@@ -564,7 +561,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                   errors::InvalidArgument(
                       "Expected context_sparse_keys[", di,
                       "] to be a vector, got shape: ",
-                      context_sparse_keys[di].shape().ShortDebugString()));
+                      context_sparse_keys[di].shape().DebugString()));
       context_sparse_keys_t[di] = context_sparse_keys[di].scalar<string>()();
     }
     for (int di = 0; di < num_feature_list_dense_; ++di) {
@@ -573,7 +570,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
           errors::InvalidArgument(
               "Expected feature_list_dense_keys[", di,
               "] to be a vector, got shape: ",
-              feature_list_dense_keys[di].shape().ShortDebugString()));
+              feature_list_dense_keys[di].shape().DebugString()));
       feature_list_dense_keys_t[di] =
           feature_list_dense_keys[di].scalar<string>()();
     }
@@ -583,17 +580,17 @@ class SingleSequenceExampleParserOp : public OpKernel {
           errors::InvalidArgument(
               "Expected feature_list_sparse_keys[", di,
               "] to be a vector, got shape: ",
-              feature_list_sparse_keys[di].shape().ShortDebugString()));
+              feature_list_sparse_keys[di].shape().DebugString()));
       feature_list_sparse_keys_t[di] =
           feature_list_sparse_keys[di].scalar<string>()();
     }
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(
-                         feature_list_dense_missing_assumed_empty->shape()),
-                errors::InvalidArgument(
-                    "Expected feature_list_dense_missing_assumed_empty ",
-                    "to be a vector, got shape: ",
-                    feature_list_dense_missing_assumed_empty->shape()
-                        .ShortDebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(
+                 feature_list_dense_missing_assumed_empty->shape()),
+        errors::InvalidArgument(
+            "Expected feature_list_dense_missing_assumed_empty ",
+            "to be a vector, got shape: ",
+            feature_list_dense_missing_assumed_empty->shape().DebugString()));
     auto feature_list_dense_missing_assumped_empty_t =
         feature_list_dense_missing_assumed_empty->vec<string>();
     for (int de = 0;
@@ -607,14 +604,14 @@ class SingleSequenceExampleParserOp : public OpKernel {
       OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(debug_name->shape()),
                   errors::InvalidArgument(
                       "Expected debug_name to be a scalar, got shape: ",
-                      debug_name->shape().ShortDebugString()));
+                      debug_name->shape().DebugString()));
     }
     auto debug_name_t = debug_name->scalar<string>();
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(serialized->shape()),
                 errors::InvalidArgument(
                     "Expected serialized to be a scalar, got shape: ",
-                    serialized->shape().ShortDebugString()));
+                    serialized->shape().DebugString()));
 
     OP_REQUIRES(ctx, context_dense_defaults.size() == num_context_dense_,
                 errors::InvalidArgument("Expected len(context_dense_defaults) "
@@ -628,12 +625,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(ctx, def_value.shape() == context_dense_shapes_[d],
-                    errors::InvalidArgument(
-                        "def_value[", d, "].shape() == ",
-                        def_value.shape().ShortDebugString(),
-                        " != context_dense_shapes_[", d, "] == ",
-                        context_dense_shapes_[d].ShortDebugString()));
+        OP_REQUIRES(
+            ctx, def_value.shape() == context_dense_shapes_[d],
+            errors::InvalidArgument("def_value[", d, "].shape() == ",
+                                    def_value.shape().DebugString(),
+                                    " != context_dense_shapes_[", d, "] == ",
+                                    context_dense_shapes_[d].DebugString()));
         OP_REQUIRES(
             ctx, def_value.dtype() == context_dense_types_[d],
             errors::InvalidArgument(

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 
+#include <vector>
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu_device_context.h"

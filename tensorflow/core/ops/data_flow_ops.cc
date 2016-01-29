@@ -396,58 +396,78 @@ via Read or Pack.
 handle: The handle to the TensorArray.
 size: The size of the array.
 dtype: The type of the elements on the tensor_array.
-tensor_array_name: Overrides the name used for the temporary tensor_array resource. Default
-value is the name of the 'TensorArray' op (which is guaranteed unique).
+tensor_array_name: Overrides the name used for the temporary tensor_array
+  resource. Default value is the name of the 'TensorArray' op (which
+  is guaranteed unique).
 )doc");
 
 REGISTER_OP("TensorArrayGrad")
     .Input("handle: Ref(string)")
     .Output("grad_handle: Ref(string)")
+    .Attr("source: string")
     .SetIsStateful()
     .Doc(R"doc(
 Creates a TensorArray for storing the gradients of values in the given handle.
 
 If the given TensorArray gradient already exists, returns a reference to it.
 
+TensorArray gradient calls use an accumulator TensorArray object.  If
+multiple gradients are calculated and run in the same session, the multiple
+gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+This double counts and generally breaks the TensorArray gradient flow.
+
+The solution is to identify which gradient call this particular
+TensorArray gradient is being called in.  This is performed by identifying
+a unique string (e.g. "gradients", "gradients_1", ...) from the input
+gradient Tensor's name.  This string is used as a suffix when creating
+the TensorArray gradient object here (the attribute `source`).
+
+The attribute `source` is added as a suffix to the forward TensorArray's
+name when performing the creation / lookup, so that each separate gradient
+calculation gets its own TensorArray accumulator.
+
 handle: The handle to the forward TensorArray.
+source: The gradient source string, used to decide which gradient TensorArray
+  to return.
 )doc");
 
 REGISTER_OP("TensorArrayWrite")
     .Input("handle: Ref(string)")
     .Input("index: int32")
     .Input("value: T")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
     .Attr("T: type")
-    .Attr("gradient_add: bool = false")
-    .SetIsStateful()
     .Doc(R"doc(
 Push an element onto the tensor_array.
 
 handle: The handle to a TensorArray.
 index: The position to write to inside the TensorArray.
 value: The tensor to write to the TensorArray.
-gradient_add: Used for gradient back-propagation.  If the value has already
-  been written to the handle, validate input shape and add to it.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
 )doc");
 
 REGISTER_OP("TensorArrayRead")
     .Input("handle: Ref(string)")
     .Input("index: int32")
+    .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .SetIsStateful()
     .Doc(R"doc(
 Read an element from the TensorArray.
 
 handle: The handle to a TensorArray.
 dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
 value: The tensor that is read from the TensorArray.
 )doc");
 
 REGISTER_OP("TensorArrayPack")
     .Input("handle: Ref(string)")
+    .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .SetIsStateful()
     .Doc(R"doc(
 Pack the elements from the TensorArray.
 
@@ -455,6 +475,7 @@ All elements must have the same shape.
 
 handle: The handle to a TensorArray.
 dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
 value: All of the elements in the TensorArray, concatenated along a new
   axis (the new dimension 0).
 )doc");
@@ -462,16 +483,16 @@ value: All of the elements in the TensorArray, concatenated along a new
 REGISTER_OP("TensorArrayUnpack")
     .Input("handle: Ref(string)")
     .Input("value: T")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
     .Attr("T: type")
-    .Attr("gradient_add: bool = false")
-    .SetIsStateful()
     .Doc(R"doc(
 Unpack the data from the input value into TensorArray elements.
 
 handle: The handle to a TensorArray.
 value: The concatenated tensor to write to the TensorArray.
-gradient_add: Used for gradient back-propagation.  If values are already
-  written to the handle, validate shapes and add to them.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
 )doc");
 
 REGISTER_OP("TensorArrayClose")

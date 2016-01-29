@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,9 +65,9 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
-      LOG(INFO) << "All registered Ops:";
+      VLOG(1) << "All registered Ops:";
       for (const auto& op : op_list.op()) {
-        LOG(INFO) << SummarizeOpDef(op);
+        VLOG(1) << SummarizeOpDef(op);
       }
       first_unregistered = false;
     }

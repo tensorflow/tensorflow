@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <math.h>
 #include <algorithm>
+#include <numeric>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/public/tensor.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu_device_context.h"

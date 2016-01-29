@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_constructor.h"
 
+#include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/version.h"
 
 // TODO(josh11b): Test InitCostModel().
@@ -59,10 +60,14 @@ class GraphConstructorTest : public ::testing::Test {
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef_, g_.get()));
   }
 
-  void ExpectVersion(int version) {
+  void ExpectVersions(int min_consumer, int producer) {
     EXPECT_NE(nullptr, g_);
-    EXPECT_EQ(version, g_->version()) << "Expected version " << version
-                                      << ", got " << g_->version();
+    EXPECT_EQ(min_consumer, g_->versions().min_consumer())
+        << "Expected min consumer " << min_consumer << ", got "
+        << g_->versions().min_consumer();
+    EXPECT_EQ(producer, g_->versions().producer()) << "Expected producer "
+                                                   << producer << ", got "
+                                                   << g_->versions().producer();
   }
 
   Node* FindNode(const string& name) {
@@ -169,31 +174,43 @@ TEST_F(GraphConstructorTest, TypeMismatch) {
 
 TEST_F(GraphConstructorTest, EmptyGraph) {
   ExpectOK("");
-  ExpectVersion(0);  // The default GraphDef version is 0
+  ExpectVersions(0, 0);  // The default GraphDef versions are 0
 }
 
 TEST_F(GraphConstructorTest, VersionGraph) {
-  ASSERT_LT(0, TF_GRAPH_DEF_VERSION);  // Verify the assertion is nontrivial
-  ExpectOK(strings::StrCat("version: ", TF_GRAPH_DEF_VERSION));
-  ExpectVersion(TF_GRAPH_DEF_VERSION);
+  ExpectOK(strings::StrCat("versions { producer: ", TF_GRAPH_DEF_VERSION,
+                           " min_consumer: ", TF_GRAPH_DEF_VERSION_MIN_CONSUMER,
+                           "}"));
+  ExpectVersions(TF_GRAPH_DEF_VERSION_MIN_CONSUMER, TF_GRAPH_DEF_VERSION);
 }
 
 TEST_F(GraphConstructorTest, LowVersion) {
-  ExpectError(strings::StrCat("version: ", -1),
-              strings::StrCat(R"(^GraphDef version -1 is no longer supported: )"
-                              R"(TensorFlow \S+ needs )",
-                              TF_GRAPH_DEF_VERSION_MIN, " <= version <= ",
-                              TF_GRAPH_DEF_VERSION_MAX,
-                              R"(.  Please regenerate your graph\.$)"));
+  ExpectError(strings::StrCat("versions { producer: ", -1, " }"),
+              strings::StrCat(R"(^GraphDef producer version -1 below min )"
+                              "producer ",
+                              TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
+                              " supported by TensorFlow ", TF_VERSION_STRING,
+                              R"(\.  Please regenerate your graph\.$)"));
 }
 
 TEST_F(GraphConstructorTest, HighVersion) {
-  ExpectError(strings::StrCat("version: ", TF_GRAPH_DEF_VERSION_MAX + 1),
-              strings::StrCat(R"(^GraphDef version \d+ is not yet supported: )"
-                              R"(TensorFlow \S+ needs )",
-                              TF_GRAPH_DEF_VERSION_MIN, " <= version <= ",
-                              TF_GRAPH_DEF_VERSION_MAX,
-                              R"(.  Please upgrade TensorFlow\.$)"));
+  const int version = TF_GRAPH_DEF_VERSION + 1;
+  ExpectError(strings::StrCat("versions { min_consumer: ", version, " }"),
+              strings::StrCat(R"(^GraphDef min consumer version )", version,
+                              " above current version ", TF_GRAPH_DEF_VERSION,
+                              " for TensorFlow ", TF_VERSION_STRING,
+                              R"(\.  Please upgrade TensorFlow\.$)"));
+}
+
+TEST_F(GraphConstructorTest, BadVersion) {
+  const int version = TF_GRAPH_DEF_VERSION + 1;
+  const int bad = TF_GRAPH_DEF_VERSION;
+  ExpectError(
+      strings::StrCat("versions { producer: ", version, " bad_consumers: ", bad,
+                      " }"),
+      strings::StrCat(
+          R"(^GraphDef disallows consumer version )", bad,
+          R"(\.  Please upgrade TensorFlow: this version is likely buggy\.$)"));
 }
 
 TEST_F(GraphConstructorTest, SimpleModel) {
@@ -236,14 +253,22 @@ TEST_F(GraphConstructorTest, Error_ControlEdgeBeforeRealInput) {
 }
 
 TEST_F(GraphConstructorTest, CopyGraph) {
-  const int version = TF_GRAPH_DEF_VERSION - 1;
+  const int v = TF_GRAPH_DEF_VERSION;
+  const int bad = v + 17;
+  VersionDef versions;
+  versions.set_producer(v - 1);
+  versions.set_min_consumer(v - 2);
+  versions.add_bad_consumers(bad);
 
   Graph src(OpRegistry::Global());
-  src.set_version(version);
+  src.set_versions(versions);
 
   Graph dst(OpRegistry::Global());
   CopyGraph(src, &dst);
-  EXPECT_EQ(dst.version(), version);
+  EXPECT_EQ(dst.versions().producer(), versions.producer());
+  EXPECT_EQ(dst.versions().min_consumer(), versions.min_consumer());
+  EXPECT_EQ(dst.versions().bad_consumers_size(), 1);
+  EXPECT_EQ(dst.versions().bad_consumers(0), bad);
 }
 
 }  // namespace

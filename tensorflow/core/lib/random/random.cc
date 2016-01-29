@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <random>
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace random {

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -64,6 +64,7 @@ class GatherOp : public OpKernel {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t}, {dt}));
+    OP_REQUIRES_OK(c, c->GetAttr("validate_indices", &validate_indices_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -77,12 +78,14 @@ class GatherOp : public OpKernel {
 
     // Validate all the indices are in range
     auto Tindices_vec = Tindices.flat<Index>();
-    for (int64 i = 0; i < N; i++) {
-      const Index index = Tindices_vec(i);
-      OP_REQUIRES(c, index >= 0 && index < first_dim_size,
-                  errors::InvalidArgument(
-                      strings::StrCat("Index ", index, " at offset ", i,
-                                      " in Tindices is out of range")));
+    if (validate_indices_) {
+      for (int64 i = 0; i < N; i++) {
+        const Index index = Tindices_vec(i);
+        OP_REQUIRES(c, index >= 0 && index < first_dim_size,
+                    errors::InvalidArgument(
+                        strings::StrCat("Index ", index, " at offset ", i,
+                                        " in Tindices is out of range")));
+      }
     }
 
     // The result shape is indices.shape + params.shape[1:].
@@ -130,6 +133,9 @@ class GatherOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool validate_indices_;
 };
 
 #define REGISTER_GATHER(type, index_type)                              \

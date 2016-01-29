@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
@@ -31,12 +33,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_op.h"
 #include "tensorflow/core/kernels/tensor_array.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -44,9 +44,11 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace tensorflow {
 
 Status GetHandle(const string& input_name, OpKernelContext* ctx,
-                 string* container, string* table_handle) {
+                 string* container, string* ta_handle) {
   {
     Tensor tensor;
+    // Assuming that input_name is at position 0 for puposes of
+    // has_input.
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, false));
     if (tensor.NumElements() != 2) {
       return errors::InvalidArgument(
@@ -55,19 +57,29 @@ Status GetHandle(const string& input_name, OpKernelContext* ctx,
     }
     auto h = tensor.flat<string>();
     *container = h(0);
-    *table_handle = h(1);
+    *ta_handle = h(1);
   }
   return Status::OK();
 }
 
 Status GetTensorArray(const string& input_name, OpKernelContext* ctx,
-                      TensorArray** table) {
+                      TensorArray** tensor_array) {
   string container;
-  string table_handle;
-  TF_RETURN_IF_ERROR(GetHandle(input_name, ctx, &container, &table_handle));
+  string ta_handle;
+  TF_RETURN_IF_ERROR(GetHandle(input_name, ctx, &container, &ta_handle));
   ResourceMgr* rm = ctx->step_resource_manager();
   if (rm == nullptr) return errors::Internal("No per-step resource manager.");
-  return rm->Lookup(container, table_handle, table);
+  TF_RETURN_IF_ERROR(rm->Lookup(container, ta_handle, tensor_array));
+  return Status::OK();
+}
+
+Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
+  const Tensor* flow_control;
+  TF_RETURN_IF_ERROR(ctx->input("flow_in", &flow_control));
+  if (set_output) {
+    TF_RETURN_IF_ERROR(ctx->set_output("flow_out", *flow_control));
+  }
+  return Status::OK();
 }
 
 // Virtual class for shared behavior between TensorArrayOp and
@@ -146,7 +158,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
  private:
   DataType dtype_;
-  string tensor_array_name_;
+  string tensor_array_name_;  // The name used to create the TensorArray.
 
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
 };
@@ -172,7 +184,9 @@ REGISTER_GPU(bfloat16);
 class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
-      : TensorArrayCreationOp(context) {}
+      : TensorArrayCreationOp(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("source", &source_));
+  }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
                            Tensor* tensor_array_output_handle,
@@ -190,15 +204,17 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
 
     auto output_handle = tensor_array_output_handle->flat<string>();
     output_handle(0) = "_tensor_array_grads";
-    output_handle(1) = tensor_array_name;
+    output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
+    int32 array_size;
     TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
+    TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
 
-    auto creator = [this, tensor_array,
+    auto creator = [this, tensor_array, array_size,
                     tensor_array_output_handle](TensorArray** ret) {
       *ret = new TensorArray(tensor_array->ElemType(),
-                             *tensor_array_output_handle, tensor_array->Size());
+                             *tensor_array_output_handle, array_size);
       return Status::OK();
     };
 
@@ -209,6 +225,11 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
   }
 
  private:
+  // The gradient source for creating the given
+  // gradient TensorArray.  This should be unique to each gradients
+  // call.  Typical values look like "gradients", "gradients_1", ...
+  string source_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
 };
 
@@ -225,11 +246,11 @@ template <typename Device, typename T>
 class TensorArrayWriteOp : public OpKernel {
  public:
   explicit TensorArrayWriteOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("gradient_add", &gradient_add_));
-  }
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
+
     const Tensor* tensor_index;
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("index", &tensor_index));
@@ -250,17 +271,8 @@ class TensorArrayWriteOp : public OpKernel {
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
     PersistentTensor persistent_tensor(*tensor_value);
-    if (gradient_add_) {
-      Status s =
-          tensor_array->WriteOrAdd<Device, T>(ctx, index, persistent_tensor);
-      OP_REQUIRES_OK(ctx, s);
-    } else {
-      OP_REQUIRES_OK(ctx, tensor_array->Write(index, persistent_tensor));
-    }
+    OP_REQUIRES_OK(ctx, tensor_array->Write(ctx, index, &persistent_tensor));
   }
-
- private:
-  bool gradient_add_;
 };
 
 #define REGISTER_WRITE(type)                                                 \
@@ -296,6 +308,8 @@ class TensorArrayReadOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
+
     const Tensor* tensor_index;
     OP_REQUIRES_OK(ctx, ctx->input("index", &tensor_index));
 
@@ -355,9 +369,12 @@ class TensorArrayPackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
+
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
-    const int32 array_size = tensor_array->Size();
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
@@ -371,9 +388,14 @@ class TensorArrayPackOp : public OpKernel {
       return;
     }
 
-    PersistentTensor value_0;
-    OP_REQUIRES_OK(ctx, tensor_array->Read(0, &value_0));
-    Tensor* value_0_t = value_0.AccessTensor(ctx);
+    // Read all the PersistentTensors into a vector to keep track of
+    // their memory.
+    std::vector<PersistentTensor> values(array_size);
+    for (int i = 0; i < array_size; ++i) {
+      OP_REQUIRES_OK(ctx, tensor_array->Read(i, &values[i]));
+    }
+
+    const Tensor* value_0_t = values[0].AccessTensor(ctx);
     TensorShape output_shape(value_0_t->shape());
     output_shape.InsertDim(0, array_size);
 
@@ -384,10 +406,12 @@ class TensorArrayPackOp : public OpKernel {
     auto output_flat =
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
-    for (int i = 0; i < array_size; ++i) {
-      PersistentTensor value;
-      OP_REQUIRES_OK(ctx, tensor_array->Read(i, &value));
-      const Tensor* value_t = value.AccessTensor(ctx);
+    // Insert the first value
+    input_tensors_flat.emplace_back(new ConstMatrix(
+        value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
+
+    for (int i = 1; i < array_size; ++i) {
+      const Tensor* value_t = values[i].AccessTensor(ctx);
       OP_REQUIRES(
           ctx, value_0_t->shape() == value_t->shape(),
           errors::InvalidArgument(
@@ -452,18 +476,18 @@ template <typename Device, typename T>
 class TensorArrayUnpackOp : public OpKernel {
  public:
   explicit TensorArrayUnpackOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("gradient_add", &gradient_add_));
-  }
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
+
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
-
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
 
-    const int32 array_size = tensor_array->Size();
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
         errors::InvalidArgument("TensorArray dtype is ",
@@ -502,18 +526,9 @@ class TensorArrayUnpackOp : public OpKernel {
       functor::Split<Device, T>()(ctx->eigen_device<Device>(), tensor_value_i_t,
                                   tensor_value_t, indices, sizes);
 
-      if (gradient_add_) {
-        Status s =
-            tensor_array->WriteOrAdd<Device, T>(ctx, i, persistent_tensor);
-        OP_REQUIRES_OK(ctx, s);
-      } else {
-        OP_REQUIRES_OK(ctx, tensor_array->Write(i, persistent_tensor));
-      }
+      OP_REQUIRES_OK(ctx, tensor_array->Write(ctx, i, &persistent_tensor));
     }
   }
-
- private:
-  bool gradient_add_;
 };
 
 #define REGISTER_UNPACK(type)                                                 \
@@ -548,18 +563,16 @@ class TensorArrayCloseOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor Ttensor_array_handle = ctx->mutable_input(0, false);
-    OP_REQUIRES(
-        ctx, Ttensor_array_handle.NumElements() == 2,
-        errors::InvalidArgument(
-            "TensorArray handle must have two elements, but had shape: ",
-            Ttensor_array_handle.shape().DebugString()));
-    const string& container = Ttensor_array_handle.flat<string>()(0);
-    const string& tensor_array_name = Ttensor_array_handle.flat<string>()(1);
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
-    OP_REQUIRES_OK(ctx, rm->Delete<TensorArray>(container, tensor_array_name));
+    TensorArray* tensor_array;
+    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    // Instead of deleting this TA from the ResourceManager, we just
+    // clear it away and mark it as closed.  The remaining memory
+    // consumed store its mutex and handle Tensor.  This will be
+    // cleared out at the end of the step anyway, so it's fine to keep
+    // it around until the end of the step.  Further calls to the
+    // TensorArray will fail because TensorArray checks internally to
+    // see if it is closed or not.
+    tensor_array->ClearAndMarkClosed();
   }
 };
 

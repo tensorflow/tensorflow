@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -107,7 +107,7 @@ void SimpleFloatHelper(TensorSliceWriter::CreateBuilderFunction create_function,
   // Now we need to read the tensor slices
   const string filepattern = strings::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, open_function);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
 
   // We query some of the tensors
@@ -231,7 +231,7 @@ void SimpleIntXHelper(TensorSliceWriter::CreateBuilderFunction create_function,
   // Now we need to read the tensor slices
   const string filepattern = strings::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, open_function);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
 
   // We query some of the tensors

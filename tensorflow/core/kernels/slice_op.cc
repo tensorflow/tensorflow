@@ -26,11 +26,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -75,9 +75,8 @@ static void SharedValidation(OpKernelContext* context,
                    size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input.dims(), ", but got shapes ",
-          begin_tensor.shape().ShortDebugString(), " and ",
-          size_tensor.shape().ShortDebugString(), " instead."));
+          input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
+          " and ", size_tensor.shape().DebugString(), " instead."));
 
   const int input_dims = input.dims();
   *begin = IntTensorToInt64Vec(begin_tensor);

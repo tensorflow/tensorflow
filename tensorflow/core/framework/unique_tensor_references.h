@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -60,7 +60,7 @@ class UniqueTensorReferences {
           tensor_ref.Unref();
         }
       } else {
-        for (int i = 0; i < referenced_tensors_vector_.size(); ++i) {
+        for (size_t i = 0; i < referenced_tensors_vector_.size(); ++i) {
           if (referenced_tensors_vector_[i].SharesBufferWith(tensor)) {
             // tensor is a duplicate, so nothing to do.
             return;

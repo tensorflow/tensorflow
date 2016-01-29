@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -33,11 +33,10 @@ class SwitchOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& outputPorts = context->input(1);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(outputPorts.shape()),
-        errors::InvalidArgument("The second input must be a scalar, "
-                                "but it has shape ",
-                                outputPorts.shape().ShortDebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(outputPorts.shape()),
+                errors::InvalidArgument("The second input must be a scalar, "
+                                        "but it has shape ",
+                                        outputPorts.shape().DebugString()));
 
     bool pred = outputPorts.scalar<bool>()();
     int port = (pred) ? 1 : 0;
@@ -135,11 +134,10 @@ class RefSelectOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& index_tensor = context->input(0);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(index_tensor.shape()),
-        errors::InvalidArgument("Index must be a scalar, "
-                                "but it has shape ",
-                                index_tensor.shape().ShortDebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(index_tensor.shape()),
+                errors::InvalidArgument("Index must be a scalar, "
+                                        "but it has shape ",
+                                        index_tensor.shape().DebugString()));
 
     int32 index = index_tensor.scalar<int32>()();
 

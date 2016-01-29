@@ -27,7 +27,7 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -82,7 +82,7 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -99,7 +99,7 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -235,7 +235,7 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then the spatial semantics of the
 convolution ops are as follows: first, according to the padding scheme chosen
@@ -296,7 +296,7 @@ performs the following:
 
 1. Flattens the filter to a 2-D matrix with shape
    `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the the input tensor to form a *virtual*
+2. Extracts image patches from the input tensor to form a *virtual*
    tensor of shape `[batch, out_height, out_width,
    filter_height * filter_width * in_channels]`.
 3. For each patch, right-multiplies the filter matrix and the image patch
@@ -665,7 +665,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1205,7 +1205,7 @@ compute them approximately.
 
 - - -
 
-### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=[], seed=None, name=None)` {#fixed_unigram_candidate_sampler}
+### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=(), seed=None, name=None)` {#fixed_unigram_candidate_sampler}
 
 Samples a set of classes using the provided (fixed) base distribution.
 

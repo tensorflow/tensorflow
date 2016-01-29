@@ -58,7 +58,7 @@ const string& OpName() {
       if (tensor.NumElements() != static_cast<int64>(t.size())) {              \
         options.UpdateStatus(errors::InvalidArgument(                          \
             t.size(), " values provided to Const() != ", tensor.NumElements(), \
-            " elements for shape ", shape.ShortDebugString()));                \
+            " elements for shape ", shape.DebugString()));                     \
       } else {                                                                 \
         std::copy_n(t.data(), t.size(), tensor.flat<TYPE>().data());           \
         node_builder.Attr("dtype", dt).Attr("value", tensor);                  \

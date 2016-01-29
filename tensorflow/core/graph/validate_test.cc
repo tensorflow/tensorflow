@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -24,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace {
@@ -43,7 +42,7 @@ TEST(ValidateGraphDefTest, TestValidGraph) {
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
-  ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
+  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
 }
 
 TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
@@ -63,10 +62,10 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
   EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
 
   // Add the defaults.
-  ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
+  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
 
   // Validation should succeed.
-  ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
+  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
 }
 
 TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
@@ -86,7 +85,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
 
   // Add the defaults.
-  ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
+  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
 
   // Validation should still fail.
   s = graph::ValidateGraphDef(graph_def, OpRegistry::Global());

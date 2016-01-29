@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PORT_H_
 #define TENSORFLOW_PLATFORM_PORT_H_
 
-#include <vector>
-
 #include "tensorflow/core/platform/types.h"
 
 #endif  // TENSORFLOW_PLATFORM_PORT_H_

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/function.h"
+#include <vector>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -559,14 +560,14 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
 
 TEST(FunctionCallFrame, Void_Void) {
   FunctionCallFrame frame({}, {});
-  EXPECT_OK(frame.SetArgs({}));
+  TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
   HasError(frame.SetArgs({a}), "Invalid argument");
   Tensor v;
   HasError(frame.GetArg(0, &v), "Out of range");
   HasError(frame.SetRetval(0, v), "Out of range");
   std::vector<Tensor> rets;
-  EXPECT_OK(frame.GetRetvals(&rets));
+  TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 0);
 }
 
@@ -578,14 +579,14 @@ TEST(FunctionCallFrame, Float_Float_Float) {
   auto c = test::AsTensor<int64>({300});
   HasError(frame.SetArgs({a, c}),
            "Invalid argument: Expects arg[1] to be float");
-  EXPECT_OK(frame.SetArgs({a, b}));
+  TF_EXPECT_OK(frame.SetArgs({a, b}));
 
   Tensor v;
   HasError(frame.GetArg(-1, &v), "Out of range");
   HasError(frame.GetArg(2, &v), "Out of range");
-  EXPECT_OK(frame.GetArg(0, &v));
+  TF_EXPECT_OK(frame.GetArg(0, &v));
   test::ExpectTensorEqual<float>(a, v);
-  EXPECT_OK(frame.GetArg(1, &v));
+  TF_EXPECT_OK(frame.GetArg(1, &v));
   test::ExpectTensorEqual<float>(b, v);
 
   v = test::AsTensor<float>({-100});
@@ -596,10 +597,10 @@ TEST(FunctionCallFrame, Float_Float_Float) {
 
   std::vector<Tensor> rets;
   HasError(frame.GetRetvals(&rets), "does not have value");
-  EXPECT_OK(frame.SetRetval(0, v));
+  TF_EXPECT_OK(frame.SetRetval(0, v));
   HasError(frame.SetRetval(0, v), "has already been set");
 
-  EXPECT_OK(frame.GetRetvals(&rets));
+  TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 1);
   test::ExpectTensorEqual<float>(rets[0], v);
 }

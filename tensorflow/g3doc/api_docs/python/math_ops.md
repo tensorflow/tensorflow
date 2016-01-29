@@ -188,7 +188,7 @@ Add all input tensors element wise.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Must all be the same size and shape.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1087,6 +1087,115 @@ If `lower` is false then the strictly then the output satisfies
 
 
 
+- - -
+
+### `tf.matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#matrix_solve_ls}
+
+Solves a linear least-squares problem.
+
+Below we will use the following notation
+`matrix`=\\(A \in \Re^{m \times n}\\),
+`rhs`=\\(B  \in \Re^{m \times k}\\),
+`output`=\\(X  \in \Re^{n \times k}\\),
+`l2_regularizer`=\\(\lambda\\).
+
+If `fast` is `True`, then the solution is computed by solving the normal
+equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+\\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the regularized
+least-squares problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}}
+||A Z - B||_F^2 + \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is
+computed as \\(X = A^T (A A^T + \lambda I)^{-1} B\\),
+which (for \\(\lambda = 0\\)) is the minimum-norm solution to the
+under-determined linear system, i.e.
+\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\),
+subject to \\(A Z = B\\).
+Notice that the fast path is only numerically stable when \\(A\\) is
+numerically full rank and has a condition number
+\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\)
+or \\(\lambda\\) is sufficiently large.
+
+If `fast` is `False` then the solution is computed using the rank revealing
+QR decomposition with column pivoting. This will always compute a
+least-squares solution that minimizes the residual norm
+\\(||A X - B||_F^2 \\), even when \\(A\\) is rank deficient or
+ill-conditioned. Notice: The current version does not compute a minimum norm
+solution. If `fast` is `False` then `l2_regularizer` is ignored.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: 2-D `Tensor` of shape `[M, N]`.
+*  <b>`rhs`</b>: 2-D `Tensor` of shape is `[M, K]`.
+*  <b>`l2_regularizer`</b>: 0-D  `double` `Tensor`. Ignored if `fast=False`.
+*  <b>`fast`</b>: bool. Defaults to `True`.
+
+##### Returns:
+
+
+*  <b>`output`</b>: Matrix of shape `[N, K]` containing the matrix that solves
+    `matrix * output = rhs` in the least-squares sense.
+
+
+- - -
+
+### `tf.batch_matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#batch_matrix_solve_ls}
+
+Solves multiple linear least-squares problems.
+
+`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
+inner-most 2 dimensions form `M`-by-`K` matrices.   The computed output is a
+`Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form `M`-by-`K`
+matrices that solve the equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
+sense.
+
+Below we will use the following notation for each pair of
+matrix and right-hand sides in the batch:
+
+`matrix`=\\(A \in \Re^{m \times n}\\),
+`rhs`=\\(B  \in \Re^{m \times k}\\),
+`output`=\\(X  \in \Re^{n \times k}\\),
+`l2_regularizer`=\\(\lambda\\).
+
+If `fast` is `True`, then the solution is computed by solving the normal
+equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+\\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
+problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||A Z - B||_F^2 +
+\lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
+\\(X = A^T (A A^T + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is
+the minimum-norm solution to the under-determined linear system, i.e.
+\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\), subject to
+\\(A Z = B\\). Notice that the fast path is only numerically stable when
+\\(A\\) is numerically full rank and has a condition number
+\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\) or\\(\lambda\\)
+is sufficiently large.
+
+If `fast` is `False` then the solution is computed using the rank revealing
+QR decomposition with column pivoting. This will always compute a
+least-squares solution that minimizes the residual norm \\(||A X - B||_F^2\\),
+even when \\(A\\) is rank deficient or ill-conditioned. Notice: The current
+version does not compute a minimum norm solution. If `fast` is `False` then
+`l2_regularizer` is ignored.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`.
+*  <b>`rhs`</b>: `Tensor` of shape `[..., M, K]`.
+*  <b>`l2_regularizer`</b>: 0-D `double` `Tensor`. Ignored if `fast=False`.
+*  <b>`fast`</b>: bool. Defaults to `True`.
+
+##### Returns:
+
+
+*  <b>`output`</b>: `Tensor` of shape `[..., N, K]` whose inner-most 2 dimensions form
+    `M`-by-`K` matrices that solve the equations
+    `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
+    squares sense.
+
+
+
 ## Complex Number Functions
 
 TensorFlow provides several operations that you can use to add complex number
@@ -1313,7 +1422,7 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1341,7 +1450,7 @@ tensor with a single element is returned.
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1369,7 +1478,7 @@ tensor with a single element is returned.
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1397,7 +1506,7 @@ tensor with a single element is returned.
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1435,7 +1544,7 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1473,7 +1582,7 @@ tf.reduce_all(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1511,7 +1620,7 @@ tf.reduce_any(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1604,7 +1713,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1638,7 +1747,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1672,7 +1781,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1705,7 +1814,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1740,7 +1849,7 @@ values summed.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1781,7 +1890,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.
@@ -1835,7 +1944,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`indices`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
@@ -1926,7 +2035,7 @@ Returns the index with the smallest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -1946,7 +2055,7 @@ Returns the index with the largest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.

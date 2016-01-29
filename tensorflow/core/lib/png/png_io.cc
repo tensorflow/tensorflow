@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/png.h"
-#include "tensorflow/core/platform/port.h"  // endian
+#include "tensorflow/core/platform/types.h"  // endian
 
 namespace tensorflow {
 namespace png {

@@ -24,6 +24,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 # TODO(opensource): Add support for pyx_library in the open-source build.
@@ -47,6 +48,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
       np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
@@ -92,6 +94,7 @@ else:
       np.int32: SlowAppendIntArrayToTensorProto,
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
+      np.uint16: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplexArrayToTensorProto,
@@ -124,20 +127,6 @@ def GetNumpyAppendFn(dtype):
     else:
       return SlowAppendObjectArrayToTensorProto
   return GetFromNumpyDTypeDict(_NP_TO_APPEND_FN, dtype)
-
-
-# TODO(mrry,irving): Make this a method of `TensorShape`.
-def make_tensor_shape_proto(shape):
-  """Converts a list of integers to a `TensorShapeProto`.
-
-  Args:
-    shape: List of integers representing the dimensions of the tensor.
-
-  Returns:
-    A `TensorShapeProto`.
-  """
-  return tensor_shape_pb2.TensorShapeProto(
-      dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
 
 
 def TensorShapeProtoToList(shape):
@@ -247,6 +236,7 @@ _TF_TO_IS_OK = {
     dtypes.float64: _FilterFloat,
     dtypes.int32: _FilterInt,
     dtypes.uint8: _FilterInt,
+    dtypes.uint16: _FilterInt,
     dtypes.int16: _FilterInt,
     dtypes.int8: _FilterInt,
     dtypes.string: _FilterStr,
@@ -369,7 +359,7 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
-      tensor_shape=make_tensor_shape_proto(shape))
+      tensor_shape=tensor_shape.as_shape(shape).as_proto())
 
   if is_same_size and numpy_dtype in _TENSOR_CONTENT_TYPES and shape_size > 1:
     tensor_proto.tensor_content = nparray.tostring()
@@ -431,8 +421,8 @@ def MakeNdarray(tensor):
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.int16, dtypes.int8,
-                        dtypes.qint32, dtypes.quint8, dtypes.qint8,
+  elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16,
+                        dtypes.int8, dtypes.qint32, dtypes.quint8, dtypes.qint8,
                         dtypes.bfloat16]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
@@ -569,9 +559,3 @@ def constant_value(tensor):
     return np.concatenate(values, axis=dim)
   else:
     return None
-
-
-# Add some temporary backwards compatibility aliases until all downstream code
-# is changed.  TODO(irving): Remove these aliases.
-ConstantValue = constant_value
-MakeTensorShapeProto = make_tensor_shape_proto

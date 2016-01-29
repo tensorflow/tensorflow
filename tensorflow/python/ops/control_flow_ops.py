@@ -735,11 +735,16 @@ class ControlFlowState(object):
   def __init__(self):
     self._map = {}   # maps forward loop context to GradLoopState
 
+  def _GetGradState(self, op):
+    forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt is None:
+      return None
+    return self._map.get(forward_ctxt)
+
   def MakeWrapper(self, op):
     """Make a wrapper for op if it is in a WhileContext."""
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt:
-      grad_state = self._map.get(forward_ctxt)
+    grad_state = self._GetGradState(op)
+    if grad_state:
       return ControlFlowOpWrapper(op, grad_state)
     return op
 
@@ -753,16 +758,14 @@ class ControlFlowState(object):
 
   def EnterGradWhileContext(self, op):
     """Enter the WhileContext for gradient computation."""
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt:
-      grad_state = self._map.get(forward_ctxt)
+    grad_state = self._GetGradState(op)
+    if grad_state:
       grad_state.grad_context.Enter()
 
   def ExitGradWhileContext(self, op):
     """Exit the WhileContext for gradient computation."""
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt:
-      grad_state = self._map.get(forward_ctxt)
+    grad_state = self._GetGradState(op)
+    if grad_state:
       grad_state.grad_context.Exit()
 
   def AddWhileContext(self, op, between_op_list, between_ops):
@@ -856,8 +859,10 @@ class ControlFlowState(object):
     if IsLoopSwitch(op): return None
 
     dead_branch = op.type in {"Switch", "RefSwitch"}
+    forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt is None:
+      return array_ops.zeros_like(op.outputs[index])
     op_ctxt = op._get_control_flow_context()
-    forward_ctxt = op_ctxt.GetWhileContext()
     grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
     shape = val.get_shape()
@@ -1921,13 +1926,13 @@ def _MergeShape(op):
   else:
     for input_ in op.inputs[1:]:
       input_shape = input_.get_shape()
-      if (input_shape.dims is None or
-          input_shape.ndims != output_shape.ndims):
+      if input_shape.dims is None or input_shape.ndims != output_shape.ndims:
         return [tensor_shape.unknown_shape(), tensor_shape.scalar()]
       else:
         output_shape = tensor_shape.TensorShape(
-          [input_dim.value if input_dim.value == output_dim.value else None
-           for input_dim, output_dim in zip(input_shape.dims, output_shape.dims)])
+            [input_dim.value if input_dim.value == output_dim.value else None
+             for input_dim, output_dim in zip(input_shape.dims,
+                                              output_shape.dims)])
     return [output_shape, tensor_shape.scalar()]
 
 ops.RegisterShape("RefMerge")(_MergeShape)

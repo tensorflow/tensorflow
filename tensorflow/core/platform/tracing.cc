@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <string>
+#include <vector>
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"

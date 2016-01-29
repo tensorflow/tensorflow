@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1101,7 +1102,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   // Set versions
   for (auto& it : *partitions) {
-    it.second.set_version(g->version());
+    it.second.mutable_versions()->CopyFrom(g->versions());
   }
 
   // Set the start times for recvs at the very end.

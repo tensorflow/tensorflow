@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -42,12 +42,12 @@ class RestoreOpTest : public OpsTestBase {
   // Makes an operation to restore two tensors
   void MakeRestoreOp(DataType dt) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Restore")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Attr("dt", dt)
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "Restore")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Attr("dt", dt)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -71,13 +71,13 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     // Initialize an operation
     NodeDef save;
-    ASSERT_OK(NodeDefBuilder("myop", "Save")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
-                                    DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
-                                    DT_INT16, DT_STRING, DT_COMPLEX64}))
-                  .Finalize(&save));
+    TF_ASSERT_OK(NodeDefBuilder("myop", "Save")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
+                                       DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
+                                       DT_INT16, DT_STRING, DT_COMPLEX64}))
+                     .Finalize(&save));
 
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -88,7 +88,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
 
     // Run it
 
@@ -168,9 +168,9 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
-    OpKernelContext ctx(params);
+    OpKernelContext ctx(&params);
     op->Compute(&ctx);
-    EXPECT_OK(ctx.status());
+    TF_EXPECT_OK(ctx.status());
   }
 
   // Now we restore
@@ -182,7 +182,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
                      [&filename](int x) -> string { return filename; });
     AddInput<string>(TensorShape({}),
                      [&](int x) -> string { return tensor_names[0]; });
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -194,7 +194,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_INT32);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[1];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({10});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -206,7 +206,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_FLOAT);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[2];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -218,7 +218,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_DOUBLE);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[3];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -230,7 +230,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_QINT8);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[4];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({3, 2});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -242,7 +242,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_QINT32);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[5];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -255,7 +255,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_UINT8);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[6];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({11});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -267,7 +267,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_INT8);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[7];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -279,7 +279,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_INT16);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[8];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -291,7 +291,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_INT64);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[9];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({9});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -303,7 +303,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_STRING);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[10];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -314,7 +314,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   {
     MakeRestoreOp(DT_COMPLEX64);
     (*mutable_input(1).tensor).scalar<string>()() = tensor_names[11];
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
@@ -328,13 +328,13 @@ class RestoreSliceOpTest : public OpsTestBase {
  protected:
   void MakeRestoreSliceOp(DataType dt) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "RestoreSlice")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Attr("dt", dt)
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "RestoreSlice")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Attr("dt", dt)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -346,11 +346,11 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   {
     // Initialize an operation
     NodeDef save;
-    ASSERT_OK(NodeDefBuilder("save", "Save")
-                  .Input(FakeInput(DT_STRING))
-                  .Input(FakeInput(DT_STRING))
-                  .Input(FakeInput({DT_INT32}))
-                  .Finalize(&save));
+    TF_ASSERT_OK(NodeDefBuilder("save", "Save")
+                     .Input(FakeInput(DT_STRING))
+                     .Input(FakeInput(DT_STRING))
+                     .Input(FakeInput({DT_INT32}))
+                     .Finalize(&save));
 
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -361,7 +361,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
 
     // Run it
 
@@ -392,9 +392,9 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params.slice_reader_cache = &slice_reader_cache_wrapper;
 
-    OpKernelContext ctx(params);
+    OpKernelContext ctx(&params);
     op->Compute(&ctx);
-    EXPECT_OK(ctx.status());
+    TF_EXPECT_OK(ctx.status());
   }
 
   // Now we restore
@@ -411,7 +411,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     return shape_and_slice;
   });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that we have an integer tensor
   Tensor* output = GetOutput(0);

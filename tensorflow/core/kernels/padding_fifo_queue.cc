@@ -19,15 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -88,11 +88,11 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   {
     mutex_lock l(mu_);
     already_cancelled = !cm->RegisterCallback(
-        token, [this, token]() { Cancel(kDequeue, token); });
+        token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
-          num_elements, [callback]() { callback(Tuple()); }, ctx, token,
+          num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 s = queues_[0].size();
             if (closed_ && s < attempt->elements_requested) {
@@ -179,7 +179,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   attempt->tuple.emplace_back(element);
                 }
 
-                for (int index = 0; index < tuples.size(); ++index) {
+                for (size_t index = 0; index < tuples.size(); ++index) {
                   for (int i = 0; i < num_components(); ++i) {
                     if (dynamic_shape[i]) {
                       // Slightly slower copy operation
@@ -219,7 +219,7 @@ Status PaddingFIFOQueue::ValidateTuple(const Tuple& tuple) {
       return errors::InvalidArgument("Shape mismatch in tuple component ", i,
                                      ". Expected ",
                                      partial_shapes_[i].DebugString(), ", got ",
-                                     tuple[i].shape().ShortDebugString());
+                                     tuple[i].shape().DebugString());
     }
   }
   return Status::OK();
@@ -236,7 +236,7 @@ Status PaddingFIFOQueue::ValidateManyTuple(const Tuple& tuple) {
       return errors::InvalidArgument("Shape mismatch in tuple component ", i,
                                      ". Expected ",
                                      expected_shape.DebugString(), ", got ",
-                                     tuple[i].shape().ShortDebugString());
+                                     tuple[i].shape().DebugString());
     }
   }
   return Status::OK();
@@ -285,7 +285,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
   slice_indices[0] = index;
   Eigen::DSizes<Eigen::DenseIndex, NDIMS + 1> slice_size;
   slice_size[0] = 1;
-  for (int i = 1; i < slice_size.size(); ++i) {
+  for (size_t i = 1; i < slice_size.size(); ++i) {
     slice_size[i] = element_t.dimension(i - 1);
   }
   parent_t.slice(slice_indices, slice_size) = element_t.reshape(slice_size);
@@ -359,7 +359,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(
     const gtl::ArraySlice<PartialTensorShape>& partial_shapes) {
   std::vector<TensorShape> shapes(partial_shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
+  for (size_t i = 0; i < shapes.size(); ++i) {
     const PartialTensorShape& partial = partial_shapes[i];
     TensorShape& shape = shapes[i];
     for (int64 s : partial.dim_sizes()) shape.AddDim(s < 0 ? 0 : s);
