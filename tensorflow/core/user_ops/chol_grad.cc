@@ -29,6 +29,7 @@ class CholeskyGrad : public OpKernel {
     using MatrixMap = Eigen::Map<Matrix>;
     using ConstRef = Eigen::Ref<const Matrix>;
     using Ref = Eigen::Ref<Matrix>;
+    using lcl_size_t = int;
 
     void Compute(OpKernelContext* context) override {
 
@@ -61,11 +62,26 @@ class CholeskyGrad : public OpKernel {
     const ConstMatrixMap input_matrix_l_bar(input_tensor_l_bar.flat<T>().data(), input_tensor_l_bar.dim_size(0), input_tensor_l_bar.dim_size(1));
     MatrixMap output_matrix(output_tensor->template flat<T>().data(), input_tensor_l.dim_size(0), input_tensor_l.dim_size(1) );    
 
-    const int N = input_matrix_l.rows();
+    const lcl_size_t N = input_matrix_l.rows();
+    const lcl_size_t NB = 2;
 
     output_matrix = input_matrix_l_bar.template triangularView<Eigen::Lower>();
 
-    chol_rev_unblocked( input_matrix_l, output_matrix );
+    
+    for ( lcl_size_t Ji = (N-NB+1) ; Ji>=0; Ji-= NB )    
+    {
+        lcl_size_t J = std::max<size_t>(1, Ji);
+        lcl_size_t JB = NB - (J - Ji);
+
+        //output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB) = input_matrix_l.block( J-1, J-1, JB, JB ).adjoint().template triangularView<Eigen::Upper>().solve( output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB ).adjoint() ).adjoint();
+        output_matrix.block( J-1, J-1, JB, JB ) -= (output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB).adjoint() * input_matrix_l.block( J+JB-1, J-1, N - (J+JB-1), JB ) ).template triangularView<Eigen::Lower>();
+        output_matrix.block( (J+JB-1), 0, N - (J+JB-1), J-1 )  -=  output_matrix.block( (J+JB-1), J-1, N - (J+JB-1), JB ) * input_matrix_l.block( J-1, 0, JB, J-1 );
+        output_matrix.block( J-1, 0, JB, J-1) -= output_matrix.block( (J+JB-1), J-1, N - (J+JB-1), JB ).adjoint() * input_matrix_l.block( (J+JB-1), 0, N - (J+JB-1), J-1 ) ;
+        chol_rev_unblocked( input_matrix_l.block( J-1, J-1, JB, JB ),  output_matrix.block( J-1, J-1, JB, JB ) );
+        output_matrix.block( J-1, 0, JB, J-1 ) -= (output_matrix.block( J-1, J-1, JB, JB ) + output_matrix.block( J-1, J-1, JB, JB ).adjoint() )* input_matrix_l.block( J-1, 0, JB, J-1 );
+    }
+    
+    //chol_rev_unblocked( input_matrix_l, output_matrix );
     
     //TODO: what to do if input_matrix_l isn't lower triangular?
     
@@ -77,9 +93,9 @@ class CholeskyGrad : public OpKernel {
     
     void chol_rev_unblocked(const ConstRef l_block, Ref l_bar_block)
     {
-        const int N = l_block.rows();
+        const lcl_size_t N = l_block.rows();
         
-        for ( int k = N-1; k>=0; k--)
+        for ( lcl_size_t k = N-1; k>=0; k--)
         {
             l_bar_block(k,k) -= (l_block.block( k+1,k , N-(k+1), 1 ).adjoint() * l_bar_block.block( k+1,k , N-(k+1), 1 ) )(0,0) / l_block(k,k);
             l_bar_block.block(k,k,N-k,1) /= l_block( k,k) ;
