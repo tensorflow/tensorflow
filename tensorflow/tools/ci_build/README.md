@@ -42,7 +42,7 @@ to docker caching. Individual builds are fast thanks to bazel caching.
 2. Clone tensorflow repository.
 
    ```bash
-git clone https://github.com/tensorflow/tensorflow.git
+git clone --recurse-submodules https://github.com/tensorflow/tensorflow.git
 ```
 
 3. Go to tensorflow directory
