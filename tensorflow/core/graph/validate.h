@@ -23,14 +23,28 @@ limitations under the License.
 namespace tensorflow {
 namespace graph {
 
-// Returns OK if 'graph_def' has the following properties:
+// Returns OK if every NodeDef in `graph_def` is valid with respect to
+// its corresponding OpDef (as defined by ValidateNodeDef()) as
+// registered in `op_registry`.
 //
-// 1) Every NodeDef is valid with respect to its corresponding OpDef
-//    as registered in 'op_registry'.
-//
-// REQUIRES: 'op_registry' is not nullptr.
+// REQUIRES:
+//  * `op_registry` is not nullptr.
+//  * `graph_def` has default attrs filled in (see AddDefaultAttrsToGraphDef()).
 Status ValidateGraphDef(const GraphDef& graph_def,
                         const OpRegistryInterface* op_registry);
+
+// Like ValidateGraphDef() except:
+// * Takes an OpList instead of an OpRegistryInterface.
+//   Note that the OpList need not have descriptions, which can be a big
+//   space savings, see GetOpListForValidation() below.
+// * Makes a copy of `graph_def` and calls AddDefaultAttrsToGraphDef()
+//   on the copy.
+Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
+                                     const OpList& op_list);
+
+// Get an OpList from `*op_registry` with all the descriptions removed.
+void GetOpListForValidation(
+    OpList* op_list, const OpRegistry* op_registry = OpRegistry::Global());
 
 }  // namespace graph
 }  // namespace tensorflow

@@ -553,4 +553,25 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
   return Status::OK();
 }
 
+void RemoveDescriptionsFromOpDef(OpDef* op_def) {
+  for (int i = 0; i < op_def->input_arg_size(); ++i) {
+    op_def->mutable_input_arg(i)->clear_description();
+  }
+  for (int i = 0; i < op_def->output_arg_size(); ++i) {
+    op_def->mutable_output_arg(i)->clear_description();
+  }
+  for (int i = 0; i < op_def->attr_size(); ++i) {
+    op_def->mutable_attr(i)->clear_description();
+  }
+  op_def->clear_summary();
+  op_def->clear_description();
+}
+
+void RemoveDescriptionsFromOpList(OpList* op_list) {
+  for (int i = 0; i < op_list->op_size(); ++i) {
+    OpDef* op_def = op_list->mutable_op(i);
+    RemoveDescriptionsFromOpDef(op_def);
+  }
+}
+
 }  // namespace tensorflow

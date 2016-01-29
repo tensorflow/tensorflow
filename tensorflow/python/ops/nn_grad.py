@@ -158,6 +158,14 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
   return _BroadcastMul(grad_0, op.outputs[1]), None
 
 
+@ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
+def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+  # grad_0 is the backprop for cost, and we multiply it with the gradients
+  # (which is output[1])
+  # There is no gradient for the labels
+  return _BroadcastMul(grad_0, op.outputs[1]), None
+
+
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
   return [nn_ops.conv2d_backprop_input(array_ops.shape(op.inputs[0]),

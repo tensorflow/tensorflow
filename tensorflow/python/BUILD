@@ -582,6 +582,7 @@ tf_gen_op_wrapper_py(
         "AvgPoolGrad",  # "*Grad" accessible through nn_grad instead of nn_ops.
         "BatchNormWithGlobalNormalizationGrad",
         "SoftmaxCrossEntropyWithLogits",
+        "SparseSoftmaxCrossEntropyWithLogits",
         "LRNGrad",
         "MaxPoolGrad",
         "MaxPoolGradWithArgmax",

@@ -448,6 +448,29 @@ Setting up Cuda nvvm
 Configuration finished
 ```
 
+##### Using a different Cuda SDK and Cudnn versions
+TensorFlow officially supports Cuda 7.0 and Cudnn V2 (6.5) at this point. In
+order to use a different Cuda SDK or Cudnn libraries, use the unofficial setting
+with "configure"
+
+```bash
+$ TF_UNOFFICIAL_SETTING=1 ./configure
+...
+Please specify the Cuda SDK version you want to use. [Default is 7.0]: 7.5
+Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]: /usr/local/cuda-7.5
+Please specify the Cudnn version you want to use. [Default is 6.5]: 4.0.4
+Please specify the location where cuDNN 4.0.4 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda-7.5]: /usr/local/cudnn-r4-rc/
+...
+Setting up Cuda include
+Setting up Cuda lib64
+Setting up Cuda bin
+Setting up Cuda nvvm
+Configuration finished
+```
+
+For the Cudnn libraries, use '6.5' for R2, '7.0' for R3, and '4.0.4' for
+R4-RC.
+
 ##### Known issues
 
 * Although it is possible to build both Cuda and non-Cuda configs under the same

@@ -38,7 +38,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard import tensorboard_handler
+from tensorflow.tensorboard.backend import tensorboard_handler
 
 flags.DEFINE_string('logdir', None, """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.

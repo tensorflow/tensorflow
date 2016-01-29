@@ -45,7 +45,7 @@ from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
-from tensorflow.tensorboard import float_wrapper
+from tensorflow.tensorboard.backend import float_wrapper
 
 
 DATA_PREFIX = '/data'

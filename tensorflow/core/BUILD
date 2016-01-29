@@ -298,6 +298,7 @@ tf_cuda_library(
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
+        "graph/validate.h",
         "public/session.h",
         "public/session_options.h",
         "public/tensor_c_api.h",

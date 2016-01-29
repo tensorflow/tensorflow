@@ -3338,6 +3338,8 @@ class GraphKeys(object):
   MOVING_AVERAGE_VARIABLES = "moving_average_variables"
   # Key to collected regularization losses at graph construction.
   REGULARIZATION_LOSSES = "regularization_losses"
+  # Key to collect concatenated sharded variables.
+  CONCATENATED_VARIABLES = "concatenated_variables"
 
 
 def add_to_collection(name, value):

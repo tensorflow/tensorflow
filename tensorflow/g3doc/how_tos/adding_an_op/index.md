@@ -220,9 +220,9 @@ This asserts that the input is a vector, and returns having set the
     for its `SetStatus()` method.
 *   The condition.  For example, there are functions for validating the shape
     of a tensor in
-    [`tensorflow/core/public/tensor_shape.h`](https://www.tensorflow.org/code/tensorflow/core/public/tensor_shape.h)
+    [`tensorflow/core/framework/tensor_shape.h`](https://www.tensorflow.org/code/tensorflow/core/framework/tensor_shape.h)
 *   The error itself, which is represented by a `Status` object, see
-    [`tensorflow/core/public/status.h`](https://www.tensorflow.org/code/tensorflow/core/public/status.h). A
+    [`tensorflow/core/lib/core/status.h`](https://www.tensorflow.org/code/tensorflow/core/lib/core/status.h). A
     `Status` has both a type (frequently `InvalidArgument`, but see the list of
     types) and a message.  Functions for constructing an error may be found in
     [`tensorflow/core/lib/core/errors.h`][validation-macros].
