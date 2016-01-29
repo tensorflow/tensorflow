@@ -16,6 +16,7 @@
 
 package org.tensorflow.demo;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -23,6 +24,7 @@ import android.app.DialogFragment;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
@@ -38,9 +40,11 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Process;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -68,6 +72,8 @@ public class CameraConnectionFragment extends Fragment {
    * containing a DESIRED_SIZE x DESIRED_SIZE square.
    */
   private static final int MINIMUM_PREVIEW_SIZE = 320;
+
+  private static final int REQUEST_CAMERA_PERMISSION = 1;
 
   private RecognitionScoreView scoreView;
 
@@ -306,6 +312,41 @@ public class CameraConnectionFragment extends Fragment {
     super.onPause();
   }
 
+  private void requestCameraPermission() {
+    if (shouldShowRequestPermissionRationaleCompat(this, Manifest.permission.CAMERA)) {
+      new ConfirmationDialog().show(getChildFragmentManager(), FRAGMENT_DIALOG);
+    } else {
+      requestPermissionsCompat(this, new String[]{Manifest.permission.CAMERA},
+          REQUEST_CAMERA_PERMISSION);
+    }
+  }
+
+  private boolean shouldShowRequestPermissionRationaleCompat(Fragment fragment, String permission) {
+    if (Build.VERSION.SDK_INT >= 23) {
+      return fragment.shouldShowRequestPermissionRationale(permission);
+    }
+    return false;
+  }
+
+  private void requestPermissionsCompat(Fragment fragment, String[] permissions, int requestCode) {
+    if (Build.VERSION.SDK_INT >= 23) {
+      fragment.requestPermissions(permissions, requestCode);
+    }
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions,
+          int[] grantResults) {
+    if (requestCode == REQUEST_CAMERA_PERMISSION) {
+      if (grantResults.length != 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+        ErrorDialog.newInstance(getString(R.string.request_permission))
+            .show(getChildFragmentManager(), FRAGMENT_DIALOG);
+      }
+    } else {
+      super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+  }
+
   /**
    * Sets up member variables related to camera.
    *
@@ -369,6 +410,11 @@ public class CameraConnectionFragment extends Fragment {
    * Opens the camera specified by {@link CameraConnectionFragment#cameraId}.
    */
   private void openCamera(final int width, final int height) {
+    if (checkSelfPermissionCompat(getActivity(), Manifest.permission.CAMERA)
+       != PackageManager.PERMISSION_GRANTED) {
+      requestCameraPermission();
+      return;
+    }
     setUpCameraOutputs(width, height);
     configureTransform(width, height);
     final Activity activity = getActivity();
@@ -383,6 +429,13 @@ public class CameraConnectionFragment extends Fragment {
     } catch (final InterruptedException e) {
       throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
     }
+  }
+
+  private int checkSelfPermissionCompat(Context context, String permission) {
+    if (Build.VERSION.SDK_INT >= 23) {
+      return context.checkSelfPermission(permission);
+    }
+    return context.checkPermission(permission, Process.myPid(), Process.myUid());
   }
 
   /**
@@ -577,6 +630,38 @@ public class CameraConnectionFragment extends Fragment {
       // We cast here to ensure the multiplications won't overflow
       return Long.signum(
           (long) lhs.getWidth() * lhs.getHeight() - (long) rhs.getWidth() * rhs.getHeight());
+    }
+  }
+
+  /**
+   * Shows OK/Cancel confirmation dialog about camera permission.
+   */
+  private class ConfirmationDialog extends DialogFragment {
+
+    @Override
+    public Dialog onCreateDialog(Bundle savedInstanceState) {
+      final Fragment parent = getParentFragment();
+      return new AlertDialog.Builder(getActivity())
+         .setMessage(R.string.request_permission)
+         .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+             @Override
+             public void onClick(DialogInterface dialog, int which) {
+               requestPermissionsCompat(parent,
+                   new String[]{Manifest.permission.CAMERA},
+                   REQUEST_CAMERA_PERMISSION);
+                }
+             })
+         .setNegativeButton(android.R.string.cancel,
+             new DialogInterface.OnClickListener() {
+                 @Override
+                 public void onClick(DialogInterface dialog, int which) {
+                   Activity activity = parent.getActivity();
+                   if (activity != null) {
+                     activity.finish();
+                   }
+                 }
+             })
+         .create();
     }
   }
 
