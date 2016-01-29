@@ -17,8 +17,6 @@
 # Get the command line arguments.
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 
-COMMAND=/builds/test_on_install.sh
-
 # Validate command line arguments.
 if [ "$#" -gt 1 ] || [[ ! "${CONTAINER_TYPE}" =~ ^(cpu|gpu|android)$ ]]; then
   >&2 echo "Usage: $(basename $0) CONTAINER_TYPE"
@@ -29,6 +27,8 @@ if [ "$#" -gt 1 ] || [[ ! "${CONTAINER_TYPE}" =~ ^(cpu|gpu|android)$ ]]; then
   exit 1
 fi
 
+
+COMMAND="/builds/test_on_install.sh ${CONTAINER_TYPE}"
 
 # Figure out the directory where this script is.
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
@@ -78,4 +78,4 @@ docker run \
     ${CI_BUILD_DOCKER_RUN_COMMAND_PREFIX[@]} \
    "tensorflow/tools/ci_build/builds/with_the_same_user" \
    "tensorflow/tools/ci_build/builds/configured" \
-   "${CONTAINER_TYPE}" ${COMMAND}
+   "${CONTAINER_TYPE}" ${COMMAND[@]}

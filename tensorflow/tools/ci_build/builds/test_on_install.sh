@@ -32,10 +32,21 @@ PY_TEST_BLACKLIST="tensorflow/python/tools/freeze_graph_test.py "\
 "tensorflow/python/framework/ops_test.py "\
 "tensorflow/python/framework/device_test.py "
 
+# Get the command line arguments.
+CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+
 cd /tensorflow &&
 
 # Build the pip package
-bazel build -c opt //tensorflow/tools/pip_package:build_pip_package &&
+PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
+if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
+  bazel build -c opt ${PIP_BUILD_TARGET}
+elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+  bazel build -c opt --config=cuda ${PIP_BUILD_TARGET}
+else
+  echo "Unrecognized container type: ${CONTAINER_TYPE}"
+  exit 1
+fi
 
 # Install
 rm -rf _python_build &&
