@@ -136,6 +136,8 @@ class StackPushOp : public OpKernel {
     stack->Push(PersistentTensor(ctx->input(1)));
     ctx->set_output(0, ctx->input(1));
   }
+
+  bool IsExpensive() override { return false; }
 };
 
 REGISTER_KERNEL_BUILDER(Name("StackPush").Device(DEVICE_CPU), StackPushOp);
@@ -165,6 +167,8 @@ class StackPopOp : public OpKernel {
                                     "Calling Pop() when the stack is empty."));
     ctx->set_output(0, *value.AccessTensor(ctx));
   }
+
+  bool IsExpensive() override { return false; }
 };
 
 REGISTER_KERNEL_BUILDER(Name("StackPop").Device(DEVICE_CPU), StackPopOp);
