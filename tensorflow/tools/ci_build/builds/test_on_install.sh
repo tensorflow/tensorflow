@@ -26,14 +26,20 @@
 
 # You can also ignore a set of the tests by using the variable PY_TEST_BLACKLIST
 # These are the test that depend on Python modules in the source that are not
-# exported publicly:
+# exported publicly. In addition, you can put blacklist for only GPU build in
+# the environment variable PY_TEST_GPU_BLACKLIST
 PY_TEST_BLACKLIST="tensorflow/python/tools/freeze_graph_test.py "\
 "tensorflow/python/util/protobuf/compare_test.py "\
 "tensorflow/python/framework/ops_test.py "\
 "tensorflow/python/framework/device_test.py "
 
-# Get the command line arguments.
+# Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+
+# Append GPU-only test blacklist
+if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+  PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST} ${PY_TEST_GPU_BLACKLIST}"
+fi
 
 cd /tensorflow &&
 
