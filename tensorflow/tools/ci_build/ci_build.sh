@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
+
 # Get the command line arguments.
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
@@ -30,6 +31,12 @@ if [ "$#" -lt 1 ] || [[ ! "${CONTAINER_TYPE}" =~ ^(cpu|gpu|android)$ ]]; then
   >&2 echo "$0 CPU bazel test //tensorflow/..."
   exit 1
 fi
+
+
+# Optional arguments - environment variables. For example:
+# CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
+CI_DOCKER_EXTRA_PARAMS=("${CI_DOCKER_EXTRA_PARAMS[@]:---rm}")
+CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-tensorflow/tools/ci_build/builds/with_the_same_user tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
 
 # Figure out the directory where this script is.
@@ -49,9 +56,11 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 
 # Print arguments.
-echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
-echo "COMMAND: ${COMMAND[@]}"
 echo "WORKSAPCE: ${WORKSPACE}"
+echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
+echo "COMMAND: ${COMMAND[@]}"
+echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
+echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
 echo "BUILD_TAG: ${BUILD_TAG}"
 echo "  (docker container name will be ${BUILD_TAG}.${CONTAINER_TYPE})"
 echo ""
@@ -67,7 +76,6 @@ docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
 echo "Running '${COMMAND[@]}' inside ${BUILD_TAG}.${CONTAINER_TYPE}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
-    --rm \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=${USER}" \
@@ -76,9 +84,7 @@ docker run \
     -e "CI_BUILD_GID=$(id -g $USER)" \
     -v ${WORKSPACE}:/tensorflow \
     -w /tensorflow \
-    ${CI_BUILD_DOCKER_RUN_EXTRA_PARAMETERS[@]} \
+    ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${BUILD_TAG}.${CONTAINER_TYPE}" \
-    ${CI_BUILD_DOCKER_RUN_COMMAND_PREFIX[@]} \
-    "tensorflow/tools/ci_build/builds/with_the_same_user" \
-        "tensorflow/tools/ci_build/builds/configured" \
-        "${CONTAINER_TYPE}" ${COMMAND[@]}
+    ${CI_COMMAND_PREFIX[@]} \
+    ${COMMAND[@]}
