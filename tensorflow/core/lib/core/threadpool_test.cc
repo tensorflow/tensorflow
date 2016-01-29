@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #include <atomic>
+#include <mutex>
+#include <thread>
 
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -103,6 +107,38 @@ static void BM_Parallel(int iters) {
   }
 }
 BENCHMARK(BM_Parallel);
+
+static void work() {
+  volatile double foo = 1;
+  for (volatile int i = 0; i < 1000; i++) foo = (foo + 1) / (foo + 2);
+  (void)foo;
+}
+
+static void BM_Parallel2(int iters) {
+  const int kThreads = std::thread::hardware_concurrency();
+  ThreadPool pool(Env::Default(), "test", kThreads);
+  for (int i = 0; i < iters; i++) {
+    int kParts = kThreads / 2;
+    if (kParts < 2) kParts = 2;
+    std::vector<std::unique_ptr<Thread>> threads;
+    for (int j = 0; j < kParts; j++) {
+      threads.emplace_back(
+          Env::Default()->StartThread(ThreadOptions(), "test", [&pool]() {
+            Notification n;
+            const int kTasks = 64;
+            std::atomic<int> c(kTasks);
+            for (int t = 0; t < kTasks; t++) {
+              pool.Schedule([&n, &c]() {
+                work();
+                if (--c == 0) n.Notify();
+              });
+            }
+            n.WaitForNotification();
+          }));
+    }
+  }
+}
+BENCHMARK(BM_Parallel2);
 
 }  // namespace thread
 }  // namespace tensorflow
