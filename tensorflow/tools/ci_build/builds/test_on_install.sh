@@ -4,7 +4,7 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
+#q
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -16,6 +16,21 @@
 
 # Build the Python PIP installation package for TensorFlow
 # and run the Python unit tests from the source code on the installation
+#
+# To select only a subset of the Python tests to run, set the environment
+# variable PY_TEST_WHITELIST, e.g.,
+#   PY_TEST_WHITELIST="tensorflow/python/kernel_tests/shape_ops_test.py"
+#
+# Seprate the tests with a space. Leave this environment variable empty to
+# disable the whitelist.
+
+# You can also ignore a set of the tests by using the variable PY_TEST_BLACKLIST
+# These are the test that depend on Python modules in the source that are not
+# exported publicly:
+PY_TEST_BLACKLIST="tensorflow/python/tools/freeze_graph_test.py "\
+"tensorflow/python/util/protobuf/compare_test.py "\
+"tensorflow/python/framework/ops_test.py "\
+"tensorflow/python/framework/device_test.py "
 
 cd /tensorflow &&
 
@@ -41,29 +56,65 @@ PY_TEST_DIR=${HOME}/tf_py_tests
 rm -rf ${PY_TEST_DIR} &&
 mkdir ${PY_TEST_DIR} &&
 
+
 # Iterate through all the Python unit test files using the installation
+COUNTER=0
+SKIP_COUNTER=0
 for TEST_FILE_PATH in ${ALL_PY_TESTS}; do
+  ((COUNTER++))
+
   # Copy to a separate directory to guard against the possibility of picking up 
   # modules in the source directory 
   cp ${TEST_FILE_PATH} ${PY_TEST_DIR}/ &&
 
-  echo "Running Python test on install: ${TEST_FILE_PATH}"
+  # If PY_TEST_WHITELIST is not empty, only the white-listed tests will be run
+  if [[ ! -z ${PY_TEST_WHITELIST} ]] && \
+     [[ ! ${PY_TEST_WHITELIST} == *"${TEST_FILE_PATH}"* ]]; then
+    ((SKIP_COUNTER++))
+    echo "Skipping non-whitelisted test: ${TEST_FILE_PATH}"
+    continue
+  fi
+
+  # If the test is in the black list, skip it
+  if [[ ${PY_TEST_BLACKLIST} == *"${TEST_FILE_PATH}"* ]]; then
+    ((SKIP_COUNTER++))
+    echo "Skipping blacklisted test: ${TEST_FILE_PATH}"
+    continue
+  fi
+
+  echo "==============================================================="
+  echo "Running Python test on install #${COUNTER} of ${PY_TEST_COUNT}:"
+  echo "  ${TEST_FILE_PATH}"
+  echo "==============================================================="
+  echo ""
+
   TEST_FILE_BASENAME=`basename "${TEST_FILE_PATH}"`
 
   TEST_OUTPUT=${PY_TEST_DIR}/${TEST_FILE_BASENAME}.out
 
-  python ${PY_TEST_DIR}/${TEST_FILE_BASENAME} | \
+  python ${PY_TEST_DIR}/${TEST_FILE_BASENAME} 2>&1 | \
     tee ${TEST_OUTPUT}  &&
 
-  # Examine the OK status of the test output
-  LASTLINE=`awk '/./{line=$0} END{print line}' ${TEST_OUTPUT}`
-  test "${LASTLINE}" = OK &&
+  # Check for OK or failure status of the test output and exit with code 1
+  # if failure is seen
+  OK_LINE=`grep "^OK" ${TEST_OUTPUT}`
+  FAIL_LINE=`grep "^> FAILED" ${TEST_OUTPUT}`
+  if [[ ! -z ${OK_LINE} ]] && [[ -z ${FAIL_LINE} ]]; then
+    echo ""
+    echo "Python test on install succeeded: ${TEST_FILE_PATH}"
+    echo ""
+  else
+    echo ""
+    echo "Python test on install FAILED: ${TEST_FILE_PATH}"
+    exit 1
+  fi
 
   # Clean up files for this test
   rm -f ${PY_TEST_DIR}/${TEST_FILE_BASENAME} &&
-  rm -f ${PY_TEST_DIR}/${TEST_FILE_BASENAME}.out
+  rm -f ${TEST_OUTPUT}
 
 done
 
 echo ""
-echo "All ${PY_TEST_COUNT} Python tests on install PASSED"
+echo "${PY_TEST_COUNT} Python tests on install PASSED" \
+     "(Among those, ${SKIP_COUNTER} were SKIPPED)"
