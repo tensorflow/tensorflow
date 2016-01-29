@@ -784,6 +784,9 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
+  def __neg__(self):
+    return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
