@@ -156,7 +156,7 @@ TEST(TensorSliceTest, SliceTensorShape) {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:-:4,1:2,6");
     TensorShape x({2, 4, 5, 8});
     TensorShape y;
-    EXPECT_OK(a.SliceTensorShape(x, &y));
+    TF_EXPECT_OK(a.SliceTensorShape(x, &y));
     EXPECT_EQ("[1,4,1,6]", y.DebugString());
   }
 

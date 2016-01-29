@@ -354,6 +354,7 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
   int cost_id = cost_node ? cost_node->cost_id() : id;
   node->Initialize(id, cost_id, props);
   nodes_.push_back(node);
+  ++num_nodes_;
   return node;
 }
 
@@ -361,6 +362,7 @@ void Graph::ReleaseNode(Node* node) {
   DCHECK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
+  --num_nodes_;
   node->Clear();
 }
 

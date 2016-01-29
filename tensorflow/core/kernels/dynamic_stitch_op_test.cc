@@ -38,11 +38,11 @@ class DynamicStitchOpTest : public OpsTestBase {
  protected:
   void MakeOp(int n, DataType dt) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "DynamicStitch")
-                  .Input(FakeInput(n, DT_INT32))
-                  .Input(FakeInput(n, dt))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "DynamicStitch")
+                     .Input(FakeInput(n, DT_INT32))
+                     .Input(FakeInput(n, dt))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -54,7 +54,7 @@ TEST_F(DynamicStitchOpTest, Simple_OneD) {
   AddInputFromArray<int32>(TensorShape({5}), {1, 6, 2, 3, 5});
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
   AddInputFromArray<float>(TensorShape({5}), {10, 60, 20, 30, 50});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({8}));
@@ -72,7 +72,7 @@ TEST_F(DynamicStitchOpTest, Simple_TwoD) {
   AddInputFromArray<float>(TensorShape({3, 2}), {0, 1, 40, 41, 70, 71});
   AddInputFromArray<float>(TensorShape({2, 2}), {10, 11, 60, 61});
   AddInputFromArray<float>(TensorShape({3, 2}), {20, 21, 30, 31, 50, 51});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({8, 2}));

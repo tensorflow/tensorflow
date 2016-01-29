@@ -40,12 +40,12 @@ class ScatterUpdateOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_ref_type, DataType index_type) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "ScatterUpdate")
-                  .Input(FakeInput(variable_ref_type))
-                  .Input(FakeInput(index_type))
-                  .Input(FakeInput(RemoveRefType(variable_ref_type)))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterUpdate")
+                     .Input(FakeInput(variable_ref_type))
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(RemoveRefType(variable_ref_type)))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -54,7 +54,7 @@ TEST_F(ScatterUpdateOpTest, Simple_StringType) {
   AddInputFromArray<string>(TensorShape({1}), {"Brain"});
   AddInputFromArray<int32>(TensorShape({1}), {0});
   AddInputFromArray<string>(TensorShape({1}), {"TensorFlow"});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
   Tensor expected(allocator(), DT_STRING, TensorShape({1}));
@@ -67,7 +67,7 @@ TEST_F(ScatterUpdateOpTest, Simple_BoolType) {
   AddInputFromArray<bool>(TensorShape({1}), {false});
   AddInputFromArray<int32>(TensorShape({1}), {0});
   AddInputFromArray<bool>(TensorShape({1}), {true});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
   Tensor expected(allocator(), DT_BOOL, TensorShape({1}));
@@ -84,7 +84,7 @@ TEST_F(ScatterUpdateOpTest, Simple_TwoD32) {
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
@@ -103,7 +103,7 @@ TEST_F(ScatterUpdateOpTest, Simple_Two64) {
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
@@ -120,7 +120,7 @@ TEST_F(ScatterUpdateOpTest, Simple_ZeroD) {
   AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
   AddInputFromArray<int32>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {101});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
@@ -136,7 +136,7 @@ TEST_F(ScatterUpdateOpTest, Simple_OneD) {
   AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3}), {100, 101, 102});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
@@ -152,7 +152,7 @@ TEST_F(ScatterUpdateOpTest, HigherRank) {
   AddInputFromArray<float>(TensorShape({8}), {0, 0, 0, 0, 0, 0, 0, 0});
   AddInputFromArray<int32>(TensorShape({2, 3}), {0, 4, 2, 1, 3, 6});
   AddInputFromArray<float>(TensorShape({2, 3}), {10, 20, 30, 40, 50, 60});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the new state of the input
   Tensor params_tensor = *mutable_input(0).tensor;
@@ -229,11 +229,11 @@ class ScatterUpdateBM : public ScatterUpdateOpTest {
  public:
   virtual void TestBody() {}
   void MakeBenchmarkOp(const char* op, DataType index_type) {
-    ASSERT_OK(NodeDefBuilder("myop", op)
-                  .Input(FakeInput(DT_FLOAT_REF))
-                  .Input(FakeInput(index_type))
-                  .Input(FakeInput(DT_FLOAT))
-                  .Finalize(node_def()));
+    TF_ASSERT_OK(NodeDefBuilder("myop", op)
+                     .Input(FakeInput(DT_FLOAT_REF))
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Finalize(node_def()));
     TF_CHECK_OK(InitOp());
   }
 };

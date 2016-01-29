@@ -83,7 +83,7 @@ TEST(AlgorithmTest, ReversePostOrder) {
   BinaryOp("TestMul", w2, {input, 1}, b.opts().WithName("t3"));
 
   Graph g(OpRegistry::Global());
-  ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(b.ToGraph(&g));
   std::vector<Node*> order;
 
   // Test reverse post order:

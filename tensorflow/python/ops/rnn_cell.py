@@ -125,12 +125,13 @@ class BasicRNNCell(RNNCell):
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units):
+  def __init__(self, num_units, input_size=None):
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
@@ -159,20 +160,31 @@ class BasicLSTMCell(RNNCell):
 
   The implementation is based on: http://arxiv.org/pdf/1409.2329v5.pdf.
 
+  We add forget_bias (default: 1) to the biases of the forget gate in order to
+  reduce the scale of forgetting in the beginning of the training.
+
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  Biases of the forget gate are initialized by default to 1 in order to reduce
-  the scale of forgetting in the beginning of the training.
+  For advanced models, please use the full LSTMCell that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0):
+  def __init__(self, num_units, forget_bias=1.0, input_size=None):
+    """Initialize the basic LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell.
+      forget_bias: float, The bias added to forget gates (see above).
+      input_size: int, The dimensionality of the inputs into the LSTM cell,
+        by default equal to num_units.
+    """
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
     self._forget_bias = forget_bias
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
