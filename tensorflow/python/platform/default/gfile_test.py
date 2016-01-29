@@ -173,6 +173,26 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     self.assertLessEqual(statinfo.mtime, creation_time + 10)
     self.assertGreaterEqual(statinfo.mtime, creation_time - 10)
 
+  def testRename(self):
+    gfile.MkDir(self.tmp + "dir1")
+    gfile.MkDir(self.tmp + "dir2")
+    with gfile.GFile(self.tmp + "file1", "w"):
+      pass  # Create file
+    with gfile.GFile(self.tmp + "file2", "w"):
+      pass  # Create file
+
+    # Dest file already exists, overwrite=False (default).
+    self.assertRaises(
+        OSError, lambda: gfile.Rename(self.tmp + "file1", self.tmp + "file2"))
+    gfile.Rename(self.tmp + "file1", self.tmp + "file2", overwrite=True)
+    self.assertFalse(gfile.Exists(self.tmp + "file1"))
+    gfile.Rename(self.tmp + "file2", self.tmp + "newfile")
+    self.assertTrue(gfile.Exists(self.tmp + "newfile"))
+
+    gfile.Rename(self.tmp + "dir1", self.tmp + "dir2")
+    self.assertFalse(gfile.Exists(self.tmp + "dir1"))
+    gfile.Rename(self.tmp + "dir2", self.tmp + "newdir")
+    self.assertTrue(gfile.Exists(self.tmp + "newdir"))
 
 if __name__ == "__main__":
   googletest.main()
