@@ -55,6 +55,16 @@ WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 
+# Add extra params for cuda devices and libraries for GPU container.
+if [ "${CONTAINER_TYPE}" == "gpu" ]; then
+  devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
+  libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | xargs -I{} echo '-v {}:{}')
+  GPU_EXTRA_PARAMS="${devices} ${libs}"
+else
+  GPU_EXTRA_PARAMS=""
+fi
+
+
 # Print arguments.
 echo "WORKSAPCE: ${WORKSPACE}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
@@ -84,6 +94,7 @@ docker run \
     -e "CI_BUILD_GID=$(id -g $USER)" \
     -v ${WORKSPACE}:/tensorflow \
     -w /tensorflow \
+    ${GPU_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${BUILD_TAG}.${CONTAINER_TYPE}" \
     ${CI_COMMAND_PREFIX[@]} \
