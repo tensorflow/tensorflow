@@ -95,12 +95,13 @@ fi
 
 echo "python $version is installed"
 
-echo $pythonV
-##########################}
+ ##########################}
 
 
 if [ $(which pip2) ]; then
     PIP="pip2"
+    echo "!!you are using $PIP for this installation"
+
 else
     PIP="pip"
 fi
@@ -110,8 +111,8 @@ fi
  
   if [ $(which apt-get) ]; then
     echo "installing apt packages"
-    sudo apt-get update -qq
-    sudo apt-get -qq -y install build-essential python-dev python-pip 
+   # sudo apt-get update 
+    sudo apt-get -y install build-essential python-dev python-pip  ##-y  Assume Yes to all queries and do not prompt
 	
   elif [ $(which pacman) ]; then
     echo "installing pip"
@@ -131,8 +132,8 @@ sudo -H $PIP install virtualenv # -H  set HOME variable to target user's home di
  
 
 while true; do
-  echo -n "do you like to use python virtual environment? y/n"
-  read var1
+  echo -n "do you like to use python virtual environment? y/n  "
+  read env
   if [[ $env == "y" ]] || [[ $env == "n" ]]
   then
     printf "$env"
@@ -144,8 +145,8 @@ done
 
 
   while true; do
-  echo -n "do you like to install Tensorflow for CPU or GPU? cpu/gpu"
-  read var1
+  echo -n "do you like to install Tensorflow for CPU or GPU? cpu/gpu  "
+  read choice
   if [[ $choice == "cpu" ]] || [[ $choice == "gpu" ]]
   then
     printf " installation for $choice"
@@ -157,26 +158,25 @@ done
   
  
 ################################Normal installation##########################
-if [ $env -eq "n" ]; 
+if [ $env=="n" ]; 
 then
 echo "Install TensorFlow without python Env:"
  
-	if [ $choice -eq "cpu" ]; 
-	then
+
  		
 		if [ "$pythonV" -lt 3 ] 
 			then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
-		else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-    fi
+		    else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+        fi
    
    
    
    
-elif [ $choice -eq "y" ]; 
+elif [ $choice =="y" ]; 
 then
  virtualenv --system-site-packages ~/tensorflow
  
-				if [[ "$SHELL" == *"bash"* ]]; then
+				if [[ "$SHELL" == *"bash"* ]]; 
 					then
 						~/tensorflow/bin/activate
 					else
@@ -192,7 +192,7 @@ then
 fi
 
 
-Test_installation()
-{
+#Test_installation()
+#{
 
-}
+#}
