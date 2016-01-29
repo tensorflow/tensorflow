@@ -1,60 +1,12 @@
-#!/bin/bash 
-# original instructions are located in https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md
-# this is a bash file to help newbies to install tenserflow 
-# run this file from a shell   cd shell location and ./setup_tensor.sh
-echo "Tensofrlow installation required tools has started"
+#!/bin/sh
+# Detects which OS and if it is Linux then it will detect which Linux Distribution.
 
-#you could check get GPU information with lspci | grep -i --color 'nvidia'
+OS=`uname -s`
+REV=`uname -r`
+MACH=`uname -m`
+DIST='a'
 
-gathering_sys_information()
-{
-     VERSION=`cat $1 | tr "\n" ' ' | sed s/.*VERSION.*=\ // `
- 
-if [ "${OS}" = "SunOS" ] ; then
-    OS=Solaris
-    ARCH=`uname -p` 
-    OSSTR="${OS} ${REV}(${ARCH} `uname -v`)"
-elif [ "${OS}" = "AIX" ] ; then
-    OSSTR="${OS} `oslevel` (`oslevel -r`)"
-elif [ "${OS}" = "Linux" ] ; then
-    KERNEL=`uname -r`
-    if [ -f /etc/redhat-release ] ; then
-        DIST='RedHat'
-        PSUEDONAME=`cat /etc/redhat-release | sed s/.*\(// | sed s/\)//`
-        REV=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
-    elif [ -f /etc/SuSE-release ] ; then
-        DIST=`cat /etc/SuSE-release | tr "\n" ' '| sed s/VERSION.*//`
-        REV=`cat /etc/SuSE-release | tr "\n" ' ' | sed s/.*=\ //`
-    elif [ -f /etc/mandrake-release ] ; then
-        DIST='Mandrake'
-        PSUEDONAME=`cat /etc/mandrake-release | sed s/.*\(// | sed s/\)//`
-        REV=`cat /etc/mandrake-release | sed s/.*release\ // | sed s/\ .*//`
-    elif [ -f /etc/debian_version ] ; then
-        DIST="Debian `cat /etc/debian_version`"
-        REV=""
-
-    fi
-    if [ -f /etc/UnitedLinux-release ] ; then
-        DIST="${DIST}[`cat /etc/UnitedLinux-release | tr "\n" ' ' | sed s/VERSION.*//`]"
-    fi
-
-    OSSTR="${OS} ${DIST} ${REV}(${PSUEDONAME} ${KERNEL} ${MACH})"
-
-fi
-
-return ${OSSTR}
-}
-
-echo "your system is $gathering_sys_information"
-read installer
-
-wich_installer()
-{
- return installer;
-}
-
-MACHINE_TYPE=`uname -m`
-if [ ${MACHINE_TYPE} == 'x86_64' ]; 
+if [ ${MACH} == 'x86_64' ]; 
 then
  echo "Your Proc architecture is x86_64" 
 else
@@ -62,14 +14,71 @@ else
  exit 0
 fi
 
-#**************************************
+
+GetVersionFromFile()
+{
+	VERSION=`cat $1 | tr "\n" ' ' | sed s/.*VERSION.*=\ // `
+}
+
+wich_sys(){
+    
+
+if [ "${OS}" = "SunOS" ] ; then
+	OS=Solaris
+	ARCH=`uname -p`	
+	echo "${OS} ${REV}(${ARCH} `uname -v`)"
+	exit 0
+elif [ "${OS}" = "AIX" ] ; then
+	echo "${OS} `oslevel` (`oslevel -r`)" 
+	exit 0
+elif [ "${OS}" = "Linux" ] ; then
+	KERNEL=`uname -r`
+	if [ -f /etc/redhat-release ] ; then
+		DIST='RedHat'
+		PSUEDONAME=`cat /etc/redhat-release | sed s/.*\(// | sed s/\)//`
+		REV=`cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//`
+	elif [ -f /etc/SUSE-release ] ; then
+		DIST='SUSE'
+		REV=`cat /etc/SUSE-release | tr "\n" ' ' | sed s/.*=\ //`
+	elif [ -f /etc/mandrake-release ] ; then
+		DIST='Mandrake'
+		PSUEDONAME=`cat /etc/mandrake-release | sed s/.*\(// | sed s/\)//`
+		REV=`cat /etc/mandrake-release | sed s/.*release\ // | sed s/\ .*//`
+	elif [ -f /etc/debian_version ] ; then
+		DIST="Debian "
+		REV=`cat /etc/debian_version`
+
+	elif [ -f /etc/arch-release ] ; then
+		DIST="Archlinux"
+		REV=`cat /etc/arch-release`
+	 
+
+	fi
+	if [ -f /etc/UnitedLinux-release ] ; then
+		DIST="${DIST}[`cat /etc/UnitedLinux-release | tr "\n" ' ' | sed s/VERSION.*//`]"
+	fi
+	
+	OSSTR="${DIST} ${REV} ${PSUEDONAME}"
+
+fi
+
+ 
+echo  ${DIST}
+}
+
+ 
+echo "your system is a $(wich_sys)"
+
+
+ 
+#################Python_detect(){
 version=$(python -V 2>&1 | grep -Po '(?<=Python )(.+)')
+
 if [[ -z "$version" ]]
 then
     echo "No Python!" 
     pythonV=0
-    sudo $installer install python
-    ech "python is insallaed, please resatrt this script"
+    ech "Install python first"
     exit 0
 
 else
@@ -85,98 +94,105 @@ else
 fi
 
 echo "python $version is installed"
-#********************************************/
+
+echo $pythonV
+##########################}
+
+
+if [ $(which pip2) ]; then
+    PIP="pip2"
+else
+    PIP="pip"
+fi
+
+###############################Installation process #################
+
+ 
+  if [ $(which apt-get) ]; then
+    echo "installing apt packages"
+    sudo apt-get update -qq
+    sudo apt-get -qq -y install build-essential python-dev python-pip 
+	
+  elif [ $(which pacman) ]; then
+    echo "installing pip"
+    sudo pacman -S base-devel python2-pip
+    PIP="pip2"
+  elif [ $(which yum) ]; then
+    sudo yum install python-pip python-devel  
+  elif [ $(which zypper) ]; then
+  sudo zypper install python-pip python-devel  
+	
+  fi
+sudo -H $PIP install virtualenv # -H  set HOME variable to target user's home dir.
+
+
+  ############
+  
  
 
-#Install pip (or pip3 for python3) if it is not already installed:
-# Ubuntu/Linux 64-bit
-echo "Installing PIP and Virtual Environment"
+while true; do
+  echo -n "do you like to use python virtual environment? y/n"
+  read var1
+  if [[ $env == "y" ]] || [[ $env == "n" ]]
+  then
+    printf "$env"
+    break
+  fi 
+  echo "please type y for yes or n for no"
 
-sudo $installer install python-pip python-dev python-virtualenv
+done
 
 
-echo "do you like to use python virtual environment(1) or not(0)?"
-read env
+  while true; do
+  echo -n "do you like to install Tensorflow for CPU or GPU? cpu/gpu"
+  read var1
+  if [[ $choice == "cpu" ]] || [[ $choice == "gpu" ]]
+  then
+    printf " installation for $choice"
+    break
+  fi
+    echo "please type cpu or gpu"
+
+done
+  
  
 ################################Normal installation##########################
-if [ $env -eq 0 ]; 
+if [ $env -eq "n" ]; 
 then
 echo "Install TensorFlow without python Env:"
-echo "do you like to install Tensorflow for CPU (0) or GPU (1)?"
-read choice
-if [ $choice -eq 0 ]; 
+ 
+	if [ $choice -eq "cpu" ]; 
+	then
+ 		
+		if [ "$pythonV" -lt 3 ] 
+			then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+		else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+    fi
+   
+   
+   
+   
+elif [ $choice -eq "y" ]; 
 then
-# Ubuntu/Linux 64-bit, CPU only:
-   if [ "$pythonV" -lt 3 ] 
-    then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.5.0-cp27-none-linux_x86_64.whl
-    else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-   fi
-elif [ $choice -eq 1 ]; 
-then
-# Ubuntu/Linux 64-bit, CPU only:
-   if [ "$pythonV" -lt 3 ] 
-    then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-    else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-   fi
-else "bad choice, restart"
-fi
-echo "--------------------------------------------------------------"
-fi
-################################Using virtual Env installation##########################
-if [ $env -eq 1 ]; 
-then
-echo "make the tensorflow environment"
-
-virtualenv --system-site-packages ~/virtual-tf
-
-echo "--------------------------------------------------------------"
-echo ". "
-
-source ~/virtual-tf/bin/activate 
-
-#echo "Unfortunately on cloud 9 Pip hides the TensorFlow folder so lets clone it for our use"
-#echo "Kind of wasteful but it isn't on our computer anyway"
-
-############
-#Create a Virtualenv environment in the directory ~/tensorflow:
-
-virtualenv --system-site-packages ~/tensorflow
-Activate the environment and use pip to install TensorFlow inside it:
-echo "Activate the environemnt use deactivate to get your cursor back"
-
-source ~/tensorflow/bin/activate  # If using bash
-#source ~/tensorflow/bin/activate.csh  # If using csh
-#(tensorflow)$  # Your prompt should change
-
-echo "do you like to install Tensorflow for CPU (0) or GPU (1)?"
-read choice
-if [ $choice -eq 0 ]; 
-then
-# Ubuntu/Linux 64-bit, CPU only:
- if [ "$pythonV" -lt 3 ] 
-    then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-
-    else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-   fi
-
-elif [ $choice -eq 1 ]; then
- if [ "$pythonV" -lt 3 ] 
-    then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-
-    else sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
-   fi
-else "bad choice, restart"
-fi
-###############
-deactivate
-
+ virtualenv --system-site-packages ~/tensorflow
+ 
+				if [[ "$SHELL" == *"bash"* ]]; then
+					then
+						~/tensorflow/bin/activate
+					else
+						~/tensorflow/bin/activate.csh
+				fi
+	
+	
+				if [ "$pythonV" -lt 3 ] 
+				then sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp27-none-linux_x86_64.whl
+				else sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/$choice/tensorflow-0.6.0-cp34-none-linux_x86_64.whl
+				fi
+ deactivate
 fi
 
-echo "To use TensorFlow later you will have to activate the Virtualenv environment again:"
-echo "$ source ~/tensorflow/bin/activate   If using bash."
-echo "$ source ~/tensorflow/bin/activate.csh   If using csh."
-echo "(tensorflow)$   Your prompt should change."
-echo "# Run Python programs that use TensorFlow."
-#...
-echo "# When you finish using TensorFlow, deactivate the environment."
-echo "(tensorflow)$ deactivate"
+
+Test_installation()
+{
+
+}
