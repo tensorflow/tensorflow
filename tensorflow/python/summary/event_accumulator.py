@@ -99,22 +99,13 @@ class EventAccumulator(object):
   `Accumulator.Scalars(tag)`) allow for the retrieval of all data
   associated with that tag.
 
-  Before usage, the `EventAccumulator` must be activated via `Reload()` or
-  `AutoUpdate(interval)`.
-
-  If activated via `Reload()`, it loads synchronously, so calls to `Values` or
-  `Tags` will block until all outstanding events are processed. Afterwards,
-  `Reload()` may be called again to load any new data.
-
-  If activated via `AutoUpdate(interval)`, it loads asynchronously, so calls to
-  `Values` or `Tags` will immediately return a valid subset of the outstanding
-  event data. It reloads new data every `interval` seconds.
+  Before usage, the `EventAccumulator` must be activated via `Reload()`. This
+  method synchronosly loads all of the data written so far.
 
   Histograms and images are very large, so storing all of them is not
   recommended.
 
   @@Reload
-  @@AutoUpdate
   @@Tags
   @@Scalars
   @@Graph
@@ -155,7 +146,6 @@ class EventAccumulator(object):
     self._images = reservoir.Reservoir(size=sizes[IMAGES])
     self._generator_mutex = threading.Lock()
     self._generator = _GeneratorFromPath(path)
-    self._is_autoupdating = False
     self._activated = False
     self._compression_bps = compression_bps
     self.most_recent_step = -1
@@ -201,36 +191,6 @@ class EventAccumulator(object):
             elif value.HasField('image'):
               self._ProcessImage(value.tag, event.wall_time, event.step,
                                  value.image)
-    return self
-
-  def AutoUpdate(self, interval=60):
-    """Asynchronously load all events, and periodically reload.
-
-    Calling this function is not thread safe.
-    Calling this function activates the `EventAccumulator`.
-
-    Args:
-      interval: how many seconds after each successful reload to load new events
-        (default 60)
-
-    Returns:
-      The `EventAccumulator`.
-    """
-    if self._is_autoupdating:
-      return
-    self._is_autoupdating = True
-    self._activated = True
-    def Update():
-      self.Reload()
-      logging.info('EventAccumulator update triggered')
-      t = threading.Timer(interval, Update)
-      t.daemon = True
-      t.start()
-    # Asynchronously start the update process, so that the accumulator can
-    # immediately serve data, even if there is a very large event file to parse
-    t = threading.Timer(0, Update)
-    t.daemon = True
-    t.start()
     return self
 
   def Tags(self):

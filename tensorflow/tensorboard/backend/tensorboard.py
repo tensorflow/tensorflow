@@ -25,9 +25,12 @@ from __future__ import print_function
 import functools
 import os
 import socket
+import threading
+import time
 
 import tensorflow.python.platform
 
+import six
 from six.moves import BaseHTTPServer
 from six.moves import socketserver
 
@@ -71,6 +74,9 @@ TENSORBOARD_SIZE_GUIDANCE = {
     event_accumulator.SCALARS: 1000,
     event_accumulator.HISTOGRAMS: 1,
 }
+
+# How often to reload new data after the latest load (secs)
+LOAD_INTERVAL = 60
 
 
 def ParseEventFilesFlag(flag_value):
@@ -129,15 +135,26 @@ def main(unused_argv=None):
                   'details and examples.')
     return -1
 
-  if FLAGS.debug:
-    logging.info('Starting TensorBoard in directory %s', os.getcwd())
+  logging.info('Starting TensorBoard in directory %s', os.getcwd())
 
   path_to_run = ParseEventFilesFlag(FLAGS.logdir)
-  multiplexer = event_multiplexer.AutoloadingMultiplexer(
-      path_to_run=path_to_run, interval_secs=60,
+  logging.info('TensorBoard path_to_run is: %s', path_to_run)
+  multiplexer = event_multiplexer.EventMultiplexer(
       size_guidance=TENSORBOARD_SIZE_GUIDANCE)
 
-  multiplexer.AutoUpdate(interval=30)
+  def _Load():
+    start = time.time()
+    for (path, name) in six.iteritems(path_to_run):
+      multiplexer.AddRunsFromDirectory(path, name)
+    multiplexer.Reload()
+    duration = time.time() - start
+    logging.info('Multiplexer done loading. Load took %0.1f secs', duration)
+    t = threading.Timer(LOAD_INTERVAL, _Load)
+    t.daemon = True
+    t.start()
+  t = threading.Timer(0, _Load)
+  t.daemon = True
+  t.start()
 
   factory = functools.partial(tensorboard_handler.TensorboardHandler,
                               multiplexer)
