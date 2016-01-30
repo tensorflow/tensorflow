@@ -31,6 +31,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     Parameters:
         rnn_size: The size for rnn cell, e.g. size of your word embeddings.
         cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
@@ -64,7 +65,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
-    def __init__(self, rnn_size, n_classes, cell_type='gru',
+    def __init__(self, rnn_size, n_classes, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn, bidirection=False,
                  tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
@@ -75,6 +76,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
         self.bidirection = bidirection
+        self.num_layers = num_layers
         super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -87,6 +89,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
+                                    self.num_layers,
                                     self.input_op_fn, self.bidirection,
                                     models.logistic_regression)(X, y)
 
@@ -107,6 +110,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     Parameters:
         rnn_size: The size for rnn cell, e.g. size of your word embeddings.
         cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
@@ -133,7 +137,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             round(s) to continue training. (default: None)
     """
 
-    def __init__(self, rnn_size, cell_type='gru',
+    def __init__(self, rnn_size, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn, bidirection=False,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
@@ -144,6 +148,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
         self.bidirection = bidirection
+        self.num_layers = num_layers
         super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -156,6 +161,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
+                                    self.num_layers,
                                     self.input_op_fn, self.bidirection,
                                     models.linear_regression)(X, y)
 

@@ -62,7 +62,7 @@ classifier = skflow.TensorFlowRNNClassifier(rnn_size=EMBEDDING_SIZE,
     n_classes=15, cell_type='gru', input_op_fn=input_op_fn,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-# Continuesly train for 1000 steps & predict on test set.
+# Continously train for 1000 steps & predict on test set.
 while True:
     classifier.fit(X_train, y_train, logdir='/tmp/tf_examples/word_rnn')
     score = metrics.accuracy_score(y_test, classifier.predict(X_test))

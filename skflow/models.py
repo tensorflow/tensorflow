@@ -94,7 +94,7 @@ def get_dnn_model(hidden_units, target_predictor_fn):
     return dnn_estimator
 
 
-def get_rnn_model(rnn_size, cell_type, input_op_fn,
+def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
                   bidirection, target_predictor_fn):
     """Returns a function that creates a RNN TensorFlow subgraph with given
     params.
@@ -102,6 +102,7 @@ def get_rnn_model(rnn_size, cell_type, input_op_fn,
     Args:
         rnn_size: The size for rnn cell, e.g. size of your word embeddings.
         cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
@@ -132,7 +133,7 @@ def get_rnn_model(rnn_size, cell_type, input_op_fn,
             rnn_bw_cell = cell_fn(rnn_size)
             encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell)
         else:
-            cell = cell_fn(rnn_size)
+            cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
         return target_predictor_fn(encoding[-1], y)
     return rnn_estimator
