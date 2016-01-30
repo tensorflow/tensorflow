@@ -395,6 +395,16 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareCpu(x, y, np.multiply, _MUL)
     self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
 
+  def testStringComparison(self):
+    x = np.array([["abc", "bh"], ["c", ""]])
+    y = np.array([["abc", "bh"], ["def", "hi"]])
+    with self.test_session(use_gpu=False) as sess:
+      cmp_eq = tf.equal(x, y)
+      cmp_not_eq = tf.not_equal(x, y)
+      values = sess.run([cmp_eq, cmp_not_eq])
+      self.assertAllEqual([[True, True], [False, False]], values[0])
+      self.assertAllEqual([[False, False], [True, True]], values[1])
+
   def testString(self):
     x = np.array([["x_0_0", "x_0_1", "x_0_2"],
                   ["x_1_0", "x_1_1", "x_1_2"],

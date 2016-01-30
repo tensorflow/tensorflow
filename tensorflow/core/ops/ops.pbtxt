@@ -2568,6 +2568,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
@@ -4938,6 +4939,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
