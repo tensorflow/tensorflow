@@ -28,6 +28,10 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import constant_op
+# Import gradients to register _IndexedSlicesToTensor.
+import tensorflow.python.ops.gradients  # pylint: disable=unused-import
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -50,6 +54,34 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(sp.indices.dtype, dtypes.int64)
     self.assertEqual(sp.values.dtype, dtypes.string)
     self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+
+class IndexedSlicesTest(test_util.TensorFlowTestCase):
+
+  def testToTensor(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      dense_shape = constant_op.constant([3, 2])
+      x = ops.IndexedSlices(values, indices, dense_shape)
+      tensor = ops.convert_to_tensor(x, name="tensor")
+      self.assertAllEqual(tensor.eval(), [[2, 3], [0, 0], [5, 7]])
+
+  def testNegation(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      x = -ops.IndexedSlices(values, indices)
+      self.assertAllEqual(x.values.eval(), [[-2, -3], [-5, -7]])
+      self.assertAllEqual(x.indices.eval(), [0, 2])
+
+  def testScalarMul(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
+      self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
+      self.assertAllEqual(x.indices.eval(), [0, 2])
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):

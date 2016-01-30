@@ -784,8 +784,9 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
-IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
-                                            ["values", "indices", "dense_shape"])
+  def __neg__(self):
+    return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
@@ -3340,6 +3341,8 @@ class GraphKeys(object):
   MOVING_AVERAGE_VARIABLES = "moving_average_variables"
   # Key to collected regularization losses at graph construction.
   REGULARIZATION_LOSSES = "regularization_losses"
+  # Key to collect concatenated sharded variables.
+  CONCATENATED_VARIABLES = "concatenated_variables"
 
 
 def add_to_collection(name, value):

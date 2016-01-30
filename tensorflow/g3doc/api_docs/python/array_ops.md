@@ -884,7 +884,7 @@ tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
 
 - - -
 
-### `tf.gather(params, indices, name=None)` {#gather}
+### `tf.gather(params, indices, validate_indices=None, name=None)` {#gather}
 
 Gather slices from `params` according to `indices`.
 
@@ -912,6 +912,7 @@ this operation will permute `params` accordingly.
 
 *  <b>`params`</b>: A `Tensor`.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+*  <b>`validate_indices`</b>: An optional `bool`. Defaults to `True`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

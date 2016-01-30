@@ -1,5 +1,9 @@
 #!/bin/bash
 
+if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
+  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n" 1>&2
+fi
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -44,32 +48,55 @@ fi
 
 # Find out where the CUDA toolkit is installed
 while true; do
+  # Configure the Cuda SDK version to use.
+  default_cuda_version="7.0"
+  if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
+    if [ -z "$TF_CUDA_VERSION" ]; then
+      read -p "Please specify the Cuda SDK version you want to use. [Default is $default_cuda_version]: " TF_CUDA_VERSION
+    fi
+  fi
+  if [ -z "$TF_CUDA_VERSION" ]; then
+    TF_CUDA_VERSION=$default_cuda_version
+  fi
+
   fromuser=""
   if [ -z "$CUDA_TOOLKIT_PATH" ]; then
     default_cuda_path=/usr/local/cuda
-    read -p "Please specify the location where CUDA 7.0 toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
+    read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$CUDA_TOOLKIT_PATH" ]; then
       CUDA_TOOLKIT_PATH=$default_cuda_path
     fi
   fi
-  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.7.0" ]; then
+  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.$TF_CUDA_VERSION" ]; then
     break
   fi
-  echo "Invalid path to CUDA 7.0 toolkit. ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0 cannot be found"
+  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.$TF_CUDA_VERSION cannot be found"
   if [ -z "$fromuser" ]; then
     exit 1
   fi
+  TF_CUDA_VERSION=""
   CUDA_TOOLKIT_PATH=""
   # Retry
 done
 
 # Find out where the cuDNN library is installed
 while true; do
+  # Configure the Cudnn version to use.
+  default_cudnn_version="6.5"
+  if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
+    if [ -z "$TF_CUDNN_VERSION" ]; then
+      read -p "Please specify the Cudnn version you want to use. [Default is $default_cudnn_version]: " TF_CUDNN_VERSION
+    fi
+  fi
+  if [ -z "$TF_CUDNN_VERSION" ]; then
+    TF_CUDNN_VERSION=$default_cudnn_version
+  fi
+
   fromuser=""
   if [ -z "$CUDNN_INSTALL_PATH" ]; then
     default_cudnn_path=${CUDA_TOOLKIT_PATH}
-    read -p "Please specify the location where cuDNN v2 library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
+    read -p "Please specify the location where cuDNN $TF_CUDNN_VERSION library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
     fromuser="1"
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
@@ -78,21 +105,22 @@ while true; do
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=$(bash -c "readlink -f $CUDNN_INSTALL_PATH")
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.6.5" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.${TF_CUDNN_VERSION}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.${TF_CUDNN_VERSION}" ]; then
     break
   fi
-  echo "Invalid path to cuDNN v2 toolkit. Neither of the following two files can be found:"
-  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.6.5"
-  echo "$CUDNN_INSTALL_PATH/libcudnn.so.6.5"
+  echo "Invalid path to cuDNN ${TF_CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
+  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.${TF_CUDNN_VERSION}"
+  echo "$CUDNN_INSTALL_PATH/libcudnn.so.${TF_CUDNN_VERSION}"
   if [ -z "$fromuser" ]; then
     exit 1
   fi
+  TF_CUDNN_VERSION=""
   CUDNN_INSTALL_PATH=""
   # Retry
 done
 
 cat > third_party/gpus/cuda/cuda.config <<EOF
-# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requires Cuda 7.0
+# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requires Cuda $TF_CUDA_VERSION
 # at the moment.
 CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 
@@ -100,10 +128,23 @@ CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 # files can be either in this directory, or under include/ and lib64/
 # directories separately.
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
+
+# The Cuda SDK version that should be used in this build
+TF_CUDA_VERSION=$TF_CUDA_VERSION
+
+# The Cudnn version that should be used in this build
+TF_CUDNN_VERSION=$TF_CUDNN_VERSION
+
 EOF
 
 function UnofficialSetting() {
-  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n" 1>&2
+  # Configure the Cuda toolkit version to work with.
+  perl -pi -e "s,CUDA_VERSION = '[0-9\.]*',CUDA_VERSION = '$TF_CUDA_VERSION',s" tensorflow/core/platform/default/build_config.bzl
+  perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
+
+  # Configure the Cudnn version to work with.
+  perl -pi -e "s,CUDNN_VERSION = '[0-9\.]*',CUDNN_VERSION = '$TF_CUDNN_VERSION',s" tensorflow/core/platform/default/build_config.bzl
+  perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
 
   # Configure the compute capabilities that TensorFlow builds for.
   # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.

@@ -102,9 +102,8 @@ def _TensorArrayWriteGrad(op, flow):
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
   g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
-      source=grad_source)
-  with ops.control_dependencies([flow]):
-    grad = g.read(index)
+      source=grad_source, flow=flow)
+  grad = g.read(index)
   return [None, None, grad, flow]
 
 
@@ -144,8 +143,7 @@ def _TensorArrayUnpackGrad(op, flow):
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
   g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
-      source=grad_source)
-  with ops.control_dependencies([flow]):
-    grad = g.pack()
+      source=grad_source, flow=flow)
+  grad = g.pack()
   return [None, grad, flow]
 # pylint: enable=protected-access

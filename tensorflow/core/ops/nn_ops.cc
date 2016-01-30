@@ -551,6 +551,29 @@ loss: Per example loss (batch_size vector).
 backprop: backpropagated gradients (batch_size x num_classes matrix).
 )doc");
 
+REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
+    .Input("features: T")
+    .Input("labels: int64")
+    .Output("loss: T")
+    .Output("backprop: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes softmax cross entropy cost and gradients to backpropagate.
+
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+
+features: batch_size x num_classes matrix
+labels: batch_size vector with values in [0, num_classes).
+  This is the label for the given minibatch entry.
+loss: Per example loss (batch_size vector).
+backprop: backpropagated gradients (batch_size x num_classes matrix).
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("InTopK")

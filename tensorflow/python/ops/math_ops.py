@@ -220,6 +220,33 @@ def abs(x, name=None):
     return gen_math_ops._abs(x, name=name)
 
 
+def scalar_mul(scalar, x):
+  """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+  Intended for use in gradient code which might deal with `IndexedSlices`
+  objects, which are easy to multiply by a scalar but more expensive to
+  multiply with arbitrary tensors.
+
+  Args:
+    scalar: A 0-D scalar `Tensor`. Must have known shape.
+    x: A `Tensor` or `IndexedSlices` to be scaled.
+
+  Returns:
+    `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+  Raises:
+    ValueError: if scalar is not a 0-D `scalar`.
+  """
+  scalar = ops.convert_to_tensor(scalar, dtype=x.dtype, name="scalar")
+  shape = scalar.get_shape()
+  if shape.ndims == 0:
+    if isinstance(x, ops.IndexedSlices):
+      return ops.IndexedSlices(scalar * x.values, x.indices, x.dense_shape)
+    else:
+      return scalar * x
+  else:
+    raise ValueError("Only scalar multiply works, got shape %s" % shape)
+
 
 def pow(x, y, name=None):
   """Computes the power of one value to another.

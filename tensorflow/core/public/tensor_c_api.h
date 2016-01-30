@@ -253,7 +253,7 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // implementation will eventually call TF_DeleteTensor on each input).
 //
 // On success, the tensors corresponding to output_names[0,noutputs-1]
-// are placed in outputs[].  and these outputs[] become the property
+// are placed in outputs[], and these outputs[] become the property
 // of the caller (the caller must eventually call TF_DeleteTensor on
 // them).
 //
@@ -268,6 +268,40 @@ extern void TF_Run(TF_Session*,
                    const char** target_node_names, int ntargets,
                    // Output status
                    TF_Status*);
+
+// Set up the graph with the intended feeds and fetches for a sequence
+// of partial run calls.
+//
+// On success, returns a handle that is used for subsequent PRun calls.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+// NOTE: This is EXPERIMENTAL and subject to change.
+extern void TF_PRunSetup(TF_Session*,
+                         // Input names
+                         const char** input_names, int ninputs,
+                         // Output names
+                         const char** output_tensor_names, int noutputs,
+                         // Target nodes
+                         const char** target_node_names, int ntargets,
+                         // Output handle
+                         char** handle,
+                         // Output status
+                         TF_Status*);
+
+// Continue to run the graph with additional feeds and fetches. The
+// execution state is uniquely identified by the handle.
+// NOTE: This is EXPERIMENTAL and subject to change.
+extern void TF_PRun(TF_Session*, const char* handle,
+                    // Input tensors
+                    const char** input_names, TF_Tensor** inputs, int ninputs,
+                    // Output tensors
+                    const char** output_tensor_names, TF_Tensor** outputs,
+                    int noutputs,
+                    // Target nodes
+                    const char** target_node_names, int ntargets,
+                    // Output status
+                    TF_Status*);
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels

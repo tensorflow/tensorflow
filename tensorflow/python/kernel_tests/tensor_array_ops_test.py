@@ -416,23 +416,20 @@ class TensorArrayTest(tf.test.TestCase):
           dtype=tf.float32, tensor_array_name="foo", size=3)
       time_0 = tf.identity(0)
 
-      def body(time, flow, state):
+      def body(time, h_t, state):
         sliced = tf.slice(v0, begin=tf.pack([time, 0]), size=[1, -1])
         sliced = tf.squeeze(sliced)
         out = sliced + var + state
         state += sliced
-        h_n = h
-        h_n._flow = flow
-        h_n = h_n.write(time, out)
-        return (time+1, h_n.flow, state)
+        h_t = h_t.write(time, out)
+        return (time+1, h_t, state)
 
-      (unused_0, final_flow, unused_2) = control_flow_ops.While(
+      (unused_0, h_final, unused_2) = control_flow_ops.While(
           cond=lambda time, unused_1, unused_2: time < 3,
           body=body,
-          loop_vars=(time_0, h.flow, state0),
+          loop_vars=(time_0, h, state0),
           parallel_iterations=3)
-      h._flow = final_flow
-      vout = h.pack()
+      vout = h_final.pack()
 
       grad_val = -np.arange(3*5, dtype=np.float32).reshape(3, 5)
       v0_grad = tf.gradients([vout], [v0], [grad_val])[0]

@@ -68,6 +68,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -81,6 +82,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
 from tensorflow.python.platform import logging
@@ -281,6 +283,25 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
         return ref_switch(data, pred, name=name)
     else:
       return switch(data, pred, name=name)
+
+
+def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
+  return [ta.flow if isinstance(ta, tensor_array_ops.TensorArray)
+          else ta
+          for ta in tensors_or_tensor_arrays]
+
+
+def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
+  if len(tensors_or_tensorarrays) != len(tensors_or_flows):
+    raise ValueError(
+        "Lengths of original Tensor list and new list do not match: %d vs. %d"
+        % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
+  return [
+      tensor_array_ops.TensorArray(
+          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      if isinstance(ta, tensor_array_ops.TensorArray)
+      else t_or_flow
+      for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
 class ControlFlowOpWrapper(object):
@@ -1402,6 +1423,10 @@ class WhileContext(ControlFlowContext):
   def BuildLoop(self, pred, body, loop_vars):
     """Add the loop termination condition and body to the graph."""
 
+    # Keep original_loop_vars to identify which are TensorArrays
+    original_loop_vars = loop_vars
+    # Connvert TensorArrays to their flow variables
+    loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
     # would be added in the outer contexts properly.
@@ -1421,18 +1446,28 @@ class WhileContext(ControlFlowContext):
     self._pivot_for_pred = merge_vars[0]
 
     # Build the graph for pred.
-    c = ops.convert_to_tensor(pred(*merge_vars))
+    merge_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, merge_vars))
+    c = ops.convert_to_tensor(pred(*merge_vars_with_tensor_arrays))
     self._pivot = loop_cond(c, name="LoopCond")
     switch_vars = [_SwitchRefOrTensor(x, self._pivot) for x in merge_vars]
 
     # Build the graph for body.
     vars_for_body = [_Identity(x[1]) for x in switch_vars]
     self._pivot_for_body = vars_for_body[0]
+    # Convert TensorArray flow variables inside the context back into
+    # their associated TensorArrays for calling the body.
+    vars_for_body_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, vars_for_body))
 
-    body_result = body(*vars_for_body)
-    if not isinstance(body_result, (list, _basetuple)):
+    body_result = body(*vars_for_body_with_tensor_arrays)
+    if not isinstance(body_result, collections.Sequence):
       body_result = [body_result]
-    result = ops.convert_n_to_tensor_or_indexed_slices(body_result)
+    # Store body_result to keep track of TensorArrays returned by body
+    original_body_result = body_result
+    # Convert TensorArrays returned by body into their flow variables
+    result = _convert_tensorarrays_to_flows(body_result)
+    result = ops.convert_n_to_tensor_or_indexed_slices(result)
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
@@ -1450,7 +1485,14 @@ class WhileContext(ControlFlowContext):
 
     # Exit the loop.
     self.ExitResult(exit_vars)
-    return exit_vars[0] if len(exit_vars) == 1 else exit_vars
+
+    # Convert TensorArray flow variables outside the context back into
+    # their associated TensorArrays for returning to caller.
+    exit_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_body_result, exit_vars))
+    return (exit_vars_with_tensor_arrays[0]
+            if len(exit_vars) == 1
+            else exit_vars_with_tensor_arrays)
 
 
 def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
@@ -1461,6 +1503,10 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   tensor. `body` is a function taking a list of tensors and returning a list of
   tensors of the same length and with the same types as the input. `loop_vars`
   is a list of tensors that is passed to both `cond` and `body`.
+
+  In addition to regular Tensors or IndexedSlices, the body may accept and
+  return TensorArray objects.  The flows of the TensorArray objects will
+  be appropriately forwarded between loops and during gradient calculations.
 
   While `cond` evaluates to true, `body` is executed.
 
