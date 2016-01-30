@@ -332,6 +332,7 @@
   * [`softmax_cross_entropy_with_logits`](../../api_docs/python/nn.md#softmax_cross_entropy_with_logits)
   * [`softplus`](../../api_docs/python/nn.md#softplus)
   * [`softsign`](../../api_docs/python/nn.md#softsign)
+  * [`sparse_softmax_cross_entropy_with_logits`](../../api_docs/python/nn.md#sparse_softmax_cross_entropy_with_logits)
   * [`tanh`](../../api_docs/python/nn.md#tanh)
   * [`top_k`](../../api_docs/python/nn.md#top_k)
   * [`uniform_candidate_sampler`](../../api_docs/python/nn.md#uniform_candidate_sampler)

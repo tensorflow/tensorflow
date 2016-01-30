@@ -17,6 +17,24 @@ On mac, find the virtual machine's IP using:
 
 Then go to: http://IP:8888 (likely http://192.168.99.100:8888)
 
+FAQ
+---
+
+* **I'm getting a MemoryError when loading data in the first notebook.**
+
+If you're using a Mac, Docker works by running a VM locally (which
+is controlled by `docker-machine`). It's quite likely that you'll
+need to bump up the amount of RAM allocated to the VM beyond the
+default (which is 1G).
+[This Stack Overflow question](http://stackoverflow.com/questions/32834082/how-to-increase-docker-machine-memory-mac)
+has two good suggestions; we recommend using 8G.
+
+In addition, you may need to pass `--memory=8g` as an extra argument to
+`docker run`.
+
+Notes for anyone needing to build their own containers (mostly instructors)
+===========================================================================
+
 Building a local Docker container
 ---------------------------------
 

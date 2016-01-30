@@ -54,6 +54,10 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
 
+// Remove all docs from *op_def / *op_list.
+void RemoveDescriptionsFromOpDef(OpDef* op_def);
+void RemoveDescriptionsFromOpList(OpList* op_list);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_

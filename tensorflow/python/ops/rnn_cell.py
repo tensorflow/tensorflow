@@ -210,22 +210,40 @@ class BasicLSTMCell(RNNCell):
     return new_h, array_ops.concat(1, [new_c, new_h])
 
 
-def _get_sharded_variable(name, shape, initializer, dtype, num_shards):
-  """Get a list of sharded variables with the given dtype and initializer."""
-  unit_shard_size = int(math.ceil(shape[1] / num_shards))
+def _get_concat_variable(name, shape, dtype, num_shards):
+  """Get a sharded variable concatenated into one tensor."""
+  sharded_variable = _get_sharded_variable(name, shape, dtype, num_shards)
+  if len(sharded_variable) == 1:
+    return sharded_variable[0]
+
+  concat_name = name + "/concat"
+  concat_full_name = vs.get_variable_scope().name + "/" + concat_name + ":0"
+  for value in ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES):
+    if value.name == concat_full_name:
+      return value
+
+  concat_variable = array_ops.concat(0, sharded_variable, name=concat_name)
+  ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
+                        concat_variable)
+  return concat_variable
+
+
+def _get_sharded_variable(name, shape, dtype, num_shards):
+  """Get a list of sharded variables with the given dtype."""
+  if num_shards > shape[0]:
+    raise ValueError("Too many shards: shape=%s, num_shards=%d" %
+                     (shape, num_shards))
+  unit_shard_size = int(math.floor(shape[0] / num_shards))
+  remaining_rows = shape[0] - unit_shard_size * num_shards
 
   shards = []
   for i in range(num_shards):
-    current_size = min(unit_shard_size, shape[1] - unit_shard_size * i)
-    shards.append(vs.get_variable(name + "_%d" % i, [shape[0], current_size],
-                                  initializer=initializer, dtype=dtype))
+    current_size = unit_shard_size
+    if i < remaining_rows:
+      current_size += 1
+    shards.append(vs.get_variable(name + "_%d" % i, [current_size, shape[1]],
+                                  dtype=dtype))
   return shards
-
-
-def _matmul_with_sharded_variable(tensor, sharded_tensor):
-  """Multiply tensor with each tensor in sharded_tensor, column-concatenated."""
-  return array_ops.concat(1, [math_ops.matmul(tensor, shard)
-                              for shard in sharded_tensor])
 
 
 class LSTMCell(RNNCell):
@@ -317,10 +335,11 @@ class LSTMCell(RNNCell):
 
     dtype = input_.dtype
 
-    with vs.variable_scope(scope or type(self).__name__):  # "LSTMCell"
-      sharded_w = _get_sharded_variable(
+    with vs.variable_scope(scope or type(self).__name__,
+                           initializer=self._initializer):  # "LSTMCell"
+      concat_w = _get_concat_variable(
           "W", [self.input_size + num_proj, 4 * self._num_units],
-          self._initializer, dtype, self._num_unit_shards)
+          dtype, self._num_unit_shards)
 
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
@@ -328,24 +347,17 @@ class LSTMCell(RNNCell):
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [input_, m_prev])
-      lstm_matrix = nn_ops.bias_add(
-          _matmul_with_sharded_variable(cell_inputs, sharded_w), b)
+      lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
       i, j, f, o = array_ops.split(1, 4, lstm_matrix)
 
       # Diagonal connections
       if self._use_peepholes:
         w_f_diag = vs.get_variable(
-            "W_F_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_F_diag", shape=[self._num_units], dtype=dtype)
         w_i_diag = vs.get_variable(
-            "W_I_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_I_diag", shape=[self._num_units], dtype=dtype)
         w_o_diag = vs.get_variable(
-            "W_O_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_O_diag", shape=[self._num_units], dtype=dtype)
 
       if self._use_peepholes:
         c = (sigmoid(f + 1 + w_f_diag * c_prev) * c_prev +
@@ -362,11 +374,11 @@ class LSTMCell(RNNCell):
         m = sigmoid(o) * tanh(c)
 
       if self._num_proj is not None:
-        sharded_w_proj = _get_sharded_variable(
-            "W_P", [self._num_units, self._num_proj], self._initializer,
+        concat_w_proj = _get_concat_variable(
+            "W_P", [self._num_units, self._num_proj],
             dtype, self._num_proj_shards)
 
-        m = _matmul_with_sharded_variable(m, sharded_w_proj)
+        m = math_ops.matmul(m, concat_w_proj)
 
     return m, array_ops.concat(1, [c, m])
 

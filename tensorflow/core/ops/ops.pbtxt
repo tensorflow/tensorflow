@@ -2568,6 +2568,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
@@ -4938,6 +4939,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
@@ -8507,6 +8509,41 @@ op {
   }
   summary: "Computes the sum along sparse segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+}
+op {
+  name: "SparseSoftmaxCrossEntropyWithLogits"
+  input_arg {
+    name: "features"
+    description: "batch_size x num_classes matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "labels"
+    description: "batch_size vector with values in [0, num_classes).\nThis is the label for the given minibatch entry."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "loss"
+    description: "Per example loss (batch_size vector)."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprop"
+    description: "backpropagated gradients (batch_size x num_classes matrix)."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes softmax cross entropy cost and gradients to backpropagate."
+  description: "Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept\na matrix of label probabilities, but rather a single label per row\nof features.  This label is considered to have probability 1.0 for the\ngiven row.\n\nInputs are the logits, not probabilities."
 }
 op {
   name: "SparseSplit"

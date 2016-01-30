@@ -273,6 +273,8 @@ class TensorArrayWriteOp : public OpKernel {
     PersistentTensor persistent_tensor(*tensor_value);
     OP_REQUIRES_OK(ctx, tensor_array->Write(ctx, index, &persistent_tensor));
   }
+
+  bool IsExpensive() override { return false; }
 };
 
 #define REGISTER_WRITE(type)                                                 \
@@ -331,6 +333,8 @@ class TensorArrayReadOp : public OpKernel {
     OP_REQUIRES_OK(ctx, tensor_array->Read(index, &value));
     ctx->set_output(0, *value.AccessTensor(ctx));
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   DataType dtype_;
