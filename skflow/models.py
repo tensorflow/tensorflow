@@ -128,9 +128,9 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
         if bidirection:
             # forward direction cell
-            rnn_fw_cell = cell_fn(rnn_size)
+            rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
-            rnn_bw_cell = cell_fn(rnn_size)
+            rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell)
         else:
             cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
