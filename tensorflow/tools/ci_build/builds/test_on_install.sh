@@ -17,21 +17,26 @@
 # Build the Python PIP installation package for TensorFlow
 # and run the Python unit tests from the source code on the installation
 #
+# When executing the Python unit tests, the script obeys three environment
+# variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST and PY_TEST_GPU_BLACKLIST
+#
 # To select only a subset of the Python tests to run, set the environment
 # variable PY_TEST_WHITELIST, e.g.,
 #   PY_TEST_WHITELIST="tensorflow/python/kernel_tests/shape_ops_test.py"
-#
-# Seprate the tests with a space. Leave this environment variable empty to
+# Separate the tests with a space. Leave this environment variable empty to
 # disable the whitelist.
+#
+# You can also ignore a set of the tests by using the environment variable
+# PY_TEST_BLACKLIST. For example, you can include in PY_TEST_BLACKLIST the
+# tests that depend on Python modules in TensorFlow source that are not
+# exported publicly.
+#
+# In addition, you can put blacklist for only GPU build inthe environment
+# variable PY_TEST_GPU_BLACKLIST.
+#
 
-# You can also ignore a set of the tests by using the variable PY_TEST_BLACKLIST
-# These are the test that depend on Python modules in the source that are not
-# exported publicly. In addition, you can put blacklist for only GPU build in
-# the environment variable PY_TEST_GPU_BLACKLIST
-PY_TEST_BLACKLIST="tensorflow/python/tools/freeze_graph_test.py "\
-"tensorflow/python/util/protobuf/compare_test.py "\
-"tensorflow/python/framework/ops_test.py "\
-"tensorflow/python/framework/device_test.py "
+echo "PY_TEST_BLACKLIST: ${PY_TEST_BLACKLIST}"
+echo "PY_TEST_GPU_BLACKLIST: ${PY_TEST_GPU_BLACKLIST}"
 
 # Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
