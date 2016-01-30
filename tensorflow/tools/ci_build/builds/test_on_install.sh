@@ -23,8 +23,8 @@
 # To select only a subset of the Python tests to run, set the environment
 # variable PY_TEST_WHITELIST, e.g.,
 #   PY_TEST_WHITELIST="tensorflow/python/kernel_tests/shape_ops_test.py"
-# Separate the tests with a space. Leave this environment variable empty to
-# disable the whitelist.
+# Separate the tests with a colon (:). Leave this environment variable empty
+# to disable the whitelist.
 #
 # You can also ignore a set of the tests by using the environment variable
 # PY_TEST_BLACKLIST. For example, you can include in PY_TEST_BLACKLIST the
@@ -43,7 +43,7 @@ CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 
 # Append GPU-only test blacklist
 if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST} ${PY_TEST_GPU_BLACKLIST}"
+  PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:${PY_TEST_GPU_BLACKLIST}"
 fi
 
 cd /tensorflow &&
