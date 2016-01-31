@@ -92,7 +92,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     } else {
       delete tmp_reader;
     }
-    CHECK_EQ(1, still_opening_.erase(filepattern));
+    CHECK_EQ(size_t{1}, still_opening_.erase(filepattern));
     VLOG(1) << "Cached TensorSliceReader for " << filepattern << ": " << reader;
   } else {
     auto cached_val = readers_[filepattern];
