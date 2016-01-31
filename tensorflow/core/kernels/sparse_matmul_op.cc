@@ -803,7 +803,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
 
   *JB = std::max(1, static_cast<int>(sqrt(num_threads) / 2.0));
   *IB = 8 * *JB;
-  DCHECK_EQ(N * sizeof(float) % 64, 0);
+  DCHECK_EQ(N * sizeof(float) % 64, size_t{0});
 }
 
 // Here is a an overview of the SparseMatMul code. Note that we assume that the
