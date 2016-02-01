@@ -520,7 +520,7 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     weights: a 2D tensor.  Dimensions typically: in_units, out_units
     biases: a 1D tensor.  Dimensions: out_units
     name: A name for the operation (optional).  If not specified
-      "wx_plus_b" is used.
+      "xw_plus_b" is used.
 
   Returns:
     A 2-D Tensor computing matmul(x, weights) + biases.
