@@ -123,12 +123,10 @@ cc_library(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
-        "platform/port.h",  # TODO(josh11b): delete
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-        "public/status.h",  # Deprecated: use lib/core/status.h instead
     ],
     visibility = ["//visibility:public"],
     deps = [":lib_internal"],
@@ -168,9 +166,9 @@ tf_cuda_library(
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/device_base.h",
         "framework/function.h",
-        "framework/node_def_builder.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
         "framework/numeric_types.h",
@@ -190,13 +188,9 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
-        "framework/type_traits.h",
         "framework/type_index.h",
+        "framework/type_traits.h",
         "framework/types.h",
-        # Deprecated. TODO(josh11b): Use the framework/ versions instead.
-        "public/tensor.h",
-        "public/tensor_shape.h",
-        # NOTE(josh11b): Will stay in public/
         "public/version.h",
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
@@ -208,8 +202,8 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
-        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_reader.h",
+        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
         "util/use_cudnn.h",
         "util/util.h",
@@ -719,9 +713,7 @@ cc_library(
         "framework/tensor.h",
         "platform/env.h",
         "platform/logging.h",
-        "platform/port.h",
         "public/session.h",
-        "public/tensor.h",
     ],
     copts = [
         "-mfpu=neon",
@@ -752,7 +744,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
-            "public/status.h",  # TODO(josh11b): delete this
         ] + tf_additional_lib_srcs(),
         exclude = [
             "**/*test*",
@@ -796,10 +787,6 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-            # TODO(josh11b): Delete these once everyone has switched to the
-            # framework/ versions.
-            "public/tensor.h",
-            "public/tensor_shape.h",
         ],
         exclude = [
             "**/*test*",

@@ -18,7 +18,7 @@
 
 TensorFlow provides Ops to decode and encode JPEG and PNG formats.  Encoded
 images are represented by scalar string Tensors, decoded images by 3-D uint8
-tensors of shape `[height, width, channels]`.
+tensors of shape `[height, width, channels]`. (PNG also supports uint16.)
 
 The encode and decode Ops apply to one image at a time.  Their input and output
 are all of variable size.  If you need fixed size images, pass the output of
