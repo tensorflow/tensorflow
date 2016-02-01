@@ -1,6 +1,6 @@
 //Copyright (c) 2016, Alexander G. de G. Matthews and James Hensman. All rights reserved.
 
-//Based on paper "Differentiation of the Cholesky Algorithm" by S. P. Smith (1995). Journal of Computational and Graphical Statistics.
+//Based on MATLAB code for blocked Cholesky reference mode differentiation by Iain Murray.
 
 //Also inspired by implementation from GPy by James Hensman and Alan Saul, 2015
 //and implementation from AutoGrad by Dougal Maclaurin, David Duvenaud and Matt Johnson, 2015.
@@ -67,7 +67,6 @@ class CholeskyGrad : public OpKernel {
 
     output_matrix = input_matrix_l_bar.template triangularView<Eigen::Lower>();
 
-    
     for ( lcl_size_t Ji = (N-NB+1) ; Ji>=0; Ji-= NB )    
     {
         lcl_size_t J = std::max<size_t>(1, Ji);
@@ -80,14 +79,10 @@ class CholeskyGrad : public OpKernel {
         chol_rev_unblocked( input_matrix_l.block( J-1, J-1, JB, JB ),  output_matrix.block( J-1, J-1, JB, JB ) );
         output_matrix.block( J-1, 0, JB, J-1 ) -= (output_matrix.block( J-1, J-1, JB, JB ) + output_matrix.block( J-1, J-1, JB, JB ).adjoint() )* input_matrix_l.block( J-1, 0, JB, J-1 );
     }
-    
-    //chol_rev_unblocked( input_matrix_l, output_matrix );
-    
+        
     //TODO: what to do if input_matrix_l isn't lower triangular?
     
-    //This symmetrizes the result effectively assigning equal contribution to the gradient for the two symmetric halves.
-    //output_matrix = (0.5 * ( output_matrix +  output_matrix.transpose() )).eval();
-    //output_matrix.template triangularView<Eigen::Upper>() =  output_matrix.template triangularView<Eigen::Lower>().adjoint() ; 
+    output_matrix = (0.5 * ( output_matrix +  output_matrix.transpose() )).eval();
 
     }
     
