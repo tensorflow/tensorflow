@@ -8,7 +8,7 @@ from scipy.linalg.blas import dsymv
 #Reference Python implementation ported from Iain Murray Matlab code. Blocked version.
 def chol_rev( L, L_bar ):
     N = L.shape[0]
-    NB = 2
+    NB = 3
     A_bar = np.tril( L_bar )
     for Ji in range( (N-NB+1), (1-NB+1)-1, -NB ):
         J = max(1, Ji);
@@ -66,34 +66,33 @@ class CholeskyGradTest(tf.test.TestCase):
     raw_b = np.eye(nDim)*3
     raw_y = np.tril( rng.randn(nDim,nDim) )  
     with self.test_session():
-      #raw_b = np.array( [[2.,0.],[0.,2.]]  )
       b = tf.constant( raw_b )
       a = tf.cholesky( b )
-      #raw_y = np.array( [[1.,2.],[3.,4.]] )
       y = tf.constant( raw_y )
       intermediate = tf.user_ops.triangular_solve(a,y,'lower')
       linear_solution = tf.user_ops.triangular_solve(tf.transpose(a),intermediate,'upper') 
       x = tf.reduce_sum( linear_solution )
       grad_b = tf.gradients( x, b )[0]
-      r= linalg.solve( raw_b, np.ones( nDim ) )
+      r= linalg.solve( raw_b, np.ones( nDim ) )      
       S = linalg.solve( raw_b, np.dot( raw_y, np.ones(nDim) ) )
       referenceValue = -1*np.outer( r, S )
       testValue = grad_b.eval()
+      testValue = 0.5 * ( testValue + testValue.T )
       referenceValue = 0.5*(referenceValue + referenceValue.T  )
       self.assertAllClose( testValue , referenceValue )
-      
+
   def testCholeskyGradB(self):
-    nDim = 3      
+    nDim = 10    
     rng = np.random.RandomState(1)
     raw_a = np.tril( rng.randn(nDim,nDim) )
     raw_g = np.tril( rng.randn(nDim,nDim) )
     with self.test_session():
-      #raw_a = np.array( [[1.,0.],[1.,1.]]  )
       a = tf.constant( raw_a )
-      #raw_g = np.array( [[1.,2.],[3.,4.]] )
       g = tf.constant( raw_g )
-      cg = tf.user_ops.cholesky_grad( a, g, 'lower' )
-      self.assertAllEqual( cg.eval(), cholesky_grad_python( raw_a, raw_g )  )
+      test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
+      temp = chol_rev( raw_a, raw_g ) 
+      reference = 0.5*( temp + temp.T )
+      self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
 
   def testCholeskyGradC(self):
     rng = np.random.RandomState(1)    
@@ -104,9 +103,11 @@ class CholeskyGradTest(tf.test.TestCase):
       a = tf.cholesky( b )
       diagonal = tf.pack([a[i,i] for i in range(3)])
       logDeterminant = tf.reduce_sum( tf.log( tf.square( diagonal  ) ) )
-      grad_b = tf.gradients( logDeterminant, b )[0]
+      grad_b = tf.gradients( logDeterminant, b )[0].eval()
+      test_value = 0.5*(grad_b + grad_b.T )
       referenceValue = np.linalg.inv(raw_b)
-      self.assertAllClose( grad_b.eval(), referenceValue  )
+      self.assertAllClose( test_value, referenceValue  )
+ 
 
 if __name__ == "__main__":
   tf.test.main()
