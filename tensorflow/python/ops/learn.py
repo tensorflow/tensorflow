@@ -316,6 +316,8 @@ def fully_connected(x,
   """
   with variable_scope.variable_op_scope([x], name, 'fully_connected') as vs:
     # Check rank and if num_input_nodes is specified, make sure it matches.
+    # TODO(wicke): This does not work with scalar inputs (shape [batch_size,])
+    # TODO(wicke): We'd have to encode the broadcasting rules here to be safe.
     x.get_shape().assert_is_compatible_with([None, num_input_nodes])
 
     if not num_input_nodes:

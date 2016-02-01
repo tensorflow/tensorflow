@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import threading
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary.impl import directory_watcher
@@ -238,7 +239,9 @@ class EventAccumulator(object):
     self._VerifyActivated()
     if self._graph is None:
       raise ValueError('There is no graph in this EventAccumulator')
-    return self._graph
+    graph = graph_pb2.GraphDef()
+    graph.ParseFromString(self._graph)
+    return graph
 
   def Histograms(self, tag):
     """Given a summary tag, return all associated histograms.

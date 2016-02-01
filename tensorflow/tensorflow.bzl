@@ -289,6 +289,28 @@ _py_wrap_cc = rule(attrs={
                    },
                    implementation=_py_wrap_cc_impl,)
 
+
+# Bazel rule for collecting the header files that a target depends on.
+def _transitive_hdrs_impl(ctx):
+  outputs = set()
+  for dep in ctx.attr.deps:
+    outputs += dep.cc.transitive_headers
+  return struct(files=outputs)
+
+
+_transitive_hdrs = rule(attrs={
+    "deps": attr.label_list(allow_files=True,
+                            providers=["cc"]),
+},
+                        implementation=_transitive_hdrs_impl,)
+
+
+def transitive_hdrs(name, deps=[], **kwargs):
+  _transitive_hdrs(name=name + "_gather",
+                   deps=deps)
+  native.filegroup(name=name,
+                   srcs=[":" + name + "_gather"])
+
 def tf_extension_linkopts():
   return []  # No extension link opts
 

@@ -91,7 +91,9 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(30, ev.step)
-    self.assertProtoEquals(gd, ev.graph_def)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(gd, ev_graph)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
@@ -114,7 +116,9 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(0, ev.step)
-    self.assertProtoEquals(gd, ev.graph_def)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(gd, ev_graph)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))

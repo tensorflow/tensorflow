@@ -3,7 +3,6 @@ syntax = "proto3";
 package tensorflow;
 // option cc_enable_arenas = true;
 
-import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/summary.proto";
 
 // Protocol buffer representing an event that happened during
@@ -21,8 +20,8 @@ message Event {
     // easily.  Current version is "tensorflow.Event:1".  All versions
     // start with "tensorflow.Event:".
     string file_version = 3;
-    // A model was constructed.
-    GraphDef graph_def = 4;
+    // An encoded version of a GraphDef.
+    bytes graph_def = 4;
     // A summary was generated.
     Summary summary = 5;
     // The user output a log message. Not all messages are logged, only ones

@@ -45,7 +45,8 @@ def _as_type_list(dtypes):
     return list(dtypes)
 
 
-def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False):
+def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False,
+                   unknown_rank_allowed=False):
   """Convert shapes to a list of tuples of int (or None)."""
   if unknown_dim_allowed:
     if (not isinstance(shapes, collections.Sequence)
@@ -65,7 +66,8 @@ def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False):
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
     if any([not shape.is_fully_defined() for shape in shapes]):
-      raise ValueError("All shapes must be fully defined: %d" % len(shapes))
+      raise ValueError("All shapes must be fully defined: %s" % shapes)
+  if not unknown_rank_allowed:
     if any([shape.dims is None for shape in shapes]):
       raise ValueError("All shapes must have a defined rank: %s" % shapes)
 
