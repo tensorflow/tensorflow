@@ -103,8 +103,7 @@ class CholeskyGradTest(tf.test.TestCase):
       a = tf.cholesky( b )
       diagonal = tf.pack([a[i,i] for i in range(3)])
       logDeterminant = tf.reduce_sum( tf.log( tf.square( diagonal  ) ) )
-      grad_b = tf.gradients( logDeterminant, b )[0].eval()
-      test_value = 0.5*(grad_b + grad_b.T )
+      test_value = tf.gradients( logDeterminant, b )[0].eval()
       referenceValue = np.linalg.inv(raw_b)
       self.assertAllClose( test_value, referenceValue  )
  
