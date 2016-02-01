@@ -153,7 +153,7 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // allocate multiples of 256 bytes so all memory addresses are
   // nicely byte aligned.
   size_t rounded_bytes = (256 * ((num_bytes + 255) / 256));
-  DCHECK_EQ(0, rounded_bytes % 256);
+  DCHECK_EQ(size_t{0}, rounded_bytes % 256);
 
   // The BFC allocator tries to find the best fit first.
   //

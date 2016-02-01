@@ -340,7 +340,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 template <typename T>
 SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
-  CHECK_GE(tensors.size(), 1) << "Cannot concat 0 SparseTensors";
+  CHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   CHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
   auto order_0 = tensors[0].order();
