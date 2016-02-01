@@ -243,8 +243,8 @@ class TensorFlowEstimator(BaseEstimator):
             raise NotFittedError()
         predict_data_feeder = setup_predict_data_feeder(X)
         preds = []
-        dropouts = tf.get_collection(DROPOUTS)
-        feed_dict = {prob: 0.0 for prob in dropouts}
+        dropouts = self._graph.get_collection(DROPOUTS)
+        feed_dict = {prob: 1.0 for prob in dropouts}
         for data in predict_data_feeder:
             feed_dict[self._inp] = data
             preds.append(self._session.run(
