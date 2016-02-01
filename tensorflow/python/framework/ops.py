@@ -801,7 +801,7 @@ class SparseTensor(object):
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
+  Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
 
   * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
   * `values`: A 1-D tensor of any type and shape `[N]`.
@@ -826,7 +826,7 @@ class SparseTensor(object):
   Example: The sparse tensor
 
   ```python
-  SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
   ```
 
   represents the dense tensor

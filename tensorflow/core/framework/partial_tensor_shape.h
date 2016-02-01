@@ -36,6 +36,9 @@ class PartialTensorShapeIter;  // Declared below
 /// Manages the partially known dimensions of a Tensor and their sizes.
 class PartialTensorShape {
  public:
+  /// \brief Construct an unknown `PartialTensorShape`.
+  PartialTensorShape() : is_unknown_(true) {}
+
   /// \brief Construct a `PartialTensorShape` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0`
   explicit PartialTensorShape(gtl::ArraySlice<int64> dim_sizes);
@@ -67,8 +70,9 @@ class PartialTensorShape {
   Status MergeWith(const PartialTensorShape& shape,
                    PartialTensorShape* result) const;
 
-  /// Return the number of dimensions in the tensor.
-  int dims() const { return dim_sizes_.size(); }
+  /// Return the number of dimensions in the tensor. If the number of
+  /// dimensions is unknown, return -1.
+  int dims() const { return is_unknown_ ? -1 : dim_sizes_.size(); }
 
   /// Return true iff the rank and all of the dimensions are well defined
   bool IsFullyDefined() const;
@@ -85,8 +89,12 @@ class PartialTensorShape {
   /// REQUIRES: `0 <= d < dims()`
   int64 dim_size(int d) const {
     DCHECK_GE(d, 0);
-    DCHECK_LT(d, dims());
-    return dim_sizes_[d];
+    if (is_unknown_) {
+      return -1;
+    } else {
+      DCHECK_LT(d, dims());
+      return dim_sizes_[d];
+    }
   }
 
   /// Returns sizes of all dimensions.
@@ -112,9 +120,7 @@ class PartialTensorShape {
   static Status MakePartialShape(const T* dims, int n, PartialTensorShape* out);
 
  private:
-  /// Create a tensor shape.
-  PartialTensorShape();
-
+  bool is_unknown_;
   gtl::InlinedVector<int64, 4> dim_sizes_;
 };
 

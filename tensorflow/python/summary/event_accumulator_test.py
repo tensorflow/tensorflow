@@ -436,7 +436,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     ev1 = tf.Event(wall_time=2, step=0, file_version='0')
-    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_pb2.GraphDef())
+    graph_bytes = graph_pb2.GraphDef().SerializeToString()
+    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_bytes)
     gen.AddEvent(ev1)
     gen.AddEvent(ev2)
     acc.Reload()
@@ -509,6 +510,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(i*5, sq_events[i].step)
       self.assertEqual(i, id_events[i].value)
       self.assertEqual(i*i, sq_events[i].value)
+    self.assertProtoEquals(graph_def, acc.Graph())
 
 
 if __name__ == '__main__':

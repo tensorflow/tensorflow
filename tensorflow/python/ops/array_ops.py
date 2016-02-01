@@ -53,9 +53,12 @@ or join multiple tensors together.
 @@reverse_sequence
 @@reverse
 @@transpose
+@@space_to_depth
+@@depth_to_space
 @@gather
 @@dynamic_partition
 @@dynamic_stitch
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1249,3 +1252,101 @@ def _QuantizeDequantizeShape(op):
   unused_min_range = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   unused_max_range = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
   return common_shapes.unchanged_shape(op)
+
+
+@ops.RegisterShape("SpaceToDepth")
+def _SpaceToDepthShape(op):
+  """Shape function for the SpaceToDepth op.
+
+  This op takes two inputs:
+
+  * input: a tensor of shape like that [B, H, W, D]
+  * block_size: an int.
+
+  Its output is the the same-rank tensor but with changed
+  dimensions like that: [B, H/block_size, W/block_size, D*block_size*block_size]
+
+  Args:
+    op: A SpaceToDepth op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of input are not as expected.
+    IndexError: If block_size does not divide W or H.
+  """
+  # Check that the input tensor is of 4 dimensions.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_depth() requires tensors with exactly 4 dimensions.")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  input_height = input_shape[1]
+  input_width = input_shape[2]
+
+  if (input_width % block_size > 0) or (input_height % block_size > 0):
+    raise IndexError(
+        "block_size needs to divide both width and height.")
+
+  width = input_width // block_size
+  height = input_height // block_size
+  new_depth = input_shape[3] * block_size * block_size
+
+  return [tensor_shape.TensorShape(
+      [input_shape[0], height, width, new_depth])]
+
+
+@ops.RegisterShape("DepthToSpace")
+def _DepthToSpaceShape(op):
+  """Shape function for the DepthToSpace op.
+
+  This op takes two inputs:
+
+  * input: a tensor of shape like that [B, H, W, D]
+  * block_size: an int.
+
+  Its output is the the same-rank tensor but with changed
+  dimensions like that:
+      [B, H*block_size, W*block_size, D/(block_size*block_size)]
+
+  Args:
+    op: A DepthToSpace op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of input are not as expected.
+    IndexError: If block_size*block_size does not divide D.
+  """
+  # Check that the input tensor is of 4 dimensions.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError(
+        "tf.depth_to_space() requires tensors with exactly 4 dimensions.")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  input_height = input_shape[1]
+  input_width = input_shape[2]
+  input_depth = input_shape[3]
+
+  width = input_width * block_size
+  height = input_height * block_size
+
+  if input_depth % (block_size * block_size) > 0:
+    raise IndexError(
+        "block_size*block_size needs to divide the input depth.")
+
+  new_depth = input_depth // (block_size * block_size)
+  return [tensor_shape.TensorShape(
+      [input_shape[0], height, width, new_depth])]

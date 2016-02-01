@@ -1038,9 +1038,7 @@ filegroup(
 )
 
 # -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-# For portable_proto_library
+# Google-internal targets go here (must be at the end).
 
 filegroup(
     name = "all_files",
