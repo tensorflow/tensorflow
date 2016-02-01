@@ -19,9 +19,11 @@ from __future__ import print_function
 
 import fnmatch
 import os
+import re
 import sys
 
-from setuptools import find_packages, setup, Extension
+from setuptools import find_packages, setup, Command, Extension
+from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
 _VERSION = '0.6.0'
@@ -53,12 +55,86 @@ class BinaryDistribution(Distribution):
   def is_pure(self):
     return False
 
-matches = []
-for root, dirnames, filenames in os.walk('external'):
-  for filename in fnmatch.filter(filenames, '*'):
-    matches.append(os.path.join(root, filename))
 
-matches = ['../' + x for x in matches if '.py' not in x]
+class InstallCommand(InstallCommandBase):
+  """Override the dir where the headers go."""
+
+  def finalize_options(self):
+    ret = InstallCommandBase.finalize_options(self)
+    self.install_headers = os.path.join(self.install_purelib,
+                                        'tensorflow', 'include')
+    return ret
+
+
+class InstallHeaders(Command):
+  """Override how headers are copied.
+
+  The install_headers that comes with setuptools copies all files to
+  the same directory. But we need the files to be in a specific directory
+  hierarchy for -I <include_dir> to work correctly.
+  """
+  description = 'install C/C++ header files'
+
+  user_options = [('install-dir=', 'd',
+                   'directory to install header files to'),
+                  ('force', 'f',
+                   'force installation (overwrite existing files)'),
+                 ]
+
+  boolean_options = ['force']
+
+  def initialize_options(self):
+    self.install_dir = None
+    self.force = 0
+    self.outfiles = []
+
+  def finalize_options(self):
+    self.set_undefined_options('install',
+                               ('install_headers', 'install_dir'),
+                               ('force', 'force'))
+
+  def mkdir_and_copy_file(self, header):
+    install_dir = os.path.join(self.install_dir, os.path.dirname(header))
+    # Get rid of some extra intervening directories so we can have fewer
+    # directories for -I
+    install_dir = re.sub('/google/protobuf/src', '', install_dir)
+
+    if not os.path.exists(install_dir):
+      self.mkpath(install_dir)
+    return self.copy_file(header, install_dir)
+
+  def run(self):
+    hdrs = self.distribution.headers
+    if not hdrs:
+      return
+
+    self.mkpath(self.install_dir)
+    for header in hdrs:
+      (out, _) = self.mkdir_and_copy_file(header)
+      self.outfiles.append(out)
+
+  def get_inputs(self):
+    return self.distribution.headers or []
+
+  def get_outputs(self):
+    return self.outfiles
+
+
+def find_files(pattern, root):
+  """Return all the files matching pattern below root dir."""
+  for path, _, files in os.walk(root):
+    for filename in fnmatch.filter(files, pattern):
+      yield os.path.join(path, filename)
+
+
+matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+
+
+headers = (list(find_files('*.h', 'tensorflow/core')) +
+           list(find_files('*.h', 'google/protobuf/src')) +
+           list(find_files('*', 'third_party/eigen3')) +
+           list(find_files('*', 'external/eigen_archive')))
+
 
 setup(
     name='tensorflow',
@@ -73,12 +149,14 @@ setup(
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
     },
+    headers=headers,
     install_requires=REQUIRED_PACKAGES,
     tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,
     package_data={
         'tensorflow': ['python/_pywrap_tensorflow.so',
+                       'core/libtensorflow_framework.so',
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
                        'tensorboard/lib/css/global.css',
@@ -86,6 +164,10 @@ setup(
     },
     zip_safe=False,
     distclass=BinaryDistribution,
+    cmdclass={
+        'install_headers': InstallHeaders,
+        'install': InstallCommand,
+    },
     # PyPI package information.
     classifiers=[
         'Development Status :: 4 - Beta',
