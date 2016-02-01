@@ -965,9 +965,9 @@ def _calc_mat_mul_flops(graph, node):
   a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
   a_shape.assert_is_fully_defined()
   if transpose_a:
-    k = int(a_shape[1])
-  else:
     k = int(a_shape[0])
+  else:
+    k = int(a_shape[1])
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
