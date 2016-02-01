@@ -62,7 +62,7 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
       if (slot_bytes_[global_id].size() == 0) {
         slot_bytes_[global_id].resize(num_slots);
       } else {
-        CHECK_EQ(num_slots, slot_bytes_[global_id].size());
+        CHECK_EQ(static_cast<size_t>(num_slots), slot_bytes_[global_id].size());
       }
       for (int s = 0; s < num_slots; ++s) {
         slot_bytes_[global_id][s] += cm.slot_bytes_[local_id][s];
@@ -84,7 +84,7 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
       if (slot_bytes_[i].size() == 0) {
         slot_bytes_[i].resize(num_slots);
       } else {
-        CHECK_EQ(num_slots, slot_bytes_[i].size());
+        CHECK_EQ(static_cast<size_t>(num_slots), slot_bytes_[i].size());
       }
       for (int s = 0; s < num_slots; ++s) {
         slot_bytes_[i][s] += cm.slot_bytes_[i][s];
@@ -133,7 +133,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   Ensure(id);
   auto perslot = &slot_bytes_[id];
   if (perslot->size() > 0) {
-    CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
+    CHECK_EQ(static_cast<size_t>(num_outputs), perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
   } else {
     perslot->resize(num_outputs, Bytes(-1));
@@ -143,7 +143,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
 void CostModel::RecordCount(const Node* node, int count) {
   const int id = Id(node);
   if (id < 0) return;
-  CHECK_LT(id, slot_bytes_.size());
+  CHECK_LT(static_cast<size_t>(id), slot_bytes_.size());
   count_[id] += count;
 }
 
@@ -156,9 +156,9 @@ int32 CostModel::TotalCount(const Node* node) const {
 void CostModel::RecordSize(const Node* node, int slot, Bytes bytes) {
   const int id = Id(node);
   if (id < 0) return;
-  CHECK_LT(id, slot_bytes_.size());
+  CHECK_LT(static_cast<size_t>(id), slot_bytes_.size());
   auto perslot = &slot_bytes_[id];
-  CHECK_LT(slot, perslot->size());
+  CHECK_LT(static_cast<size_t>(slot), perslot->size());
   auto v = &(*perslot)[slot];
   if (*v >= 0) {
     *v += bytes;

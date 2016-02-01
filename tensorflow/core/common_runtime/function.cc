@@ -141,8 +141,8 @@ static Node* AddZerosLike(Graph* g, Endpoint input) {
 }
 
 static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
-  const int num_x = n->num_inputs();
-  const int num_y = n->num_outputs();
+  const size_t num_x = n->num_inputs();
+  const size_t num_y = n->num_outputs();
   CHECK_EQ(num_y, grads.size());
 
   NodeDef ndef;
@@ -164,7 +164,7 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
     ndef.add_input(ep.name());
     in_types.push_back(ep.dtype());
   }
-  CHECK_EQ(ndef.input_size(), num_x + num_y);
+  CHECK_EQ(static_cast<size_t>(ndef.input_size()), num_x + num_y);
 
   AddNodeAttr("Tin", in_types, &ndef);
 
@@ -350,7 +350,7 @@ class CallOp : public AsyncOpKernel {
                if (!status.ok()) {
                  ctx->SetStatus(status);
                } else {
-                 CHECK_EQ(rets->size(), ctx->num_outputs());
+                 CHECK_EQ(rets->size(), static_cast<size_t>(ctx->num_outputs()));
                  for (size_t i = 0; i < rets->size(); ++i) {
                    ctx->set_output(i, (*rets)[i]);
                  }
@@ -392,7 +392,7 @@ class SymbolicGradientOp : public OpKernel {
       if (!status.ok()) {
         ctx->SetStatus(status);
       } else {
-        CHECK_EQ(rets->size(), ctx->num_outputs());
+        CHECK_EQ(rets->size(), static_cast<size_t>(ctx->num_outputs()));
         for (size_t i = 0; i < rets->size(); ++i) {
           ctx->set_output(i, (*rets)[i]);
         }
@@ -416,7 +416,7 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   mutex_lock l(mu_);
-  CHECK_LE(0, h);
+  CHECK_LE(static_cast<Handle>(0), h);
   CHECK_LT(h, func_graphs_.size());
   return func_graphs_[h];
 }
@@ -865,22 +865,22 @@ bool RemoveListArrayConverter(Graph* g) {
 // Returns true iff the function '*fbody' can be inlined at 'node'
 // based on the type signature of 'node' and 'fbody'.
 static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
-  if (static_cast<size_t>(node->num_inputs()) != fbody->arg_types.size()) {
+  if (node->num_inputs() != fbody->arg_types.size()) {
     return false;
   }
-  if (static_cast<size_t>(node->num_inputs()) != fbody->arg_nodes.size()) {
+  if (node->num_inputs() != fbody->arg_nodes.size()) {
     return false;
   }
-  if (static_cast<size_t>(node->num_outputs()) != fbody->ret_types.size()) {
+  if (node->num_outputs() != fbody->ret_types.size()) {
     return false;
   }
-  if (static_cast<size_t>(node->num_outputs()) != fbody->ret_nodes.size()) {
+  if (node->num_outputs() != fbody->ret_nodes.size()) {
     return false;
   }
-  for (int i = 0; i < node->num_inputs(); ++i) {
+  for (size_t i = 0; i < node->num_inputs(); ++i) {
     if (node->input_type(i) != fbody->arg_types[i]) return false;
   }
-  for (int i = 0; i < node->num_outputs(); ++i) {
+  for (size_t i = 0; i < node->num_outputs(); ++i) {
     if (node->output_type(i) != fbody->ret_types[i]) return false;
   }
   return true;
@@ -1133,7 +1133,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
     int index;
     TF_CHECK_OK(GetNodeAttr(n->def(), "index", &index));
     CHECK_LE(0, index);
-    CHECK_LT(index, node_vec->size());
+    CHECK_LT(static_cast<size_t>(index), node_vec->size());
     (*node_vec)[index] = n;
   }
 }
@@ -1269,8 +1269,8 @@ void SymbolicGradientHelper::InitBackprop() {
       Node* n = queue.front();
       queue.pop_front();
       visited.insert(n);
-      for (int i = 0; i < n->num_outputs(); ++i) {
-        backprops_[{n, i}].clear();
+      for (size_t i = 0; i < n->num_outputs(); ++i) {
+        backprops_[{n, static_cast<int>(i)}].clear();
       }
       int num_expected_backprops = 0;
       for (const Edge* e : n->out_edges()) {
@@ -1373,14 +1373,14 @@ FunctionBody* SymbolicGradientHelper::Compute() {
     }
 
     // "n" has num_x inputs and num_y outputs.
-    const int num_x = n->num_inputs();
-    const int num_y = n->num_outputs();
+    const size_t num_x = n->num_inputs();
+    const size_t num_y = n->num_outputs();
 
     // dy[i] is the sum of i-th output's backpropped gradients.
     dy.clear();
     dy.resize(num_y, {nullptr, 0});
-    for (int i = 0; i < num_y; ++i) {
-      dy[i] = SumGradients({n, i});
+    for (size_t i = 0; i < num_y; ++i) {
+      dy[i] = SumGradients({n, static_cast<int>(i)});
     }
 
     if (IsPrimitiveOpWithNoGrad(n->type_string())) {
@@ -1400,7 +1400,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
       if (e->IsControlEdge()) continue;
       g->AddEdge(e->src(), e->src_output(), grad, e->dst_input());
     }
-    for (int i = 0; i < num_y; ++i) {
+    for (size_t i = 0; i < num_y; ++i) {
       g->AddEdge(dy[i].node, dy[i].index, grad, num_x + i);
     }
 

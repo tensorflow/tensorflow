@@ -119,7 +119,7 @@ class NodeBuilder {
 
  private:
   static DataType SafeGetOutput(Node* node, int i, bool* error) {
-    if (node != nullptr && i >= 0 && i < node->num_outputs()) {
+    if (node != nullptr && i >= 0 && static_cast<size_t>(i) < node->num_outputs()) {
       *error = false;
       return node->output_type(i);
     } else {

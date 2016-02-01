@@ -131,7 +131,7 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
 }
 
 void TensorSliceReader::LoadShard(int shard) const {
-  CHECK_LT(shard, sss_.size());
+  CHECK_LT(static_cast<size_t>(shard), sss_.size());
   if (sss_[shard] || !status_.ok()) {
     return;  // Already loaded, or invalid.
   }

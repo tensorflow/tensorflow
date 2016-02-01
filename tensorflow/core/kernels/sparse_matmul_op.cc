@@ -203,8 +203,8 @@ void SparseSlice::Initialize(const ConstMatrixMap& mat, int col_offset) {
     index3_offset.push_back(index3.size());
     index_offset.push_back(index.size());
   }
-  DCHECK_EQ(index3_offset.size(), num_blocks);
-  DCHECK_EQ(index_offset.size(), num_blocks);
+  DCHECK_EQ(index3_offset.size(), static_cast<size_t>(num_blocks));
+  DCHECK_EQ(index_offset.size(), static_cast<size_t>(num_blocks));
   DCHECK_EQ(3 * index3.size(), data3.size());
   DCHECK_EQ(index.size(), data.size());
 }
@@ -803,7 +803,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
 
   *JB = std::max(1, static_cast<int>(sqrt(num_threads) / 2.0));
   *IB = 8 * *JB;
-  DCHECK_EQ(N * sizeof(float) % 64, 0);
+  DCHECK_EQ(N * sizeof(float) % 64, size_t{0});
 }
 
 // Here is a an overview of the SparseMatMul code. Note that we assume that the

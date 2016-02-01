@@ -59,7 +59,7 @@ Histogram::Histogram(gtl::ArraySlice<double> custom_bucket_limits)
                             custom_bucket_limits.end()),
       bucket_limits_(custom_bucket_limits_) {
 #ifndef NDEBUG
-  DCHECK_GT(bucket_limits_.size(), 0);
+  DCHECK_GT(bucket_limits_.size(), size_t{0});
   // Verify that the bucket boundaries are strictly increasing
   for (size_t i = 1; i < bucket_limits_.size(); i++) {
     DCHECK_GT(bucket_limits_[i], bucket_limits_[i - 1]);

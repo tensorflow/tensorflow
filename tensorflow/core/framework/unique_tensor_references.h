@@ -78,7 +78,7 @@ class UniqueTensorReferences {
           referenced_tensors_set_->reserve(kInVector);
           referenced_tensors_set_->insert(referenced_tensors_vector_.begin(),
                                           referenced_tensors_vector_.end());
-          DCHECK_EQ(kInVector, referenced_tensors_set_->size());
+          DCHECK_EQ(static_cast<size_t>(kInVector), referenced_tensors_set_->size());
           referenced_tensors_vector_.clear();
         }
       }

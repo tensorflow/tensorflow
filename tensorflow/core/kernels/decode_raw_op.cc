@@ -42,7 +42,7 @@ class DecodeRawOp : public OpKernel {
       if (str_size == -1) {
         str_size = in_str.size();
       } else {
-        OP_REQUIRES(context, str_size == in_str.size(),
+        OP_REQUIRES(context, str_size == static_cast<int>(in_str.size()),
                     errors::InvalidArgument(
                         "DecodeRaw requires input strings to all be the same "
                         "size, but element ",
