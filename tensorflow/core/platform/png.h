@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/google/build_config/png.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
-#include "external/png_archive/libpng-1.2.53/png.h"
+#include "libpng-1.2.53/png.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
