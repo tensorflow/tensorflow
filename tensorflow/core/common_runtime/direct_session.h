@@ -19,11 +19,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -46,12 +48,24 @@ class DirectSession : public Session {
   DirectSession(const SessionOptions& options, const DeviceMgr* device_mgr);
   ~DirectSession() override;
 
+  typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
+
   ::tensorflow::Status Create(const GraphDef& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
-  ::tensorflow::Status Run(const std::vector<std::pair<string, Tensor>>& inputs,
+  ::tensorflow::Status Run(const NamedTensorList& inputs,
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
                            std::vector<Tensor>* outputs) override;
+
+  // NOTE: PRunSetup and PRun are added to support partial execution. This
+  // feature is experimental and subject to change.
+  ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,
+                                 const std::vector<string>& output_names,
+                                 const std::vector<string>& target_nodes,
+                                 string* handle) override;
+  ::tensorflow::Status PRun(const string& handle, const NamedTensorList& inputs,
+                            const std::vector<string>& output_names,
+                            std::vector<Tensor>* outputs) override;
   ::tensorflow::Status Close() override;
 
  private:
@@ -85,23 +99,85 @@ class DirectSession : public Session {
     }
   };
 
+  // For each live partial execution, the session maintains a RunState.
+  // 'status' is the current status of this partial execution. 'executor_done'
+  // is "notified" when all executors are done. 'graph' is the graph being
+  // executed. 'pending_inputs' are the set of pending feeds and
+  // 'pending_outputs' are the set of pending fetches.
+  struct RunState {
+    Status status;
+    IntraProcessRendezvous* rendez = nullptr;
+    Notification executors_done;
+    Graph* graph = nullptr;
+    std::unordered_set<string> pending_inputs;
+    std::unordered_set<string> pending_outputs;
+
+    RunState(const std::vector<string>& input_names,
+             const std::vector<string>& output_names) {
+      // Initially all the feeds and fetches are pending.
+      for (auto& name : input_names) {
+        pending_inputs.emplace(name);
+      }
+      for (auto& name : output_names) {
+        pending_outputs.emplace(name);
+      }
+    }
+
+    ~RunState() {
+      if (rendez != nullptr) {
+        if (!executors_done.HasBeenNotified()) {
+          rendez->StartAbort(errors::Cancelled("PRun cancellation"));
+          executors_done.WaitForNotification();
+        }
+        rendez->Unref();
+      }
+      delete graph;
+    }
+  };
+
+  struct RunStateArgs {
+    bool is_partial_run = false;
+    string handle;
+    Graph* graph = nullptr;
+  };
+
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
       gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
       gtl::ArraySlice<string> target_nodes,
-      ExecutorsAndKeys** executors_and_keys);
+      ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the
   // input feeds and fetches, given 'devices'.
-  ::tensorflow::Status CreateGraphs(
-      gtl::ArraySlice<string> feeds, gtl::ArraySlice<string> fetches,
-      gtl::ArraySlice<string> target_nodes,
-      FunctionLibraryDefinition** func_defs,
-      std::unordered_map<string, Graph*>* outputs);
+  ::tensorflow::Status CreateGraphs(gtl::ArraySlice<string> feeds,
+                                    gtl::ArraySlice<string> fetches,
+                                    gtl::ArraySlice<string> target_nodes,
+                                    FunctionLibraryDefinition** func_defs,
+                                    std::unordered_map<string, Graph*>* outputs,
+                                    RunStateArgs* run_state_args);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+
+  // Feeds more inputs to the executors, triggering further execution.
+  ::tensorflow::Status SendInputs(
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const ExecutorsAndKeys* executors_and_keys,
+      IntraProcessRendezvous* rendez);
+
+  // Fetches more outputs from the executors. It waits until the output
+  // tensors are computed.
+  ::tensorflow::Status RecvOutputs(const std::vector<string>& output_names,
+                                   const ExecutorsAndKeys* executors_and_keys,
+                                   RunState* run_state,
+                                   std::vector<Tensor>* outputs);
+
+  // Check if the specified fetches can be computed from the feeds
+  // that we have already provided.
+  ::tensorflow::Status CheckFetch(
+      const std::vector<std::pair<string, Tensor>>& feeds,
+      const std::vector<string>& fetches, const RunState* run_state);
 
   const SessionOptions options_;
 
@@ -127,6 +203,10 @@ class DirectSession : public Session {
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
   std::unordered_map<string, ExecutorsAndKeys*> executors_
+      GUARDED_BY(executor_lock_);
+
+  // Holds mappings from handle to partial run state.
+  std::unordered_map<string, RunState*> partial_runs_
       GUARDED_BY(executor_lock_);
 
   CancellationManager* cancellation_manager_;

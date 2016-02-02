@@ -20,7 +20,7 @@ from __future__ import print_function
 import tensorflow.python.platform
 
 from tensorflow.python.platform import googletest
-from tensorflow.tensorboard import float_wrapper
+from tensorflow.tensorboard.backend import float_wrapper
 
 _INFINITY = float('inf')
 

@@ -171,7 +171,7 @@ bool GPURegionAllocator::ExpandPool(Pool* pool, size_t chunk_size,
                                     bool dump_log_on_failure) {
   VLOG(1) << "ExpandPool of " << chunk_size << " from " << pool->num_chunks
           << " current members";
-  DCHECK_NE(0, chunk_size);
+  DCHECK_NE(size_t{0}, chunk_size);
   // If chunk_size is < 4096, double the pool size.  Otherwise
   // just increase by one.
   int num_chunks = pool->num_chunks;

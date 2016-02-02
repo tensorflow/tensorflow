@@ -1291,6 +1291,10 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
 
+  def testUnknownRank(self):
+    with self.assertRaisesRegexp(ValueError, "must have a defined rank"):
+      tf.PaddingFIFOQueue(32, [tf.float32], [tf.TensorShape(None)])
+
 
 if __name__ == "__main__":
   tf.test.main()

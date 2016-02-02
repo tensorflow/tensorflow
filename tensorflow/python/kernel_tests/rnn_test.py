@@ -255,7 +255,7 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
-    num_proj_shards = 4
+    num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -281,12 +281,37 @@ class LSTMTest(tf.test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
+  def _testTooManyShards(self, use_gpu):
+    num_units = 3
+    input_size = 5
+    num_proj = 4
+    num_proj_shards = 4
+    num_unit_shards = 2
+    max_length = 8
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()):
+      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+
+      inputs = max_length * [
+          tf.placeholder(tf.float32, shape=(None, input_size))]
+
+      cell = tf.nn.rnn_cell.LSTMCell(
+          num_units,
+          input_size=input_size,
+          use_peepholes=True,
+          num_proj=num_proj,
+          num_unit_shards=num_unit_shards,
+          num_proj_shards=num_proj_shards,
+          initializer=initializer)
+
+      with self.assertRaises(ValueError):
+        tf.nn.rnn(cell, inputs, dtype=tf.float32)
+
   def _testDoubleInput(self, use_gpu):
     num_units = 3
     input_size = 5
     batch_size = 2
     num_proj = 4
-    num_proj_shards = 4
+    num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -318,7 +343,7 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
-    num_proj_shards = 4
+    num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -369,7 +394,7 @@ class LSTMTest(tf.test.TestCase):
     input_size = 5
     batch_size = 2
     num_proj = 4
-    num_proj_shards = 4
+    num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -493,6 +518,10 @@ class LSTMTest(tf.test.TestCase):
   def testProjSharding(self):
     self._testProjSharding(use_gpu=False)
     self._testProjSharding(use_gpu=True)
+
+  def testTooManyShards(self):
+    self._testTooManyShards(use_gpu=False)
+    self._testTooManyShards(use_gpu=True)
 
   def testShardNoShardEquivalentOutput(self):
     self._testShardNoShardEquivalentOutput(use_gpu=False)

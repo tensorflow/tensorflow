@@ -84,3 +84,11 @@ different locations in the model construction code.
 The "Variable Scope" mechanism is designed to facilitate that.
 
 [View Tutorial](../how_tos/variable_scope/index.md)
+
+## A Tool Developer's Guide to TensorFlow Model Files
+
+If you're developing a tool to load, analyze, or manipulate TensorFlow model
+files, it's useful to understand a bit about the format in which they're stored.
+This guide covers the details of the saved model format.
+
+[View Tutorial](../how_tos/tool_developers/index.md)

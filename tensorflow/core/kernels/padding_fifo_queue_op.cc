@@ -44,6 +44,11 @@ class PaddingFIFOQueueOp : public QueueOp {
  public:
   explicit PaddingFIFOQueueOp(OpKernelConstruction* context) : QueueOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+    for (const auto& shape : component_shapes_) {
+      OP_REQUIRES(context, shape.dims() >= 0,
+                  errors::InvalidArgument("shape ", shape.DebugString(),
+                                          " must have known rank."));
+    }
   }
 
  protected:

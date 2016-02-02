@@ -24,7 +24,7 @@ namespace internal {
 Status LoadLibrary(const char* library_filename, void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
-    return errors::NotFound("Unable to find library ", library_filename);
+    return errors::NotFound(dlerror());
   }
   return Status::OK();
 }
@@ -33,8 +33,7 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                             void** symbol) {
   *symbol = dlsym(handle, symbol_name);
   if (!*symbol) {
-    return errors::NotFound("Unable to find symbol ", symbol_name,
-                            " in library");
+    return errors::NotFound(dlerror());
   }
   return Status::OK();
 }

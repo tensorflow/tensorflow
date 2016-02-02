@@ -1006,6 +1006,21 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(len(png0), 400)
       self.assertLessEqual(len(png0), 750)
 
+  def testSyntheticUint16(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it
+      image0 = constant_op.constant(_SimpleColorRamp(), dtype=dtypes.uint16)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+
+      # PNG is lossless
+      self.assertAllEqual(image0, image1)
+
+      # Smooth ramps compress well, but not too well
+      self.assertGreaterEqual(len(png0), 800)
+      self.assertLessEqual(len(png0), 1500)
+
   def testShape(self):
     with self.test_session():
       png = constant_op.constant('nonsense')

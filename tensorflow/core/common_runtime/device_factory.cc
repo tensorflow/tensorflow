@@ -116,7 +116,7 @@ Device* DeviceFactory::NewDevice(const string& type,
   (*opt.config.mutable_device_count())[type] = 1;
   std::vector<Device*> devices;
   device_factory->CreateDevices(opt, name_prefix, &devices);
-  CHECK_EQ(devices.size(), 1);
+  CHECK_EQ(devices.size(), size_t{1});
   return devices[0];
 }
 

@@ -784,8 +784,9 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
-IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
-                                            ["values", "indices", "dense_shape"])
+  def __neg__(self):
+    return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
@@ -800,7 +801,7 @@ class SparseTensor(object):
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
+  Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
 
   * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
   * `values`: A 1-D tensor of any type and shape `[N]`.
@@ -825,7 +826,7 @@ class SparseTensor(object):
   Example: The sparse tensor
 
   ```python
-  SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
   ```
 
   represents the dense tensor
@@ -3340,6 +3341,8 @@ class GraphKeys(object):
   MOVING_AVERAGE_VARIABLES = "moving_average_variables"
   # Key to collected regularization losses at graph construction.
   REGULARIZATION_LOSSES = "regularization_losses"
+  # Key to collect concatenated sharded variables.
+  CONCATENATED_VARIABLES = "concatenated_variables"
 
 
 def add_to_collection(name, value):

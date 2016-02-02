@@ -97,7 +97,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
       }
     }
   } else {
-    CHECK_EQ(avoided_values.size(), 0)
+    CHECK_EQ(avoided_values.size(), size_t{0})
         << "avoided_values only supported with unique=true";
     for (int i = 0; i < batch_size; i++) {
       batch[i] = Sample(rnd);
@@ -138,7 +138,7 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
       batch_expected_count[i] = 1;
     }
   }
-  CHECK_EQ(0, avoided_values.size());
+  CHECK_EQ(size_t{0}, avoided_values.size());
   CHECK_EQ(extras.size(), extras_expected_count.size());
   for (size_t i = 0; i < extras.size(); i++) {
     extras_expected_count[i] = 1;

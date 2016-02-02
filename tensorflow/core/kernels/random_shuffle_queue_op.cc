@@ -107,7 +107,7 @@ Status RandomShuffleQueue::Initialize() {
 }
 
 void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
-  DCHECK_GT(queues_[0].size(), 0);
+  DCHECK_GT(queues_[0].size(), size_t{0});
   int64 index = generator_() % queues_[0].size();
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {

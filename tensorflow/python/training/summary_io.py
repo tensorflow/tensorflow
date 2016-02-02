@@ -148,7 +148,8 @@ class SummaryWriter(object):
       global_step: Number. Optional global step counter to record with the
         graph.
     """
-    event = event_pb2.Event(wall_time=time.time(), graph_def=graph_def)
+    graph_bytes = graph_def.SerializeToString()
+    event = event_pb2.Event(wall_time=time.time(), graph_def=graph_bytes)
     if global_step is not None:
       event.step = int(global_step)
     self._event_queue.put(event)

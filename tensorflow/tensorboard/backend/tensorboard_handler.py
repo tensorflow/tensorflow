@@ -45,8 +45,7 @@ from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
-from tensorflow.tensorboard import float_wrapper
-from tensorflow import compat
+from tensorflow.tensorboard.backend import float_wrapper
 
 
 DATA_PREFIX = '/data'
@@ -89,6 +88,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   This is essentially a thin wrapper around calls to an EventMultiplexer object
   as well as serving files off disk.
   """
+
+  # How many samples to include in sampling API calls by default.
+  DEFAULT_SAMPLE_COUNT = 10
 
   def __init__(self, multiplexer, *args):
     self._multiplexer = multiplexer
@@ -195,11 +197,34 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     self.wfile.write(serialized_csv)
 
   def _serve_scalars(self, query_params):
-    """Given a tag and single run, return array of ScalarEvents."""
+    """Given a tag and single run, return array of ScalarEvents.
+
+    Alternately, if both the tag and the run are omitted, returns JSON object
+    where obj[run][tag] contains sample values for the given tag in the given
+    run.
+
+    Args:
+      query_params: The query parameters as a dict.
+    """
     # TODO(cassandrax): return HTTP status code for malformed requests
     tag = query_params.get('tag')
     run = query_params.get('run')
-    values = self._multiplexer.Scalars(run, tag)
+    if tag is None and run is None:
+      if query_params.get('format') == _OutputFormat.CSV:
+        self.send_error(400, 'Scalar sample values only supports JSON output')
+        return
+
+      sample_count = int(query_params.get('sample_count',
+                                          self.DEFAULT_SAMPLE_COUNT))
+      values = {}
+      for run_name, tags in self._multiplexer.Runs().items():
+        values[run_name] = {
+            tag: _uniform_sample(
+                self._multiplexer.Scalars(run_name, tag), sample_count)
+            for tag in tags['scalars']
+        }
+    else:
+      values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
       string_io = BytesIO()
@@ -411,3 +436,33 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       self._serve_index(query_params)
     else:
       self._serve_static_file(clean_path)
+
+
+def _uniform_sample(values, count):
+  """Samples `count` values uniformly from `values`.
+
+  Args:
+    values: The values to sample from.
+    count: The number of values to sample. Must be at least 2.
+
+  Raises:
+    ValueError: If `count` is not at least 2.
+    TypeError: If `type(count) != int`.
+
+  Returns:
+    A list of values from `values`. The first and the last element will always
+    be included. If `count > len(values)`, then all values will be returned.
+  """
+
+  if count < 2:
+    raise ValueError('Must sample at least 2 elements, %d requested' % count)
+
+  if count >= len(values):
+    # Copy the list in case the caller mutates it.
+    return list(values)
+
+  return [
+      # We divide by count - 1 to make sure we always get the first and the last
+      # element.
+      values[(len(values) - 1) * i // (count - 1)] for i in xrange(count)
+  ]

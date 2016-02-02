@@ -409,7 +409,7 @@ Returns the truth value of (x >= y) element-wise.
 #define COMPARISON()                                                     \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr( \
       "T: {float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32}")
+      "quint8, qint8, qint32, string}")
 
 REGISTER_OP("Equal")
     .COMPARISON()

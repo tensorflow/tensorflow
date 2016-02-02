@@ -123,13 +123,10 @@ cc_library(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
-        "platform/port.h",  # TODO(josh11b): delete
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-        "public/env.h",  # Deprecated, use platform/env.h instead
-        "public/status.h",  # Deprecated: use lib/core/status.h instead
     ],
     visibility = ["//visibility:public"],
     deps = [":lib_internal"],
@@ -169,9 +166,9 @@ tf_cuda_library(
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/device_base.h",
         "framework/function.h",
-        "framework/node_def_builder.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
         "framework/numeric_types.h",
@@ -191,14 +188,9 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
-        "framework/type_traits.h",
         "framework/type_index.h",
+        "framework/type_traits.h",
         "framework/types.h",
-        # Deprecated. TODO(josh11b): Use the framework/ versions instead.
-        "public/partial_tensor_shape.h",
-        "public/tensor.h",
-        "public/tensor_shape.h",
-        # NOTE(josh11b): Will stay in public/
         "public/version.h",
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
@@ -210,8 +202,8 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
-        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_reader.h",
+        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
         "util/use_cudnn.h",
         "util/util.h",
@@ -219,6 +211,83 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+cc_library(
+    name = "framework_headers",
+    hdrs = [
+        "framework/allocator.h",
+        "framework/attr_value_util.h",
+        "framework/bfloat16.h",
+        "framework/cancellation.h",
+        "framework/control_flow.h",
+        "framework/device_base.h",
+        "framework/function.h",
+        "framework/kernel_def_builder.h",
+        "framework/node_def_util.h",
+        "framework/numeric_types.h",
+        "framework/op.h",
+        "framework/op_def_builder.h",
+        "framework/op_def_util.h",
+        "framework/op_kernel.h",
+        "framework/partial_tensor_shape.h",
+        "framework/rendezvous.h",
+        "framework/tensor.h",
+        "framework/tensor_reference.h",
+        "framework/tensor_shape.h",
+        "framework/tensor_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+        "framework/types.h",
+        "framework/unique_tensor_references.h",
+        "lib/core/errors.h",
+        "lib/core/notification.h",
+        "lib/core/refcount.h",
+        "lib/core/status.h",
+        "lib/core/stringpiece.h",
+        "lib/gtl/array_slice.h",
+        "lib/gtl/array_slice_internal.h",
+        "lib/gtl/inlined_vector.h",
+        "lib/gtl/manual_constructor.h",
+        "lib/hash/hash.h",
+        "lib/strings/numbers.h",
+        "lib/strings/str_util.h",
+        "lib/strings/strcat.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/default/mutex.h",
+        "platform/default/protobuf.h",
+        "platform/default/thread_annotations.h",
+        "platform/env.h",
+        "platform/host_info.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/mem.h",
+        "platform/mutex.h",
+        "platform/platform.h",
+        "platform/protobuf.h",
+        "platform/thread_annotations.h",
+        "platform/types.h",
+        "public/version.h",
+        "util/device_name_utils.h",
+    ],
+)
+
+cc_binary(
+    name = "libtensorflow_framework.so",
+    srcs = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
 )
 
 tf_cuda_library(
@@ -298,6 +367,7 @@ tf_cuda_library(
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
+        "graph/validate.h",
         "public/session.h",
         "public/session_options.h",
         "public/tensor_c_api.h",
@@ -643,10 +713,7 @@ cc_library(
         "framework/tensor.h",
         "platform/env.h",
         "platform/logging.h",
-        "platform/port.h",
-        "public/env.h",
         "public/session.h",
-        "public/tensor.h",
     ],
     copts = [
         "-mfpu=neon",
@@ -677,8 +744,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
-            "public/env.h",  # TODO(josh11b): delete this
-            "public/status.h",  # TODO(josh11b): delete this
         ] + tf_additional_lib_srcs(),
         exclude = [
             "**/*test*",
@@ -722,11 +787,6 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-            # TODO(josh11b): Delete these once everyone has switched to the
-            # framework/ versions.
-            "public/partial_tensor_shape.h",
-            "public/tensor.h",
-            "public/tensor_shape.h",
         ],
         exclude = [
             "**/*test*",
@@ -1042,9 +1102,7 @@ filegroup(
 )
 
 # -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-# For portable_proto_library
+# Google-internal targets go here (must be at the end).
 
 filegroup(
     name = "all_files",

@@ -583,6 +583,7 @@ tf_gen_op_wrapper_py(
         "AvgPoolGrad",  # "*Grad" accessible through nn_grad instead of nn_ops.
         "BatchNormWithGlobalNormalizationGrad",
         "SoftmaxCrossEntropyWithLogits",
+        "SparseSoftmaxCrossEntropyWithLogits",
         "LRNGrad",
         "MaxPoolGrad",
         "MaxPoolGradWithArgmax",
@@ -976,6 +977,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/clip_ops_test.py",
     "kernel_tests/decode_csv_op_test.py",
     "kernel_tests/decode_raw_op_test.py",
+    "kernel_tests/depthtospace_op_test.py",
     "kernel_tests/determinant_op_test.py",
     "kernel_tests/diag_op_test.py",
     "kernel_tests/edit_distance_op_test.py",
@@ -1004,6 +1006,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
     "kernel_tests/sparsemask_op_test.py",
+    "kernel_tests/spacetodepth_op_test.py",
     "kernel_tests/summary_ops_test.py",
     "kernel_tests/template_test.py",
     "kernel_tests/topk_op_test.py",
