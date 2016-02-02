@@ -8,5 +8,6 @@ node_modules
 /bazel-tf
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
+/tools/python_bin_path.sh
 /util/python/python_include
 /util/python/python_lib
