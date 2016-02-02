@@ -72,6 +72,20 @@ class PyOpTest(tf.test.TestCase):
       y, = tf.py_func(literal, [x], [tf.float64])
       self.assertAllClose(y.eval(), 1.0)
 
+  def testStrings(self):
+
+    def read_fixed_length_numpy_strings():
+      return np.array([" there"])
+
+    def read_and_return_strings(x, y):
+      return x + y
+
+    with self.test_session():
+      x = tf.constant(["hello", "hi"], tf.string)
+      y, = tf.py_func(read_fixed_length_numpy_strings, [], [tf.string])
+      z, = tf.py_func(read_and_return_strings, [x, y], [tf.string])
+      self.assertListEqual(list(z.eval()), ["hello there", "hi there"])
+
   def testLarge(self):
     with self.test_session() as sess:
       x = tf.zeros([1000000], dtype=np.float32)
@@ -95,13 +109,23 @@ class PyOpTest(tf.test.TestCase):
 
   def testError(self):
     with self.test_session():
-      def bad(_):
-        return tf.float32  # a python object. We should fail.
-      x = tf.constant(0.0, tf.float64)
-      y, = tf.py_func(bad, [x], [tf.float64])
+
+      def bad1():
+        # Structured numpy arrays aren't supported.
+        return np.array([], dtype=[("foo", np.float32)])
+
+      def bad2():
+        # Non-string python objects aren't supported.
+        return tf.float32
+
+      y, = tf.py_func(bad1, [], [tf.string])
+      z, = tf.py_func(bad2, [], [tf.float64])
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
         y.eval()
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported object type"):
+        z.eval()
 
 
 if __name__ == "__main__":
