@@ -7513,7 +7513,7 @@ op {
   }
   input_arg {
     name: "t"
-    description: "= A `Tensor` with the same shape as `condition`."
+    description: "= A `Tensor` which may have the same shape as `condition`.\nIf `condition` is rank 1, `t` may have higher rank,\nbut its first dimension must match the size of `condition`."
     type_attr: "T"
   }
   input_arg {
@@ -7531,7 +7531,7 @@ op {
     type: "type"
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
-  description: "The `condition`, `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape. The `condition` tensor acts\nas an element-wise mask that chooses, based on the value at each\nelement, whether the corresponding element in the output should be\ntaken from `t` (if true) or `e` (if false). For example:\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True, False]\n#                        [True, False]]\n# \'t\' is [[1, 1],\n#         [1, 1]]\n# \'e\' is [[2, 2],\n#         [2, 2]]\nselect(condition, t, e) ==> [[1, 2],\n                             [1, 2]]\n```"
+  description: "The `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape.  The `condition` tensor\nmust be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors\nor higher rank, then `condition` must be either a vector with size\nmatching the first dimension of `t`, or must have the same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
 }
 op {
   name: "SelfAdjointEig"

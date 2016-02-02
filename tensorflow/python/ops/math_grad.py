@@ -418,7 +418,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(c), dtype=x.dtype)
+  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 
