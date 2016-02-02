@@ -711,13 +711,13 @@ Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
   return status;
 }
 
-Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
+Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
                           DeviceType device_type, const NodeDef& ndef,
                           MemoryTypeVector* input_memory_types,
                           MemoryTypeVector* output_memory_types) {
   // Look up the Op registered for this op name.
   Status status;
-  const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
+  const OpDef* op_def = op_registry.LookUp(ndef.op(), &status);
   if (op_def == nullptr) return status;
 
   NameRangeMap inputs, outputs;
@@ -742,11 +742,11 @@ bool FindArgInOp(const string& arg_name,
 
 }  // namespace
 
-Status ValidateKernelRegistrations(const OpRegistryInterface* op_registry) {
+Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
   Status unused_status;
   for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
     const KernelDef& kernel_def(key_registration.second.def);
-    const OpDef* op_def = op_registry->LookUp(kernel_def.op(), &unused_status);
+    const OpDef* op_def = op_registry.LookUp(kernel_def.op(), &unused_status);
     if (op_def == nullptr) {
       // TODO(josh11b): Make this a hard error.
       LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()

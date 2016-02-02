@@ -43,7 +43,7 @@ TEST(ValidateGraphDefTest, TestValidGraph) {
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
-  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
+  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, *OpRegistry::Global()));
 }
 
 TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
@@ -58,15 +58,15 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
-  Status s = graph::ValidateGraphDef(graph_def, OpRegistry::Global());
+  Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
 
   // Add the defaults.
-  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
+  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
 
   // Validation should succeed.
-  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, OpRegistry::Global()));
+  TF_ASSERT_OK(graph::ValidateGraphDef(graph_def, *OpRegistry::Global()));
 }
 
 TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
@@ -81,15 +81,15 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
-  Status s = graph::ValidateGraphDef(graph_def, OpRegistry::Global());
+  Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
 
   // Add the defaults.
-  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, OpRegistry::Global(), 0));
+  TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
 
   // Validation should still fail.
-  s = graph::ValidateGraphDef(graph_def, OpRegistry::Global());
+  s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString()).contains("NodeDef missing attr"));
 }

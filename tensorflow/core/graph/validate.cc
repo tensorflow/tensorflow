@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/graph/validate.h"
 
-#include <unordered_map>
-
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -27,11 +25,11 @@ namespace tensorflow {
 namespace graph {
 
 Status ValidateGraphDef(const GraphDef& graph_def,
-                        const OpRegistryInterface* op_registry) {
+                        const OpRegistryInterface& op_registry) {
   Status s;
   for (const NodeDef& node_def : graph_def.node()) {
     // Look up the OpDef for the node_def's op name.
-    const OpDef* op_def = op_registry->LookUp(node_def.op(), &s);
+    const OpDef* op_def = op_registry.LookUp(node_def.op(), &s);
     TF_RETURN_IF_ERROR(s);
     TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
   }
@@ -39,45 +37,21 @@ Status ValidateGraphDef(const GraphDef& graph_def,
   return s;
 }
 
-namespace {
-
-class OpListOpRegistry : public OpRegistryInterface {
- public:
-  // Does not take ownership of op_list, *op_list must outlive *this.
-  OpListOpRegistry(const OpList* op_list) {
-    for (const OpDef& op_def : op_list->op()) {
-      index_[op_def.name()] = &op_def;
-    }
-  }
-  ~OpListOpRegistry() override {}
-
-  const OpDef* LookUp(const string& op_type_name,
-                      Status* status) const override {
-    auto iter = index_.find(op_type_name);
-    if (iter == index_.end()) {
-      status->Update(
-          errors::NotFound("Op type not registered '", op_type_name, "'"));
-      return nullptr;
-    }
-    return iter->second;
-  }
-
- private:
-  std::unordered_map<string, const OpDef*> index_;
-};
-
-}  // namespace
+Status ValidateGraphDefAgainstOpRegistry(
+    const GraphDef& graph_def, const OpRegistryInterface& op_registry) {
+  GraphDef copy(graph_def);
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy, op_registry, 0));
+  return ValidateGraphDef(copy, op_registry);
+}
 
 Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
                                      const OpList& op_list) {
   OpListOpRegistry registry(&op_list);
-  GraphDef copy(graph_def);
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy, &registry, 0));
-  return ValidateGraphDef(copy, &registry);
+  return ValidateGraphDefAgainstOpRegistry(graph_def, registry);
 }
 
-void GetOpListForValidation(OpList* op_list, const OpRegistry* op_registry) {
-  op_registry->Export(false, op_list);
+void GetOpListForValidation(OpList* op_list, const OpRegistry& op_registry) {
+  op_registry.Export(false, op_list);
   RemoveDescriptionsFromOpList(op_list);
 }
 

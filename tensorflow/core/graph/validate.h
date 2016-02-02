@@ -31,20 +31,24 @@ namespace graph {
 //  * `op_registry` is not nullptr.
 //  * `graph_def` has default attrs filled in (see AddDefaultAttrsToGraphDef()).
 Status ValidateGraphDef(const GraphDef& graph_def,
-                        const OpRegistryInterface* op_registry);
+                        const OpRegistryInterface& op_registry);
 
-// Like ValidateGraphDef() except:
-// * Takes an OpList instead of an OpRegistryInterface.
-//   Note that the OpList need not have descriptions, which can be a big
-//   space savings, see GetOpListForValidation() below.
-// * Makes a copy of `graph_def` and calls AddDefaultAttrsToGraphDef()
-//   on the copy.
+// Like ValidateGraphDef() except it makes a copy of `graph_def` and calls
+// AddDefaultAttrsToGraphDef() on the copy, removing that requirement from the
+// caller.
+Status ValidateGraphDefAgainstOpRegistry(
+    const GraphDef& graph_def, const OpRegistryInterface& op_registry);
+
+// Like ValidateGraphDefAgainstOpRegistry() except it takes an OpList
+// instead of an OpRegistryInterface.  Note that the OpList need not
+// have descriptions, which can be a big space savings, see
+// GetOpListForValidation() below.
 Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
                                      const OpList& op_list);
 
 // Get an OpList from `*op_registry` with all the descriptions removed.
 void GetOpListForValidation(
-    OpList* op_list, const OpRegistry* op_registry = OpRegistry::Global());
+    OpList* op_list, const OpRegistry& op_registry = *OpRegistry::Global());
 
 }  // namespace graph
 }  // namespace tensorflow

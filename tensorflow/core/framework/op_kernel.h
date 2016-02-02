@@ -1014,13 +1014,13 @@ Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
                           MemoryTypeVector* input_memory_types,
                           MemoryTypeVector* output_memory_types);
 
-Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
+Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
                           DeviceType device_type, const NodeDef& ndef,
                           MemoryTypeVector* input_memory_types,
                           MemoryTypeVector* output_memory_types);
 
 // Call once after Op registration has completed.
-Status ValidateKernelRegistrations(const OpRegistryInterface* op_registry);
+Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
 // -----------------------------------------------------------------------------
 // OpKernel registration implementation follows, please ignore.

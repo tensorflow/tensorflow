@@ -222,7 +222,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   FunctionLibraryDefinition fdefs(graph_def_.library());
   // Add default attributes to all new nodes in the graph.
   Status s =
-      AddDefaultAttrsToGraphDef(&graph_def_, &fdefs, node_size_before_merge);
+      AddDefaultAttrsToGraphDef(&graph_def_, fdefs, node_size_before_merge);
   if (!s.ok()) {
     // One of the nodes was invalid, return the state of graph_def_
     // to what it was before this function.
@@ -235,7 +235,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   if (graph_def_.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, &fdefs));
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, fdefs));
   }
 
   graph_created_ = true;  // In case this is first call
