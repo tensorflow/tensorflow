@@ -80,6 +80,11 @@ class PyOpTest(tf.test.TestCase):
       for _ in xrange(100):
         sess.run([y[0].op, z[0].op])
 
+  def testNoInput(self):
+    with self.test_session():
+      x, = tf.py_func(lambda: 42.0, [], [tf.float64])
+      self.assertAllClose(x.eval(), 42.0)
+
   def testCleanup(self):
     for _ in range(1000):
       g = tf.Graph()
