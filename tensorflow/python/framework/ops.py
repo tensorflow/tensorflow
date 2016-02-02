@@ -2283,7 +2283,7 @@ class Graph(object):
     """Returns a list of values in the collection with the given `name`.
 
     Args:
-      key: The key for the collection. For example, the `GraphKeys` class
+      name: The key for the collection. For example, the `GraphKeys` class
         contains many standard names for collections.
       scope: (Optional.) If supplied, the resulting list is filtered to include
         only items whose name begins with this string.

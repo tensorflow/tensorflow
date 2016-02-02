@@ -43,6 +43,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import math
 import numbers
 
@@ -58,6 +59,10 @@ __all__ = ['xavier_initializer', 'fully_connected', 'l1_regularizer',
            'l2_regularizer']
 
 
+# TODO(ptucker): Move to 3p/tf/py/ops/init_ops and follow the conventions there.
+# It should return a function which takes a shape and a dtype, and returns a
+# corresponding value. It does not need to take n_inputs or n_outputs (the
+# function it returns will be provided with those values).
 def xavier_initializer(n_inputs, n_outputs, uniform=True):
   """Set the parameter initialization using the method described in paper.
 
@@ -253,6 +258,63 @@ def l2_regularizer(scale):
   return l2
 
 
+# TODO(ptucker): Make xavier default after it's moved to 3p and changed to an
+# initializer.
+def _weight_variable_2d(
+    num_input_nodes, num_output_nodes, dtype, init=None, collections=None,
+    regularizer=None, create_summaries=True):
+  """Create weight variable with shape `(num_input_nodes, num_output_nodes)`.
+
+  Args:
+    num_input_nodes: The number of input nodes.
+    num_output_nodes: The size of the output.
+    dtype: Data type of the variable.
+    init: An optional initialization. If not specified, uses Xavier
+      initialization (see `tf.learn.xavier_initializer`).
+    collections: List of graph collections to which we'll add the new variable.
+    regularizer: A regularizer like the result of `tf.learn.l1_regularizer` or
+      `tf.learn.l2_regularizer`.
+    create_summaries: Set to false to disable summaries.
+
+  Returns:
+    The result weights variable.
+  """
+  init = init or xavier_initializer(num_input_nodes, num_output_nodes)
+  w = variable_scope.get_variable(
+      'weights', shape=(num_input_nodes, num_output_nodes), dtype=dtype,
+      initializer=init, collections=collections)
+  if not variable_scope.get_variable_scope().reuse and create_summaries:
+    _add_histogram_summary(w)
+  if regularizer:
+    _apply_regularization(w, regularizer)
+  return w
+
+
+def _bias_variable(
+    num_output_nodes, dtype, init=standard_ops.constant_initializer(0.),
+    collections=None, create_summaries=True):
+  """Create bias variable with shape `(num_output_nodes,)`.
+
+  Args:
+    num_output_nodes: The size of the output.
+    dtype: Data type of the variable.
+    init: An optional initialization. If not specified, use zeros.
+    collections: List of graph collections to which we'll add the new variable.
+    create_summaries: Set to false to disable summaries.
+
+  Returns:
+    The result weights variable.
+  """
+  b = variable_scope.get_variable(
+      'bias', shape=(num_output_nodes,), dtype=dtype, initializer=init,
+      collections=collections)
+  if not variable_scope.get_variable_scope().reuse and create_summaries:
+    _add_histogram_summary(b)
+  return b
+
+
+# TODO(ptucker): Consider defaulting bias_init to a small positive value instead
+# of zeros.
 def fully_connected(x,
                     num_output_nodes,
                     activation_fn=None,
@@ -288,7 +350,7 @@ def fully_connected(x,
   This is only applied to weights and not the bias.
 
   Args:
-    x: The input `Tensor`.
+    x: The input `Tensor`. Must be 2D.
     num_output_nodes: The size of the output.
     activation_fn: A function that requires a single Tensor that is applied as a
       non-linearity. If None is used, do not apply any activation.
@@ -314,7 +376,7 @@ def fully_connected(x,
     ValueError: if `x` is not rank 2; or `x`'s second dimension is not known
     and `num_input_nodes` is not specified.
   """
-  with variable_scope.variable_op_scope([x], name, 'fully_connected') as vs:
+  with variable_scope.variable_op_scope([x], name, 'fully_connected'):
     # Check rank and if num_input_nodes is specified, make sure it matches.
     # TODO(wicke): This does not work with scalar inputs (shape [batch_size,])
     # TODO(wicke): We'd have to encode the broadcasting rules here to be safe.
@@ -329,38 +391,33 @@ def fully_connected(x,
       else:
         num_input_nodes = x.get_shape().dims[1].value
 
-    weight_init = weight_init or xavier_initializer(
-        num_input_nodes, num_output_nodes)
-
     dtype = x.dtype.base_dtype
-    w = variable_scope.get_variable('weights',
-                                    shape=[num_input_nodes, num_output_nodes],
-                                    dtype=dtype,
-                                    initializer=weight_init,
-                                    collections=weight_collections)
-
-    if not vs.reuse and create_summaries:
-      _add_histogram_summary(w)
+    # Regularization is only applied to the weights and not bias.
+    w = _weight_variable_2d(
+        num_input_nodes, num_output_nodes, dtype=dtype, init=weight_init,
+        collections=weight_collections, regularizer=weight_regularizer,
+        create_summaries=create_summaries)
 
     y = standard_ops.matmul(x, w)
-    # Regularization is only applied to the weights and not bias.
-    if weight_regularizer:
-      _apply_regularization(w, weight_regularizer)
     if bias_init is not None:
-      b = variable_scope.get_variable('bias',
-                                      shape=[num_output_nodes],
-                                      dtype=dtype,
-                                      initializer=bias_init,
-                                      collections=bias_collections)
-      if not vs.reuse and create_summaries:
-        _add_histogram_summary(b)
-
+      b = _bias_variable(
+          num_output_nodes, dtype=dtype, init=bias_init,
+          collections=bias_collections, create_summaries=create_summaries)
       y = nn.bias_add(y, b)
 
     if create_summaries:
       return _apply_activation_with_summaries(y, activation_fn)
-    else:
-      return y if activation_fn is None else activation_fn(y)
+    if activation_fn:
+      y = activation_fn(y)
+    return y
+
+
+# TODO(eiderm): Verify and fix autocomplete in colab (also relu6).
+# TODO(ptucker): Revisit name when we move to tf.contrib.layers (also relu6).
+relu_layer = functools.partial(fully_connected, activation_fn=nn.relu)
+
+
+relu6_layer = functools.partial(fully_connected, activation_fn=nn.relu6)
 
 
 def convolution2d(x,
@@ -381,7 +438,7 @@ def convolution2d(x,
 
   A neural network convolution layer is generally defined as:
   \\\\(y = f(conv2d(w, x) + b)\\\\) where **f** is given by `activation_fn`,
-  **conv2d** is `tf.nn.conv2d` and `x` has shape
+  **conv2d** is `nn.conv2d` and `x` has shape
   `[batch, height, width, channels]`
 
   This op creates `w` and optionally `b` and adds various summaries that can be
@@ -477,18 +534,14 @@ def convolution2d(x,
     # Regularization is only applied to the weights and not bias.
     if weight_regularizer:
       _apply_regularization(w, weight_regularizer)
-    if bias_init is not None:
-      b = variable_scope.get_variable('bias',
-                                      shape=[num_output_channels],
-                                      dtype=dtype,
-                                      initializer=bias_init,
-                                      collections=bias_collections)
-      if not vs.reuse and create_summaries:
-        _add_histogram_summary(b)
-
+    if bias_init:
+      b = _bias_variable(
+          num_output_channels, dtype, bias_init, bias_collections,
+          create_summaries)
       y = nn.bias_add(y, b)
 
     if create_summaries:
       return _apply_activation_with_summaries(y, activation_fn)
-    else:
-      return y if activation_fn is None else activation_fn(y)
+    if activation_fn:
+      y = activation_fn(y)
+    return y
