@@ -488,7 +488,7 @@ def _SparseMatMulGrad(op, grad):
 
 @ops.RegisterGradient("Floor")
 def _FloorGrad(_, grad):
-  return grad
+  return [None]
 
 
 @ops.RegisterGradient("BatchMatMul")
