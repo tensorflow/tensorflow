@@ -5,4 +5,5 @@ branch = True
 omit = 
         */tests/*
         */estimators/rnn.py
+        */models.py
 
