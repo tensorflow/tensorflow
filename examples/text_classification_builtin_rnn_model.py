@@ -45,7 +45,7 @@ print('Total words: %d' % n_words)
 
 EMBEDDING_SIZE = 50
 
-# Customized function to transform input X into embeddings
+# Customized function to transform batched X into embeddings
 def input_op_fn(X):
     # Convert indexes of words into embeddings.
     # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
@@ -58,8 +58,10 @@ def input_op_fn(X):
     word_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
     return word_list
 
+# Single direction GRU with a single layer
 classifier = skflow.TensorFlowRNNClassifier(rnn_size=EMBEDDING_SIZE, 
     n_classes=15, cell_type='gru', input_op_fn=input_op_fn,
+    num_layers=1, bidirection=False, sequence_length=None,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continously train for 1000 steps & predict on test set.
