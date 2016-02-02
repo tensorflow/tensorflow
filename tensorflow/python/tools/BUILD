@@ -56,6 +56,7 @@ py_binary(
     srcs = [
         "graph_metrics.py",
     ],
+    srcs_version = "PY2AND3",
     main = "graph_metrics.py",
     deps = [
         "//tensorflow:tensorflow_py",
