@@ -5564,7 +5564,6 @@ op {
     type: "list(type)"
     description: "Data types of the inputs to the op."
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "Tout"
