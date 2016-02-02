@@ -415,7 +415,7 @@ TEST(DirectSessionTest, PartialRunTest) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<Tensor> outputs;
 
@@ -471,7 +471,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<Tensor> outputs;
 
@@ -504,7 +504,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<Tensor> outputs;
 
