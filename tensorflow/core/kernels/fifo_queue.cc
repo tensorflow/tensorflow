@@ -36,7 +36,7 @@ FIFOQueue::FIFOQueue(int capacity, const DataTypeVector& component_dtypes,
     : TypedQueue(capacity, component_dtypes, component_shapes, name) {}
 
 void FIFOQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
-  DCHECK_GT(queues_[0].size(), 0);
+  DCHECK_GT(queues_[0].size(), size_t{0});
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
     (*tuple).push_back(*queues_[i][0].AccessTensor(ctx));

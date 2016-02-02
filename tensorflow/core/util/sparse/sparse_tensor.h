@@ -321,7 +321,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     strides[d] = strides[d + 1] * out_shape.dim_size(d + 1);
   }
 
-  for (std::size_t n = 0; n < vals_t.dimension(0); ++n) {
+  for (int n = 0; n < vals_t.dimension(0); ++n) {
     bool invalid_dims = false;
     int64 ix = 0;
     for (int d = 0; d < dims_; ++d) {
@@ -340,7 +340,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 template <typename T>
 SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
-  CHECK_GE(tensors.size(), 1) << "Cannot concat 0 SparseTensors";
+  CHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   CHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
   auto order_0 = tensors[0].order();

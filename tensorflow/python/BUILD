@@ -263,6 +263,7 @@ tf_gen_op_wrapper_py(
 py_library(
     name = "functional_ops_lib",
     srcs = ["ops/functional_ops.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":functional_ops",
     ],

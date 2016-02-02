@@ -14,12 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script is a wrapper creating inside container the same user as the one
-# running the ci_build.sh outside of container. It also set the home for that
-# user to in the workspace directory.
+# This script is a wrapper creating the same user inside container as the one
+# running the ci_build.sh outside the container. It also set the home directory
+# for the user inside container to match the same absolute path as the workspace
+# outside of continer.
 # We do this so that the bazel running inside container generate symbolic links
 # and user permissions which makes sense outside of container.
-# Do not run this outside of docker. It does not make sense.
+# Do not run this manually. It does not make sense. It is intended to be called
+# by ci_build.sh only.
 
 set -e
 
