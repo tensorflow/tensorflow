@@ -208,7 +208,12 @@ tensorflow::ImportNumpy();
     RaiseStatusNotOK(*$1, $descriptor(tensorflow::Status*));
     SWIG_fail;
   } else {
-    $result = PyString_FromStringAndSize(*$2, strlen(*$2));
+%#if PY_MAJOR_VERSION < 3
+    $result = PyString_FromStringAndSize(
+%#else
+    $result = PyUnicode_FromStringAndSize(
+%#endif
+      *$2, strlen(*$2));
     delete *$2;
   }
 }

@@ -116,8 +116,9 @@ Graph* GetConstantGraph(const Graph* orig_graph,
     for (const Edge* in_edge : n->in_edges()) {
       Node* in = in_edge->src();
       CHECK_GT(node_map.count(in), size_t{0}) << n->DebugString() << " <-"
-                                      << in->DebugString();
-      CHECK_GT(already_added.count(node_map[in]), size_t{0}) << in->DebugString();
+                                              << in->DebugString();
+      CHECK_GT(already_added.count(node_map[in]), size_t{0})
+          << in->DebugString();
       constant_graph->AddEdge(node_map[in], in_edge->src_output(), added,
                               in_edge->dst_input());
     }

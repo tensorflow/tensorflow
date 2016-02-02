@@ -90,14 +90,12 @@ class ResizeBilinearOp : public OpKernel {
         const int bottom_y_index =
             std::min(static_cast<int64>(ceilf(in_y)), (in_height - 1));
         const float y_lerp = in_y - top_y_index;
-        const float inverse_y_lerp = (1.0f - y_lerp);
         for (int x = 0; x < out_width; ++x) {
           const float in_x = x * width_scale;
           const int left_x_index = static_cast<int>(floorf(in_x));
           const int right_x_index =
               std::min(static_cast<int64>(ceilf(in_x)), (in_width - 1));
           const float x_lerp = in_x - left_x_index;
-          const float inverse_x_lerp = (1.0f - x_lerp);
           for (int c = 0; c < channels; ++c) {
             const float top_left = input_data(b, top_y_index, left_x_index, c);
             const float top_right =
@@ -106,12 +104,10 @@ class ResizeBilinearOp : public OpKernel {
                 input_data(b, bottom_y_index, left_x_index, c);
             const float bottom_right =
                 input_data(b, bottom_y_index, right_x_index, c);
-            const float top =
-                (top_left * inverse_x_lerp) + (top_right * x_lerp);
+            const float top = top_left + (top_right - top_left) * x_lerp;
             const float bottom =
-                (bottom_left * inverse_x_lerp) + (bottom_right * x_lerp);
-            output_data(b, y, x, c) =
-                (top * inverse_y_lerp) + (bottom * y_lerp);
+                bottom_left + (bottom_right - bottom_left) * x_lerp;
+            output_data(b, y, x, c) = top + (bottom - top) * y_lerp;
           }
         }
       }

@@ -207,6 +207,13 @@ BaseGPUDevice::~BaseGPUDevice() {
   gtl::STLDeleteElements(&streams_);
 }
 
+bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
+  // When there is no more than one stream, we release the tensor reference
+  // at the end of the kernel launch, instead of at the end of the kernel
+  // execution.
+  return streams_.size() > 1;
+}
+
 Status BaseGPUDevice::FillContextMap(const Graph* graph,
                                      DeviceContextMap* device_context_map) {
   VLOG(2) << "FillContextMap";

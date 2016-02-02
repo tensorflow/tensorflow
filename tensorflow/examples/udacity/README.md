@@ -46,7 +46,7 @@ Building a local Docker container
 Running the local container
 ---------------------------
 
-To run a disposable container:  
+To run a disposable container:
 
     docker run -p 8888:8888 -it --rm $USER/assignments
 
