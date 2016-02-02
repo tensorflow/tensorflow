@@ -3,7 +3,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
-load("/tensorflow/core/platform/default/build_config_root",
+load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds

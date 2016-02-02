@@ -1,6 +1,6 @@
 licenses(["restricted"])
 
-load("/tensorflow/tensorflow", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 
 cc_library(
     name = "stream_executor",
