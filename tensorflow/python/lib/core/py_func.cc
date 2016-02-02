@@ -233,6 +233,10 @@ Status DoCallPyFunc(PyCall* call) {
   PyObject* result = PyEval_CallObject(trampoline, args);
   Py_DECREF(args);
   if (result == nullptr) {
+    if (PyErr_Occurred()) {
+      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
+      PyErr_Print();
+    }
     return errors::Internal("Failed to run py callback ", call->token,
                             ": see error log.");
   }
