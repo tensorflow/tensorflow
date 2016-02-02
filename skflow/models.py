@@ -95,7 +95,7 @@ def get_dnn_model(hidden_units, target_predictor_fn):
 
 
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
-                  bidirection, target_predictor_fn):
+                  bidirection, sequence_length, target_predictor_fn):
     """Returns a function that creates a RNN TensorFlow subgraph with given
     params.
 
@@ -107,6 +107,8 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
         bidirection: Whether this is a bidirectional rnn.
+        sequence_length: If sequence_length is provided, dynamic calculation is performed.
+                         This saves computational time when unrolling past max sequence length.
         target_predictor_fn: Function that will predict target from input
                              features. This can be logistic regression,
                              linear regression or any other model,
@@ -131,9 +133,17 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
             rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
             rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
-            encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell)
+            if sequence_length:
+                encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
+                                                 sequence_length=sequence_length)
+            else:
+                encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell)
         else:
             cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
-            _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
+            if sequence_length:
+                _, encoding = rnn.rnn(cell, X, dtype=tf.float32,
+                                      sequence_length=sequence_length)
+            else:
+                _, encoding = rnn.rnn(cell, X, dtype=tf.float32)
         return target_predictor_fn(encoding[-1], y)
     return rnn_estimator
