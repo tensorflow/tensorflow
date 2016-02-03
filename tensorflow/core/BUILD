@@ -700,27 +700,64 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# Config settings for determining if we are building for Android
+# (the android_32 and android_64 entries are only relevant to internal Google builds).
+config_setting(
+    name = "android",
+    values = {
+        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains:everything",
+    },
+)
+
+config_setting(
+    name = "android_32",
+    values = {
+        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:everything",
+    },
+)
+
+config_setting(
+    name = "android_64",
+    values = {
+        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:everything",
+    },
+)
+
+ANDROID_TF_SOURCES = [
+    "//tensorflow/core:android_core_ops",
+    "//tensorflow/core:android_extended_ops",
+    "//tensorflow/core:android_srcs",
+]
+
+ANDROID_TF_COPTS = [
+    "-mfpu=neon",
+    "-std=c++11",
+    "-DMIN_LOG_LEVEL=0",
+    "-O2",
+]
+
 # Native library support for Android applications.
-# Should be built to target Android with flag --copt=-mfpu=neon.
+# Compiles to a trivial library on non-android.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = [
-        "//tensorflow/core:android_core_ops",
-        "//tensorflow/core:android_extended_ops",
-        "//tensorflow/core:android_srcs",
-    ],
+    srcs = select({
+        ":android": ANDROID_TF_SOURCES,
+        ":android_32": ANDROID_TF_SOURCES,
+        ":android_64": ANDROID_TF_SOURCES,
+        "//conditions:default": [],
+    }),
     hdrs = [
         "framework/tensor.h",
         "platform/env.h",
         "platform/logging.h",
         "public/session.h",
     ],
-    copts = [
-        "-mfpu=neon",
-        "-std=c++11",
-        "-DMIN_LOG_LEVEL=0",
-        "-O2",
-    ],
+    copts = select({
+        ":android": ANDROID_TF_COPTS,
+        ":android_32": ANDROID_TF_COPTS,
+        ":android_64": ANDROID_TF_COPTS,
+        "//conditions:default": [],
+    }),
     tags = [
         "manual",
         "notap",

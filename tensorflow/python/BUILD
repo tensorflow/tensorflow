@@ -269,17 +269,11 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_tests(
     name = "framework_function_test",
     srcs = ["framework/function_test.py"],
-    main = "framework/function_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_test_lib",
+    additional_deps = [
         ":functional_ops_lib",
-        ":platform_test",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -493,6 +487,7 @@ tf_gen_op_wrapper_py(
         "TensorArrayGrad",
         "TensorArrayRead",
         "TensorArrayPack",
+        "TensorArraySize",
         "TensorArrayUnpack",
         "TensorArrayWrite",
     ],

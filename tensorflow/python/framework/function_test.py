@@ -29,7 +29,6 @@ import tensorflow as tf
 from tensorflow.python.framework import function
 # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops
-
 # pylint: enable=unused-import
 
 
@@ -152,7 +151,7 @@ class FunctionTest(tf.test.TestCase):
   def testDefineFunctionNoArgs(self):
 
     def AConstant():
-      return tf.constant([42])
+      return tf.constant([42.0])
 
     with tf.Graph().as_default():
       f_def = function.define_function(AConstant, {})
@@ -262,11 +261,11 @@ class FunctionTest(tf.test.TestCase):
 
     with tf.Graph().as_default():
 
-      @function.Defun(b=tf.int32)
+      @function.Defun(b=tf.float32)
       def Minus1(b):
-        return b - 1
+        return b - 1.0
 
-      two = tf.constant([2])
+      two = tf.constant([2.])
       call1 = Minus1(two)
       self.assertEquals("Minus1", call1.op.name)
       # pylint: disable=unexpected-keyword-arg
@@ -296,7 +295,7 @@ class FunctionTest(tf.test.TestCase):
 class UnrollLSTMTest(tf.test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
-  NUM_UNROLL = 100
+  NUM_UNROLL = 20
 
   def _Weights(self):
     dims = self.LSTM_DIMS
@@ -384,9 +383,23 @@ class UnrollLSTMTest(tf.test.TestCase):
 
       return LSTMLoop10(weights, inp)
 
+  def _OptimizerOptions(self):
+    ret = []
+    for cse in [False, True]:
+      for inline in [False, True]:
+        for cfold in [False, True]:
+          ret.append(tf.ConfigProto(graph_options=tf.GraphOptions(
+              optimizer_options=tf.OptimizerOptions(
+                  opt_level=tf.OptimizerOptions.L0,
+                  do_common_subexpression_elimination=cse,
+                  do_function_inlining=inline,
+                  do_constant_folding=cfold))))
+    return ret
+
   def testUnrollLSTM(self):
     # Run one step of the unrolled lstm graph.
-    def RunForward(mode):
+    def RunForward(mode, cfg=None):
+      print("mode = ", mode)
       g = tf.Graph()
       start = time.time()
       with g.as_default():
@@ -397,23 +410,26 @@ class UnrollLSTMTest(tf.test.TestCase):
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
             "gdef bin size: ", len(gdef.SerializeToString()))
-      with g.as_default(), tf.Session() as sess:
+      with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(m)
 
     mv0 = RunForward("complete")
-    mv1 = RunForward("cell")
-    mv2 = RunForward("loop")
-    mv3 = RunForward("loop10")
-    self.assertAllClose(mv0, mv1, rtol=1e-4)
-    self.assertAllClose(mv0, mv2, rtol=1e-4)
-    self.assertAllClose(mv0, mv3, rtol=1e-4)
+    for cfg in self._OptimizerOptions():
+      print("cfg = ", cfg)
+      mv1 = RunForward("cell", cfg)
+      mv2 = RunForward("loop", cfg)
+      mv3 = RunForward("loop10", cfg)
+      self.assertAllClose(mv0, mv1, rtol=1e-4)
+      self.assertAllClose(mv0, mv2, rtol=1e-4)
+      self.assertAllClose(mv0, mv3, rtol=1e-4)
 
   def testUnrollLSTMGrad(self):
     # Run one step of the unrolled lstm graph.
-    def RunForwardBackward(mode):
+    def RunForwardBackward(mode, cfg=None):
+      print("mode = ", mode)
       g = tf.Graph()
       start = time.time()
-      with g.as_default():
+      with g.as_default(), tf.device("/cpu:0"):
         weights = self._Weights()
         inp = self._Input()
         m = self._BuildForward(weights, inp, mode)
@@ -423,16 +439,18 @@ class UnrollLSTMTest(tf.test.TestCase):
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
             "gdef bin size: ", len(gdef.SerializeToString()))
-      with g.as_default(), tf.Session() as sess:
+      with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(dw)
 
     d0 = RunForwardBackward("complete")
-    d1 = RunForwardBackward("cell")
-    d2 = RunForwardBackward("loop")
-    d3 = RunForwardBackward("loop10")
-    self.assertAllClose(d0, d1, rtol=1e-4)
-    self.assertAllClose(d0, d2, rtol=1e-4)
-    self.assertAllClose(d0, d3, rtol=1e-4)
+    for cfg in self._OptimizerOptions():
+      print("cfg = ", cfg)
+      d1 = RunForwardBackward("cell", cfg)
+      d2 = RunForwardBackward("loop", cfg)
+      d3 = RunForwardBackward("loop10", cfg)
+      self.assertAllClose(d0, d1, rtol=1e-4)
+      self.assertAllClose(d0, d2, rtol=1e-4)
+      self.assertAllClose(d0, d3, rtol=1e-4)
 
 
 if __name__ == "__main__":

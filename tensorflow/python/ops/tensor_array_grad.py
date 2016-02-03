@@ -24,6 +24,7 @@ from tensorflow.python.ops import tensor_array_ops
 
 ops.NoGradient("TensorArray")
 ops.NoGradient("TensorArrayGrad")
+ops.NoGradient("TensorArraySize")
 ops.NoGradient("TensorArrayClose")
 
 
@@ -76,10 +77,11 @@ def _TensorArrayReadGrad(op, grad):
   """
   handle = op.inputs[0]
   index = op.inputs[1]
+  flow = op.inputs[2]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
-      source=grad_source)
+  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
+      source=grad_source, flow=flow)
   w_g = g.write(index, grad)
   return [None, None, w_g.flow]
 
@@ -101,7 +103,7 @@ def _TensorArrayWriteGrad(op, flow):
   index = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
+  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
       source=grad_source, flow=flow)
   grad = g.read(index)
   return [None, None, grad, flow]
@@ -120,10 +122,11 @@ def _TensorArrayPackGrad(op, grad):
     force the write of `grad` to the gradient `TensorArray`.
   """
   handle = op.inputs[0]
+  flow = op.inputs[1]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
-      source=grad_source)
+  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
+      source=grad_source, flow=flow)
   u_g = g.unpack(grad)
   return [None, u_g.flow]
 
@@ -142,7 +145,7 @@ def _TensorArrayUnpackGrad(op, flow):
   handle = op.inputs[0]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(size=None, dtype=dtype, handle=handle).grad(
+  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
       source=grad_source, flow=flow)
   grad = g.pack()
   return [None, grad, flow]
