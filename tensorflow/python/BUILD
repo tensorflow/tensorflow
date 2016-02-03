@@ -273,11 +273,7 @@ cuda_py_tests(
     name = "framework_function_test",
     srcs = ["framework/function_test.py"],
     additional_deps = [
-        ":framework_test_lib",
         ":functional_ops_lib",
-        ":platform_test",
-        "//third_party/py/tensorflow",
-        "//tensorflow/core:protos_all",
     ],
 )
 
