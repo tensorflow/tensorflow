@@ -748,8 +748,11 @@ cc_library(
     }),
     hdrs = [
         "framework/tensor.h",
+        "platform/default/integral_types.h",
         "platform/env.h",
         "platform/logging.h",
+        "platform/platform.h",
+        "platform/types.h",
         "public/session.h",
     ],
     copts = select({
