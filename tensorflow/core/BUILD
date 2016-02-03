@@ -705,7 +705,7 @@ filegroup(
 config_setting(
     name = "android",
     values = {
-        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains:everything",
+        "crosstool_top": "//external:android/crosstool",
     },
 )
 
