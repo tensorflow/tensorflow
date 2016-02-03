@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
+#include <set>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -50,8 +52,35 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def);
 //
 // REQUIRES: 'graph_def' and 'op_registry' are not nullptr.
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
-                                 const OpRegistryInterface* op_registry,
+                                 const OpRegistryInterface& op_registry,
                                  int node_offset);
+
+// Remove attrs from 'graph_def' that have the default value according
+// to 'producer_op_registry', but don't exist according to
+// 'consumer_op_registry'. This can allow 'graph_def' to run on the
+// consumer even if consumer was built at an earlier CL (before an
+// attr with a default was added). Note that this will not affect
+// attrs with non-default values, so you must run a
+// ValidateGraphDef...() function to see if the result is in fact
+// compatible. If not nulllptr, the op/attr pairs that were removed
+// are added to '*op_attr_removed'.
+//
+// Expected usage:
+// // For each consumer, update 'graph_def':
+//   OpListOpRegistry consumer_op_registry(consumer_server_op_list);
+//   std::unordered_set<std::pair<string, string>> op_attr_removed;
+//   TF_RETURN_IF_ERROR(RemoveNewDefaultAttrsFromGraphDef(
+//       &graph_def, consumer_op_registry, *OpRegistry::Global(),
+//       &op_attr_removed));
+// // Validate that each consumer can understand the resulting 'graph_def'
+//   TF_RETURN_IF_ERROR(graph::ValidateGraphDefAgainstOpRegistry(
+//       graph_def, consumer_op_registry));
+// // Consumer can use 'graph_def', and 'op_attr_removed' summarizes
+// // what changes had to be made to 'graph_def' for it to work.
+Status RemoveNewDefaultAttrsFromGraphDef(
+    GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
+    const OpRegistryInterface& producer_op_registry,
+    std::set<std::pair<string, string>>* op_attr_removed);
 
 }  // namespace tensorflow
 

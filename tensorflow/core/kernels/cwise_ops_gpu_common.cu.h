@@ -102,17 +102,6 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
   }
 };
 
-template <typename T>
-struct SelectFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<bool>::ConstFlat cond_flat,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    To32Bit(out).device(d) =
-        To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
-  }
-};
-
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for UnaryFunctor (e.g., functor:sqrt).
 #define DEFINE_UNARY1(F, T) template struct UnaryFunctor<GPUDevice, F<T> >

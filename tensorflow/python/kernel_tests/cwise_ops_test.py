@@ -956,6 +956,83 @@ class SelectOpTest(tf.test.TestCase):
         tf.select(c, xt, yt)
 
 
+class BatchSelectOpTest(tf.test.TestCase):
+  """Test broadcasting of Select when 'c' is a vec and 't' &'e' are rank2+."""
+
+  def _compare(self, c, x, y, use_gpu):
+    np_ans = np.dstack(
+        [x_i if c_i else y_i for c_i, x_i, y_i in zip(c, x, y)]).transpose(
+            [2, 0, 1])
+    with self.test_session(use_gpu=use_gpu):
+      out = tf.select(c, x, y)
+      tf_ans = out.eval()
+    self.assertAllEqual(np_ans, tf_ans)
+    self.assertShapeEqual(np_ans, out)
+
+  def _compareGradientX(self, c, x, y):
+    with self.test_session():
+      inx = tf.convert_to_tensor(x)
+      iny = tf.convert_to_tensor(y)
+      out = tf.select(c, inx, iny)
+      s = list(np.shape(x))
+      jacob_t, jacob_n = tf.test.compute_gradient(inx,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=x)
+    if x.dtype == np.float32:
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+    elif x.dtype == np.float64:
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+
+  def _compareGradientY(self, c, x, y):
+    with self.test_session():
+      inx = tf.convert_to_tensor(x)
+      iny = tf.convert_to_tensor(y)
+      out = tf.select(c, inx, iny)
+      s = list(np.shape(x))
+      jacob_t, jacob_n = tf.test.compute_gradient(iny,
+                                                  s,
+                                                  out,
+                                                  s,
+                                                  x_init_value=y)
+    if x.dtype == np.float32:
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+    elif x.dtype == np.float64:
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+
+  def testBasic(self):
+    c = np.random.randint(0, 2, 16).astype(np.bool)
+    x = np.random.rand(16, 2, 8) * 100
+    y = np.random.rand(16, 2, 8) * 100
+    for t in [np.float32, np.float64, np.int32, np.int64, np.complex64]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      self._compare(c, xt, yt, use_gpu=False)
+      if t in [np.float32, np.float64]:
+        self._compare(c, xt, yt, use_gpu=True)
+
+  def testGradients(self):
+    c = np.random.randint(0, 2, 16).astype(np.bool)
+    x = np.random.rand(16, 2, 8) * 100
+    y = np.random.rand(16, 2, 8) * 100
+    for t in [np.float32, np.float64]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      self._compareGradientX(c, xt, yt)
+      self._compareGradientY(c, xt, yt)
+
+  def testShapeMismatch(self):
+    c = np.random.randint(0, 2, 8).astype(np.bool)
+    x = np.random.rand(16, 3, 2) * 100
+    y = np.random.rand(16, 3, 2) * 100
+    for t in [np.float32, np.float64, np.int32, np.int64, np.complex64]:
+      xt = x.astype(t)
+      yt = y.astype(t)
+      with self.assertRaises(ValueError):
+        tf.select(c, xt, yt)
+
+
 class MinMaxOpTest(tf.test.TestCase):
 
   def _compare(self, x, y, use_gpu):

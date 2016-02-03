@@ -58,6 +58,7 @@ or join multiple tensors together.
 @@gather
 @@dynamic_partition
 @@dynamic_stitch
+@@boolean_mask
 
 """
 from __future__ import absolute_import
@@ -75,6 +76,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import logging_ops
 # pylint: disable=wildcard-import
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.ops.constant_op import constant
@@ -363,6 +365,67 @@ def _ConcatShape(op):
 @ops.RegisterShape("ConcatOffset")
 def _ConcatOffsetShape(op):
   return [x.get_shape() for x in op.inputs[1:]]
+
+
+def boolean_mask(tensor, mask, name="boolean_mask"):
+  """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
+
+  ```python
+  # 1-D example
+  tensor = [0, 1, 2, 3]
+  mask = [True, False, True, False]
+  boolean_mask(tensor, mask) ==> [0, 2]
+  ```
+
+  In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
+  the first K dimensions of `tensor`'s shape.  We then have:
+    `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
+  where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
+
+  Args:
+    tensor:  N-D tensor.  First K dimensions can be None, which allows e.g.
+      undefined batch size.  Trailing dimensions must be specified.
+    mask:  K-D boolean tensor, K <= N.
+    name:  A name for this operation (optional).
+
+  Returns:
+    Tensor populated by entries in `tensor` corresponding to `True` values in
+      `mask`.
+
+  Raises:
+    ValueError:  If shapes do not conform.
+
+  Examples:
+  ```python
+  # 2-D example
+  a = [[1, 2], [3, 4], [5, 6]]
+  mask = [True, False, True]
+  boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
+  ```
+  """
+  def _apply_mask_1d(reshaped_tensor, mask):
+    """Mask tensor along dimension 0 with a 1-D mask."""
+    indices = squeeze(where(mask), squeeze_dims=[1])
+    return gather(reshaped_tensor, indices)
+
+  with ops.op_scope([tensor, mask], name):
+    tensor = ops.convert_to_tensor(tensor, name="tensor")
+    mask = ops.convert_to_tensor(mask, name="mask")
+
+    shape_mask = mask.get_shape()
+    ndims_mask = shape_mask.ndims
+    shape_tensor = tensor.get_shape()
+    if ndims_mask == 0:
+      raise ValueError("mask cannot be scalar.")
+    if ndims_mask is None:
+      raise ValueError(
+          "mask dimensions must be specified, even if some dimensions are None"
+          ".  E.g. shape=[None] is ok, but shape=None is not.")
+    shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
+
+    tensor = reshape(tensor, [-1] + shape_tensor.as_list()[ndims_mask:])
+    mask = reshape(mask, [-1])
+    return _apply_mask_1d(tensor, mask)
 
 
 def sparse_mask(a, mask_indices, name=None):

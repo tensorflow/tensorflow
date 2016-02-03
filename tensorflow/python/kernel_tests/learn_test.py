@@ -26,8 +26,6 @@ import numpy as np
 import six
 import tensorflow as tf
 
-from tensorflow.python.framework import tensor_util
-
 
 def assert_summary_scope(regexp):
   """Assert that all generated summaries match regexp."""
@@ -44,10 +42,10 @@ class FullyConnectedTest(tf.test.TestCase):
   def setUp(self):
     tf.test.TestCase.setUp(self)
     tf.set_random_seed(1234)
-    self.input = tf.constant([[1., 2., 3.], [-4., 5., -6.]])
+    self.input = tf.constant([[1., 2., 3.], [-4., 15., -6.]])
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
-  def test_basic_use(self):
+  def test_fully_connected_basic_use(self):
     output = tf.learn.fully_connected(self.input, 8, activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
@@ -59,7 +57,53 @@ class FullyConnectedTest(tf.test.TestCase):
 
     self.assertEqual(output.get_shape().as_list(), [2, 8])
     self.assertTrue(np.all(out_value >= 0),
-                    'Relu should have capped all values.')
+                    'Relu should have all values >= 0.')
+
+    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+                       'Some summaries should have been added.')
+    self.assertEqual(2,
+                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
+    self.assertEqual(0,
+                     len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
+    assert_summary_scope('fully_connected')
+
+  def test_relu_layer_basic_use(self):
+    output = tf.learn.relu_layer(self.input, 8)
+
+    with tf.Session() as sess:
+      with self.assertRaises(tf.errors.FailedPreconditionError):
+        sess.run(output)
+
+      tf.initialize_all_variables().run()
+      out_value = sess.run(output)
+
+    self.assertEqual(output.get_shape().as_list(), [2, 8])
+    self.assertTrue(np.all(out_value >= 0),
+                    'Relu should have all values >= 0.')
+
+    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+                       'Some summaries should have been added.')
+    self.assertEqual(2,
+                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
+    self.assertEqual(0,
+                     len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
+    assert_summary_scope('fully_connected')
+
+  def test_relu6_layer_basic_use(self):
+    output = tf.learn.relu6_layer(self.input, 8)
+
+    with tf.Session() as sess:
+      with self.assertRaises(tf.errors.FailedPreconditionError):
+        sess.run(output)
+
+      tf.initialize_all_variables().run()
+      out_value = sess.run(output)
+
+    self.assertEqual(output.get_shape().as_list(), [2, 8])
+    self.assertTrue(np.all(out_value >= 0),
+                    'Relu6 should have all values >= 0.')
+    self.assertTrue(np.all(out_value <= 6),
+                    'Relu6 should have all values <= 6.')
 
     self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
                        'Some summaries should have been added.')
@@ -114,7 +158,7 @@ class FullyConnectedTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       out_value = sess.run(output)
 
-    self.assertAllClose(np.array([[13.0, 13.0], [0.0, 0.0]]), out_value)
+    self.assertAllClose(np.array([[13.0, 13.0], [11.0, 11.0]]), out_value)
 
   def test_custom_collections(self):
     tf.learn.fully_connected(self.input,

@@ -8,11 +8,11 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
-    name = "contrib_py",
+    name = "layers_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/layers/python/framework:tensor_util",
     ],
 )
 

@@ -13,11 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""contrib module containing volatile or experimental code."""
+"""contrib module containing volatile or experimental layers code."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Add projects here, they will show up under tf.contrib.
-from tensorflow.contrib import layers
+# pylint: disable=wildcard-import,unused-import
+from tensorflow.contrib.layers.python.framework.tensor_util import *

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_def_util.h"
 
+#include <vector>
+
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -40,7 +43,7 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
 }
 
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
-                                 const OpRegistryInterface* op_registry,
+                                 const OpRegistryInterface& op_registry,
                                  int node_offset) {
   if (node_offset > graph_def->node_size()) {
     return errors::InvalidArgument(
@@ -52,11 +55,61 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   Status s;
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
-    const OpDef* op_def = op_registry->LookUp(node_def->op(), &s);
+    const OpDef* op_def = op_registry.LookUp(node_def->op(), &s);
     if (!s.ok()) {
       return s;
     }
     AddDefaultsToNodeDef(*op_def, node_def);
+  }
+
+  return s;
+}
+
+Status RemoveNewDefaultAttrsFromGraphDef(
+    GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
+    const OpRegistryInterface& producer_op_registry,
+    std::set<std::pair<string, string>>* op_attr_removed) {
+  Status s;
+  std::vector<string> to_remove;
+  for (int n = 0; n < graph_def->node_size(); ++n) {
+    NodeDef* node_def = graph_def->mutable_node(n);
+    const OpDef* producer_op_def =
+        producer_op_registry.LookUp(node_def->op(), &s);
+    if (!s.ok()) return s;
+    const OpDef* consumer_op_def =
+        consumer_op_registry.LookUp(node_def->op(), &s);
+    if (!s.ok()) return s;
+
+    for (const auto& attr : node_def->attr()) {
+      // If the attr is not in consumer_op_def...
+      if (FindAttr(attr.first, *consumer_op_def) == nullptr) {
+        const OpDef::AttrDef* producer_attr_def =
+            FindAttr(attr.first, *producer_op_def);
+        if (producer_attr_def == nullptr) {
+          return errors::InvalidArgument(
+              "Attr '", attr.first, "' missing in producer's OpDef: ",
+              SummarizeOpDef(*producer_op_def), " but found in node: ",
+              SummarizeNodeDef(*node_def));
+        }
+        // ...and it has the same value as the default in producer,
+        if (producer_attr_def->has_default_value() &&
+            AreAttrValuesEqual(producer_attr_def->default_value(),
+                               attr.second)) {
+          // then we will remove it below.
+          to_remove.emplace_back(attr.first);
+        }
+      }
+    }
+    // We separate identifying which attrs should be removed from
+    // actually removing them to avoid invalidating the loop iterators
+    // above.
+    for (const string& attr_name : to_remove) {
+      node_def->mutable_attr()->erase(attr_name);
+      if (op_attr_removed != nullptr) {
+        op_attr_removed->insert(std::make_pair(node_def->op(), attr_name));
+      }
+    }
+    to_remove.clear();
   }
 
   return s;

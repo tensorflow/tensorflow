@@ -129,7 +129,7 @@ Graph* GetConstantGraph(const Graph* orig_graph,
       if (node_map.count(out_edge->dst()) == 0) {
         tensors_to_fetch->insert(
             {{added_nodes.second, out_edge->src_output()}, added_nodes.first});
-    }
+      }
     }
   }
 
@@ -278,10 +278,12 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   }
   // For nodes that need to be fetched back from the constant_graph, attach Send
   // nodes.
-  if (!subgraph::FetchOutputs(constant_graph, device->attributes(),
-                              tensors_to_fetch_names, &name_index, &fetch_nodes)
-           .ok()) {
-    VLOG(1) << "Could not fetch constants";
+  Status s =
+      subgraph::FetchOutputs(constant_graph, device->attributes(),
+                             tensors_to_fetch_names, &name_index, &fetch_nodes);
+  if (!s.ok()) {
+    delete constant_graph;
+    VLOG(1) << "Could not fetch constants: " << s;
     return false;
   }
 

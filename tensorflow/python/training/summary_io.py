@@ -45,6 +45,7 @@ class SummaryWriter(object):
   @@__init__
 
   @@add_summary
+  @@add_session_log
   @@add_event
   @@add_graph
 
@@ -57,8 +58,8 @@ class SummaryWriter(object):
 
     On construction the summary writer creates a new event file in `logdir`.
     This event file will contain `Event` protocol buffers constructed when you
-    call one of the following functions: `add_summary()`, `add_event()`, or
-    `add_graph()`.
+    call one of the following functions: `add_summary()`, `add_session_log()`,
+    `add_event()`, or `add_graph()`.
 
     If you pass a `graph_def` protocol buffer to the constructor it is added to
     the event file. (This is equivalent to calling `add_graph()` later).
@@ -125,6 +126,22 @@ class SummaryWriter(object):
       summ.ParseFromString(summary)
       summary = summ
     event = event_pb2.Event(wall_time=time.time(), summary=summary)
+    if global_step is not None:
+      event.step = int(global_step)
+    self.add_event(event)
+
+  def add_session_log(self, session_log, global_step=None):
+    """Adds a `SessionLog` protocol buffer to the event file.
+
+    This method wraps the provided session in an `Event` procotol buffer
+    and adds it to the event file.
+
+    Args:
+      session_log: A `SessionLog` protocol buffer.
+      global_step: Number. Optional global step value to record with the
+        summary.
+    """
+    event = event_pb2.Event(wall_time=time.time(), session_log=session_log)
     if global_step is not None:
       event.step = int(global_step)
     self.add_event(event)

@@ -25,11 +25,6 @@ limitations under the License.
 #define TF_ASSERT_OK(statement) \
   ASSERT_EQ(::tensorflow::Status::OK(), (statement))
 
-// These are deprecated and will be removed, since they conflict with
-// macros for related projects (e.g., protobuf).
-#define EXPECT_OK(statement) EXPECT_EQ(::tensorflow::Status::OK(), (statement))
-#define ASSERT_OK(statement) ASSERT_EQ(::tensorflow::Status::OK(), (statement))
-
 // There are no EXPECT_NOT_OK/ASSERT_NOT_OK macros since they would not
 // provide much value (when they fail, they would just print the OK status
 // which conveys no more information than EXPECT_FALSE(status.ok());

@@ -18,7 +18,7 @@
 Summary of available functions:
 
  # Compute input images and labels for training. If you would like to run
- # evaluations, use input() instead.
+ # evaluations, use inputs() instead.
  inputs, labels = distorted_inputs()
 
  # Compute inference on the model inputs to make a prediction.

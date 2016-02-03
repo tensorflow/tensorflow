@@ -628,6 +628,15 @@ struct SelectFunctor {
                   typename TTypes<T>::ConstFlat else_flat);
 };
 
+template <typename Device, typename T>
+struct BatchSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T>::Matrix output_flat_outer_dims,
+                  TTypes<bool>::ConstVec cond_vec,
+                  typename TTypes<T>::ConstMatrix then_flat_outer_dims,
+                  typename TTypes<T>::ConstMatrix else_flat_outer_dims);
+};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 
