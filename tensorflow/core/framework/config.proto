@@ -26,6 +26,36 @@ message GPUOptions {
   int64 deferred_deletion_bytes = 3;
 };
 
+// Options passed to the graph optimizer
+message OptimizerOptions {
+  // If true, optimize the graph using common subexpression elimination.
+  bool do_common_subexpression_elimination = 1;
+
+  // If true, perform constant folding optimization on the graph.
+  bool do_constant_folding = 2;
+
+  // If true, perform function inlining on the graph.
+  bool do_function_inlining = 4;
+
+  // Optimization level
+  enum Level {
+    // L1 is the default level.
+    // Optimization performed at L1 :
+    // 1. Common subexpression elimination
+    L1 = 0;
+
+    // Optimization performed at L2 :
+    // 1. Common subexpression elimination
+    // 2. Constant folding
+    L2 = 2;
+
+    // No optimizations
+    L0 = -1;
+  }
+
+  Level opt_level = 3;
+}
+
 message GraphOptions {
   // Removed, use optimizer_options below.
   reserved "skip_common_subexpression_elimination";
@@ -35,31 +65,7 @@ message GraphOptions {
   // (Currently ignored.)
   bool enable_recv_scheduling = 2;
 
-  // Options passed to the graph optimizer
-  message OptimizerOptions {
-    // If true, optimize the graph using common subexpression elimination.
-    bool do_common_subexpression_elimination = 1;
-
-    // If true, perform constant folding optimization on the graph.
-    bool do_constant_folding = 2;
-
-    // Optimization level
-    enum Level {
-      // L1 is the default level.
-      // Optimization performed at L1 :
-      // 1. Common subexpression elimination
-      L1 = 0;
-      // Optimization performed at L2 :
-      // 1. Common subexpression elimination
-      // 2. Constant folding
-      L2 = 2;
-      // No optimizations
-      L0 = -1;
-    }
-
-    Level opt_level = 3;
-  }
-
+  // Options controlling how graph is optimized.
   OptimizerOptions optimizer_options = 3;
 };
 

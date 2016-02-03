@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/function.h"
@@ -612,6 +613,9 @@ Status DirectSession::GetOrCreateExecutors(
   ek->func_defs = fdefs;
   ek->items.reserve(graphs.size());
   auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  const auto& optimizer_opts =
+      options_.config.graph_options().optimizer_options();
+  GraphOptimizer optimizer(optimizer_opts);
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
@@ -623,8 +627,8 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib =
-        NewFunctionLibraryRuntime(device, runner, graph_def_version, fdefs);
+    item->flib = NewFunctionLibraryRuntime(device, runner, graph_def_version,
+                                           fdefs, optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -646,6 +650,7 @@ Status DirectSession::GetOrCreateExecutors(
       // Do nothing because 'kernel' is owned by opseg above.
     };
 
+    optimizer.Optimize(lib, &partition_graph);
     s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
       return s;
@@ -715,38 +720,11 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
                                    RunStateArgs* run_state_args) {
   std::unique_ptr<FunctionLibraryDefinition> fdefs;
   std::unique_ptr<Graph> graph;
-  GraphConstructorOptions opts{
-      options_.config.graph_options().optimizer_options()};
-
-  std::unordered_set<StringPiece, StringPiece::Hasher> keep_nodes;
-  for (const string& feed : feeds) {
-    keep_nodes.insert(ParseTensorName(feed).first);
-  }
-  for (const string& fetch : fetches) {
-    keep_nodes.insert(ParseTensorName(fetch).first);
-  }
-  for (const string& target_node : target_nodes) {
-    keep_nodes.insert(target_node);
-  }
-
-  if (opts.optimizer_do_cse) {
-    // Prevent CSE from eliminating nodes that will be required during
-    // RewriteGraphForExecution, below.
-    opts.cse_consider_function = [&keep_nodes](const Node* n) {
-      return n->IsConstant() && !keep_nodes.count(n->name());
-    };
-  }
-
-  if (opts.optimizer_do_constant_folding) {
-    opts.constant_folding_opts.consider = [&keep_nodes](const Node* n) {
-      return keep_nodes.count(n->name()) > 0;
-    };
-  }
-
   {
     mutex_lock l(graph_def_lock_);
     fdefs.reset(new FunctionLibraryDefinition(graph_def_.library()));
     graph.reset(new Graph(fdefs.get()));
+    GraphConstructorOptions opts;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def_, graph.get()));
   }
 
@@ -759,13 +737,6 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
-
-  if (opts.optimizer_do_constant_folding) {
-    bool constant_folded =
-        DoConstantFolding(opts.constant_folding_opts, graph.get());
-    VLOG(2) << (constant_folded ? "Folded some constants"
-                                : "Found no constant folding opportunity");
-  }
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
