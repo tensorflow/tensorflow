@@ -17,7 +17,7 @@
 # Print build info, including info related to the machine, OS, build tools
 # and TensorFlow source code. This can be used by build tools such as Jenkins.
 # All info is printed on a single line, in JSON format, to workaround the
-# limitation of Jenkins Description Setter Plugin that multi-line regex is
+# limitation of Jenkins Description Setter Plugin'sthat multi-line regex is
 # not supported.
 
 # Information about machine and OS
