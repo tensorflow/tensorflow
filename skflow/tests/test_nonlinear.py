@@ -58,38 +58,22 @@ class NonLinearTest(tf.test.TestCase):
         biases = regressor.bias_
         self.assertEqual(len(biases), 4)
 
-    def testIrisRNN(self):
+    def testRNN(self):
         import numpy as np
-        data = ["I can do this", "I believe myself", "I am okay",
-                "Not good, man", "Bad mood today", "Feeling sick now"]
-        labels = [1, 1, 1, 0, 0, 0]
-        MAX_DOCUMENT_LENGTH = 6
-        EMBEDDING_SIZE = 10
-        vocab_processor = skflow.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
-        data = np.array(list(vocab_processor.fit_transform(data)))
-        n_words = len(vocab_processor.vocabulary_)
+        data = np.array(list([[2, 1, 2, 2, 3],
+                              [2, 2, 3, 4, 5],
+                              [3, 3, 1, 2, 1],
+                              [2, 4, 5, 4, 1]]), dtype=np.float32)
+        labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
+        def input_fn(X):
+            return tf.split(1, 5, X)
 
-        def input_op_fn(X):
-            word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
-                embedding_size=EMBEDDING_SIZE, name='words')
-            word_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
-            return word_list
-        random.seed(42)
-        # Only declare them for now
-        # TODO: Add test case once we have data set in the repo
         classifier = skflow.TensorFlowRNNClassifier(
-            rnn_size=5, cell_type='gru', input_op_fn=input_op_fn, n_classes=3)
-        classifier = skflow.TensorFlowRNNClassifier(
-            rnn_size=5, cell_type='rnn', input_op_fn=input_op_fn, n_classes=3)
-        classifier = skflow.TensorFlowRNNClassifier(
-            rnn_size=5, cell_type='lstm', input_op_fn=input_op_fn, n_classes=3)
-        with self.assertRaises(ValueError):
-            classifier = skflow.TensorFlowRNNClassifier(
-                rnn_size=5, cell_type='invalid_type',
-                input_op_fn=input_op_fn, n_classes=3)
-            classifier._model_fn(data, labels)
-        classifier = skflow.TensorFlowRNNRegressor(
-            rnn_size=5, cell_type='gru', input_op_fn=input_op_fn, n_classes=0)
+            rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn)
+        classifier.fit(data, labels)
+        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
+                                                        [2, 3, 4, 5, 6]])))
+        self.assertEqual(predictions, np.array([1, 0]))
 
 if __name__ == "__main__":
     tf.test.main()
