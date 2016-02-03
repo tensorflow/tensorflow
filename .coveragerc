@@ -4,6 +4,3 @@ branch = True
 [report]
 omit = 
         */tests/*
-        */estimators/rnn.py
-        */models.py
-

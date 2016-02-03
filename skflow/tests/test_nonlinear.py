@@ -59,6 +59,7 @@ class NonLinearTest(tf.test.TestCase):
         self.assertEqual(len(biases), 4)
 
     def testRNN(self):
+        random.seed(42)
         import numpy as np
         data = np.array(list([[2, 1, 2, 2, 3],
                               [2, 2, 3, 4, 5],
@@ -68,12 +69,27 @@ class NonLinearTest(tf.test.TestCase):
         def input_fn(X):
             return tf.split(1, 5, X)
 
+        # Classification
         classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn)
         classifier.fit(data, labels)
         predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
                                                         [2, 3, 4, 5, 6]])))
-        self.assertEqual(predictions, np.array([1, 0]))
+        self.assertAllClose(predictions, np.array([1, 0]))
+        
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='gru', n_classes=2, input_op_fn=input_fn)
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='rnn', n_classes=2,
+            input_op_fn=input_fn, num_layers=2)
+
+        # Regression
+        classifier = skflow.TensorFlowRNNRegressor(
+            rnn_size=2, cell_type='lstm', input_op_fn=input_fn)
+        classifier.fit(data, labels)
+        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
+                                                        [2, 3, 4, 5, 6]])))
+
 
 if __name__ == "__main__":
     tf.test.main()
