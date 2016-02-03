@@ -9215,6 +9215,14 @@ op {
     description: "The type of the elements on the tensor_array."
   }
   attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
+  }
+  attr {
     name: "tensor_array_name"
     type: "string"
     default_value {
@@ -9241,9 +9249,12 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
-    description: "The handle to the forward TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
   }
   output_arg {
     name: "grad_handle"
@@ -9253,10 +9264,9 @@ op {
   attr {
     name: "source"
     type: "string"
-    description: "The gradient source string, used to decide which gradient TensorArray\nto return."
   }
   summary: "Creates a TensorArray for storing the gradients of values in the given handle."
-  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nTensorArray gradient calls use an accumulator TensorArray object.  If\nmultiple gradients are calculated and run in the same session, the multiple\ngradient nodes may accidentally flow throuth the same accumulator TensorArray.\nThis double counts and generally breaks the TensorArray gradient flow.\n\nThe solution is to identify which gradient call this particular\nTensorArray gradient is being called in.  This is performed by identifying\na unique string (e.g. \"gradients\", \"gradients_1\", ...) from the input\ngradient Tensor\'s name.  This string is used as a suffix when creating\nthe TensorArray gradient object here (the attribute `source`).\n\nThe attribute `source` is added as a suffix to the forward TensorArray\'s\nname when performing the creation / lookup, so that each separate gradient\ncalculation gets its own TensorArray accumulator."
+  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn terms of e.g. python TensorArray sugar wrappers when using dynamically sized"
   is_stateful: true
 }
 op {
@@ -9313,6 +9323,26 @@ op {
     description: "The type of the elem that is returned."
   }
   summary: "Read an element from the TensorArray."
+}
+op {
+  name: "TensorArraySize"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    description: "The current size of the TensorArray."
+    type: DT_INT32
+  }
+  summary: "Get the current size of the TensorArray."
 }
 op {
   name: "TensorArrayUnpack"

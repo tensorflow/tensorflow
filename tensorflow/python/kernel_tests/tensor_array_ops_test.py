@@ -186,6 +186,47 @@ class TensorArrayTest(tf.test.TestCase):
     self._testTensorGradArrayWriteRead(use_gpu=False)
     self._testTensorGradArrayWriteRead(use_gpu=True)
 
+  def _testTensorGradArrayDynamicWriteRead(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=0, dynamic_size=True)
+
+      w0 = h.write(0, [[4.0, 5.0]])
+      w1 = w0.write(1, [[1.0]])
+      w2 = w1.write(2, -3.0)
+
+      g_h = w2.grad("grad")  # Get gradient array here so we know the shape
+
+      s = w2.size()
+      g_s = g_h.size()
+
+      g_w0 = g_h.write(0, [[5.0, 6.0]])
+      g_w1 = g_w0.write(1, [[2.0]])
+      g_w2 = g_w1.write(2, -2.0)
+
+      r0 = w2.read(0)
+      r1 = w2.read(1)
+      r2 = w2.read(2)
+
+      g_r0 = g_w2.read(0)
+      g_r1 = g_w2.read(1)
+      g_r2 = g_w2.read(2)
+
+      d0, d1, d2, g_d0, g_d1, g_d2, vs, g_vs = sess.run([
+          r0, r1, r2, g_r0, g_r1, g_r2, s, g_s])
+      self.assertAllEqual([[4.0, 5.0]], d0)
+      self.assertAllEqual([[1.0]], d1)
+      self.assertAllEqual(-3.0, d2)
+      self.assertAllEqual([[5.0, 6.0]], g_d0)
+      self.assertAllEqual([[2.0]], g_d1)
+      self.assertAllEqual(-2.0, g_d2)
+      self.assertAllEqual(3, vs)
+      self.assertAllEqual(3, g_vs)
+
+  def testTensorGradArrayDynamicWriteRead(self):
+    self._testTensorGradArrayDynamicWriteRead(use_gpu=False)
+    self._testTensorGradArrayDynamicWriteRead(use_gpu=True)
+
   def _testTensorGradAccessTwiceReceiveSameObject(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
       h = tensor_array_ops.TensorArray(
@@ -217,12 +258,14 @@ class TensorArrayTest(tf.test.TestCase):
 
       # Test writing to a negative index
       with self.assertRaisesOpError(
-          "Tried to write to index -1 but array size is: 3"):
+          "Tried to write to index -1 but array is not "
+          "resizeable and size is: 3"):
         h.write(-1, 3.0).flow.eval()
 
       # Test reading from too large an index
       with self.assertRaisesOpError(
-          "Tried to write to index 3 but array size is: 3"):
+          "Tried to write to index 3 but array is not "
+          "resizeable and size is: 3"):
         h.write(3, 3.0).flow.eval()
 
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
@@ -368,8 +411,7 @@ class TensorArrayTest(tf.test.TestCase):
 
       # Test combined gradients + aggregation of read(0)
       grad = tf.gradients(
-          ys=[r0, r1], xs=[value], grad_ys=
-          [[2.0, 3.0], [4.0, 5.0]])
+          ys=[r0, r1], xs=[value], grad_ys=[[2.0, 3.0], [4.0, 5.0]])
       grad_vals = sess.run(grad)
 
       self.assertEqual(len(grad_vals), 1)
@@ -378,6 +420,29 @@ class TensorArrayTest(tf.test.TestCase):
   def testTensorArrayGradientUnpackRead(self):
     self._testTensorArrayGradientUnpackRead(False)
     self._testTensorArrayGradientUnpackRead(True)
+
+  def _testTensorArrayGradientDynamicUnpackRead(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=0, dynamic_size=True)
+
+      value = tf.constant([[1.0, -1.0], [10.0, -10.0]])
+
+      w = h.unpack(value)
+      r0 = w.read(0)
+      r1 = w.read(1)
+
+      # Test combined gradients + aggregation of read(0)
+      grad = tf.gradients(
+          ys=[r0, r1], xs=[value], grad_ys=[[2.0, 3.0], [4.0, 5.0]])
+      grad_vals = sess.run(grad)
+
+      self.assertEqual(len(grad_vals), 1)
+      self.assertAllClose([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
+
+  def testTensorArrayGradientDynamicUnpackRead(self):
+    self._testTensorArrayGradientDynamicUnpackRead(False)
+    self._testTensorArrayGradientDynamicUnpackRead(True)
 
   def _testCloseTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -389,6 +454,17 @@ class TensorArrayTest(tf.test.TestCase):
   def testCloseTensorArray(self):
     self._testCloseTensorArray(use_gpu=False)
     self._testCloseTensorArray(use_gpu=True)
+
+  def _testSizeTensorArray(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
+      s = h.size()
+      self.assertAllEqual(3, s.eval())
+
+  def testSizeTensorArray(self):
+    self._testSizeTensorArray(use_gpu=False)
+    self._testSizeTensorArray(use_gpu=True)
 
   def _testWriteCloseTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -407,13 +483,15 @@ class TensorArrayTest(tf.test.TestCase):
     self._testWriteCloseTensorArray(use_gpu=False)
     self._testWriteCloseTensorArray(use_gpu=True)
 
-  def _testWhileLoopWritePackGradients(self, use_gpu):
+  def _testWhileLoopWritePackGradients(self, dynamic_size, dtype, use_gpu):
+    np_dtype = dtype.as_numpy_dtype
     with self.test_session(use_gpu=use_gpu) as sess:
-      v0 = tf.identity(np.arange(3*5, dtype=np.float32).reshape(3, 5))
-      var = tf.Variable(np.arange(100, 105, dtype=np.float32))
+      v0 = tf.identity(np.arange(3*5, dtype=np_dtype).reshape(3, 5))
+      var = tf.Variable(np.arange(100, 105, dtype=np_dtype))
       state0 = tf.identity([1.0] * 5)
       h = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=dtype, tensor_array_name="foo",
+          size=0 if dynamic_size else 3, dynamic_size=dynamic_size)
       time_0 = tf.identity(0)
 
       def body(time, h_t, state):
@@ -431,7 +509,7 @@ class TensorArrayTest(tf.test.TestCase):
           parallel_iterations=3)
       vout = h_final.pack()
 
-      grad_val = -np.arange(3*5, dtype=np.float32).reshape(3, 5)
+      grad_val = -np.arange(3*5, dtype=np_dtype).reshape(3, 5)
       v0_grad = tf.gradients([vout], [v0], [grad_val])[0]
       state0_grad = tf.gradients([vout], [state0], [grad_val])[0]
       var_grad = tf.gradients([vout], [var], [grad_val])[0]
@@ -475,8 +553,20 @@ class TensorArrayTest(tf.test.TestCase):
       self.assertAllClose(grad_val.sum(axis=0), state0_grad_t)
 
   def testWhileLoopWritePackGradients(self):
-    self._testWhileLoopWritePackGradients(use_gpu=False)
-    self._testWhileLoopWritePackGradients(use_gpu=True)
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=False, dtype=tf.float32, use_gpu=False)
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=False, dtype=tf.float32, use_gpu=True)
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=False, dtype=tf.int64, use_gpu=False)
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=False, dtype=tf.int64, use_gpu=True)
+
+  def testWhileLoopDynamicWritePackGradients(self):
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=True, dtype=tf.float32, use_gpu=False)
+    self._testWhileLoopWritePackGradients(
+        dynamic_size=True, dtype=tf.float32, use_gpu=True)
 
   def _testSumOfTwoReadVariablesWithoutRepeatGrad(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:

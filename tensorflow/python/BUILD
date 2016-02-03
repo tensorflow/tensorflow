@@ -491,6 +491,7 @@ tf_gen_op_wrapper_py(
         "TensorArrayGrad",
         "TensorArrayRead",
         "TensorArrayPack",
+        "TensorArraySize",
         "TensorArrayUnpack",
         "TensorArrayWrite",
     ],
