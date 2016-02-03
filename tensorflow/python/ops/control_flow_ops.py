@@ -1875,7 +1875,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([[f() for f in fns] + preds + [default()]], name, "case"):
+  with ops.op_scope([preds], name, "case"):
     if not preds:
       return default()
     not_preds = []
@@ -1919,13 +1919,19 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       with ops.control_dependencies([
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
-        prev_case_seq = default()
+        prev_case_seq = None
         for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-          prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+          prev_case_seq = cond(
+              cp, fn,
+              default if i == 0 else lambda: prev_case_seq,
+              name="If_%d" % i)
     else:
-      prev_case_seq = default()
+      prev_case_seq = None
       for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-        prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+        prev_case_seq = cond(
+            cp, fn,
+            default if i == 0 else lambda: prev_case_seq,
+            name="If_%d" % i)
 
     return prev_case_seq
 
