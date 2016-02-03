@@ -151,7 +151,7 @@ class FunctionTest(tf.test.TestCase):
   def testDefineFunctionNoArgs(self):
 
     def AConstant():
-      return tf.constant([42])
+      return tf.constant([42.0])
 
     with tf.Graph().as_default():
       f_def = function.define_function(AConstant, {})
@@ -261,11 +261,11 @@ class FunctionTest(tf.test.TestCase):
 
     with tf.Graph().as_default():
 
-      @function.Defun(b=tf.int32)
+      @function.Defun(b=tf.float32)
       def Minus1(b):
-        return b - 1
+        return b - 1.0
 
-      two = tf.constant([2])
+      two = tf.constant([2.])
       call1 = Minus1(two)
       self.assertEquals("Minus1", call1.op.name)
       # pylint: disable=unexpected-keyword-arg
@@ -295,7 +295,7 @@ class FunctionTest(tf.test.TestCase):
 class UnrollLSTMTest(tf.test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
-  NUM_UNROLL = 100
+  NUM_UNROLL = 20
 
   def _Weights(self):
     dims = self.LSTM_DIMS
@@ -399,6 +399,7 @@ class UnrollLSTMTest(tf.test.TestCase):
   def testUnrollLSTM(self):
     # Run one step of the unrolled lstm graph.
     def RunForward(mode, cfg=None):
+      print("mode = ", mode)
       g = tf.Graph()
       start = time.time()
       with g.as_default():
@@ -425,9 +426,10 @@ class UnrollLSTMTest(tf.test.TestCase):
   def testUnrollLSTMGrad(self):
     # Run one step of the unrolled lstm graph.
     def RunForwardBackward(mode, cfg=None):
+      print("mode = ", mode)
       g = tf.Graph()
       start = time.time()
-      with g.as_default():
+      with g.as_default(), tf.device("/cpu:0"):
         weights = self._Weights()
         inp = self._Input()
         m = self._BuildForward(weights, inp, mode)

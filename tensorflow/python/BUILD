@@ -269,17 +269,15 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_tests(
     name = "framework_function_test",
     srcs = ["framework/function_test.py"],
-    main = "framework/function_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":framework_test_lib",
         ":functional_ops_lib",
         ":platform_test",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
+        "//third_party/py/tensorflow",
+        "//tensorflow/core:protos_all",
     ],
 )
 
