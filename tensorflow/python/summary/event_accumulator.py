@@ -483,14 +483,14 @@ class EventAccumulator(object):
     if by_tags:
 
       def _ExpiredPerTag(value):
-        return [self[x].FilterItems(_NotExpired, value.tag)
+        return [getattr(self, x).FilterItems(_NotExpired, value.tag)
                 for x in SUMMARY_TYPES]
 
       expired_per_tags = [_ExpiredPerTag(value)
                           for value in event.summary.value]
       expired_per_type = [sum(x) for x in zip(*expired_per_tags)]
     else:
-      expired_per_type = [self[x].FilterItems(_NotExpired)
+      expired_per_type = [getattr(self, x).FilterItems(_NotExpired)
                           for x in SUMMARY_TYPES]
 
     if sum(expired_per_type) > 0:
