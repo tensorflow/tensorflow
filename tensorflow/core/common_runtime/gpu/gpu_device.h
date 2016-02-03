@@ -82,7 +82,12 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* cpu_allocator_;  // not owned
 
  private:
-  std::vector<gpu::Stream*> streams_;
+  struct StreamGroup {
+    gpu::Stream* compute;
+    gpu::Stream* copy_in;
+    gpu::Stream* copy_out;
+  };
+  gtl::InlinedVector<StreamGroup, 4> streams_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;

@@ -738,9 +738,6 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
       graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
 
-  GraphDef graph_def;
-  graph->ToGraphDef(&graph_def);
-
   // Run the simple placer after rewriting the graph.
   std::unordered_map<string, int32> node_name_to_cost_map;
   for (Node* n : graph->nodes()) {
