@@ -22,6 +22,7 @@ import collections
 import threading
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary.impl import directory_watcher
@@ -50,6 +51,9 @@ ImageEvent = namedtuple('ImageEvent',
                         ['wall_time', 'step', 'encoded_image_string',
                          'width', 'height'])
 
+## Different types of summary events handled by the event_accumulator
+SUMMARY_TYPES = ('_scalars', '_histograms', '_compressed_histograms', '_images')
+
 ## The tagTypes below are just arbitrary strings chosen to pass the type
 ## information of the tag from the backend to the frontend
 COMPRESSED_HISTOGRAMS = 'compressedHistograms'
@@ -58,7 +62,7 @@ IMAGES = 'images'
 SCALARS = 'scalars'
 GRAPH = 'graph'
 
-## normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
+## Normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
 ## naturally gives bands around median of width 1 std dev, 2 std dev, 3 std dev,
 ## and then the long tail.
 NORMAL_HISTOGRAM_BPS = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
@@ -151,6 +155,7 @@ class EventAccumulator(object):
     self._compression_bps = compression_bps
     self.most_recent_step = -1
     self.most_recent_wall_time = -1
+    self.file_version = None
 
   def Reload(self):
     """Loads all events added since the last call to `Reload`.
@@ -164,20 +169,31 @@ class EventAccumulator(object):
     self._activated = True
     with self._generator_mutex:
       for event in self._generator.Load():
-        ## Check if the event happened after a crash
-        ## file_version events always have step 0, ignore.
-        ## TODO(danmane): Have this check for restart events explicitly
-        if (event.step < self.most_recent_step and
-            event.HasField('summary')):
-          self._Purge(event)
+        if event.HasField('file_version'):
+          new_file_version = _ParseFileVersion(event.file_version)
+          if self.file_version and self.file_version != new_file_version:
+            ## This should not happen.
+            logging.warn(('Found new file_version for event.proto. This will '
+                          'affect purging logic for TensorFlow restarts. '
+                          'Old: {0} New: {1}').format(self.file_version,
+                                                      new_file_version))
+          self.file_version = new_file_version
+
+        ## Check if the event happened after a crash, and purge expired tags.
+        if self.file_version and self.file_version >= 2:
+          ## If the file_version is recent enough, use the SessionLog enum
+          ## to check for restarts.
+          self._CheckForRestartAndMaybePurge(event)
         else:
-          self.most_recent_step = event.step
-          self.most_recent_wall_time = event.wall_time
+          ## If there is no file version, default to old logic of checking for
+          ## out of order steps.
+          self._CheckForOutOfOrderStepAndMaybePurge(event)
+
         ## Process the event
         if event.HasField('graph_def'):
           if self._graph is not None:
             logging.warn(('Found more than one graph event per run.'
-                          'Overwritting the graph with the newest event'))
+                          'Overwritting the graph with the newest event.'))
           self._graph = event.graph_def
         elif event.HasField('summary'):
           for value in event.summary.value:
@@ -291,37 +307,41 @@ class EventAccumulator(object):
     self._VerifyActivated()
     return self._images.Items(tag)
 
-  def _VerifyActivated(self):
-    if not self._activated:
-      raise RuntimeError('Accumulator must be activated before it may be used.')
+  def _CheckForRestartAndMaybePurge(self, event):
+    """Check and discard expired events using SessionLog.START.
 
-  def _ProcessScalar(self, tag, wall_time, step, scalar):
-    """Processes a simple value by adding it to accumulated state."""
-    sv = ScalarEvent(wall_time=wall_time, step=step, value=scalar)
-    self._scalars.AddItem(tag, sv)
+    Check for a SessionLog.START event and purge all previously seen events
+    with larger steps, because they are out of date. Because of supervisor
+    threading, it is possible that this logic will cause the first few event
+    messages to be discarded since supervisor threading does not guarantee
+    that the START message is deterministically written first.
 
-  def _ProcessHistogram(self, tag, wall_time, step, histo):
-    """Processes a histogram by adding it to accumulated state."""
-    histogram_value = HistogramValue(
-        min=histo.min,
-        max=histo.max,
-        num=histo.num,
-        sum=histo.sum,
-        sum_squares=histo.sum_squares,
-        # convert from proto repeated to list
-        bucket_limit=list(histo.bucket_limit),
-        bucket=list(histo.bucket),
-    )
-    histogram_event = HistogramEvent(
-        wall_time=wall_time,
-        step=step,
-        histogram_value=histogram_value,
-    )
-    self._histograms.AddItem(tag, histogram_event)
+    This method is preferred over _CheckForOutOfOrderStepAndMaybePurge which
+    can inadvertently discard events due to supervisor threading.
 
-  def _Remap(self, x, x0, x1, y0, y1):
-    """Linearly map from [x0, x1] unto [y0, y1]."""
-    return y0 + (x - x0) * float(y1 - y0)/(x1 - x0)
+    Args:
+      event: The event to use as reference. If the event is a START event, all
+        previously seen events with a greater event.step will be purged.
+    """
+    if event.HasField(
+        'session_log') and event.session_log.status == SessionLog.START:
+      self._Purge(event, by_tags=False)
+
+  def _CheckForOutOfOrderStepAndMaybePurge(self, event):
+    """Check for out-of-order event.step and discard expired events for tags.
+
+    Check if the event is out of order relative to the global most recent step.
+    If it is, purge outdated summaries for tags that the event contains.
+
+    Args:
+      event: The event to use as reference. If the event is out-of-order, all
+        events with the same tags, but with a greater event.step will be purged.
+    """
+    if event.step < self.most_recent_step and event.HasField('summary'):
+      self._Purge(event, by_tags=True)
+    else:
+      self.most_recent_step = event.step
+      self.most_recent_wall_time = event.wall_time
 
   def _Percentile(self, compression_bps, bucket_limit, cumsum_weights,
                   histo_min, histo_max, histo_num):
@@ -358,7 +378,7 @@ class EventAccumulator(object):
         rhs = bucket_limit[i]
         rhs = min(rhs, histo_max)
 
-        weight = self._Remap(compression_bps, cumsum_prev, cumsum, lhs, rhs)
+        weight = _Remap(compression_bps, cumsum_prev, cumsum, lhs, rhs)
         return weight
 
     ## We have not exceeded cumsum, so return the max observed.
@@ -404,6 +424,21 @@ class EventAccumulator(object):
 
     self._compressed_histograms.AddItem(tag, histogram_event)
 
+  def _ProcessHistogram(self, tag, wall_time, step, histo):
+    """Processes a histogram by adding it to accumulated state."""
+    histogram_value = HistogramValue(min=histo.min,
+                                     max=histo.max,
+                                     num=histo.num,
+                                     sum=histo.sum,
+                                     sum_squares=histo.sum_squares,
+                                     # Convert from proto repeated to list.
+                                     bucket_limit=list(histo.bucket_limit),
+                                     bucket=list(histo.bucket),)
+    histogram_event = HistogramEvent(wall_time=wall_time,
+                                     step=step,
+                                     histogram_value=histogram_value,)
+    self._histograms.AddItem(tag, histogram_event)
+
   def _ProcessImage(self, tag, wall_time, step, image):
     """Processes an image by adding it to accumulated state."""
     event = ImageEvent(
@@ -415,38 +450,58 @@ class EventAccumulator(object):
     )
     self._images.AddItem(tag, event)
 
-  def _Purge(self, event):
+  def _ProcessScalar(self, tag, wall_time, step, scalar):
+    """Processes a simple value by adding it to accumulated state."""
+    sv = ScalarEvent(wall_time=wall_time, step=step, value=scalar)
+    self._scalars.AddItem(tag, sv)
+
+  def _Purge(self, event, by_tags):
     """Purge all events that have occurred after the given event.step.
 
-    Purge all events that occurred after the given event.step, but only for
-    the tags that the event has. Non-sequential event.steps suggest that a
-    Tensorflow restart occured, and we discard the out-of-order events to
-    display a consistent view in TensorBoard.
+    If by_tags is True, purge all events that occurred after the given
+    event.step, but only for the tags that the event has. Non-sequential
+    event.steps suggest that a Tensorflow restart occured, and we discard
+    the out-of-order events to display a consistent view in TensorBoard.
 
-    Previously, the purge logic discarded all events after event.step (not just
-    within the affected tags), but this caused problems where race conditions in
-    supervisor caused many events to be unintentionally discarded.
+    Discarding by tags is the safer method, when we are unsure whether a restart
+    has occured, given that threading in supervisor can cause events of
+    different tags to arrive with unsynchronized step values.
+
+    If by_tags is False, then purge all events with event.step greater than the
+    given event.step. This can be used when we are certain that a TensorFlow
+    restart has occurred and these events can be discarded.
 
     Args:
       event: The event to use as reference for the purge. All events with
         the same tags, but with a greater event.step will be purged.
+      by_tags: Bool to dictate whether to discard all out-of-order events or
+        only those that are associated with the given reference event.
     """
+    ## Keep data in reservoirs that has a step less than event.step
+    _NotExpired = lambda x: x.step < event.step
 
-    def _GetExpiredList(value):
-      ## Keep data in reservoirs that has a step less than event.step
-      _NotExpired = lambda x: x.step < event.step
-      return [x.FilterItems(_NotExpired, value.tag)
-              for x in (self._scalars, self._histograms,
-                        self._compressed_histograms, self._images)]
+    if by_tags:
 
-    expired_per_tag = [_GetExpiredList(value) for value in event.summary.value]
-    expired_per_type = [sum(x) for x in zip(*expired_per_tag)]
+      def _ExpiredPerTag(value):
+        return [self[x].FilterItems(_NotExpired, value.tag)
+                for x in SUMMARY_TYPES]
+
+      expired_per_tags = [_ExpiredPerTag(value)
+                          for value in event.summary.value]
+      expired_per_type = [sum(x) for x in zip(*expired_per_tags)]
+    else:
+      expired_per_type = [self[x].FilterItems(_NotExpired)
+                          for x in SUMMARY_TYPES]
 
     if sum(expired_per_type) > 0:
       purge_msg = _GetPurgeMessage(self.most_recent_step,
                                    self.most_recent_wall_time, event.step,
                                    event.wall_time, *expired_per_type)
       logging.warn(purge_msg)
+
+  def _VerifyActivated(self):
+    if not self._activated:
+      raise RuntimeError('Accumulator must be activated before it may be used.')
 
 
 def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
@@ -471,3 +526,28 @@ def _GeneratorFromPath(path):
                                               IsTensorFlowEventsFile)
   else:
     return loader_factory(path)
+
+
+def _ParseFileVersion(file_version):
+  """Convert the string file_version in event.proto into a float.
+
+  Args:
+    file_version: String file_version from event.proto
+
+  Returns:
+    Version number as a float.
+  """
+  tokens = file_version.split('brain.Event:')
+  try:
+    return float(tokens[-1])
+  except ValueError:
+    ## This should never happen according to the definition of file_version
+    ## specified in event.proto.
+    logging.warn(('Invalid event.proto file_version. Defaulting to use of '
+                  'out-of-order event.step logic for purging expired events.'))
+    return -1
+
+
+def _Remap(x, x0, x1, y0, y1):
+  """Linearly map from [x0, x1] unto [y0, y1]."""
+  return y0 + (x - x0) * float(y1 - y0) / (x1 - x0)
