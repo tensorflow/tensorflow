@@ -35,6 +35,6 @@ fi
 
 # Gather and print build information
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
-${SCRIPT_DIR}/print_build_info.sh
+${SCRIPT_DIR}/print_build_info.sh ${CONTAINER_TYPE} ${COMMAND[@]}
 
 ${COMMAND[@]}

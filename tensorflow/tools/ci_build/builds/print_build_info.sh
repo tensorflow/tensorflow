@@ -17,8 +17,18 @@
 # Print build info, including info related to the machine, OS, build tools
 # and TensorFlow source code. This can be used by build tools such as Jenkins.
 # All info is printed on a single line, in JSON format, to workaround the
-# limitation of Jenkins Description Setter Plugin'sthat multi-line regex is
+# limitation of Jenkins Description Setter Plugin that multi-line regex is
 # not supported.
+#
+# Usage:
+#   print_build_info.sh (CONTAINER_TYPE) (COMMAND)
+#     e.g.,
+#       print_build_info.sh GPU bazel test -c opt --config=cuda //tensorflow/...
+
+# Information about the command
+CONTAINER_TYPE=$1
+shift 1
+COMMAND=("$@")
 
 # Information about machine and OS
 OS=`uname`
@@ -26,6 +36,7 @@ KERNEL=`uname -r`
 
 ARCH=`uname -p`
 PROCESSOR=`grep "model name" /proc/cpuinfo | head -1 | awk '{print substr($0, index($0, $4))}'`
+PROCESSOR_COUNT=`grep "model name" /proc/cpuinfo | wc -l`
 
 MEM_TOTAL=`grep MemTotal /proc/meminfo | awk '{print $2, $3}'`
 SWAP_TOTAL=`grep SwapTotal /proc/meminfo | awk '{print $2, $3}'`
@@ -61,14 +72,17 @@ fi
 
 # Print info
 echo "TF_BUILD_INFO = {"\
-"Source_HEAD: \"${TF_HEAD}\", "\
-"Source_remote_origin: \"${TF_FETCH_URL}\", "\
+"container_type: \"${CONTAINER_TYPE}\", "\
+"command: \"${COMMAND[@]}\", "\
+"source_HEAD: \"${TF_HEAD}\", "\
+"source_remote_origin: \"${TF_FETCH_URL}\", "\
 "OS: \"${OS}\", "\
-"Kernel: \"${KERNEL}\", "\
-"Architecture: \"${ARCH}\", "\
-"Processor: \"${PROCESSOR}\", "\
-"Memory_total: \"${MEM_TOTAL}\", "\
-"Swap_total: \"${SWAP_TOTAL}\", "\
+"kernel: \"${KERNEL}\", "\
+"architecture: \"${ARCH}\", "\
+"processor: \"${PROCESSOR}\", "\
+"processor_count: \"${PROCESSOR_COUNT}\", "\
+"memory_total: \"${MEM_TOTAL}\", "\
+"swap_total: \"${SWAP_TOTAL}\", "\
 "Bazel_version: \"${BAZEL_VER}\", "\
 "Java_version: \"${JAVA_VER}\", "\
 "Python_version: \"${PYTHON_VER}\", "\
