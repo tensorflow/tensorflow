@@ -38,6 +38,8 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         bidirection: Whether this is a bidirectional rnn.
         sequence_length: If sequence_length is provided, dynamic calculation is performed.
                  This saves computational time when unrolling past max sequence length.
+        initial_state: An initial state for the RNN. This must be a tensor of appropriate type
+                       and shape [batch_size x cell.state_size].
         n_classes: Number of classes in the target.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
@@ -68,7 +70,8 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
      """
 
     def __init__(self, rnn_size, n_classes, cell_type='gru', num_layers=1,
-                 input_op_fn=null_input_op_fn, bidirection=False,
+                 input_op_fn=null_input_op_fn,
+                 initial_state=None, bidirection=False,
                  sequence_length=None, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
@@ -80,6 +83,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.bidirection = bidirection
         self.num_layers = num_layers
         self.sequence_length = sequence_length
+        self.initial_state = initial_state
         super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -94,8 +98,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
                                     self.num_layers,
                                     self.input_op_fn, self.bidirection,
+                                    models.logistic_regression,
                                     self.sequence_length,
-                                    models.logistic_regression)(X, y)
+                                    self.initial_state)(X, y)
 
     @property
     def bias_(self):
@@ -121,6 +126,8 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         bidirection: Whether this is a bidirectional rnn.
         sequence_length: If sequence_length is provided, dynamic calculation is performed.
                  This saves computational time when unrolling past max sequence length.
+        initial_state: An initial state for the RNN. This must be a tensor of appropriate type
+                       and shape [batch_size x cell.state_size].
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
@@ -144,7 +151,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     """
 
     def __init__(self, rnn_size, cell_type='gru', num_layers=1,
-                 input_op_fn=null_input_op_fn,
+                 input_op_fn=null_input_op_fn, initial_state=None,
                  bidirection=False, sequence_length=None,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
@@ -157,6 +164,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.bidirection = bidirection
         self.num_layers = num_layers
         self.sequence_length = sequence_length
+        self.initial_state = initial_state
         super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -171,8 +179,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
                                     self.num_layers,
                                     self.input_op_fn, self.bidirection,
+                                    models.linear_regression,
                                     self.sequence_length,
-                                    models.linear_regression)(X, y)
+                                    self.initial_state)(X, y)
 
     @property
     def bias_(self):
