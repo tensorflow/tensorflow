@@ -47,7 +47,7 @@ Status GetHandle(const string& input_name, OpKernelContext* ctx,
                  string* container, string* ta_handle) {
   {
     Tensor tensor;
-    // Assuming that input_name is at position 0 for puposes of
+    // Assuming that input_name is at position 0 for purposes of
     // has_input.
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, false));
     if (tensor.NumElements() != 2) {

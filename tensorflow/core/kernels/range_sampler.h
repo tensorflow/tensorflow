@@ -188,7 +188,7 @@ class UnigramSampler : public RangeSampler {
 
   float Probability(int64 value) const override;
 
-  // Overriding at a high level results in far fewer lock aquisitions.
+  // Overriding at a high level results in far fewer lock acquisitions.
   void SampleBatchGetExpectedCountAvoid(
       random::SimplePhilox* rnd, bool unique,
       gtl::MutableArraySlice<int64> batch,
