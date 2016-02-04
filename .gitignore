@@ -11,3 +11,4 @@ node_modules
 /tools/python_bin_path.sh
 /util/python/python_include
 /util/python/python_lib
+/pip_test
