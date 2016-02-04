@@ -22,6 +22,7 @@ from __future__ import print_function
 import tensorflow.python.platform
 # pylint: enable=unused-import,g-bad-import-order
 
+from six.moves import xrange
 import time
 import numpy as np
 import tensorflow as tf

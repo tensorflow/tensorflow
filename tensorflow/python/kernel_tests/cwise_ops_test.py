@@ -107,7 +107,7 @@ class UnaryOpTest(tf.test.TestCase):
       try:
         return fn(x)
       except ValueError as e:
-        if "domain error" in e.message:
+        if "domain error" in str(e):
           return np.inf * np.ones_like(x)
         else:
           raise e
