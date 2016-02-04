@@ -2268,8 +2268,11 @@ class Graph(object):
   def add_to_collection(self, name, value):
     """Stores `value` in the collection with the given `name`.
 
+    Note that collections are not sets, so it is possible to add a value to
+    a collection several times.
+
     Args:
-      name: The key for the collection. For example, the `GraphKeys` class
+      name: The key for the collection. The `GraphKeys` class
         contains many standard names for collections.
       value: The value to add to the collection.
     """
@@ -2278,6 +2281,22 @@ class Graph(object):
       self._collections[name] = [value]
     else:
       self._collections[name].append(value)
+
+  def add_to_collections(self, names, value):
+    """Stores `value` in the collections given by `names`.
+
+    Note that collections are not sets, so it is possible to add a value to
+    a collection several times. This function makes sure that duplicates in
+    `names` are ignored, but it will not check for pre-existing membership of
+    `value` in any of the collections in `names`.
+
+    Args:
+      names: The keys for the collections to add to. The `GraphKeys` class
+        contains many standard names for collections.
+      value: The value to add to the collections.
+    """
+    for name in set(names):
+      self.add_to_collection(name, value)
 
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
@@ -3357,6 +3376,20 @@ def add_to_collection(name, value):
     value: The value to add to the collection.
   """
   get_default_graph().add_to_collection(name, value)
+
+
+def add_to_collections(names, value):
+  """Wrapper for `Graph.add_to_collections()` using the default graph.
+
+  See [`Graph.add_to_collections()`](../../api_docs/python/framework.md#Graph.add_to_collections)
+  for more details.
+
+  Args:
+    names: The key for the collections. The `GraphKeys` class
+      contains many standard names for collections.
+    value: The value to add to the collections.
+  """
+  get_default_graph().add_to_collections(names, value)
 
 
 def get_collection(key, scope=None):
