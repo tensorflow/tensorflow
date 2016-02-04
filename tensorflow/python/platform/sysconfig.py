@@ -13,25 +13,34 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Test for version 1 of the zero_out op."""
-
+"""Load a file resource and return the contents."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
-import tensorflow as tf
-from tensorflow.g3doc.how_tos.adding_an_op import zero_out_op_1
+import os.path
 
 
-class ZeroOut1Test(tf.test.TestCase):
+# pylint: disable=g-import-not-at-top
+def get_include():
+  """Get the directory containing the TensorFlow C++ header files.
 
-  def test(self):
-    with self.test_session():
-      result = zero_out_op_1.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+  Returns:
+    The directory as string.
+  """
+  # Import inside the function.
+  # sysconfig is imported from the tensorflow module, so having this
+  # import at the top would cause a circular import, resulting in
+  # the tensorflow module missing symbols that come after sysconfig.
+  import tensorflow as tf
+  return os.path.join(os.path.dirname(tf.__file__), 'include')
 
 
-if __name__ == '__main__':
-  tf.test.main()
+def get_lib():
+  """Get the directory containing the TensorFlow framework library.
+
+  Returns:
+    The directory as string.
+  """
+  import tensorflow as tf
+  return os.path.join(os.path.dirname(tf.__file__), 'core')
