@@ -141,7 +141,10 @@ def main(unused_argv=None):
   logging.info('TensorBoard path_to_run is: %s', path_to_run)
   multiplexer = event_multiplexer.EventMultiplexer(
       size_guidance=TENSORBOARD_SIZE_GUIDANCE)
+  # Ensure the Multiplexer initializes in a loaded state before it adds runs
+  # So it can handle HTTP requests while runs are loading
 
+  multiplexer.Reload()
   def _Load():
     start = time.time()
     for (path, name) in six.iteritems(path_to_run):

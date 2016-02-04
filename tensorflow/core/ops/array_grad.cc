@@ -237,4 +237,27 @@ Status ListToArrayGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("_ListToArray", ListToArrayGrad);
 
+Status FillGrad(const AttrSlice& attrs, FunctionDef* g) {
+  *g = FDH::Define(
+      // Arg defs
+      {"dims: int32", "x: T", "dy: T"},
+      // Ret val defs
+      {"d_dims: int32", "dx: T"},
+      // Attr defs
+      {"T: {float, double}"},
+      // Nodes
+      {
+          {{"d_dims"}, "ZerosLike", {"dims"}, {{"T", DT_INT32}}},
+          FDH::Const("zero", 0),
+          {{"rank"}, "Rank", {"dy"}, {{"T", "$T"}}},
+          FDH::Const("one", 1),
+          {{"r"}, "Range", {"zero", "rank", "one"}, {}},
+          // dx = sum(dy)
+          {{"dx"}, "Sum", {"dy", "r"}, {{"T", "$T"}}},
+      });
+  VLOG(1) << "FillGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Fill", FillGrad);
+
 }  // end namespace tensorflow
