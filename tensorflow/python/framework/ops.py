@@ -2372,7 +2372,7 @@ class Graph(object):
     ```python
     with tf.Graph().as_default() as g:
       c = tf.constant(5.0, name="c")
-      assert c_1.op.name == "c"
+      assert c.op.name == "c"
       c_1 = tf.constant(6.0, name="c")
       assert c_1.op.name == "c_1"
 
