@@ -1,8 +1,8 @@
 licenses(["restricted"])
 
-load("//tensorflow/tensorflow", "if_cuda")
-load("//third_party/gpus/cuda/platform", "cuda_sdk_version")
-load("//third_party/gpus/cuda/platform", "cudnn_sdk_version")
+load("/tensorflow/tensorflow", "if_cuda")
+load("/third_party/gpus/cuda/platform", "cuda_sdk_version")
+load("/third_party/gpus/cuda/platform", "cudnn_sdk_version")
 
 cc_library(
     name = "stream_executor",

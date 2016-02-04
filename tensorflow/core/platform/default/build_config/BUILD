@@ -7,9 +7,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow/tensorflow", "tf_copts")
-load("//tensorflow/tensorflow", "tf_cuda_library")
-load("//third_party/gpus/cuda/platform", "cuda_library_path")
+load("/tensorflow/tensorflow", "tf_copts")
+load("/tensorflow/tensorflow", "tf_cuda_library")
+load("/third_party/gpus/cuda/platform", "cuda_library_path")
 
 cc_library(
     name = "gtest",
