@@ -38,7 +38,7 @@ void BinaryLinearAlgebraOpBase::Compute(OpKernelContext* context) {
   for (int dim = 0; dim < (in_rhs.dims() - 2); ++dim) {
     OP_REQUIRES(context, in_rhs.dim_size(dim) == in_lhs.dim_size(dim),
                 errors::InvalidArgument(
-                    "Dimension mistmatch: %d != %d for dimension %d",
+                    "Dimension mismatch: %d != %d for dimension %d",
                     in_lhs.dim_size(dim), in_rhs.dim_size(dim), dim));
   }
 

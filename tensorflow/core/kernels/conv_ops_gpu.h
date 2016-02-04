@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(zhengxq): move this to gpu_util.h. The use of such wrapers is wide
+// TODO(zhengxq): move this to gpu_util.h. The use of such wrappers is wide
 // spread.
 template <typename T>
 perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,

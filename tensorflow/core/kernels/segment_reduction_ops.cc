@@ -102,7 +102,7 @@ class SegmentReductionOp : public OpKernel {
                                Eigen::Unaligned> OutT;
       T* out_slice_ptr = &output_flat(segment_vec(start), 0);
       OutT out_slice(out_slice_ptr, out_slice_shape);
-      // We don't use out_slice.device(context->egien_device<Device>)
+      // We don't use out_slice.device(context->eigen_device<Device>)
       // because these pieces of work are likely to be very small and
       // the context switching overhead dwarfs any benefit we get from
       // using another thread to do this work.

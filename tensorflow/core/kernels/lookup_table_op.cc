@@ -31,7 +31,7 @@ namespace lookup {
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified.
 //
-// This table is recommened for any variations to key values.
+// This table is recommended for any variations to key values.
 //
 // For look up, the table is required to be initialized (allocated
 // and populated). Once the table is marked as initialized it becomes read-only.
