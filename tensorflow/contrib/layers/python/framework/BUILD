@@ -32,6 +32,7 @@ py_test(
     name = "tensor_util_test",
     size = "small",
     srcs = ["tensor_util_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":tensor_util",
         "//tensorflow:tensorflow_py",

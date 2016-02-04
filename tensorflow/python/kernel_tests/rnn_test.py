@@ -25,6 +25,7 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
+from six.moves import xrange
 
 class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
