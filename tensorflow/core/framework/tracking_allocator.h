@@ -45,7 +45,11 @@ class TrackingAllocator : public Allocator {
  public:
   explicit TrackingAllocator(Allocator* allocator);
   string Name() override { return allocator_->Name(); }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return AllocateRaw(alignment, num_bytes, AllocationAttributes());
+  }
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() override;
   size_t RequestedSize(void* ptr) override;
