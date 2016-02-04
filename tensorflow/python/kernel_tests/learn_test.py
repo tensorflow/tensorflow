@@ -59,7 +59,7 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have all values >= 0.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+    self.assertGreater(len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
                        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
@@ -81,7 +81,7 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have all values >= 0.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+    self.assertGreater(len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
                        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
@@ -105,7 +105,7 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value <= 6),
                     'Relu6 should have all values <= 6.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+    self.assertGreater(len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
                        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
@@ -264,7 +264,7 @@ class Convolution2dTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have capped all values.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
+    self.assertGreater(len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
                        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
