@@ -614,12 +614,7 @@ def top_k(input, k=1, sorted=True, name=None):
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  # TODO(irving): Always use v2 once the GraphDef mechanism is unstuck.
-  if isinstance(k, ops.Tensor):
-    op = gen_nn_ops._top_kv2
-  else:
-    op = gen_nn_ops._top_k
-  return op(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
 
 # pylint: enable=invalid-name
