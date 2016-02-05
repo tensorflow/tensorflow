@@ -13,9 +13,8 @@
 #  limitations under the License.
 
 """
-This example showcases how simple it is to build image classification networks.
-It follows description from this TensorFlow tutorial:
-    https://www.tensorflow.org/versions/master/tutorials/mnist/pros/index.html#deep-mnist-for-experts
+This example builds deep residual network for mnist data. 
+Reference Paper: http://arxiv.org/pdf/1512.03385.pdf
 """
 
 import random
@@ -29,29 +28,6 @@ import skflow
 from collections import namedtuple
 from math import sqrt
 
-def batch_normalize(X, batch_size, epsilon=1e-5, momentum=0.1):
-    """Batch Normalization
-    Args:
-        X: Input Tensor
-        batch_size : int
-            Size of the batch, or -1 for size to fit.
-        epsilon : float, optional
-            A small float number to avoid dividing by 0.
-        momentum : float, optional
-            Decay to use for the moving average.
-    """
-    shape = X.get_shape().as_list()
-
-    with tf.variable_scope("batch_norm"):
-        ema = tf.train.ExponentialMovingAverage(decay=momentum)
-        gamma = tf.get_variable("gamma", [shape[-1]],
-                                initializer=tf.random_normal_initializer(1., 0.02))
-        beta = tf.get_variable("beta", [shape[-1]],
-                                initializer=tf.constant_initializer(0.))
-        mean, variance = tf.nn.moments(X, [0, 1, 2])
-        return tf.nn.batch_norm_with_global_normalization(
-            X, mean, variance, beta, gamma, epsilon,
-            scale_after_normalization=True)
 
 def conv2d(x, n_filters,
            k_h=5, k_w=5,
@@ -106,8 +82,8 @@ def conv2d(x, n_filters,
                 initializer=tf.truncated_normal_initializer(stddev=stddev))
             conv = conv + b
         if batch_norm:
-            conv = batch_normalize(X=conv, batch_size=-1)
-        return conv
+            conv = skflow.ops.batch_normalize(X=conv)
+        return activation(conv)
 
 def res_net(x, y, activation=tf.nn.relu):
     """Builds a residual network.

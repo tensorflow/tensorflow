@@ -19,7 +19,7 @@ import tensorflow as tf
 
 
 def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
-           bias=True, activation=None):
+           bias=True, activation=None, batch_norm=None):
     """Creates 2D convolutional subgraph with bank of filters.
 
     Uses tf.nn.conv2d under the hood.
@@ -38,6 +38,7 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
                  use.
         bias: Boolean, if to add bias.
         activation: Activation Op, optional. If provided applied on the output.
+        batch_norm: Whether to apply batch normalization.
 
     Returns:
         A Tensor with resulting convolution.
@@ -53,6 +54,8 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
             bias_var = tf.get_variable('bias', [1, 1, 1, n_filters],
                                        tf.float32)
             output = output + bias_var
+        if batch_norm:
+            output = skflow.ops.batch_normalize(output)
         if activation:
             output = activation(output)
         return output
