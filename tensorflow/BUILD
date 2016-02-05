@@ -2,7 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(default_visibility = [":internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -17,11 +17,6 @@ config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
-)
-
-package_group(
-    name = "internal",
-    packages = ["//tensorflow/..."],
 )
 
 sh_binary(
@@ -40,7 +35,7 @@ filegroup(
             "g3doc/sitemap.md",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 py_library(

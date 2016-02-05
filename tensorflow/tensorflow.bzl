@@ -138,7 +138,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
       deps = (["//tensorflow/core:framework",
                "//tensorflow/python:python_op_gen_main"] + deps),
-      visibility = ["//tensorflow:internal"],
+      visibility = ["//visibility:public"],
   )
 
   # Invoke the previous cc_binary to generate a python file.
@@ -359,7 +359,7 @@ def py_tests(name,
                    srcs=[src],
                    main=src,
                    tags=tags,
-                   visibility=["//tensorflow:internal"],
+                   visibility=["//visibility:public"],
                    shard_count=shard_count,
                    data=data,
                    deps=[

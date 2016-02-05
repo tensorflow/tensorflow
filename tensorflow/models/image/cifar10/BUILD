@@ -9,7 +9,7 @@ py_library(
     name = "cifar10_input",
     srcs = ["cifar10_input.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -43,7 +43,7 @@ py_binary(
         "cifar10_eval.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":cifar10",
     ],
@@ -55,7 +55,7 @@ py_binary(
         "cifar10_train.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":cifar10",
     ],
@@ -67,7 +67,7 @@ py_binary(
         "cifar10_multi_gpu_train.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":cifar10",
     ],
@@ -82,5 +82,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
