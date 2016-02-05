@@ -159,6 +159,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
   if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
+    MAIN_CMD_PREFIX="${MAIN_CMD}"
     MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
 
@@ -167,7 +168,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
       BUILD_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
       echo BUILD_CMD=${BUILD_CMD}
-      MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BUILD_CMD} && "\
+      MAIN_CMD="${MAIN_CMD_PREFIX} ${CTYPE} ${BUILD_CMD} && "\
 "${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
     fi
