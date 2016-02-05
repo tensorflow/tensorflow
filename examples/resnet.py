@@ -91,11 +91,24 @@ def res_net(x, y, activation=tf.nn.relu):
                                          batch_norm=True)
 
             with tf.variable_scope(name + '/conv_out'):
-                net = skflow.ops.conv2d(conv, block.num_filters,
+                conv = skflow.ops.conv2d(conv, block.num_filters,
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,
                                          batch_norm=True)
+
+            net = conv + net
+
+        try:
+            # upscale to the next block size
+            next_block = blocks[block_i + 1]
+            with tf.variable_scope('block_%d/conv_upscale' % block_i):
+                net = skflow.ops.conv2d(net, next_block.num_filters,
+                                        [1, 1], [1, 1, 1, 1], bias=False,
+                                        padding='SAME')
+        except IndexError:
+            pass
+
 
     net = tf.nn.avg_pool(net,
                          ksize=[1, net.get_shape().as_list()[1],
