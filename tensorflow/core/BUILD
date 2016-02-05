@@ -29,7 +29,7 @@
 # ":all_kernels" - The cpu-specific kernels, plus ":gpu_kernels" if
 #     built with Cuda
 # ":tensorflow_opensource" - The complete open-source package, including
-#      ":kernels", ":core", and a Session implementation.
+#      ":all_kernels", ":core", and a Session implementation.
 # ":tensorflow" - "tensorflow_opensource" plus some Google-internal libraries.
 # ":testlib" - TensorFlow-specific test support, e.g. utilities for testing
 #      kernels.
@@ -451,19 +451,6 @@ tf_cuda_library(
 # This includes implementations of all kernels built into TensorFlow.
 tf_cuda_library(
     name = "all_kernels",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":kernel_lib",
-    ],
-)
-
-# DEPRECATED: Use either ":all_kernels" and/or ":kernel_lib" instead.
-# We need to get rid of this library before we can make the kernels
-# directory its own package, due to name conflicts.
-tf_cuda_library(
-    name = "kernels",
-    hdrs = glob(["kernels/**/*.h"]),
-    deprecation = "use ':all_kernels' or ':kernel_lib' instead",
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_lib",
