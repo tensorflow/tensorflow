@@ -71,6 +71,7 @@ extern const char* const DEVICE_CPU;  // "CPU"
 extern const char* const DEVICE_GPU;  // "GPU"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
+typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
 typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
 typedef gtl::ArraySlice<DataType> DataTypeSlice;

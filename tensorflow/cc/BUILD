@@ -70,7 +70,7 @@ cc_binary(
     ],
     deps = [
         ":cc_ops",
-        "//tensorflow/core:kernels",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:tensorflow",
     ],
 )

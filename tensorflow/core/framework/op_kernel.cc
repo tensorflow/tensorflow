@@ -94,8 +94,12 @@ OpKernel::OpKernel(OpKernelConstruction* context)
     : def_(context->def()),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
+      input_memory_types_(context->input_memory_types().begin(),
+                          context->input_memory_types().end()),
       output_types_(context->output_types().begin(),
                     context->output_types().end()),
+      output_memory_types_(context->output_memory_types().begin(),
+                           context->output_memory_types().end()),
       graph_def_version_(context->graph_def_version()),
       is_internal_(StringPiece(type_string()).starts_with("_")),
       input_name_map_(context->num_inputs()),
@@ -103,28 +107,6 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
-
-  // By default, the input and output memory types are always in device memory,
-  // but can be overridden by individual implementations of OpKernels in their
-  // constructor.
-  input_memory_types_ = MemoryTypeVector(input_types_.size(), DEVICE_MEMORY);
-  output_memory_types_ = MemoryTypeVector(output_types_.size(), DEVICE_MEMORY);
-  // TODO(yuanbyu): For now we assume the memory types of function
-  // inputs/outputs to be DEVICE_MEMORY.
-  auto lib = context->function_library();
-  if (lib == nullptr || !lib->IsDefined(def_.op())) {
-    OP_REQUIRES_OK(context, MemoryTypesForNode(
-                                context->device_type(), def_, context->op_def(),
-                                input_name_map_, output_name_map_,
-                                &input_memory_types_, &output_memory_types_));
-    // Log all the uses of int32 on GPU.
-    // TODO(yunabyu): Remove once everyone transitions to HostMemory.
-    if (VLOG_IS_ON(2)) {
-      if (!CheckHostMemoryCompatibility(context->device_type(), this)) {
-        VLOG(2) << "Using int32 on GPU at node: " << SummarizeNodeDef(def());
-      }
-    }
-  }
 }
 
 Status OpKernel::InputRange(const string& input_name, int* start,
@@ -640,10 +622,19 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
     return s;
   }
 
+  // We are creating a kernel for an op registered in
+  // OpRegistry::Global(), we consult the kernel registry to decide
+  // the kernel's input and output memory types.
+  MemoryTypeVector input_memory_types;
+  MemoryTypeVector output_memory_types;
+  TF_RETURN_IF_ERROR(MemoryTypesForNode(*OpRegistry::Global(), device_type,
+                                        node_def, &input_memory_types,
+                                        &output_memory_types));
+
   // Everything needed for OpKernel construction.
-  OpKernelConstruction context(device_type, device, allocator, &node_def,
-                               op_def, flib, inputs, outputs, graph_def_version,
-                               &s);
+  OpKernelConstruction context(
+      device_type, device, allocator, &node_def, op_def, flib, inputs,
+      input_memory_types, outputs, output_memory_types, graph_def_version, &s);
   *kernel = (*registration->factory)(&context);
   if (!s.ok()) {
     delete *kernel;
@@ -720,7 +711,8 @@ Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
   const OpDef* op_def = op_registry.LookUp(ndef.op(), &status);
   if (op_def == nullptr) return status;
 
-  NameRangeMap inputs, outputs;
+  NameRangeMap inputs;
+  NameRangeMap outputs;
   status = NameRangesForNode(ndef, *op_def, &inputs, &outputs);
   if (!status.ok()) return status;
 
