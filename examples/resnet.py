@@ -29,81 +29,19 @@ from collections import namedtuple
 from math import sqrt
 
 
-def conv2d(x, n_filters,
-           k_h=5, k_w=5,
-           stride_h=2, stride_w=2,
-           stddev=0.02,
-           batch_norm=False,
-           activation=lambda x: x,
-           bias=True,
-           padding='SAME',
-           name="Conv2D"):
-    """2D Convolution with options for kernel size, stride, and init deviation.
-
-    Parameters
-    ----------
-    x : Tensor
-        Input tensor to convolve.
-    n_filters : int
-        Number of filters to apply.
-    k_h : int, optional
-        Kernel height.
-    k_w : int, optional
-        Kernel width.
-    stride_h : int, optional
-        Stride in rows.
-    stride_w : int, optional
-        Stride in cols.
-    stddev : float, optional
-        Initialization's standard deviation.
-    activation : arguments, optional
-        Function which applies a nonlinearity
-    batch_norm : bool, optional
-        Whether or not to apply batch normalization
-    padding : str, optional
-        'SAME' or 'VALID'
-    name : str, optional
-        Variable scope to use.
-
-    Returns
-    -------
-    x : Tensor
-        Convolved input.
-    """
-    with tf.variable_scope(name):
-        w = tf.get_variable(
-            'w', [k_h, k_w, x.get_shape()[-1], n_filters],
-            initializer=tf.truncated_normal_initializer(stddev=stddev))
-        conv = tf.nn.conv2d(
-            x, w, strides=[1, stride_h, stride_w, 1], padding=padding)
-        if bias:
-            b = tf.get_variable(
-                'b', [n_filters],
-                initializer=tf.truncated_normal_initializer(stddev=stddev))
-            conv = conv + b
-        if batch_norm:
-            conv = skflow.ops.batch_normalize(X=conv)
-        return activation(conv)
-
 def res_net(x, y, activation=tf.nn.relu):
     """Builds a residual network.
-    Parameters
-    ----------
-    x : Placeholder
-        Input of the network
-    y : Placeholder
-        Output of the network
-    activation : Attribute, optional
-        Nonlinearity to apply after each convolution
-    Returns
-    -------
-    net : Tensor
-        Description
-    Raises
-    ------
-    ValueError
-        If a 2D Tensor is input, the Tensor must be square or else
-        the network can't be converted to a 4D Tensor.
+
+    Borrowed structure from here: https://github.com/pkmital/tensorflow_tutorials/blob/master/10_residual_network.py
+
+    Args:
+        x: Input of the network
+        y: Output of the network
+        activation: Activation function to apply after each convolution
+    Raises:
+        ValueError
+            If a 2D tensor is not square, it cannot be converted to a 
+            4D tensor.
     """
     LayerBlock = namedtuple(
         'LayerBlock', ['num_layers', 'num_filters', 'bottleneck_size'])
@@ -112,6 +50,7 @@ def res_net(x, y, activation=tf.nn.relu):
               LayerBlock(3, 512, 128),
               LayerBlock(3, 1024, 256)]
 
+    # Input check
     input_shape = x.get_shape().as_list()
     if len(input_shape) == 2:
         ndim = int(sqrt(input_shape[1]))
@@ -120,47 +59,43 @@ def res_net(x, y, activation=tf.nn.relu):
         x = tf.reshape(x, [-1, ndim, ndim, 1])
 
     # First convolution expands to 64 channels
-    net = conv2d(x, 64, k_h=7, k_w=7,
-                 batch_norm=True, name='conv1',
-                 activation=activation)
+    with tf.variable_scope('conv_layer1'):
+        net = skflow.ops.conv2d(x, 64, [7, 7], batch_norm=True, activation=activation)
 
     # Max pool
     net = tf.nn.max_pool(
         net, [1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME')
 
-    # Setup first chain of resnets
-    net = conv2d(net, blocks[0].num_filters, k_h=1, k_w=1,
-                 stride_h=1, stride_w=1, padding='VALID', name='conv2')
+    # First chain of resnets
+    with tf.variable_scope('conv_layer2'):
+        net = skflow.ops.conv2d(net, blocks[0].num_filters,
+                               [1, 1], [1, 1, 1, 1], padding='VALID')
 
-    # Loop through all res blocks
+    # Create resnets for each res blocks
     for block_i, block in enumerate(blocks):
         for layer_i in range(block.num_layers):
 
             name = 'block_%d/layer_%d' % (block_i, layer_i)
-            conv = conv2d(net, block.num_filters, k_h=1, k_w=1,
-                          padding='VALID', stride_h=1, stride_w=1,
-                          activation=activation, batch_norm=True,
-                          name=name + '/conv_in')
+            with tf.variable_scope(name + '/conv_in'):
+                conv = skflow.ops.conv2d(net, block.num_filters,
+                                         [1, 1], [1, 1, 1, 1],
+                                         padding='VALID',
+                                         activation=activation,
+                                         batch_norm=True)
 
-            conv = conv2d(conv, block.bottleneck_size, k_h=3, k_w=3,
-                          padding='SAME', stride_h=1, stride_w=1,
-                          activation=activation, batch_norm=True,
-                          name=name + '/conv_bottleneck')
+            with tf.variable_scope(name + '/conv_bottleneck'):
+                conv = skflow.ops.conv2d(conv, block.bottleneck_size,
+                                         [3, 3], [1, 1, 1, 1],
+                                         padding='SAME',
+                                         activation=activation,
+                                         batch_norm=True)
 
-            conv = conv2d(conv, block.num_filters, k_h=1, k_w=1,
-                          padding='VALID', stride_h=1, stride_w=1,
-                          activation=activation, batch_norm=True,
-                          name=name + '/conv_out')
-
-            net = conv + net
-        try:
-            # upscale to the next block size
-            next_block = blocks[block_i + 1]
-            net = conv2d(net, next_block.num_filters, k_h=1, k_w=1,
-                         padding='SAME', stride_h=1, stride_w=1, bias=False,
-                         name='block_%d/conv_upscale' % block_i)
-        except IndexError:
-            pass
+            with tf.variable_scope(name + '/conv_out'):
+                net = skflow.ops.conv2d(conv, block.num_filters,
+                                         [1, 1], [1, 1, 1, 1],
+                                         padding='VALID',
+                                         activation=activation,
+                                         batch_norm=True)
 
     net = tf.nn.avg_pool(net,
                          ksize=[1, net.get_shape().as_list()[1],
@@ -175,13 +110,16 @@ def res_net(x, y, activation=tf.nn.relu):
     return skflow.models.logistic_regression(net, y)
 
 
-### Download and load MNIST data.
+# Download and load MNIST data.
 mnist = input_data.read_data_sets('MNIST_data')
 
+# Train a resnet classifier
 classifier = skflow.TensorFlowEstimator(
     model_fn=res_net, n_classes=10, batch_size=100, steps=20000,
     learning_rate=0.001)
 
 classifier.fit(mnist.train.images, mnist.train.labels)
+
+# Calculate accuracy
 score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
 print('Accuracy: {0:f}'.format(score))
