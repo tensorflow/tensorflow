@@ -174,45 +174,14 @@ def conv2d(x, n_filters,
             conv = norm(conv)
         return conv
 
-
-def linear(x, n_units, scope=None, stddev=0.02,
-           activation=lambda x: x):
-    """Fully-connected network.
-
-    Parameters
-    ----------
-    x : Tensor
-        Input tensor to the network.
-    n_units : int
-        Number of units to connect to.
-    scope : str, optional
-        Variable scope to use.
-    stddev : float, optional
-        Initialization's standard deviation.
-    activation : arguments, optional
-        Function which applies a nonlinearity
-
-    Returns
-    -------
-    x : Tensor
-        Fully-connected output.
-    """
-    shape = x.get_shape().as_list()
-
-    with tf.variable_scope(scope or "Linear"):
-        matrix = tf.get_variable("Matrix", [shape[1], n_units], tf.float32,
-                                 tf.random_normal_initializer(stddev=stddev))
-        return activation(tf.matmul(x, matrix))
-
-def residual_network(x, n_outputs,
-                     activation=tf.nn.relu):
+def res_net(x, y, activation=tf.nn.relu):
     """Builds a residual network.
     Parameters
     ----------
     x : Placeholder
-        Input to the network
-    n_outputs : TYPE
-        Number of outputs of final softmax
+        Input of the network
+    y : Placeholder
+        Output of the network
     activation : Attribute, optional
         Nonlinearity to apply after each convolution
     Returns
@@ -225,7 +194,6 @@ def residual_network(x, n_outputs,
         If a 2D Tensor is input, the Tensor must be square or else
         the network can't be converted to a 4D Tensor.
     """
-    # %%
     LayerBlock = namedtuple(
         'LayerBlock', ['num_layers', 'num_filters', 'bottleneck_size'])
     blocks = [LayerBlock(3, 128, 32),
@@ -233,7 +201,6 @@ def residual_network(x, n_outputs,
               LayerBlock(3, 512, 128),
               LayerBlock(3, 1024, 256)]
 
-    # %%
     input_shape = x.get_shape().as_list()
     if len(input_shape) == 2:
         ndim = int(sqrt(input_shape[1]))
@@ -241,23 +208,19 @@ def residual_network(x, n_outputs,
             raise ValueError('input_shape should be square')
         x = tf.reshape(x, [-1, ndim, ndim, 1])
 
-    # %%
     # First convolution expands to 64 channels and downsamples
     net = conv2d(x, 64, k_h=7, k_w=7,
                  batch_norm=True, name='conv1',
                  activation=activation)
 
-    # %%
     # Max pool and downsampling
     net = tf.nn.max_pool(
         net, [1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME')
 
-    # %%
     # Setup first chain of resnets
     net = conv2d(net, blocks[0].num_filters, k_h=1, k_w=1,
                  stride_h=1, stride_w=1, padding='VALID', name='conv2')
 
-    # %%
     # Loop through all res blocks
     for block_i, block in enumerate(blocks):
         for layer_i in range(block.num_layers):
@@ -288,7 +251,6 @@ def residual_network(x, n_outputs,
         except IndexError:
             pass
 
-    # %%
     net = tf.nn.avg_pool(net,
                          ksize=[1, net.get_shape().as_list()[1],
                                 net.get_shape().as_list()[2], 1],
@@ -299,86 +261,16 @@ def residual_network(x, n_outputs,
          net.get_shape().as_list()[2] *
          net.get_shape().as_list()[3]])
 
-    net = linear(net, n_outputs, activation=tf.nn.softmax)
-
-    # %%
-    return net
+    return skflow.models.logistic_regression(net, y)
 
 
 ### Download and load MNIST data.
+mnist = input_data.read_data_sets('MNIST_data')
 
-mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+classifier = skflow.TensorFlowEstimator(
+    model_fn=res_net, n_classes=10, batch_size=100, steps=20000,
+    learning_rate=0.001)
 
-
-x = tf.placeholder(tf.float32, [None, 784])
-y = tf.placeholder(tf.float32, [None, 10])
-y_pred = residual_network(x, 10)
-
-# %% Define loss/eval/training functions
-cross_entropy = -tf.reduce_sum(y * tf.log(y_pred))
-optimizer = tf.train.AdamOptimizer().minimize(cross_entropy)
-
-# %% Monitor accuracy
-correct_prediction = tf.equal(tf.argmax(y_pred, 1), tf.argmax(y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, 'float'))
-
-# %% We now create a new session to actually perform the initialization the
-# variables:
-sess = tf.Session()
-sess.run(tf.initialize_all_variables())
-
-# %% We'll train in minibatches and report accuracy:
-batch_size = 50
-n_epochs = 5
-for epoch_i in range(n_epochs):
-    # Training
-    train_accuracy = 0
-    for batch_i in range(mnist.train.num_examples // batch_size):
-        batch_xs, batch_ys = mnist.train.next_batch(batch_size)
-        train_accuracy += sess.run([optimizer, accuracy], feed_dict={
-            x: batch_xs, y: batch_ys})[1]
-    train_accuracy /= (mnist.train.num_examples // batch_size)
-
-    # Validation
-    valid_accuracy = 0
-    for batch_i in range(mnist.validation.num_examples // batch_size):
-        batch_xs, batch_ys = mnist.validation.next_batch(batch_size)
-        valid_accuracy += sess.run(accuracy,
-                                   feed_dict={
-                                       x: batch_xs,
-                                       y: batch_ys
-                                   })
-    valid_accuracy /= (mnist.validation.num_examples // batch_size)
-    print('epoch:', epoch_i, ', train:',
-          train_accuracy, ', valid:', valid_accuracy)
-
-
-
-
-
-# ### Convolutional network
-
-# def max_pool_2x2(tensor_in):
-#     return tf.nn.max_pool(tensor_in, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
-#         padding='SAME')
-
-# def conv_model(X, y):
-#     X = tf.reshape(X, [-1, 28, 28, 1])
-#     with tf.variable_scope('conv_layer1'):
-#         h_conv1 = skflow.ops.conv2d(X, n_filters=32, filter_shape=[5, 5], 
-#                                     bias=True, activation=tf.nn.relu)
-#         h_pool1 = max_pool_2x2(h_conv1)
-#     with tf.variable_scope('conv_layer2'):
-#         h_conv2 = skflow.ops.conv2d(h_pool1, n_filters=64, filter_shape=[5, 5], 
-#                                     bias=True, activation=tf.nn.relu)
-#         h_pool2 = max_pool_2x2(h_conv2)
-#         h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
-#     h_fc1 = skflow.ops.dnn(h_pool2_flat, [1024], activation=tf.nn.relu, keep_prob=0.5)
-#     return skflow.models.logistic_regression(h_fc1, y)
-
-# classifier = skflow.TensorFlowEstimator(
-#     model_fn=conv_model, n_classes=10, batch_size=100, steps=20000,
-#     learning_rate=0.001)
-# classifier.fit(mnist.train.images, mnist.train.labels)
-# score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
-# print('Accuracy: {0:f}'.format(score))
+classifier.fit(mnist.train.images, mnist.train.labels)
+score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
+print('Accuracy: {0:f}'.format(score))
