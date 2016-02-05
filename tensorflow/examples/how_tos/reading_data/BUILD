@@ -1,7 +1,7 @@
 # Description:
 # Example MNIST TensorFlow models for demonstrating data reading.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -64,5 +64,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )

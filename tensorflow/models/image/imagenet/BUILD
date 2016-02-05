@@ -11,7 +11,7 @@ py_binary(
         "classify_image.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -26,5 +26,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )

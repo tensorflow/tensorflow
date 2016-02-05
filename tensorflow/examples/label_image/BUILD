@@ -1,7 +1,7 @@
 # Description:
 #   Tensorflow C++ inference example for labeling images.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -55,5 +55,5 @@ filegroup(
             "gen/**",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )

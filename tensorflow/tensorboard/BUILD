@@ -1,7 +1,7 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "tensorboard_frontend",

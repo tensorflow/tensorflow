@@ -144,19 +144,8 @@ genrule(
         "OUTPUTDIR=`readlink -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;",
 
         # Under non-cuda config, create all dummy files to make the build go through
-        ";".join([
-          "mkdir -p $(@D)/include",
-          "mkdir -p $(@D)/lib64",
-          "touch $(@D)/include/cuda.h",
-          "touch $(@D)/include/cublas.h",
-          "touch $(@D)/include/cudnn.h",
-          "touch $(@D)/lib64/libcudart_static.a",
-          "touch $(@D)/lib64/libcublas.so." + tf_get_cuda_version(),
-          "touch $(@D)/lib64/libcudnn.so." + tf_get_cudnn_version(),
-          "touch $(@D)/lib64/libcudart.so." + tf_get_cuda_version(),
-          "touch $(@D)/lib64/libcufft.so." + tf_get_cuda_version(),
-            ]),
-    ),
+        "touch $(OUTS)"
+        ),
     local = 1,
 )
 

@@ -1,7 +1,7 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -22,7 +22,7 @@ py_library(
         "unsupported.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":client_testlib",
@@ -1152,5 +1152,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )

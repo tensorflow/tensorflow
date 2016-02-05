@@ -1,7 +1,7 @@
 # Description:
 # TensorFlow model for word2vec
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -15,7 +15,7 @@ py_library(
         "__init__.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":gen_word2vec",
         ":word2vec",
@@ -82,7 +82,7 @@ cc_library(
     srcs = [
         "word2vec_ops.cc",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
     ],
@@ -94,7 +94,7 @@ cc_library(
     srcs = [
         "word2vec_kernels.cc",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core",
     ],
@@ -116,5 +116,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
