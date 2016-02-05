@@ -119,12 +119,12 @@ def res_net(x, y, activation=tf.nn.relu):
             raise ValueError('input_shape should be square')
         x = tf.reshape(x, [-1, ndim, ndim, 1])
 
-    # First convolution expands to 64 channels and downsamples
+    # First convolution expands to 64 channels
     net = conv2d(x, 64, k_h=7, k_w=7,
                  batch_norm=True, name='conv1',
                  activation=activation)
 
-    # Max pool and downsampling
+    # Max pool
     net = tf.nn.max_pool(
         net, [1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME')
 

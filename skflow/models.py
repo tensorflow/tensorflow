@@ -136,6 +136,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
             rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
             rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
                                              sequence_length=sequence_length,
                                              initial_state=initial_state)
