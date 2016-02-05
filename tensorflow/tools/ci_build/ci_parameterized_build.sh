@@ -41,6 +41,11 @@
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/...
+#   TF_BUILD_SERIAL_TESTS:
+#                      Build parallely, but test serially
+#                      (i.e., bazel test --job=1), potentially useful for
+#                      builds where the tests cannot be run in parallel due to
+#                      resource contention (e.g., for GPU builds)
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -68,6 +73,9 @@ NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names"
 
 BAZEL_CMD="bazel test"
+BAZEL_BUILD_ONLY_CMD="bazel build"
+BAZEL_SERIAL_FLAG="--jobs=1"
+
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
@@ -92,6 +100,7 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
+ecoh "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
@@ -152,6 +161,15 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
     # Run Bazel
     MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+
+    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
+       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
+      BUILD_CMD="${BAZLE_BUILD_ONLY_CMD} ${OPT_FLAG}"\
+"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+      MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BUILD_CMD} && "\
+"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
+"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+    fi
   elif [[ ${CTYPE} == "android" ]]; then
     MAIN_CMD="${MAIN_CMD} ${CTYPE} ${ANDROID_CMD} ${OPT_FLAG} "
   fi
