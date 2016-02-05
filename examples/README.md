@@ -17,7 +17,8 @@ Examples of Using skflow
 Image classification
 --------------------
 
-* [MNIST example](mnist.py)
+* [Convolutional Neural Networks on MNIST Data](mnist.py)
+* [Deep Residual Networks on MNIST Data](resnet.py)
 
 
 Text classification

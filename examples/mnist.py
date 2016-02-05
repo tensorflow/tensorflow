@@ -19,7 +19,7 @@ It follows description from this TensorFlow tutorial:
 """
 
 import random
-from sklearn import datasets, cross_validation, metrics
+from sklearn import metrics
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data

@@ -94,6 +94,8 @@ class TensorFlowTrainer(object):
         self.trainer = self._optimizer.apply_gradients(grads_and_vars,
                                                        global_step=global_step,
                                                        name="train")
+        # Update ops during training, e.g. batch_norm_ops
+        self.trainer = tf.group(self.trainer, *tf.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
         self._initializers = tf.initialize_all_variables()
 
