@@ -12,26 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Test for version 1 of the zero_out op."""
-
+"""ZeroOut op Python library."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=g-bad-import-order
+# pylint: disable=unused-import
+import os.path
+
 import tensorflow.python.platform
 
 import tensorflow as tf
-from tensorflow.g3doc.how_tos.adding_an_op import zero_out_op_1
 
-
-class ZeroOut1Test(tf.test.TestCase):
-
-  def test(self):
-    with self.test_session():
-      result = zero_out_op_1.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
-
-
-if __name__ == '__main__':
-  tf.test.main()
+_zero_out_module = tf.load_op_library(
+    os.path.join(tf.resource_loader.get_data_files_path(),
+                 'zero_out_op_kernel_1.so'))
+zero_out = _zero_out_module.zero_out

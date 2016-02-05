@@ -581,11 +581,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                       sequence_length=sequence_length)
     self.assertEqual(len(outputs), len(inputs))
     for out in outputs:
-      if use_sequence_length:
-        # Merging with the zero state makes the dimensions None.
-        self.assertEqual(out.get_shape().as_list(), [None, None])
-      else:
-        self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
+      self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
                                                      else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)

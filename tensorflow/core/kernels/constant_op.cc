@@ -123,7 +123,7 @@ struct FillFunctor<CPUDevice, T> {
 template <typename T>
 struct SetZeroFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(0);
+    out.device(d) = out.constant(T());
   }
 };
 
@@ -213,11 +213,8 @@ class ZerosLikeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
-    Tensor zero(DataTypeToEnum<T>::value, {1});
-    zero.scalar<T>().setZero();
-    const Tensor& zero_cref = zero;
-    functor::FillFunctor<Device, T> functor;
-    functor(ctx->eigen_device<Device>(), out->flat<T>(), zero_cref.scalar<T>());
+    functor::SetZeroFunctor<Device, T> f;
+    f(ctx->eigen_device<Device>(), out->flat<T>());
   }
 };
 
@@ -231,10 +228,13 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU(type) REGISTER_KERNEL(type, GPU)
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(bool);
-#undef REGISTER_GPU
+REGISTER_KERNEL(float, GPU);
+REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL_BUILDER(Name("ZerosLike")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        ZerosLikeOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNEL

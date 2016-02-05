@@ -627,11 +627,9 @@ def zeros_like(tensor, dtype=None, name=None):
   """
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    zeros_shape = shape(tensor)
-    if dtype is None:
-      dtype = tensor.dtype
-    ret = zeros(zeros_shape, dtype=dtype, name=name)
-    ret.set_shape(tensor.get_shape())
+    ret = gen_array_ops._zeros_like(tensor)
+    if (dtype is not None) and (tensor.dtype != dtype):
+      ret = gen_math_ops.cast(ret, dtype)
     return ret
 
 
@@ -905,17 +903,21 @@ def _SqueezeShape(op):
   result_shape = []
   for i, dim in enumerate([d.value for d in input_shape.dims]):
     is_explicit_match = i in wrapped_squeeze_dims
-    if is_explicit_match or not wrapped_squeeze_dims:
-      if dim is None:
+    if dim is None:
+      if is_explicit_match:
+        # Assume that the squeezed dimension will be 1 at runtime.
+        continue
+      if not wrapped_squeeze_dims:
+        # If squeezing all 1 dimensions and we see a None, give up.
         return [tensor_shape.unknown_shape()]
-      if dim != 1:
-        if is_explicit_match:
-          raise ValueError(
-              "Can not squeeze dim[%d], expected a dimension of 1, got %d." % (
-                  i, dim))
-        result_shape.append(dim)
-    else:
-      result_shape.append(dim)
+    elif dim == 1:
+      if is_explicit_match or not wrapped_squeeze_dims:
+        continue
+    elif is_explicit_match:
+      raise ValueError(
+          "Can not squeeze dim[%d], expected a dimension of 1, got %d." % (
+              i, dim))
+    result_shape.append(dim)
   return [tensor_shape.TensorShape(result_shape)]
 
 

@@ -99,6 +99,19 @@ class InstallHeaders(Command):
     # directories for -I
     install_dir = re.sub('/google/protobuf/src', '', install_dir)
 
+    # Copy eigen code into tensorflow/include and
+    # tensorflow/include/external/eigen_archive/eigen-eigen-<revision>.
+    # A symlink would do, but the wheel file that gets created ignores
+    # symlink within the directory hierarchy.
+    # NOTE(keveman): Figure out how to customize bdist_wheel package so
+    # we can do the symlink.
+    if re.search(r'(external/eigen_archive/eigen-eigen-\w+)', install_dir):
+      extra_dir = re.sub(r'/external/eigen_archive/eigen-eigen-\w+', '',
+                         install_dir)
+      if not os.path.exists(extra_dir):
+        self.mkpath(extra_dir)
+      self.copy_file(header, extra_dir)
+
     if not os.path.exists(install_dir):
       self.mkpath(install_dir)
     return self.copy_file(header, install_dir)

@@ -48,12 +48,17 @@ class TEST_EventMgrHelper {
   }
 
   void PollEvents(bool is_dedicated_poller) {
-    EventMgr::ToFreeVector to_free;
-    {
-      mutex_lock l(em_->mu_);
-      em_->PollEvents(is_dedicated_poller, &to_free);
+    while (queue_size() > 0) {
+      // For ordinary tensor frees, this function
+      // should synchronously harvest all complete
+      // events and execute the corresponding memory frees.
+      EventMgr::ToFreeVector to_free;
+      {
+        mutex_lock l(em_->mu_);
+        em_->PollEvents(is_dedicated_poller, &to_free);
+      }
+      em_->FreeMemory(to_free);
     }
-    em_->FreeMemory(to_free);
   }
 
   void StopPollingLoop() { em_->StopPollingLoop(); }
@@ -171,7 +176,7 @@ TEST(EventMgr, ManySmallTensorsFlushedImmediately) {
       AddTensorReference(&v, 100 * 1024);
     }
     em.ThenDeleteTensors(stream.get(), v);
-    th.PollEvents(false);  // Ensure things get registered to be freed by Poll
+    th.PollEvents(false);  // Harvest the tensors ready to be freed.
     EXPECT_EQ(0, live_tensor_bytes);
   }
 }

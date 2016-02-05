@@ -141,9 +141,6 @@ class AlphaNum {
 
 extern AlphaNum gEmptyAlphaNum;
 
-using strings::AlphaNum;
-using strings::gEmptyAlphaNum;
-
 // ----------------------------------------------------------------------
 // StrCat()
 //    This merges the given strings or numbers, with no delimiter.  This

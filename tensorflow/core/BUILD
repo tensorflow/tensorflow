@@ -24,8 +24,10 @@
 #     common_runtime/: Common code for execution of graphs
 #     public/: Public APIs for running graphs
 # ":core" - The code for ":core_cpu" plus a GPU runtime
+# ":kernel_lib" - Library with code common to multiple kernel implementations.
 # ":gpu_kernels" - The gpu-specific kernels
-# ":kernels" - The cpu-specific kernels, plus ":gpu_kernels" if built with Cuda
+# ":all_kernels" - The cpu-specific kernels, plus ":gpu_kernels" if
+#     built with Cuda
 # ":tensorflow_opensource" - The complete open-source package, including
 #      ":kernels", ":core", and a Session implementation.
 # ":tensorflow" - "tensorflow_opensource" plus some Google-internal libraries.
@@ -408,8 +410,11 @@ tf_gpu_kernel_library(
     ],
 )
 
+# Common libraries used for implementing kernels.
+# TODO(josh11b): This also currently includes all the kernel implementations,
+# should split that out into the ":all_kernels" target.
 tf_cuda_library(
-    name = "kernels",
+    name = "kernel_lib",
     # TODO(josh11b): Pull common dependencies out into a separate library.
     srcs = glob(
         [
@@ -443,15 +448,37 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This includes implementations of all kernels built into TensorFlow.
+tf_cuda_library(
+    name = "all_kernels",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_lib",
+    ],
+)
+
+# DEPRECATED: Use either ":all_kernels" and/or ":kernel_lib" instead.
+# We need to get rid of this library before we can make the kernels
+# directory its own package, due to name conflicts.
+tf_cuda_library(
+    name = "kernels",
+    hdrs = glob(["kernels/**/*.h"]),
+    deprecation = "use ':all_kernels' or ':kernel_lib' instead",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "tensorflow_opensource",
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":all_kernels",
         ":core",
         ":direct_session",
         ":gpu_runtime",
-        ":kernels",
         ":lib",
     ],
 )
@@ -488,11 +515,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
-        ":kernels",
+        ":kernel_lib",
         ":lib",
         ":protos_all_cc",
         ":tensorflow",  # TODO(josh11b): Drop this dep?
@@ -1071,13 +1099,14 @@ tf_cc_tests(
         ],
     ),
     deps = [
+        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
         ":framework",
         ":framework_internal",
-        ":kernels",
+        ":kernel_lib",
         ":lib",
         ":lib_internal",
         ":ops",
@@ -1102,13 +1131,14 @@ tf_cc_tests(
         ],
     ),
     deps = [
+        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
         ":framework",
         ":framework_internal",
         ":gpu_runtime",
-        ":kernels",
+        ":kernel_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",

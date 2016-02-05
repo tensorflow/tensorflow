@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -81,7 +83,11 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   outputs = []
   with vs.variable_scope(scope or "RNN"):
-    batch_size = array_ops.shape(inputs[0])[0]
+    fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
+    if fixed_batch_size.value:
+      batch_size = fixed_batch_size.value
+    else:
+      batch_size = array_ops.shape(inputs[0])[0]
     if initial_state is not None:
       state = initial_state
     else:
@@ -92,6 +98,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     if sequence_length:  # Prepare variables
       zero_output = array_ops.zeros(
           array_ops.pack([batch_size, cell.output_size]), inputs[0].dtype)
+      zero_output.set_shape(
+          tensor_shape.TensorShape([fixed_batch_size.value, cell.output_size]))
       min_sequence_length = math_ops.reduce_min(sequence_length)
       max_sequence_length = math_ops.reduce_max(sequence_length)
 
@@ -189,11 +197,13 @@ def _dynamic_rnn_step(
   """
   # Step 1: determine whether we need to call_cell or not
   empty_update = lambda: (zero_output, state)
+  state_shape = state.get_shape()
   output, new_state = control_flow_ops.cond(
       time < max_sequence_length, call_cell, empty_update)
 
   # Step 2: determine whether we need to copy through state and/or outputs
   existing_output_state = lambda: (output, new_state)
+
   def copy_through():
     # Use broadcasting select to determine which values should get
     # the previous state & zero output, and which values should get
@@ -202,8 +212,11 @@ def _dynamic_rnn_step(
     return (math_ops.select(copy_cond, zero_output, output),
             math_ops.select(copy_cond, state, new_state))
 
-  return control_flow_ops.cond(
+  (output, state) = control_flow_ops.cond(
       time < min_sequence_length, existing_output_state, copy_through)
+  output.set_shape(zero_output.get_shape())
+  state.set_shape(state_shape)
+  return (output, state)
 
 
 def _reverse_seq(input_seq, lengths):

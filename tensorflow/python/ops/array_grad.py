@@ -169,6 +169,9 @@ def _FillGrad(_, grad):
   return None, math_ops.reduce_sum(grad)
 
 
+ops.NoGradient("ZerosLike")
+
+
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   # op.inputs[0] can be large, so colocate the shape calculation with it.
