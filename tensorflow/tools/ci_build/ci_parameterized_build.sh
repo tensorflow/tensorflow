@@ -164,7 +164,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
     if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
        [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
-      BUILD_CMD="${BAZLE_BUILD_ONLY_CMD} ${OPT_FLAG}"\
+      BUILD_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
       echo BUILD_CMD=${BUILD_CMD}
       MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BUILD_CMD} && "\
