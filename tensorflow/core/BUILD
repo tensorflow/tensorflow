@@ -1081,8 +1081,9 @@ tf_cc_tests(
             # TODO(opensource): fix
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
-            "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
+            "common_runtime/gpu/gpu_region_allocator_test.cc",
         ],
     ),
     deps = [
@@ -1116,7 +1117,34 @@ tf_cc_tests(
             "user_ops/**/*_test.cc",
             "common_runtime/gpu/*_test.cc",
         ],
+        exclude = [
+            # Run by tests below
+            "common_runtime/gpu/gpu_allocator_retry_test.cc",
+        ],
     ),
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":kernel_lib",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+    ],
+)
+
+tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",
