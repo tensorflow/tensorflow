@@ -24,6 +24,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import script_ops
+from six.moves import xrange
 
 
 class PyOpTest(tf.test.TestCase):
@@ -100,7 +101,7 @@ class PyOpTest(tf.test.TestCase):
       self.assertAllClose(x.eval(), 42.0)
 
   def testCleanup(self):
-    for _ in range(1000):
+    for _ in xrange(1000):
       g = tf.Graph()
       with g.as_default():
         c = tf.constant([1.], tf.float32)
