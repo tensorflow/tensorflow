@@ -18,8 +18,6 @@ import tensorflow as tf
 
 import skflow
 
-random.seed(42)
-
 # Load dataset and split it into train / test subsets.
 
 digits = datasets.load_digits()
