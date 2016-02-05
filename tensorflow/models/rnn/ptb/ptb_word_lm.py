@@ -132,8 +132,7 @@ class PTBModel(object):
     logits = tf.matmul(output, softmax_w) + softmax_b
     loss = seq2seq.sequence_loss_by_example([logits],
                                             [tf.reshape(self._targets, [-1])],
-                                            [tf.ones([batch_size * num_steps])],
-                                            vocab_size)
+                                            [tf.ones([batch_size * num_steps])])
     self._cost = cost = tf.reduce_sum(loss) / batch_size
     self._final_state = state
 

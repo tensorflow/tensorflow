@@ -296,27 +296,26 @@ class Seq2SeqTest(tf.test.TestCase):
 
   def testSequenceLoss(self):
     with self.test_session() as sess:
-      output_classes = 5
       logits = [tf.constant(i + 0.5, shape=[2, 5]) for i in range(3)]
       targets = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
       weights = [tf.constant(1.0, shape=[2]) for i in range(3)]
 
       average_loss_per_example = tf.nn.seq2seq.sequence_loss(
-          logits, targets, weights, output_classes,
+          logits, targets, weights,
           average_across_timesteps=True,
           average_across_batch=True)
       res = sess.run(average_loss_per_example)
       self.assertAllClose(1.60944, res)
 
       average_loss_per_sequence = tf.nn.seq2seq.sequence_loss(
-          logits, targets, weights, output_classes,
+          logits, targets, weights,
           average_across_timesteps=False,
           average_across_batch=True)
       res = sess.run(average_loss_per_sequence)
       self.assertAllClose(4.828314, res)
 
       total_loss = tf.nn.seq2seq.sequence_loss(
-          logits, targets, weights, output_classes,
+          logits, targets, weights,
           average_across_timesteps=False,
           average_across_batch=False)
       res = sess.run(total_loss)
@@ -331,13 +330,13 @@ class Seq2SeqTest(tf.test.TestCase):
       weights = [tf.constant(1.0, shape=[2]) for i in range(3)]
 
       average_loss_per_example = tf.nn.seq2seq.sequence_loss_by_example(
-          logits, targets, weights, output_classes,
+          logits, targets, weights,
           average_across_timesteps=True)
       res = sess.run(average_loss_per_example)
       self.assertAllClose(np.asarray([1.609438, 1.609438]), res)
 
       loss_per_sequence = tf.nn.seq2seq.sequence_loss_by_example(
-          logits, targets, weights, output_classes,
+          logits, targets, weights,
           average_across_timesteps=False)
       res = sess.run(loss_per_sequence)
       self.assertAllClose(np.asarray([4.828314, 4.828314]), res)
@@ -357,7 +356,7 @@ class Seq2SeqTest(tf.test.TestCase):
               enc_inp, dec_inp, cell, classes, classes)
         targets = [dec_inp[i+1] for i in range(len(dec_inp) - 1)] + [0]
         return tf.nn.seq2seq.model_with_buckets(
-            enc_inp, dec_inp, targets, weights, buckets, classes, GRUSeq2Seq)
+            enc_inp, dec_inp, targets, weights, buckets, GRUSeq2Seq)
 
       # Now we construct the copy model.
       inp = [tf.placeholder(tf.int32, shape=[None]) for _ in range(8)]
@@ -396,8 +395,7 @@ class Seq2SeqTest(tf.test.TestCase):
           labels = tf.reshape(labels, [-1, 1])
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, 8, classes)
         return tf.nn.seq2seq.model_with_buckets(
-            enc_inp, dec_inp, targets, weights,
-            buckets, classes, GRUSeq2Seq,
+            enc_inp, dec_inp, targets, weights, buckets, GRUSeq2Seq,
             softmax_loss_function=SampledLoss)
 
       # Now we construct the copy model.

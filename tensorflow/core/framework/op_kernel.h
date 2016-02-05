@@ -148,13 +148,13 @@ class OpKernel {
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
+  const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
+  const MemoryTypeVector output_memory_types_;
   const int graph_def_version_;
   const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
-  MemoryTypeVector input_memory_types_;
-  MemoryTypeVector output_memory_types_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -207,8 +207,10 @@ class OpKernelConstruction {
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
                        const DataTypeSlice& input_types,
-                       const DataTypeSlice& output_types, int graph_def_version,
-                       Status* status)
+                       const MemoryTypeSlice& input_memory_types,
+                       const DataTypeSlice& output_types,
+                       const MemoryTypeSlice& output_memory_types,
+                       int graph_def_version, Status* status)
       : device_type_(device_type),
         device_(device),
         allocator_(allocator),
@@ -216,7 +218,9 @@ class OpKernelConstruction {
         op_def_(op_def),
         flib_(flib),
         input_types_(input_types),
+        input_memory_types_(input_memory_types),
         output_types_(output_types),
+        output_memory_types_(output_memory_types),
         graph_def_version_(graph_def_version),
         status_(status) {}
 
@@ -264,11 +268,17 @@ class OpKernelConstruction {
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
   const DataTypeSlice& input_types() const { return input_types_; }
+  const MemoryTypeSlice& input_memory_types() const {
+    return input_memory_types_;
+  }
 
   // For inspecting the outputs expected from this operation.
   int num_outputs() const { return output_types_.size(); }
   DataType output_type(int i) const { return output_types_[i]; }
   const DataTypeSlice& output_types() const { return output_types_; }
+  const MemoryTypeSlice& output_memory_types() const {
+    return output_memory_types_;
+  }
 
   // If expected_inputs == inputs() and expected_outputs == output_types(),
   // returns OK, else returns INVALID_ARGUMENT with an error message.
@@ -311,7 +321,9 @@ class OpKernelConstruction {
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
   DataTypeSlice input_types_;
+  MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
+  MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
 

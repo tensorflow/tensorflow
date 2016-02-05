@@ -22,26 +22,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import os
 import socket
-import threading
-import time
 
 import tensorflow.python.platform
-
-import six
-from six.moves import BaseHTTPServer
-from six.moves import socketserver
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
-from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard.backend import tensorboard_handler
+from tensorflow.tensorboard.backend import tensorboard_server
 
 flags.DEFINE_string('logdir', None, """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.
@@ -67,63 +59,6 @@ flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
 FLAGS = flags.FLAGS
 
-# How many elements to store per tag, by tag type
-TENSORBOARD_SIZE_GUIDANCE = {
-    event_accumulator.COMPRESSED_HISTOGRAMS: 500,
-    event_accumulator.IMAGES: 4,
-    event_accumulator.SCALARS: 1000,
-    event_accumulator.HISTOGRAMS: 1,
-}
-
-# How often to reload new data after the latest load (secs)
-LOAD_INTERVAL = 60
-
-
-def ParseEventFilesFlag(flag_value):
-  """Parses the logdir flag into a map from paths to run group names.
-
-  The events files flag format is a comma-separated list of path specifications.
-  A path specification either looks like 'group_name:/path/to/directory' or
-  '/path/to/directory'; in the latter case, the group is unnamed. Group names
-  cannot start with a forward slash: /foo:bar/baz will be interpreted as a
-  spec with no name and path '/foo:bar/baz'.
-
-  Globs are not supported.
-
-  Args:
-    flag_value: A comma-separated list of run specifications.
-  Returns:
-    A dict mapping directory paths to names like {'/path/to/directory': 'name'}.
-    Groups without an explicit name are named after their path. If flag_value
-    is None, returns an empty dict, which is helpful for testing things that
-    don't require any valid runs.
-  """
-  files = {}
-  if flag_value is None:
-    return files
-  for specification in flag_value.split(','):
-    # If the spec looks like /foo:bar/baz, then we assume it's a path with a
-    # colon.
-    if ':' in specification and specification[0] != '/':
-      # We split at most once so run_name:/path:with/a/colon will work.
-      run_name, path = specification.split(':', 1)
-    else:
-      run_name = None
-      path = specification
-
-    if not os.path.isabs(path):
-      # Create absolute path out of relative one.
-      path = os.path.join(os.path.realpath('.'), path)
-
-    files[path] = run_name
-  return files
-
-
-class ThreadedHTTPServer(socketserver.ThreadingMixIn,
-                         BaseHTTPServer.HTTPServer):
-  """A threaded HTTP server."""
-  daemon = True
-
 
 def main(unused_argv=None):
   if FLAGS.debug:
@@ -136,37 +71,22 @@ def main(unused_argv=None):
     return -1
 
   logging.info('Starting TensorBoard in directory %s', os.getcwd())
-
-  path_to_run = ParseEventFilesFlag(FLAGS.logdir)
+  path_to_run = tensorboard_server.ParseEventFilesSpec(FLAGS.logdir)
   logging.info('TensorBoard path_to_run is: %s', path_to_run)
+
   multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=TENSORBOARD_SIZE_GUIDANCE)
-  # Ensure the Multiplexer initializes in a loaded state before it adds runs
-  # So it can handle HTTP requests while runs are loading
-
-  multiplexer.Reload()
-  def _Load():
-    start = time.time()
-    for (path, name) in six.iteritems(path_to_run):
-      multiplexer.AddRunsFromDirectory(path, name)
-    multiplexer.Reload()
-    duration = time.time() - start
-    logging.info('Multiplexer done loading. Load took %0.1f secs', duration)
-    t = threading.Timer(LOAD_INTERVAL, _Load)
-    t.daemon = True
-    t.start()
-  t = threading.Timer(0, _Load)
-  t.daemon = True
-  t.start()
-
-  factory = functools.partial(tensorboard_handler.TensorboardHandler,
-                              multiplexer)
+      size_guidance=tensorboard_server.TENSORBOARD_SIZE_GUIDANCE)
+  tensorboard_server.StartMultiplexerReloadingThread(multiplexer, path_to_run)
   try:
-    server = ThreadedHTTPServer((FLAGS.host, FLAGS.port), factory)
+    server = tensorboard_server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
   except socket.error:
-    logging.error('Tried to connect to port %d, but that address is in use.',
-                  FLAGS.port)
-    return -2
+    if FLAGS.port == 0:
+      logging.error('Unable to find any open ports.')
+    else:
+      logging.error('Tried to connect to port %d, but that address is in use.',
+                    FLAGS.port)
+    return -1
+
   try:
     tag = resource_loader.load_resource('tensorboard/TAG').strip()
     logging.info('TensorBoard is tag: %s', tag)

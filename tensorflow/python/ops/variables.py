@@ -185,27 +185,20 @@ class Variable(object):
       with ops.op_scope([initial_value], name, "Variable") as name:
         self._initial_value = ops.convert_to_tensor(initial_value,
                                                     name="initial_value")
-        if not self._initial_value.get_shape().is_fully_defined():
-          if validate_shape:
-            raise ValueError(
-                "initial_value must have a shape specified: %s"
-                % self._initial_value)
-          self._variable = state_ops.variable_op(
-              [], self._initial_value.dtype.base_dtype, set_shape=False,
-              name=name)
-          with ops.device(self._variable.device):
-            self._initializer_op = state_ops.assign(
-                self._variable, self._initial_value, validate_shape=False).op
-            self._snapshot = array_ops.identity(self._variable, name="read")
-        else:
-          self._variable = state_ops.variable_op(
-              self._initial_value.get_shape(),
-              self._initial_value.dtype.base_dtype,
-              name=name)
-          with ops.device(self._variable.device):
-            self._initializer_op = state_ops.assign(
-                self._variable, self._initial_value).op
-            self._snapshot = array_ops.identity(self._variable, name="read")
+        initial_value_shape = self._initial_value.get_shape()
+        if validate_shape and not initial_value_shape.is_fully_defined():
+          raise ValueError("initial_value must have a shape specified: %s"
+                           % self._initial_value)
+        shape_to_set = initial_value_shape if validate_shape else []
+        self._variable = state_ops.variable_op(
+            shape_to_set, self._initial_value.dtype.base_dtype,
+            set_shape=validate_shape, name=name)
+        with ops.device(self._variable.device):
+          self._initializer_op = state_ops.assign(
+              self._variable, self._initial_value,
+              validate_shape=validate_shape).op
+          self._snapshot = array_ops.identity(self._variable, name="read")
+
     ops.add_to_collections(collections, self)
     self._save_slice_info = None
 
