@@ -260,7 +260,7 @@ def _py_wrap_cc_impl(ctx):
   ctx.action(executable=ctx.executable.swig_binary,
              arguments=args,
              mnemonic="PythonSwig",
-             inputs=list(set([src]) + cc_includes + ctx.files.swig_includes +
+             inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
              progress_message="SWIGing {input}".format(input=src.path))

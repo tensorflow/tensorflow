@@ -381,7 +381,7 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : type_(type), shape_(shape), buf_(nullptr) {
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
 }
@@ -390,7 +390,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
                const AllocationAttributes& allocation_attr)
     : type_(type), shape_(shape), buf_(nullptr) {
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
 }

@@ -122,7 +122,7 @@ class TensorArray : public ResourceBase {
     mutex_lock l(mu_);
     values->clear();
     values->resize(tensors_.size());
-    for (int32 i = 0; i < tensors_.size(); ++i) {
+    for (std::size_t i = 0; i < tensors_.size(); ++i) {
       TF_RETURN_IF_ERROR(LockedRead(i, &(*values)[i]));
     }
     return Status::OK();

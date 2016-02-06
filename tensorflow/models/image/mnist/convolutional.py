@@ -81,14 +81,13 @@ def extract_data(filename, num_images):
 
 
 def extract_labels(filename, num_images):
-  """Extract the labels into a 1-hot matrix [image index, label index]."""
+  """Extract the labels into a vector of int64 label IDs."""
   print('Extracting', filename)
   with gzip.open(filename) as bytestream:
     bytestream.read(8)
     buf = bytestream.read(1 * num_images)
-    labels = numpy.frombuffer(buf, dtype=numpy.uint8)
-  # Convert to dense 1-hot representation.
-  return (numpy.arange(NUM_LABELS) == labels[:, None]).astype(numpy.float32)
+    labels = numpy.frombuffer(buf, dtype=numpy.uint8).astype(numpy.int64)
+  return labels
 
 
 def fake_data(num_images):
@@ -96,19 +95,19 @@ def fake_data(num_images):
   data = numpy.ndarray(
       shape=(num_images, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS),
       dtype=numpy.float32)
-  labels = numpy.zeros(shape=(num_images, NUM_LABELS), dtype=numpy.float32)
+  labels = numpy.zeros(shape=(num_images,), dtype=numpy.int64)
   for image in xrange(num_images):
     label = image % 2
     data[image, :, :, 0] = label - 0.5
-    labels[image, label] = 1.0
+    labels[image] = label
   return data, labels
 
 
 def error_rate(predictions, labels):
-  """Return the error rate based on dense predictions and 1-hot labels."""
+  """Return the error rate based on dense predictions and sparse labels."""
   return 100.0 - (
       100.0 *
-      numpy.sum(numpy.argmax(predictions, 1) == numpy.argmax(labels, 1)) /
+      numpy.sum(numpy.argmax(predictions, 1) == labels) /
       predictions.shape[0])
 
 
@@ -146,8 +145,7 @@ def main(argv=None):  # pylint: disable=unused-argument
   train_data_node = tf.placeholder(
       tf.float32,
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-  train_labels_node = tf.placeholder(tf.float32,
-                                     shape=(BATCH_SIZE, NUM_LABELS))
+  train_labels_node = tf.placeholder(tf.int64, shape=(BATCH_SIZE,))
   eval_data = tf.placeholder(
       tf.float32,
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
@@ -222,7 +220,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   # Training computation: logits + cross-entropy loss.
   logits = model(train_data_node, True)
-  loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+  loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
       logits, train_labels_node))
 
   # L2 regularization for the fully connected parameters.
