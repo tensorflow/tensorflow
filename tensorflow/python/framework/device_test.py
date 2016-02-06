@@ -29,9 +29,9 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
   def testEmpty(self):
     d = device.Device()
-    self.assertEquals("", d.ToString())
+    self.assertEquals("", d.to_string())
     d.parse_from_string("")
-    self.assertEquals("", d.ToString())
+    self.assertEquals("", d.to_string())
 
   def testConstructor(self):
     d = device.Device(job="j", replica=0, task=1,
@@ -117,23 +117,46 @@ class DeviceTest(test_util.TensorFlowTestCase):
     d.merge_from(device.from_string("/job:muu/device:MyFunnyDevice:2"))
     self.assertEquals("/job:muu/task:1/device:MyFunnyDevice:2", d.to_string())
 
+  def testCanonicalName(self):
+    self.assertEqual("/job:foo/replica:0",
+                     device.canonical_name("/job:foo/replica:0"))
+    self.assertEqual("/job:foo/replica:0",
+                     device.canonical_name("/replica:0/job:foo"))
+
+    self.assertEqual("/job:foo/replica:0/task:0",
+                     device.canonical_name("/job:foo/replica:0/task:0"))
+    self.assertEqual("/job:foo/replica:0/task:0",
+                     device.canonical_name("/job:foo/task:0/replica:0"))
+
+    self.assertEqual("/device:CPU:0",
+                     device.canonical_name("/device:CPU:0"))
+    self.assertEqual("/device:GPU:2",
+                     device.canonical_name("/device:GPU:2"))
+
+    self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
+                     device.canonical_name(
+                         "/job:foo/replica:0/task:0/gpu:0"))
+    self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
+                     device.canonical_name(
+                         "/gpu:0/task:0/replica:0/job:foo"))
+
   def testCheckValid(self):
-    device.CheckValid("/job:foo/replica:0")
+    device.check_valid("/job:foo/replica:0")
 
     with self.assertRaises(Exception) as e:
-      device.CheckValid("/job:j/replica:foo")
+      device.check_valid("/job:j/replica:foo")
     self.assertTrue("invalid literal for int" in e.exception.message)
 
     with self.assertRaises(Exception) as e:
-      device.CheckValid("/job:j/task:bar")
+      device.check_valid("/job:j/task:bar")
     self.assertTrue("invalid literal for int" in e.exception.message)
 
     with self.assertRaises(Exception) as e:
-      device.CheckValid("/bar:muu/baz:2")
+      device.check_valid("/bar:muu/baz:2")
     self.assertTrue("Unknown attribute: 'bar'" in e.exception.message)
 
     with self.assertRaises(Exception) as e:
-      device.CheckValid("/cpu:0/gpu:2")
+      device.check_valid("/cpu:0/gpu:2")
     self.assertTrue("Cannot specify multiple device" in e.exception.message)
 
 

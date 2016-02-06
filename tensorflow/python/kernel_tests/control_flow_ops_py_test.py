@@ -416,7 +416,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       for op in x.graph.get_operations():
         if op.name == "cond/Add/Switch":
-          self.assertEqual(op.device, "/cpu:0")
+          self.assertDeviceEqual(op.device, "/cpu:0")
 
   def _testCond_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -1390,14 +1390,14 @@ class ControlFlowTest(tf.test.TestCase):
       vnod = tf.Variable([0.0])
       with_vnod_dep = control_flow_ops.with_dependencies([vnod.initializer],
                                                          vnod)
-      self.assertEquals(None, with_vnod_dep.device)
+      self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
       vdef = tf.Variable([0.0])
       with tf.device("/job:worker/gpu:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
-        self.assertEquals("/job:worker/gpu:1", with_vdef_dep.device)
+        self.assertDeviceEqual("/job:worker/gpu:1", with_vdef_dep.device)
 
   def testGroup(self):
     with self.test_session() as sess:

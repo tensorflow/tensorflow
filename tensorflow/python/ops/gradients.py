@@ -158,7 +158,7 @@ def _GetGradsDevice(op, colocate_gradients_with_ops):
   if colocate_gradients_with_ops and op.device:
     return op.device
   else:
-    return op.graph.get_default_device()
+    return ""
 
 
 def _PendingCount(graph, to_ops, from_ops):

@@ -343,6 +343,18 @@ py_test(
 )
 
 py_test(
+    name = "framework_device_test",
+    srcs = ["framework/device_test.py"],
+    main = "framework/device_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
     name = "framework_tensor_shape_div_test",
     srcs = ["framework/tensor_shape_div_test.py"],
     main = "framework/tensor_shape_div_test.py",

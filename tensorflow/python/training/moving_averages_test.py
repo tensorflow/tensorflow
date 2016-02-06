@@ -179,17 +179,17 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
 
   def testAverageVariablesDeviceAssignment(self):
-    with tf.device("dev_v0"):
+    with tf.device("/job:dev_v0"):
       v0 = tf.Variable(10.0, name="v0")
-    with tf.device("dev_v1"):
+    with tf.device("/job:dev_v1"):
       v1 = state_ops.variable_op(shape=[1], dtype=tf.float32, name="v1")
     tensor2 = v0 + v1
     ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
-    with tf.device("default"):
+    with tf.device("/job:default"):
       ema.apply([v0, v1, tensor2])
-    self.assertEqual("dev_v0", ema.average(v0).device)
-    self.assertEqual("dev_v1", ema.average(v1).device)
-    self.assertEqual("default", ema.average(tensor2).device)
+    self.assertDeviceEqual("/job:dev_v0", ema.average(v0).device)
+    self.assertDeviceEqual("/job:dev_v1", ema.average(v1).device)
+    self.assertDeviceEqual("/job:default", ema.average(tensor2).device)
 
 
 if __name__ == "__main__":
