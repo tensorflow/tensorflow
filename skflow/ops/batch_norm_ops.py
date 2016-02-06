@@ -19,32 +19,41 @@ import tensorflow as tf
 from tensorflow.python import control_flow_ops
 
 
-def batch_normalize(X, epsilon=1e-5, scale_after_normalization=True):
+def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
+                    scale_after_normalization=True):
     """Batch Normalization
 
     Args:
-        X: Input Tensor
+        tensor_in: input Tensor, 4D shape:
+                   [batch, in_height, in_width, in_depth].
         epsilon : A float number to avoid being divided by 0.
+        decay: decay rate for exponential moving average.
+        convnet: Whether this is for convolutional net use. If this is True,
+                 moments will sum across axis [0, 1, 2]. Otherwise, only [0].
         scale_after_normalization: Whether to scale after normalization.
     """
-    shape = X.get_shape().as_list()
+    shape = tensor_in.get_shape().as_list()
 
     with tf.variable_scope("batch_norm"):
         gamma = tf.get_variable("gamma", [shape[-1]],
                                 initializer=tf.random_normal_initializer(1., 0.02))
         beta = tf.get_variable("beta", [shape[-1]],
                                initializer=tf.constant_initializer(0.))
-        ema = tf.train.ExponentialMovingAverage(decay=0.9)
-        assign_mean, assign_var = tf.nn.moments(X, [0, 1, 2])
+        ema = tf.train.ExponentialMovingAverage(decay=decay)
+        if convnet:
+            assign_mean, assign_var = tf.nn.moments(tensor_in, [0, 1, 2])
+        else:
+            assign_mean, assign_var = tf.nn.moments(tensor_in, [0])
         ema_assign_op = ema.apply([assign_mean, assign_var])
         ema_mean, ema_var = ema.average(assign_mean), ema.average(assign_var)
         def update_mean_var():
+            """Internal function that updates mean and variance during training"""
             with tf.control_dependencies([ema_assign_op]):
                 return tf.identity(assign_mean), tf.identity(assign_var)
-        IS_TRAINING = tf.get_collection("IS_TRAINING") # TODO: this is always empty
+        IS_TRAINING = tf.get_collection("IS_TRAINING")[-1]
         mean, variance = control_flow_ops.cond(IS_TRAINING,
                                                update_mean_var,
                                                lambda: (ema_mean, ema_var))
         return tf.nn.batch_norm_with_global_normalization(
-            X, mean, variance, beta, gamma, epsilon,
+            tensor_in, mean, variance, beta, gamma, epsilon,
             scale_after_normalization=scale_after_normalization)
