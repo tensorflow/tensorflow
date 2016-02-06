@@ -16,6 +16,8 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
+from tensorflow.python import control_flow_ops
+
 
 def batch_normalize(X, epsilon=1e-5, scale_after_normalization=True):
     """Batch Normalization
@@ -32,7 +34,17 @@ def batch_normalize(X, epsilon=1e-5, scale_after_normalization=True):
                                 initializer=tf.random_normal_initializer(1., 0.02))
         beta = tf.get_variable("beta", [shape[-1]],
                                initializer=tf.constant_initializer(0.))
-        mean, variance = tf.nn.moments(X, [0, 1, 2])
+        ema = tf.train.ExponentialMovingAverage(decay=0.9)
+        assign_mean, assign_var = tf.nn.moments(X, [0, 1, 2])
+        ema_assign_op = ema.apply([assign_mean, assign_var])
+        ema_mean, ema_var = ema.average(assign_mean), ema.average(assign_var)
+        def update_mean_var():
+            with tf.control_dependencies([ema_assign_op]):
+                return tf.identity(assign_mean), tf.identity(assign_var)
+        IS_TRAINING = tf.get_collection("IS_TRAINING") # TODO: this is always empty
+        mean, variance = control_flow_ops.cond(IS_TRAINING,
+                                               update_mean_var,
+                                               lambda: (ema_mean, ema_var))
         return tf.nn.batch_norm_with_global_normalization(
             X, mean, variance, beta, gamma, epsilon,
             scale_after_normalization=scale_after_normalization)

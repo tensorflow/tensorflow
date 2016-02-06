@@ -101,6 +101,7 @@ class TensorFlowEstimator(BaseEstimator):
     def _setup_training(self):
         """Sets up graph, model and trainer."""
         self._graph = tf.Graph()
+        self._graph.add_to_collection("IS_TRAINING", True)
         with self._graph.as_default():
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(
@@ -241,6 +242,7 @@ class TensorFlowEstimator(BaseEstimator):
     def _predict(self, X):
         if not self._initialized:
             raise NotFittedError()
+        self._graph.add_to_collection("IS_TRAINING", False)
         predict_data_feeder = setup_predict_data_feeder(X)
         preds = []
         dropouts = self._graph.get_collection(DROPOUTS)
