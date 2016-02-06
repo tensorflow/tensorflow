@@ -121,7 +121,10 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "SessionInterface",
                    "BaseSession", "NameAttrList", "AttrValue",
-                   "TensorArray", "OptimizerOptions"]
+                   "TensorArray", "OptimizerOptions",
+                   "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
+                   "SaverDef", "VariableDef",
+                  ]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

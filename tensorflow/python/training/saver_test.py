@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import os.path
 import time
 import contextlib
@@ -30,6 +31,8 @@ import tensorflow as tf
 import numpy as np
 import six
 
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.platform import gfile
 
 
@@ -712,6 +715,257 @@ class CheckpointStateTest(tf.test.TestCase):
     self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
+
+
+class MetaGraphTest(tf.test.TestCase):
+
+  def _TestDir(self, test_name):
+    test_dir = os.path.join(self.get_temp_dir(), test_name)
+    if os.path.exists(test_dir):
+      shutil.rmtree(test_dir)
+    gfile.MakeDirs(test_dir)
+    return test_dir
+
+  def testAddCollectionDef(self):
+    test_dir = self._TestDir("good_collection")
+    filename = os.path.join(test_dir, "metafile")
+    with self.test_session():
+      # Creates a graph.
+      v0 = tf.Variable(10.0, name="v0")
+      var = tf.Variable(tf.constant(0, dtype=tf.int64))
+      count_up_to = var.count_up_to(3)
+      input_queue = tf.FIFOQueue(30, tf.float32, shared_name="collection_queue")
+      qr = tf.train.QueueRunner(input_queue, [count_up_to])
+      tf.initialize_all_variables()
+      # Creates a saver.
+      save = tf.train.Saver({"v0": v0})
+      # Adds a set of collections.
+      tf.add_to_collection("int_collection", 3)
+      tf.add_to_collection("float_collection", 3.5)
+      tf.add_to_collection("string_collection", "hello")
+      tf.add_to_collection("variable_collection", v0)
+      # Add QueueRunners.
+      tf.train.add_queue_runner(qr)
+      # Adds user_defined proto in three formats: string and bytes.
+      queue_runner = queue_runner_pb2.QueueRunnerDef(queue_name="test_queue")
+      tf.add_to_collection("user_defined_string_collection", str(queue_runner))
+      tf.add_to_collection("user_defined_bytes_collection",
+                           queue_runner.SerializeToString())
+
+      # Generates MetaGraphDef.
+      meta_graph_def = save.export_meta_graph(filename)
+      self.assertTrue(meta_graph_def.HasField("saver_def"))
+      self.assertTrue(meta_graph_def.HasField("graph_def"))
+      collection_def = meta_graph_def.collection_def
+      self.assertEqual(len(collection_def), 9)
+
+    with tf.Graph().as_default():
+      # Restores from MetaGraphDef.
+      new_saver = tf.train.import_meta_graph(filename)
+      # Generates a new MetaGraphDef.
+      new_meta_graph_def = new_saver.export_meta_graph()
+      # It should be the same as the original.
+      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+
+  def testAddCollectionDefFails(self):
+    with self.test_session():
+      # Creates a graph.
+      v0 = tf.Variable(10.0, name="v0")
+      # Creates a saver.
+      save = tf.train.Saver({"v0": v0})
+      # Generates MetaGraphDef.
+      meta_graph_def = meta_graph_pb2.MetaGraphDef()
+
+      # Verifies that collection with unsupported key will not be added.
+      tf.add_to_collection(save, 3)
+      save._add_collection_def(meta_graph_def, save)
+      self.assertEqual(len(meta_graph_def.collection_def), 0)
+
+      # Verifies that collection where item type does not match expected
+      # type will not be added.
+      tf.add_to_collection("int_collection", 3)
+      tf.add_to_collection("int_collection", 3.5)
+      save._add_collection_def(meta_graph_def, "int_collection")
+      self.assertEqual(len(meta_graph_def.collection_def), 0)
+
+  def _testMultiSaverCollectionSave(self):
+    test_dir = self._TestDir("saver_collection")
+    filename = os.path.join(test_dir, "metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Creates a graph.
+      v0 = tf.Variable(10.0, name="v0")
+      v1 = tf.Variable(11.0, name="v1")
+      # Creates 2 savers.
+      saver0 = tf.train.Saver({"v0": v0}, name="saver0")
+      saver1 = tf.train.Saver({"v1": v1}, name="saver1")
+      tf.add_to_collection("savers", saver0)
+      tf.add_to_collection("savers", saver1)
+      tf.initialize_all_variables().run()
+      # Saves to different checkpoints.
+      saver0.save(sess, saver0_ckpt)
+      saver1.save(sess, saver1_ckpt)
+      # Generates MetaGraphDef.
+      meta_graph_def = tf.train.export_meta_graph(filename)
+      meta_graph_def0 = saver0.export_meta_graph()
+      meta_graph_def1 = saver1.export_meta_graph()
+
+      # Verifies that there is no saver_def in meta_graph_def.
+      self.assertFalse(meta_graph_def.HasField("saver_def"))
+      # Verifies that there is saver_def in meta_graph_def0 and 1.
+      self.assertTrue(meta_graph_def0.HasField("saver_def"))
+      self.assertTrue(meta_graph_def1.HasField("saver_def"))
+
+      # Verifies SAVERS is saved as bytes_list for meta_graph_def.
+      collection_def = meta_graph_def.collection_def["savers"]
+      kind = collection_def.WhichOneof("kind")
+      self.assertEqual(kind, "bytes_list")
+      # Verifies that there are 2 entries in SAVERS collection.
+      savers = getattr(collection_def, kind)
+      self.assertEqual(2, len(savers.value))
+
+      # Verifies SAVERS collection is saved as bytes_list for meta_graph_def0.
+      collection_def = meta_graph_def0.collection_def["savers"]
+      kind = collection_def.WhichOneof("kind")
+      self.assertEqual(kind, "bytes_list")
+      # Verifies that there are 3 entries in SAVERS collection.
+      savers = getattr(collection_def, kind)
+      self.assertEqual(2, len(savers.value))
+
+  def _testMultiSaverCollectionRestore(self):
+    test_dir = os.path.join(self.get_temp_dir(), "saver_collection")
+    filename = os.path.join(test_dir, "metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Imports from meta_graph.
+      tf.train.import_meta_graph(filename)
+      # Retrieves SAVERS collection. Verifies there are 2 entries.
+      savers = tf.get_collection("savers")
+      self.assertEqual(2, len(savers))
+      # Retrieves saver0. Verifies that new_saver0 can restore v0, but not v1.
+      new_saver0 = savers[0]
+      new_saver0.restore(sess, saver0_ckpt)
+      v0 = sess.graph.get_tensor_by_name("v0:0")
+      v1 = sess.graph.get_tensor_by_name("v1:0")
+      self.assertEqual(10.0, v0.eval())
+      with self.assertRaisesWithPredicateMatch(
+          tf.OpError, lambda e: "uninitialized value v1" in e.message):
+        sess.run(v1)
+      # Retrieves saver1. Verifies that new_saver1 can restore v1.
+      new_saver1 = savers[1]
+      new_saver1.restore(sess, saver1_ckpt)
+      v1 = sess.graph.get_tensor_by_name("v1:0")
+      self.assertEqual(11.0, v1.eval())
+
+  def testMultiSaverCollection(self):
+    self._testMultiSaverCollectionSave()
+    self._testMultiSaverCollectionRestore()
+
+  def testSliceVariable(self):
+    test_dir = self._TestDir("slice_saver")
+    filename = os.path.join(test_dir, "metafile")
+    with self.test_session():
+      v1 = tf.Variable([20.0], name="v1")
+      v2 = tf.Variable([20.0], name="v2")
+      v2._set_save_slice_info(tf.Variable.SaveSliceInfo("v1", [1], [0], [1]))
+
+      # The names are different and will work.
+      slice_saver = tf.train.Saver({"first": v1, "second": v2})
+      tf.initialize_all_variables().run()
+      # Exports to meta_graph
+      meta_graph_def = slice_saver.export_meta_graph(filename)
+
+    with tf.Graph().as_default():
+      # Restores from MetaGraphDef.
+      new_saver = tf.train.import_meta_graph(filename)
+      # Generates a new MetaGraphDef.
+      new_meta_graph_def = new_saver.export_meta_graph()
+      # It should be the same as the original.
+      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+
+  def _testGraphExtensionSave(self):
+    test_dir = self._TestDir("graph_extension")
+    filename = os.path.join(test_dir, "metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Creates an inference graph.
+      # Hidden 1
+      images = tf.constant(1.2, tf.float32, shape=[100, 28])
+      with tf.name_scope("hidden1"):
+        weights = tf.Variable(
+            tf.truncated_normal([28, 128],
+                                stddev=1.0 / math.sqrt(float(28))),
+            name="weights")
+        biases = tf.Variable(tf.zeros([128]),
+                             name="biases")
+        hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+      # Hidden 2
+      with tf.name_scope("hidden2"):
+        weights = tf.Variable(
+            tf.truncated_normal([128, 32],
+                                stddev=1.0 / math.sqrt(float(128))),
+            name="weights")
+        biases = tf.Variable(tf.zeros([32]),
+                             name="biases")
+        hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+      # Linear
+      with tf.name_scope("softmax_linear"):
+        weights = tf.Variable(
+            tf.truncated_normal([32, 10],
+                                stddev=1.0 / math.sqrt(float(32))),
+            name="weights")
+        biases = tf.Variable(tf.zeros([10]),
+                             name="biases")
+        logits = tf.matmul(hidden2, weights) + biases
+        tf.add_to_collection("logits", logits)
+
+      # Runs to logit.
+      tf.initialize_all_variables().run()
+      sess.run(logits)
+      # Creates a saver.
+      saver0 = tf.train.Saver()
+      saver0.save(sess, saver0_ckpt)
+      # Generates MetaGraphDef.
+      saver0.export_meta_graph(filename)
+
+  def _testGraphExtensionRestore(self):
+    test_dir = os.path.join(self.get_temp_dir(), "graph_extension")
+    filename = os.path.join(test_dir, "metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Restores from MetaGraphDef.
+      new_saver = tf.train.import_meta_graph(filename)
+      # Generates a new MetaGraphDef.
+      new_saver.export_meta_graph()
+      # Restores from checkpoint.
+      new_saver.restore(sess, saver0_ckpt)
+      # Addes loss and train.
+      labels = tf.constant(0, tf.int32, shape=[100], name="labels")
+      batch_size = tf.size(labels)
+      labels = tf.expand_dims(labels, 1)
+      indices = tf.expand_dims(tf.range(0, batch_size), 1)
+      concated = tf.concat(1, [indices, labels])
+      onehot_labels = tf.sparse_to_dense(
+          concated, tf.pack([batch_size, 10]), 1.0, 0.0)
+      logits = tf.get_collection("logits")[0]
+      cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
+                                                              onehot_labels,
+                                                              name="xentropy")
+      loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
+
+      tf.scalar_summary(loss.op.name, loss)
+      # Creates the gradient descent optimizer with the given learning rate.
+      optimizer = tf.train.GradientDescentOptimizer(0.01)
+
+      # Runs train_op.
+      train_op = optimizer.minimize(loss)
+      sess.run(train_op)
+
+  def testGraphExtension(self):
+    self._testGraphExtensionSave()
+    self._testGraphExtensionRestore()
 
 
 if __name__ == "__main__":
