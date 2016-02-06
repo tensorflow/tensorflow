@@ -1612,8 +1612,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   """
   with ops.op_scope(dependencies + [output_tensor], name,
                     "control_dependency") as name:
-    with ops.device(output_tensor.device
-                    or ops.get_default_graph().get_default_device()):
+    with ops.device(output_tensor.device):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
         if isinstance(output_tensor, ops.Tensor):

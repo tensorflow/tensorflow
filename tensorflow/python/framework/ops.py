@@ -1135,10 +1135,10 @@ class Operation(object):
 
     Returns:
       The string name of the device to which this op has been
-      assigned, or None if it has not been assigned to a device.
+      assigned, or an empty string if it has not been assigned to a
+      device.
     """
-    dev = self._node_def.device
-    return None if not dev else dev
+    return self._node_def.device
 
   def _set_device(self, device):
     """Set the device of this operation.
@@ -1737,7 +1737,6 @@ class Graph(object):
   @@get_tensor_by_name
   @@get_operations
 
-  @@get_default_device
   @@seed
   @@unique_name
   @@version
@@ -1757,8 +1756,6 @@ class Graph(object):
     self._name_stack = ("", "")
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
-    # Default device applied to new ops.
-    self._default_device = None
     # Functions that will be applied to choose a device if none is specified.
     self._device_function_stack = []
     # Default original_op applied to new ops.
@@ -2013,8 +2010,7 @@ class Graph(object):
     else:
       name = self.unique_name(name)
 
-    node_def = _NodeDef(
-        op_type, name, device=self._default_device or None, attrs=attrs)
+    node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
 
     # Apply a kernel label if one has been specified for this op_type.
     try:
@@ -2046,6 +2042,8 @@ class Graph(object):
     # We apply here because the result can depend on the Operation's
     # signature, which is computed in the Operation constructor.
     for device_function in reversed(self._device_function_stack):
+      if device_function is None:
+        break
       ret._set_device(device_function(ret))
     return ret
 
@@ -2489,54 +2487,6 @@ class Graph(object):
     else:
       return name
 
-  def _set_default_device(self, dev):
-    """Set the default device properties.
-
-    Args:
-      dev: string or Device.
-    """
-    self._default_device = _device_string(dev)
-
-  def get_default_device(self):
-    """Returns the default device.
-
-    Returns:
-      A string.
-    """
-    return self._default_device
-
-  def _push_default_device_function(self, device_function):
-    """Pushes the given function onto the stack of device functions.
-
-    See `Graph.device` for more details.
-
-    Args:
-      device_function: The function to be pushed onto the stack of device
-        functions.
-    """
-    self._device_function_stack.append(device_function)
-
-  def _pop_default_device_function(self, device_function):
-    """Pops the given function from the stack of device functions.
-
-    See `Graph.device` for more details.
-
-    Args:
-      device_function: The function to be popped from the stack of device
-        functions.
-
-    Raises:
-      ValueError: if the device_function to be popped is not top of the stack,
-        or if the stack is empty.
-    """
-    if not self._device_function_stack:
-      raise ValueError("Tried to pop, but the device function stack is empty")
-    if self._device_function_stack[-1] is not device_function:
-      raise ValueError("Tried to pop device function, but it was not on top "
-                       "of the stack")
-
-    self._device_function_stack.pop()
-
   @contextlib.contextmanager
   def device(self, device_name_or_function):
     """Returns a context manager that specifies the default device to use.
@@ -2545,12 +2495,14 @@ class Graph(object):
     string, a device function, or None:
 
     * If it is a device name string, all operations constructed in
-      this context will be assigned to the device with that name.
+      this context will be assigned to the device with that name, unless
+      overridden by a nested `device()` context.
     * If it is a function, it will be treated as function from
       Operation objects to device name strings, and invoked each time
       a new Operation is created. The Operation will be assigned to
       the device with the returned name.
-    * If it is None, the default device will be cleared.
+    * If it is None, all `device()` invocations from the enclosing context
+      will be ignored.
 
     For example:
 
@@ -2583,19 +2535,17 @@ class Graph(object):
       A context manager that specifies the default device to use for newly
       created ops.
     """
-    if callable(device_name_or_function):
-      try:
-        self._push_default_device_function(device_name_or_function)
-        yield
-      finally:
-        self._pop_default_device_function(device_name_or_function)
+    if (device_name_or_function is not None
+        and not callable(device_name_or_function)):
+      device_function = pydev.merge_device(device_name_or_function)
     else:
-      try:
-        old_dev = self.get_default_device()
-        self._set_default_device(_device_string(device_name_or_function))
-        yield
-      finally:
-        self._set_default_device(old_dev)
+      device_function = device_name_or_function
+
+    try:
+      self._device_function_stack.append(device_function)
+      yield
+    finally:
+      self._device_function_stack.pop()
 
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""

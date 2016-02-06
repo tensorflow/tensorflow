@@ -192,17 +192,27 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
     stream->Init();
     VLOG(2) << "Created stream[" << i << "] = " << stream;
 
-    auto copy_in_stream = new gpu::Stream(executor);
-    copy_in_stream->Init();
-    VLOG(2) << "Created copy_in_stream[" << i << "] = " << copy_in_stream;
+    auto host_to_device_stream = new gpu::Stream(executor);
+    host_to_device_stream->Init();
+    VLOG(2) << "Created host_to_device_stream[" << i
+            << "] = " << host_to_device_stream;
 
-    auto copy_out_stream = new gpu::Stream(executor);
-    copy_out_stream->Init();
-    VLOG(2) << "Created copy_out_stream[" << i << "] = " << copy_out_stream;
-    streams_.push_back({stream, copy_in_stream, copy_out_stream});
+    auto device_to_host_stream = new gpu::Stream(executor);
+    device_to_host_stream->Init();
+    VLOG(2) << "Created device_to_host_stream[" << i
+            << "] = " << device_to_host_stream;
+
+    auto device_to_device_stream = new gpu::Stream(executor);
+    device_to_device_stream->Init();
+    VLOG(2) << "Created device_to_device_stream[" << i
+            << "] = " << device_to_device_stream;
+
+    streams_.push_back({stream, host_to_device_stream, device_to_host_stream,
+                        device_to_device_stream});
 
     device_contexts_.push_back(
-        new GPUDeviceContext(i, stream, copy_in_stream, copy_out_stream));
+        new GPUDeviceContext(i, stream, host_to_device_stream,
+                             device_to_host_stream, device_to_device_stream));
   }
   gpu_device_info_ = new GpuDeviceInfo;
   gpu_device_info_->stream = streams_[0].compute;
@@ -216,8 +226,9 @@ BaseGPUDevice::~BaseGPUDevice() {
   for (auto ctx : device_contexts_) ctx->Unref();
   for (auto& stream_group : streams_) {
     delete stream_group.compute;
-    delete stream_group.copy_in;
-    delete stream_group.copy_out;
+    delete stream_group.host_to_device;
+    delete stream_group.device_to_host;
+    delete stream_group.device_to_device;
   }
 }
 

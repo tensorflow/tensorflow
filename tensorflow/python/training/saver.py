@@ -30,6 +30,7 @@ from google.protobuf import text_format
 
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
@@ -252,7 +253,8 @@ class BaseSaverBuilder(object):
     """
     per_device = collections.defaultdict(lambda: [])
     for var_to_save in vars_to_save:
-      per_device[var_to_save.var.device].append(var_to_save)
+      canonical_device = pydev.canonical_name(var_to_save.var.device)
+      per_device[canonical_device].append(var_to_save)
     return sorted(per_device.items(), key=lambda t: t[0])
 
   def _VarListToDict(self, var_list):

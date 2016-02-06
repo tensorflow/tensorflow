@@ -167,7 +167,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       with g.device("/gpu:0"):
         wx = math_ops.matmul(w, x)
       gw = gradients.gradients(wx, [w], colocate_gradients_with_ops=True)[0]
-    self.assertEquals("/gpu:0", gw.device)
+    self.assertDeviceEqual("/gpu:0", gw.device)
 
   def testColocateGradientsWithAggregation(self):
     with ops.Graph().as_default() as g:
@@ -180,9 +180,9 @@ class GradientsTest(test_util.TensorFlowTestCase):
       with g.device("/gpu:0"):
         z = wx + wy
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
-      self.assertEquals("/gpu:1", gw1.device)
+      self.assertDeviceEqual("/gpu:1", gw1.device)
       gw2 = gradients.gradients(z, [w], colocate_gradients_with_ops=False)[0]
-      self.assertEquals(None, gw2.device)
+      self.assertDeviceEqual(None, gw2.device)
 
   def testBoundaryStop(self):
     # Test that we don't differentiate 'x'. The gradient function for 'x' is

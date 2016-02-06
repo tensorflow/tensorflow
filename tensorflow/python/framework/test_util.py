@@ -37,6 +37,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
@@ -523,6 +524,18 @@ class TensorFlowTestCase(googletest.TestCase):
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
     self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list())
+
+  def assertDeviceEqual(self, device1, device2):
+    """Asserts that the two given devices are the same.
+
+    Args:
+      device1: A string device name or TensorFlow `Device` object.
+      device2: A string device name or TensorFlow `Device` object.
+    """
+    device1 = pydev.canonical_name(device1)
+    device2 = pydev.canonical_name(device2)
+    self.assertEqual(device1, device2,
+                     "Devices %s and %s are not equal" % (device1, device2))
 
   # Fix Python 3 compatibility issues
   if six.PY3:
