@@ -60,7 +60,8 @@ def res_net(x, y, activation=tf.nn.relu):
 
     # First convolution expands to 64 channels
     with tf.variable_scope('conv_layer1'):
-        net = skflow.ops.conv2d(x, 64, [7, 7], batch_norm=True, activation=activation)
+        net = skflow.ops.conv2d(x, 64, [7, 7], batch_norm=True,
+                                activation=activation, bias=False)
 
     # Max pool
     net = tf.nn.max_pool(
@@ -69,9 +70,10 @@ def res_net(x, y, activation=tf.nn.relu):
     # First chain of resnets
     with tf.variable_scope('conv_layer2'):
         net = skflow.ops.conv2d(net, blocks[0].num_filters,
-                               [1, 1], [1, 1, 1, 1], padding='VALID')
+                               [1, 1], [1, 1, 1, 1],
+                               padding='VALID', bias=True)
 
-    # Create resnets for each res blocks
+    # Create resnets for each residual block
     for block_i, block in enumerate(blocks):
         for layer_i in range(block.num_layers):
 
@@ -81,21 +83,24 @@ def res_net(x, y, activation=tf.nn.relu):
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,
-                                         batch_norm=True)
+                                         batch_norm=True,
+                                         bias=False)
 
             with tf.variable_scope(name + '/conv_bottleneck'):
                 conv = skflow.ops.conv2d(conv, block.bottleneck_size,
                                          [3, 3], [1, 1, 1, 1],
                                          padding='SAME',
                                          activation=activation,
-                                         batch_norm=True)
+                                         batch_norm=True,
+                                         bias=False)
 
             with tf.variable_scope(name + '/conv_out'):
                 conv = skflow.ops.conv2d(conv, block.num_filters,
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,
-                                         batch_norm=True)
+                                         batch_norm=True,
+                                         bias=False)
 
             net = conv + net
 
@@ -104,7 +109,8 @@ def res_net(x, y, activation=tf.nn.relu):
             next_block = blocks[block_i + 1]
             with tf.variable_scope('block_%d/conv_upscale' % block_i):
                 net = skflow.ops.conv2d(net, next_block.num_filters,
-                                        [1, 1], [1, 1, 1, 1], bias=False,
+                                        [1, 1], [1, 1, 1, 1],
+                                        bias=False,
                                         padding='SAME')
         except IndexError:
             pass
