@@ -21,7 +21,7 @@ from __future__ import print_function
 import inspect
 import re
 
-from six.moves import xrange
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2

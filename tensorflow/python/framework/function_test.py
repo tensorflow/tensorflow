@@ -25,6 +25,7 @@ import tensorflow.python.platform
 from six.moves import xrange
 import time
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import function

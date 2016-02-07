@@ -429,12 +429,8 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       string_val, int_val = sess.run(dequeued_t)
 
       self.assertAllEqual(
-          [[b"a", b"", b""],
-           [b"ab", b"", b""],
-           [b"abc", b"", b""],
-           [b"abc", b"d", b""],
-           [b"abc", b"d", b"e"]],
-          string_val)
+          [[b"a", b"", b""], [b"ab", b"", b""], [b"abc", b"", b""],
+           [b"abc", b"d", b""], [b"abc", b"d", b"e"]], string_val)
       self.assertAllEqual(
           [[[1, 0, 0]],
            [[2, 0, 0]],

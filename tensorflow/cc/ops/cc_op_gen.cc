@@ -264,8 +264,8 @@ string GetPath(const std::string& dot_h_fname) {
     // - 1 account for the terminating null character (\0) in "/genfiles/".
     result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
   }
-  if (result.size() > sizeof("external/")
-      && result.compare(0, sizeof("external/") - 1, "external/") == 0) {
+  if (result.size() > sizeof("external/") &&
+      result.compare(0, sizeof("external/") - 1, "external/") == 0) {
     result = result.substr(sizeof("external/") - 1);
     pos = result.find("/");
     if (pos != string::npos) {

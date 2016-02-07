@@ -26,7 +26,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -487,7 +486,7 @@ def _SparseMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("Floor")
-def _FloorGrad(_, grad):
+def _FloorGrad(_, unused_grad):
   return [None]
 
 
