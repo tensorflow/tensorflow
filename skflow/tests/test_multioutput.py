@@ -35,18 +35,6 @@ class MultiOutputTest(tf.test.TestCase):
         score = mean_squared_error(regressor.predict(X), y)
         self.assertLess(score, 10, "Failed with score = {0}".format(score))
 
-    def testMultiClassification(self):
-        """TODO(ilblackdragon): Implement multi-output classification.
-        """
-        random.seed(42)
-        n_classes = 5
-        X, y = datasets.make_multilabel_classification(n_classes=n_classes,
-                                                       random_state=42)
-        #classifier = skflow.TensorFlowLinearClassifier(n_classes=n_classes)
-        #classifier.fit(X, y)
-        #score = accuracy_score(y, classifier.predict(X))
-        #self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-
 
 if __name__ == "__main__":
     tf.test.main()
