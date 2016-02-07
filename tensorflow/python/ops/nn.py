@@ -492,7 +492,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
-def moments(x, axes, name=None):
+def moments(x, axes, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -507,6 +507,7 @@ def moments(x, axes, name=None):
     x: A `Tensor`.
     axes: array of ints.  Axes along which to compute mean and
       variance.
+    keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
@@ -528,7 +529,7 @@ def moments(x, axes, name=None):
       for d in set(axes):
         divisor *= math_ops.cast(x_dynamic_shape[d], x.dtype)
       divisor = math_ops.inv(divisor, name="divisor")
-    axes = constant_op.constant(axes, name="axes")
+    constant_axes = constant_op.constant(axes, name="axes")
     # Note: We do not use Mean here because it is very slow on GPU.
     # Note 2: The expression below is potentially more stable.
     # It is however a bit slower and stability doesn't appear to be an issue.
@@ -536,14 +537,27 @@ def moments(x, axes, name=None):
     # var = math_ops.reduce_sum(math_ops.mul(math_ops.square(x - mean),
     #                                        divisor), axes,
     #                    name="variance")
-    mean = math_ops.mul(math_ops.reduce_sum(x, axes), divisor, name="mean")
+    mean = math_ops.mul(
+        math_ops.reduce_sum(x,
+                            constant_axes,
+                            keep_dims=True),
+        divisor,
+        name="mean")
     # Give x-mean a specific name, so the caller might take advantage of it.
     # The caller should have a fallback plan, however: this tensor may not be
     # available if this function implementation changes.
     x_centered = math_ops.sub(x, mean, name="x_centered")
-    var = math_ops.mul(math_ops.reduce_sum(math_ops.square(x_centered), axes),
-                       divisor, name="variance")
-    return mean, var
+    var = math_ops.mul(
+        math_ops.reduce_sum(
+            math_ops.square(x_centered),
+            constant_axes,
+            keep_dims=keep_dims),
+        divisor,
+        name="variance")
+    if keep_dims:
+      return mean, var
+    else:
+      return array_ops.squeeze(mean, squeeze_dims=axes), var
 
 
 def _sum_rows(x):
