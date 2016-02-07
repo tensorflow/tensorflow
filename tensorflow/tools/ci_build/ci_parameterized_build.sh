@@ -41,6 +41,11 @@
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/...
+#   TF_BUILD_SERIAL_TESTS:
+#                      Build parallely, but test serially
+#                      (i.e., bazel test --job=1), potentially useful for
+#                      builds where the tests cannot be run in parallel due to
+#                      resource contention (e.g., for GPU builds)
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -68,6 +73,9 @@ NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names"
 
 BAZEL_CMD="bazel test"
+BAZEL_BUILD_ONLY_CMD="bazel build"
+BAZEL_SERIAL_FLAG="--jobs=1"
+
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
@@ -92,6 +100,7 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
+echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
@@ -150,8 +159,25 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
   if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
+    MAIN_CMD_PREFIX="${MAIN_CMD}"
     MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+
+    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
+       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
+      # Break the operation into two steps: build and test
+      # The 1st (build) step will be done in parallel, as default
+      # But the 2nd (test) step will be done serially.
+
+      BUILD_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
+"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+      echo "Build-only command: ${BUILD_CMD}"
+
+      MAIN_CMD="${MAIN_CMD_PREFIX} ${CTYPE} ${BUILD_CMD} && "\
+"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
+"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+      echo "Parallel-build + serial-test command: ${MAIN_CMD}"
+    fi
   elif [[ ${CTYPE} == "android" ]]; then
     MAIN_CMD="${MAIN_CMD} ${CTYPE} ${ANDROID_CMD} ${OPT_FLAG} "
   fi
@@ -188,13 +214,29 @@ EXTRA_PARAMS="${EXTRA_PARAMS} ${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
 
 # Finally, do a dry run or call the command
-echo "Final command assembled by parameterized build: "
-echo "CI_DOCKER_EXTRA_PARAMS=\"${EXTRA_PARAMS}\" ${MAIN_CMD}"
+
+# The command, which may consist of multiple parts (e.g., in the case of
+# TF_BUILD_SERIAL_TESTS=1), are written to a bash script, which is
+# then called. The name of the script is randomized to make concurrent
+# builds on the node possible.
+RAND_STR=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
+TMP_SCRIPT=/tmp/ci_parameterized_build_${RAND_STR}.sh
+
+echo "#!/bin/bash" > ${TMP_SCRIPT}
+echo "export CI_DOCKER_EXTRA_PARAMS=\"${EXTRA_PARAMS}\"" >> ${TMP_SCRIPT}
+echo ${MAIN_CMD} >> ${TMP_SCRIPT}
+
+echo "Executing final command (${TMP_SCRIPT})..."
+cat ${TMP_SCRIPT}
+
+chmod +x ${TMP_SCRIPT}
+
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
   echo "*** This is a DRY RUN ***"
 else
-  # Call the command
-  echo "Executing final command..."
-  CI_DOCKER_EXTRA_PARAMS="${EXTRA_PARAMS}" ${MAIN_CMD}
-fi
+  # Actually run the command
+  ${TMP_SCRIPT}
+fi &&
+
+rm -f ${TMP_SCRIPT}
