@@ -47,6 +47,7 @@ Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Reshape", ReshapeGrad);
+REGISTER_OP_GRADIENT("ExpandDims", ReshapeGrad);
 
 Status IdentityGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -259,5 +260,24 @@ Status FillGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Fill", FillGrad);
+
+Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "p: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dp: int32"},
+      // Attr defs
+      {"T: {float, double}"},
+      // Nodes
+      {
+          {{"q"}, "InvertPermutation", {"p"}, {}},
+          {{"dx"}, "Transpose", {"dy", "q"}, {{"T", "$T"}}},
+          {{"dp"}, "ZerosLike", {"p"}, {{"T", DT_INT32}}},
+      });
+  VLOG(1) << "TransposeGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
 
 }  // end namespace tensorflow
