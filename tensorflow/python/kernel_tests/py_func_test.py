@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=g-bad-import-order,unused-import
 import tensorflow.python.platform
+# pylint: enable=g-bad-import-order,unused-import
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
@@ -100,7 +103,7 @@ class PyOpTest(tf.test.TestCase):
       self.assertAllClose(x.eval(), 42.0)
 
   def testCleanup(self):
-    for _ in range(1000):
+    for _ in xrange(1000):
       g = tf.Graph()
       with g.as_default():
         c = tf.constant([1.], tf.float32)

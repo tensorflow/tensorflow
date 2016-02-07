@@ -25,6 +25,8 @@ import tensorflow.python.platform
 import numpy as np
 import tensorflow as tf
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 
 class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
@@ -581,7 +583,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
     self.assertEqual(len(outputs), len(inputs))
     for out in outputs:
       self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
-                                                     else None, 2 * num_units])
+                                                   else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
 

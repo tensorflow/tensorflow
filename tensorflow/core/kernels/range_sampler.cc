@@ -213,7 +213,7 @@ float UnigramSampler::Probability(int64 value) const {
   return unsafe_sampler_.Probability(value);
 }
 
-// Overriding at a high level results in far fewer lock aquisitions.
+// Overriding at a high level results in far fewer lock acquisitions.
 void UnigramSampler::SampleBatchGetExpectedCountAvoid(
     random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
     MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,

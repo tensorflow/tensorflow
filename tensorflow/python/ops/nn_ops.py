@@ -359,7 +359,7 @@ def _TopKShape(op):
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
-  if last is not None and last < k:
+  if last is not None and k is not None and last < k:
     raise ValueError("input.shape %s must have last dimension >= k = %d" %
                      (input_shape, k))
   output_shape = input_shape[:-1].concatenate([k])

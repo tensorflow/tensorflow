@@ -22,6 +22,7 @@ filegroup(
 py_library(
     name = "tensor_util",
     srcs = ["tensor_util.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
     ],
@@ -31,6 +32,7 @@ py_test(
     name = "tensor_util_test",
     size = "small",
     srcs = ["tensor_util_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":tensor_util",
         "//tensorflow:tensorflow_py",

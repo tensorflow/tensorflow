@@ -21,6 +21,8 @@ from __future__ import print_function
 import inspect
 import re
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import op_def_pb2
@@ -159,7 +161,7 @@ def _add_op_node(graph, op, func):
       inp_index += 1
   node.dep.extend([_make_argname_from_tensor_name(x.name)
                    for x in op.control_inputs])
-  for k, v in _get_node_def_attr(op).iteritems():
+  for k, v in _get_node_def_attr(op).items():
     node.attr[k].CopyFrom(v)
   func.node.extend([node])
 
@@ -322,7 +324,7 @@ def define_function(func, input_types):
   if inspect.isfunction(func):
     func_name = func.__name__
   elif inspect.ismethod(func):
-    func_name = func.im_self.__name__ + "." + func.__name__
+    func_name = func.__self__.__name__ + "." + func.__name__
   else:
     raise ValueError("Argument must be a function")
   argspec = inspect.getargspec(func)

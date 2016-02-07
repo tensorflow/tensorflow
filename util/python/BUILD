@@ -19,6 +19,6 @@ genrule(
     outs = [
         "python_checked",
     ],
-    cmd = "OUTPUTDIR=\"$(@D)/\"; ./util/python/python_config.sh --check && touch $$OUTPUTDIR/python_checked",
+    cmd = "OUTPUTDIR=\"$(@D)/\"; $(location :python_config.sh) --check && touch $$OUTPUTDIR/python_checked",
     local = 1,
 )

@@ -23,10 +23,10 @@ limitations under the License.
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
 extern "C" {
-#include "external/jpeg_archive/jpeg-9a/jerror.h"
-#include "external/jpeg_archive/jpeg-9a/jinclude.h"
-#include "external/jpeg_archive/jpeg-9a/jpeglib.h"
-#include "external/jpeg_archive/jpeg-9a/transupp.h"  // for rotations
+#include "jpeg-9a/jerror.h"
+#include "jpeg-9a/jinclude.h"
+#include "jpeg-9a/jpeglib.h"
+#include "jpeg-9a/transupp.h"  // for rotations
 }
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

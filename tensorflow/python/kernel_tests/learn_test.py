@@ -32,7 +32,14 @@ def assert_summary_scope(regexp):
   for summary in tf.get_collection(tf.GraphKeys.SUMMARIES):
     tag = tf.unsupported.constant_value(summary.op.inputs[0])
     assert tag is not None, 'All summaries must have constant tags'
+
     tag = str(tag)
+    # Tags in Python 3 erroneously acquire the 'b\'' prefix and '\'' suffix
+    # This is a temporary measure meant to expediently overcome test failure.
+    # TODO(danmane): Get rid of the extraneous prefix and suffix.
+    if tag.startswith('b\'') and tag.endswith('\''):
+      tag = tag[2:-1]
+
     assert isinstance(tag[0], six.string_types), tag[0]
     assert re.match(regexp, tag), "tag doesn't match %s: %s" % (regexp, tag)
 
@@ -59,8 +66,9 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have all values >= 0.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
-                       'Some summaries should have been added.')
+    self.assertGreater(
+        len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
+        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
@@ -81,8 +89,9 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have all values >= 0.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
-                       'Some summaries should have been added.')
+    self.assertGreater(
+        len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
+        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
@@ -105,8 +114,9 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value <= 6),
                     'Relu6 should have all values <= 6.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
-                       'Some summaries should have been added.')
+    self.assertGreater(
+        len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
+        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
@@ -167,8 +177,8 @@ class FullyConnectedTest(tf.test.TestCase):
                              weight_collections=['unbiased'],
                              bias_collections=['biased'])
 
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
+    self.assertEqual(1, len(tf.get_collection('unbiased')))
+    self.assertEqual(1, len(tf.get_collection('biased')))
 
   def test_all_custom_collections(self):
     tf.learn.fully_connected(self.input,
@@ -177,18 +187,19 @@ class FullyConnectedTest(tf.test.TestCase):
                              weight_collections=['unbiased', 'all'],
                              bias_collections=['biased', 'all'])
 
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
-    self.assertEquals(2, len(tf.get_collection('all')))
-    self.assertEquals(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-                      tf.get_collection('all'))
+    self.assertEqual(1, len(tf.get_collection('unbiased')))
+    self.assertEqual(1, len(tf.get_collection('biased')))
+    self.assertEqual(2, len(tf.get_collection('all')))
+    self.assertEqual(
+        tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
+        tf.get_collection('all'))
 
   def test_no_summaries(self):
     tf.learn.fully_connected(self.input,
                              2,
                              activation_fn=tf.nn.relu,
                              create_summaries=False)
-    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+    self.assertEqual([], tf.get_collection(tf.GraphKeys.SUMMARIES))
 
   # Verify fix of a bug where no_summaries + activation_fn=None led to a
   # NoneType exception.
@@ -197,7 +208,7 @@ class FullyConnectedTest(tf.test.TestCase):
                              2,
                              activation_fn=None,
                              create_summaries=False)
-    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+    self.assertEqual([], tf.get_collection(tf.GraphKeys.SUMMARIES))
 
   def test_regularizer(self):
     cnt = [0]
@@ -264,8 +275,9 @@ class Convolution2dTest(tf.test.TestCase):
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have capped all values.')
 
-    self.assertGreater(tf.get_collection(tf.GraphKeys.SUMMARIES), 0,
-                       'Some summaries should have been added.')
+    self.assertGreater(
+        len(tf.get_collection(tf.GraphKeys.SUMMARIES)), 0,
+        'Some summaries should have been added.')
     self.assertEqual(2,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
@@ -330,8 +342,8 @@ class Convolution2dTest(tf.test.TestCase):
                            weight_collections=['unbiased'],
                            bias_collections=['biased'])
 
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
+    self.assertEqual(1, len(tf.get_collection('unbiased')))
+    self.assertEqual(1, len(tf.get_collection('biased')))
 
   def test_all_custom_collections(self):
     tf.learn.convolution2d(self.input,
@@ -340,18 +352,19 @@ class Convolution2dTest(tf.test.TestCase):
                            weight_collections=['unbiased', 'all'],
                            bias_collections=['biased', 'all'])
 
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
-    self.assertEquals(2, len(tf.get_collection('all')))
-    self.assertEquals(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-                      tf.get_collection('all'))
+    self.assertEqual(1, len(tf.get_collection('unbiased')))
+    self.assertEqual(1, len(tf.get_collection('biased')))
+    self.assertEqual(2, len(tf.get_collection('all')))
+    self.assertEqual(
+        tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
+        tf.get_collection('all'))
 
   def test_no_summaries(self):
     tf.learn.convolution2d(self.input,
                            2, (3, 3),
                            activation_fn=tf.nn.relu,
                            create_summaries=False)
-    self.assertEquals([], tf.get_collection(tf.GraphKeys.SUMMARIES))
+    self.assertEqual([], tf.get_collection(tf.GraphKeys.SUMMARIES))
 
   def test_regularizer(self):
     cnt = [0]
