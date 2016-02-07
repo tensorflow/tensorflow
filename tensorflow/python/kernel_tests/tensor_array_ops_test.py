@@ -114,7 +114,8 @@ class TensorArrayTest(tf.test.TestCase):
           dtype=tf_dtype, tensor_array_name="foo", size=3)
 
       if tf_dtype == tf.string:
-        convert = lambda x: np.asarray(x).astype(np.str)
+        # In Python3, np.str is unicode, while we always want bytes
+        convert = lambda x: np.asarray(x).astype("|S")
       else:
         convert = lambda x: np.asarray(x).astype(dtype)
 

@@ -565,7 +565,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
@@ -614,7 +614,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
