@@ -20,9 +20,11 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 
@@ -56,6 +58,54 @@ def assign_moving_average(variable, value, decay, name=None):
         decay = math_ops.cast(decay, variable.dtype.base_dtype)
       return state_ops.assign_sub(variable, (variable - value) * decay,
                                   name=scope)
+
+
+def weighted_moving_average(
+    value, decay, weight, truediv=True, name="WeightedMovingAvg"):
+  """Compute the weighted moving average of `value`.
+
+  Conceptually, the weighted moving average is:
+    moving_average(value * weight) / moving_average(weight),
+  where a moving average updates by the rule
+    new_value = decay * old_value + (1 - decay) * update
+
+  Args:
+    value: A tensor.
+    decay: A float Tensor or float value.  The moving average decay.
+    weight:  A tensor that keeps the current value of a weight.
+      Shape should be able to multiply `value`.
+    truediv:  Boolean, if True, dividing by moving_average(weight) is floating
+      point division.  If False, use division implied by dtypes.
+    name: Optional name of the returned operation.
+
+  Returns:
+    An Operation that updates the weighted moving average.
+  """
+  # Unlike assign_moving_average, the weighted moving average doesn't modify
+  # user-visible variables. It is the ratio of two internal variables, which are
+  # moving averages of the updates.  Thus, the signature of this function is
+  # quite different than assign_moving_average.
+  with variable_scope.variable_op_scope(
+      [value, weight, decay], name, name) as scope:
+    value_variable = variable_scope.get_variable(
+        "value",
+        initializer=array_ops.zeros_initializer(
+            value.get_shape(), dtype=value.dtype),
+        trainable=False
+    )
+    weight_variable = variable_scope.get_variable(
+        "weight",
+        initializer=array_ops.zeros_initializer(
+            weight.get_shape(), dtype=weight.dtype),
+        trainable=False
+    )
+    numerator = assign_moving_average(value_variable, value * weight, decay)
+    denominator = assign_moving_average(weight_variable, weight, decay)
+
+    if truediv:
+      return math_ops.truediv(numerator, denominator, name=scope.name)
+    else:
+      return math_ops.div(numerator, denominator, name=scope.name)
 
 
 class ExponentialMovingAverage(object):

@@ -31,12 +31,11 @@ py_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = [
-        "freeze_graph.py",
         "freeze_graph_test.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":freeze_graph",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

@@ -4934,6 +4934,7 @@ op {
     description: "Number of negative samples per example."
   }
   summary: "Training via negative sampling."
+  is_stateful: true
 }
 op {
   name: "NextIteration"
@@ -7857,6 +7858,7 @@ op {
     description: "Threshold for word occurrence. Words that appear with higher\nfrequency will be randomly down-sampled. Set to 0 to disable."
   }
   summary: "Parses a text file and creates a batch of examples."
+  is_stateful: true
 }
 op {
   name: "Slice"

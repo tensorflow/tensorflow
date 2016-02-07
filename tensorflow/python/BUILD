@@ -327,6 +327,7 @@ py_test(
         ":platform_test",
         ":session",
         ":test_ops",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -826,16 +827,8 @@ tf_proto_library_py(
         ["**/*.proto"],
         exclude = [
             "util/protobuf/compare_test.proto",
-            "training/saver.proto",
         ],
     ),
-    deps = [":public_protos_py"],
-)
-
-tf_proto_library(
-    name = "public_protos",
-    srcs = ["training/saver.proto"],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(

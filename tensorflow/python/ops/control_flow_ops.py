@@ -629,9 +629,9 @@ class GradLoopState(object):
       # value is not nested in the forward context.
       self.forward_context.Enter()
       push = gen_data_flow_ops._stack_push(enter_acc, value)
+      self.forward_context.Exit()
       # Protect stack push and order it before forward_index.
       self.forward_index.op._add_control_input(push.op)
-      self.forward_context.Exit()
     else:
       # value is in a cond context within the forward context.
       assert isinstance(value_ctxt, CondContext)
@@ -641,13 +641,7 @@ class GradLoopState(object):
         value_ctxt.outer_context.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
         value_ctxt.outer_context.Exit()
-        # Guard with a switch but take the other branch.
-        pred = self.history_map.get(value_ctxt.pred.name)
-        branch = value_ctxt.branch
-        value_ctxt.AddName(push.name)
-        value_ctxt.Enter()
-        push = _SwitchRefOrTensor(push, pred)[1 - branch]
-        value_ctxt.Exit()
+        push.op._set_control_flow_context(value_ctxt)
       else:
         value_ctxt.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
@@ -878,7 +872,6 @@ class ControlFlowState(object):
       A zero tensor of the same shape of op.outputs[index].
     """
     if IsLoopSwitch(op): return None
-
     dead_branch = op.type in {"Switch", "RefSwitch"}
     forward_ctxt = _GetWhileContext(op)
     if forward_ctxt is None:
@@ -898,16 +891,29 @@ class ControlFlowState(object):
         result = _SwitchRefOrTensor(result, pred)[1 - branch]
     else:
       # Unknown shape so keep a history of the shape at runtime.
-      op_ctxt.Enter()
-      zeros_shape = shape(val)
-      op_ctxt.Exit()
+      if dead_branch:
+        # Need to add a special switch to guard the value.
+        pred = op_ctxt.pred
+        branch = op_ctxt.branch
+        op_ctxt.outer_context.Enter()
+        val = _SwitchRefOrTensor(op.inputs[0], pred)[1 - branch]
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.outer_context.Exit()
+        val.op._set_control_flow_context(op_ctxt)
+        zeros_shape.op._set_control_flow_context(op_ctxt)
+      else:
+        op_ctxt.Enter()
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.Exit()
+
       # Add forward accumulator for shape.
       grad_state.grad_context.Exit()
       history_shape = grad_state.AddForwardAccumulator(zeros_shape, dead_branch)
       grad_state.grad_context.Enter()
+
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-          history_shape, zero_shape, dead_branch)
+          history_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
 
