@@ -35,7 +35,9 @@ fi
 
 # Optional arguments - environment variables. For example:
 # CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
-CI_DOCKER_EXTRA_PARAMS=("${CI_DOCKER_EXTRA_PARAMS[@]:---rm}")
+if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
+  CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
+fi
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-tensorflow/tools/ci_build/builds/with_the_same_user tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
 
@@ -64,6 +66,15 @@ else
   GPU_EXTRA_PARAMS=""
 fi
 
+# Determine the docker image name
+DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
+
+# Under Jenkins matrix build, the build tag may contain characters such as
+# commas (,) and equal signs (=), which are not valid inside docker image names.
+DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | sed -e 's/=/_/g' -e 's/,/-/g')
+
+# Convert to all lower-case, as per requirement of Docker image names
+DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
 echo "WORKSAPCE: ${WORKSPACE}"
@@ -72,18 +83,17 @@ echo "COMMAND: ${COMMAND[@]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
 echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
 echo "BUILD_TAG: ${BUILD_TAG}"
-echo "  (docker container name will be ${BUILD_TAG}.${CONTAINER_TYPE})"
+echo "  (docker container name will be ${DOCKER_IMG_NAME})"
 echo ""
 
 
 # Build the docker container.
-echo "Building container (${BUILD_TAG}.${CONTAINER_TYPE})..."
-docker build -t ${BUILD_TAG}.${CONTAINER_TYPE} \
+echo "Building container (${DOCKER_IMG_NAME})..."
+docker build -t ${DOCKER_IMG_NAME} \
     -f ${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE} ${SCRIPT_DIR}
 
-
 # Run the command inside the container.
-echo "Running '${COMMAND[@]}' inside ${BUILD_TAG}.${CONTAINER_TYPE}..."
+echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
@@ -96,6 +106,6 @@ docker run \
     -w /tensorflow \
     ${GPU_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
-    "${BUILD_TAG}.${CONTAINER_TYPE}" \
+    "${DOCKER_IMG_NAME}" \
     ${CI_COMMAND_PREFIX[@]} \
     ${COMMAND[@]}

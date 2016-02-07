@@ -33,6 +33,7 @@ class TopK : public OpKernel {
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
     if (num_inputs() < 2) {  // k is an attr (TopK).
+      OP_DEPRECATED(context, 7, "Use TopKV2 instead");
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     } else {  // k is an input (TopKV2), so we won't know it until Compute.
       k_ = -1;

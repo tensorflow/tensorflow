@@ -31,18 +31,25 @@ namespace gpu = ::perftools::gputools;
 
 class GPUDeviceContext : public DeviceContext {
  public:
+  // Does not take ownership of streams.
   GPUDeviceContext(int stream_id, gpu::Stream* stream,
-                   gpu::Stream* copy_in_stream, gpu::Stream* copy_out_stream)
+                   gpu::Stream* host_to_device_stream,
+                   gpu::Stream* device_to_host_stream,
+                   gpu::Stream* device_to_device_stream)
       : stream_id_(stream_id),
         stream_(stream),
-        copy_in_stream_(copy_in_stream),
-        copy_out_stream_(copy_out_stream) {}
+        host_to_device_stream_(host_to_device_stream),
+        device_to_host_stream_(device_to_host_stream),
+        device_to_device_stream_(device_to_device_stream) {}
 
   ~GPUDeviceContext() override {}
 
   gpu::Stream* stream() const override { return stream_; }
-  gpu::Stream* copy_in_stream() const { return copy_in_stream_; }
-  gpu::Stream* copy_out_stream() const { return copy_out_stream_; }
+  gpu::Stream* host_to_device_stream() const { return host_to_device_stream_; }
+  gpu::Stream* device_to_host_stream() const { return device_to_host_stream_; }
+  gpu::Stream* device_to_device_stream() const {
+    return device_to_device_stream_;
+  }
   int stream_id() const { return stream_id_; }
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
@@ -61,10 +68,12 @@ class GPUDeviceContext : public DeviceContext {
   // The default primary stream to use for this context.
   // All the memory belongs to this stream.
   gpu::Stream* stream_;
-  // The stream to use for copy data into GPU.
-  gpu::Stream* copy_in_stream_;
-  // The stream to use for copy data out of GPU.
-  gpu::Stream* copy_out_stream_;
+  // The stream to use for copy data from host into GPU.
+  gpu::Stream* host_to_device_stream_;
+  // The stream to use for copy data from GPU to host.
+  gpu::Stream* device_to_host_stream_;
+  // The stream to use for copy data between GPU.
+  gpu::Stream* device_to_device_stream_;
 };
 
 }  // namespace tensorflow

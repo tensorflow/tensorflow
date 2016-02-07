@@ -359,7 +359,7 @@ def _TopKShape(op):
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
-  if last is not None and last < k:
+  if last is not None and k is not None and last < k:
     raise ValueError("input.shape %s must have last dimension >= k = %d" %
                      (input_shape, k))
   output_shape = input_shape[:-1].concatenate([k])
@@ -614,12 +614,7 @@ def top_k(input, k=1, sorted=True, name=None):
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  # TODO(irving): Always use v2 once the GraphDef mechanism is unstuck.
-  if isinstance(k, ops.Tensor):
-    op = gen_nn_ops._top_kv2
-  else:
-    op = gen_nn_ops._top_k
-  return op(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
 
 # pylint: enable=invalid-name
