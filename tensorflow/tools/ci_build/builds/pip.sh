@@ -92,6 +92,15 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:${PY_TEST_GPU_BLACKLIST}"
 fi
 
+# Obtain the path to Python binary
+source tools/python_bin_path.sh
+
+# Assume: PYTHON_BIN_PATH is exported by the script above
+if [[ -z "$PYTHON_BIN_PATH" ]]; then
+  echo "PYTHON_BIN_PATH was not provided. Did you run configure?"
+  exit 1
+fi
+
 # Build PIP Wheel file
 PIP_WHL_DIR="pip_test/whl"
 PIP_WHL_DIR=`abs_path ${PIP_WHL_DIR}`  # Get absolute path
@@ -116,7 +125,7 @@ if [[ $2 == "--pip-upgrade" ]]; then
   UPGRADE_OPT="--upgrade"
 fi
 
-pip install -v --user ${UPGRADE_OPT} ${WHL_PATH} &&
+${PYTHON_BIN_PATH} -m pip install -v --user ${UPGRADE_OPT} ${WHL_PATH} &&
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
 # tests-on-install and exit right away
@@ -237,7 +246,7 @@ for TEST_FILE_PATH in ${ALL_PY_TESTS}; do
   # avoid the possibility of picking up dependencies from the
   # source directory
   cd ${PY_TEST_DIR}
-  python ${PY_TEST_DIR}/${TEST_BASENAME} >${TEST_LOG} 2>&1
+  ${PYTHON_BIN_PATH} ${PY_TEST_DIR}/${TEST_BASENAME} >${TEST_LOG} 2>&1
 
   # Check for pass or failure status of the test outtput and exit
   if [[ $? -eq 0 ]]; then
