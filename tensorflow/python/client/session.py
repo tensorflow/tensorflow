@@ -491,7 +491,8 @@ class BaseSession(SessionInterface):
             subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
                                                     allow_operation=False)
           except Exception as e:
-            raise e('Cannot interpret feed_dict key as Tensor: ' + e.args[0])
+            raise TypeError('Cannot interpret feed_dict key as Tensor: '
+                            + e.args[0])
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '

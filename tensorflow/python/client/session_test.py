@@ -856,5 +856,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.partial_run(h2, r2, feed_dict={c: 7})
       self.assertEqual(462, res)
 
+  def testFeedDictKeyException(self):
+    with session.Session() as sess:
+      a = constant_op.constant(1.0, dtypes.float32, name='a')
+      with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
+        sess.run(a, feed_dict={'a': [2.0]})
+    
 if __name__ == '__main__':
   googletest.main()
