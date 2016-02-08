@@ -30,7 +30,7 @@ import tensorflow as tf
 def assert_summary_scope(regexp):
   """Assert that all generated summaries match regexp."""
   for summary in tf.get_collection(tf.GraphKeys.SUMMARIES):
-    tag = tf.unsupported.constant_value(summary.op.inputs[0])
+    tag = tf.contrib.util.constant_value(summary.op.inputs[0])
     assert tag is not None, 'All summaries must have constant tags'
 
     tag = str(tag)

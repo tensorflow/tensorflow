@@ -19,7 +19,6 @@ py_library(
     name = "python",
     srcs = [
         "__init__.py",
-        "unsupported.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__pkg__"],

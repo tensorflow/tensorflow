@@ -50,8 +50,7 @@ def get_module_to_name():
           tf.image: "tf.image",
           tf.nn: "tf.nn",
           tf.train: "tf.train",
-          tf.python_io: "tf.python_io",
-          tf.unsupported: "tf.unsupported",}
+          tf.python_io: "tf.python_io",}
 
 def all_libraries(module_to_name, members, documented):
   # A list of (filename, docs.Library) pairs representing the individual files
@@ -114,7 +113,6 @@ def all_libraries(module_to_name, members, documented):
                                "FeatureList", "FeatureLists",
                                "RankingExample", "SequenceExample"]),
       library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
-      library("unsupported", "Unsupported", tf.unsupported),
   ]
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
