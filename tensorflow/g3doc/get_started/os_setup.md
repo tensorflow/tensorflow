@@ -299,9 +299,9 @@ $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/co
 python3:
 ```bash
 # Use above with python3 and the python3 dist-package (your python version might be different from python3.5).
-$ python -m tensorflow.models.image.mnist.convolutional
+$ python3 -m tensorflow.models.image.mnist.convolutional
 ...
-$ python /usr/local/lib/python3.5/dist-packages/tensorflow/models/image/mnist/convolutional.py
+$ python3 /usr/local/lib/python3.5/dist-packages/tensorflow/models/image/mnist/convolutional.py
 ...
 ```
 
