@@ -91,6 +91,7 @@ print(sess.run(var))
 @@truncated_normal
 @@random_uniform
 @@random_shuffle
+@@random_crop
 @@set_random_seed
 
 """

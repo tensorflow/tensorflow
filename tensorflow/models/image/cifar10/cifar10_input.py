@@ -161,7 +161,7 @@ def distorted_inputs(data_dir, batch_size):
   # distortions applied to the image.
 
   # Randomly crop a [height, width] section of the image.
-  distorted_image = tf.image.random_crop(reshaped_image, [height, width])
+  distorted_image = tf.random_crop(reshaped_image, [height, width, 3])
 
   # Randomly flip the image horizontally.
   distorted_image = tf.image.random_flip_left_right(distorted_image)
