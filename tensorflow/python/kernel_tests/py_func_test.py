@@ -27,7 +27,6 @@ import tensorflow as tf
 
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import script_ops
-from six.moves import xrange
 
 
 class PyOpTest(tf.test.TestCase):

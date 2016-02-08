@@ -25,7 +25,7 @@ from tensorflow.python.training import training_ops
 
 
 class AdagradOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Adagrad algorithm. (http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+  """Optimizer that implements the Adagrad algorithm.
 
   See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
 
