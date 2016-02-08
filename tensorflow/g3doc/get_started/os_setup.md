@@ -272,6 +272,12 @@ You can find out the directory with the following command:
 $ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
 ```
 
+python3:
+```bash
+$ python3 -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
+```
+
+
 The simple demo model for classifying handwritten digits from the MNIST dataset
 is in the sub-directory `models/image/mnist/convolutional.py`.  You can run it from the command
 line as follows:
@@ -287,6 +293,15 @@ Extracting data/t10k-labels-idx1-ubyte.gz
 
 # You can alternatively pass the path to the model program file to the python interpreter.
 $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/convolutional.py
+...
+```
+
+python3:
+```bash
+# Use above with python3 and the python3 dist-package (your python version might be different from python3.5).
+$ python -m tensorflow.models.image.mnist.convolutional
+...
+$ python /usr/local/lib/python3.5/dist-packages/tensorflow/models/image/mnist/convolutional.py
 ...
 ```
 
