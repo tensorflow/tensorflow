@@ -36,6 +36,20 @@ class ConstantOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ConstantOp);
 };
 
+// HostConstantOp differs from ConstantOp in that its output is always
+// in host memory.
+class HostConstantOp : public OpKernel {
+ public:
+  explicit HostConstantOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+  bool IsExpensive() override { return false; }
+  ~HostConstantOp() override {}
+
+ private:
+  Tensor tensor_;
+  TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONSTANT_OP_H_

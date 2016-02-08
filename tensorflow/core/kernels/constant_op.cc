@@ -66,35 +66,24 @@ REGISTER_KERNEL(GPU, bool);
 #undef REGISTER_KERNEL
 #endif
 
-// HostConstantOp differs from ConstantOp in that its output is always
-// in host memory.
-class HostConstantOp : public OpKernel {
- public:
-  explicit HostConstantOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), tensor_(ctx->output_type(0)) {
-    const TensorProto* proto = nullptr;
-    AllocatorAttributes alloc_attr;
-    alloc_attr.set_on_host(true);
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-    OP_REQUIRES_OK(
-        ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
-    OP_REQUIRES(
-        ctx, ctx->output_type(0) == tensor_.dtype(),
-        errors::InvalidArgument(
-            "Type mismatch between value (", DataTypeString(tensor_.dtype()),
-            ") and dtype (", DataTypeString(ctx->output_type(0)), ")"));
-  }
+HostConstantOp::HostConstantOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx), tensor_(ctx->output_type(0)) {
+  const TensorProto* proto = nullptr;
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
+  OP_REQUIRES_OK(
+      ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
+  OP_REQUIRES(
+      ctx, ctx->output_type(0) == tensor_.dtype(),
+      errors::InvalidArgument("Type mismatch between value (",
+                              DataTypeString(tensor_.dtype()), ") and dtype (",
+                              DataTypeString(ctx->output_type(0)), ")"));
+}
 
-  void Compute(OpKernelContext* ctx) override { ctx->set_output(0, tensor_); }
-
-  bool IsExpensive() override { return false; }
-
-  ~HostConstantOp() override {}
-
- private:
-  Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
-};
+void HostConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+}
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
