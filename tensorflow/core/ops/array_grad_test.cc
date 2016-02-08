@@ -277,6 +277,36 @@ TEST_F(ArrayGradTest, ExpandDimsGrad) {
   test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0}));
 }
 
+std::vector<Tensor> SqueezeGrad(const Tensor& x, const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dx", "SymbolicGradient", {"x", "dy"},
+               {{"f", FDH::FunctionRef("Squeeze", {{"T", T}})},
+                {"Tin", DataTypeSlice{T, T}},
+                {"Tout", DataTypeSlice{T}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"dy:0", dy}}, {"dx:0"}, {}, &out));
+  CHECK_EQ(out.size(), 1);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
+TEST_F(ArrayGradTest, SqueezeGrad) {
+  Tensor x(DT_FLOAT, {2, 1, 3});
+  x.flat<float>().setZero();
+  Tensor dy(DT_FLOAT, {2, 3});
+  test::FillIota<float>(&dy, 1);
+  auto dx = SqueezeGrad(x, dy);
+  test::ExpectClose(dx[0],
+                    test::AsTensor<float>({1., 2., 3., 4., 5., 6.}, {2, 1, 3}));
+}
+
 std::vector<Tensor> TransposeGrad(const Tensor& x, const Tensor& p,
                                   const Tensor& dy) {
   auto T = DT_FLOAT;
@@ -314,6 +344,85 @@ TEST_F(ArrayGradTest, TransposeGrad) {
                                 6., 14., 22., 30., 38., 7., 15., 23., 31., 39.},
                                {2, 4, 5}));
   test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0}));
+}
+
+std::vector<Tensor> ReverseGrad(const Tensor& x, const Tensor& dims,
+                                const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dims", "Placeholder", {}, {{"dtype", DT_BOOL}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dx", "SymbolicGradient", {"x", "dims", "dy"},
+               {{"f", FDH::FunctionRef("Reverse", {{"T", T}})},
+                {"Tin", DataTypeSlice{T, DT_BOOL, T}},
+                {"Tout", DataTypeSlice{T, DT_BOOL}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"dims:0", dims}, {"dy:0", dy}},
+                        {"dx:0", "dx:1"}, {}, &out));
+  CHECK_EQ(out.size(), 2);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
+TEST_F(ArrayGradTest, ReverseGrad) {
+  Tensor x(DT_FLOAT, {2, 3});
+  x.flat<float>().setZero();
+  auto dims = test::AsTensor<bool>({false, true});
+  Tensor dy(DT_FLOAT, {2, 3});
+  test::FillIota<float>(&dy, 1);
+  auto dx = ReverseGrad(x, dims, dy);
+  test::ExpectClose(dx[0],
+                    test::AsTensor<float>({3., 2., 1., 6., 5., 4.}, {2, 3}));
+  test::ExpectTensorEqual<bool>(dx[1], test::AsTensor<bool>({false, false}));
+}
+
+std::vector<Tensor> SliceGrad(const Tensor& x, const Tensor& b, const Tensor& s,
+                              const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("b", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("s", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef(
+           "dx", "SymbolicGradient", {"x", "b", "s", "dy"},
+           {{"f", FDH::FunctionRef("Slice", {{"T", T}, {"Index", DT_INT32}})},
+            {"Tin", DataTypeSlice{T, DT_INT32, DT_INT32, T}},
+            {"Tout", DataTypeSlice{T, DT_INT32, DT_INT32}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"b:0", b}, {"s:0", s}, {"dy:0", dy}},
+                        {"dx:0", "dx:1", "dx:2"}, {}, &out));
+  CHECK_EQ(out.size(), 3);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
+TEST_F(ArrayGradTest, SliceGrad) {
+  Tensor x(DT_FLOAT, {2, 3, 4});
+  x.flat<float>().setZero();
+  auto begin = test::AsTensor<int32>({1, 1, 1});
+  auto size = test::AsTensor<int32>({1, 2, 2});
+  Tensor dy(DT_FLOAT, {1, 2, 2});
+  test::FillIota<float>(&dy, 1);
+  auto dx = SliceGrad(x, begin, size, dy);
+  test::ExpectClose(dx[0],
+                    test::AsTensor<float>(
+                        {
+                            0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                            0., 0., 0., 0., 0., 1., 2., 0., 0., 3., 4., 0.,
+                        },
+                        {2, 3, 4}));
+  test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0}));
+  test::ExpectTensorEqual<int32>(dx[2], test::AsTensor<int32>({0, 0, 0}));
 }
 
 }  // namespace tensorflow
