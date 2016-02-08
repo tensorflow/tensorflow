@@ -28,7 +28,7 @@ from tensorflow.python.training import training_ops
 
 
 class AdamOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Adam algorithm (http://arxiv.org/pdf/1412.6980v7.pdf).
+  """Optimizer that implements the Adam algorithm.
 
   See this [paper](http://arxiv.org/pdf/1412.6980v7.pdf).
 
