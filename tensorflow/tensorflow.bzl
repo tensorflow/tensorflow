@@ -190,8 +190,6 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                        **kwargs):
-  # We have to disable variadic templates in Eigen for NVCC even though
-  # std=c++11 are enabled
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
                 "-nvcc_options=relaxed-constexpr"] + cuda_copts
   native.cc_library(
