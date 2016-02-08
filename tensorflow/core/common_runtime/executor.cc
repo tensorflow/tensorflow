@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -417,18 +418,12 @@ class ExecutorState {
   DeviceContextMap device_context_map_;
 
   struct IterationState {
+    explicit IterationState(const Graph* g)
+        : outstanding_ops(0),
+          outstanding_frame_count(0),
+          counts_(g->num_node_ids()) {}
+
     // The state of an iteration.
-
-    // The pending count for each graph node. One copy per iteration.
-    // Iteration i can be garbage collected when it is done.
-    // TODO(yuanbyu): This vector currently has size of the number of nodes
-    // in this partition. This is not efficient if the subgraph for the frame
-    // is only a small subset of the partition. We should make the vector
-    // size to be only the size of the frame subgraph.
-    std::vector<int>* pending_count;
-
-    // The dead input count for each graph node. One copy per iteration.
-    std::vector<int>* dead_count;
 
     // One copy per iteration. For iteration k, i-th node's j-th input is in
     // input_tensors[k][impl_->nodes[i].input_start + j]. An entry is either
@@ -445,12 +440,22 @@ class ExecutorState {
 
     // The number of outstanding frames for each iteration.
     int outstanding_frame_count;
-
-    ~IterationState() {
-      delete pending_count;
-      delete dead_count;
-      delete input_tensors;
+    int pending(int id) { return counts_.pending(id); }
+    int decrement_pending(int id, int v) {
+      return counts_.decrement_pending(id, v);
     }
+    // Mark a merge node as live
+    // REQUIRES: Node corresponding to "id" is a merge node
+    void mark_live(int id) { counts_.mark_live(id); }
+
+    int dead_count(int id) { return counts_.dead_count(id); }
+    void increment_dead_count(int id) { counts_.increment_dead_count(id); }
+
+    ~IterationState() { delete input_tensors; }
+    void InitializePending(const Graph* g);
+
+   private:
+    PendingCounts counts_;
   };
 
   struct FrameState {
@@ -607,9 +612,6 @@ class ExecutorState {
     return strings::StrCat(frame->frame_name, ";", iter_id, ";", name);
   }
 
-  // Initialize the pending count for a graph.
-  static void InitializePending(const Graph* graph, std::vector<int>* pending);
-
   // Find an existing or create a new child frame in the frame 'frame' at
   // iteration 'iter'.
   void FindOrCreateChildFrame(FrameState* frame, int64 iter, const Node* node,
@@ -725,12 +727,8 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   VLOG(2) << "Create frame: " << root_frame_->frame_name;
 
   // Initialize the iteration.
-  IterationState* iter_state = new IterationState;
+  IterationState* iter_state = new IterationState(impl->graph_);
   root_frame_->iterations[0] = iter_state;
-  iter_state->outstanding_ops = 0;
-  iter_state->outstanding_frame_count = 0;
-  iter_state->pending_count = new std::vector<int>;
-  iter_state->dead_count = new std::vector<int>(impl->graph_->num_node_ids());
   iter_state->input_tensors =
       new std::vector<Entry>(impl_->total_input_tensors_);
 
@@ -750,12 +748,11 @@ ExecutorState::~ExecutorState() {
   delete slice_reader_cache_;
 }
 
-void ExecutorState::InitializePending(const Graph* graph,
-                                      std::vector<int>* pending) {
-  pending->resize(graph->num_node_ids());
+void ExecutorState::IterationState::InitializePending(const Graph* graph) {
   for (const Node* n : graph->nodes()) {
     const int id = n->id();
     const int num_in_edges = n->in_edges().size();
+    int initial_count;
     if (IsMerge(n)) {
       // merge waits all control inputs so we initialize the pending
       // count to be the number of control edges.
@@ -766,10 +763,11 @@ void ExecutorState::InitializePending(const Graph* graph,
         }
       }
       // Use bit 0 to indicate if there is a ready live data input.
-      (*pending)[id] = num_control_edges << 1;
+      initial_count = num_control_edges << 1;
     } else {
-      (*pending)[id] = num_in_edges;
+      initial_count = num_in_edges;
     }
+    counts_.set_initial_count(id, initial_count, num_in_edges);
   }
 }
 
@@ -781,8 +779,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
     // Initialize the executor state. We grab the mutex here just to
     // keep the thread safety analysis happy.
     mutex_lock l(mu_);
-    std::vector<int>* pending = root_frame_->iterations[0]->pending_count;
-    InitializePending(graph, pending);
+    root_frame_->iterations[0]->InitializePending(graph);
   }
 
   // Ask the device to fill in the device context map.
@@ -1196,8 +1193,6 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
                                  TaggedNodeSeq* ready) {
   const std::vector<NodeItem>& nodes = impl_->nodes_;
   IterationState* output_iter_state = output_frame->GetIteration(output_iter);
-  std::vector<int>* pending = output_iter_state->pending_count;
-  std::vector<int>* dead_count = output_iter_state->dead_count;
   for (const Edge* e : node->out_edges()) {
     const Node* dst_node = e->dst();
     const int dst_id = dst_node->id();
@@ -1214,22 +1209,24 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
       // a) a live data input becomes available or b) all data inputs are dead.
       // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
-        (*pending)[dst_id] -= 2;
-        int count = (*pending)[dst_id];
-        dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+        output_iter_state->decrement_pending(dst_id, 2);
+        int count = output_iter_state->pending(dst_id);
+        dst_dead =
+            (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
         dst_ready = (count == 1) || ((count == 0) && dst_dead);
       } else {
         if (outputs[src_slot].has_value) {
           // This is a live data input.
-          int count = (*pending)[dst_id];
-          (*pending)[dst_id] |= 0x1;
+          int count = output_iter_state->pending(dst_id);
+          output_iter_state->mark_live(dst_id);
           dst_ready = (count == 0);
           dst_need_input = (count & 0x1) == 0;
         } else {
           // This is a dead data input.
-          ++(*dead_count)[dst_id];
-          dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
-          dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
+          output_iter_state->increment_dead_count(dst_id);
+          dst_dead =
+              (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
+          dst_ready = (output_iter_state->pending(dst_id) == 0) && dst_dead;
           dst_need_input = false;
         }
       }
@@ -1238,10 +1235,10 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
       // for all inputs to come in even if we know the node is dead. This
       // ensures that all input tensors get cleaned up.
       if (is_dead || (!e->IsControlEdge() && !outputs[src_slot].has_value)) {
-        ++(*dead_count)[dst_id];
+        output_iter_state->increment_dead_count(dst_id);
       }
-      dst_dead = (*dead_count)[dst_id] > 0;
-      dst_ready = (--(*pending)[dst_id] == 0);
+      dst_dead = output_iter_state->dead_count(dst_id) > 0;
+      dst_ready = (output_iter_state->decrement_pending(dst_id, 1) == 0);
     }
 
     if (dst_need_input) {
@@ -1456,15 +1453,10 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
     CHECK(s.ok()) << s;
     // 'iterations' is a fixed-length circular buffer.
     temp->iterations.resize(temp->max_parallel_iterations + 1);
-    IterationState* iter_state = new IterationState;
+    IterationState* iter_state = new IterationState(impl_->graph_);
     temp->iterations[0] = iter_state;
 
-    iter_state->outstanding_ops = 0;
-    iter_state->outstanding_frame_count = 0;
-    iter_state->pending_count = new std::vector<int>;
-    InitializePending(impl_->graph_, iter_state->pending_count);
-    iter_state->dead_count =
-        new std::vector<int>(impl_->graph_->num_node_ids());
+    iter_state->InitializePending(impl_->graph_);
     iter_state->input_tensors =
         new std::vector<Entry>(impl_->total_input_tensors_);
 
@@ -1487,16 +1479,12 @@ void ExecutorState::IncrementIteration(FrameState* frame,
   VLOG(2) << "Create iteration: [" << frame->frame_name << ", " << next_iter
           << "]";
 
-  IterationState* iter_state = new IterationState;
+  IterationState* iter_state = new IterationState(impl_->graph_);
   frame->SetIteration(next_iter, iter_state);
   frame->num_outstanding_iterations++;
   frame->dead_exits.clear();
 
-  iter_state->outstanding_ops = 0;
-  iter_state->outstanding_frame_count = 0;
-  iter_state->pending_count = new std::vector<int>;
-  InitializePending(impl_->graph_, iter_state->pending_count);
-  iter_state->dead_count = new std::vector<int>(impl_->graph_->num_node_ids());
+  iter_state->InitializePending(impl_->graph_);
   iter_state->input_tensors =
       new std::vector<Entry>(impl_->total_input_tensors_);
 
@@ -1590,8 +1578,6 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
     // Propagate all the dead exits to the parent frame.
     for (const Node* node : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
-      std::vector<int>* pending = parent_iter_state->pending_count;
-      std::vector<int>* dead_count = parent_iter_state->dead_count;
       for (const Edge* e : node->out_edges()) {
         const Node* dst_node = e->dst();
         const int dst_id = dst_node->id();
@@ -1601,18 +1587,20 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
         // We know this is a dead input to dst
         if (IsMerge(dst_node)) {
           if (e->IsControlEdge()) {
-            (*pending)[dst_id] -= 2;
-            int count = (*pending)[dst_id];
-            dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
+            parent_iter_state->decrement_pending(dst_id, 2);
+            int count = parent_iter_state->pending(dst_id);
+            dst_dead = (parent_iter_state->dead_count(dst_id) ==
+                        dst_node->num_inputs());
             dst_ready = (count == 1) || ((count == 0) && dst_dead);
           } else {
-            ++(*dead_count)[dst_id];
-            dst_dead = ((*dead_count)[dst_id] == dst_node->num_inputs());
-            dst_ready = ((*pending)[dst_id] == 0) && dst_dead;
+            parent_iter_state->increment_dead_count(dst_id);
+            dst_dead = (parent_iter_state->dead_count(dst_id) ==
+                        dst_node->num_inputs());
+            dst_ready = (parent_iter_state->pending(dst_id) == 0) && dst_dead;
           }
         } else {
-          ++(*dead_count)[dst_id];
-          dst_ready = (--(*pending)[dst_id] == 0);
+          parent_iter_state->increment_dead_count(dst_id);
+          dst_ready = (parent_iter_state->decrement_pending(dst_id, 1) == 0);
         }
         if (dst_ready) {
           ready->push_back(
