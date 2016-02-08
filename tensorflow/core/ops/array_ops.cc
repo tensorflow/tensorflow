@@ -565,7 +565,7 @@ For example:
 
 ```prettyprint
 # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique(x)
+y, idx, count = unique_with_counts(x)
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 count ==> [2, 1, 3, 1, 2]
