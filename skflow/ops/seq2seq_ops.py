@@ -15,8 +15,6 @@
 
 from __future__ import division, print_function, absolute_import
 
-from six.moves import xrange   # pylint: disable=redefined-builtin
-
 import tensorflow as tf
 
 from skflow.ops import array_ops
@@ -95,7 +93,7 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
         states, sampling_states = [initial_state], [initial_state]
         outputs, sampling_outputs = [], []
         with tf.op_scope([decoder_inputs, initial_state], "training"):
-            for i in xrange(len(decoder_inputs)):
+            for i in enumerate(decoder_inputs):
                 inp = decoder_inputs[i]
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
@@ -103,7 +101,7 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
                 outputs.append(output)
                 states.append(new_state)
         with tf.op_scope([initial_state], "sampling"):
-            for i in xrange(len(decoder_inputs)):
+            for i in enumerate(decoder_inputs):
                 if i == 0:
                     sampling_outputs.append(outputs[i])
                     sampling_states.append(states[i])
