@@ -109,7 +109,8 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     return -1
 
   input_graph_def = tf.GraphDef()
-  with open(input_graph, "rb") as f:
+  mode = "rb" if input_binary else "r"
+  with open(input_graph, mode) as f:
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
@@ -123,7 +124,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
 
   with tf.Session() as sess:
     if input_saver:
-      with open(input_saver, "rb") as f:
+      with open(input_saver, mode) as f:
         saver_def = tf.train.SaverDef()
         if input_binary:
           saver_def.ParseFromString(f.read())
