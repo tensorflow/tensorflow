@@ -140,7 +140,7 @@ else:
     # Create a new resnet classifier.
     classifier = skflow.TensorFlowEstimator(
         model_fn=res_net, n_classes=10, batch_size=100, steps=100,
-        learning_rate=0.001)
+        learning_rate=0.001, continue_training=True)
 
 while True:
     # Train model and save summaries into logdir.
