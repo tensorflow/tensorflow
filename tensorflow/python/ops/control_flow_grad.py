@@ -25,6 +25,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
 from tensorflow.python.ops.gen_control_flow_ops import *
+# pylint: enable=wildcard-import
 
 
 def _SwitchGrad(op, *grad):

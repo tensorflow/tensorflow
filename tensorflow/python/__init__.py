@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
+# pylint: disable=wildcard-import,unused-import,g-bad-import-order
 """Import core names of TensorFlow.
 
 Programs that want to build Brain Ops and Graphs without having to import the

@@ -77,10 +77,11 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
-# pylint: disable=wildcard-import
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.ops.constant_op import constant
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+# pylint: enable=wildcard-import
 
 
 # We override the 'slice' for the "slice" op, so we keep python's
