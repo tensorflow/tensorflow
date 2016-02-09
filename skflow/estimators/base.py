@@ -264,7 +264,7 @@ class TensorFlowEstimator(BaseEstimator):
 
         Args:
             X: array-like matrix, [n_samples, n_features...] or iterator.
-            axis: Which axis to argmax for classification. 
+            axis: Which axis to argmax for classification.
                   By default axis 1 (next after batch) is used.
                   Use 2 for sequence predictions.
             batch_size: If test set is too big, use batch size to split
