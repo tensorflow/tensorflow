@@ -270,6 +270,7 @@ Status ExecutorImpl::Initialize() {
 
     s = params_.create_kernel(n->def(), &item->kernel);
     if (!s.ok()) {
+      item->kernel = nullptr;
       s = AttachDef(s, n->def());
       LOG(ERROR) << "Executor failed to create kernel. " << s;
       break;
