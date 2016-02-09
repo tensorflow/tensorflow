@@ -17,6 +17,7 @@ This example builds deep residual network for mnist data.
 Reference Paper: http://arxiv.org/pdf/1512.03385.pdf
 """
 
+import os
 import random
 from sklearn import metrics
 
@@ -132,13 +133,24 @@ def res_net(x, y, activation=tf.nn.relu):
 # Download and load MNIST data.
 mnist = input_data.read_data_sets('MNIST_data')
 
-# Train a resnet classifier
-classifier = skflow.TensorFlowEstimator(
-    model_fn=res_net, n_classes=10, batch_size=100, steps=20000,
-    learning_rate=0.001)
+# Restore model if graph is saved into a folder.
+if os.path.exists("models/resnet/graph.pbtxt"):
+    classifier = skflow.TensorFlowEstimator.restore("models/resnet/")
+else:
+    # Create a new resnet classifier.
+    classifier = skflow.TensorFlowEstimator(
+        model_fn=res_net, n_classes=10, batch_size=100, steps=100,
+        learning_rate=0.001)
 
-classifier.fit(mnist.train.images, mnist.train.labels)
+while True:
+    # Train model and save summaries into logdir.
+    classifier.fit(mnist.train.images, mnist.train.labels, logdir="models/resnet/")
 
-# Calculate accuracy
-score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
-print('Accuracy: {0:f}'.format(score))
+    # Calculate accuracy.
+    score = metrics.accuracy_score(
+        mnist.test.labels, classifier.predict(mnist.test.images, batch_size=64))
+    print('Accuracy: {0:f}'.format(score))
+
+    # Save model graph and checkpoints.
+    classifier.save("models/resnet/")
+
