@@ -450,7 +450,7 @@ TEST(TensorShapeTest, Randomized) {
       for (int i = 0; i < N; i++) {
         int64 sz = SkewedSize(&gen, num_elements);
         sizes.push_back(sz);
-        num_elements *= max<int64>(1, sz);
+        num_elements *= std::max<int64>(1, sz);
       }
 
       s = TensorShape(sizes);
