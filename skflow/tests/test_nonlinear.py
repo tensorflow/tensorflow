@@ -90,6 +90,26 @@ class NonLinearTest(tf.test.TestCase):
         predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
                                                         [2, 3, 4, 5, 6]])))
 
+    def testBidirectionalRNN(self):
+        random.seed(42)
+        import numpy as np
+        data = np.array(list([[2, 1, 2, 2, 3],
+                              [2, 2, 3, 4, 5],
+                              [3, 3, 1, 2, 1],
+                              [2, 4, 5, 4, 1]]), dtype=np.float32)
+        labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
+        def input_fn(X):
+            return tf.split(1, 5, X)
+
+        # Classification
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn,
+            bidirectional=True)
+        classifier.fit(data, labels)
+        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
+                                                        [2, 3, 4, 5, 6]])))
+        self.assertAllClose(predictions, np.array([1, 0]))
+        
 
 if __name__ == "__main__":
     tf.test.main()
