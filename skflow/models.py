@@ -16,6 +16,7 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
+from tensorflow.models.rnn import rnn, rnn_cell
 
 from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
@@ -45,7 +46,7 @@ def linear_regression(X, y):
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
-def logistic_regression(X, y):
+def logistic_regression(X, y, class_weight=None):
     """Creates logistic regression TensorFlow subgraph.
 
     Args:
@@ -53,6 +54,9 @@ def logistic_regression(X, y):
            shape should be [batch_size, n_features].
         y: tensor or placeholder for target,
            shape should be [batch_size, n_classes].
+        class_weight: tensor, [n_classes], where for each class
+                      it has weight of the class. If not provided
+                      all ones are used.
 
     Returns:
         Predictions and loss tensors.
@@ -65,7 +69,8 @@ def logistic_regression(X, y):
         bias = tf.get_variable('bias', [y.get_shape()[-1]])
         tf.histogram_summary('logistic_regression.weights', weights)
         tf.histogram_summary('logistic_regression.bias', bias)
-        return softmax_classifier(X, y, weights, bias)
+        return softmax_classifier(X, y, weights, bias,
+                                  class_weight=class_weight)
 
 
 def get_dnn_model(hidden_units, target_predictor_fn):
@@ -87,3 +92,58 @@ def get_dnn_model(hidden_units, target_predictor_fn):
         layers = dnn(X, hidden_units)
         return target_predictor_fn(layers, y)
     return dnn_estimator
+
+
+def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
+                  bidirection, target_predictor_fn,
+                  sequence_length, initial_state):
+    """Returns a function that creates a RNN TensorFlow subgraph with given
+    params.
+
+    Args:
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
+        target_predictor_fn: Function that will predict target from input
+                             features. This can be logistic regression,
+                             linear regression or any other model,
+                             that takes X, y and returns predictions and loss tensors.
+        sequence_length: If sequence_length is provided, dynamic calculation is performed.
+                         This saves computational time when unrolling past max sequence length.
+        initial_state: An initial state for the RNN. This must be a tensor of appropriate type
+                       and shape [batch_size x cell.state_size].
+
+    Returns:
+        A function that creates the subgraph.
+    """
+    def rnn_estimator(X, y):
+        """RNN estimator with target predictor function on top."""
+        X = input_op_fn(X)
+        if cell_type == 'rnn':
+            cell_fn = rnn_cell.BasicRNNCell
+        elif cell_type == 'gru':
+            cell_fn = rnn_cell.GRUCell
+        elif cell_type == 'lstm':
+            cell_fn = rnn_cell.BasicLSTMCell
+        else:
+            raise ValueError("cell_type {} is not supported. ".format(cell_type))
+        if bidirection:
+            # forward direction cell
+            rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            # backward direction cell
+            rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
+                                             sequence_length=sequence_length,
+                                             initial_state=initial_state)
+        else:
+            cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            _, encoding = rnn.rnn(cell, X, dtype=tf.float32,
+                                  sequence_length=sequence_length,
+                                  initial_state=initial_state)
+        return target_predictor_fn(encoding[-1], y)
+    return rnn_estimator

@@ -19,7 +19,6 @@ cache:
 addons:
     apt:
         packages:
-            - libatlas3gf-base
             - libatlas-dev
             - libblas-dev
             - liblapack-dev

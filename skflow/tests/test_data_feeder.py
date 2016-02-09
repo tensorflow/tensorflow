@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from skflow import data_feeder
+from skflow.io import *
 
 
 class MockPlaceholder(object):
@@ -36,8 +37,9 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [1, 2, 1])
+
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [2, 1])
 
     def test_data_feeder_multioutput_regression(self):
         X = np.matrix([[1, 2], [3, 4]])
@@ -47,8 +49,8 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-        self.assertAllClose(feed_dict['output'], [[1, 2], [3, 4]])
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [[3, 4], [1, 2]])
 
     def test_data_feeder_multioutput_classification(self):
         X = np.matrix([[1, 2], [3, 4]])
@@ -58,13 +60,13 @@ class DataFeederTest(tf.test.TestCase):
             MockPlaceholder(name='input'),
             MockPlaceholder(name='output'))
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-        self.assertAllClose(feed_dict['output'], [[[1, 0, 0, 0, 0],
-                                                   [0, 1, 0, 0, 0],
-                                                   [0, 0, 1, 0, 0]],
-                                                  [[0, 0, 1, 0, 0],
+        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0],
                                                    [0, 0, 0, 1, 0],
-                                                   [0, 0, 0, 0, 1]]])
+                                                   [0, 0, 0, 0, 1]],
+                                                  [[1, 0, 0, 0, 0],
+                                                   [0, 1, 0, 0, 0],
+                                                   [0, 0, 1, 0, 0]]])
 
     def test_streaming_data_feeder(self):
         def X_iter():
@@ -83,6 +85,24 @@ class DataFeederTest(tf.test.TestCase):
         self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
         self.assertAllClose(feed_dict['output'], [1, 2])
 
+    def test_dask_data_feeder(self):
+        if HAS_PANDAS and HAS_DASK:
+            X = pd.DataFrame(dict(a=np.array([.1, .3, .4, .6, .2, .1, .6]),
+                                  b=np.array([.7, .8, .1, .2, .5, .3, .9])))
+            X = dd.from_pandas(X, npartitions=2)
+            y = pd.DataFrame(dict(labels=np.array([1, 0, 2, 1, 0, 1, 2])))
+            y = dd.from_pandas(y, npartitions=2)
+            # X = extract_dask_data(X)
+            # y = extract_dask_labels(y)
+            df = data_feeder.DaskDataFeeder(X, y, n_classes=2, batch_size=2)
+            feed_dict_fn = df.get_feed_dict_fn(
+                MockPlaceholder(name='input'),
+                MockPlaceholder(name='output'))
+            feed_dict = feed_dict_fn()
+            self.assertAllClose(feed_dict['input'], [[ 0.40000001, 0.1],
+                                                     [ 0.60000002, 0.2]])
+            self.assertAllClose(feed_dict['output'], [[ 0., 0., 1.],
+                                                     [ 0., 1., 0.]])
 
 if __name__ == '__main__':
     tf.test.main()

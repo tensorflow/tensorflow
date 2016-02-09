@@ -34,6 +34,7 @@ except ImportError:
 from skflow.trainer import TensorFlowTrainer, RestoredTrainer
 from skflow.io.data_feeder import setup_train_data_feeder
 from skflow.io.data_feeder import setup_predict_data_feeder
+from skflow.ops.dropout_ops import DROPOUTS
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -48,7 +49,14 @@ class TensorFlowEstimator(BaseEstimator):
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
                    "Adagrad".
-        learning_rate: Learning rate for optimizer.
+        learning_rate: If this is constant float value, no decay function is used.
+            Instead, a customized decay function can be passed that accepts
+            global_step as parameter and returns a Tensor.
+            e.g. exponential decay function:
+            def exp_decay(global_step):
+                return tf.train.exponential_decay(
+                    learning_rate=0.1, global_step,
+                    decay_steps=2, decay_rate=0.001)
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -61,12 +69,19 @@ class TensorFlowEstimator(BaseEstimator):
         early_stopping_rounds: Activates early stopping if this is not None.
             Loss needs to decrease at least every every <early_stopping_rounds>
             round(s) to continue training. (default: None)
-
+        max_to_keep: The maximum number of recent checkpoint files to keep.
+            As new files are created, older files are deleted.
+            If None or 0, all checkpoint files are kept.
+            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
+        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+            to be saved. The default value of 10,000 hours effectively disables the feature.
     """
 
-    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32, steps=50, optimizer="SGD",
+    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
+                 steps=200, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 num_cores=4, verbose=1, early_stopping_rounds=None):
+                 num_cores=4, verbose=1, early_stopping_rounds=None,
+                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -80,10 +95,13 @@ class TensorFlowEstimator(BaseEstimator):
         self.num_cores = num_cores
         self._initialized = False
         self._early_stopping_rounds = early_stopping_rounds
+        self.max_to_keep = max_to_keep
+        self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
         self._graph = tf.Graph()
+        self._graph.add_to_collection("IS_TRAINING", True)
         with self._graph.as_default():
             tf.set_random_seed(self.tf_random_seed)
             self._global_step = tf.Variable(
@@ -99,9 +117,11 @@ class TensorFlowEstimator(BaseEstimator):
                 tf.as_dtype(self._data_feeder.output_dtype), output_shape,
                 name="output")
 
-            # Add histograms for X and y.
-            tf.histogram_summary("X", self._inp)
-            tf.histogram_summary("y", self._out)
+            # Add histograms for X and y if they are floats.
+            if self._data_feeder.input_dtype in (np.float32, np.float64):
+                tf.histogram_summary("X", self._inp)
+            if self._data_feeder.output_dtype in (np.float32, np.float64):
+                tf.histogram_summary("y", self._out)
 
             # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(
@@ -115,11 +135,14 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
-            self._trainer = TensorFlowTrainer(self._model_loss,
-                                              self._global_step, self.optimizer, self.learning_rate)
+            self._trainer = TensorFlowTrainer(
+                loss=self._model_loss, global_step=self._global_step,
+                optimizer=self.optimizer, learning_rate=self.learning_rate)
 
             # Create model's saver capturing all the nodes created up until now.
-            self._saver = tf.train.Saver()
+            self._saver = tf.train.Saver(
+                max_to_keep=self.max_to_keep,
+                keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
 
             # Create session to run model with.
             self._session = tf.Session(self.tf_master,
@@ -189,7 +212,8 @@ class TensorFlowEstimator(BaseEstimator):
                             self._summary_writer,
                             self._summaries,
                             verbose=self.verbose,
-                            early_stopping_rounds=self._early_stopping_rounds)
+                            early_stopping_rounds=self._early_stopping_rounds,
+                            feed_params_fn=self._data_feeder.get_feed_params)
         return self
 
     def partial_fit(self, X, y):
@@ -216,20 +240,23 @@ class TensorFlowEstimator(BaseEstimator):
         """
         return self.fit(X, y)
 
-    def _predict(self, X):
+    def _predict(self, X, batch_size=-1):
         if not self._initialized:
             raise NotFittedError()
-        predict_data_feeder = setup_predict_data_feeder(X)
+        self._graph.add_to_collection("IS_TRAINING", False)
+        predict_data_feeder = setup_predict_data_feeder(
+            X, batch_size=batch_size)
         preds = []
+        dropouts = self._graph.get_collection(DROPOUTS)
+        feed_dict = {prob: 1.0 for prob in dropouts}
         for data in predict_data_feeder:
+            feed_dict[self._inp] = data
             preds.append(self._session.run(
                 self._model_predictions,
-                feed_dict={
-                    self._inp.name: data
-                }))
+                feed_dict))
         return np.concatenate(preds, axis=0)
 
-    def predict(self, X, axis=1):
+    def predict(self, X, axis=1, batch_size=-1):
         """Predict class or regression for X.
 
         For a classification model, the predicted class for each sample in X is
@@ -238,27 +265,35 @@ class TensorFlowEstimator(BaseEstimator):
 
         Args:
             X: array-like matrix, [n_samples, n_features...] or iterator.
+            axis: Which axis to argmax for classification. 
+                  By default axis 1 (next after batch) is used.
+                  Use 2 for sequence predictions.
+            batch_size: If test set is too big, use batch size to split
+                        it into mini batches. By default full dataset is used.
 
         Returns:
             y: array of shape [n_samples]. The predicted classes or predicted
             value.
         """
-        pred = self._predict(X)
+        pred = self._predict(X, batch_size=batch_size)
         if self.n_classes < 2:
             return pred
         return pred.argmax(axis=axis)
 
-    def predict_proba(self, X):
+    def predict_proba(self, X, batch_size=-1):
         """Predict class probability of the input samples X.
 
         Args:
             X: array-like matrix, [n_samples, n_features...] or iterator.
+            batch_size: If test set is too big, use batch size to split
+                        it into mini batches. By default full dataset is used.
 
         Returns:
             y: array of shape [n_samples, n_classes]. The predicted
             probabilities for each class.
-        """
-        return self._predict(X)
+
+       """
+        return self._predict(X, batch_size=batch_size)
 
     def get_tensor(self, name):
         """Returns tensor by name.

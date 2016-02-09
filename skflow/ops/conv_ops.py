@@ -16,10 +16,11 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
+from skflow.ops.batch_norm_ops import batch_normalize
 
 
 def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
-           bias=True):
+           bias=True, activation=None, batch_norm=False):
     """Creates 2D convolutional subgraph with bank of filters.
 
     Uses tf.nn.conv2d under the hood.
@@ -37,6 +38,9 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
         padding: A string: 'SAME' or 'VALID'. The type of padding algorthim to
                  use.
         bias: Boolean, if to add bias.
+        activation: Activation Op, optional. If provided applied on the output.
+        batch_norm: Whether to apply batch normalization.
+
     Returns:
         A Tensor with resulting convolution.
     """
@@ -51,4 +55,9 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
             bias_var = tf.get_variable('bias', [1, 1, 1, n_filters],
                                        tf.float32)
             output = output + bias_var
+        if batch_norm:
+            output = batch_normalize(output)
+        if activation:
+            output = activation(output)
         return output
+

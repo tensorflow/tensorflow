@@ -19,13 +19,11 @@ import numpy as np
 from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error
 
+import tensorflow as tf
+
 import skflow
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
-
-
-class MultiOutputTest(googletest.TestCase):
+class MultiOutputTest(tf.test.TestCase):
 
     def testMultiRegression(self):
         random.seed(42)
@@ -37,18 +35,6 @@ class MultiOutputTest(googletest.TestCase):
         score = mean_squared_error(regressor.predict(X), y)
         self.assertLess(score, 10, "Failed with score = {0}".format(score))
 
-    def testMultiClassification(self):
-        """TODO(ilblackdragon): Implement multi-output classification.
-        """
-        random.seed(42)
-        n_classes = 5
-        X, y = datasets.make_multilabel_classification(n_classes=n_classes,
-                                                       random_state=42)
-        #classifier = skflow.TensorFlowLinearClassifier(n_classes=n_classes)
-        #classifier.fit(X, y)
-        #score = accuracy_score(classifier.predict(X), y)
-        #self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

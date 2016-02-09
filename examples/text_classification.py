@@ -77,9 +77,9 @@ def rnn_model(X, y):
 classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-# Continuesly train for 1000 steps & predict on test set.
+# Continously train for 1000 steps & predict on test set.
 while True:
     classifier.fit(X_train, y_train, logdir='/tmp/tf_examples/word_rnn')
-    score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+    score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print('Accuracy: {0:f}'.format(score))
 

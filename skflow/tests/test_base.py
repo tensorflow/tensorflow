@@ -19,13 +19,12 @@ from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import skflow
 from skflow.estimators import base
 
 
-class BaseTest(googletest.TestCase):
+class BaseTest(tf.test.TestCase):
 
     def testOneDim(self):
         random.seed(42)
@@ -41,7 +40,7 @@ class BaseTest(googletest.TestCase):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testIrisSummaries(self):
@@ -49,7 +48,7 @@ class BaseTest(googletest.TestCase):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target, logdir='/tmp/skflow_tests/')
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 
@@ -57,11 +56,11 @@ class BaseTest(googletest.TestCase):
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
-            learning_rate=0.05, continue_training=True)
+            learning_rate=0.01, continue_training=True, steps=250)
         classifier.fit(iris.data, iris.target)
-        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
+        score1 = accuracy_score(iris.target, classifier.predict(iris.data))
         classifier.fit(iris.data, iris.target)
-        score2 = accuracy_score(classifier.predict(iris.data), iris.target)
+        score2 = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score2, score1,
                            "Failed with score = {0}".format(score2))
 
@@ -84,8 +83,8 @@ class BaseTest(googletest.TestCase):
 
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3, steps=100)
         classifier.fit(iris_data(), iris_target())
-        score1 = accuracy_score(classifier.predict(iris.data), iris.target)
-        score2 = accuracy_score(classifier.predict(iris_predict_data()), iris.target)
+        score1 = accuracy_score(iris.target, classifier.predict(iris.data))
+        score2 = accuracy_score(iris.target, classifier.predict(iris_predict_data()))
         self.assertGreater(score1, 0.5, "Failed with score = {0}".format(score1))
         self.assertEqual(score2, score1, "Scores from {0} iterator doesn't "
                                          "match score {1} from full "
@@ -94,7 +93,7 @@ class BaseTest(googletest.TestCase):
     def testIris_proba(self):
         random.seed(42)
         iris = datasets.load_iris()
-        classifier = skflow.TensorFlowClassifier(n_classes=3)
+        classifier = skflow.TensorFlowClassifier(n_classes=3, steps=250)
         classifier.fit(iris.data, iris.target)
         score = log_loss(iris.target, classifier.predict_proba(iris.data))
         self.assertLess(score, 0.8, "Failed with score = {0}".format(score))
@@ -119,5 +118,5 @@ class BaseTest(googletest.TestCase):
             estimator.save('/tmp/path')
 
 
-if __name__ == "__main__":
-    googletest.main()
+if __name__ == '__main__':
+    tf.test.main()

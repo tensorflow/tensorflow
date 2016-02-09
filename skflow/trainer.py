@@ -30,11 +30,15 @@ OPTIMIZER_CLS_NAMES = {
 }
 
 
-def _print_report(print_loss_buffer, global_step):
+def _print_report(print_loss_buffer, global_step, epoch):
     """Prints report for given losses and global step."""
     avg_loss = np.mean(print_loss_buffer)
-    print("Step #{step}, avg. loss: {loss:.5f}".format(step=global_step,
-                                                       loss=avg_loss))
+    if epoch:
+        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss, epoch=epoch))
+    else:
+        print("Step #{step}, avg. loss: {loss:.5f}"
+              .format(step=global_step, loss=avg_loss))
 
 
 class TensorFlowTrainer(object):
@@ -45,20 +49,37 @@ class TensorFlowTrainer(object):
       gradients: Gradients tensor.
     """
 
-    def __init__(self, loss, global_step, optimizer, learning_rate, clip_gradients=5.0):
+    def __init__(self, loss, global_step, optimizer,
+                 learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
 
         Args:
           loss: Tensor that evaluates to model's loss.
           global_step: Tensor with global step of the model.
           optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
+          learning_rate: If this is constant float value, no decay function is used.
+                         Instead, a customized decay function can be passed that accepts
+                         global_step as parameter and returns a Tensor.
+                         e.g. exponential decay function:
+                         def exp_decay(global_step):
+                            return tf.train.exponential_decay(
+                                learning_rate=0.1, global_step=global_step,
+                                decay_steps=2, decay_rate=0.001)
+        Raises:
+            ValueError: if learning_rate is not a float or a callable.
         """
         self.loss = loss
         self.global_step = global_step
-        self._learning_rate = tf.get_variable(
-            "learning_rate",
-            [],
-            initializer=tf.constant_initializer(learning_rate))
+        # pylint: disable=redefined-variable-type
+        if isinstance(learning_rate, float):
+            self._learning_rate = tf.get_variable(
+                "learning_rate",
+                [],
+                initializer=tf.constant_initializer(learning_rate))
+        elif callable(learning_rate):
+            self._learning_rate = learning_rate(self.global_step)
+        else:
+            raise ValueError("learning_rate should be a float or a callable function.")
         params = tf.trainable_variables()
         self.gradients = tf.gradients(loss, params)
         if clip_gradients > 0.0:
@@ -73,6 +94,8 @@ class TensorFlowTrainer(object):
         self.trainer = self._optimizer.apply_gradients(grads_and_vars,
                                                        global_step=global_step,
                                                        name="train")
+        # Update ops during training, e.g. batch_norm_ops
+        self.trainer = tf.group(self.trainer, *tf.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
         self._initializers = tf.initialize_all_variables()
 
@@ -89,7 +112,8 @@ class TensorFlowTrainer(object):
 
     def train(self, sess, feed_dict_fn, steps,
               summary_writer=None, summaries=None,
-              print_steps=0, verbose=1, early_stopping_rounds=None):
+              print_steps=0, verbose=1, early_stopping_rounds=None,
+              feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -103,6 +127,7 @@ class TensorFlowTrainer(object):
             early_stopping_rounds: Activates early stopping if this is not None.
                 Loss needs to decrease at least every every <early_stopping_rounds>
                 round(s) to continue training. (default: None)
+            feed_params_fn: params about data feeder state (epoch, offset)
 
         Returns:
             List of losses for each step.
@@ -143,8 +168,12 @@ class TensorFlowTrainer(object):
                 summary_writer.add_summary(summ, global_step)
             if verbose > 0:
                 if step % print_steps == 0:
-                    _print_report(print_loss_buffer, global_step)
+                    if feed_params_fn:
+                        feed_params = feed_params_fn()
+                        epoch = feed_params['epoch'] if 'epoch' in feed_params else None
+                    _print_report(print_loss_buffer, global_step, epoch)
                     print_loss_buffer = []
+
         return losses
 
 

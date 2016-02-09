@@ -18,13 +18,13 @@ from sklearn import datasets
 from sklearn.grid_search import GridSearchCV
 from sklearn.metrics import accuracy_score, mean_squared_error
 
+import tensorflow as tf
+
 import skflow
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 
-class GridSearchTest(googletest.TestCase):
+class GridSearchTest(tf.test.TestCase):
 
     def testIrisDNN(self):
         random.seed(42)
@@ -35,9 +35,9 @@ class GridSearchTest(googletest.TestCase):
             {'hidden_units': [[5, 5], [10, 10]],
              'learning_rate': [0.1, 0.01]})
         grid_search.fit(iris.data, iris.target)
-        score = accuracy_score(grid_search.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, grid_search.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

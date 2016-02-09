@@ -29,7 +29,6 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.models.rnn import rnn, rnn_cell
 import skflow
 
 ### Training data
@@ -59,7 +58,7 @@ FILTER_SHAPE2 = [20, N_FILTERS]
 POOLING_WINDOW = 4
 POOLING_STRIDE = 2
 
-def char_rnn_model(X, y):
+def char_cnn_model(X, y):
     """Character level convolutional neural network model to predict classes."""
     byte_list = tf.reshape(skflow.ops.one_hot_matrix(X, 256), 
         [-1, MAX_DOCUMENT_LENGTH, 256, 1])
@@ -82,12 +81,12 @@ def char_rnn_model(X, y):
     # Apply regular WX + B and classification.
     return skflow.models.logistic_regression(pool2, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
+classifier = skflow.TensorFlowEstimator(model_fn=char_cnn_model, n_classes=15,
     steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-# Continuesly train for 1000 steps & predict on test set.
+# Continuously train for 1000 steps & predict on test set.
 while True:
     classifier.fit(X_train, y_train)
-    score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+    score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print("Accuracy: %f" % score)
 

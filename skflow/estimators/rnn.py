@@ -1,4 +1,4 @@
-"""Deep Neural Network estimators."""
+"""Recurrent Neural Network estimators."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +21,25 @@ from skflow.estimators.base import TensorFlowEstimator
 from skflow import models
 
 
-class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
-    """TensorFlow DNN Classifier model.
+def null_input_op_fn(X):
+    """This function does no transformation on the inputs, used as default"""
+    return X
+
+class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
+    """TensorFlow RNN Classifier model.
 
     Parameters:
-        hidden_units: List of hidden units per layer.
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
+        sequence_length: If sequence_length is provided, dynamic calculation is performed.
+                 This saves computational time when unrolling past max sequence length.
+        initial_state: An initial state for the RNN. This must be a tensor of appropriate type
+                       and shape [batch_size x cell.state_size].
         n_classes: Number of classes in the target.
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
@@ -55,13 +69,22 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
-    def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+    def __init__(self, rnn_size, n_classes, cell_type='gru', num_layers=1,
+                 input_op_fn=null_input_op_fn,
+                 initial_state=None, bidirection=False,
+                 sequence_length=None, tf_master="", batch_size=32,
+                 steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
-        self.hidden_units = hidden_units
-        super(TensorFlowDNNClassifier, self).__init__(
+        self.rnn_size = rnn_size
+        self.cell_type = cell_type
+        self.input_op_fn = input_op_fn
+        self.bidirection = bidirection
+        self.num_layers = num_layers
+        self.sequence_length = sequence_length
+        self.initial_state = initial_state
+        super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
@@ -72,33 +95,39 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
-        return models.get_dnn_model(self.hidden_units,
-                                    models.logistic_regression)(X, y)
-
-    @property
-    def weights_(self):
-        """Returns weights of the DNN weight layers."""
-        weights = []
-        for layer in range(len(self.hidden_units)):
-            weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' % layer))
-        weights.append(self.get_tensor_value('logistic_regression/weights:0'))
-        return weights
+        return models.get_rnn_model(self.rnn_size, self.cell_type,
+                                    self.num_layers,
+                                    self.input_op_fn, self.bidirection,
+                                    models.logistic_regression,
+                                    self.sequence_length,
+                                    self.initial_state)(X, y)
 
     @property
     def bias_(self):
-        """Returns bias of the DNN's bias layers."""
-        biases = []
-        for layer in range(len(self.hidden_units)):
-            biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
-        biases.append(self.get_tensor_value('logistic_regression/bias:0'))
-        return biases
+        """Returns bias of the rnn layer."""
+        return self.get_tensor_value('logistic_regression/bias:0')
+
+    @property
+    def weights_(self):
+        """Returns weights of the rnn layer."""
+        return self.get_tensor_value('logistic_regression/weights:0')
 
 
-class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
-    """TensorFlow DNN Regressor model.
+class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
+    """TensorFlow RNN Regressor model.
 
     Parameters:
-        hidden_units: List of hidden units per layer.
+        rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+        cell_type: The type of rnn cell, including rnn, gru, and lstm.
+        num_layers: The number of layers of the rnn model.
+        input_op_fn: Function that will transform the input tensor, such as
+                     creating word embeddings, byte list, etc. This takes
+                     an argument X for input and returns transformed X.
+        bidirection: Whether this is a bidirectional rnn.
+        sequence_length: If sequence_length is provided, dynamic calculation is performed.
+                 This saves computational time when unrolling past max sequence length.
+        initial_state: An initial state for the RNN. This must be a tensor of appropriate type
+                       and shape [batch_size x cell.state_size].
         tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
@@ -121,13 +150,22 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             round(s) to continue training. (default: None)
     """
 
-    def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+    def __init__(self, rnn_size, cell_type='gru', num_layers=1,
+                 input_op_fn=null_input_op_fn, initial_state=None,
+                 bidirection=False, sequence_length=None,
+                 n_classes=0, tf_master="", batch_size=32,
+                 steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
-        self.hidden_units = hidden_units
-        super(TensorFlowDNNRegressor, self).__init__(
+        self.rnn_size = rnn_size
+        self.cell_type = cell_type
+        self.input_op_fn = input_op_fn
+        self.bidirection = bidirection
+        self.num_layers = num_layers
+        self.sequence_length = sequence_length
+        self.initial_state = initial_state
+        super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
@@ -138,24 +176,19 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
-        return models.get_dnn_model(self.hidden_units,
-                                    models.linear_regression)(X, y)
-
-    @property
-    def weights_(self):
-        """Returns weights of the DNN weight layers."""
-        weights = []
-        for layer in range(len(self.hidden_units)):
-            weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' % layer))
-        weights.append(self.get_tensor_value('linear_regression/weights:0'))
-        return weights
+        return models.get_rnn_model(self.rnn_size, self.cell_type,
+                                    self.num_layers,
+                                    self.input_op_fn, self.bidirection,
+                                    models.linear_regression,
+                                    self.sequence_length,
+                                    self.initial_state)(X, y)
 
     @property
     def bias_(self):
-        """Returns bias of the DNN's bias layers."""
-        biases = []
-        for layer in range(len(self.hidden_units)):
-            biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
-        biases.append(self.get_tensor_value('linear_regression/bias:0'))
-        return biases
+        """Returns bias of the rnn layer."""
+        return self.get_tensor_value('linear_regression/bias:0')
 
+    @property
+    def weights_(self):
+        """Returns weights of the rnn layer."""
+        return self.get_tensor_value('linear_regression/weights:0')

@@ -1,17 +1,19 @@
-[![Travis-CI Build Status](https://travis-ci.org/google/skflow.svg?branch=master)](https://travis-ci.org/google/skflow)
-[![Codecov Status](https://codecov.io/github/google/skflow/coverage.svg?precision=2)](https://codecov.io/github/google/skflow)
-[![License](https://img.shields.io/github/license/google/skflow.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
-[![Join the chat at https://gitter.im/google/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/google/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Travis-CI Build Status](https://travis-ci.org/tensorflow/skflow.svg?branch=master)](https://travis-ci.org/tensorflow/skflow)
+[![Codecov Status](https://codecov.io/github/tensorflow/skflow/coverage.svg?precision=2)](https://codecov.io/github/tensorflow/skflow)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
+[![Join the chat at https://gitter.im/tensorflow/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 # Scikit Flow
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
-Why TensorFlow?
+Library covers variety of needs from linear models to *Deep Learning* applications like text and image understanding.
+
+Why *TensorFlow*?
 * TensorFlow provides a good backbone for building different shapes of machine learning applications.
 * It will continue to evolve both in the distributed direction and as general pipelinining machinery.
 
-Why Scikit Flow?
+Why *Scikit Flow*?
 * To smooth the transition from the Scikit Learn world of one-liner machine learning into the
 more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable.
 * To provide a set of reference models that would be easy to integrate with existing code.
@@ -26,19 +28,20 @@ Support versions of dependencies:
 First, make sure you have TensorFlow and Scikit Learn installed, then just run:
 
 ```Bash
-pip install git+git://github.com/google/skflow.git
+pip install git+git://github.com/tensorflow/skflow.git
 ```
 
 ## Tutorial
 
 * [Introduction to Scikit Flow and why you want to start learning TensorFlow](https://medium.com/@ilblackdragon/tensorflow-tutorial-part-1-c559c63c0cb1)
 * [DNNs, custom model and Digit recognition examples](https://medium.com/@ilblackdragon/tensorflow-tutorial-part-2-9ffe47049c92)
+* [Categorical variables: One hot vs Distributed representation](https://medium.com/@ilblackdragon/tensorflow-tutorial-part-3-c5fc0662bc08)
 * More coming soon.
 
 ## Usage
 
 Below are few simple examples of the API. 
-For more examples, please see [examples](https://github.com/google/skflow/tree/master/examples).
+For more examples, please see [examples](https://github.com/tensorflow/skflow/tree/master/examples).
 
 ### General tips
 
@@ -58,7 +61,7 @@ from sklearn import datasets, metrics
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
@@ -89,7 +92,7 @@ from sklearn import datasets, metrics
 iris = datasets.load_iris()
 classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
@@ -110,7 +113,7 @@ def my_model(X, y):
 
 classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
-score = metrics.accuracy_score(classifier.predict(iris.data), iris.target)
+score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
@@ -172,10 +175,10 @@ tensorboard --logdir=/tmp/tf_examples/my_model_1
 and follow reported url.
 
 Graph visualization:
-![Text classification RNN Graph](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_graph.png)
+![Text classification RNN Graph](https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_graph.png)
 
 Loss visualization:
-![Text classification RNN Loss](https://raw.githubusercontent.com/google/skflow/master/docs/images/text_classification_rnn_loss.png)
+![Text classification RNN Loss](https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_loss.png)
 
 ## More examples
 

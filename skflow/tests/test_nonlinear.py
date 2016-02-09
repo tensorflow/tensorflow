@@ -17,24 +17,29 @@ import random
 from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error
 
+import tensorflow as tf
+
 import skflow
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
+class NonLinearTest(tf.test.TestCase):
 
-
-class NonLinearTest(googletest.TestCase):
-
-    def testIris(self):
+    def testIrisDNN(self):
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowDNNClassifier(
             hidden_units=[10, 20, 10], n_classes=3)
         classifier.fit(iris.data, iris.target)
-        score = accuracy_score(classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        weights = classifier.weights_
+        self.assertEqual(weights[0].shape, (4, 10))
+        self.assertEqual(weights[1].shape, (10, 20))
+        self.assertEqual(weights[2].shape, (20, 10))
+        self.assertEqual(weights[3].shape, (10, 3))
+        biases = classifier.bias_
+        self.assertEqual(len(biases), 4)
 
-    def testBoston(self):
+    def testBostonDNN(self):
         random.seed(42)
         boston = datasets.load_boston()
         regressor = skflow.TensorFlowDNNRegressor(
@@ -45,7 +50,46 @@ class NonLinearTest(googletest.TestCase):
         score = mean_squared_error(
             boston.target, regressor.predict(boston.data))
         self.assertLess(score, 100, "Failed with score = {0}".format(score))
+        weights = regressor.weights_
+        self.assertEqual(weights[0].shape, (13, 10))
+        self.assertEqual(weights[1].shape, (10, 20))
+        self.assertEqual(weights[2].shape, (20, 10))
+        self.assertEqual(weights[3].shape, (10, 1))
+        biases = regressor.bias_
+        self.assertEqual(len(biases), 4)
+
+    def testRNN(self):
+        random.seed(42)
+        import numpy as np
+        data = np.array(list([[2, 1, 2, 2, 3],
+                              [2, 2, 3, 4, 5],
+                              [3, 3, 1, 2, 1],
+                              [2, 4, 5, 4, 1]]), dtype=np.float32)
+        labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
+        def input_fn(X):
+            return tf.split(1, 5, X)
+
+        # Classification
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn)
+        classifier.fit(data, labels)
+        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
+                                                        [2, 3, 4, 5, 6]])))
+        self.assertAllClose(predictions, np.array([1, 0]))
+        
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='gru', n_classes=2, input_op_fn=input_fn)
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='rnn', n_classes=2,
+            input_op_fn=input_fn, num_layers=2)
+
+        # Regression
+        classifier = skflow.TensorFlowRNNRegressor(
+            rnn_size=2, cell_type='lstm', input_op_fn=input_fn)
+        classifier.fit(data, labels)
+        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
+                                                        [2, 3, 4, 5, 6]])))
 
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

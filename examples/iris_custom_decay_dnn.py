@@ -12,15 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import tensorflow as tf
-from tensorflow.python.platform import googletest
-
 import random
 
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
 import skflow
+import tensorflow as tf
 
 
 random.seed(42)
@@ -30,19 +28,15 @@ X_train, X_test, y_train, y_test = train_test_split(iris.data,
                                                     iris.target,
                                                     test_size=0.2,
                                                     random_state=42)
+# setup exponential decay function
+def exp_decay(global_step):
+    return tf.train.exponential_decay(
+        learning_rate=0.1, global_step=global_step,
+        decay_steps=100, decay_rate=0.001)
 
-# classifier without early stopping - overfitting
-classifier1 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                            n_classes=3, steps=800)
-classifier1.fit(X_train, y_train)
-score1 = metrics.accuracy_score(y_test, classifier1.predict(X_test))
-
-# classifier with early stopping - improved accuracy on testing set
-classifier2 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                            n_classes=3, steps=1000,
-                                            early_stopping_rounds=200)
-classifier2.fit(X_train, y_train)
-score2 = metrics.accuracy_score(y_test, classifier2.predict(X_test))
-
-# you can expect the score is improved by using early stopping
-print(score2 > score1)
+# use customized decay function in learning_rate
+classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                            n_classes=3, steps=800,
+                                            learning_rate=exp_decay)
+classifier.fit(X_train, y_train)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))

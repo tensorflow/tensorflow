@@ -29,7 +29,7 @@ class CategoricalVocabularyTest(tf.test.TestCase):
         self.assertEqual(vocab.get(3), 2)
         # This vocab doesn't handle nan specially.
         self.assertEqual(vocab.get(float('nan')), 4)
-        self.assertEqual(len(vocab), 4)
+        self.assertEqual(len(vocab), 5)
 
     def testWordVocabulary(self):
         vocab = categorical_vocabulary.CategoricalVocabulary()
@@ -50,7 +50,7 @@ class CategoricalVocabularyTest(tf.test.TestCase):
         vocab.freeze()
         self.assertEqual(vocab.get('b'), 0)
         self.assertEqual(vocab.get('c'), 0)
-        self.assertEqual(len(vocab), 1)
+        self.assertEqual(len(vocab), 2)
 
 
 if __name__ == "__main__":

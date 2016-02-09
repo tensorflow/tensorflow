@@ -55,4 +55,3 @@ def extract_pandas_labels(labels):
             raise ValueError('Data types for labels must be int, float, or bool.')
     else:
         return labels
-

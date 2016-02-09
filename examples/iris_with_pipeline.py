@@ -33,6 +33,6 @@ pipeline = Pipeline([('scaler', StandardScaler()), ('DNNclassifier', DNNclassifi
 
 pipeline.fit(X_train, y_train)
 
-score = accuracy_score(pipeline.predict(X_test), y_test)
+score = accuracy_score(y_test, pipeline.predict(X_test))
 
 print('Accuracy: {0:f}'.format(score))

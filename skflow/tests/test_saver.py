@@ -19,12 +19,11 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import tensorflow as tf
-from tensorflow.python.platform import googletest
 
 import skflow
 
 
-class SaverTest(googletest.TestCase):
+class SaverTest(tf.test.TestCase):
 
     def testIris(self):
         path = '/tmp/tmp.saver'
@@ -35,7 +34,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testCustomModel(self):
@@ -50,7 +49,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     
     def testDNN(self):
@@ -62,7 +61,7 @@ class SaverTest(googletest.TestCase):
         classifier.save(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(new_classifier.predict(iris.data), iris.target)
+        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testNoFolder(self):
@@ -82,4 +81,4 @@ class SaverTest(googletest.TestCase):
         
 
 if __name__ == "__main__":
-    googletest.main()
+    tf.test.main()

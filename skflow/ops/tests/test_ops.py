@@ -20,6 +20,19 @@ from skflow import ops
 
 class OpsTest(tf.test.TestCase):
 
+    def test_softmax_classifier(self):
+        with self.test_session() as session:
+            features = tf.placeholder(tf.float32, [None, 3])
+            labels = tf.placeholder(tf.float32, [None, 2])
+            weights = tf.constant([[0.1, 0.1], [0.1, 0.1], [0.1, 0.1]])
+            biases = tf.constant([0.2, 0.3])
+            class_weight = tf.constant([0.1, 0.9])
+            prediction, loss = ops.softmax_classifier(features, labels, weights, biases, class_weight)
+            self.assertEqual(prediction.get_shape()[1], 2)
+            self.assertEqual(loss.get_shape(), [])
+            value = session.run(loss, {features: [[0.2, 0.3, 0.2]], labels: [[0, 1]]})
+            self.assertAllClose(value, 0.55180627)
+ 
     def test_embedding_lookup(self):
         d_embed = 5
         n_embed = 10

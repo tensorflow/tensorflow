@@ -26,7 +26,7 @@ random.seed(42)
 
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(classifier.predict(X_test), y_test)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
 
 # Clean checkpoint folder if exists
@@ -41,6 +41,5 @@ classifier = None
 
 ## Restore everything
 new_classifier = skflow.TensorFlowEstimator.restore('/tmp/skflow_examples/iris_custom_model')
-score = metrics.accuracy_score(new_classifier.predict(X_test), y_test)
+score = metrics.accuracy_score(y_test, new_classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
-

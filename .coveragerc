@@ -2,5 +2,6 @@
 branch = True
 
 [report]
-omit = */tests/*
-
+omit = 
+        */tests/*
+        */ops/batch_norm_ops.py

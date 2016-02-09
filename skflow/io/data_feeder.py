@@ -19,6 +19,7 @@ from __future__ import division, print_function, absolute_import
 import itertools
 import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
+import math
 
 import numpy as np
 from sklearn.utils import check_array
@@ -44,12 +45,12 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
 
 def _data_type_filter(X, y):
     """Filter data types into acceptable format"""
-    if HAS_PANDAS:
-        X = extract_pandas_data(X)
-        y = extract_pandas_labels(y)
     if HAS_DASK:
         X = extract_dask_data(X)
         y = extract_dask_labels(y)
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
+        y = extract_pandas_labels(y)
     return X, y
 
 
@@ -73,7 +74,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     X, y = _data_type_filter(X, y)
     if HAS_DASK:
         import dask.dataframe as dd
-        if isinstance(X, dd.Series) and isinstance(y, dd.Series):
+        allowed_classes = (dd.Series, dd.DataFrame)
+        if isinstance(X, allowed_classes) and isinstance(y, allowed_classes):
             data_feeder_cls = DaskDataFeeder
         else:
             data_feeder_cls = DataFeeder
@@ -108,14 +110,17 @@ def setup_predict_data_feeder(X, batch_size=-1):
     Returns:
         List or iterator of parts of data to predict on.
     """
-    if HAS_PANDAS:
-        X = extract_pandas_data(X)
     if HAS_DASK:
         X = extract_dask_data(X)
+    if HAS_PANDAS:
+        X = extract_pandas_data(X)
     if _is_iterable(X):
         return _batch_data(X, batch_size)
     if len(X.shape) == 1:
         X = np.reshape(X, (-1, 1))
+    if batch_size > 0:
+        n_batches = int(math.ceil(float(len(X)) / batch_size))
+        return [X[i * batch_size:(i + 1) * batch_size] for i in xrange(n_batches)]
     return [X]
 
 
@@ -166,10 +171,21 @@ class DataFeeder(object):
         self.input_shape, self.output_shape = _get_in_out_shape(
             self.X.shape, self.y.shape, n_classes, batch_size)
         self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
-        if random_state is None:
-            self.random_state = np.random.RandomState(42)
-        else:
-            self.random_state = random_state
+        self.random_state = np.random.RandomState(42) if random_state is None else random_state
+        self.indices = self.random_state.permutation(self.X.shape[0])
+        self.offset = 0
+        self.epoch = 0
+
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {
+            'epoch': self.epoch,
+            'offset': self.offset,
+            'batch_size': self.batch_size
+        }
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -183,14 +199,18 @@ class DataFeeder(object):
             from X and y.
         """
         def _feed_dict_fn():
-            inp = np.zeros(self.input_shape, dtype=self.input_dtype)
+            # take random indices
+            batch_indices = self.indices[self.offset: self.offset+self.batch_size]
+
+            # assign input features from random indices
+            inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
+                if len(self.X.shape) == 1 else self.X[batch_indices]
+
+            # assign labels from random indices
+            self.output_shape[0] = batch_indices.shape[0]
             out = np.zeros(self.output_shape, dtype=self.output_dtype)
-            for i in xrange(self.batch_size):
-                sample = self.random_state.randint(0, self.X.shape[0])
-                if len(self.X.shape) == 1:
-                    inp[i, :] = [self.X[sample]]
-                else:
-                    inp[i, :] = self.X[sample, :]
+            for i in xrange(out.shape[0]):
+                sample = batch_indices[i]
                 if self.n_classes > 1:
                     if len(self.output_shape) == 2:
                         out.itemset((i, self.y[sample]), 1.0)
@@ -199,6 +219,14 @@ class DataFeeder(object):
                             out.itemset(tuple([i, idx, value]), 1.0)
                 else:
                     out[i] = self.y[sample]
+
+            # move offset and reset it if necessary
+            self.offset += self.batch_size
+            if self.offset >= self.X.shape[0]:
+                self.indices = self.random_state.permutation(self.X.shape[0])
+                self.offset = 0
+                self.epoch += 1
+
             return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
@@ -246,6 +274,13 @@ class StreamingDataFeeder(object):
         # Output types are floats, due to both softmaxes and regression req.
         self.output_dtype = np.float32
 
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {'batch_size': self.batch_size}
+
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
 
@@ -277,7 +312,7 @@ class StreamingDataFeeder(object):
 
 
 class DaskDataFeeder(object):
-    """Data feeder for TF trainer that reads data from dask.Series.
+    """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
 
     Numpy arrays can be serialized to disk and it's possible to do random seeks into them.
     DaskDataFeeder will remove requirement to have full dataset in the memory and still do
@@ -289,6 +324,8 @@ class DaskDataFeeder(object):
            regression values.
         n_classes: indicator of how many classes the target has.
         batch_size: Mini batch size to accumulate.
+        random_state: random state for RNG. Note that it will mutate so use a int value
+            for this if you want consistent sized batches.
 
     Attributes:
         X: input features.
@@ -307,21 +344,36 @@ class DaskDataFeeder(object):
         self.y = y
         # save column names
         self.X_columns = list(X.columns)
-        self.y_columns = list(y.columns)
+        if isinstance(y.columns[0], str):
+            self.y_columns = list(y.columns)
+        else:
+            # deal with cases where two DFs have overlapped default numeric colnames
+            self.y_columns = len(self.X_columns)+1
+            self.y = self.y.rename(columns={y.columns[0]: self.y_columns})
         # combine into a data frame
-        self.df = dd.multi.concat([X, y], axis=1)
-
+        self.df = dd.multi.concat([self.X, self.y], axis=1)
         self.n_classes = n_classes
-        X_shape = tuple([X.count().compute()])
-        y_shape = tuple([y.count().compute()])
-        self.sample_fraction = batch_size/float(list(X_shape)[0])
+
+        X_count = X.count().compute()[0]
+        X_shape = (X_count, len(self.X.columns))
+        y_shape = (X_count, len(self.y.columns))
+        self.sample_fraction = batch_size/float(X_count)
         self.input_shape, self.output_shape = _get_in_out_shape(
             X_shape, y_shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        # self.X.dtypes[0], self.y.dtypes[self.y_columns]
+        self.input_dtype, self.output_dtype = np.float32, np.float32
         if random_state is None:
-            self.random_state = np.random.RandomState(42)
+            self.random_state = 66
         else:
             self.random_state = random_state
+        self.batch_size = batch_size
+
+    def get_feed_params(self):
+        """Function returns a dict with data feed params while training.
+        Returns:
+            A dict with data feed params while training.
+        """
+        return {'batch_size': self.batch_size}
 
     def get_feed_dict_fn(self, input_placeholder, output_placeholder):
         """Returns a function, that will sample data and provide it to given
@@ -336,9 +388,19 @@ class DaskDataFeeder(object):
         """
         def _feed_dict_fn():
             # TODO: option for with/without replacement (dev version of dask)
-            sample = self.df.random(self.sample_fraction,
-                                    random_state=self.random_state)
-            inp = sample[self.X_columns]
-            out = sample[self.y_columns]
-            return {input_placeholder.name: inp, output_placeholder.name: out}
+            sample = self.df.random_split([self.sample_fraction, 1-self.sample_fraction],
+                                          random_state=self.random_state)
+            inp = extract_pandas_matrix(sample[0][self.X_columns].compute()).tolist()
+            out = extract_pandas_matrix(sample[0][self.y_columns].compute())
+            # convert to correct dtype
+            inp = np.array(inp, dtype=self.input_dtype)
+            # one-hot encode out for each class for cross entropy loss
+            if HAS_PANDAS:
+                import pandas as pd
+                if not isinstance(out, pd.Series):
+                    out = out.flatten()
+            out_max = self.y.max().compute().values[0]
+            encoded_out = np.zeros((out.size, out_max+1), dtype=self.output_dtype)
+            encoded_out[np.arange(out.size), out] = 1
+            return {input_placeholder.name: inp, output_placeholder.name: encoded_out}
         return _feed_dict_fn
