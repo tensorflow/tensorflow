@@ -19,6 +19,7 @@ from __future__ import division, print_function, absolute_import
 import itertools
 import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
+import math
 
 import numpy as np
 from sklearn.utils import check_array
@@ -117,6 +118,9 @@ def setup_predict_data_feeder(X, batch_size=-1):
         return _batch_data(X, batch_size)
     if len(X.shape) == 1:
         X = np.reshape(X, (-1, 1))
+    if batch_size > 0:
+        n_batches = int(math.ceil(float(len(X)) / batch_size))
+        return [X[i * batch_size:(i + 1) * batch_size] for i in xrange(n_batches)]
     return [X]
 
 
