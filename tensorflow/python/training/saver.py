@@ -1183,7 +1183,7 @@ def _import_meta_graph_def(meta_graph_def):
   importer.import_graph_def(meta_graph_def.graph_def, name="")
 
   # Restores all the other collections.
-  for key, col_def in meta_graph_def.collection_def.iteritems():
+  for key, col_def in meta_graph_def.collection_def.items():
     kind = col_def.WhichOneof("kind")
     if kind is None:
       logging.error("Cannot identify data type for collection %s. Skipping."

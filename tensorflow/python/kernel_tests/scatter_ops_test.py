@@ -57,7 +57,7 @@ class ScatterTest(tf.test.TestCase):
           if size > 1 and repeat_indices:
             # Add some random repeats.
             indices = indices[:size//2]
-            for _ in xrange(size-size//2):
+            for _ in range(size-size//2):
               # Randomly append some repeats.
               indices = np.append(indices, indices[np.random.randint(size//2)])
             np.random.shuffle(indices)
