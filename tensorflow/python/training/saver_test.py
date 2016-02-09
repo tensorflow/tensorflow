@@ -967,6 +967,21 @@ class MetaGraphTest(tf.test.TestCase):
     self._testGraphExtensionSave()
     self._testGraphExtensionRestore()
 
+  def testStrippedOpListDef(self):
+    with self.test_session():
+      # Creates a graph.
+      v0 = tf.Variable(0.0)
+      var = tf.Variable(10.0)
+      tf.add(v0, var)
+      save = tf.train.Saver({"v0": v0})
+      tf.initialize_all_variables()
+
+      # Generates MetaGraphDef.
+      meta_graph_def = save.export_meta_graph()
+      ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
+      self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                             "RestoreSlice", "SaveSlices", "Variable"])
+
 
 if __name__ == "__main__":
   tf.test.main()

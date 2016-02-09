@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
+# pylint: disable=unused-import,g-bad-import-order
 """Classes and functions for building TensorFlow graphs.
 
 ## Core graph data structures
@@ -98,7 +98,9 @@ from tensorflow.python.framework.tensor_shape import TensorShape
 # Needed when interfacing tensorflow to new array libraries
 from tensorflow.python.framework.ops import register_tensor_conversion_function
 
+# pylint: disable=wildcard-import
 from tensorflow.python.framework.dtypes import *
 
 # Load a TensorFlow plugin
 from tensorflow.python.framework.load_library import *
+# pylint: enable=wildcard-import

@@ -2322,7 +2322,7 @@ class Graph(object):
 
   def get_all_collection_keys(self):
     """Returns a list of collections used in this graph."""
-    return [x for x in self._collections if isinstance(x, (str, unicode))]
+    return [x for x in self._collections if isinstance(x, six.string_types)]
 
   @contextlib.contextmanager
   def _original_op(self, op):

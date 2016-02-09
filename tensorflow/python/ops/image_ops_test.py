@@ -443,57 +443,6 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
 
-class RandomCropTest(test_util.TensorFlowTestCase):
-
-  def testNoOp(self):
-    # No random cropping is performed since the target width and height
-    # are match the image dimensions.
-    height = 4
-    width = 5
-    x_shape = [height, width, 3]
-    x_np = np.arange(0, np.prod(x_shape), dtype=np.int32).reshape(x_shape)
-    target_shape_np = np.array([height, width], dtype=np.int64)
-
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y = image_ops.random_crop(x, target_shape)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testRandomization(self):
-    # Run 1x1 crop num_samples times in an image and ensure that one finds each
-    # pixel 1/num_pixels of the time.
-    num_samples = 1000
-    height = 5
-    width = 4
-
-    num_pixels = height * width
-    data = np.arange(num_pixels).reshape([height, width, 1])
-    x_np = np.array(data).astype(np.int32)
-
-    target_shape_np = np.array([1, 1], dtype=np.int64)
-
-    y = []
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_np.shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y_tf = image_ops.random_crop(x, target_shape)
-      for _ in xrange(num_samples):
-        y_np = y_tf.eval()
-        self.assertAllEqual(y_np.shape, [1, 1, 1])
-        y.extend(y_np.flatten())
-
-    # Calculate the mean and 4 * standard deviation.
-    mean = [num_samples / num_pixels] * num_pixels
-    four_stddev = 4.0 * np.sqrt(mean)
-
-    # Ensure that each entry is observed in 1/num_pixels of the samples
-    # within 4 standard deviations.
-    counts = np.bincount(y)
-    self.assertAllClose(counts, mean, atol=four_stddev)
-
-
 class PerImageWhiteningTest(test_util.TensorFlowTestCase):
 
   def _NumpyPerImageWhitening(self, x):

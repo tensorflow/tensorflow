@@ -59,13 +59,16 @@ var TF_COMPONENTS_PREFIX = 'tf-';
 var TF_COMPONENTS_TYPESCRIPT_GLOB = 'components/' + TF_COMPONENTS_PREFIX +
     '*/**/*.ts';
 
+var TF_LIB_TYPESCRIPT_GLOB = 'lib/js/**/*.ts';
+
 gulp.task('compile.all', function() {
   hasError = false;
   var isComponent = gulpFilter(['components/**/*.js']);
+  var isLib = gulpFilter(['lib/js/**/*.js']);
   var isApp = gulpFilter(['app/**/*.js']);
 
   var srcs = [TF_COMPONENTS_TYPESCRIPT_GLOB, 'components/**/*.d.ts',
-      'typings/**/*.d.ts'];
+      'typings/**/*.d.ts', TF_LIB_TYPESCRIPT_GLOB];
 
   var tsResult = gulp.src(srcs, {base: '.'})
                      .pipe(ts(tsProject))
@@ -75,7 +78,10 @@ gulp.task('compile.all', function() {
     // (makes polymer imports very clean)
     tsResult.js
             .pipe(isComponent)
-            .pipe(gulp.dest('.'))
+            .pipe(gulp.dest('.')),
+    tsResult.js
+            .pipe(isLib)
+            .pipe(gulp.dest('.')),
   ]);
 });
 
@@ -97,7 +103,7 @@ var tslintTask = function(strict) {
       done();
       return;
     }
-    return gulp.src([TF_COMPONENTS_TYPESCRIPT_GLOB])
+    return gulp.src([TF_COMPONENTS_TYPESCRIPT_GLOB, TF_LIB_TYPESCRIPT_GLOB])
                .pipe(tslint())
                .pipe(tslint.report('verbose', {
                   emitError: strict,
@@ -115,7 +121,7 @@ gulp.task('tslint-strict', [], tslintTask(true));
 gulp.task('watch', ['compile.all', 'tslint-permissive'], function() {
   failOnError = false;
   // Avoid watching generated .d.ts in the build (aka output) directory.
-  return gulp.watch([TF_COMPONENTS_TYPESCRIPT_GLOB],
+  return gulp.watch([TF_COMPONENTS_TYPESCRIPT_GLOB, TF_LIB_TYPESCRIPT_GLOB],
           {ignoreInitial: true},
           ['compile.all', 'tslint-permissive']);
 });

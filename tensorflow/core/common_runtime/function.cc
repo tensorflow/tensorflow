@@ -279,7 +279,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
 
-  bool IsDefined(const string& function_name) override;
+  bool IsStateful(const string& function) override;
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
@@ -689,8 +689,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       });
 }
 
-bool FunctionLibraryRuntimeImpl::IsDefined(const string& function_name) {
-  return lib_def_->Find(function_name) != nullptr;
+bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
+  Status s;
+  auto sig = lib_def_->LookUp(func, &s);
+  return s.ok() && sig->is_stateful();
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
@@ -742,7 +744,15 @@ namespace {
 const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
   const Edge* ret = nullptr;
   for (const Edge* e : edges) {
-    if (e->IsControlEdge() || ret) return nullptr;
+    if (e->IsControlEdge() || ret) {
+      // Don't touch it if there is a control edge.
+      return nullptr;
+    }
+    if (IsRefType(e->src()->output_type(e->src_output()))) {
+      // Don't touch it if the identity node is effectively de-reffing
+      // a ref.
+      return nullptr;
+    }
     ret = e;
   }
   return ret;
@@ -754,7 +764,7 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if ((n->IsIdentity()) && GetTheOnlyDataEdge(n->in_edges())) {
+    if (n->IsIdentity() && GetTheOnlyDataEdge(n->in_edges())) {
       matches.push_back(n);
     }
   }
@@ -768,6 +778,7 @@ bool RemoveIdentityNodes(Graph* g) {
           g->AddEdge(in->src(), in->src_output(), out->dst(), out->dst_input());
         }
       }
+      VLOG(2) << "Remove Identity: " << n->DebugString();
       g->RemoveNode(n);
       removed_any = true;
     }

@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
+# pylint: enable=wildcard-import
 
 
 # Aliases for some automatically-generated names.

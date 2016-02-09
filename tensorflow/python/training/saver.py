@@ -29,12 +29,14 @@ import six
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
@@ -48,6 +50,13 @@ from tensorflow.python.platform import logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
+
+
+def _stripped_op_list_for_graph(graph_def):
+  registered_ops = op_def_registry.get_registered_ops()
+  used_ops = {n.op for n in graph_def.node}
+  op_list = [registered_ops[op_name] for op_name in sorted(used_ops)]
+  return op_def_pb2.OpList(op=op_list)
 
 
 class BaseSaverBuilder(object):
@@ -1031,7 +1040,7 @@ def _get_kind_name(item):
   Returns:
     The string representation of the kind in CollectionDef.
   """
-  if isinstance(item, (str, bytes, unicode)):
+  if isinstance(item, six.string_types) or isinstance(item, bytes):
     kind = "bytes_list"
   elif isinstance(item, (int, long)):
     kind = "int64_list"
@@ -1049,7 +1058,7 @@ def _add_collection_def(meta_graph_def, key):
     meta_graph_def: MetaGraphDef protocol buffer.
     key: One of the GraphKeys or user-defined string.
   """
-  if not isinstance(key, (str, bytes, unicode)):
+  if not isinstance(key, six.string_types) and not isinstance(key, bytes):
     logging.warning("Only collections with string type keys will be "
                     "serialized. This key has %s" % type(key))
     return
@@ -1115,14 +1124,25 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   # Adds meta_info_def.
   if meta_info_def:
     meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
-  # Adds graph_def.
+
+  # Adds graph_def or the default.
   if not graph_def:
     meta_graph_def.graph_def.MergeFrom(ops.get_default_graph().as_graph_def())
   else:
     meta_graph_def.graph_def.MergeFrom(graph_def)
+
+  # Fills in meta_info_def.stripped_op_list using the ops from graph_def.
+  # pylint: disable=g-explicit-length-test
+  if len(meta_graph_def.meta_info_def.stripped_op_list.op) == 0:
+    meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+        _stripped_op_list_for_graph(meta_graph_def.graph_def))
+  # pylint: enable=g-explicit-length-test
+
   # Adds saver_def.
   if saver_def:
     meta_graph_def.saver_def.MergeFrom(saver_def)
+
+  # Adds collection_list.
   if collection_list:
     clist = collection_list
   else:
@@ -1255,4 +1275,3 @@ ops.register_proto_function(ops.GraphKeys.SAVERS,
                             proto_type=saver_pb2.SaverDef,
                             to_proto=Saver.to_proto,
                             from_proto=Saver.from_proto)
-

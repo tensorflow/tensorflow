@@ -41,6 +41,14 @@ void ToGraphDef(Graph* g, GraphDef* def);
 Node* Constant(Graph* g, const Tensor& tensor);
 Node* Constant(Graph* g, const Tensor& tensor, const string& name);
 
+// Adds a node in "g" producing a constant "tensor" on the host.
+// The given node which, unlike the regular Constant above, always
+// stores its output on the host.  This is necessary for use
+// in GPU tests where the test Op in question runs on the device
+// but requires some arguments to be pinned to the host.
+Node* HostConstant(Graph* g, const Tensor& tensor);
+Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
+
 // Adds a variable in "g" of the given "shape" and "dtype".
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
 

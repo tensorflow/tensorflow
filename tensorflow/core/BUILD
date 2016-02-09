@@ -215,9 +215,9 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
-cc_library(
+filegroup(
     name = "framework_headers",
-    hdrs = [
+    srcs = [
         "framework/allocator.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",

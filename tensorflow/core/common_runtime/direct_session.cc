@@ -159,14 +159,13 @@ DirectSession::~DirectSession() {
   for (auto& it : partial_runs_) {
     delete it.second;
   }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->op_segment()->RemoveHold(session_handle_);
-  }
   for (auto it : executors_) {
     delete it.second;
   }
+  for (auto d : device_mgr_->ListDevices()) {
+    d->op_segment()->RemoveHold(session_handle_);
+  }
   delete cancellation_manager_;
-
   if (options_.config.use_per_session_threads()) {
     delete thread_pool_;
   }
@@ -637,6 +636,10 @@ Status DirectSession::GetOrCreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
+      // Caches the kernel only if the node is stateful.
+      if (!lib->IsStateful(ndef.op())) {
+        return lib->CreateKernel(ndef, kernel);
+      }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
         return lib->CreateKernel(ndef, kernel);
       };
@@ -646,8 +649,11 @@ Status DirectSession::GetOrCreateExecutors(
       return opseg->FindOrCreate(session_handle_, ndef.name(), kernel,
                                  create_fn);
     };
-    params.delete_kernel = [](OpKernel* kernel) {
-      // Do nothing because 'kernel' is owned by opseg above.
+    params.delete_kernel = [lib](OpKernel* kernel) {
+      // If the node is stateful, opseg owns it. Otherwise, delete it.
+      if (kernel && !lib->IsStateful(kernel->type_string())) {
+        delete kernel;
+      }
     };
 
     optimizer.Optimize(lib, &partition_graph);

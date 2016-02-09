@@ -13,22 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-"""This module includes unsupported and experimental features which are exposed
-but not part of the supported public API.  Anything in this module can change
-without notice, even across a patch release.
+"""contrib module containing volatile or experimental utility code."""
 
-## Utilities
-
-@@constant_value
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-from tensorflow.python.util.all_util import make_all
-
 # pylint: disable=unused-import
 from tensorflow.python.framework.tensor_util import constant_value
+from tensorflow.python.framework.tensor_util import make_tensor_proto
 
-__all__ = make_all(__name__)
+# TODO(irving): Use make_all here.
+__all__ = ['constant_value', 'make_tensor_proto']

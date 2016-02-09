@@ -186,7 +186,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import gen_state_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_math_ops import *
-
+# pylint: enable=wildcard-import
 
 # Aliases for some automatically-generated names.
 argmax = gen_math_ops.arg_max

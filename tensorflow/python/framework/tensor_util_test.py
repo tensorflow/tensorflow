@@ -366,68 +366,68 @@ class ConstantValueTest(tf.test.TestCase):
   def testConstant(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.constant(np_val)
-    self.assertAllClose(np_val, tf.unsupported.constant_value(tf_val))
+    self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
     np_val = np.random.rand(3, 0, 7).astype(np.float32)
     tf_val = tf.constant(np_val)
-    self.assertAllClose(np_val, tf.unsupported.constant_value(tf_val))
+    self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
     tf_val = state_ops.variable_op(shape=[3, 4, 7], dtype=tf.float32)
-    self.assertIs(None, tf.unsupported.constant_value(tf_val))
+    self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
   def testShape(self):
     np_val = np.array([1, 2, 3], dtype=np.int32)
     tf_val = tf.shape(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllEqual(np_val, c_val)
     self.assertEqual(np.int32, c_val.dtype)
 
   def testSize(self):
     tf_val = tf.size(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(6, c_val)
 
   def testSizeOfScalar(self):
     tf_val = tf.size(tf.constant(0.0))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(1, c_val)
     self.assertEqual(np.int32, type(c_val))
 
   def testRank(self):
     tf_val = tf.rank(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(3, c_val)
 
   def testCast(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.cast(tf.constant(np_val), tf.float64)
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
     np_val = np.random.rand(3, 0, 7).astype(np.float32)
     tf_val = tf.cast(tf.constant(np_val), tf.float64)
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.concat(
         0, [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
     tf_val = tf.concat(
         tf.placeholder(tf.int32),
         [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
     tf_val = tf.concat(
         1,
         [np_val[0, :, :], tf.placeholder(tf.float32),
          np_val[2, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
 

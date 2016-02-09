@@ -4,6 +4,7 @@ package tensorflow;
 // option cc_enable_arenas = true;
 
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/op_def.proto";
 import "tensorflow/core/protobuf/saver.proto";
 
 // NOTE: This protocol buffer is evolving, and will go through revisions in the
@@ -26,10 +27,14 @@ message MetaGraphDef {
     // model has been trained to, etc.
     string meta_graph_version = 1;
 
+    // A copy of the OpDefs used by the producer of this graph_def.
+    // Descriptions and Ops not used in graph_def are stripped out.
+    OpList stripped_op_list = 2;
+
     // A serialized protobuf. Can be the time this meta graph is created, or
     // modified, or name of the model.
     // TODO(opensource): Replace bytes_list with google.protobuf.Any.
-    bytes any_info = 2;
+    bytes any_info = 3;
   }
   MetaInfoDef meta_info_def = 1;
 
