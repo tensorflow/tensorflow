@@ -16,7 +16,6 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
-from tensorflow.models.rnn import rnn, rnn_cell
 
 from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
@@ -133,16 +132,16 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
         if bidirection:
             # forward direction cell
-            rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_fw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
-            rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_bw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
+            encoding = tf.nn.rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
                                              sequence_length=sequence_length,
                                              initial_state=initial_state)
         else:
-            cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
-            _, encoding = rnn.rnn(cell, X, dtype=tf.float32,
+            cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            _, encoding = tf.nn.rnn.rnn(cell, X, dtype=tf.float32,
                                   sequence_length=sequence_length,
                                   initial_state=initial_state)
         return target_predictor_fn(encoding[-1], y)
