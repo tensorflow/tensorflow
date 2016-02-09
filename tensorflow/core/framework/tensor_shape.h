@@ -155,7 +155,7 @@ class TensorShape {
   // dimensions, we have several representations.
   // Rep16: Supports up to 7 dimensions where each dimension is < 2^16
   // Rep32: Supports up to 3 dimensions where each dimension is < 2^32
-  // Rep64: Supports arbtrary dimensionality, 64-bit dimensions using
+  // Rep64: Supports arbitrary dimensionality, 64-bit dimensions using
   //        an out of line vector.
   struct Rep16 {
     int16 dims_[7];
