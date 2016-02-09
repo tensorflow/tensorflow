@@ -35,7 +35,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
-        bidirection: Whether this is a bidirectional rnn.
+        bidirectional: boolean, Whether this is a bidirectional rnn.
         sequence_length: If sequence_length is provided, dynamic calculation is performed.
                  This saves computational time when unrolling past max sequence length.
         initial_state: An initial state for the RNN. This must be a tensor of appropriate type
@@ -71,7 +71,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, rnn_size, n_classes, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn,
-                 initial_state=None, bidirection=False,
+                 initial_state=None, bidirectional=False,
                  sequence_length=None, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
@@ -80,7 +80,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
-        self.bidirection = bidirection
+        self.bidirectional = bidirectional
         self.num_layers = num_layers
         self.sequence_length = sequence_length
         self.initial_state = initial_state
@@ -97,7 +97,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
                                     self.num_layers,
-                                    self.input_op_fn, self.bidirection,
+                                    self.input_op_fn, self.bidirectional,
                                     models.logistic_regression,
                                     self.sequence_length,
                                     self.initial_state)(X, y)
@@ -123,7 +123,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
-        bidirection: Whether this is a bidirectional rnn.
+        bidirectional: boolean, Whether this is a bidirectional rnn.
         sequence_length: If sequence_length is provided, dynamic calculation is performed.
                  This saves computational time when unrolling past max sequence length.
         initial_state: An initial state for the RNN. This must be a tensor of appropriate type
@@ -152,7 +152,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     def __init__(self, rnn_size, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn, initial_state=None,
-                 bidirection=False, sequence_length=None,
+                 bidirectional=False, sequence_length=None,
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
@@ -161,7 +161,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
-        self.bidirection = bidirection
+        self.bidirectional = bidirectional
         self.num_layers = num_layers
         self.sequence_length = sequence_length
         self.initial_state = initial_state
@@ -178,7 +178,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     def _model_fn(self, X, y):
         return models.get_rnn_model(self.rnn_size, self.cell_type,
                                     self.num_layers,
-                                    self.input_op_fn, self.bidirection,
+                                    self.input_op_fn, self.bidirectional,
                                     models.linear_regression,
                                     self.sequence_length,
                                     self.initial_state)(X, y)
