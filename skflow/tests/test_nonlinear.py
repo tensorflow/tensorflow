@@ -65,7 +65,11 @@ class NonLinearTest(tf.test.TestCase):
                               [2, 2, 3, 4, 5],
                               [3, 3, 1, 2, 1],
                               [2, 4, 5, 4, 1]]), dtype=np.float32)
+        # labels for classification
         labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
+        # targets for regression
+        targets = np.array(list([10, 16, 10, 16]), dtype=np.float32)
+        test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]))
         def input_fn(X):
             return tf.split(1, 5, X)
 
@@ -73,23 +77,24 @@ class NonLinearTest(tf.test.TestCase):
         classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn)
         classifier.fit(data, labels)
-        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
-                                                        [2, 3, 4, 5, 6]])))
+        predictions = classifier.predict(test_data)
         self.assertAllClose(predictions, np.array([1, 0]))
         
         classifier = skflow.TensorFlowRNNClassifier(
-            rnn_size=2, cell_type='gru', n_classes=2, input_op_fn=input_fn)
-        classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=2, cell_type='rnn', n_classes=2,
             input_op_fn=input_fn, num_layers=2)
+        classifier.fit(data, labels)
+        classifier = skflow.TensorFlowRNNClassifier(
+            rnn_size=2, cell_type='invalid_cell_type', n_classes=2,
+            input_op_fn=input_fn, num_layers=2)
+        with self.assertRaises(ValueError):
+            classifier.fit(data, labels)
 
         # Regression
-        classifier = skflow.TensorFlowRNNRegressor(
-            rnn_size=2, cell_type='lstm', input_op_fn=input_fn)
-        classifier.fit(data, labels)
-        predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
-                                                        [2, 3, 4, 5, 6]])))
-
+        regressor = skflow.TensorFlowRNNRegressor(
+            rnn_size=2, cell_type='gru', input_op_fn=input_fn)
+        regressor.fit(data, targets)
+        predictions = regressor.predict(test_data)
 
 if __name__ == "__main__":
     tf.test.main()
