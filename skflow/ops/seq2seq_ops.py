@@ -93,15 +93,14 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
         states, sampling_states = [initial_state], [initial_state]
         outputs, sampling_outputs = [], []
         with tf.op_scope([decoder_inputs, initial_state], "training"):
-            for i in enumerate(decoder_inputs):
-                inp = decoder_inputs[i]
+            for i, inp in enumerate(decoder_inputs):
                 if i > 0:
                     tf.get_variable_scope().reuse_variables()
                 output, new_state = cell(inp, states[-1])
                 outputs.append(output)
                 states.append(new_state)
         with tf.op_scope([initial_state], "sampling"):
-            for i in enumerate(decoder_inputs):
+            for i, _ in enumerate(decoder_inputs):
                 if i == 0:
                     sampling_outputs.append(outputs[i])
                     sampling_states.append(states[i])
