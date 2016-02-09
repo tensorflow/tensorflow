@@ -5,6 +5,7 @@
 * **[Building Graphs](../../api_docs/python/framework.md)**:
   * [`add_to_collection`](../../api_docs/python/framework.md#add_to_collection)
   * [`as_dtype`](../../api_docs/python/framework.md#as_dtype)
+  * [`bytes`](../../api_docs/python/framework.md#bytes)
   * [`control_dependencies`](../../api_docs/python/framework.md#control_dependencies)
   * [`convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor)
   * [`convert_to_tensor_or_indexed_slices`](../../api_docs/python/framework.md#convert_to_tensor_or_indexed_slices)
@@ -35,6 +36,7 @@
   * [`linspace`](../../api_docs/python/constant_op.md#linspace)
   * [`ones`](../../api_docs/python/constant_op.md#ones)
   * [`ones_like`](../../api_docs/python/constant_op.md#ones_like)
+  * [`random_crop`](../../api_docs/python/constant_op.md#random_crop)
   * [`random_normal`](../../api_docs/python/constant_op.md#random_normal)
   * [`random_shuffle`](../../api_docs/python/constant_op.md#random_shuffle)
   * [`random_uniform`](../../api_docs/python/constant_op.md#random_uniform)
@@ -79,8 +81,10 @@
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
+  * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
@@ -95,6 +99,7 @@
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
   * [`slice`](../../api_docs/python/array_ops.md#slice)
+  * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
   * [`string_to_number`](../../api_docs/python/array_ops.md#string_to_number)
@@ -129,6 +134,7 @@
   * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
+  * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`diag`](../../api_docs/python/math_ops.md#diag)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
@@ -167,6 +173,7 @@
   * [`reduce_sum`](../../api_docs/python/math_ops.md#reduce_sum)
   * [`round`](../../api_docs/python/math_ops.md#round)
   * [`rsqrt`](../../api_docs/python/math_ops.md#rsqrt)
+  * [`scalar_mul`](../../api_docs/python/math_ops.md#scalar_mul)
   * [`segment_max`](../../api_docs/python/math_ops.md#segment_max)
   * [`segment_mean`](../../api_docs/python/math_ops.md#segment_mean)
   * [`segment_min`](../../api_docs/python/math_ops.md#segment_min)
@@ -236,7 +243,6 @@
   * [`per_image_whitening`](../../api_docs/python/image.md#per_image_whitening)
   * [`random_brightness`](../../api_docs/python/image.md#random_brightness)
   * [`random_contrast`](../../api_docs/python/image.md#random_contrast)
-  * [`random_crop`](../../api_docs/python/image.md#random_crop)
   * [`random_flip_left_right`](../../api_docs/python/image.md#random_flip_left_right)
   * [`random_flip_up_down`](../../api_docs/python/image.md#random_flip_up_down)
   * [`random_hue`](../../api_docs/python/image.md#random_hue)
@@ -371,6 +377,7 @@
   * [`Coordinator`](../../api_docs/python/train.md#Coordinator)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
+  * [`export_meta_graph`](../../api_docs/python/train.md#export_meta_graph)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`global_norm`](../../api_docs/python/train.md#global_norm)
@@ -379,6 +386,7 @@
   * [`gradients`](../../api_docs/python/train.md#gradients)
   * [`histogram_summary`](../../api_docs/python/train.md#histogram_summary)
   * [`image_summary`](../../api_docs/python/train.md#image_summary)
+  * [`import_meta_graph`](../../api_docs/python/train.md#import_meta_graph)
   * [`LooperThread`](../../api_docs/python/train.md#LooperThread)
   * [`merge_all_summaries`](../../api_docs/python/train.md#merge_all_summaries)
   * [`merge_summary`](../../api_docs/python/train.md#merge_summary)
@@ -386,7 +394,6 @@
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
-  * [`SaverDef`](../../api_docs/python/train.md#SaverDef)
   * [`scalar_summary`](../../api_docs/python/train.md#scalar_summary)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
@@ -397,8 +404,4 @@
 
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
-
-* **[Unsupported](../../api_docs/python/unsupported.md)**:
-  * [`constant_value`](../../api_docs/python/unsupported.md#constant_value)
-  * [`make_all`](../../api_docs/python/unsupported.md#make_all)
 
