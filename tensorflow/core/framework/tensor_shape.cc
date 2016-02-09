@@ -143,7 +143,7 @@ void TensorShape::AddDim(int64 size) {
     // to allow REP32.
     bool can_be_rep32 = (vals.size() <= 3);
     if (can_be_rep32) {
-      for (int i = 0; i < vals.size(); i++) {
+      for (size_t i = 0; i < vals.size(); i++) {
         if (vals[i] >= kMaxRep32) {
           can_be_rep32 = false;
           break;
@@ -152,7 +152,7 @@ void TensorShape::AddDim(int64 size) {
     }
     if (can_be_rep32) {
       set_tag(REP32);
-      for (int d = 0; d < vals.size(); d++) {
+      for (size_t d = 0; d < vals.size(); d++) {
         as32()->dims_[d] = static_cast<int32>(vals[d]);
       }
     } else {

@@ -433,7 +433,7 @@ class Seq2SeqTest(tf.test.TestCase):
         perplexities[bucket].append(math.exp(float(res[1])))
       for bucket in range(len(buckets)):
         if len(perplexities[bucket]) > 1:  # Assert that perplexity went down.
-          self.assertLess(perplexities[bucket][1], perplexities[bucket][0])
+          self.assertLess(perplexities[bucket][-1], perplexities[bucket][0])
 
 
 if __name__ == "__main__":
