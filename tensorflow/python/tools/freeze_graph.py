@@ -40,8 +40,6 @@ from __future__ import print_function
 
 import tensorflow.python.platform
 
-# pylint: disable=redefined-builtin
-from six.moves.builtins import bytes
 import tensorflow as tf
 
 from google.protobuf import text_format
@@ -115,7 +113,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(bytes(f.read()), input_graph_def)
+      text_format.Merge(f.read(), input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:
@@ -162,7 +160,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
 
-  with gfile.FastGFile(output_graph, "w") as f:
+  with gfile.FastGFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
   print("Converted %d variables to const ops." % how_many_converted)
   print("%d ops in the final graph." % len(output_graph_def.node))

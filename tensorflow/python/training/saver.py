@@ -1040,7 +1040,7 @@ def _get_kind_name(item):
   Returns:
     The string representation of the kind in CollectionDef.
   """
-  if isinstance(item, (str, bytes, unicode)):
+  if isinstance(item, six.string_types) or isinstance(item, bytes):
     kind = "bytes_list"
   elif isinstance(item, (int, long)):
     kind = "int64_list"
@@ -1058,7 +1058,7 @@ def _add_collection_def(meta_graph_def, key):
     meta_graph_def: MetaGraphDef protocol buffer.
     key: One of the GraphKeys or user-defined string.
   """
-  if not isinstance(key, (str, bytes, unicode)):
+  if not isinstance(key, six.string_types) and not isinstance(key, bytes):
     logging.warning("Only collections with string type keys will be "
                     "serialized. This key has %s" % type(key))
     return
@@ -1083,7 +1083,7 @@ def _add_collection_def(meta_graph_def, key):
         getattr(col_def, kind).value.extend([x.name for x in collection_list])
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
-  except Exception, e:  # pylint: disable=broad-except
+  except Exception as e:  # pylint: disable=broad-except
     logging.warning("Type is unsupported, or the types of the items don't "
                     "match field type in CollectionDef.\n%s" % str(e))
     if key in meta_graph_def.collection_def:
