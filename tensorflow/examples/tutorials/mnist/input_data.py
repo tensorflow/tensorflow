@@ -33,13 +33,14 @@ SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
 def maybe_download(filename, work_directory):
   """Download the data from Yann's website, unless it's already here."""
-  if not os.path.exists(work_directory):
-    os.mkdir(work_directory)
+  if not tf.gfile.Exists(work_directory):
+    tf.gfile.MakeDirs(work_directory)
   filepath = os.path.join(work_directory, filename)
-  if not os.path.exists(filepath):
+  if not tf.gfile.Exists(filepath):
     filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
-    statinfo = os.stat(filepath)
-    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+    with tf.gfile.GFile(filepath) as f:
+      size = f.Size()
+    print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
 
 

@@ -28,7 +28,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.models.rnn.ptb import reader
-from tensorflow.python.platform import gfile
 
 
 class PtbReaderTest(tf.test.TestCase):
@@ -43,7 +42,7 @@ class PtbReaderTest(tf.test.TestCase):
     tmpdir = tf.test.get_temp_dir()
     for suffix in "train", "valid", "test":
       filename = os.path.join(tmpdir, "ptb.%s.txt" % suffix)
-      with gfile.GFile(filename, "w") as fh:
+      with tf.gfile.GFile(filename, "w") as fh:
         fh.write(self._string_data)
     # Smoke test
     output = reader.ptb_raw_data(tmpdir)
