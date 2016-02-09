@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import os
 
 import tensorflow.python.platform
 
@@ -946,6 +947,24 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertLess(self.averageError(image0, image1), 0.8)
+
+  def testCmyk(self):
+    # Confirm that CMYK reads in as RGB
+    base = 'tensorflow/core/lib/jpeg/testdata'
+    rgb_path = os.path.join(base, 'jpeg_merge_test1.jpg')
+    cmyk_path = os.path.join(base, 'jpeg_merge_test1_cmyk.jpg')
+    shape = 256, 128, 3
+    for channels in 3, 0:
+      with self.test_session() as sess:
+        rgb = image_ops.decode_jpeg(io_ops.read_file(rgb_path),
+                                    channels=channels)
+        cmyk = image_ops.decode_jpeg(io_ops.read_file(cmyk_path),
+                                     channels=channels)
+        rgb, cmyk = sess.run([rgb, cmyk])
+        self.assertEqual(rgb.shape, shape)
+        self.assertEqual(cmyk.shape, shape)
+        error = self.averageError(rgb, cmyk)
+        self.assertLess(error, 4)
 
   def testSynthetic(self):
     with self.test_session() as sess:
