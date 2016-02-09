@@ -26,6 +26,7 @@ import time
 import numpy as np
 import six
 
+from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
@@ -963,7 +964,8 @@ class Saver(object):
     update_checkpoint_state(save_path, model_checkpoint_path,
                             self.last_checkpoints, latest_filename)
     meta_graph_file_name = ".".join([checkpoint_file, meta_graph_suffix])
-    self.export_meta_graph(meta_graph_file_name)
+    with sess.graph.as_default():
+      self.export_meta_graph(meta_graph_file_name)
 
     return model_checkpoint_path
 
@@ -1046,6 +1048,8 @@ def _get_kind_name(item):
     kind = "int64_list"
   elif isinstance(item, float):
     kind = "float_list"
+  elif isinstance(item, Any):
+    kind = "any_list"
   else:
     kind = "node_list"
   return kind

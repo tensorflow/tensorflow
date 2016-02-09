@@ -3,6 +3,8 @@ syntax = "proto3";
 package tensorflow;
 // option cc_enable_arenas = true;
 
+import "google/protobuf/any.proto";
+
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/op_def.proto";
 import "tensorflow/core/protobuf/saver.proto";
@@ -33,8 +35,7 @@ message MetaGraphDef {
 
     // A serialized protobuf. Can be the time this meta graph is created, or
     // modified, or name of the model.
-    // TODO(opensource): Replace bytes_list with google.protobuf.Any.
-    bytes any_info = 3;
+    google.protobuf.Any any_info = 3;
   }
   MetaInfoDef meta_info_def = 1;
 
@@ -80,6 +81,24 @@ message MetaGraphDef {
 //           }
 //         }
 //       }
+//  or
+//
+//    3) any_buf = any_pb2.Any()
+//       tf.add_to_collection("your_collection_name",
+//         any_buf.Pack(your_proto))
+//
+//       collection_def {
+//         key: "user_defined_any_collection"
+//         value {
+//           any_list {
+//             value {
+//               type_url: "type.googleapis.com/tensorflow.QueueRunnerDef"
+//               value: "\n\ntest_queue"
+//             }
+//           }
+//         }
+//       }
+//
 //
 // 3. For Python objects, implement to_proto() and from_proto(), and register
 //    them in the following manner:
@@ -130,10 +149,16 @@ message CollectionDef {
     repeated float value = 1 [packed = true];
   }
 
+  // AnyList is used for collecting Any protos.
+  message AnyList {
+    repeated google.protobuf.Any value = 1;
+  }
+
   oneof kind {
     NodeList node_list = 1;
     BytesList bytes_list = 2;
     Int64List int64_list = 3;
     FloatList float_list = 4;
+    AnyList any_list = 5;
   }
 }

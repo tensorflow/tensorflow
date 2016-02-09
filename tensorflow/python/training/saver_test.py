@@ -31,6 +31,8 @@ import tensorflow as tf
 import numpy as np
 import six
 
+from google.protobuf.any_pb2 import Any
+
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.platform import gfile
@@ -746,18 +748,21 @@ class MetaGraphTest(tf.test.TestCase):
       tf.add_to_collection("variable_collection", v0)
       # Add QueueRunners.
       tf.train.add_queue_runner(qr)
-      # Adds user_defined proto in three formats: string and bytes.
+      # Adds user_defined proto in three formats: string, bytes and Any.
       queue_runner = queue_runner_pb2.QueueRunnerDef(queue_name="test_queue")
       tf.add_to_collection("user_defined_string_collection", str(queue_runner))
       tf.add_to_collection("user_defined_bytes_collection",
                            queue_runner.SerializeToString())
+      any_buf = Any()
+      any_buf.Pack(queue_runner)
+      tf.add_to_collection("user_defined_any_collection", any_buf)
 
       # Generates MetaGraphDef.
       meta_graph_def = save.export_meta_graph(filename)
       self.assertTrue(meta_graph_def.HasField("saver_def"))
       self.assertTrue(meta_graph_def.HasField("graph_def"))
       collection_def = meta_graph_def.collection_def
-      self.assertEqual(len(collection_def), 9)
+      self.assertEqual(len(collection_def), 10)
 
     with tf.Graph().as_default():
       # Restores from MetaGraphDef.
