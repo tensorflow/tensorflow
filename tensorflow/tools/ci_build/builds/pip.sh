@@ -18,8 +18,7 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--pip-upgrade]
-# The option "--pip-upgrade" forces "--upgrade" flag during pip install.
+#   pip.sh CONTAINER_TYPE
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -120,12 +119,7 @@ echo "whl file path = ${WHL_PATH}"
 # Install, in user's local home folder
 echo "Installing pip whl file: ${WHL_PATH}"
 
-UPGRADE_OPT=""
-if [[ $2 == "--pip-upgrade" ]]; then
-  UPGRADE_OPT="--upgrade"
-fi
-
-${PYTHON_BIN_PATH} -m pip install -v --user ${UPGRADE_OPT} ${WHL_PATH} &&
+${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} &&
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
 # tests-on-install and exit right away
