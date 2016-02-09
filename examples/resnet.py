@@ -15,6 +15,9 @@
 """
 This example builds deep residual network for mnist data. 
 Reference Paper: http://arxiv.org/pdf/1512.03385.pdf
+
+Note that this is still a work-in-progress. Feel free to submit a PR
+to make this better. 
 """
 
 import os
@@ -31,7 +34,8 @@ from math import sqrt
 
 
 def res_net(x, y, activation=tf.nn.relu):
-    """Builds a residual network.
+    """Builds a residual network. Note that if the input tensor is 2D, it must be
+    square in order to be converted to a 4D tensor. 
 
     Borrowed structure from here: https://github.com/pkmital/tensorflow_tutorials/blob/master/10_residual_network.py
 
@@ -39,24 +43,21 @@ def res_net(x, y, activation=tf.nn.relu):
         x: Input of the network
         y: Output of the network
         activation: Activation function to apply after each convolution
-    Raises:
-        ValueError
-            If a 2D tensor is not square, it cannot be converted to a 
-            4D tensor.
     """
-    LayerBlock = namedtuple(
-        'LayerBlock', ['num_layers', 'num_filters', 'bottleneck_size'])
-    blocks = [LayerBlock(3, 128, 32),
-              LayerBlock(3, 256, 64),
-              LayerBlock(3, 512, 128),
-              LayerBlock(3, 1024, 256)]
 
-    # Input check
+    # Configurations for each bottleneck block
+    BottleneckBlock = namedtuple(
+        'BottleneckBlock', ['num_layers', 'num_filters', 'bottleneck_size'])
+    blocks = [BottleneckBlock(3, 128, 32),
+              BottleneckBlock(3, 256, 64),
+              BottleneckBlock(3, 512, 128),
+              BottleneckBlock(3, 1024, 256)]
+
     input_shape = x.get_shape().as_list()
+
+    # Reshape the input into the right shape if it's 2D tensor
     if len(input_shape) == 2:
         ndim = int(sqrt(input_shape[1]))
-        if ndim * ndim != input_shape[1]:
-            raise ValueError('input_shape should be square')
         x = tf.reshape(x, [-1, ndim, ndim, 1])
 
     # First convolution expands to 64 channels
@@ -74,11 +75,13 @@ def res_net(x, y, activation=tf.nn.relu):
                                [1, 1], [1, 1, 1, 1],
                                padding='VALID', bias=True)
 
-    # Create resnets for each residual block
+    # Create each bottleneck building block for each layer
     for block_i, block in enumerate(blocks):
         for layer_i in range(block.num_layers):
 
             name = 'block_%d/layer_%d' % (block_i, layer_i)
+
+            # 1x1 convolution responsible for reducing dimension
             with tf.variable_scope(name + '/conv_in'):
                 conv = skflow.ops.conv2d(net, block.num_filters,
                                          [1, 1], [1, 1, 1, 1],
@@ -95,6 +98,7 @@ def res_net(x, y, activation=tf.nn.relu):
                                          batch_norm=True,
                                          bias=False)
 
+            # 1x1 convolution responsible for restoring dimension
             with tf.variable_scope(name + '/conv_out'):
                 conv = skflow.ops.conv2d(conv, block.num_filters,
                                          [1, 1], [1, 1, 1, 1],
@@ -103,6 +107,8 @@ def res_net(x, y, activation=tf.nn.relu):
                                          batch_norm=True,
                                          bias=False)
 
+            # shortcut connections that turn the network into its counterpart
+            # residual function (identity shortcut)
             net = conv + net
 
         try:
@@ -116,16 +122,13 @@ def res_net(x, y, activation=tf.nn.relu):
         except IndexError:
             pass
 
-
+    net_shape = net.get_shape().as_list()
     net = tf.nn.avg_pool(net,
-                         ksize=[1, net.get_shape().as_list()[1],
-                                net.get_shape().as_list()[2], 1],
+                         ksize=[1, net_shape[1], net_shape[2], 1],
                          strides=[1, 1, 1, 1], padding='VALID')
-    net = tf.reshape(
-        net,
-        [-1, net.get_shape().as_list()[1] *
-         net.get_shape().as_list()[2] *
-         net.get_shape().as_list()[3]])
+
+    net_shape = net.get_shape().as_list()
+    net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
 
     return skflow.models.logistic_regression(net, y)
 
