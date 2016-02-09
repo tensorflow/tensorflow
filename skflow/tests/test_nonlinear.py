@@ -77,6 +77,8 @@ class NonLinearTest(tf.test.TestCase):
         classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=2, cell_type='lstm', n_classes=2, input_op_fn=input_fn)
         classifier.fit(data, labels)
+        classifier.weights_
+        classifier.bias_
         predictions = classifier.predict(test_data)
         self.assertAllClose(predictions, np.array([1, 0]))
         
@@ -94,6 +96,8 @@ class NonLinearTest(tf.test.TestCase):
         regressor = skflow.TensorFlowRNNRegressor(
             rnn_size=2, cell_type='gru', input_op_fn=input_fn)
         regressor.fit(data, targets)
+        regressor.weights_
+        regressor.bias_
         predictions = regressor.predict(test_data)
 
 if __name__ == "__main__":
