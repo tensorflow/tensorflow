@@ -17,9 +17,10 @@
 from __future__ import division, print_function, absolute_import
 
 import itertools
+import math
+
 import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
-import math
 
 import numpy as np
 from sklearn.utils import check_array

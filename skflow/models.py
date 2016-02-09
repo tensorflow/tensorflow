@@ -16,7 +16,6 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
-from tensorflow.models.rnn import rnn, rnn_cell
 
 from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
@@ -93,9 +92,102 @@ def get_dnn_model(hidden_units, target_predictor_fn):
         return target_predictor_fn(layers, y)
     return dnn_estimator
 
+## This will be in Tensorflow 0.7.
+## TODO(ilblackdragon): Clean this up when it's released
+
+
+def _reverse_seq(input_seq, lengths):
+    """Reverse a list of Tensors up to specified lengths.
+    Args:
+        input_seq: Sequence of seq_len tensors of dimension (batch_size, depth)
+        lengths:   A tensor of dimension batch_size, containing lengths for each
+                   sequence in the batch. If "None" is specified, simply reverses
+                   the list.
+    Returns:
+        time-reversed sequence
+    """
+    if lengths is None:
+        return list(reversed(input_seq))
+
+    for input_ in input_seq:
+        input_.set_shape(input_.get_shape().with_rank(2))
+
+    # Join into (time, batch_size, depth)
+    s_joined = tf.pack(input_seq)
+
+    # Reverse along dimension 0
+    s_reversed = tf.reverse_sequence(s_joined, lengths, 0, 1)
+    # Split again into list
+    result = tf.unpack(s_reversed)
+    return result
+
+
+def bidirectional_rnn(cell_fw, cell_bw, inputs,
+                      initial_state_fw=None, initial_state_bw=None,
+                      dtype=None, sequence_length=None, scope=None):
+    """Creates a bidirectional recurrent neural network.
+    Similar to the unidirectional case above (rnn) but takes input and builds
+    independent forward and backward RNNs with the final forward and backward
+    outputs depth-concatenated, such that the output will have the format
+    [time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
+    forward and backward cell must match. The initial state for both directions
+    is zero by default (but can be set optionally) and no intermediate states are
+    ever returned -- the network is fully unrolled for the given (passed in)
+    length(s) of the sequence(s) or completely unrolled if length(s) is not given.
+    Args:
+        cell_fw: An instance of RNNCell, to be used for forward direction.
+        cell_bw: An instance of RNNCell, to be used for backward direction.
+        inputs: A length T list of inputs, each a tensor of shape
+          [batch_size, cell.input_size].
+        initial_state_fw: (optional) An initial state for the forward RNN.
+          This must be a tensor of appropriate type and shape
+          [batch_size x cell.state_size].
+        initial_state_bw: (optional) Same as for initial_state_fw.
+        dtype: (optional) The data type for the initial state.  Required if either
+          of the initial states are not provided.
+        sequence_length: (optional) An int64 vector (tensor) of size [batch_size],
+          containing the actual lengths for each of the sequences.
+        scope: VariableScope for the created subgraph; defaults to "BiRNN"
+    Returns:
+        A set of output `Tensors` where:
+          outputs is a length T list of outputs (one for each input), which
+          are depth-concatenated forward and backward outputs
+    Raises:
+        TypeError: If "cell_fw" or "cell_bw" is not an instance of RNNCell.
+        ValueError: If inputs is None or an empty list.
+    """
+
+    if not isinstance(cell_fw, tf.nn.rnn_cell.RNNCell):
+        raise TypeError("cell_fw must be an instance of RNNCell")
+    if not isinstance(cell_bw, tf.nn.rnn_cell.RNNCell):
+        raise TypeError("cell_bw must be an instance of RNNCell")
+    if not isinstance(inputs, list):
+        raise TypeError("inputs must be a list")
+    if not inputs:
+        raise ValueError("inputs must not be empty")
+
+    name = scope or "BiRNN"
+    # Forward direction
+    with tf.variable_scope(name + "_FW"):
+        output_fw, _ = tf.nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
+                                 sequence_length)
+
+    # Backward direction
+    with tf.variable_scope(name + "_BW"):
+        tmp, _ = tf.nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
+                           initial_state_bw, dtype, sequence_length)
+    output_bw = _reverse_seq(tmp, sequence_length)
+    # Concat each of the forward/backward outputs
+    outputs = [tf.concat(1, [fw, bw])
+               for fw, bw in zip(output_fw, output_bw)]
+
+    return outputs
+
+# End of Tensorflow 0.7
+
 
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
-                  bidirection, target_predictor_fn,
+                  bidirectional, target_predictor_fn,
                   sequence_length, initial_state):
     """Returns a function that creates a RNN TensorFlow subgraph with given
     params.
@@ -107,13 +199,14 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
         input_op_fn: Function that will transform the input tensor, such as
                      creating word embeddings, byte list, etc. This takes
                      an argument X for input and returns transformed X.
-        bidirection: Whether this is a bidirectional rnn.
+        bidirectional: boolean, Whether this is a bidirectional rnn.
         target_predictor_fn: Function that will predict target from input
                              features. This can be logistic regression,
                              linear regression or any other model,
                              that takes X, y and returns predictions and loss tensors.
         sequence_length: If sequence_length is provided, dynamic calculation is performed.
                          This saves computational time when unrolling past max sequence length.
+                         Required for bidirectional RNNs.
         initial_state: An initial state for the RNN. This must be a tensor of appropriate type
                        and shape [batch_size x cell.state_size].
 
@@ -124,26 +217,28 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
         """RNN estimator with target predictor function on top."""
         X = input_op_fn(X)
         if cell_type == 'rnn':
-            cell_fn = rnn_cell.BasicRNNCell
+            cell_fn = tf.nn.rnn_cell.BasicRNNCell
         elif cell_type == 'gru':
-            cell_fn = rnn_cell.GRUCell
+            cell_fn = tf.nn.rnn_cell.GRUCell
         elif cell_type == 'lstm':
-            cell_fn = rnn_cell.BasicLSTMCell
+            cell_fn = tf.nn.rnn_cell.BasicLSTMCell
         else:
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
-        if bidirection:
+        if bidirectional:
             # forward direction cell
-            rnn_fw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_fw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
-            rnn_bw_cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_bw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            encoding = rnn.bidirectional_rnn(rnn_fw_cell, rnn_bw_cell,
-                                             sequence_length=sequence_length,
-                                             initial_state=initial_state)
+            encoding = bidirectional_rnn(rnn_fw_cell, rnn_bw_cell, X,
+                                         dtype=tf.float32,
+                                         sequence_length=sequence_length,
+                                         initial_state_fw=initial_state,
+                                         initial_state_bw=initial_state)
         else:
-            cell = rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
-            _, encoding = rnn.rnn(cell, X, dtype=tf.float32,
-                                  sequence_length=sequence_length,
-                                  initial_state=initial_state)
+            cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            _, encoding = tf.nn.rnn(cell, X, dtype=tf.float32,
+                                    sequence_length=sequence_length,
+                                    initial_state=initial_state)
         return target_predictor_fn(encoding[-1], y)
     return rnn_estimator
