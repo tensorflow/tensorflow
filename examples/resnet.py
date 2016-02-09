@@ -135,11 +135,12 @@ def res_net(x, y, activation=tf.nn.relu):
 # Download and load MNIST data.
 mnist = input_data.read_data_sets('MNIST_data')
 
-# Train a resnet classifier
+# Initialize a resnet classifier
 classifier = skflow.TensorFlowEstimator(
     model_fn=res_net, n_classes=10, batch_size=100, steps=20000,
     learning_rate=0.001)
 
+# Train the classifier
 classifier.fit(mnist.train.images, mnist.train.labels)
 
 # Calculate accuracy
