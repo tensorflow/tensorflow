@@ -1160,7 +1160,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
   ready->clear();
-
   {
     FrameState* output_frame = input_frame;
     int64 output_iter = input_iter;

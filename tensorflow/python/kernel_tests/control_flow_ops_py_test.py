@@ -1239,28 +1239,52 @@ class ControlFlowTest(tf.test.TestCase):
       r = sess.run(r, feed_dict={v: 2.0})
       self.assertAllClose(1024.0, r)
 
-  def testFold_1(self):
+  def testFoldl_Simple(self):
     with self.test_session():
       elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      r = control_flow_ops.fold(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems, [1])
-      result = r.eval()
-    self.assertTrue(check_op_order(elems.graph))
-    self.assertAllEqual(np.array([208]), result)
 
-  def testFold_2(self):
+      r = control_flow_ops.foldl(
+          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
+      self.assertAllEqual(208, r.eval())
+
+      r = control_flow_ops.foldl(
+          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
+      self.assertAllEqual(880, r.eval())
+
+  def testFoldr_Simple(self):
     with self.test_session():
       elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      ten = tf.convert_to_tensor(10)
 
-      def compute(a, x):
-        r = tf.mul(x, ten)
-        return tf.add(a, r)
+      r = control_flow_ops.foldr(
+          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
+      self.assertAllEqual(450, r.eval())
 
-      r = control_flow_ops.fold(compute, elems, [1])
-      result = r.eval()
-    self.assertTrue(check_op_order(elems.graph))
-    self.assertAllEqual([201], result)
+      r = control_flow_ops.foldr(
+          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
+      self.assertAllEqual(1282, r.eval())
+
+  def testFold_Grad(self):
+    with self.test_session():
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
+      v = tf.constant(2.0, name="v")
+
+      r = control_flow_ops.foldl(
+          lambda a, x: tf.mul(a, x), elems, initializer=v)
+      r = tf.gradients(r, v)[0]
+      self.assertAllEqual(720.0, r.eval())
+
+      r = control_flow_ops.foldr(
+          lambda a, x: tf.mul(a, x), elems, initializer=v)
+      r = tf.gradients(r, v)[0]
+      self.assertAllEqual(720.0, r.eval())
+
+  def testMap_Simple(self):
+    with self.test_session():
+      nums = [1, 2, 3, 4, 5, 6]
+      elems = tf.constant(nums, name="data")
+      r = control_flow_ops.map(
+          lambda x: tf.mul(tf.add(x, 3), 2), elems)
+      self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
   def testOneValueCond(self):
     with self.test_session():
