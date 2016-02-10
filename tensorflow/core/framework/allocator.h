@@ -105,7 +105,7 @@ class Allocator {
 
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if
-  // TracksAlloctionSizes is overridden to return true.
+  // TracksAllocationSizes is overridden to return true.
   virtual bool TracksAllocationSizes() { return false; }
 
   // Returns true if this allocator requires tensors with 0 elements
