@@ -40,6 +40,8 @@
 # filegroup ":android_srcs" - Core sources
 # filegroup ":android_core_ops" - Essential kernels
 # filegroup ":android_extended_ops" - Optional kernels
+# filegroup ":android_extended_ops_group1" - Optional kernels, first batch
+# filegroup ":android_extended_ops_group2" - Optional kernels, second batch
 # cc_library ":android_tensorflow_lib" - Native library
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
@@ -586,8 +588,23 @@ filegroup(
 )
 
 # Other kernels we may want on Android.
+#
+# The kernels can be consumed as a whole or in two groups for
+# supporting separate compilation. Note that the split into groups
+# is entirely for improving compilation time, and not for
+# organizational reasons; you should not depend on any
+# of those groups independently.
 filegroup(
     name = "android_extended_ops",
+    srcs = [
+        ":android_extended_ops_group1",
+        ":android_extended_ops_group2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group1",
     srcs = [
         "//tensorflow/core:kernels/avgpooling_op.cc",
         "//tensorflow/core:kernels/avgpooling_op.h",
@@ -619,6 +636,14 @@ filegroup(
         "//tensorflow/core:kernels/io.cc",
         "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/lrn_op.cc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group2",
+    srcs = [
+        "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/maxpooling_op.cc",
         "//tensorflow/core:kernels/maxpooling_op.h",
         "//tensorflow/core:kernels/reduction_ops.h",
