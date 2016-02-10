@@ -299,19 +299,20 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
           output_projection=output_projection, feed_previous=feed_previous)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
-    outputs1, state1 = embedding_rnn_decoder(
-        decoder_inputs, encoder_state, cell, num_decoder_symbols,
-        output_projection=output_projection, feed_previous=True)
-    variable_scope.get_variable_scope().reuse_variables()
-    outputs2, state2 = embedding_rnn_decoder(
-        decoder_inputs, encoder_state, cell, num_decoder_symbols,
-        output_projection=output_projection, feed_previous=False)
+    def decoder(feed_previous_bool):
+      reuse = None if feed_previous_bool else True
+      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                         reuse=reuse):
+        outputs, state = embedding_rnn_decoder(
+            decoder_inputs, encoder_state, cell, num_decoder_symbols,
+            output_projection=output_projection,
+            feed_previous=feed_previous_bool)
+        return outputs + [state]
 
-    outputs = control_flow_ops.cond(feed_previous,
-                                    lambda: outputs1, lambda: outputs2)
-    state = control_flow_ops.cond(feed_previous,
-                                  lambda: state1, lambda: state2)
-    return outputs, state
+    outputs_and_state = control_flow_ops.cond(feed_previous,
+                                              lambda: decoder(True),
+                                              lambda: decoder(False))
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
@@ -388,18 +389,20 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
                               loop_function=loop_function, dtype=dtype)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
-    outputs1, state1 = tied_rnn_seq2seq(
-        emb_encoder_inputs, emb_decoder_inputs, cell,
-        loop_function=extract_argmax_and_embed, dtype=dtype)
-    variable_scope.get_variable_scope().reuse_variables()
-    outputs2, state2 = tied_rnn_seq2seq(
-        emb_encoder_inputs, emb_decoder_inputs, cell, dtype=dtype)
+    def decoder(feed_previous_bool):
+      loop_function = extract_argmax_and_embed if feed_previous_bool else None
+      reuse = None if feed_previous_bool else True
+      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                         reuse=reuse):
+        outputs, state = tied_rnn_seq2seq(
+            emb_encoder_inputs, emb_decoder_inputs, cell,
+            loop_function=loop_function, dtype=dtype)
+        return outputs + [state]
 
-    outputs = control_flow_ops.cond(feed_previous,
-                                    lambda: outputs1, lambda: outputs2)
-    state = control_flow_ops.cond(feed_previous,
-                                  lambda: state1, lambda: state2)
-    return outputs, state
+    outputs_and_state = control_flow_ops.cond(feed_previous,
+                                              lambda: decoder(True),
+                                              lambda: decoder(False))
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
@@ -688,23 +691,22 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
           initial_state_attention=initial_state_attention)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
-    outputs1, state1 = embedding_attention_decoder(
-        decoder_inputs, encoder_state, attention_states, cell,
-        num_decoder_symbols, num_heads=num_heads, output_size=output_size,
-        output_projection=output_projection, feed_previous=True,
-        initial_state_attention=initial_state_attention)
-    variable_scope.get_variable_scope().reuse_variables()
-    outputs2, state2 = embedding_attention_decoder(
-        decoder_inputs, encoder_state, attention_states, cell,
-        num_decoder_symbols, num_heads=num_heads, output_size=output_size,
-        output_projection=output_projection, feed_previous=False,
-        initial_state_attention=initial_state_attention)
+    def decoder(feed_previous_bool):
+      reuse = None if feed_previous_bool else True
+      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                         reuse=reuse):
+        outputs, state = embedding_attention_decoder(
+            decoder_inputs, encoder_state, attention_states, cell,
+            num_decoder_symbols, num_heads=num_heads, output_size=output_size,
+            output_projection=output_projection,
+            feed_previous=feed_previous_bool,
+            initial_state_attention=initial_state_attention)
+        return outputs + [state]
 
-    outputs = control_flow_ops.cond(feed_previous,
-                                    lambda: outputs1, lambda: outputs2)
-    state = control_flow_ops.cond(feed_previous,
-                                  lambda: state1, lambda: state2)
-    return outputs, state
+    outputs_and_state = control_flow_ops.cond(feed_previous,
+                                              lambda: decoder(True),
+                                              lambda: decoder(False))
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
@@ -769,9 +771,13 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
           # If feed_previous is a Tensor, we construct 2 graphs and use cond.
           def filled_embedding_rnn_decoder(feed_previous):
             # pylint: disable=cell-var-from-loop
-            outputs, state = embedding_rnn_decoder(
-                decoder_inputs, encoder_state, decoder_cell,
-                num_decoder_symbols, feed_previous=feed_previous)
+            reuse = None if feed_previous else True
+            vs = variable_scope.get_variable_scope()
+            with variable_scope.variable_scope(vs, reuse=reuse):
+              outputs, state = embedding_rnn_decoder(
+                  decoder_inputs, encoder_state, decoder_cell,
+                  num_decoder_symbols, feed_previous=feed_previous)
+            # pylint: enable=cell-var-from-loop
             return outputs + [state]
           outputs_and_state = control_flow_ops.cond(
               feed_previous,
@@ -865,7 +871,8 @@ def sequence_loss(logits, targets, weights,
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
-                       buckets, seq2seq, softmax_loss_function=None, name=None):
+                       buckets, seq2seq, softmax_loss_function=None,
+                       per_example_loss=False, name=None):
   """Create a sequence-to-sequence model with support for bucketing.
 
   The seq2seq argument is a function that defines a sequence-to-sequence model,
@@ -882,13 +889,17 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
       consisting of outputs and states (as, e.g., basic_rnn_seq2seq).
     softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
+    per_example_loss: Boolean. If set, the returned loss will be a batch-sized
+      tensor of losses for each sequence in the batch. If unset, it will be
+      a scalar with the averaged loss from all examples.
     name: Optional name for this operation, defaults to "model_with_buckets".
 
   Returns:
     A tuple of the form (outputs, losses), where:
       outputs: The outputs for each bucket. Its j'th element consists of a list
         of 2D Tensors of shape [batch_size x num_decoder_symbols] (jth outputs).
-      losses: List of scalar Tensors, representing losses for each bucket.
+      losses: List of scalar Tensors, representing losses for each bucket, or,
+        if per_example_loss is set, a list of 1D batch-sized float Tensors.
 
   Raises:
     ValueError: If length of encoder_inputsut, targets, or weights is smaller
@@ -914,8 +925,13 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         bucket_outputs, _ = seq2seq(encoder_inputs[:bucket[0]],
                                     decoder_inputs[:bucket[1]])
         outputs.append(bucket_outputs)
-        losses.append(sequence_loss(
-            outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
-            softmax_loss_function=softmax_loss_function))
+        if per_example_loss:
+          losses.append(sequence_loss_by_example(
+              outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
+              softmax_loss_function=softmax_loss_function))
+        else:
+          losses.append(sequence_loss(
+              outputs[-1], targets[:bucket[1]], weights[:bucket[1]],
+              softmax_loss_function=softmax_loss_function))
 
   return outputs, losses
