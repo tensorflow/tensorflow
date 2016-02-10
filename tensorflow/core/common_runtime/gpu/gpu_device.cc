@@ -174,6 +174,8 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
       sync_every_op_(sync_every_op) {
+  ProcessState::singleton()->EnableGPUDevice();
+
   gpu::StreamExecutor* executor =
       GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
   if (!executor) {
