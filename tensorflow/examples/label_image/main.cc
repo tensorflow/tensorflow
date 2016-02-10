@@ -161,8 +161,9 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
                     Tensor* indices, Tensor* scores) {
   tensorflow::GraphDefBuilder b;
   string output_name = "top_k";
-  tensorflow::ops::TopK(tensorflow::ops::Const(outputs[0], b.opts()),
-                        how_many_labels, b.opts().WithName(output_name));
+  tensorflow::ops::TopKV2(tensorflow::ops::Const(outputs[0], b.opts()),
+                          tensorflow::ops::Const(how_many_labels, b.opts()),
+                          b.opts().WithName(output_name));
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
