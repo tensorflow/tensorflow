@@ -187,9 +187,9 @@ class UnaryOpTest(tf.test.TestCase):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
     self._compareCpu(x, np.abs, tf.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, tf.neg)
-    self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(x, np.square, tf.square)
+    self._compareBoth(x, np.negative, tf.neg)
+    self._compareBoth(x, np.negative, _NEG)
+    self._compareBoth(x, np.square, tf.square)
     self._compareCpu(x, np.sign, tf.sign)
 
   def testInt64Basic(self):
