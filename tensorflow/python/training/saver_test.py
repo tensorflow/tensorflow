@@ -35,6 +35,7 @@ from google.protobuf.any_pb2 import Any
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 
 
@@ -868,6 +869,36 @@ class MetaGraphTest(tf.test.TestCase):
     self._testMultiSaverCollectionSave()
     self._testMultiSaverCollectionRestore()
 
+  def testBinaryAndTextFormat(self):
+    test_dir = self._TestDir("binary_and_text")
+    filename = os.path.join(test_dir, "metafile")
+    with self.test_session(graph=tf.Graph()):
+      # Creates a graph.
+      tf.Variable(10.0, name="v0")
+      # Exports the graph as binary format.
+      tf.train.export_meta_graph(filename, as_text=False)
+    with self.test_session(graph=tf.Graph()):
+      # Imports the binary format graph.
+      saver = tf.train.import_meta_graph(filename)
+      # Exports the graph as text format.
+      saver.export_meta_graph(filename, as_text=True)
+    with self.test_session(graph=tf.Graph()):
+      # Imports the text format graph.
+      tf.train.import_meta_graph(filename)
+      # Writes wrong contents to the file.
+      tf.train.write_graph(saver.as_saver_def(), os.path.dirname(filename),
+                           os.path.basename(filename))
+    with self.test_session(graph=tf.Graph()):
+      # Import should fail.
+      with self.assertRaisesWithPredicateMatch(
+          IOError, lambda e: "Cannot parse file"):
+        tf.train.import_meta_graph(filename)
+      # Deletes the file
+      gfile.Remove(filename)
+      with self.assertRaisesWithPredicateMatch(
+          IOError, lambda e: "does not exist"):
+        tf.train.import_meta_graph(filename)
+
   def testSliceVariable(self):
     test_dir = self._TestDir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
@@ -978,6 +1009,10 @@ class MetaGraphTest(tf.test.TestCase):
       v0 = tf.Variable(0.0)
       var = tf.Variable(10.0)
       tf.add(v0, var)
+      @function.Defun(x=tf.float32)
+      def minus_one(x):
+        return x - 1
+      minus_one(tf.identity(v0))
       save = tf.train.Saver({"v0": v0})
       tf.initialize_all_variables()
 
@@ -985,7 +1020,7 @@ class MetaGraphTest(tf.test.TestCase):
       meta_graph_def = save.export_meta_graph()
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
-                             "RestoreSlice", "SaveSlices", "Variable"])
+                             "RestoreSlice", "SaveSlices", "Sub", "Variable"])
 
 
 if __name__ == "__main__":

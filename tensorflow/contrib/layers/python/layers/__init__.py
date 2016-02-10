@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""layers: A module containing a higher level NN interface."""
+"""layers module with higher level NN primitives."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.layers.python.framework.tensor_util import *
-from tensorflow.contrib.layers.python.layers import *
+# pylint: disable=wildcard-import
+from tensorflow.contrib.layers.python.layers.initializers import *
+from tensorflow.contrib.layers.python.layers.layers import *
+from tensorflow.contrib.layers.python.layers.regularizers import *
+from tensorflow.contrib.layers.python.layers.summaries import *

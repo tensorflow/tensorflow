@@ -62,7 +62,6 @@ from tensorflow.python.client.client_lib import *
 from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages
-from tensorflow.python.ops import learn
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
@@ -84,9 +83,10 @@ from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
 # Don't export modules except for the few we really want
-_whitelist = set([app, compat, contrib, errors, flags, gfile, image, learn,
+_whitelist = set([app, compat, contrib, errors, flags, gfile, image,
                   logging, nn, python_io, resource_loader, sysconfig, test,
                   train, user_ops])
+
 __all__ = [name for name, x in locals().items() if not name.startswith('_') and
            (not inspect.ismodule(x) or x in _whitelist)]
 __all__.append('__version__')
