@@ -184,8 +184,8 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("RandomStandardNormal", g, input, dtype);
 }
 
-Node* RandomParameters(Graph* g, Node* input, DataType dtype) {
-  return RandomNumberGenerator("RandomParameters", g, input, dtype);
+Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
+  return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
 }
 
 Node* Unary(Graph* g, const string& func, Node* input, int index) {

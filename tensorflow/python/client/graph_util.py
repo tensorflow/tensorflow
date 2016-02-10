@@ -32,10 +32,10 @@ _VARIABLE_OPS = {
     "AssignAdd",
     "AssignSub",
     "Queue",
-    "RandomParameters",
     "ScatterAdd",
     "ScatterSub",
     "ScatterUpdate",
+    "TruncatedNormal",
     "Variable",
 }
 
