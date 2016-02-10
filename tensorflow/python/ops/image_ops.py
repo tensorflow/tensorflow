@@ -70,7 +70,6 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 @@pad_to_bounding_box
 @@crop_to_bounding_box
-@@random_crop
 @@extract_glimpse
 
 ## Flipping and Transposing
@@ -156,7 +155,6 @@ import tensorflow.python.platform
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -830,45 +828,6 @@ def _ImageEncodeShape(op):
   """Shape function for image encoding ops."""
   unused_input_shape = op.inputs[0].get_shape().with_rank(3)
   return [tensor_shape.scalar()]
-
-
-@ops.RegisterShape('RandomCrop')
-def _random_cropShape(op):
-  """Shape function for the random_crop op."""
-  input_shape = op.inputs[0].get_shape().with_rank(3)
-  unused_size_shape = op.inputs[1].get_shape().merge_with(
-      tensor_shape.vector(2))
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
-  else:
-    height = None
-    width = None
-  channels = input_shape[2]
-  return [tensor_shape.TensorShape([height, width, channels])]
-
-
-def random_crop(image, size, seed=None, name=None):
-  """Randomly crops `image` to size `[target_height, target_width]`.
-
-  The offset of the output within `image` is uniformly random. `image` always
-  fully contains the result.
-
-  Args:
-    image: 3-D tensor of shape `[height, width, channels]`
-    size: 1-D tensor with two elements, specifying target `[height, width]`
-    seed: A Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-      for behavior.
-    name: A name for this operation (optional).
-
-  Returns:
-    A cropped 3-D tensor of shape `[target_height, target_width, channels]`.
-  """
-  seed1, seed2 = random_seed.get_seed(seed)
-  return gen_image_ops.random_crop(image, size, seed=seed1, seed2=seed2,
-                                   name=name)
 
 
 def saturate_cast(image, dtype):

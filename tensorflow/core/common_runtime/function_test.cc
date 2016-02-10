@@ -214,6 +214,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   FunctionLibraryRuntime* lib_ = nullptr;
 };
 
+TEST_F(FunctionLibraryRuntimeTest, IsStateful) {
+  Init({});
+  EXPECT_TRUE(lib_->IsStateful("Variable"));
+  EXPECT_FALSE(lib_->IsStateful("Matmul"));
+}
+
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   Init({test::function::XTimesTwo()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
@@ -700,6 +706,43 @@ TEST(OptimizationTest, RemoveDeadNodes) {
 
   // TODO(zhifengc): Comes up another test case.
   EXPECT_EQ(Optimize(::tensorflow::RemoveDeadNodes, func), e0);
+}
+
+TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
+  auto T = DT_FLOAT;
+  auto func = FDH::Define(
+      // Name
+      "F",
+      // Args
+      {},
+      // Return values
+      {"ret: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// variable
+       {{"v"}, "Variable", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
+       // read the variable. Shouln't be removed.
+       {{"v_read"}, "Identity", {"v"}, {{"T", T}}},
+       // returns v + v
+       {{"ret"}, "Add", {"v_read", "v_read"}, {{"T", T}}}});
+  const char* e0 = R"S(
+() -> (n2:float) {
+  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
+  n1 = Identity[T=float](n0)
+  n2 = Add[T=float](n1, n1)
+}
+)S";
+  EXPECT_EQ(Optimize(DoNothing, func), e0);
+
+  const char* e1 = R"S(
+() -> (n2:float) {
+  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
+  n1 = Identity[T=float](n0)
+  n2 = Add[T=float](n1, n1)
+}
+)S";
+  EXPECT_EQ(Optimize(::tensorflow::RemoveIdentityNodes, func), e1);
 }
 
 TEST(OptimizationTest, RemoveIdentityNodes) {

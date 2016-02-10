@@ -581,6 +581,29 @@ class ImportGraphDefTest(tf.test.TestCase):
         self.assertEqual('/device:CPU:0', b5.device)  # cpu overrides gpu.
         self.assertEqual(c.device + '/device:GPU:0', c5.device)
 
+  def testWithDeviceFunctionDependingOnInputs(self):
+    with tf.Graph().as_default() as g:
+      with tf.device("/job:ps"):
+        v = tf.Variable(1.0)
+      unused_assign_op = v.assign(2.0)
+      unused_assign_2_op = v.assign(3.0)
+      unused_add_t = v + v
+    gdef = g.as_graph_def()
+
+    # We'll use the following device function to observe ops with two inputs.
+    ops_with_two_inputs = []
+    def input_counter(op):
+      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+        ops_with_two_inputs.append(op)
+      return ""
+
+    with tf.Graph().as_default() as g:
+      with tf.device(input_counter):
+        tf.import_graph_def(gdef)
+
+    # We expect to see the initializer, two assign operations, and the add op.
+    self.assertEqual(4, len(ops_with_two_inputs))
+
   def testGradient(self):
     with tf.Graph().as_default() as g:
       inputs = tf.placeholder(tf.float32, shape=[None, 100], name="input")

@@ -317,8 +317,8 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Return true iff 'function_name' is the name of a defined function.
-  virtual bool IsDefined(const string& function_name) = 0;
+  // Return true iff 'function' is stateful.
+  virtual bool IsStateful(const string& function_name) = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

@@ -27,6 +27,7 @@ REGISTER_OP_NO_GRADIENT("Size");
 REGISTER_OP_NO_GRADIENT("ZerosLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
+REGISTER_OP_NO_GRADIENT("StopGradient");
 
 Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -36,7 +37,7 @@ Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T", "dshape: int32"},
       // Attr defs
-      {"T: {float, double}"},
+      {"T: type"},
       // Nodes
       {
         {{"x_shape"}, "Shape", {"x"}, {{"T", "$T"}}},
@@ -49,6 +50,25 @@ Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
 REGISTER_OP_GRADIENT("Reshape", ReshapeGrad);
 REGISTER_OP_GRADIENT("ExpandDims", ReshapeGrad);
 
+Status SqueezeGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "dy: T"},
+      // Ret val defs
+      {"dx: T"},
+      // Attr defs
+      {"T: type"},
+      // Nodes
+      {
+        {{"x_shape"}, "Shape", {"x"}, {{"T", "$T"}}},
+        {{"dx"}, "Reshape", {"dy", "x_shape"}, {{"T", "$T"}}},
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Squeeze", SqueezeGrad);
+
 Status IdentityGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
@@ -57,7 +77,7 @@ Status IdentityGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T"},
       // Attr defs
-      {"T: {float, double}"},
+      {"T: type"},
       // Nodes
       {
         {{"dx"}, "Identity", {"dy"}, {{"T", "$T"}}},
@@ -76,7 +96,7 @@ Status PackGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: N*T"},
       // Attr defs
-      {"T: {float, double}", "N: int"},
+      {"T: type", "N: int"},
       // Nodes
       {
         {{"dx"}, "Unpack", {"dy"}, {{"T", "$T"}, {"num", "$N"}}},
@@ -95,7 +115,7 @@ Status UnpackGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T"},
       // Attr defs
-      {"T: {float, double}", "num: int"},
+      {"T: type", "num: int"},
       // Nodes
       {
         {{"dx"}, "Pack", {"dy"}, {{"T", "$T"}, {"N", "$num"}}},
@@ -163,7 +183,7 @@ Status ConcatGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"d_dim: int32", "dx: N*T"},
       // Attr defs
-      {"T: {float, double}", "N: int"},
+      {"T: type", "N: int"},
       // Nodes
       nodes);
   // clang-format on
@@ -180,7 +200,7 @@ Status SplitGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"d_dim: int32", "dx: T"},
       // Attr defs
-      {"T: {float, double}", "num_split: int"},
+      {"T: type", "num_split: int"},
       // Nodes
       {
         {{"d_dim"}, "ZerosLike", {"dim"}, {{"T", DT_INT32}}},
@@ -206,7 +226,7 @@ Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: N*T"},
       // Attr defs
-      {"T: {float, double}", "N: int", "out_types: list(type)"},
+      {"T: type", "N: int", "out_types: list(type)"},
       // Nodes
       {
         {{"dx"}, "_ListToArray", dys,
@@ -226,7 +246,7 @@ Status ListToArrayGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: Tin"},
       // Attr defs
-      {"T: {float, double}", "N: int", "Tin: list(type)"},
+      {"T: type", "N: int", "Tin: list(type)"},
       // Nodes
       {
         {{"dx"}, "_ArrayToList", {"dy"},
@@ -245,7 +265,7 @@ Status FillGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"d_dims: int32", "dx: T"},
       // Attr defs
-      {"T: {float, double}"},
+      {"T: type"},
       // Nodes
       {
           {{"d_dims"}, "ZerosLike", {"dims"}, {{"T", DT_INT32}}},
@@ -268,7 +288,7 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T", "dp: int32"},
       // Attr defs
-      {"T: {float, double}"},
+      {"T: type"},
       // Nodes
       {
           {{"q"}, "InvertPermutation", {"p"}, {}},
@@ -279,5 +299,64 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
+
+Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "d: bool", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dd: bool"},
+      // Attr defs
+      {"T: type"},
+      // Nodes
+      {
+          {{"dx"}, "Reverse", {"dy", "d"}, {{"T", "$T"}}},
+          {{"dd"}, "ZerosLike", {"d"}, {{"T", DT_BOOL}}},
+      });
+  VLOG(1) << "ReverseGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Reverse", ReverseGrad);
+
+Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "SliceGrad for int64 index are not supported.");
+  }
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "b: int32", "s: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "db: int32", "ds: int32"},
+      // Attr defs
+      {"T: type"},
+      // Nodes
+      {// paddings = concat(1, [b, shape(x) - b - s])
+       FDH::Const("one", 1),
+       {{"b1"}, "ExpandDims", {"b", "one"}, {{"T", DT_INT32}}},
+       {{"xs"}, "Shape", {"x"}, {{"T", "$T"}}},
+       {{"xs_b"}, "Sub", {"xs", "b"}, {{"T", DT_INT32}}},
+       {{"xs_b_s"}, "Sub", {"xs_b", "s"}, {{"T", DT_INT32}}},
+       {{"a1"}, "ExpandDims", {"xs_b_s", "one"}, {{"T", DT_INT32}}},
+       {{"b_and_a"},
+        "_ListToArray",
+        {"b1", "a1"},
+        {{"T", DT_INT32},
+         {"N", 2},
+         {"Tin", DataTypeVector{DT_INT32, DT_INT32}}}},
+       {{"paddings"},
+        "Concat",
+        {"one", "b_and_a"},
+        {{"N", 2}, {"T", DT_INT32}}},
+       // dx = Pad(dy, paddings)
+       {{"dx"}, "Pad", {"dy", "paddings"}, {{"T", "$T"}}},
+       {{"db"}, "ZerosLike", {"b"}, {{"T", DT_INT32}}},
+       {{"ds"}, "ZerosLike", {"s"}, {{"T", DT_INT32}}}});
+  VLOG(1) << "SliceGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Slice", SliceGrad);
 
 }  // end namespace tensorflow

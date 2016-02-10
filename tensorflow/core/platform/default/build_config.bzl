@@ -35,7 +35,7 @@ def tf_proto_library(name, srcs = [], has_services = False,
 
   cc_proto_library(name=name + "_cc",
                    srcs=srcs + tf_deps(deps, "_proto_srcs"),
-                   deps=deps,
+                   deps=deps + ["//google/protobuf:cc_wkt_protos"],
                    cc_libs = ["//google/protobuf:protobuf"],
                    testonly=testonly,
                    visibility=visibility,)
@@ -43,8 +43,7 @@ def tf_proto_library(name, srcs = [], has_services = False,
   py_proto_library(name=name + "_py",
                    srcs=srcs + tf_deps(deps, "_proto_srcs"),
                    srcs_version="PY2AND3",
-                   deps=deps,
-                   py_libs = ["//google/protobuf:protobuf_python"],
+                   deps=deps + ["//google/protobuf:protobuf_python"],
                    testonly=testonly,
                    visibility=visibility,)
 

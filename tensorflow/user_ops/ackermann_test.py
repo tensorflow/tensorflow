@@ -37,7 +37,7 @@ class AckermannTest(tf.test.TestCase):
     self.assertEqual(ackermann.OP_LIST.op[0].name, 'Ackermann')
 
     with self.test_session():
-      self.assertEqual(ackermann.ackermann().eval(), 'A(m, 0) == A(m-1, 1)')
+      self.assertEqual(ackermann.ackermann().eval(), b'A(m, 0) == A(m-1, 1)')
 
 
 if __name__ == '__main__':

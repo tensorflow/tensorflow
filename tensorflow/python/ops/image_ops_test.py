@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import os
 
 import tensorflow.python.platform
 
@@ -441,57 +442,6 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     self._testBrightness(x_np, y_np, delta=-10. / 255.)
-
-
-class RandomCropTest(test_util.TensorFlowTestCase):
-
-  def testNoOp(self):
-    # No random cropping is performed since the target width and height
-    # are match the image dimensions.
-    height = 4
-    width = 5
-    x_shape = [height, width, 3]
-    x_np = np.arange(0, np.prod(x_shape), dtype=np.int32).reshape(x_shape)
-    target_shape_np = np.array([height, width], dtype=np.int64)
-
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y = image_ops.random_crop(x, target_shape)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testRandomization(self):
-    # Run 1x1 crop num_samples times in an image and ensure that one finds each
-    # pixel 1/num_pixels of the time.
-    num_samples = 1000
-    height = 5
-    width = 4
-
-    num_pixels = height * width
-    data = np.arange(num_pixels).reshape([height, width, 1])
-    x_np = np.array(data).astype(np.int32)
-
-    target_shape_np = np.array([1, 1], dtype=np.int64)
-
-    y = []
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_np.shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y_tf = image_ops.random_crop(x, target_shape)
-      for _ in xrange(num_samples):
-        y_np = y_tf.eval()
-        self.assertAllEqual(y_np.shape, [1, 1, 1])
-        y.extend(y_np.flatten())
-
-    # Calculate the mean and 4 * standard deviation.
-    mean = [num_samples / num_pixels] * num_pixels
-    four_stddev = 4.0 * np.sqrt(mean)
-
-    # Ensure that each entry is observed in 1/num_pixels of the samples
-    # within 4 standard deviations.
-    counts = np.bincount(y)
-    self.assertAllClose(counts, mean, atol=four_stddev)
 
 
 class PerImageWhiteningTest(test_util.TensorFlowTestCase):
@@ -997,6 +947,24 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertLess(self.averageError(image0, image1), 0.8)
+
+  def testCmyk(self):
+    # Confirm that CMYK reads in as RGB
+    base = 'tensorflow/core/lib/jpeg/testdata'
+    rgb_path = os.path.join(base, 'jpeg_merge_test1.jpg')
+    cmyk_path = os.path.join(base, 'jpeg_merge_test1_cmyk.jpg')
+    shape = 256, 128, 3
+    for channels in 3, 0:
+      with self.test_session() as sess:
+        rgb = image_ops.decode_jpeg(io_ops.read_file(rgb_path),
+                                    channels=channels)
+        cmyk = image_ops.decode_jpeg(io_ops.read_file(cmyk_path),
+                                     channels=channels)
+        rgb, cmyk = sess.run([rgb, cmyk])
+        self.assertEqual(rgb.shape, shape)
+        self.assertEqual(cmyk.shape, shape)
+        error = self.averageError(rgb, cmyk)
+        self.assertLess(error, 4)
 
   def testSynthetic(self):
     with self.test_session() as sess:

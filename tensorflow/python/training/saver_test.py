@@ -455,18 +455,18 @@ class MaxToKeepTest(tf.test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertEquals(2, len(gfile.Glob(s1)))
+      self.assertEqual(2, len(gfile.Glob(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertEquals(2, len(gfile.Glob(s1)))
-      self.assertEquals(2, len(gfile.Glob(s2)))
+      self.assertEqual(2, len(gfile.Glob(s1)))
+      self.assertEqual(2, len(gfile.Glob(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertEquals(0, len(gfile.Glob(s1)))
-      self.assertEquals(2, len(gfile.Glob(s2)))
-      self.assertEquals(2, len(gfile.Glob(s3)))
+      self.assertEqual(0, len(gfile.Glob(s1)))
+      self.assertEqual(2, len(gfile.Glob(s2)))
+      self.assertEqual(2, len(gfile.Glob(s3)))
 
 
 class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
@@ -653,7 +653,7 @@ class LatestCheckpointWithRelativePaths(tf.test.TestCase):
 
           # Restore "v0" from that checkpoint.
           save.restore(sess, name)
-          self.assertEquals(v0.eval(), 2.0)
+          self.assertEqual(v0.eval(), 2.0)
 
 
 class CheckpointStateTest(tf.test.TestCase):
@@ -966,6 +966,21 @@ class MetaGraphTest(tf.test.TestCase):
   def testGraphExtension(self):
     self._testGraphExtensionSave()
     self._testGraphExtensionRestore()
+
+  def testStrippedOpListDef(self):
+    with self.test_session():
+      # Creates a graph.
+      v0 = tf.Variable(0.0)
+      var = tf.Variable(10.0)
+      tf.add(v0, var)
+      save = tf.train.Saver({"v0": v0})
+      tf.initialize_all_variables()
+
+      # Generates MetaGraphDef.
+      meta_graph_def = save.export_meta_graph()
+      ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
+      self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
+                             "RestoreSlice", "SaveSlices", "Variable"])
 
 
 if __name__ == "__main__":

@@ -243,6 +243,7 @@ static void BM_ScatterHelper(int iters, int embedding_size, const char* op) {
   testing::StopTiming();
   const int kRows = 10000000 / embedding_size;
   std::vector<float> values;
+  values.reserve(kRows);
   for (int i = 0; i < kRows * embedding_size; i++) {
     values.push_back(i);
   }
@@ -270,6 +271,7 @@ static void BM_ScatterHelper(int iters, int embedding_size, const char* op) {
   while (iters-- > 0) {
     Status s = bm.RunOpKernel();
   }
+  testing::StopTiming();
 }
 
 static void BM_ScatterUpdateInt32(int iters, int embedding_size) {
