@@ -93,7 +93,7 @@ concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 ```
 
 concat_dim: The dimension along which to concatenate.
-shape: The `N` int32 vetors representing shape of tensors being concatenated.
+shape: The `N` int32 vectors representing shape of tensors being concatenated.
 output: The `N` int32 vectors representing the starting offset
         of input tensors within the concatenated output.
 
