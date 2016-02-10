@@ -806,6 +806,7 @@ tf_cuda_library(
         [
             "framework/**/*.h",
             "framework/**/*.cc",
+            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -922,6 +923,7 @@ tf_cuda_library(
             "client/**/*.cc",
             "common_runtime/*.h",
             "common_runtime/*.cc",
+            "framework/versions.h",
             "graph/**/*.h",
             "graph/**/*.cc",
             "public/session.h",
