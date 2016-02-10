@@ -16,7 +16,6 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
-from tensorflow.python import control_flow_ops
 
 
 def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
@@ -50,10 +49,9 @@ def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
             """Internal function that updates mean and variance during training"""
             with tf.control_dependencies([ema_assign_op]):
                 return tf.identity(assign_mean), tf.identity(assign_var)
-        IS_TRAINING = tf.get_collection("IS_TRAINING")[-1]
-        mean, variance = control_flow_ops.cond(IS_TRAINING,
-                                               update_mean_var,
-                                               lambda: (ema_mean, ema_var))
+        is_training = tf.squeeze(tf.get_collection("IS_TRAINING"))
+        mean, variance = tf.python.control_flow_ops.cond(
+            is_training, update_mean_var, lambda: (ema_mean, ema_var))
         return tf.nn.batch_norm_with_global_normalization(
             tensor_in, mean, variance, beta, gamma, epsilon,
             scale_after_normalization=scale_after_normalization)

@@ -68,9 +68,11 @@ class OpsTest(tf.test.TestCase):
         filter_shape = (5, 5)
         vals = np.random.randn(batch_size, input_shape[0], input_shape[1], 1)
         with self.test_session() as sess:
+            tf.add_to_collection("IS_TRAINING", True)
             tensor_in = tf.placeholder(tf.float32, [batch_size, input_shape[0],
                                                     input_shape[1], 1])
-            res = ops.conv2d(tensor_in, n_filters, filter_shape)
+            res = ops.conv2d(
+                tensor_in, n_filters, filter_shape, batch_norm=True)
             sess.run(tf.initialize_all_variables())
             conv = sess.run(res, feed_dict={tensor_in.name: vals})
         self.assertEqual(conv.shape, (batch_size, input_shape[0],
