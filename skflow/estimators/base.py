@@ -197,9 +197,10 @@ class TensorFlowEstimator(BaseEstimator):
         # and if it's None or not (in case it was setup in a previous run).
         # It is initialized only in the case where it wasn't before and log dir
         # is provided.
-        if (logdir and (not hasattr(self, "_summary_writer") or
-                        (hasattr(self, "_summary_writer") and self._summary_writer is None))):
-            self._setup_summary_writer(logdir)
+        if logdir:
+            if (not hasattr(self, "_summary_writer") or
+                    (hasattr(self, "_summary_writer") and self._summary_writer is None)):
+                self._setup_summary_writer(logdir)
         else:
             self._summary_writer = None
 

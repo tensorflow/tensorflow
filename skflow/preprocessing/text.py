@@ -66,7 +66,10 @@ class ByteProcessor(object):
         """
         for data in X:
             document = np.trim_zeros(data.astype(np.int8), trim='b').tostring()
-            yield document.decode('utf-8')
+            try:
+                yield document.decode('utf-8')
+            except UnicodeDecodeError:
+                yield ''
 
     def transform(self, X):
         """Transforms input documents into sequence of ids.
@@ -176,3 +179,19 @@ class VocabularyProcessor(object):
                     break
                 word_ids[idx] = self.vocabulary_.get(token)
             yield word_ids
+
+    def reverse(self, documents):
+        """Reverses output of vocabulary mapping to words.
+
+        Args:
+            documents: iterable, list of class ids.
+
+        Returns:
+            Iterator over mapped in words documents.
+        """
+        for item in documents:
+            output = []
+            for class_id in item:
+                output.append(self.vocabulary_.reverse(class_id))
+            yield ' '.join(output)
+

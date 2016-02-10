@@ -28,8 +28,11 @@ class CategoricalVocabulary(object):
     Can be easily used for words.
     """
 
-    def __init__(self, unknown_token='<UNK>'):
+    def __init__(self, unknown_token='<UNK>', support_reverse=True):
         self._mapping = {unknown_token: 0}
+        self._support_reverse = support_reverse
+        if support_reverse:
+            self._reverse_mapping = [unknown_token]
         self._freq = collections.defaultdict(int)
         self._freeze = False
 
@@ -60,6 +63,8 @@ class CategoricalVocabulary(object):
             if self._freeze:
                 return 0
             self._mapping[category] = len(self._mapping)
+            if self._support_reverse:
+                self._reverse_mapping.append(category)
         return self._mapping[category]
 
     def add(self, category, count=1):
@@ -86,4 +91,22 @@ class CategoricalVocabulary(object):
             if count <= min_frequency and (max_frequency < 0 or
                                            count >= max_frequency):
                 self._mapping.pop(category)
+
+    def reverse(self, class_id):
+        """Given class id reverse to original class name.
+
+        Args:
+            class_id: Id of the class.
+
+        Returns:
+            Class name.
+
+        Raises:
+            ValueError if this vocabulary wasn't initalized with
+            support_reverse.
+        """
+        if not self._support_reverse:
+            raise ValueError("This vocabulary wasn't initalized with "
+                             "support_reverse to support reverse() function.")
+        return self._reverse_mapping[class_id]
 

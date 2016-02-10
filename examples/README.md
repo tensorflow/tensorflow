@@ -1,5 +1,4 @@
-Examples of Using skflow
-========================
+# Examples of Using skflow
 
 * [Deep Neural Network Regression with Boston Data](boston.py)
 * [Convolutional Neural Networks with Digits Data](digits.py)
@@ -14,19 +13,28 @@ Examples of Using skflow
 * [Out-of-core Data Classification Using Dask](out_of_core_data_classification.py)
 
 
-Image classification
---------------------
+## Image classification
 
 * [Convolutional Neural Networks on MNIST Data](mnist.py)
 * [Deep Residual Networks on MNIST Data](resnet.py)
 
 
-Text classification
--------------------
+## Text classification
 
 * [Text Classification Using Recurrent Neural Networks on Words](text_classification.py) 
 (See also [Simplified Version Using Built-in RNN Model](text_classification_builtin_rnn_model.py) with easy to use built-in parameters)
 * [Text Classification Using Convolutional Neural Networks on Words](text_classification_cnn.py)
 * [Text Classification Using Recurrent Neural Networks on Characters](text_classification_character_rnn.py)
 * [Text Classification Using Convolutional Neural Networks on Characters](text_classification_character_cnn.py)
+
+
+## Language modeling
+
+* [Character level language modeling](language_model.py)
+
+
+## Text sequence to sequence
+
+* [Character level neural language translation](neural_translation.py)
+* [Word level neural language translation](neural_translation_word.py)
 

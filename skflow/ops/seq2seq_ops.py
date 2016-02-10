@@ -75,3 +75,57 @@ def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
         out_y = y + [sentinel]
         return in_X, in_y, out_y
 
+
+def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
+    """RNN Decoder that creates training and sampling sub-graphs.
+
+    Args:
+        decoder_inputs: Inputs for decoder, list of tensors.
+                        This is used only in trianing sub-graph.
+        initial_state: Initial state for the decoder.
+        cell: RNN cell to use for decoder.
+        scope: Scope to use, if None new will be produced.
+
+    Returns:
+        List of tensors for outputs and states for training and sampling sub-graphs.
+    """
+    with tf.variable_scope(scope or "dnn_decoder"):
+        states, sampling_states = [initial_state], [initial_state]
+        outputs, sampling_outputs = [], []
+        with tf.op_scope([decoder_inputs, initial_state], "training"):
+            for i, inp in enumerate(decoder_inputs):
+                if i > 0:
+                    tf.get_variable_scope().reuse_variables()
+                output, new_state = cell(inp, states[-1])
+                outputs.append(output)
+                states.append(new_state)
+        with tf.op_scope([initial_state], "sampling"):
+            for i, _ in enumerate(decoder_inputs):
+                if i == 0:
+                    sampling_outputs.append(outputs[i])
+                    sampling_states.append(states[i])
+                else:
+                    sampling_output, sampling_state = cell(
+                        sampling_outputs[-1], sampling_states[-1])
+                    sampling_outputs.append(sampling_output)
+                    sampling_states.append(sampling_state)
+    return outputs, states, sampling_outputs, sampling_states
+
+
+def rnn_seq2seq(encoder_inputs, decoder_inputs, cell, dtype=tf.float32, scope=None):
+    """RNN Sequence to Sequence model.
+
+    Args:
+        encoder_inputs: List of tensors, inputs for encoder.
+        decoder_inputs: List of tensors, inputs for decoder.
+        cell: RNN cell to use for encoder and decoder.
+        dtype: Type to initialize encoder state with.
+        scope: Scope to use, if None new will be produced.
+
+    Returns:
+        List of tensors for outputs and states for trianing and sampling sub-graphs.
+    """
+    with tf.variable_scope(scope or "rnn_seq2seq"):
+        _, enc_states = tf.nn.rnn(cell, encoder_inputs, dtype=dtype)
+        return rnn_decoder(decoder_inputs, enc_states[-1], cell)
+
