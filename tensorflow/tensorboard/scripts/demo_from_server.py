@@ -120,12 +120,12 @@ class TensorBoardStaticSerializer(object):
             for t in tags:
               self._RetrieveAndSave(tag_type, run, t)
         except requests.exceptions.ConnectionError as e:
-          print('Retrieval failed for %s/%s/%s' % (tag_type, run, tag))
+          print('Retrieval failed for %s/%s/%s' % (tag_type, run, tags))
           print('Got error: ', e)
           print('continuing...')
           continue
         except IOError as e:
-          print('Retrieval failed for %s/%s/%s' % (tag_type, run, tag))
+          print('Retrieval failed for %s/%s/%s' % (tag_type, run, tags))
           print('Got error: ', e)
           print('continuing...')
           continue
