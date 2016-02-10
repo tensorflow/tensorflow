@@ -828,7 +828,7 @@ Generates a `SaverDef` representation of this saver.
 #### Other Methods
 - - -
 
-#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None)` {#Saver.export_meta_graph}
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
 
 Writes `MetaGraphDef` to save_path/filename.
 
@@ -837,6 +837,7 @@ Writes `MetaGraphDef` to save_path/filename.
 
 *  <b>`filename`</b>: Optional meta_graph filename including the path.
 *  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
 
 ##### Returns:
 
