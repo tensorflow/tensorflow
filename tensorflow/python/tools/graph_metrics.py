@@ -29,14 +29,12 @@ bazel-bin/third_party/tensorflow/python/tools/graph_metrics \
 --statistics=weight_parameters,flops
 
 """
-# pylint: disable=g-bad-import-order,unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import locale
 
-import tensorflow.python.platform
 import tensorflow as tf
 
 from google.protobuf import text_format

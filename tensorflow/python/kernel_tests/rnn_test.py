@@ -15,22 +15,19 @@
 
 """Tests for rnn module."""
 
-# pylint: disable=g-bad-import-order,unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform as platform
-
-import numpy as np
 import sys
-import tensorflow as tf
 import time
 import timeit
 
-from tensorflow.python.client import graph_util
-
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
+
+from tensorflow.python.client import graph_util
 
 
 def _flatten(list_of_lists):

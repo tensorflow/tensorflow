@@ -25,8 +25,6 @@ import re
 import sys
 import threading
 
-import tensorflow.python.platform
-
 import numpy as np
 import six
 

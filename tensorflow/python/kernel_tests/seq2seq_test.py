@@ -23,9 +23,6 @@ import random
 
 # The pylint exception below is needed to make the code compatible with
 # the open-source conversion script.
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 

@@ -14,17 +14,12 @@
 # ==============================================================================
 
 """Tests for tensorflow.ops.math_ops.matrix_solve."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
-
-# pylint: enable=unused-import,g-bad-import-order
 
 
 class MatrixSolveOpTest(tf.test.TestCase):

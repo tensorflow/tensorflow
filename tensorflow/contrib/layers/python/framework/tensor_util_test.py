@@ -14,15 +14,14 @@
 # ==============================================================================
 """DType tests."""
 
-# pylint: disable=unused-import,g-bad-import-order
+# pylint: disable=unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
 import tensorflow as tf
+
+import tensorflow.python.framework
 
 
 class FloatDTypeTest(tf.test.TestCase):

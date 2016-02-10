@@ -24,7 +24,6 @@ import shutil
 import tempfile
 import time
 
-import tensorflow.python.platform
 import tensorflow as tf
 
 from tensorflow.core.util import event_pb2

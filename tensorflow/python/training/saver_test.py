@@ -25,8 +25,6 @@ import contextlib
 import shutil
 import tempfile
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 import numpy as np
 import six

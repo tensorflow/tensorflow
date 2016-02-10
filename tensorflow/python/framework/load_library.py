@@ -22,8 +22,7 @@ import hashlib
 import imp
 import sys
 
-# pylint: disable=redefined-builtin
-from six.moves.builtins import bytes
+from six.moves.builtins import bytes  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python import pywrap_tensorflow as py_tf

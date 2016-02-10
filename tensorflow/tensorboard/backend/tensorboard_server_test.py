@@ -28,12 +28,9 @@ import os
 import shutil
 import threading
 
-# pylint: disable=g-bad-import-order
-import tensorflow.python.platform  # pylint: disable=unused-import
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-# pylint: enable=g-bad-import-order
 
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import tensorboard_server

@@ -21,8 +21,6 @@ from __future__ import print_function
 import gzip
 import os
 
-import tensorflow.python.platform
-
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin

@@ -28,8 +28,6 @@ import sys
 import threading
 import weakref
 
-import tensorflow.python.platform
-
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
