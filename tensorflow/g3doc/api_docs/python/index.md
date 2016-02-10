@@ -405,3 +405,11 @@
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
+* **[Testing](../../api_docs/python/test.md)**:
+  * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
+  * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
+  * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
+  * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
+  * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
+  * [`main`](../../api_docs/python/test.md#main)
+

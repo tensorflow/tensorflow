@@ -21,7 +21,7 @@ from __future__ import print_function
 import re
 import sys
 
-_reference_pattern = re.compile(r'^@@(\w+)$')
+_reference_pattern = re.compile(r'^@@(\w+)$', flags=re.MULTILINE)
 
 
 def make_all(module_name):
@@ -38,5 +38,6 @@ def make_all(module_name):
   """
   doc = sys.modules[module_name].__doc__
   return [m.group(1) for m in _reference_pattern.finditer(doc)]
+
 
 __all__ = ['make_all']
