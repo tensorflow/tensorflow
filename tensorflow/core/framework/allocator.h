@@ -240,7 +240,7 @@ struct AllocatorAttributes {
 
   void Merge(AllocatorAttributes other) { value |= other.value; }
 
-  uint32 value = 0;
+  uint8 value = 0;
 };
 
 // Returns a trivial implementation of Allocator which uses the system

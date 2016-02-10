@@ -405,13 +405,12 @@ class ExecutorState {
     Tensor* ref = nullptr;       // A tensor reference.
     mutex* ref_mu = nullptr;     // mutex for *ref if ref is not nullptr.
     bool has_value = false;      // Whether the value exists
+    // The attributes of the allocator that creates the tensor.
+    AllocatorAttributes alloc_attr;
 
     // Every entry carries an optional DeviceContext containing
     // Device-specific information about how the Tensor was produced.
     DeviceContext* device_context = nullptr;
-
-    // The attributes of the allocator that creates the tensor.
-    AllocatorAttributes alloc_attr;
   };
 
   // Contains a map from node id to the DeviceContext object that was

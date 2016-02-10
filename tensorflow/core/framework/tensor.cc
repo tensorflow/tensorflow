@@ -313,15 +313,16 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : type_(type), shape_({0}), buf_(nullptr) {}
+Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
 
-Tensor::Tensor(const Tensor& other)
-    : type_(other.dtype()), shape_(other.shape()), buf_(other.buf_) {
+Tensor::Tensor(const Tensor& other) : shape_(other.shape()), buf_(other.buf_) {
+  set_dtype(other.dtype());
   RefIfNonNull(buf_);
 }
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
-    : type_(type), shape_(shape), buf_(buf) {
+    : shape_(shape), buf_(buf) {
+  set_dtype(type);
   RefIfNonNull(buf);
 }
 
@@ -333,8 +334,8 @@ Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   CHECK_EQ(shape.num_elements(), other.NumElements());
-  type_ = other.dtype();
   shape_ = shape;
+  set_dtype(other.dtype());
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
     buf_ = other.buf_;
@@ -379,7 +380,8 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
@@ -388,7 +390,8 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
                const AllocationAttributes& allocation_attr)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
@@ -441,8 +444,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     return *this;
   }
   Tensor ret;
-  ret.type_ = type_;
   ret.shape_ = shape_;
+  ret.set_dtype(dtype());
   ret.buf_ = nullptr;
   if (dim0_size > 0) {
     const int64 elems_per_dim0 = NumElements() / dim0_size;
@@ -451,7 +454,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     ret.shape_.set_dim(0, dim0_size);
     const int64 num_elems = dim0_size * elems_per_dim0;
     if (buf_) {
-      CASES(type_, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
+      DataType dt = dtype();
+      CASES(dt, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
     }
   }
   return ret;
@@ -477,8 +481,8 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
     }
     if (p == nullptr) return false;
   }
-  type_ = proto.dtype();
   shape_ = shape;
+  set_dtype(proto.dtype());
   UnrefIfNonNull(buf_);
   buf_ = p;
   return true;
@@ -486,8 +490,8 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
 
 void Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
+  proto->set_dtype(dtype());
   if (buf_) {
     CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }
@@ -495,7 +499,7 @@ void Tensor::AsProtoField(TensorProto* proto) const {
 
 void Tensor::AsProtoTensorContent(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(type_);
+  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
   if (buf_) {
     CASES(dtype(), Helper<T>::Encode(buf_, shape_.num_elements(),
