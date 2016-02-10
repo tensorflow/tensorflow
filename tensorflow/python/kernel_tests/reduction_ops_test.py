@@ -123,8 +123,8 @@ class SumReductionTest(tf.test.TestCase):
 
   def testInt32Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.int32)
-    self._compare(np_arr, [], False)
-    self._compare(np_arr, [0], False)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
 
   def testComplex64Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.complex64)
