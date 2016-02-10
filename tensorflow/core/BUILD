@@ -606,6 +606,8 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group1",
     srcs = [
+        "//tensorflow/core:kernels/argmax_op.cc",
+        "//tensorflow/core:kernels/argmax_op.h",
         "//tensorflow/core:kernels/avgpooling_op.cc",
         "//tensorflow/core:kernels/avgpooling_op.h",
         "//tensorflow/core:kernels/bcast_ops.cc",
@@ -615,6 +617,7 @@ filegroup(
         "//tensorflow/core:kernels/conv_ops.cc",
         "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/cwise_op_div.cc",
+        "//tensorflow/core:kernels/cwise_op_equal_to.cc",
         "//tensorflow/core:kernels/cwise_op_exp.cc",
         "//tensorflow/core:kernels/cwise_op_greater.cc",
         "//tensorflow/core:kernels/cwise_op_isfinite.cc",
