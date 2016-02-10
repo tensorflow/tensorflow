@@ -15,7 +15,10 @@ filegroup(
 
 py_library(
     name = "tensorboard_handler",
-    srcs = ["backend/tensorboard_handler.py"],
+    srcs = [
+        "backend/tensorboard_handler.py",
+        "backend/tensorboard_server.py"
+    ],
     deps = [
         ":float_wrapper",
         "//tensorflow/python:platform",
