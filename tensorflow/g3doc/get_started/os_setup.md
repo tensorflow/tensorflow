@@ -266,7 +266,7 @@ The exact location of the Python library depends on your system, but is usually 
 /usr/local/lib/python2.7/site-packages/tensorflow
 ```
 
-You can find out the directory with the following command (make sure to use the Python you installed TensorFlow to, for example, use ```python3``` instead of ```python``` if you installed for Python 3):
+You can find out the directory with the following command (make sure to use the Python you installed TensorFlow to, for example, use `python3` instead of `python` if you installed for Python 3):
 
 ```bash
 $ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
@@ -285,7 +285,9 @@ Extracting data/t10k-images-idx3-ubyte.gz
 Extracting data/t10k-labels-idx1-ubyte.gz
 ...etc...
 
-# You can alternatively pass the path to the model program file to the python interpreter (make sure to use the python distribution you installed TensorFlow to, for example, .../python3.X/... for Python 3).
+# You can alternatively pass the path to the model program file to the python
+# interpreter (make sure to use the python distribution you installed
+# TensorFlow to, for example, .../python3.X/... for Python 3).
 $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/convolutional.py
 ...
 ```
