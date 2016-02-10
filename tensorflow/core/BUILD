@@ -666,14 +666,16 @@ config_setting(
 config_setting(
     name = "android_32",
     values = {
-        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:everything",
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:custom_malloc",
     },
 )
 
 config_setting(
     name = "android_64",
     values = {
-        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:everything",
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:custom_malloc",
     },
 )
 
