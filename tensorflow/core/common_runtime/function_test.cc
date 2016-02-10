@@ -304,7 +304,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   ExpandInlineFunctions(lib_, g);
   EXPECT_EQ(e2, DebugString(g));
 
-  // Get rid of redunant Identity nodes.
+  // Get rid of redundant Identity nodes.
   RemoveIdentityNodes(g);
   const char* e3 = R"P(
 (n2:float) -> (n42:float) {
@@ -683,7 +683,7 @@ TEST(OptimizationTest, RemoveDeadNodes) {
        {{"a"}, "Square", {"x"}, {{"T", T}}},
        // 1
        FDH::Const("o", 1),
-       // A bunch of extra arithmatic that y doesn't depend on
+       // A bunch of extra arithmetic that y doesn't depend on
        {{"x1"}, "Add", {"o", "o"}, {{"T", T}}},
        {{"x2"}, "Mul", {"a", "x1"}, {{"T", T}}},
        {{"x3"}, "Mul", {"x1", "x2"}, {{"T", T}}},
@@ -722,7 +722,7 @@ TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
       // Nodes
       {// variable
        {{"v"}, "Variable", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
-       // read the variable. Shouln't be removed.
+       // read the variable. Shouldn't be removed.
        {{"v_read"}, "Identity", {"v"}, {{"T", T}}},
        // returns v + v
        {{"ret"}, "Add", {"v_read", "v_read"}, {{"T", T}}}});
@@ -761,7 +761,7 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
        {{"a"}, "Square", {"x"}, {{"T", T}}},
        // 1
        FDH::Const("o", 1),
-       // A bunch of extra arithmatic that y doesn't depend on
+       // A bunch of extra arithmetic that y doesn't depend on
        {{"x1"}, "Identity", {"a"}, {{"T", T}}},
        {{"x2"}, "Identity", {"x1"}, {{"T", T}}},
        {{"x3"}, "Identity", {"x2"}, {{"T", T}}},

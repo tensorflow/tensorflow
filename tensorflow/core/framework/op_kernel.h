@@ -473,7 +473,7 @@ class OpKernelContext {
         // will never use eigen_gpu_device. It seems better to have
         // ensure_eigen_gpu_device fall through and regenerate the
         // nullptr every time an OpKernelContext is instantiated, than
-        // to do an unneccessary allocation of a dummy eigen GPU
+        // to do an unnecessary allocation of a dummy eigen GPU
         // device for CPU device Ops.
         eigen_gpu_device = device->MakeGpuDevice();
       }
