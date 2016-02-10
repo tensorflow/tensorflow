@@ -31,43 +31,58 @@ shift 1
 COMMAND=("$@")
 
 # Information about machine and OS
-OS=`uname`
-KERNEL=`uname -r`
+OS=$(uname)
+KERNEL=$(uname -r)
 
-ARCH=`uname -p`
-PROCESSOR=`grep "model name" /proc/cpuinfo | head -1 | awk '{print substr($0, index($0, $4))}'`
-PROCESSOR_COUNT=`grep "model name" /proc/cpuinfo | wc -l`
+ARCH=$(uname -p)
+PROCESSOR=$(grep "model name" /proc/cpuinfo | head -1 | awk '{print substr($0, index($0, $4))}')
+PROCESSOR_COUNT=$(grep "model name" /proc/cpuinfo | wc -l)
 
-MEM_TOTAL=`grep MemTotal /proc/meminfo | awk '{print $2, $3}'`
-SWAP_TOTAL=`grep SwapTotal /proc/meminfo | awk '{print $2, $3}'`
+MEM_TOTAL=$(grep MemTotal /proc/meminfo | awk '{print $2, $3}')
+SWAP_TOTAL=$(grep SwapTotal /proc/meminfo | awk '{print $2, $3}')
 
 # Information about build tools
-BAZEL_VER=`bazel version | head -1`
-JAVA_VER=`javac -version 2>&1 | awk '{print $2}'`
-PYTHON_VER=`python -V 2>&1 | awk '{print $2}'`
-GPP_VER=`g++ --version | head -1`
-SWIG_VER=`swig -version | grep -m 1 . | awk '{print $3}'`
+if [[ ! -z $(which bazel) ]]; then
+  BAZEL_VER=$(bazel version | head -1)
+fi
+
+if [[ ! -z $(which javac) ]]; then
+  JAVA_VER=$(javac -version 2>&1 | awk '{print $2}')
+fi
+
+if [[ ! -z $(which python) ]]; then
+  PYTHON_VER=$(python -V 2>&1 | awk '{print $2}')
+fi
+
+if [[ ! -z $(which g++) ]]; then
+  GPP_VER=$(g++ --version | head -1)
+fi
+
+if [[ ! -z $(which swig) ]]; then
+  SWIG_VER=$(swig -version > /dev/null | grep -m 1 . | awk '{print $3}')
+fi
 
 # Information about TensorFlow source
-TF_FETCH_URL=`git remote show origin | grep "Fetch URL:" | awk '{print $3}'`
-TF_HEAD=`git rev-parse HEAD`
+TF_FETCH_URL=$(git remote show origin | grep "Fetch URL:" | awk '{print $3}')
+TF_HEAD=$(git rev-parse HEAD)
 
 # NVIDIA & CUDA info
 NVIDIA_DRIVER_VER=""
 if [[ -f /proc/driver/nvidia/version ]]; then
-  NVIDIA_DRIVER_VER=`head -1 /proc/driver/nvidia/version | awk '{print $(NF-6)}'`
+  NVIDIA_DRIVER_VER=$(head -1 /proc/driver/nvidia/version | awk '{print $(NF-6)}')
 fi
 
 CUDA_DEVICE_COUNT="0"
 CUDA_DEVICE_NAMES=""
-if [[ ! -z `which nvidia-debugdump` ]]; then
-  CUDA_DEVICE_COUNT=`nvidia-debugdump -l | grep "^Found [0-9]*.*device.*" | awk '{print $2}'`
-  CUDA_DEVICE_NAMES=`nvidia-debugdump -l | grep "Device name:.*" | awk '{print substr($0, index($0, $3)) ","}'`
+if [[ ! -z $(which nvidia-debugdump) ]]; then
+  CUDA_DEVICE_COUNT=$(nvidia-debugdump -l | grep "^Found [0-9]*.*device.*" | awk '{print $2}')
+  CUDA_DEVICE_NAMES=$(nvidia-debugdump -l | grep "Device name:.*" | awk '{print substr($0, index($0,\
+ $3)) ","}')
 fi
 
 CUDA_TOOLKIT_VER=""
-if [[ ! -z 'which nvcc' ]]; then
-  CUDA_TOOLKIT_VER=`nvcc -V | grep release | awk '{print $(NF)}'`
+if [[ ! -z $(which nvcc) ]]; then
+  CUDA_TOOLKIT_VER=$(nvcc -V | grep release | awk '{print $(NF)}')
 fi
 
 # Print info
@@ -87,6 +102,7 @@ echo "TF_BUILD_INFO = {"\
 "Java_version: \"${JAVA_VER}\", "\
 "Python_version: \"${PYTHON_VER}\", "\
 "gpp_version: \"${GPP_VER}\", "\
+"swig_version: \"${SWIG_VER}\", "\
 "NVIDIA_driver_version: \"${NVIDIA_DRIVER_VER}\", "\
 "CUDA_device_count: \"${CUDA_DEVICE_COUNT}\", "\
 "CUDA_device_names: \"${CUDA_DEVICE_NAMES}\", "\
