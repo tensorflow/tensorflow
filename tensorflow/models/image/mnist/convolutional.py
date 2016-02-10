@@ -55,13 +55,14 @@ FLAGS = tf.app.flags.FLAGS
 
 def maybe_download(filename):
   """Download the data from Yann's website, unless it's already here."""
-  if not os.path.exists(WORK_DIRECTORY):
-    os.mkdir(WORK_DIRECTORY)
+  if not tf.gfile.Exists(WORK_DIRECTORY):
+    tf.gfile.MakeDirs(WORK_DIRECTORY)
   filepath = os.path.join(WORK_DIRECTORY, filename)
-  if not os.path.exists(filepath):
+  if not tf.gfile.Exists(filepath):
     filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
-    statinfo = os.stat(filepath)
-    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+    with tf.gfile.GFile(filepath) as f:
+      size = f.Size()
+    print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
 
 

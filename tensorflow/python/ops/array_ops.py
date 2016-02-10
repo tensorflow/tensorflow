@@ -560,8 +560,8 @@ def transpose(a, perm=None, name="transpose"):
   """
   with ops.op_scope([a], name, "transpose") as name:
     if perm is None:
-      dims = gen_math_ops._range(0, gen_array_ops.rank(a), 1)
-      perm = gen_array_ops.reverse(dims, [True])
+      rank = gen_array_ops.rank(a)
+      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
       ret = gen_array_ops.transpose(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.

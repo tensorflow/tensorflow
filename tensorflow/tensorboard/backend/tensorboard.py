@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Serve TensorFlow summary data to a web frontend.
 
 This is a simple web server to proxy data from the event_loader to the web, and
@@ -50,7 +49,6 @@ tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
                      'This increases log verbosity to DEBUG.')
 
-
 flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
                     'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
                     'disable remote access (also quiets security warnings).')
@@ -66,8 +64,10 @@ def main(unused_argv=None):
     logging.info('TensorBoard is in debug mode.')
 
   if not FLAGS.logdir:
-    logging.error('A logdir must be specified. Run `tensorboard --help` for '
-                  'details and examples.')
+    msg = ('A logdir must be specified. Run `tensorboard --help` for '
+           'details and examples.')
+    logging.error(msg)
+    print(msg)
     return -1
 
   logging.info('Starting TensorBoard in directory %s', os.getcwd())
@@ -81,11 +81,15 @@ def main(unused_argv=None):
     server = tensorboard_server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
   except socket.error:
     if FLAGS.port == 0:
-      logging.error('Unable to find any open ports.')
+      msg = 'Unable to find any open ports.'
+      logging.error(msg)
+      print(msg)
+      return -2
     else:
-      logging.error('Tried to connect to port %d, but that address is in use.',
-                    FLAGS.port)
-    return -1
+      msg = 'Tried to connect to port %d, but address is in use.' % FLAGS.port
+      logging.error(msg)
+      print(msg)
+      return -3
 
   try:
     tag = resource_loader.load_resource('tensorboard/TAG').strip()

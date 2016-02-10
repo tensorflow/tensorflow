@@ -45,7 +45,6 @@ import tensorflow as tf
 from google.protobuf import text_format
 from tensorflow.python.client import graph_util
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import gfile
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -92,15 +91,15 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
                  output_graph, clear_devices):
   """Converts all variables in a graph and checkpoint into constants."""
 
-  if not gfile.Exists(input_graph):
+  if not tf.gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
     return -1
 
-  if input_saver and not gfile.Exists(input_saver):
+  if input_saver and not tf.gfile.Exists(input_saver):
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
 
-  if not gfile.Exists(input_checkpoint):
+  if not tf.gfile.Exists(input_checkpoint):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -161,7 +160,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
 
-  with gfile.FastGFile(output_graph, "wb") as f:
+  with tf.gfile.FastGFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
   print("Converted %d variables to const ops." % how_many_converted)
   print("%d ops in the final graph." % len(output_graph_def.node))

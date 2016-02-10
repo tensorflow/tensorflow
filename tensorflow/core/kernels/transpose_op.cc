@@ -68,6 +68,12 @@ class InvertPermutationOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation").Device(DEVICE_CPU),
                         InvertPermutationOp);
 
+REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("x")
+                            .HostMemory("y"),
+                        InvertPermutationOp);
+
 // output = TransposeOp(T<any> input, T<int32> perm) takes a tensor
 // of type T and rank N, and a permutation of 0, 1, ..., N-1. It
 // shuffles the dimensions of the input tensor according to permutation.

@@ -294,6 +294,56 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertAllClose(res1, res2)
         self.assertAllClose(res1, res3)
 
+  def testOne2ManyRNNSeq2Seq(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        enc_inp = [tf.constant(1, tf.int32, shape=[2]) for i in range(2)]
+        dec_inp_dict = {}
+        dec_inp_dict["0"] = [
+            tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
+        dec_inp_dict["1"] = [
+            tf.constant(i, tf.int32, shape=[2]) for i in range(4)]
+        dec_symbols_dict = {"0": 5, "1": 6}
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        outputs_dict, state_dict = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict)
+
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(outputs_dict["0"])
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 5), res[0].shape)
+        res = sess.run(outputs_dict["1"])
+        self.assertEqual(4, len(res))
+        self.assertEqual((2, 6), res[0].shape)
+        res = sess.run([state_dict["0"]])
+        self.assertEqual((2, 4), res[0].shape)
+        res = sess.run([state_dict["1"]])
+        self.assertEqual((2, 4), res[0].shape)
+
+        # Test that previous-feeding model ignores inputs after the first, i.e.
+        # dec_inp_dict2 has different inputs from dec_inp_dict after the first
+        # time-step.
+        dec_inp_dict2 = {}
+        dec_inp_dict2["0"] = [
+            tf.constant(0, tf.int32, shape=[2]) for _ in range(3)]
+        dec_inp_dict2["1"] = [
+            tf.constant(0, tf.int32, shape=[2]) for _ in range(4)]
+        tf.get_variable_scope().reuse_variables()
+        outputs_dict1, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict,
+            feed_previous=True)
+        outputs_dict2, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict2, cell, 2, dec_symbols_dict,
+            feed_previous=True)
+        outputs_dict3, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict2, cell, 2, dec_symbols_dict,
+            feed_previous=tf.constant(True))
+        res1 = sess.run(outputs_dict1["0"])
+        res2 = sess.run(outputs_dict2["0"])
+        res3 = sess.run(outputs_dict3["0"])
+        self.assertAllClose(res1, res2)
+        self.assertAllClose(res1, res3)
+
   def testSequenceLoss(self):
     with self.test_session() as sess:
       logits = [tf.constant(i + 0.5, shape=[2, 5]) for i in range(3)]
@@ -433,7 +483,7 @@ class Seq2SeqTest(tf.test.TestCase):
         perplexities[bucket].append(math.exp(float(res[1])))
       for bucket in range(len(buckets)):
         if len(perplexities[bucket]) > 1:  # Assert that perplexity went down.
-          self.assertLess(perplexities[bucket][1], perplexities[bucket][0])
+          self.assertLess(perplexities[bucket][-1], perplexities[bucket][0])
 
 
 if __name__ == "__main__":

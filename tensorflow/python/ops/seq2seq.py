@@ -37,6 +37,9 @@ one of them, others should be easy to substitute.
   - embedding_attention_seq2seq: Advanced model with input embedding and
       the neural attention mechanism; recommended for complex tasks.
 
+* Multi-task sequence-to-sequence models.
+  - one2many_rnn_seq2seq: The embedding model with multiple decoders.
+
 * Decoders (when you write your own encoder, you can use these to decode;
     e.g., if you want to write a model that generates captions for images).
   - rnn_decoder: The basic decoder based on a pure RNN.
@@ -702,6 +705,85 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
     state = control_flow_ops.cond(feed_previous,
                                   lambda: state1, lambda: state2)
     return outputs, state
+
+
+def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
+                         num_encoder_symbols, num_decoder_symbols_dict,
+                         feed_previous=False, dtype=dtypes.float32, scope=None):
+  """One-to-many RNN sequence-to-sequence model (multi-task).
+
+  This is a multi-task sequence-to-sequence model with one encoder and multiple
+  decoders. Reference to multi-task sequence-to-sequence learning can be found
+  here: http://arxiv.org/pdf/1511.06114v2.pdf
+
+  Args:
+    encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
+    decoder_inputs_dict: A dictionany mapping decoder name (string) to
+      the corresponding decoder_inputs; each decoder_inputs is a list of 1D
+      Tensors of shape [batch_size]; num_decoders is defined as
+      len(decoder_inputs_dict).
+    cell: rnn_cell.RNNCell defining the cell function and size.
+    num_encoder_symbols: Integer; number of symbols on the encoder side.
+    num_decoder_symbols_dict: A dictionary mapping decoder name (string) to an
+      integer specifying number of symbols for the corresponding decoder;
+      len(num_decoder_symbols_dict) must be equal to num_decoders.
+    feed_previous: Boolean or scalar Boolean Tensor; if True, only the first of
+      decoder_inputs will be used (the "GO" symbol), and all other decoder
+      inputs will be taken from previous outputs (as in embedding_rnn_decoder).
+      If False, decoder_inputs are used as given (the standard decoder case).
+    dtype: The dtype of the initial state for both the encoder and encoder
+      rnn cells (default: tf.float32).
+    scope: VariableScope for the created subgraph; defaults to
+      "one2many_rnn_seq2seq"
+
+  Returns:
+    A tuple of the form (outputs_dict, state_dict), where:
+      outputs_dict: A mapping from decoder name (string) to a list of the same
+        length as decoder_inputs_dict[name]; each element in the list is a 2D
+        Tensors with shape [batch_size x num_decoder_symbol_list[name]]
+        containing the generated outputs.
+      state_dict: A mapping from decoder name (string) to the final state of the
+        corresponding decoder RNN; it is a 2D Tensor of shape
+        [batch_size x cell.state_size].
+  """
+  outputs_dict = {}
+  state_dict = {}
+
+  with variable_scope.variable_scope(scope or "one2many_rnn_seq2seq"):
+    # Encoder.
+    encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols)
+    _, encoder_state = rnn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+
+    # Decoder.
+    for name, decoder_inputs in decoder_inputs_dict.iteritems():
+      num_decoder_symbols = num_decoder_symbols_dict[name]
+
+      with variable_scope.variable_scope("one2many_decoder_" + str(name)):
+        decoder_cell = rnn_cell.OutputProjectionWrapper(cell,
+                                                        num_decoder_symbols)
+        if isinstance(feed_previous, bool):
+          outputs, state = embedding_rnn_decoder(
+              decoder_inputs, encoder_state, decoder_cell, num_decoder_symbols,
+              feed_previous=feed_previous)
+        else:
+          # If feed_previous is a Tensor, we construct 2 graphs and use cond.
+          def filled_embedding_rnn_decoder(feed_previous):
+            # pylint: disable=cell-var-from-loop
+            outputs, state = embedding_rnn_decoder(
+                decoder_inputs, encoder_state, decoder_cell,
+                num_decoder_symbols, feed_previous=feed_previous)
+            return outputs + [state]
+          outputs_and_state = control_flow_ops.cond(
+              feed_previous,
+              lambda: filled_embedding_rnn_decoder(True),
+              lambda: filled_embedding_rnn_decoder(False))
+          outputs = outputs_and_state[:-1]
+          state = outputs_and_state[-1]
+
+      outputs_dict[name] = outputs
+      state_dict[name] = state
+
+  return outputs_dict, state_dict
 
 
 def sequence_loss_by_example(logits, targets, weights,

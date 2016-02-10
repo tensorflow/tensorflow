@@ -302,9 +302,7 @@ Construct a new gradient descent optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
-(http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
-
-See http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
 
 - - -
 
@@ -358,9 +356,7 @@ Construct a new Momentum optimizer.
 
 Optimizer that implements the Adam algorithm.
 
-(http://arxiv.org/pdf/1412.6980v7.pdf).
-
-See http://arxiv.org/pdf/1412.6980v7.pdf.
+See this [paper](http://arxiv.org/pdf/1412.6980v7.pdf).
 
 - - -
 
@@ -471,9 +467,8 @@ using this function.
 
 Optimizer that implements the RMSProp algorithm.
 
+See the [paper]
 (http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
-
-See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
 
 - - -
 
@@ -1329,7 +1324,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue, enqueue_ops)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_runner_def=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -1347,6 +1342,32 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 *  <b>`queue`</b>: A `Queue`.
 *  <b>`enqueue_ops`</b>: List of enqueue ops to run in threads later.
+*  <b>`close_op`</b>: Op to close the queue. Pending enqueue ops are preserved.
+*  <b>`cancel_op`</b>: Op to close the queue and cancel pending enqueue ops.
+*  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
+    recreates the QueueRunner from its contents. `queue_runner_def` and the
+    other arguments are mutually exclusive.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `queue_runner_def` and `queue` are both specified.
+*  <b>`ValueError`</b>: If `queue` or `enqueue_ops` are not provided when not
+    restoring from `queue_runner_def`.
+
+
+- - -
+
+#### `tf.train.QueueRunner.cancel_op` {#QueueRunner.cancel_op}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.close_op` {#QueueRunner.close_op}
+
+
 
 
 - - -
@@ -1390,6 +1411,13 @@ have stopped.
 
 - - -
 
+#### `tf.train.QueueRunner.enqueue_ops` {#QueueRunner.enqueue_ops}
+
+
+
+
+- - -
+
 #### `tf.train.QueueRunner.exceptions_raised` {#QueueRunner.exceptions_raised}
 
 Exceptions raised but not handled by the `QueueRunner` threads.
@@ -1411,9 +1439,34 @@ depending on whether or not a `Coordinator` was passed to
 
 - - -
 
+#### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
+
+
+
+
+- - -
+
 #### `tf.train.QueueRunner.name` {#QueueRunner.name}
 
 The string name of the underlying Queue.
+
+
+- - -
+
+#### `tf.train.QueueRunner.queue` {#QueueRunner.queue}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.to_proto()` {#QueueRunner.to_proto}
+
+Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
+
+##### Returns:
+
+  A `QueueRunnerDef` protocol buffer.
 
 
 
@@ -1685,8 +1738,8 @@ Creates a `SummaryWriter` and an event file.
 
 On construction the summary writer creates a new event file in `logdir`.
 This event file will contain `Event` protocol buffers constructed when you
-call one of the following functions: `add_summary()`, `add_event()`, or
-`add_graph()`.
+call one of the following functions: `add_summary()`, `add_session_log()`,
+`add_event()`, or `add_graph()`.
 
 If you pass a `graph_def` protocol buffer to the constructor it is added to
 the event file. (This is equivalent to calling `add_graph()` later).
@@ -1742,6 +1795,23 @@ commonly done to report evaluation results in event files.
 
 
 *  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+
+Adds a `SessionLog` protocol buffer to the event file.
+
+This method wraps the provided session in an `Event` procotol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
 *  <b>`global_step`</b>: Number. Optional global step value to record with the
     summary.
 
@@ -2112,210 +2182,28 @@ Called when the thread starts.
 
 - - -
 
-### `class tf.train.SaverDef` {#SaverDef}
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None)` {#export_meta_graph}
 
+Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
-- - -
-
-#### `tf.train.SaverDef.ByteSize()` {#SaverDef.ByteSize}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.Clear()` {#SaverDef.Clear}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.ClearExtension(extension_handle)` {#SaverDef.ClearExtension}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.ClearField(field_name)` {#SaverDef.ClearField}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.CopyFrom(other_msg)` {#SaverDef.CopyFrom}
-
-Copies the content of the specified message into the current message.
-
-The method clears the current message and then merges the specified
-message using MergeFrom.
+This function exports the graph, saver, and collection objects into
+`MetaGraphDef` protocol buffer with the intension of it being imported
+at a later time or location to restart training, run inference, or be
+a subgraph.
 
 ##### Args:
 
 
-*  <b>`other_msg`</b>: Message to copy into the current one.
-
-
-- - -
-
-#### `tf.train.SaverDef.FindInitializationErrors()` {#SaverDef.FindInitializationErrors}
-
-Finds required fields which are not initialized.
+*  <b>`filename`</b>: Optional filename including the path for writing the
+    generated `MetaGraphDef` protocol buffer.
+*  <b>`meta_info_def`</b>: `MetaInfoDef` protocol buffer.
+*  <b>`graph_def`</b>: `GraphDef` protocol buffer.
+*  <b>`saver_def`</b>: `SaverDef` protocol buffer.
+*  <b>`collection_list`</b>: List of string keys to collect.
 
 ##### Returns:
 
-  A list of strings.  Each string is a path to an uninitialized field from
-  the top-level message, e.g. "foo.bar[5].baz".
-
-
-- - -
-
-#### `tf.train.SaverDef.FromString(s)` {#SaverDef.FromString}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.HasExtension(extension_handle)` {#SaverDef.HasExtension}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.HasField(field_name)` {#SaverDef.HasField}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.IsInitialized(errors=None)` {#SaverDef.IsInitialized}
-
-Checks if all required fields of a message are set.
-
-##### Args:
-
-
-*  <b>`errors`</b>: A list which, if provided, will be populated with the field
-           paths of all missing required fields.
-
-##### Returns:
-
-  True iff the specified message has all required fields set.
-
-
-- - -
-
-#### `tf.train.SaverDef.ListFields()` {#SaverDef.ListFields}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.MergeFrom(msg)` {#SaverDef.MergeFrom}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.MergeFromString(serialized)` {#SaverDef.MergeFromString}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.ParseFromString(serialized)` {#SaverDef.ParseFromString}
-
-Parse serialized protocol buffer data into this message.
-
-Like MergeFromString(), except we clear the object first and
-do not return the value that MergeFromString returns.
-
-
-- - -
-
-#### `tf.train.SaverDef.RegisterExtension(extension_handle)` {#SaverDef.RegisterExtension}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.SerializePartialToString()` {#SaverDef.SerializePartialToString}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.SerializeToString()` {#SaverDef.SerializeToString}
-
-
-
-
-- - -
-
-#### `tf.train.SaverDef.SetInParent()` {#SaverDef.SetInParent}
-
-Sets the _cached_byte_size_dirty bit to true,
-and propagates this to our listener iff this was a state change.
-
-
-- - -
-
-#### `tf.train.SaverDef.WhichOneof(oneof_name)` {#SaverDef.WhichOneof}
-
-Returns the name of the currently set field inside a oneof, or None.
-
-
-- - -
-
-#### `tf.train.SaverDef.filename_tensor_name` {#SaverDef.filename_tensor_name}
-
-Magic attribute generated for "filename_tensor_name" proto field.
-
-
-- - -
-
-#### `tf.train.SaverDef.keep_checkpoint_every_n_hours` {#SaverDef.keep_checkpoint_every_n_hours}
-
-Magic attribute generated for "keep_checkpoint_every_n_hours" proto field.
-
-
-- - -
-
-#### `tf.train.SaverDef.max_to_keep` {#SaverDef.max_to_keep}
-
-Magic attribute generated for "max_to_keep" proto field.
-
-
-- - -
-
-#### `tf.train.SaverDef.restore_op_name` {#SaverDef.restore_op_name}
-
-Magic attribute generated for "restore_op_name" proto field.
-
-
-- - -
-
-#### `tf.train.SaverDef.save_tensor_name` {#SaverDef.save_tensor_name}
-
-Magic attribute generated for "save_tensor_name" proto field.
-
-
-- - -
-
-#### `tf.train.SaverDef.sharded` {#SaverDef.sharded}
-
-Magic attribute generated for "sharded" proto field.
-
+  A `MetaGraphDef` proto.
 
 
 - - -
@@ -2339,5 +2227,35 @@ Generates a checkpoint state proto.
   CheckpointState proto with model_checkpoint_path and
   all_model_checkpoint_paths updated to either absolute paths or
   relative paths to the current save_dir.
+
+
+- - -
+
+### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
+
+Recreates a Graph saved in a `MetaGraphDef` proto.
+
+This function reads from a file containing a `MetaGraphDef` proto,
+adds all the nodes from the graph_def proto to the current graph,
+recreates all the collections, and returns a saver from saver_def.
+
+In combination with `export_meta_graph()`, this function can be used to
+
+* Serialize a graph along with other Python objects such as `QueueRunner`,
+  `Variable` into a `MetaGraphDef`.
+
+* Restart training from a saved graph and checkpoints.
+
+* Run inference from a saved graph and checkpoints.
+
+##### Args:
+
+
+*  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
+    the path) containing a `MetaGraphDef`.
+
+##### Returns:
+
+  A saver constructed rom `saver_def` in `MetaGraphDef`.
 
 

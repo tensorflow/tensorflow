@@ -41,7 +41,6 @@ import os.path
 import time
 
 import tensorflow.python.platform
-from tensorflow.python.platform import gfile
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -128,9 +127,9 @@ def train():
 
 def main(argv=None):  # pylint: disable=unused-argument
   cifar10.maybe_download_and_extract()
-  if gfile.Exists(FLAGS.train_dir):
-    gfile.DeleteRecursively(FLAGS.train_dir)
-  gfile.MakeDirs(FLAGS.train_dir)
+  if tf.gfile.Exists(FLAGS.train_dir):
+    tf.gfile.DeleteRecursively(FLAGS.train_dir)
+  tf.gfile.MakeDirs(FLAGS.train_dir)
   train()
 
 

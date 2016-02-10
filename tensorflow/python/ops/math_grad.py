@@ -567,3 +567,10 @@ def _FFT2DGrad(_, grad):
 def _IFFT2DGrad(_, grad):
   rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
   return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("Cross")
+def _CrossGrad(op, grad):
+  u = op.inputs[0]
+  v = op.inputs[1]
+  return (math_ops.cross(v, grad), math_ops.cross(grad, u))
