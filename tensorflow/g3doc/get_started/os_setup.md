@@ -266,20 +266,15 @@ The exact location of the Python library depends on your system, but is usually 
 /usr/local/lib/python2.7/site-packages/tensorflow
 ```
 
-You can find out the directory with the following command:
+You can find out the directory with the following command (make sure to use the Python you installed TensorFlow to, for example, use ```python3``` instead of ```python``` if you installed for Python 3):
 
 ```bash
 $ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
 ```
 
-python3:
-```bash
-$ python3 -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
-```
-
 The simple demo model for classifying handwritten digits from the MNIST dataset
 is in the sub-directory `models/image/mnist/convolutional.py`.  You can run it from the command
-line as follows:
+line as follows (make sure to use the Python you installed TensorFlow with):
 
 ```bash
 # Using 'python -m' to find the program in the python search path:
@@ -290,17 +285,8 @@ Extracting data/t10k-images-idx3-ubyte.gz
 Extracting data/t10k-labels-idx1-ubyte.gz
 ...etc...
 
-# You can alternatively pass the path to the model program file to the python interpreter.
+# You can alternatively pass the path to the model program file to the python interpreter (make sure to use the python distribution you installed TensorFlow to, for example, .../python3.X/... for Python 3).
 $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/convolutional.py
-...
-```
-
-python3:
-```bash
-# Use above with python3 and the python3 dist-package (your python version might be different from python3.5).
-$ python3 -m tensorflow.models.image.mnist.convolutional
-...
-$ python3 /usr/local/lib/python3.5/dist-packages/tensorflow/models/image/mnist/convolutional.py
 ...
 ```
 
