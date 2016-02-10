@@ -1658,7 +1658,7 @@ op {
   }
   input_arg {
     name: "shape"
-    description: "The `N` int32 vetors representing shape of tensors being concatenated."
+    description: "The `N` int32 vectors representing shape of tensors being concatenated."
     type: DT_INT32
     number_attr: "N"
   }
