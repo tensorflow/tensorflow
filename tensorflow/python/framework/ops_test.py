@@ -1090,7 +1090,7 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
 
 
-class GraphDefVersionTest(test_util.TensorFlowTestCase):
+class AsGraphDefTest(test_util.TensorFlowTestCase):
 
   def testGraphDefVersion(self):
     """Test that the graphdef version is plumbed through to kernels."""
@@ -1101,6 +1101,33 @@ class GraphDefVersionTest(test_util.TensorFlowTestCase):
         with self.test_session(graph=g):
           v = test_ops.graph_def_version().eval()
           self.assertEqual(version, v)
+
+  def testAddShapes(self):
+    with ops.Graph().as_default() as g:
+      t1, t2, t3, t4, t5 = _apply_op(g, "an_op", [], [dtypes.float32] * 5)
+      t1.set_shape(None)
+      t2.set_shape([])
+      t3.set_shape([None])
+      t4.set_shape([43, 37])
+      t5.set_shape([43, None])
+
+      gd = g.as_graph_def(add_shapes=True)
+      self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape { unknown_rank: true }
+              shape { }
+              shape { dim { size: -1 } }
+              shape { dim { size: 43 } dim { size: 37 } }
+              shape { dim { size: 43 } dim { size: -1 } }
+            }
+          }
+        }
+      }
+      """, gd)
 
 
 # NOTE(petewarden): Dummy stats registrations for ops used in the tests.

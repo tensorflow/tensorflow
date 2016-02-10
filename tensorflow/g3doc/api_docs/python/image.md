@@ -11,7 +11,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 TensorFlow provides Ops to decode and encode JPEG and PNG formats.  Encoded
 images are represented by scalar string Tensors, decoded images by 3-D uint8
-tensors of shape `[height, width, channels]`.
+tensors of shape `[height, width, channels]`. (PNG also supports uint16.)
 
 The encode and decode Ops apply to one image at a time.  Their input and output
 are all of variable size.  If you need fixed size images, pass the output of
@@ -122,9 +122,9 @@ in function of the number of channels in `image`:
 
 - - -
 
-### `tf.image.decode_png(contents, channels=None, name=None)` {#decode_png}
+### `tf.image.decode_png(contents, channels=None, dtype=None, name=None)` {#decode_png}
 
-Decode a PNG-encoded image to a uint8 tensor.
+Decode a PNG-encoded image to a uint8 or uint16 tensor.
 
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
@@ -145,11 +145,12 @@ of color channels.
 *  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded image.
 *  <b>`channels`</b>: An optional `int`. Defaults to `0`.
     Number of color channels for the decoded image.
+*  <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8, tf.uint16`. Defaults to `tf.uint8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `uint8`. 3-D with shape `[height, width, channels]`.
+  A `Tensor` of type `dtype`. 3-D with shape `[height, width, channels]`.
 
 
 - - -
@@ -158,8 +159,8 @@ of color channels.
 
 PNG-encode an image.
 
-`image` is a 3-D uint8 Tensor of shape `[height, width, channels]` where
-`channels` is:
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
 
 *   1: for grayscale.
 *   3: for RGB.
@@ -172,7 +173,7 @@ the smallest output, but is slower.
 ##### Args:
 
 
-*  <b>`image`</b>: A `Tensor` of type `uint8`.
+*  <b>`image`</b>: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
     3-D with shape `[height, width, channels]`.
 *  <b>`compression`</b>: An optional `int`. Defaults to `-1`. Compression level.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -234,8 +235,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 *  <b>`new_width`</b>: integer.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
 *  <b>`align_corners`</b>: bool. If true, exactly align all 4 cornets of the input and
-                 output. Defaults to `false`. Only implemented for bilinear
-                 interpolation method so far.
+                 output. Defaults to `false`.
 
 ##### Raises:
 
@@ -255,7 +255,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 - - -
 
-### `tf.image.resize_area(images, size, name=None)` {#resize_area}
+### `tf.image.resize_area(images, size, align_corners=None, name=None)` {#resize_area}
 
 Resize `images` to `size` using area interpolation.
 
@@ -268,6 +268,10 @@ Input images can be of different types but output images are always float.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -278,7 +282,7 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_bicubic(images, size, name=None)` {#resize_bicubic}
+### `tf.image.resize_bicubic(images, size, align_corners=None, name=None)` {#resize_bicubic}
 
 Resize `images` to `size` using bicubic interpolation.
 
@@ -291,6 +295,10 @@ Input images can be of different types but output images are always float.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -328,7 +336,7 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_nearest_neighbor(images, size, name=None)` {#resize_nearest_neighbor}
+### `tf.image.resize_nearest_neighbor(images, size, align_corners=None, name=None)` {#resize_nearest_neighbor}
 
 Resize `images` to `size` using nearest neighbor interpolation.
 
@@ -339,6 +347,10 @@ Resize `images` to `size` using nearest neighbor interpolation.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -449,30 +461,6 @@ lower-right corner is at
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
   `target_*` arguments
-
-
-- - -
-
-### `tf.image.random_crop(image, size, seed=None, name=None)` {#random_crop}
-
-Randomly crops `image` to size `[target_height, target_width]`.
-
-The offset of the output within `image` is uniformly random. `image` always
-fully contains the result.
-
-##### Args:
-
-
-*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`
-*  <b>`size`</b>: 1-D tensor with two elements, specifying target `[height, width]`
-*  <b>`seed`</b>: A Python integer. Used to create a random seed. See
-    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-    for behavior.
-*  <b>`name`</b>: A name for this operation (optional).
-
-##### Returns:
-
-  A cropped 3-D tensor of shape `[target_height, target_width, channels]`.
 
 
 - - -

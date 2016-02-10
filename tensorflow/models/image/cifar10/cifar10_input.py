@@ -25,8 +25,6 @@ import tensorflow.python.platform
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.platform import gfile
-
 # Process images of this size. Note that this differs from the original CIFAR
 # image size of 32 x 32. If one alters this number, then the entire model
 # architecture will change and any model would need to be retrained.
@@ -144,7 +142,7 @@ def distorted_inputs(data_dir, batch_size):
   filenames = [os.path.join(data_dir, 'data_batch_%d.bin' % i)
                for i in xrange(1, 6)]
   for f in filenames:
-    if not gfile.Exists(f):
+    if not tf.gfile.Exists(f):
       raise ValueError('Failed to find file: ' + f)
 
   # Create a queue that produces the filenames to read.
@@ -209,7 +207,7 @@ def inputs(eval_data, data_dir, batch_size):
     num_examples_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 
   for f in filenames:
-    if not gfile.Exists(f):
+    if not tf.gfile.Exists(f):
       raise ValueError('Failed to find file: ' + f)
 
   # Create a queue that produces the filenames to read.

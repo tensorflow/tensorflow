@@ -43,7 +43,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import gfile
+
 
 FLAGS = tf.flags.FLAGS
 
@@ -59,7 +59,7 @@ tf.flags.DEFINE_string("statistics", "weight_parameters,flops",
 
 
 def main(unused_args):
-  if not gfile.Exists(FLAGS.graph):
+  if not tf.gfile.Exists(FLAGS.graph):
     print("Input graph file '" + FLAGS.graph + "' does not exist!")
     return -1
 

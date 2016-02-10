@@ -104,7 +104,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value, trainable=True, collections=None, validate_shape=True, name=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, name=None, variable_def=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -133,6 +133,9 @@ variable to its initial value.
     `initial_value` must be known.
 *  <b>`name`</b>: Optional name for the variable. Defaults to `'Variable'` and gets
     uniquified automatically.
+*  <b>`variable_def`</b>: `VariableDef` protocol buffer. If not `None`, recreates
+    the Variable object with its contents. `variable_def` and the other
+    arguments are mutually exclusive.
 
 ##### Returns:
 
@@ -141,8 +144,9 @@ variable to its initial value.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the initial value does not have a shape and
-    `validate_shape` is `True`.
+*  <b>`ValueError`</b>: If both `variable_def` and initial_value are specified.
+*  <b>`ValueError`</b>: If the initial value is not specified, or does not have a
+    shape and `validate_shape` is `True`.
 
 
 - - -
@@ -383,6 +387,13 @@ The `Operation` of this variable.
 #### Other Methods
 - - -
 
+#### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
+
+
+
+
+- - -
+
 #### `tf.Variable.ref()` {#Variable.ref}
 
 Returns a reference to this variable.
@@ -398,6 +409,17 @@ variable.
 ##### Returns:
 
   A `Tensor` that is a reference to the variable.
+
+
+- - -
+
+#### `tf.Variable.to_proto()` {#Variable.to_proto}
+
+Converts a `Variable` to a `VariableDef` protocol buffer.
+
+##### Returns:
+
+  A `VariableDef` protocol buffer.
 
 
 - - -
@@ -695,7 +717,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None)` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta')` {#Saver.save}
 
 Saves variables.
 
@@ -720,6 +742,7 @@ path can be passed directly to a call to `restore()`.
     kept in the same directory as the checkpoint files, is automatically
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
+*  <b>`meta_graph_suffix`</b>: Suffix for MetaGraphDef file. Defaults to 'meta'.
 
 ##### Returns:
 
@@ -775,6 +798,8 @@ You can pass any of the returned values to `restore()`.
 
 #### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
+DEPRECATED: Use set_last_checkpoints_with_time.
+
 Sets the list of old checkpoint filenames.
 
 ##### Args:
@@ -797,6 +822,64 @@ Generates a `SaverDef` representation of this saver.
 ##### Returns:
 
   A `SaverDef` proto.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None)` {#Saver.export_meta_graph}
+
+Writes `MetaGraphDef` to save_path/filename.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional meta_graph filename including the path.
+*  <b>`collection_list`</b>: List of string keys to collect.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+#### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
+
+
+
+
+- - -
+
+#### `tf.train.Saver.graph_def` {#Saver.graph_def}
+
+
+
+
+- - -
+
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+
+Sets the list of old checkpoint filenames and timestamps.
+
+##### Args:
+
+
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
+
+##### Raises:
+
+
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.to_proto()` {#Saver.to_proto}
+
+Returns a `SaverDef` protocol buffer.
 
 
 

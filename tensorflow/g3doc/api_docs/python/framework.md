@@ -94,7 +94,7 @@ with tf.Graph().as_default() as g:
 
 - - -
 
-#### `tf.Graph.as_graph_def(from_version=None)` {#Graph.as_graph_def}
+#### `tf.Graph.as_graph_def(from_version=None, add_shapes=False)` {#Graph.as_graph_def}
 
 Returns a serialized `GraphDef` representation of this graph.
 
@@ -110,6 +110,8 @@ This method is thread-safe.
 *  <b>`from_version`</b>: Optional.  If this is set, returns a `GraphDef`
     containing only the nodes that were added to this graph since
     its `version` property had the given value.
+*  <b>`add_shapes`</b>: If true, adds an "_output_shapes" list attr to each
+    node with the inferred shapes of each of its outputs.
 
 ##### Returns:
 
@@ -234,12 +236,14 @@ The `device_name_or_function` argument may either be a device name
 string, a device function, or None:
 
 * If it is a device name string, all operations constructed in
-  this context will be assigned to the device with that name.
+  this context will be assigned to the device with that name, unless
+  overridden by a nested `device()` context.
 * If it is a function, it will be treated as function from
   Operation objects to device name strings, and invoked each time
   a new Operation is created. The Operation will be assigned to
   the device with the returned name.
-* If it is None, the default device will be cleared.
+* If it is None, all `device()` invocations from the enclosing context
+  will be ignored.
 
 For example:
 
@@ -302,34 +306,34 @@ For example:
 ```python
 with tf.Graph().as_default() as g:
   c = tf.constant(5.0, name="c")
-  assert c_1.name == "c"
+  assert c.op.name == "c"
   c_1 = tf.constant(6.0, name="c")
-  assert c_1.name == "c_1"
+  assert c_1.op.name == "c_1"
 
   # Creates a scope called "nested"
   with g.name_scope("nested") as scope:
     nested_c = tf.constant(10.0, name="c")
-    assert nested_c.name == "nested/c"
+    assert nested_c.op.name == "nested/c"
 
     # Creates a nested scope called "inner".
     with g.name_scope("inner"):
       nested_inner_c = tf.constant(20.0, name="c")
-      assert nested_inner_c.name == "nested/inner/c"
+      assert nested_inner_c.op.name == "nested/inner/c"
 
     # Create a nested scope called "inner_1".
     with g.name_scope("inner"):
       nested_inner_1_c = tf.constant(30.0, name="c")
-      assert nested_inner_1_c.name == "nested/inner_1/c"
+      assert nested_inner_1_c.op.name == "nested/inner_1/c"
 
       # Treats `scope` as an absolute name scope, and
       # switches to the "nested/" scope.
       with g.name_scope(scope):
         nested_d = tf.constant(40.0, name="d")
-        assert nested_d.name == "nested/d"
+        assert nested_d.op.name == "nested/d"
 
         with g.name_scope(""):
           e = tf.constant(50.0, name="e")
-          assert e.name == "e"
+          assert e.op.name == "e"
 ```
 
 The name of the scope itself can be captured by `with
@@ -346,7 +350,6 @@ with g.name_scope('my_layer') as scope:
   affine = tf.matmul(inputs, weights) + biases
   output = tf.nn.relu(affine, name=scope)
 ```
-
 
 ##### Args:
 
@@ -373,10 +376,13 @@ may define additional collections by specifying a new name.
 
 Stores `value` in the collection with the given `name`.
 
+Note that collections are not sets, so it is possible to add a value to
+a collection several times.
+
 ##### Args:
 
 
-*  <b>`name`</b>: The key for the collection. For example, the `GraphKeys` class
+*  <b>`name`</b>: The key for the collection. The `GraphKeys` class
     contains many standard names for collections.
 *  <b>`value`</b>: The value to add to the collection.
 
@@ -390,7 +396,7 @@ Returns a list of values in the collection with the given `name`.
 ##### Args:
 
 
-*  <b>`key`</b>: The key for the collection. For example, the `GraphKeys` class
+*  <b>`name`</b>: The key for the collection. For example, the `GraphKeys` class
     contains many standard names for collections.
 *  <b>`scope`</b>: (Optional.) If supplied, the resulting list is filtered to include
     only items whose name begins with this string.
@@ -510,17 +516,6 @@ This method may be called concurrently from multiple threads.
 
 - - -
 
-#### `tf.Graph.get_default_device()` {#Graph.get_default_device}
-
-Returns the default device.
-
-##### Returns:
-
-  A string.
-
-
-- - -
-
 #### `tf.Graph.seed` {#Graph.seed}
 
 
@@ -565,18 +560,22 @@ Note that this is unrelated to the
 
 - - -
 
-#### `tf.Graph.graph_def_version` {#Graph.graph_def_version}
+#### `tf.Graph.graph_def_versions` {#Graph.graph_def_versions}
 
-The GraphDef version of this graph.
+The GraphDef version information of this graph.
 
 For details on the meaning of each version, see [`GraphDef`]
 (https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+
+##### Returns:
+
+  A `VersionDef`.
 
 
 
 - - -
 
-#### `tf.Graph.create_op(op_type, inputs, dtypes, input_types=None, name=None, attrs=None, op_def=None, compute_shapes=True)` {#Graph.create_op}
+#### `tf.Graph.create_op(op_type, inputs, dtypes, input_types=None, name=None, attrs=None, op_def=None, compute_shapes=True, compute_device=True)` {#Graph.create_op}
 
 Creates an `Operation` in this graph.
 
@@ -607,6 +606,8 @@ the default graph.
     the operation will have.
 *  <b>`compute_shapes`</b>: (Optional.) If True, shape inference will be performed
     to compute the shapes of the outputs.
+*  <b>`compute_device`</b>: (Optional.) If True, device functions will be executed
+    to compute the device property of the Operation.
 
 ##### Raises:
 
@@ -658,6 +659,34 @@ with tf.Graph().as_default() as g:
 
 *  <b>`TypeError`</b>: If `op_type_map` is not a dictionary mapping strings to
     strings.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.Graph.add_to_collections(names, value)` {#Graph.add_to_collections}
+
+Stores `value` in the collections given by `names`.
+
+Note that collections are not sets, so it is possible to add a value to
+a collection several times. This function makes sure that duplicates in
+`names` are ignored, but it will not check for pre-existing membership of
+`value` in any of the collections in `names`.
+
+##### Args:
+
+
+*  <b>`names`</b>: The keys for the collections to add to. The `GraphKeys` class
+    contains many standard names for collections.
+*  <b>`value`</b>: The value to add to the collections.
+
+
+- - -
+
+#### `tf.Graph.get_all_collection_keys()` {#Graph.get_all_collection_keys}
+
+Returns a list of collections used in this graph.
 
 
 
@@ -737,7 +766,8 @@ The name of the device to which this op has been assigned, if any.
 ##### Returns:
 
   The string name of the device to which this op has been
-  assigned, or None if it has not been assigned to a device.
+  assigned, or an empty string if it has not been assigned to a
+  device.
 
 
 - - -
@@ -2284,4 +2314,15 @@ registered with a smaller priority than `G`.
 
 *  <b>`TypeError`</b>: If the arguments do not have the appropriate type.
 
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.bytes` {#bytes}
+
+str(object='') -> string
+
+Return a nice string representation of the object.
+If the argument is a string, the return value is the same object.
 
