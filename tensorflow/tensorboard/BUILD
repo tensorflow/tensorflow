@@ -15,7 +15,10 @@ filegroup(
 
 py_library(
     name = "tensorboard_handler",
-    srcs = ["tensorboard_handler.py"],
+    srcs = [
+        "backend/tensorboard_handler.py",
+        "backend/tensorboard_server.py"
+    ],
     deps = [
         ":float_wrapper",
         "//tensorflow/python:platform",
@@ -26,14 +29,14 @@ py_library(
 
 py_library(
     name = "float_wrapper",
-    srcs = ["float_wrapper.py"],
+    srcs = ["backend/float_wrapper.py"],
     srcs_version = "PY2AND3",
 )
 
 py_test(
     name = "float_wrapper_test",
     size = "small",
-    srcs = ["float_wrapper_test.py"],
+    srcs = ["backend/float_wrapper_test.py"],
     deps = [
         ":float_wrapper",
         "//tensorflow/python:platform_test",
@@ -43,7 +46,7 @@ py_test(
 
 py_binary(
     name = "tensorboard",
-    srcs = ["tensorboard.py"],
+    srcs = ["backend/tensorboard.py"],
     data = [":tensorboard_frontend"],
     deps = [
         ":tensorboard_handler",

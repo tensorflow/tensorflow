@@ -811,5 +811,56 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess_2.run(c_1.op)
       self.assertEqual(2.0, sess_2.run(c_2))
 
+  def testPartialRun(self):
+    with session.Session() as sess:
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      c = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+      r2 = math_ops.mul(r1, c)
+
+      h = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+      temp = res * 17
+      res = sess.partial_run(h, r2, feed_dict={c: temp})
+      self.assertEqual(153, res)
+
+  def testPartialRunIncomplete(self):
+    with session.Session() as sess:
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      c = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+      r2 = math_ops.mul(r1, c)
+
+      h = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+
+  def testConcurrentPartialRun(self):
+    with session.Session() as sess:
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      c = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+      r2 = math_ops.mul(r1, c)
+
+      h1 = sess.partial_run_setup([r1], [a, b, c])
+      h2 = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h1, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+      temp = res * 19
+      res = sess.partial_run(h2, r1, feed_dict={a: temp, b: 9})
+      self.assertEqual(66, res)
+      res = sess.partial_run(h2, r2, feed_dict={c: 7})
+      self.assertEqual(462, res)
+
+  def testFeedDictKeyException(self):
+    with session.Session() as sess:
+      a = constant_op.constant(1.0, dtypes.float32, name='a')
+      with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
+        sess.run(a, feed_dict={'a': [2.0]})
+    
 if __name__ == '__main__':
   googletest.main()

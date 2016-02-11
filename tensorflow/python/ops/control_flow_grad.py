@@ -25,6 +25,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
 from tensorflow.python.ops.gen_control_flow_ops import *
+# pylint: enable=wildcard-import
 
 
 def _SwitchGrad(op, *grad):
@@ -111,7 +112,7 @@ def _MergeGrad(op, grad, _):
         # the stack pop will be guarded with a switch.
         real_pred = grad_state.AddBackPropAccumulatedValue(history_pred, pred)
         grad_state.history_map[pred.name] = real_pred
-        pred = real_pred
+      pred = real_pred
     # pylint: disable=protected-access
     return control_flow_ops._SwitchRefOrTensor(grad, pred, name="cond_grad")
     # pylint: enable=protected-access

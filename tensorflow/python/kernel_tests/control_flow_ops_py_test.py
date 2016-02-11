@@ -416,7 +416,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       for op in x.graph.get_operations():
         if op.name == "cond/Add/Switch":
-          self.assertEqual(op.device, "/cpu:0")
+          self.assertDeviceEqual(op.device, "/cpu:0")
 
   def _testCond_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -1210,7 +1210,7 @@ class ControlFlowTest(tf.test.TestCase):
 
   def _testWhileCondGrad_Simple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      v = tf.convert_to_tensor(2.0, name="i")
+      v = tf.convert_to_tensor(2.0, name="v")
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
@@ -1224,6 +1224,20 @@ class ControlFlowTest(tf.test.TestCase):
   def testWhileCondGrad_Simple(self):
     self._testWhileCondGrad_Simple(use_gpu=False)
     self._testWhileCondGrad_Simple(use_gpu=True)
+
+  def testWhileCondGrad_UnknownShape(self):
+    with self.test_session() as sess:
+      v = tf.placeholder(tf.float32)
+      n = tf.convert_to_tensor(100.0, name="n")
+      one = tf.convert_to_tensor(1.0, name="one")
+      c = lambda x: tf.less(x, n)
+      b = lambda x: control_flow_ops.cond(tf.constant(True),
+                                          lambda: tf.square(x),
+                                          lambda: tf.sub(x, one))
+      r = control_flow_ops.While(c, b, [v])
+      r = tf.gradients(r, v)[0]
+      r = sess.run(r, feed_dict={v: 2.0})
+      self.assertAllClose(1024.0, r)
 
   def testFold_1(self):
     with self.test_session():
@@ -1390,14 +1404,14 @@ class ControlFlowTest(tf.test.TestCase):
       vnod = tf.Variable([0.0])
       with_vnod_dep = control_flow_ops.with_dependencies([vnod.initializer],
                                                          vnod)
-      self.assertEquals(None, with_vnod_dep.device)
+      self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
       vdef = tf.Variable([0.0])
       with tf.device("/job:worker/gpu:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
-        self.assertEquals("/job:worker/gpu:1", with_vdef_dep.device)
+        self.assertDeviceEqual("/job:worker/gpu:1", with_vdef_dep.device)
 
   def testGroup(self):
     with self.test_session() as sess:

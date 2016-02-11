@@ -620,7 +620,7 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None)` {#moments}
+### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -638,6 +638,7 @@ For so-called "global normalization" needed for convolutional filters pass
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
 ##### Returns:
@@ -751,6 +752,12 @@ classes are mutually exclusive (each entry is in exactly one class).  For
 example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
+**NOTE:**:  While the classes are mutually exclusive, their probabilities
+need not be.  All that is required is that each row of `labels` is
+a valid probability distribution.  If using exclusive `labels`
+(wherein one and only one class is true at a time), see
+`sparse_softmax_cross_entropy_with_logits`.
+
 **WARNING:** This op expects unscaled logits, since it performs a `softmax`
 on `logits` internally for efficiency.  Do not call this op with the
 output of `softmax`, as it will produce incorrect results.
@@ -771,6 +778,46 @@ and the same dtype (either `float32` or `float64`).
   softmax cross entropy loss.
 
 
+- - -
+
+### `tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels, name=None)` {#sparse_softmax_cross_entropy_with_logits}
+
+Computes sparse softmax cross entropy between `logits` and `labels`.
+
+Measures the probability error in discrete classification tasks in which the
+classes are mutually exclusive (each entry is in exactly one class).  For
+example, each CIFAR-10 image is labeled with one and only one label: an image
+can be a dog or a truck, but not both.
+
+**NOTE:**:  For this operation, the probability of a given label is considered
+exclusive.  That is, soft classes are not allowed, and the `labels` vector
+must provide a single specific index for the true class for each row of
+`logits` (each minibatch entry).  For soft softmax classification with
+a probability distribution for each entry, see
+`softmax_cross_entropy_with_logits`.
+
+**WARNING:** This op expects unscaled logits, since it performs a `softmax`
+on `logits` internally for efficiency.  Do not call this op with the
+output of `softmax`, as it will produce incorrect results.
+
+`logits` and must have the shape `[batch_size, num_classes]`
+and the dtype (either `float32` or `float64`).
+
+`labels` must have the shape `[batch_size]` and the dtype `int64`.
+
+##### Args:
+
+
+*  <b>`logits`</b>: Unscaled log probabilities.
+*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
+  softmax cross entropy loss.
+
+
 
 ## Embeddings
 
@@ -779,7 +826,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -818,6 +865,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`validate_indices`</b>: Whether or not to validate gather indices.
 
 ##### Returns:
 

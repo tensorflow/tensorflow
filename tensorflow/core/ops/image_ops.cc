@@ -298,9 +298,10 @@ output: The contrast-adjusted image or images.
 REGISTER_OP("DecodePng")
     .Input("contents: string")
     .Attr("channels: int = 0")
-    .Output("image: uint8")
+    .Attr("dtype: {uint8, uint16} = DT_UINT8")
+    .Output("image: dtype")
     .Doc(R"doc(
-Decode a PNG-encoded image to a uint8 tensor.
+Decode a PNG-encoded image to a uint8 or uint16 tensor.
 
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
@@ -322,14 +323,15 @@ image: 3-D with shape `[height, width, channels]`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("EncodePng")
-    .Input("image: uint8")
     .Attr("compression: int = -1")
+    .Attr("T: {uint8, uint16} = DT_UINT8")
+    .Input("image: T")
     .Output("contents: string")
     .Doc(R"doc(
 PNG-encode an image.
 
-`image` is a 3-D uint8 Tensor of shape `[height, width, channels]` where
-`channels` is:
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
 
 *   1: for grayscale.
 *   3: for RGB.

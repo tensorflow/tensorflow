@@ -55,7 +55,9 @@ void PruneForReverseReachability(Graph* g,
 
 // Connect all nodes with no incoming edges to source.
 // Connect all nodes with no outgoing edges to sink.
-void FixupSourceAndSinkEdges(Graph* g);
+//
+// Returns true if and only if 'g' is mutated.
+bool FixupSourceAndSinkEdges(Graph* g);
 
 }  // namespace tensorflow
 

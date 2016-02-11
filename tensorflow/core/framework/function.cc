@@ -157,7 +157,7 @@ Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
   bool is_type_list;
   DataTypeVector dtypes;
   TF_RETURN_IF_ERROR(ArgNumType(attr_values, arg_def, &is_type_list, &dtypes));
-  CHECK_GE(dtypes.size(), 1);
+  CHECK_GE(dtypes.size(), size_t{1});
   GraphDef* gdef = &result->gdef;
   int arg_index = gdef->node_size();
   TF_RETURN_IF_ERROR(AddArgName(name_info, arg_def.name(),
@@ -312,7 +312,7 @@ Status AddReturnNode(const OpDef::ArgDef& ret_def,
   bool is_type_list;
   DataTypeVector dtypes;
   TF_RETURN_IF_ERROR(ArgNumType(attrs, ret_def, &is_type_list, &dtypes));
-  CHECK_GE(dtypes.size(), 1);
+  CHECK_GE(dtypes.size(), size_t{1});
   const NameInfoItem* item = gtl::FindOrNull(name_info, ret_def.name());
   if (item == nullptr) {
     return errors::InvalidArgument("ret is not found.");

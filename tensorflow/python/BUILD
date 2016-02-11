@@ -19,7 +19,6 @@ py_library(
     name = "python",
     srcs = [
         "__init__.py",
-        "unsupported.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__pkg__"],
@@ -269,17 +268,11 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_tests(
     name = "framework_function_test",
     srcs = ["framework/function_test.py"],
-    main = "framework/function_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_test_lib",
+    additional_deps = [
         ":functional_ops_lib",
-        ":platform_test",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -333,6 +326,7 @@ py_test(
         ":platform_test",
         ":session",
         ":test_ops",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -340,6 +334,18 @@ py_test(
     name = "framework_tensor_shape_test",
     srcs = ["framework/tensor_shape_test.py"],
     main = "framework/tensor_shape_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_device_test",
+    srcs = ["framework/device_test.py"],
+    main = "framework/device_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
@@ -493,6 +499,7 @@ tf_gen_op_wrapper_py(
         "TensorArrayGrad",
         "TensorArrayRead",
         "TensorArrayPack",
+        "TensorArraySize",
         "TensorArrayUnpack",
         "TensorArrayWrite",
     ],
@@ -502,6 +509,7 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "image_ops",
     hidden = [
+        "RandomCrop",
         "ResizeBilinearGrad",
         "ResizeNearestNeighborGrad",
         "AdjustContrastv2",
@@ -583,6 +591,7 @@ tf_gen_op_wrapper_py(
         "AvgPoolGrad",  # "*Grad" accessible through nn_grad instead of nn_ops.
         "BatchNormWithGlobalNormalizationGrad",
         "SoftmaxCrossEntropyWithLogits",
+        "SparseSoftmaxCrossEntropyWithLogits",
         "LRNGrad",
         "MaxPoolGrad",
         "MaxPoolGradWithArgmax",
@@ -719,7 +728,6 @@ py_library(
         "ops/image_ops.py",
         "ops/init_ops.py",
         "ops/io_ops.py",
-        "ops/learn.py",
         "ops/linalg_grad.py",
         "ops/linalg_ops.py",
         "ops/logging_ops.py",
@@ -818,16 +826,8 @@ tf_proto_library_py(
         ["**/*.proto"],
         exclude = [
             "util/protobuf/compare_test.proto",
-            "training/saver.proto",
         ],
     ),
-    deps = [":public_protos_py"],
-)
-
-tf_proto_library(
-    name = "public_protos",
-    srcs = ["training/saver.proto"],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
@@ -870,8 +870,8 @@ tf_cuda_library(
         ":construction_fails_op",
         ":test_ops_kernels",
         "//tensorflow/core",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
-        "//tensorflow/core:kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
         "//third_party/py/numpy:headers",
@@ -976,6 +976,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/clip_ops_test.py",
     "kernel_tests/decode_csv_op_test.py",
     "kernel_tests/decode_raw_op_test.py",
+    "kernel_tests/depthtospace_op_test.py",
     "kernel_tests/determinant_op_test.py",
     "kernel_tests/diag_op_test.py",
     "kernel_tests/edit_distance_op_test.py",
@@ -1004,6 +1005,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
     "kernel_tests/sparsemask_op_test.py",
+    "kernel_tests/spacetodepth_op_test.py",
     "kernel_tests/summary_ops_test.py",
     "kernel_tests/template_test.py",
     "kernel_tests/topk_op_test.py",

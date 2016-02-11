@@ -61,31 +61,25 @@ void TestJPEG(Env* env, const string& jpegfile) {
   const int fsize = jpeg.size();
   const uint8* const temp = bit_cast<const uint8*>(jpeg.data());
 
-  // try partial decoding (half of the data)
+  // Try partial decoding (half of the data)
   int w, h, c;
   std::unique_ptr<uint8[]> imgdata;
 
   UncompressFlags flags;
   flags.components = 3;
 
-  // set min_acceptable_fraction to something insufficient
+  // Set min_acceptable_fraction to something insufficient
   flags.min_acceptable_fraction = 0.8;
   imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, NULL));
   CHECK(imgdata.get() == NULL);
 
-  // now, use a value that makes fsize/2 be enough for a black-filling
+  // Now, use a value that makes fsize/2 be enough for a black-filling
   flags.min_acceptable_fraction = 0.01;
   imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, NULL));
   CHECK(imgdata.get() != NULL);
 
-  // finally, uncompress the whole data
+  // Finally, uncompress the whole data
   flags.min_acceptable_fraction = 1.0;
-  imgdata.reset(Uncompress(temp, fsize, flags, &w, &h, &c, NULL));
-  CHECK(imgdata.get() != NULL);
-
-  // Uncompress the data to RGBA, too
-  flags.min_acceptable_fraction = 1.0;
-  flags.components = 4;
   imgdata.reset(Uncompress(temp, fsize, flags, &w, &h, &c, NULL));
   CHECK(imgdata.get() != NULL);
 }

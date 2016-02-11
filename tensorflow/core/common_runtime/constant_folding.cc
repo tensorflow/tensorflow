@@ -115,9 +115,10 @@ Graph* GetConstantGraph(const Graph* orig_graph,
     already_added.insert(added);
     for (const Edge* in_edge : n->in_edges()) {
       Node* in = in_edge->src();
-      CHECK_GT(node_map.count(in), 0) << n->DebugString() << " <-"
-                                      << in->DebugString();
-      CHECK_GT(already_added.count(node_map[in]), 0) << in->DebugString();
+      CHECK_GT(node_map.count(in), size_t{0}) << n->DebugString() << " <-"
+                                              << in->DebugString();
+      CHECK_GT(already_added.count(node_map[in]), size_t{0})
+          << in->DebugString();
       constant_graph->AddEdge(node_map[in], in_edge->src_output(), added,
                               in_edge->dst_input());
     }
@@ -128,7 +129,7 @@ Graph* GetConstantGraph(const Graph* orig_graph,
       if (node_map.count(out_edge->dst()) == 0) {
         tensors_to_fetch->insert(
             {{added_nodes.second, out_edge->src_output()}, added_nodes.first});
-    }
+      }
     }
   }
 
@@ -277,10 +278,12 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   }
   // For nodes that need to be fetched back from the constant_graph, attach Send
   // nodes.
-  if (!subgraph::FetchOutputs(constant_graph, device->attributes(),
-                              tensors_to_fetch_names, &name_index, &fetch_nodes)
-           .ok()) {
-    VLOG(1) << "Could not fetch constants";
+  Status s =
+      subgraph::FetchOutputs(constant_graph, device->attributes(),
+                             tensors_to_fetch_names, &name_index, &fetch_nodes);
+  if (!s.ok()) {
+    delete constant_graph;
+    VLOG(1) << "Could not fetch constants: " << s;
     return false;
   }
 

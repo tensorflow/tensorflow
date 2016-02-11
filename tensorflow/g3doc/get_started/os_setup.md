@@ -266,7 +266,7 @@ The exact location of the Python library depends on your system, but is usually 
 /usr/local/lib/python2.7/site-packages/tensorflow
 ```
 
-You can find out the directory with the following command:
+You can find out the directory with the following command (make sure to use the Python you installed TensorFlow to, for example, use `python3` instead of `python` if you installed for Python 3):
 
 ```bash
 $ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname(inspect.getfile(tensorflow)))'
@@ -274,7 +274,7 @@ $ python -c 'import os; import inspect; import tensorflow; print(os.path.dirname
 
 The simple demo model for classifying handwritten digits from the MNIST dataset
 is in the sub-directory `models/image/mnist/convolutional.py`.  You can run it from the command
-line as follows:
+line as follows (make sure to use the Python you installed TensorFlow with):
 
 ```bash
 # Using 'python -m' to find the program in the python search path:
@@ -285,7 +285,9 @@ Extracting data/t10k-images-idx3-ubyte.gz
 Extracting data/t10k-labels-idx1-ubyte.gz
 ...etc...
 
-# You can alternatively pass the path to the model program file to the python interpreter.
+# You can alternatively pass the path to the model program file to the python
+# interpreter (make sure to use the python distribution you installed
+# TensorFlow to, for example, .../python3.X/... for Python 3).
 $ python /usr/local/lib/python2.7/dist-packages/tensorflow/models/image/mnist/convolutional.py
 ...
 ```
@@ -449,6 +451,29 @@ Setting up Cuda bin
 Setting up Cuda nvvm
 Configuration finished
 ```
+
+##### Using a different Cuda SDK and Cudnn versions
+TensorFlow officially supports Cuda 7.0 and Cudnn V2 (6.5) at this point. In
+order to use a different Cuda SDK or Cudnn libraries, use the unofficial setting
+with "configure"
+
+```bash
+$ TF_UNOFFICIAL_SETTING=1 ./configure
+...
+Please specify the Cuda SDK version you want to use. [Default is 7.0]: 7.5
+Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]: /usr/local/cuda-7.5
+Please specify the Cudnn version you want to use. [Default is 6.5]: 4.0.4
+Please specify the location where cuDNN 4.0.4 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda-7.5]: /usr/local/cudnn-r4-rc/
+...
+Setting up Cuda include
+Setting up Cuda lib64
+Setting up Cuda bin
+Setting up Cuda nvvm
+Configuration finished
+```
+
+For the Cudnn libraries, use '6.5' for R2, '7.0' for R3, and '4.0.4' for
+R4-RC.
 
 ##### Known issues
 

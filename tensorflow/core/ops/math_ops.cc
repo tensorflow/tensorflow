@@ -409,7 +409,7 @@ Returns the truth value of (x >= y) element-wise.
 #define COMPARISON()                                                     \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr( \
       "T: {float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32}")
+      "quint8, qint8, qint32, string}")
 
 REGISTER_OP("Equal")
     .COMPARISON()
@@ -462,26 +462,47 @@ REGISTER_OP("Select")
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
-The `condition`, `t`, and `e` tensors must all have the same shape,
-and the output will also have that shape. The `condition` tensor acts
-as an element-wise mask that chooses, based on the value at each
-element, whether the corresponding element in the output should be
-taken from `t` (if true) or `e` (if false). For example:
+The `t`, and `e` tensors must all have the same shape,
+and the output will also have that shape.  The `condition` tensor
+must be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors
+or higher rank, then `condition` must be either a vector with size
+matching the first dimension of `t`, or must have the same shape as `t`.
+
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be
+taken from `t` (if true) or `e` (if false).
+
+If `condition` is a vector and `t` and `e` are higher rank matrices, then
+it chooses which row (outer dimension) to copy from `t` and `e`.
+If `condition` has the same shape as `t` and `e`, then it chooses which
+element to copy from `t` and `e`.
 
 For example:
 
 ```prettyprint
-# 'condition' tensor is [[True, False]
-#                        [True, False]]
-# 't' is [[1, 1],
-#         [1, 1]]
-# 'e' is [[2, 2],
-#         [2, 2]]
+# 'condition' tensor is [[True,  False]
+#                        [False, True]]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e) ==> [[1, 6],
+                             [7, 4]]
+
+
+# 'condition' tensor is [True, False]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
 select(condition, t, e) ==> [[1, 2],
-                             [1, 2]]
+                             [7, 8]]
+
 ```
 
-t:= A `Tensor` with the same shape as `condition`.
+t:= A `Tensor` which may have the same shape as `condition`.
+    If `condition` is rank 1, `t` may have higher rank,
+    but its first dimension must match the size of `condition`.
 e:= A `Tensor` with the same type and shape as `t`.
 out:= A `Tensor` with the same type and shape as `t` and `e`.
 )doc");
@@ -1157,6 +1178,25 @@ Compute the inverse 2-dimensional discrete Fourier Transform.
 in: A complex64 matrix.
 out: The inverse 2D Fourier Transform of `in`.
 
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Cross")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Compute the pairwise cross product.
+
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+
+a: A tensor containing 3-element vectors.
+b: Another tensor, of same type and shape as `a`.
+product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
 }  // namespace tensorflow

@@ -21,7 +21,7 @@ http://tensorflow.org/tutorials/mnist/beginners/index.md
 See documentation on the TensorBoard specific pieces at
 http://tensorflow.org/how_tos/summaries_and_tensorboard/index.md
 
-If you modify this file, please update the exerpt in
+If you modify this file, please update the excerpt in
 how_tos/summaries_and_tensorboard/index.md.
 
 """

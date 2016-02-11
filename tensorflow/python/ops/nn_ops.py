@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
+# pylint: enable=wildcard-import
 
 
 # Aliases for some automatically-generated names.
@@ -157,6 +158,12 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
+  **NOTE:**:  While the classes are mutually exclusive, their probabilities
+  need not be.  All that is required is that each row of `labels` is
+  a valid probability distribution.  If using exclusive `labels`
+  (wherein one and only one class is true at a time), see
+  `sparse_softmax_cross_entropy_with_logits`.
+
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
@@ -178,6 +185,57 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   cost, unused_backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
       logits, labels, name=name)
   return cost
+
+
+def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
+  """Computes sparse softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**:  For this operation, the probability of a given label is considered
+  exclusive.  That is, soft classes are not allowed, and the `labels` vector
+  must provide a single specific index for the true class for each row of
+  `logits` (each minibatch entry).  For soft softmax classification with
+  a probability distribution for each entry, see
+  `softmax_cross_entropy_with_logits`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  `logits` and must have the shape `[batch_size, num_classes]`
+  and the dtype (either `float32` or `float64`).
+
+  `labels` must have the shape `[batch_size]` and the dtype `int64`.
+
+  Args:
+    logits: Unscaled log probabilities.
+    labels: Each entry `labels[i]` must be an index in `[0, num_classes)`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
+    softmax cross entropy loss.
+  """
+  # The second output tensor contains the gradients.  We use it in
+  # _CrossEntropyGrad() in nn_grad but not here.
+  cost, unused_backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+      logits, labels, name=name)
+  return cost
+
+
+@ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")
+def _SparseSoftmaxCrossEntropyWithLogitsShape(op):
+  """Shape function for SparseSoftmaxCrossEntropyWithLogits op."""
+  logits_shape = op.inputs[0].get_shape()
+  input_shape = logits_shape.with_rank(2)
+  batch_size = input_shape[0]
+  # labels_shape
+  op.inputs[1].get_shape().merge_with(tensor_shape.vector(batch_size))
+  return [tensor_shape.vector(batch_size.value), input_shape]
 
 
 @ops.RegisterShape("SoftmaxCrossEntropyWithLogits")
@@ -302,7 +360,7 @@ def _TopKShape(op):
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
-  if last is not None and last < k:
+  if last is not None and k is not None and last < k:
     raise ValueError("input.shape %s must have last dimension >= k = %d" %
                      (input_shape, k))
   output_shape = input_shape[:-1].concatenate([k])
@@ -463,7 +521,7 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     weights: a 2D tensor.  Dimensions typically: in_units, out_units
     biases: a 1D tensor.  Dimensions: out_units
     name: A name for the operation (optional).  If not specified
-      "wx_plus_b" is used.
+      "xw_plus_b" is used.
 
   Returns:
     A 2-D Tensor computing matmul(x, weights) + biases.
@@ -557,12 +615,7 @@ def top_k(input, k=1, sorted=True, name=None):
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  # TODO(irving): Always use v2 once the GraphDef mechanism is unstuck.
-  if isinstance(k, ops.Tensor):
-    op = gen_nn_ops._top_kv2
-  else:
-    op = gen_nn_ops._top_k
-  return op(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
 
 # pylint: enable=invalid-name

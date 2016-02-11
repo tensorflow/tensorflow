@@ -32,11 +32,14 @@ class _ByteLoader(object):
 
   def __init__(self, path):
     self._f = open(path)
+    self.bytes_read = 0
 
   def Load(self):
     while True:
+      self._f.seek(self.bytes_read)
       byte = self._f.read(1)
       if byte:
+        self.bytes_read += 1
         yield byte
       else:
         return

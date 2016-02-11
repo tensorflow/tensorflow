@@ -1932,6 +1932,42 @@ op {
   description: "This operation outputs \"ref\" after the update is done.  This makes it\neasier to chain operations that need to use the updated value."
 }
 op {
+  name: "Cross"
+  input_arg {
+    name: "a"
+    description: "A tensor containing 3-element vectors."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    description: "Another tensor, of same type and shape as `a`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "product"
+    description: "Pairwise cross product of the vectors in `a` and `b`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Compute the pairwise cross product."
+  description: "`a` and `b` must be the same shape; they can either be simple 3-element vectors,\nor any shape where the innermost dimension is 3. In the latter case, each pair\nof corresponding 3-element vectors is cross-multiplied independently."
+}
+op {
   name: "DecodeCSV"
   input_arg {
     name: "records"
@@ -2053,7 +2089,7 @@ op {
   output_arg {
     name: "image"
     description: "3-D with shape `[height, width, channels]`."
-    type: DT_UINT8
+    type_attr: "dtype"
   }
   attr {
     name: "channels"
@@ -2063,7 +2099,20 @@ op {
     }
     description: "Number of color channels for the decoded image."
   }
-  summary: "Decode a PNG-encoded image to a uint8 tensor."
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_UINT8
+    }
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Decode a PNG-encoded image to a uint8 or uint16 tensor."
   description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the PNG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n*   4: output an RGBA image.\n\nIf needed, the PNG-encoded image is transformed to match the requested number\nof color channels."
 }
 op {
@@ -2102,6 +2151,28 @@ op {
     description: "Whether the input `bytes` are in little-endian order.\nIgnored for `out_type` values that are stored in a single byte like\n`uint8`."
   }
   summary: "Reinterpret the bytes of a string as a vector of numbers."
+}
+op {
+  name: "DepthToSpace"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
+    description: "The size of the spatial block, same as in Space2Depth."
+  }
+  summary: "DepthToSpace for tensors of type T."
+  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and that `block_size * block_size` be a divisor of the\ninput depth.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```prettyprint\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```prettyprint\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```prettyprint\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```prettyprint\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n\n```"
 }
 op {
   name: "DeserializeManySparse"
@@ -2480,7 +2551,7 @@ op {
   input_arg {
     name: "image"
     description: "3-D with shape `[height, width, channels]`."
-    type: DT_UINT8
+    type_attr: "T"
   }
   output_arg {
     name: "contents"
@@ -2495,8 +2566,21 @@ op {
     }
     description: "Compression level."
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_UINT8
+    }
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
   summary: "PNG-encode an image."
-  description: "`image` is a 3-D uint8 Tensor of shape `[height, width, channels]` where\n`channels` is:\n\n*   1: for grayscale.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
+  description: "`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`\nwhere `channels` is:\n\n*   1: for grayscale.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
 }
 op {
   name: "Enter"
@@ -2568,6 +2652,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
@@ -4885,6 +4970,7 @@ op {
     description: "Number of negative samples per example."
   }
   summary: "Training via negative sampling."
+  is_stateful: true
 }
 op {
   name: "NextIteration"
@@ -4938,6 +5024,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT8
         type: DT_QINT32
+        type: DT_STRING
       }
     }
   }
@@ -5514,7 +5601,6 @@ op {
     type: "list(type)"
     description: "Data types of the inputs to the op."
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "Tout"
@@ -7464,7 +7550,7 @@ op {
   }
   input_arg {
     name: "t"
-    description: "= A `Tensor` with the same shape as `condition`."
+    description: "= A `Tensor` which may have the same shape as `condition`.\nIf `condition` is rank 1, `t` may have higher rank,\nbut its first dimension must match the size of `condition`."
     type_attr: "T"
   }
   input_arg {
@@ -7482,7 +7568,7 @@ op {
     type: "type"
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
-  description: "The `condition`, `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape. The `condition` tensor acts\nas an element-wise mask that chooses, based on the value at each\nelement, whether the corresponding element in the output should be\ntaken from `t` (if true) or `e` (if false). For example:\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True, False]\n#                        [True, False]]\n# \'t\' is [[1, 1],\n#         [1, 1]]\n# \'e\' is [[2, 2],\n#         [2, 2]]\nselect(condition, t, e) ==> [[1, 2],\n                             [1, 2]]\n```"
+  description: "The `t`, and `e` tensors must all have the same shape,\nand the output will also have that shape.  The `condition` tensor\nmust be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors\nor higher rank, then `condition` must be either a vector with size\nmatching the first dimension of `t`, or must have the same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
 }
 op {
   name: "SelfAdjointEig"
@@ -7808,6 +7894,7 @@ op {
     description: "Threshold for word occurrence. Words that appear with higher\nfrequency will be randomly down-sampled. Set to 0 to disable."
   }
   summary: "Parses a text file and creates a batch of examples."
+  is_stateful: true
 }
 op {
   name: "Slice"
@@ -8031,6 +8118,28 @@ op {
     }
   }
   summary: "Computes softsign gradients for a softsign operation."
+}
+op {
+  name: "SpaceToDepth"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
+    description: "The size of the spatial block."
+  }
+  summary: "SpaceToDepth for tensors of type T."
+  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
   name: "SparseApplyAdagrad"
@@ -8507,6 +8616,41 @@ op {
   }
   summary: "Computes the sum along sparse segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+}
+op {
+  name: "SparseSoftmaxCrossEntropyWithLogits"
+  input_arg {
+    name: "features"
+    description: "batch_size x num_classes matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "labels"
+    description: "batch_size vector with values in [0, num_classes).\nThis is the label for the given minibatch entry."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "loss"
+    description: "Per example loss (batch_size vector)."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprop"
+    description: "backpropagated gradients (batch_size x num_classes matrix)."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes softmax cross entropy cost and gradients to backpropagate."
+  description: "Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept\na matrix of label probabilities, but rather a single label per row\nof features.  This label is considered to have probability 1.0 for the\ngiven row.\n\nInputs are the logits, not probabilities."
 }
 op {
   name: "SparseSplit"
@@ -9109,6 +9253,14 @@ op {
     description: "The type of the elements on the tensor_array."
   }
   attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
+  }
+  attr {
     name: "tensor_array_name"
     type: "string"
     default_value {
@@ -9135,9 +9287,12 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
-    description: "The handle to the forward TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
   }
   output_arg {
     name: "grad_handle"
@@ -9147,10 +9302,9 @@ op {
   attr {
     name: "source"
     type: "string"
-    description: "The gradient source string, used to decide which gradient TensorArray\nto return."
   }
   summary: "Creates a TensorArray for storing the gradients of values in the given handle."
-  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nTensorArray gradient calls use an accumulator TensorArray object.  If\nmultiple gradients are calculated and run in the same session, the multiple\ngradient nodes may accidentally flow throuth the same accumulator TensorArray.\nThis double counts and generally breaks the TensorArray gradient flow.\n\nThe solution is to identify which gradient call this particular\nTensorArray gradient is being called in.  This is performed by identifying\na unique string (e.g. \"gradients\", \"gradients_1\", ...) from the input\ngradient Tensor\'s name.  This string is used as a suffix when creating\nthe TensorArray gradient object here (the attribute `source`).\n\nThe attribute `source` is added as a suffix to the forward TensorArray\'s\nname when performing the creation / lookup, so that each separate gradient\ncalculation gets its own TensorArray accumulator."
+  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn terms of e.g. python TensorArray sugar wrappers when using dynamically sized"
   is_stateful: true
 }
 op {
@@ -9207,6 +9361,26 @@ op {
     description: "The type of the elem that is returned."
   }
   summary: "Read an element from the TensorArray."
+}
+op {
+  name: "TensorArraySize"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    description: "The current size of the TensorArray."
+    type: DT_INT32
+  }
+  summary: "Get the current size of the TensorArray."
 }
 op {
   name: "TensorArrayUnpack"
@@ -9708,7 +9882,7 @@ op {
     type: "type"
   }
   summary: "Finds unique elements in a 1-D tensor."
-  description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"
+  description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique_with_counts(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"
 }
 op {
   name: "Unpack"

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
@@ -36,6 +37,17 @@ class DecodePngOp : public OpKernel {
                              channels_ == 4,
                 errors::InvalidArgument("channels must be 0, 1, 3, or 4, got ",
                                         channels_));
+
+    DataType dt;
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dt));
+    OP_REQUIRES(
+        context, dt == DataType::DT_UINT8 || dt == DataType::DT_UINT16,
+        errors::InvalidArgument("Type must be UINT8 or UINT16, got ", dt));
+    if (dt == DataType::DT_UINT8) {
+      desired_channel_bits_ = 8;
+    } else {
+      desired_channel_bits_ = 16;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -48,7 +60,8 @@ class DecodePngOp : public OpKernel {
     const StringPiece data = contents.scalar<string>()();
     png::DecodeContext decode;
     OP_REQUIRES(
-        context, png::CommonInitDecode(data, channels_, 8, &decode),
+        context,
+        png::CommonInitDecode(data, channels_, desired_channel_bits_, &decode),
         errors::InvalidArgument("Invalid PNG header, data size ", data.size()));
 
     // Verify that width and height don't overflow int
@@ -69,15 +82,28 @@ class DecodePngOp : public OpKernel {
     if (!status.ok()) png::CommonFreeDecode(&decode);
     OP_REQUIRES_OK(context, status);
 
-    // Finish decoding image
-    OP_REQUIRES(
-        context, png::CommonFinishDecode(output->flat<uint8>().data(),
-                                         decode.channels * width, &decode),
-        errors::InvalidArgument("Invalid PNG data, size ", data.size()));
+    if (desired_channel_bits_ == 8) {
+      // Finish decoding image
+      OP_REQUIRES(
+          context,
+          png::CommonFinishDecode(
+              reinterpret_cast<png_bytep>(output->flat<uint8>().data()),
+              decode.channels * width * sizeof(uint8), &decode),
+          errors::InvalidArgument("Invalid PNG data, size ", data.size()));
+    } else {
+      // Finish decoding image
+      OP_REQUIRES(
+          context,
+          png::CommonFinishDecode(
+              reinterpret_cast<png_bytep>(output->flat<uint16>().data()),
+              decode.channels * width * sizeof(uint16), &decode),
+          errors::InvalidArgument("Invalid PNG data, size ", data.size()));
+    }
   }
 
  private:
   int channels_;
+  int desired_channel_bits_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodePng").Device(DEVICE_CPU), DecodePngOp);
 

@@ -55,7 +55,7 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
-    TF_QCHECK_OK(ValidateKernelRegistrations(this));
+    TF_QCHECK_OK(ValidateKernelRegistrations(*this));
   }
   if (op_def == nullptr) {
     status->Update(
@@ -140,6 +140,27 @@ OpRegistry* OpRegistry::Global() {
   static OpRegistry* global_op_registry = new OpRegistry;
   return global_op_registry;
 }
+
+// OpListOpRegistry -----------------------------------------------------------
+
+OpListOpRegistry::OpListOpRegistry(const OpList* op_list) {
+  for (const OpDef& op_def : op_list->op()) {
+    index_[op_def.name()] = &op_def;
+  }
+}
+
+const OpDef* OpListOpRegistry::LookUp(const string& op_type_name,
+                                      Status* status) const {
+  auto iter = index_.find(op_type_name);
+  if (iter == index_.end()) {
+    status->Update(
+        errors::NotFound("Op type not registered '", op_type_name, "'"));
+    return nullptr;
+  }
+  return iter->second;
+}
+
+// Other registration ---------------------------------------------------------
 
 namespace register_op {
 OpDefBuilderReceiver::OpDefBuilderReceiver(const OpDefBuilder& builder) {

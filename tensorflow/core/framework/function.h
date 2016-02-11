@@ -160,10 +160,10 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(StringPiece val) {
 // "attr_values", which is a map from a placeholder name to an attr
 // value.
 //
-// InstatiateFunction calls "get_function" to find signatures of other
+// InstantiateFunction calls "get_function" to find signatures of other
 // functions and primitive ops.
 
-// Placeholders in "fdef" is substitued based on "attr_values" here.
+// Placeholders in "fdef" is substituted based on "attr_values" here.
 typedef ::tensorflow::protobuf::Map<string, AttrValue> InstantiateAttrValueMap;
 typedef gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
     InstantiateAttrValueSlice;
@@ -317,8 +317,8 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Return true iff 'function_name' is the name of a defined function.
-  virtual bool IsDefined(const string& function_name) = 0;
+  // Return true iff 'function' is stateful.
+  virtual bool IsStateful(const string& function_name) = 0;
 };
 
 // To register a gradient function for a builtin op, one should use
@@ -329,7 +329,7 @@ class FunctionLibraryRuntime {
 //   std::function<Status(const AttrSlice&, FunctionDef*)>.
 //
 // A ::tensorflow::gradient::Creator should populate in FunctionDef* with a
-// definition of a brain function which computate the gradient for the
+// definition of a brain function which compute the gradient for the
 // <op_name> when the <op_name> is instantiated with the given attrs.
 //
 // E.g.,

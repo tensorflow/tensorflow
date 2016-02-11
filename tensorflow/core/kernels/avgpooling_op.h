@@ -41,7 +41,7 @@ struct SpatialAvgPooling {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// Lauch a custom GPU kernels from Yanqing for the avgpooling backward operation
+// Launch a custom GPU kernels from Yanqing for the avgpooling backward operation
 // that works NHWC data formats.
 // Arguments:
 //   top_diff: backprop to the output of the pooling layer

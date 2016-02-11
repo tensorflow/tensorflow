@@ -98,7 +98,7 @@ class ParseExampleTest(tf.test.TestCase):
       batch_size = (
           serialized.eval().size if isinstance(serialized, tf.Tensor)
           else np.asarray(serialized).size)
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(
               tuple(out[k].get_shape().as_list()), (batch_size,) + f.shape)
@@ -367,7 +367,7 @@ class ParseSingleExampleTest(tf.test.TestCase):
         _compare_output_to_expected(self, out, expected_values, tf_result)
 
       # Check shapes.
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(tuple(out[k].get_shape()), f.shape)
         elif isinstance(f, tf.VarLenFeature):
@@ -455,7 +455,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
       # Check shapes; if serialized is a Tensor we need its size to
       # properly check.
       if "context_features" in kwargs:
-        for k, f in kwargs["context_features"].iteritems():
+        for k, f in kwargs["context_features"].items():
           if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
             self.assertEqual(
                 tuple(context_out[k].get_shape().as_list()), f.shape)
@@ -565,7 +565,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
@@ -614,7 +614,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (

@@ -24,10 +24,12 @@
 #     common_runtime/: Common code for execution of graphs
 #     public/: Public APIs for running graphs
 # ":core" - The code for ":core_cpu" plus a GPU runtime
+# ":kernel_lib" - Library with code common to multiple kernel implementations.
 # ":gpu_kernels" - The gpu-specific kernels
-# ":kernels" - The cpu-specific kernels, plus ":gpu_kernels" if built with Cuda
+# ":all_kernels" - The cpu-specific kernels, plus ":gpu_kernels" if
+#     built with Cuda
 # ":tensorflow_opensource" - The complete open-source package, including
-#      ":kernels", ":core", and a Session implementation.
+#      ":all_kernels", ":core", and a Session implementation.
 # ":tensorflow" - "tensorflow_opensource" plus some Google-internal libraries.
 # ":testlib" - TensorFlow-specific test support, e.g. utilities for testing
 #      kernels.
@@ -123,13 +125,10 @@ cc_library(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
-        "platform/port.h",  # TODO(josh11b): delete
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-        "public/env.h",  # Deprecated, use platform/env.h instead
-        "public/status.h",  # Deprecated: use lib/core/status.h instead
     ],
     visibility = ["//visibility:public"],
     deps = [":lib_internal"],
@@ -169,9 +168,9 @@ tf_cuda_library(
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/device_base.h",
         "framework/function.h",
-        "framework/node_def_builder.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
         "framework/numeric_types.h",
@@ -191,14 +190,9 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
-        "framework/type_traits.h",
         "framework/type_index.h",
+        "framework/type_traits.h",
         "framework/types.h",
-        # Deprecated. TODO(josh11b): Use the framework/ versions instead.
-        "public/partial_tensor_shape.h",
-        "public/tensor.h",
-        "public/tensor_shape.h",
-        # NOTE(josh11b): Will stay in public/
         "public/version.h",
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
@@ -210,8 +204,8 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
-        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_reader.h",
+        "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
         "util/use_cudnn.h",
         "util/util.h",
@@ -219,6 +213,22 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+cc_binary(
+    name = "libtensorflow_framework.so",
+    srcs = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
 )
 
 tf_cuda_library(
@@ -298,6 +308,7 @@ tf_cuda_library(
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
+        "graph/validate.h",
         "public/session.h",
         "public/session_options.h",
         "public/tensor_c_api.h",
@@ -338,8 +349,11 @@ tf_gpu_kernel_library(
     ],
 )
 
+# Common libraries used for implementing kernels.
+# TODO(josh11b): This also currently includes all the kernel implementations,
+# should split that out into the ":all_kernels" target.
 tf_cuda_library(
-    name = "kernels",
+    name = "kernel_lib",
     # TODO(josh11b): Pull common dependencies out into a separate library.
     srcs = glob(
         [
@@ -373,15 +387,24 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This includes implementations of all kernels built into TensorFlow.
+tf_cuda_library(
+    name = "all_kernels",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "tensorflow_opensource",
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":all_kernels",
         ":core",
         ":direct_session",
         ":gpu_runtime",
-        ":kernels",
         ":lib",
     ],
 )
@@ -418,11 +441,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
-        ":kernels",
+        ":kernel_lib",
         ":lib",
         ":protos_all_cc",
         ":tensorflow",  # TODO(josh11b): Drop this dep?
@@ -630,30 +654,69 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# Config settings for determining if we are building for Android
+# (the android_32 and android_64 entries are only relevant to internal Google builds).
+config_setting(
+    name = "android",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+    },
+)
+
+config_setting(
+    name = "android_32",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:custom_malloc",
+    },
+)
+
+config_setting(
+    name = "android_64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:custom_malloc",
+    },
+)
+
+ANDROID_TF_SOURCES = [
+    "//tensorflow/core:android_core_ops",
+    "//tensorflow/core:android_extended_ops",
+    "//tensorflow/core:android_srcs",
+]
+
+ANDROID_TF_COPTS = [
+    "-mfpu=neon",
+    "-std=c++11",
+    "-DMIN_LOG_LEVEL=0",
+    "-O2",
+]
+
 # Native library support for Android applications.
-# Should be built to target Android with flag --copt=-mfpu=neon.
+# Compiles to a trivial library on non-android.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = [
-        "//tensorflow/core:android_core_ops",
-        "//tensorflow/core:android_extended_ops",
-        "//tensorflow/core:android_srcs",
-    ],
+    srcs = select({
+        ":android": ANDROID_TF_SOURCES,
+        ":android_32": ANDROID_TF_SOURCES,
+        ":android_64": ANDROID_TF_SOURCES,
+        "//conditions:default": [],
+    }),
     hdrs = [
         "framework/tensor.h",
+        "platform/default/integral_types.h",
         "platform/env.h",
         "platform/logging.h",
-        "platform/port.h",
-        "public/env.h",
+        "platform/platform.h",
+        "platform/types.h",
         "public/session.h",
-        "public/tensor.h",
     ],
-    copts = [
-        "-mfpu=neon",
-        "-std=c++11",
-        "-DMIN_LOG_LEVEL=0",
-        "-O2",
-    ],
+    copts = select({
+        ":android": ANDROID_TF_COPTS,
+        ":android_32": ANDROID_TF_COPTS,
+        ":android_64": ANDROID_TF_COPTS,
+        "//conditions:default": [],
+    }),
     tags = [
         "manual",
         "notap",
@@ -677,8 +740,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
-            "public/env.h",  # TODO(josh11b): delete this
-            "public/status.h",  # TODO(josh11b): delete this
         ] + tf_additional_lib_srcs(),
         exclude = [
             "**/*test*",
@@ -722,11 +783,6 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-            # TODO(josh11b): Delete these once everyone has switched to the
-            # framework/ versions.
-            "public/partial_tensor_shape.h",
-            "public/tensor.h",
-            "public/tensor_shape.h",
         ],
         exclude = [
             "**/*test*",
@@ -753,6 +809,67 @@ tf_cuda_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "framework_headers",
+    srcs = [
+        "framework/allocator.h",
+        "framework/attr_value_util.h",
+        "framework/bfloat16.h",
+        "framework/cancellation.h",
+        "framework/control_flow.h",
+        "framework/device_base.h",
+        "framework/function.h",
+        "framework/kernel_def_builder.h",
+        "framework/node_def_util.h",
+        "framework/numeric_types.h",
+        "framework/op.h",
+        "framework/op_def_builder.h",
+        "framework/op_def_util.h",
+        "framework/op_kernel.h",
+        "framework/partial_tensor_shape.h",
+        "framework/rendezvous.h",
+        "framework/tensor.h",
+        "framework/tensor_reference.h",
+        "framework/tensor_shape.h",
+        "framework/tensor_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+        "framework/types.h",
+        "framework/unique_tensor_references.h",
+        "lib/core/errors.h",
+        "lib/core/notification.h",
+        "lib/core/refcount.h",
+        "lib/core/status.h",
+        "lib/core/stringpiece.h",
+        "lib/gtl/array_slice.h",
+        "lib/gtl/array_slice_internal.h",
+        "lib/gtl/inlined_vector.h",
+        "lib/gtl/manual_constructor.h",
+        "lib/hash/hash.h",
+        "lib/strings/numbers.h",
+        "lib/strings/str_util.h",
+        "lib/strings/strcat.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/default/mutex.h",
+        "platform/default/protobuf.h",
+        "platform/default/thread_annotations.h",
+        "platform/env.h",
+        "platform/host_info.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/mem.h",
+        "platform/mutex.h",
+        "platform/platform.h",
+        "platform/protobuf.h",
+        "platform/thread_annotations.h",
+        "platform/types.h",
+        "public/version.h",
+        "util/device_name_utils.h",
+    ],
 )
 
 tf_cuda_library(
@@ -966,18 +1083,20 @@ tf_cc_tests(
             # TODO(opensource): fix
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
-            "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
+            "common_runtime/gpu/gpu_region_allocator_test.cc",
         ],
     ),
     deps = [
+        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
         ":framework",
         ":framework_internal",
-        ":kernels",
+        ":kernel_lib",
         ":lib",
         ":lib_internal",
         ":ops",
@@ -1000,15 +1119,43 @@ tf_cc_tests(
             "user_ops/**/*_test.cc",
             "common_runtime/gpu/*_test.cc",
         ],
+        exclude = [
+            # Run by tests below
+            "common_runtime/gpu/gpu_allocator_retry_test.cc",
+        ],
     ),
     deps = [
+        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
         ":framework",
         ":framework_internal",
         ":gpu_runtime",
-        ":kernels",
+        ":kernel_lib",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+    ],
+)
+
+tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":kernel_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
@@ -1042,9 +1189,7 @@ filegroup(
 )
 
 # -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-# For portable_proto_library
+# Google-internal targets go here (must be at the end).
 
 filegroup(
     name = "all_files",

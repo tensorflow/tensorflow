@@ -39,11 +39,10 @@ from tensorflow.python.training import training_ops
 
 
 class RMSPropOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the RMSProp algorithm (http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  """Optimizer that implements the RMSProp algorithm.
 
+  See the [paper]
   (http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
-
-  See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
 
   @@__init__
   """

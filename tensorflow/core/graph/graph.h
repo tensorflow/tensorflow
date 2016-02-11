@@ -15,7 +15,7 @@ limitations under the License.
 
 // A Graph describes a set of computations that are to be
 // performed, as well as the dependencies between those
-// compuations. The basic model is a DAG (directed acyclic graph) with
+// computations. The basic model is a DAG (directed acyclic graph) with
 // * internal nodes representing computational operations to be performed;
 // * edges represent dependencies, indicating the target may only be
 //   executed once the source has completed; and

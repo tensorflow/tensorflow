@@ -769,12 +769,12 @@ TEST(MemoryTypesForNode, Simple) {
                    .Finalize(&node_def));
   MemoryTypeVector input, output;
 
-  TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_CPU, node_def,
+  TF_EXPECT_OK(MemoryTypesForNode(*OpRegistry::Global(), DEVICE_CPU, node_def,
                                   &input, &output));
   EXPECT_EQ(MemoryTypeVector(5, DEVICE_MEMORY), input);
   EXPECT_EQ(MemoryTypeVector(3, DEVICE_MEMORY), output);
 
-  TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_GPU, node_def,
+  TF_EXPECT_OK(MemoryTypesForNode(*OpRegistry::Global(), DEVICE_GPU, node_def,
                                   &input, &output));
   EXPECT_EQ(MemoryTypeVector({HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY,
                               HOST_MEMORY, HOST_MEMORY}),

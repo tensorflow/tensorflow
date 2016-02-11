@@ -160,7 +160,7 @@ class ArraySliceImplBase {
   typedef size_t size_type;
   typedef ptrdiff_t difference_type;
 
-  static const size_type npos = -1;
+  static const size_type npos = static_cast<size_type>(-1);
 
   ArraySliceImplBase(pointer array, size_type length)
       : ptr_(array), length_(length) {}

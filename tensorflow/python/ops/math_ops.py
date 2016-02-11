@@ -25,6 +25,7 @@ operators to your graph.
 @@truediv
 @@floordiv
 @@mod
+@@cross
 
 ## Basic Math Functions
 
@@ -186,7 +187,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import gen_state_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_math_ops import *
-
+# pylint: enable=wildcard-import
 
 # Aliases for some automatically-generated names.
 argmax = gen_math_ops.arg_max
@@ -219,6 +220,33 @@ def abs(x, name=None):
       return gen_math_ops.complex_abs(x, name=name)
     return gen_math_ops._abs(x, name=name)
 
+
+def scalar_mul(scalar, x):
+  """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+  Intended for use in gradient code which might deal with `IndexedSlices`
+  objects, which are easy to multiply by a scalar but more expensive to
+  multiply with arbitrary tensors.
+
+  Args:
+    scalar: A 0-D scalar `Tensor`. Must have known shape.
+    x: A `Tensor` or `IndexedSlices` to be scaled.
+
+  Returns:
+    `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+  Raises:
+    ValueError: if scalar is not a 0-D `scalar`.
+  """
+  scalar = ops.convert_to_tensor(scalar, dtype=x.dtype, name="scalar")
+  shape = scalar.get_shape()
+  if shape.ndims == 0:
+    if isinstance(x, ops.IndexedSlices):
+      return ops.IndexedSlices(scalar * x.values, x.indices, x.dense_shape)
+    else:
+      return scalar * x
+  else:
+    raise ValueError("Only scalar multiply works, got shape %s" % shape)
 
 
 def pow(x, y, name=None):
@@ -938,9 +966,9 @@ def _calc_mat_mul_flops(graph, node):
   a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
   a_shape.assert_is_fully_defined()
   if transpose_a:
-    k = int(a_shape[1])
-  else:
     k = int(a_shape[0])
+  else:
+    k = int(a_shape[1])
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
@@ -1196,6 +1224,7 @@ ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
+ops.RegisterShape("Cross")(common_shapes.unchanged_shape)
 ops.RegisterShape("Exp")(common_shapes.unchanged_shape)
 ops.RegisterShape("Floor")(common_shapes.unchanged_shape)
 ops.RegisterShape("Imag")(common_shapes.unchanged_shape)
@@ -1295,10 +1324,27 @@ def _AddNShape(op):
 
 @ops.RegisterShape("Select")
 def _SelectShape(op):
-  # All three inputs must have the same shape.
-  return [op.inputs[0].get_shape()
-          .merge_with(op.inputs[1].get_shape())
-          .merge_with(op.inputs[2].get_shape())]
+  """Shape function for SelectOp."""
+  # The inputs 'then' and 'else' must have the same shape.
+  # The input 'cond' must either have the same shape as 'then' and
+  # 'else', or be a vector if 'then' and 'else' are at least vectors.
+  c_shape = op.inputs[0].get_shape()
+  t_shape = op.inputs[1].get_shape()
+  e_shape = op.inputs[2].get_shape()
+  t_e_shape = t_shape.merge_with(e_shape)
+  c_shape_list = c_shape.as_list() if c_shape.ndims is not None else None
+  t_e_shape_list = t_e_shape.as_list() if t_e_shape.ndims is not None else None
+  if c_shape_list is not None and t_e_shape_list is not None:
+    if len(c_shape_list) != 1:
+      # If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
+      t_e_shape = t_e_shape.merge_with(c_shape)
+    if t_e_shape_list:
+      # If then and else are not scalars, then cond must be at least
+      # a vector, and its first value must match that of 'else'
+      c_shape = c_shape.with_rank_at_least(1)
+      if len(c_shape.as_list()) == 1:
+        c_shape.merge_with(tensor_shape.vector(t_e_shape_list[0]))
+  return [t_e_shape]
 
 
 @ops.RegisterShape("ArgMax")

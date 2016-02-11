@@ -28,6 +28,10 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import constant_op
+# Import gradients to register _IndexedSlicesToTensor.
+import tensorflow.python.ops.gradients  # pylint: disable=unused-import
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -50,6 +54,34 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(sp.indices.dtype, dtypes.int64)
     self.assertEqual(sp.values.dtype, dtypes.string)
     self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+
+class IndexedSlicesTest(test_util.TensorFlowTestCase):
+
+  def testToTensor(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      dense_shape = constant_op.constant([3, 2])
+      x = ops.IndexedSlices(values, indices, dense_shape)
+      tensor = ops.convert_to_tensor(x, name="tensor")
+      self.assertAllEqual(tensor.eval(), [[2, 3], [0, 0], [5, 7]])
+
+  def testNegation(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      x = -ops.IndexedSlices(values, indices)
+      self.assertAllEqual(x.values.eval(), [[-2, -3], [-5, -7]])
+      self.assertAllEqual(x.indices.eval(), [0, 2])
+
+  def testScalarMul(self):
+    with self.test_session():
+      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+      indices = constant_op.constant([0, 2])
+      x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
+      self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
+      self.assertAllEqual(x.indices.eval(), [0, 2])
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
@@ -224,7 +256,7 @@ class CreateOpTest(test_util.TensorFlowTestCase):
   def testNodeDefArgs(self):
     g = ops.Graph()
     op1 = g.create_op("const", [], [dtypes.float32], None, name="myop1")
-    with g.device("/device:GPU"):
+    with g.device("/device:GPU:0"):
       op2 = g.create_op("add",
                         [],
                         [dtypes.float32, dtypes.string], None,
@@ -235,11 +267,11 @@ class CreateOpTest(test_util.TensorFlowTestCase):
                       [dtypes.float32, dtypes.int32],
                       None,
                       name="myop3")
-    self.assertEqual(None, op1.device)
-    self.assertEqual("/device:GPU", op2.device)
-    self.assertEqual(None, op3.device)
+    self.assertDeviceEqual(None, op1.device)
+    self.assertDeviceEqual("/device:GPU:0", op2.device)
+    self.assertDeviceEqual(None, op3.device)
     self.assertProtoEquals("name:'myop1' op:'const'", op1.node_def)
-    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU'",
+    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU:0'",
                            op2.node_def)
     self.assertProtoEquals(
         "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'foo'",
@@ -273,7 +305,7 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
   def testNodeDefArgs(self):
     g = ops.Graph()
     t1 = _apply_op(g, "const", [], [dtypes.float32], name="myop1")
-    with g.device("/device:GPU"):
+    with g.device("/device:GPU:0"):
       t2 = _apply_op(g, "add",
                      [],
                      [dtypes.float32, dtypes.string],
@@ -290,7 +322,7 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
     self.assertEqual("myop3", t3[0]._as_node_def_input())
     # Validate that we got the right ops as well
     self.assertProtoEquals("name:'myop1' op:'const'", t1.op.node_def)
-    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU'",
+    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU:0'",
                            t2[0].op.node_def)
     self.assertProtoEquals(
         "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'foo'",
@@ -419,7 +451,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
   def testNoDevice(self):
     g = ops.Graph()
     op = g.create_op("an_op", [], [dtypes.float32])
-    self.assertEqual(None, op.device)
+    self.assertDeviceEqual(None, op.device)
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
       node { name: "an_op" op: "an_op" }
@@ -525,6 +557,59 @@ class DeviceTest(test_util.TensorFlowTestCase):
              device: "/job:ps/device:CPU:0" }
     """, gd)
 
+  def testNestingWithDeviceStrings(self):
+    g = ops.Graph()
+
+    with g.device("/device:GPU:0"):
+      g.create_op("an_op", [], [dtypes.float32])
+      with g.device("/job:worker"):
+        g.create_op("an_op", [], [dtypes.float32])
+        with g.device("/device:CPU:0"):
+          g.create_op("an_op", [], [dtypes.float32])
+          with g.device("/job:ps"):
+            g.create_op("an_op", [], [dtypes.float32])
+            with g.device(""):
+              g.create_op("an_op", [], [dtypes.float32])
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+             device: "/device:GPU:0" }
+      node { name: "an_op_1" op: "an_op"
+             device: "/job:worker/device:GPU:0" }
+      node { name: "an_op_2" op: "an_op"
+             device: "/job:worker/device:CPU:0" }
+      node { name: "an_op_3" op: "an_op"
+             device: "/job:ps/device:CPU:0" }
+      node { name: "an_op_4" op: "an_op"
+             device: "/job:ps/device:CPU:0" }
+    """, gd)
+
+  def testNestingWithDeviceStringWildcard(self):
+    g = ops.Graph()
+
+    with g.device("/device:GPU:7"):
+      g.create_op("an_op", [], [dtypes.float32])
+      with g.device("/device:GPU:*"):
+        g.create_op("an_op", [], [dtypes.float32])
+
+    with g.device("/device:CPU:*"):
+      g.create_op("an_op", [], [dtypes.float32])
+      with g.device("/device:CPU:5"):
+        g.create_op("an_op", [], [dtypes.float32])
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+             device: "/device:GPU:7" }
+      node { name: "an_op_1" op: "an_op"
+             device: "/device:GPU:7" }
+      node { name: "an_op_2" op: "an_op"
+             device: "/device:CPU:*" }
+      node { name: "an_op_3" op: "an_op"
+             device: "/device:CPU:5" }
+    """, gd)
+
   def testNoneClearsDefault(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):
@@ -539,6 +624,59 @@ class DeviceTest(test_util.TensorFlowTestCase):
       node { name: "an_op_1" op: "an_op" }
       node { name: "an_op_2" op: "an_op"
              device: "/job:worker/replica:2/device:CPU:1" }
+    """, gd)
+
+  def testNoneIgnoresOuterDeviceFunction(self):
+    g = ops.Graph()
+    with g.device(lambda op: "/job:worker/replica:2/device:CPU:1"):
+      g.create_op("an_op", [], [dtypes.float32])
+      with g.device(None):
+        g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("an_op", [], [dtypes.float32])
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+             device: "/job:worker/replica:2/device:CPU:1" }
+      node { name: "an_op_1" op: "an_op" }
+      node { name: "an_op_2" op: "an_op"
+             device: "/job:worker/replica:2/device:CPU:1" }
+    """, gd)
+
+  def _overwritingDeviceFunction(self, unused_op):
+    # This device function unconditionally overwrites the device of ops.
+    #
+    # NOTE(mrry): Writing device functions like this is not
+    # recommended. Instead, in most cases you should use
+    # `pydev.merge_device("/job:ps")` or simply `"/job:ps"` as the
+    # argument to `tf.device()` and the device component will be merged in.
+    return "/job:overwrite"
+
+  def testOverwritingBehavior(self):
+    g = ops.Graph()
+    with g.device(self._overwritingDeviceFunction):
+      g.create_op("an_op", [], [dtypes.float32])
+      with g.device("/job:ps"):  # Will be overwritten.
+        g.create_op("an_op", [], [dtypes.float32])
+      with g.device(pydev.merge_device("/job:ps")):  # Will be overwritten.
+        g.create_op("an_op", [], [dtypes.float32])
+      with g.device(None):  # Disables overwriting device function
+        with g.device("/job:ps"):
+          g.create_op("an_op", [], [dtypes.float32])
+      with g.device(None):  # Disables overwriting device function
+        with g.device(pydev.merge_device("/job:ps")):
+          g.create_op("an_op", [], [dtypes.float32])
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+             device: "/job:overwrite" }
+      node { name: "an_op_1" op: "an_op"
+             device: "/job:overwrite" }
+      node { name: "an_op_2" op: "an_op"
+             device: "/job:overwrite" }
+      node { name: "an_op_3" op: "an_op"
+             device: "/job:ps" }
+      node { name: "an_op_4" op: "an_op"
+             device: "/job:ps" }
     """, gd)
 
 
@@ -952,7 +1090,7 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
 
 
-class GraphDefVersionTest(test_util.TensorFlowTestCase):
+class AsGraphDefTest(test_util.TensorFlowTestCase):
 
   def testGraphDefVersion(self):
     """Test that the graphdef version is plumbed through to kernels."""
@@ -963,6 +1101,33 @@ class GraphDefVersionTest(test_util.TensorFlowTestCase):
         with self.test_session(graph=g):
           v = test_ops.graph_def_version().eval()
           self.assertEqual(version, v)
+
+  def testAddShapes(self):
+    with ops.Graph().as_default() as g:
+      t1, t2, t3, t4, t5 = _apply_op(g, "an_op", [], [dtypes.float32] * 5)
+      t1.set_shape(None)
+      t2.set_shape([])
+      t3.set_shape([None])
+      t4.set_shape([43, 37])
+      t5.set_shape([43, None])
+
+      gd = g.as_graph_def(add_shapes=True)
+      self.assertProtoEqualsVersion("""
+      node { name: "an_op" op: "an_op"
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape { unknown_rank: true }
+              shape { }
+              shape { dim { size: -1 } }
+              shape { dim { size: 43 } dim { size: 37 } }
+              shape { dim { size: 43 } dim { size: -1 } }
+            }
+          }
+        }
+      }
+      """, gd)
 
 
 # NOTE(petewarden): Dummy stats registrations for ops used in the tests.

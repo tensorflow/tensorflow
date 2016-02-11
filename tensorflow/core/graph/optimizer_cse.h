@@ -27,7 +27,9 @@ namespace tensorflow {
 // "consider_fn" is not nullptr, then only nodes for which
 // consider_fn(node) returns true will be considered for combining
 // during the common subexpression elimination.
-extern void OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn);
+//
+// Returns true if and only if 'g' is mutated.
+extern bool OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn);
 
 }  // namespace tensorflow
 

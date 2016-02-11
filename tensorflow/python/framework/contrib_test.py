@@ -29,6 +29,11 @@ class ContribTest(googletest.TestCase):
     import tensorflow as tf
     assert inspect.ismodule(tf.contrib)
 
+  def testLayers(self):
+    # pylint: disable=g-import-not-at-top
+    import tensorflow as tf
+    assert inspect.ismodule(tf.contrib.layers)
+
 
 if __name__ == '__main__':
   googletest.main()

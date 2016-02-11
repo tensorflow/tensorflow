@@ -294,6 +294,15 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual("(32, ?, 1, 9)",
                      str(tensor_shape.TensorShape([32, None, 1, 9])))
 
+  def testAsProto(self):
+    self.assertTrue(tensor_shape.unknown_shape().as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.unknown_shape(ndims=3).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, 2, 3]).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, None, 3]).as_proto().unknown_rank)
+
 
 if __name__ == "__main__":
   googletest.main()

@@ -18,7 +18,7 @@
 Summary of available functions:
 
  # Compute input images and labels for training. If you would like to run
- # evaluations, use input() instead.
+ # evaluations, use inputs() instead.
  inputs, labels = distorted_inputs()
 
  # Compute inference on the model inputs to make a prediction.
@@ -265,18 +265,10 @@ def loss(logits, labels):
   Returns:
     Loss tensor of type float.
   """
-  # Reshape the labels into a dense Tensor of
-  # shape [batch_size, NUM_CLASSES].
-  sparse_labels = tf.reshape(labels, [FLAGS.batch_size, 1])
-  indices = tf.reshape(tf.range(FLAGS.batch_size), [FLAGS.batch_size, 1])
-  concated = tf.concat(1, [indices, sparse_labels])
-  dense_labels = tf.sparse_to_dense(concated,
-                                    [FLAGS.batch_size, NUM_CLASSES],
-                                    1.0, 0.0)
-
   # Calculate the average cross entropy loss across the batch.
-  cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-      logits, dense_labels, name='cross_entropy_per_example')
+  labels = tf.cast(labels, tf.int64)
+  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      logits, labels, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 

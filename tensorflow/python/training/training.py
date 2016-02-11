@@ -151,6 +151,8 @@ from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
+from tensorflow.python.training.saver import export_meta_graph
+from tensorflow.python.training.saver import import_meta_graph
 from tensorflow.python.training.summary_io import summary_iterator
 from tensorflow.python.training.summary_io import SummaryWriter
 from tensorflow.python.training.training_util import write_graph
@@ -159,7 +161,7 @@ from tensorflow.python.training.training_util import global_step
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
-from tensorflow.python.training.saver_pb2 import *
+from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import exponential_decay

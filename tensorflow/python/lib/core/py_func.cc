@@ -99,6 +99,9 @@ Status TfDTypeToNpDType(const DataType& tf, int* np) {
     case DT_COMPLEX64:
       *np = NPY_COMPLEX64;
       break;
+    case DT_STRING:
+      *np = NPY_OBJECT;
+      break;
     default:
       return errors::Unimplemented("Unsupported tf type ", DataTypeString(tf));
   }
@@ -122,9 +125,23 @@ Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
                             t.shape().DebugString());
   }
   PyArrayObject* np_array = reinterpret_cast<PyArrayObject*>(obj);
-  CHECK(DataTypeCanUseMemcpy(t.dtype()));
-  StringPiece p = t.tensor_data();
-  memcpy(np_array->data, p.data(), p.size());
+  if (typenum == NPY_OBJECT) {
+    CHECK_EQ(DT_STRING, t.dtype());
+    auto tflat = t.flat<string>();
+    PyObject** out = reinterpret_cast<PyObject**>(np_array->data);
+    for (int i = 0; i < tflat.dimension(0); ++i) {
+      const string& el = tflat(i);
+      out[i] = PyBytes_FromStringAndSize(el.data(), el.size());
+      if (out[i] == nullptr) {
+        Py_DECREF(obj);
+        return errors::Internal("Failed to allocate a copy of string ", i);
+      }
+    }
+  } else {
+    CHECK(DataTypeCanUseMemcpy(t.dtype()));
+    StringPiece p = t.tensor_data();
+    memcpy(np_array->data, p.data(), p.size());
+  }
   *ret = PyArray_Return(np_array);
   return Status::OK();
 }
@@ -164,7 +181,7 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // Returns the corresponding tf dtype in 'tf' for numpy data type
 // 'np'.  Returns an error if the type is not supported by this
 // module.
-Status NpDTypeToTfDType(const int np, DataType* tf) {
+Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
@@ -202,18 +219,52 @@ Status NpDTypeToTfDType(const int np, DataType* tf) {
 // Given an numpy ndarray object 'obj', creates a corresponding tf
 // Tensor in '*ret'.
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
-  PyArrayObject* a = reinterpret_cast<PyArrayObject*>(obj);
+  PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
   DataType dtype;
-  TF_RETURN_IF_ERROR(NpDTypeToTfDType(PyArray_TYPE(a), &dtype));
-  CHECK(DataTypeCanUseMemcpy(dtype));
   TensorShape shape;
-  for (int i = 0; i < PyArray_NDIM(a); ++i) {
-    shape.AddDim(PyArray_SHAPE(a)[i]);
+  for (int i = 0; i < PyArray_NDIM(input); ++i) {
+    shape.AddDim(PyArray_SHAPE(input)[i]);
   }
-  Tensor t(dtype, shape);
-  StringPiece p = t.tensor_data();
-  memcpy(const_cast<char*>(p.data()), a->data, p.size());
-  *ret = t;
+  const int np_type = PyArray_TYPE(input);
+  switch (np_type) {
+    case NPY_OBJECT: {
+      dtype = DT_STRING;
+      Tensor t(dtype, shape);
+      auto tflat = t.flat<string>();
+      PyObject** input_data = reinterpret_cast<PyObject**>(PyArray_DATA(input));
+      for (int i = 0; i < tflat.dimension(0); ++i) {
+        char* el;
+        Py_ssize_t el_size;
+        if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
+          return errors::Unimplemented("Unsupported object type ",
+                                       input_data[i]->ob_type->tp_name);
+        }
+        tflat(i) = string(el, el_size);
+      }
+      *ret = t;
+      break;
+    }
+    case NPY_STRING: {
+      dtype = DT_STRING;
+      Tensor t(dtype, shape);
+      auto tflat = t.flat<string>();
+      char* input_data = PyArray_BYTES(input);
+      Py_ssize_t el_size = PyArray_ITEMSIZE(input);
+      for (int i = 0; i < tflat.dimension(0); ++i) {
+        tflat(i) = string(input_data + i * el_size, el_size);
+      }
+      *ret = t;
+      break;
+    }
+    default: {
+      TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
+      Tensor t(dtype, shape);
+      CHECK(DataTypeCanUseMemcpy(dtype));
+      StringPiece p = t.tensor_data();
+      memcpy(const_cast<char*>(p.data()), input->data, p.size());
+      *ret = t;
+    }
+  }
   return Status::OK();
 }
 
@@ -233,6 +284,10 @@ Status DoCallPyFunc(PyCall* call) {
   PyObject* result = PyEval_CallObject(trampoline, args);
   Py_DECREF(args);
   if (result == nullptr) {
+    if (PyErr_Occurred()) {
+      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
+      PyErr_Print();
+    }
     return errors::Internal("Failed to run py callback ", call->token,
                             ": see error log.");
   }

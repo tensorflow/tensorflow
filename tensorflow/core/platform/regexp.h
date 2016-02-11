@@ -27,7 +27,7 @@ typedef ::StringPiece RegexpStringPiece;
 
 #else
 
-#include "external/re2/re2/re2.h"
+#include "re2/re2.h"
 namespace tensorflow {
 typedef re2::StringPiece RegexpStringPiece;
 }  // namespace tensorflow

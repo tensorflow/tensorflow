@@ -25,11 +25,9 @@ from tensorflow.python.training import training_ops
 
 
 class AdagradOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Adagrad algorithm. (http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+  """Optimizer that implements the Adagrad algorithm.
 
-  (http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
-
-  See http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+  See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
 
   @@__init__
   """
@@ -60,8 +58,9 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      val = constant_op.constant(self._initial_accumulator_value,
-                                 shape=v.get_shape())
+      with ops.device(v.device):
+        val = constant_op.constant(self._initial_accumulator_value,
+                                   shape=v.get_shape())
       self._get_or_make_slot(v, val, "accumulator", self._name)
 
   def _prepare(self):

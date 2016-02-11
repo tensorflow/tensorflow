@@ -68,6 +68,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -81,8 +82,10 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
+# pylint: enable=wildcard-import
 from tensorflow.python.platform import logging
 
 
@@ -281,6 +284,25 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
         return ref_switch(data, pred, name=name)
     else:
       return switch(data, pred, name=name)
+
+
+def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
+  return [ta.flow if isinstance(ta, tensor_array_ops.TensorArray)
+          else ta
+          for ta in tensors_or_tensor_arrays]
+
+
+def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
+  if len(tensors_or_tensorarrays) != len(tensors_or_flows):
+    raise ValueError(
+        "Lengths of original Tensor list and new list do not match: %d vs. %d"
+        % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
+  return [
+      tensor_array_ops.TensorArray(
+          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      if isinstance(ta, tensor_array_ops.TensorArray)
+      else t_or_flow
+      for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
 class ControlFlowOpWrapper(object):
@@ -608,9 +630,9 @@ class GradLoopState(object):
       # value is not nested in the forward context.
       self.forward_context.Enter()
       push = gen_data_flow_ops._stack_push(enter_acc, value)
+      self.forward_context.Exit()
       # Protect stack push and order it before forward_index.
       self.forward_index.op._add_control_input(push.op)
-      self.forward_context.Exit()
     else:
       # value is in a cond context within the forward context.
       assert isinstance(value_ctxt, CondContext)
@@ -620,13 +642,7 @@ class GradLoopState(object):
         value_ctxt.outer_context.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
         value_ctxt.outer_context.Exit()
-        # Guard with a switch but take the other branch.
-        pred = self.history_map.get(value_ctxt.pred.name)
-        branch = value_ctxt.branch
-        value_ctxt.AddName(push.name)
-        value_ctxt.Enter()
-        push = _SwitchRefOrTensor(push, pred)[1 - branch]
-        value_ctxt.Exit()
+        push.op._set_control_flow_context(value_ctxt)
       else:
         value_ctxt.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
@@ -857,7 +873,6 @@ class ControlFlowState(object):
       A zero tensor of the same shape of op.outputs[index].
     """
     if IsLoopSwitch(op): return None
-
     dead_branch = op.type in {"Switch", "RefSwitch"}
     forward_ctxt = _GetWhileContext(op)
     if forward_ctxt is None:
@@ -877,16 +892,29 @@ class ControlFlowState(object):
         result = _SwitchRefOrTensor(result, pred)[1 - branch]
     else:
       # Unknown shape so keep a history of the shape at runtime.
-      op_ctxt.Enter()
-      zeros_shape = shape(val)
-      op_ctxt.Exit()
+      if dead_branch:
+        # Need to add a special switch to guard the value.
+        pred = op_ctxt.pred
+        branch = op_ctxt.branch
+        op_ctxt.outer_context.Enter()
+        val = _SwitchRefOrTensor(op.inputs[0], pred)[1 - branch]
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.outer_context.Exit()
+        val.op._set_control_flow_context(op_ctxt)
+        zeros_shape.op._set_control_flow_context(op_ctxt)
+      else:
+        op_ctxt.Enter()
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.Exit()
+
       # Add forward accumulator for shape.
       grad_state.grad_context.Exit()
       history_shape = grad_state.AddForwardAccumulator(zeros_shape, dead_branch)
       grad_state.grad_context.Enter()
+
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-          history_shape, zero_shape, dead_branch)
+          history_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
 
@@ -1402,6 +1430,10 @@ class WhileContext(ControlFlowContext):
   def BuildLoop(self, pred, body, loop_vars):
     """Add the loop termination condition and body to the graph."""
 
+    # Keep original_loop_vars to identify which are TensorArrays
+    original_loop_vars = loop_vars
+    # Connvert TensorArrays to their flow variables
+    loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
     # would be added in the outer contexts properly.
@@ -1421,18 +1453,28 @@ class WhileContext(ControlFlowContext):
     self._pivot_for_pred = merge_vars[0]
 
     # Build the graph for pred.
-    c = ops.convert_to_tensor(pred(*merge_vars))
+    merge_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, merge_vars))
+    c = ops.convert_to_tensor(pred(*merge_vars_with_tensor_arrays))
     self._pivot = loop_cond(c, name="LoopCond")
     switch_vars = [_SwitchRefOrTensor(x, self._pivot) for x in merge_vars]
 
     # Build the graph for body.
     vars_for_body = [_Identity(x[1]) for x in switch_vars]
     self._pivot_for_body = vars_for_body[0]
+    # Convert TensorArray flow variables inside the context back into
+    # their associated TensorArrays for calling the body.
+    vars_for_body_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, vars_for_body))
 
-    body_result = body(*vars_for_body)
-    if not isinstance(body_result, (list, _basetuple)):
+    body_result = body(*vars_for_body_with_tensor_arrays)
+    if not isinstance(body_result, collections.Sequence):
       body_result = [body_result]
-    result = ops.convert_n_to_tensor_or_indexed_slices(body_result)
+    # Store body_result to keep track of TensorArrays returned by body
+    original_body_result = body_result
+    # Convert TensorArrays returned by body into their flow variables
+    result = _convert_tensorarrays_to_flows(body_result)
+    result = ops.convert_n_to_tensor_or_indexed_slices(result)
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
@@ -1450,7 +1492,14 @@ class WhileContext(ControlFlowContext):
 
     # Exit the loop.
     self.ExitResult(exit_vars)
-    return exit_vars[0] if len(exit_vars) == 1 else exit_vars
+
+    # Convert TensorArray flow variables outside the context back into
+    # their associated TensorArrays for returning to caller.
+    exit_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_body_result, exit_vars))
+    return (exit_vars_with_tensor_arrays[0]
+            if len(exit_vars) == 1
+            else exit_vars_with_tensor_arrays)
 
 
 def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
@@ -1461,6 +1510,10 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   tensor. `body` is a function taking a list of tensors and returning a list of
   tensors of the same length and with the same types as the input. `loop_vars`
   is a list of tensors that is passed to both `cond` and `body`.
+
+  In addition to regular Tensors or IndexedSlices, the body may accept and
+  return TensorArray objects.  The flows of the TensorArray objects will
+  be appropriately forwarded between loops and during gradient calculations.
 
   While `cond` evaluates to true, `body` is executed.
 
@@ -1566,8 +1619,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   """
   with ops.op_scope(dependencies + [output_tensor], name,
                     "control_dependency") as name:
-    with ops.device(output_tensor.device
-                    or ops.get_default_graph().get_default_device()):
+    with ops.device(output_tensor.device):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
         if isinstance(output_tensor, ops.Tensor):
@@ -1829,7 +1881,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([[f() for f in fns] + preds + [default()]], name, "case"):
+  with ops.op_scope([preds], name, "case"):
     if not preds:
       return default()
     not_preds = []
@@ -1873,13 +1925,19 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       with ops.control_dependencies([
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
-        prev_case_seq = default()
+        prev_case_seq = None
         for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-          prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+          prev_case_seq = cond(
+              cp, fn,
+              default if i == 0 else lambda: prev_case_seq,
+              name="If_%d" % i)
     else:
-      prev_case_seq = default()
+      prev_case_seq = None
       for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-        prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+        prev_case_seq = cond(
+            cp, fn,
+            default if i == 0 else lambda: prev_case_seq,
+            name="If_%d" % i)
 
     return prev_case_seq
 
