@@ -26,7 +26,7 @@ import skflow
 class SaverTest(tf.test.TestCase):
 
     def testIris(self):
-        path = '/tmp/tmp.saver'
+        path = tf.test.get_temp_dir() + '/tmp.saver'
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
@@ -38,7 +38,7 @@ class SaverTest(tf.test.TestCase):
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def testCustomModel(self):
-        path = '/tmp/tmp.saver2'
+        path = tf.test.get_temp_dir() + '/tmp.saver2'
         random.seed(42)
         iris = datasets.load_iris()
         def custom_model(X, y):
@@ -53,7 +53,7 @@ class SaverTest(tf.test.TestCase):
         self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     
     def testDNN(self):
-        path = 'tmp_saver3'
+        path = tf.test.get_temp_dir() + '/tmp_saver3'
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
@@ -69,7 +69,7 @@ class SaverTest(tf.test.TestCase):
             skflow.TensorFlowEstimator.restore('no_model_path')
 
     def testNoCheckpoints(self):
-        path = '/tmp/tmp.saver4'
+        path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
         random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
