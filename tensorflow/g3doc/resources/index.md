@@ -24,7 +24,7 @@ logo and any related marks are trademarks of Google Inc."
 
 TensorFlow enables researchers to build machine learning models. We collect such
 models in our [Zoo](https://github.com/tensorflow/models). If you have built a 
-model with tensorflow, you may consider publishing it there.
+model with TensorFlow, you may consider publishing it there.
 
 We keep a list of projects that use TensorFlow [here](uses.md). If you made
 something amazing with TensorFlow, we'd like to hear about it!
