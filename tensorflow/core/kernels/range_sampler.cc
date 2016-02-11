@@ -60,7 +60,7 @@ namespace {
 // We use batch_size and num_tries, where num_tries is the observed number of
 // tries it took to get batch_size unique values.
 //
-// Assuming (falsely) that the nubmer of tries to get a batch of batch_size
+// Assuming (falsely) that the number of tries to get a batch of batch_size
 // distinct values is _always_ num_tries, the probability that the value
 // is in a batch is (1 - (1-p)^num_tries)
 static float ExpectedCountHelper(float p, int batch_size, int num_tries) {

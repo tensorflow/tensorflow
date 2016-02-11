@@ -43,7 +43,7 @@ bool StringToValue<string>(const string& content, string* value) {
 // Return OK if the argument is used. It store the extracted value into the
 // matching flag.
 // Return NOT_FOUND if the argument is not recognized.
-// Retrun INVALID_ARGUMENT if the command is recognized, but fails to extract
+// Return INVALID_ARGUMENT if the command is recognized, but fails to extract
 // its value.
 template <typename T>
 Status ParseArgument(const string& argument) {

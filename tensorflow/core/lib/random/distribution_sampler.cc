@@ -42,7 +42,7 @@ DistributionSampler::DistributionSampler(
   std::vector<int> low;
   low.reserve(n);
 
-  // compute propotional weights
+  // compute proportional weights
   for (int i = 0; i < n; i++) {
     double p = (weights[i] * n) / sum;
     pr[i] = p;

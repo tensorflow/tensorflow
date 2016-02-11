@@ -77,7 +77,7 @@ char* FloatToBuffer(float i, char* buffer);
 string FpToString(Fprint fp);
 
 // Attempt to parse a fingerprint in the form encoded by FpToString.  If
-// successsful, stores the fingerprint in *fp and returns true.  Otherwise,
+// successful, stores the fingerprint in *fp and returns true.  Otherwise,
 // returns false.
 bool StringToFp(const string& s, Fprint* fp);
 

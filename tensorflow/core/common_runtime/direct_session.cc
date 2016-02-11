@@ -535,7 +535,7 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
     pending_feeds.erase(id);
   }
 
-  // Initialize the stack with the fecth nodes.
+  // Initialize the stack with the fetch nodes.
   std::vector<const Node*> stack;
   for (const string& fetch : fetches) {
     TensorId id(ParseTensorName(fetch));
