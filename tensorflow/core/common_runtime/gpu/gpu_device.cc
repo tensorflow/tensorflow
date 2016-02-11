@@ -373,7 +373,9 @@ void BaseGPUDevice::ConsumeListOfAccessedTensors(
   em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
-Status BaseGPUDevice::Sync() { return GPUUtil::Sync(this); }
+// Based on the semantics of Device::Sync this call should wait for
+// all streams not just the current one.
+Status BaseGPUDevice::Sync() { return GPUUtil::SyncAll(this); }
 
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                  OpKernelContext* context,

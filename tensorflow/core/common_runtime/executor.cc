@@ -972,6 +972,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         OpKernelContext ctx(&params);
         if (stats_collector_) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+        // The final node in the step is always a Sink node. Block
+        // this Op from completing until the device has finished all
+        // queued operations. For devices like GPUs that continue to
+        // execute Ops after their Compute methods have completed,
+        // this ensures that control is not returned to the user until
+        // the step (and its side-effects) has actually completed.
+        if (node->IsSink()) {
+          s = device->Sync();
+        }
         if (stats_collector_) nodestats::SetOpEnd(stats);
 
         s = ProcessOutputs(item, &ctx, &outputs, stats);
