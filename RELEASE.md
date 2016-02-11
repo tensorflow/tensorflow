@@ -33,8 +33,8 @@
   maintained for short-term compatibility but will be removed.
 * The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
   just the final state instead of the list of all states.
-* `tf.scatter_update` now no longer guarantees that lexicographically largest		 
-  index be used for update when duplicate entires exist.
+* `tf.scatter_update` now no longer guarantees that lexicographically largest
+  index be used for update when duplicate entries exist.
 * `tf.image.random_crop(image, [height, width])` is now
   `tf.random_crop(image, [height, width, depth])`, and `tf.random_crop` works
   for any rank (not just 3-D images).  The C++ `RandomCrop` op has been replaced
