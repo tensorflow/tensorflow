@@ -824,7 +824,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   (../../extras/candidate_sampling.pdf)
 
   Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
-  ([pdf](http://arxiv.org/pdf/1412.2007v2.pdf)) for the math.
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`

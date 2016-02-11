@@ -158,7 +158,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   This is the correct way to perform gradient clipping (for example, see
   [Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
-  ([pdf](http://arxiv.org/pdf/1211.5063v2.pdf))).
+  ([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.

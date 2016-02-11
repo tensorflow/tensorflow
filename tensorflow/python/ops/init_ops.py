@@ -162,7 +162,7 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None,
   with `dim` equal to the product of the first 3 dimensions.  When
   nonlinearities are present, we need to multiply this by a constant `factor`.
   See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
-  ([pdf](http://arxiv.org/pdf/1412.6558v3.pdf)) for deeper motivation, experiments
+  ([pdf](http://arxiv.org/pdf/1412.6558.pdf)) for deeper motivation, experiments
   and the calculation of constants. In section 2.3 there, the constants were
   numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 

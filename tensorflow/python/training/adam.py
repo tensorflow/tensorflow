@@ -31,7 +31,7 @@ class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
   See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
-  ([pdf](http://arxiv.org/pdf/1412.6980v8.pdf)).
+  ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
 
   @@__init__
   """
