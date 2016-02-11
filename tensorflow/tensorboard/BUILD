@@ -1,14 +1,14 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//third_party/tensorflow:internal"])
 
 filegroup(
     name = "tensorboard_frontend",
     srcs = [
         "dist/index.html",
         "dist/tf-tensorboard.html",
-        "//tensorflow/tensorboard/bower:bower",
+        "//third_party/tensorflow/tensorboard/bower:bower",
         "TAG",
     ] + glob(["lib/**/*"]),
 )
@@ -18,8 +18,8 @@ py_library(
     srcs = ["backend/tensorboard_handler.py"],
     deps = [
         ":float_wrapper",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//third_party/tensorflow/python:platform",
+        "//third_party/tensorflow/python:summary",
     ],
     srcs_version = "PY2AND3",
 )
@@ -36,7 +36,7 @@ py_test(
     srcs = ["backend/float_wrapper_test.py"],
     deps = [
         ":float_wrapper",
-        "//tensorflow/python:platform_test",
+        "//third_party/tensorflow/python:platform_test",
     ],
     srcs_version = "PY2AND3",
 )
@@ -47,8 +47,8 @@ py_binary(
     data = [":tensorboard_frontend"],
     deps = [
         ":tensorboard_handler",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//third_party/tensorflow/python:platform",
+        "//third_party/tensorflow/python:summary",
     ],
     srcs_version = "PY2AND3",
 )

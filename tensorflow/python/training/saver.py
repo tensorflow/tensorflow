@@ -797,11 +797,6 @@ class Saver(object):
     self._next_checkpoint_time = (
         time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
     self._last_checkpoints = []
-    self._graph_def = ops.get_default_graph().as_graph_def()
-
-  @property
-  def graph_def(self):
-    return self._graph_def
 
   def _CheckpointFilename(self, p):
     """Returns the checkpoint filename given a `(filename, time)` pair.
@@ -988,7 +983,8 @@ class Saver(object):
     Returns:
       A `MetaGraphDef` proto.
     """
-    return export_meta_graph(filename=filename, graph_def=self.graph_def,
+    return export_meta_graph(filename=filename,
+                             graph_def=ops.get_default_graph().as_graph_def(),
                              saver_def=self.saver_def,
                              collection_list=collection_list,
                              as_text=as_text)
@@ -1098,8 +1094,9 @@ def _add_collection_def(meta_graph_def, key):
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
   except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s" % str(e))
+    logging.warning("Error encountered when adding %s:\n"
+                    "Type is unsupported, or the types of the items don't "
+                    "match field type in CollectionDef.\n%s" % (key, str(e)))
     if key in meta_graph_def.collection_def:
       del meta_graph_def.collection_def[key]
     return
