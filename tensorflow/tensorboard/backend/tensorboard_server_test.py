@@ -22,13 +22,13 @@ from __future__ import division
 from __future__ import print_function
 
 import base64
-import httplib
 import json
 import os
 import shutil
 import threading
 
 
+from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -53,8 +53,8 @@ class TensorboardServerTest(tf.test.TestCase):
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
-    self._connection = httplib.HTTPConnection('localhost',
-                                              self._server.server_address[1])
+    self._connection = http_client.HTTPConnection(
+        'localhost', self._server.server_address[1])
 
   def tearDown(self):
     self._connection.close()
