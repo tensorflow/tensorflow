@@ -755,7 +755,7 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
     _, encoder_state = rnn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
 
     # Decoder.
-    for name, decoder_inputs in decoder_inputs_dict.iteritems():
+    for name, decoder_inputs in decoder_inputs_dict.items():
       num_decoder_symbols = num_decoder_symbols_dict[name]
 
       with variable_scope.variable_scope("one2many_decoder_" + str(name)):
