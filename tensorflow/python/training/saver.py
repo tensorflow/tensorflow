@@ -1048,9 +1048,9 @@ def _get_kind_name(item):
   Returns:
     The string representation of the kind in CollectionDef.
   """
-  if isinstance(item, six.string_types) or isinstance(item, bytes):
+  if isinstance(item, (six.string_types, six.binary_type)):
     kind = "bytes_list"
-  elif isinstance(item, (int, long)):
+  elif isinstance(item, six.integer_types):
     kind = "int64_list"
   elif isinstance(item, float):
     kind = "float_list"
@@ -1091,10 +1091,15 @@ def _add_collection_def(meta_graph_def, key):
       kind = _get_kind_name(collection_list[0])
       if kind == "node_list":
         getattr(col_def, kind).value.extend([x.name for x in collection_list])
+      elif kind == "bytes_list":
+        # NOTE(opensource): This force conversion is to work around the fact
+        # that Python3 distinguishes between bytes and strings.
+        getattr(col_def, kind).value.extend(
+            [compat.as_bytes(x) for x in collection_list])
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
   except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Error encountered when adding %s:\n"
+    logging.warning("Error encountered when serializing %s.\n"
                     "Type is unsupported, or the types of the items don't "
                     "match field type in CollectionDef.\n%s" % (key, str(e)))
     if key in meta_graph_def.collection_def:
@@ -1176,20 +1181,27 @@ def _read_meta_graph_file(filename):
     IOError: If the file doesn't exist, or cannot be successfully parsed.
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  # First try to read it as a binary file.
   if not gfile.Exists(filename):
     raise IOError("File %s does not exist." % filename)
+  # First try to read it as a binary file.
   with gfile.FastGFile(filename, "rb") as f:
     file_content = f.read()
     try:
       meta_graph_def.ParseFromString(file_content)
+      return meta_graph_def
     except Exception:  # pylint: disable=broad-except
-      try:
-        # Next try to read it as a text file.
-        text_format.Merge(file_content, meta_graph_def)
-      except text_format.ParseError as e:
-        raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
-  return meta_graph_def
+      pass
+
+  # Next try to read it as a text file.
+  with gfile.FastGFile(filename, "r") as f:
+    file_content = f.read()
+    try:
+      text_format.Merge(file_content, meta_graph_def)
+      return meta_graph_def
+    except text_format.ParseError as e:
+      raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+
+  return None
 
 
 def _import_meta_graph_def(meta_graph_def):
@@ -1208,7 +1220,7 @@ def _import_meta_graph_def(meta_graph_def):
   importer.import_graph_def(meta_graph_def.graph_def, name="")
 
   # Restores all the other collections.
-  for key, col_def in meta_graph_def.collection_def.iteritems():
+  for key, col_def in meta_graph_def.collection_def.items():
     kind = col_def.WhichOneof("kind")
     if kind is None:
       logging.error("Cannot identify data type for collection %s. Skipping."
@@ -1228,6 +1240,12 @@ def _import_meta_graph_def(meta_graph_def):
         for value in field.value:
           col_op = ops.get_default_graph().as_graph_element(value)
           ops.add_to_collection(key, col_op)
+      elif kind == "int64_list":
+        # NOTE(opensource): This force conversion is to work around the fact
+        # that Python2 distinguishes between int and long, while Python3 has
+        # only int.
+        for value in field.value:
+          ops.add_to_collection(key, int(value))
       else:
         for value in field.value:
           ops.add_to_collection(key, value)
