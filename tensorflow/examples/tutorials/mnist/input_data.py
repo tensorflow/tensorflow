@@ -65,7 +65,7 @@ def extract_images(filename):
     return data
 
 
-def dense_to_one_hot(labels_dense, num_classes=10):
+def dense_to_one_hot(labels_dense, num_classes):
   """Convert class labels from scalars to one-hot vectors."""
   num_labels = labels_dense.shape[0]
   index_offset = numpy.arange(num_labels) * num_classes
@@ -74,7 +74,7 @@ def dense_to_one_hot(labels_dense, num_classes=10):
   return labels_one_hot
 
 
-def extract_labels(filename, one_hot=False):
+def extract_labels(filename, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
   with gzip.open(filename) as bytestream:
@@ -87,7 +87,7 @@ def extract_labels(filename, one_hot=False):
     buf = bytestream.read(num_items)
     labels = numpy.frombuffer(buf, dtype=numpy.uint8)
     if one_hot:
-      return dense_to_one_hot(labels)
+      return dense_to_one_hot(labels, num_classes)
     return labels
 
 
