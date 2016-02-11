@@ -115,7 +115,7 @@ bool EventsWriter::Flush() {
   // recordio_writer_->Sync() can return true even if the underlying
   // file has been deleted.  EventWriter.FileDeletionBeforeWriting
   // demonstrates this and will fail if the FileHasDisappeared()
-  // conditon is removed.
+  // condition is removed.
   // Also, we deliberately attempt to Sync() before checking for a
   // disappearing file, in case for some file system File::Exists() is
   // false after File::Open() but before File::Sync().
