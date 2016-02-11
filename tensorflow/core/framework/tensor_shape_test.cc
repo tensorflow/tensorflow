@@ -22,6 +22,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+class TensorShapeTestHelper {
+ public:
+  static void set_data_type(TensorShape* s, DataType t) { s->set_data_type(t); }
+  static uint8 data_type(const TensorShape* s) { return s->data_type(); }
+};
+
 namespace {
 
 TEST(TensorShapeTest, Default) {
@@ -100,6 +106,32 @@ TEST(TensorShapeTest, AppendShape64BitIndices) {
   s2.AppendShape(s);
   EXPECT_EQ(10, s2.dim_size(0));
   EXPECT_EQ(2147483648, s2.dim_size(1));
+}
+
+TEST(TensorShapeTest, DataType) {
+  TensorShape s({});
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_INVALID);
+  TensorShapeTestHelper::set_data_type(&s, DT_INT32);
+  s.AddDim(1);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_INT32);
+  s.AddDim(100000);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_INT32);
+  TensorShapeTestHelper::set_data_type(&s, DT_UINT16_REF);
+  s.AddDim(2);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_UINT16_REF);
+  s.AddDim(4);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_UINT16_REF);
+  s.AddDim(3);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s), DT_UINT16_REF);
+
+  TensorShape s2 = s;
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_UINT16_REF);
+  s2.RemoveDim(2);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_UINT16_REF);
+  TensorShapeTestHelper::set_data_type(&s2, DT_FLOAT);
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_FLOAT);
+  s2.Clear();
+  EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_INVALID);
 }
 
 // -----------------------------------------------------------------------

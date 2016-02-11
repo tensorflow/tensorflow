@@ -273,11 +273,15 @@ class ReductionOp : public OpKernel {
       return;
     }
 
+    // We must allocate temp tensors using the same alloc attr as
+    // output(0) because it is returned as output(0) in the end.
+    const AllocatorAttributes alloc_attr = ctx->output_alloc_attr(0);
+
     // A temporary tensor whose size matches the size of the reduced
     // output.
     Tensor tmp_out;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(), &tmp_out));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
+                                           &tmp_out, alloc_attr));
 
     typedef functor::ReduceFunctor<Device> Functor;
     Constants<Device> constants;
@@ -312,9 +316,9 @@ class ReductionOp : public OpKernel {
       // If we don't hit one of the cases above, transpose the data so that
       // all reduced dimensions are last and reuse the 2-D -> 1-D case.
       Tensor shuffled;
-      OP_REQUIRES_OK(ctx,
-                     ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                        helper.shuffled_shape(), &shuffled));
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             helper.shuffled_shape(), &shuffled,
+                                             alloc_attr));
       TransposeTensor<Device, T>(d, data, helper.data_reshape(),
                                  helper.permutation(), &shuffled);
       const int64 unreduced = tmp_out.NumElements();

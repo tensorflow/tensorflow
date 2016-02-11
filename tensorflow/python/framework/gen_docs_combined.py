@@ -19,9 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
-
-import tensorflow.python.platform
 import sys
+
 import tensorflow as tf
 
 from tensorflow.python.framework import docs
@@ -50,7 +49,8 @@ def get_module_to_name():
           tf.image: "tf.image",
           tf.nn: "tf.nn",
           tf.train: "tf.train",
-          tf.python_io: "tf.python_io",}
+          tf.python_io: "tf.python_io",
+          tf.test: "tf.test",}
 
 def all_libraries(module_to_name, members, documented):
   # A list of (filename, docs.Library) pairs representing the individual files
@@ -113,6 +113,7 @@ def all_libraries(module_to_name, members, documented):
                                "FeatureList", "FeatureLists",
                                "RankingExample", "SequenceExample"]),
       library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
+      library("test", "Testing", tf.test),
   ]
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
@@ -121,7 +122,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "BaseSession", "NameAttrList", "AttrValue",
                    "TensorArray", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
-                   "SaverDef", "VariableDef",
+                   "SaverDef", "VariableDef", "TestCase",
                   ]
 
 def main(unused_argv):

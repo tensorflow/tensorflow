@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
-class GpuDevice;
+struct ThreadPoolDevice;
+struct GpuDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -1014,23 +1014,6 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
-// Returns into *{input,output}_memory_types the memory type of each
-// {input,output} tensor.
-//
-// REQUIRES: * '*_memory_types' is not nullptr.
-//           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
-Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
@@ -1056,6 +1039,11 @@ typedef ::tensorflow::KernelDefBuilder Name;
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
+
+// If node_def has a corresponding kernel registered on device_type,
+// returns OK and fill in the kernel def.
+Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+                     const KernelDef** def);
 
 // Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
 // registered with the current library's global kernel registry (obtained by

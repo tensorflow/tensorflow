@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import threading
 
-import tensorflow.python.platform
-
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

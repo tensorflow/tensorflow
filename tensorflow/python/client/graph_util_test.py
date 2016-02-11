@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from tensorflow.python.client import graph_util
@@ -27,9 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
-# pylint: disable=unused-import
-from tensorflow.python.ops import math_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 
 

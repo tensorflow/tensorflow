@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -46,29 +47,10 @@ class GraphConstructor {
   GraphConstructor(const GraphConstructorOptions& opts, const GraphDef* gdef,
                    Graph* g, Status* status)
       : opts_(opts), gdef_(gdef), g_(g), status_(status) {
-    if (gdef->versions().producer() < TF_GRAPH_DEF_VERSION_MIN_PRODUCER) {
-      *status = errors::InvalidArgument(
-          "GraphDef producer version ", gdef->versions().producer(),
-          " below min producer ", TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-          " supported by TensorFlow ", TF_VERSION_STRING,
-          ".  Please regenerate your graph.");
-      return;
-    }
-    if (gdef->versions().min_consumer() > TF_GRAPH_DEF_VERSION) {
-      *status = errors::InvalidArgument(
-          "GraphDef min consumer version ", gdef->versions().min_consumer(),
-          " above current version ", TF_GRAPH_DEF_VERSION, " for TensorFlow ",
-          TF_VERSION_STRING, ".  Please upgrade TensorFlow.");
-      return;
-    }
-    for (const int bad_consumer : gdef->versions().bad_consumers()) {
-      if (bad_consumer == TF_GRAPH_DEF_VERSION) {
-        *status = errors::InvalidArgument(
-            "GraphDef disallows consumer version ", bad_consumer,
-            ".  Please upgrade TensorFlow: this version is likely buggy.");
-        return;
-      }
-    }
+    *status =
+        CheckVersions(gdef->versions(), TF_GRAPH_DEF_VERSION,
+                      TF_GRAPH_DEF_VERSION_MIN_PRODUCER, "GraphDef", "graph");
+    if (!status->ok()) return;
     g->set_versions(gdef->versions());
     BuildNodeIndex();
     InitFromEdges();

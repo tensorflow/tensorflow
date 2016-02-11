@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -309,7 +307,7 @@ class PoolingTest(tf.test.TestCase):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 1, 1, 3],
         [1, 1, 1, 3], "evenly divide")
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       with self.test_session(use_gpu=True):
         t = tf.constant(1.0, shape=[1, 2, 2, 4])
         with self.assertRaisesOpError("for CPU devices"):
@@ -359,7 +357,7 @@ class PoolingTest(tf.test.TestCase):
 
   def testMaxPoolingWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.test_session(use_gpu=True) as sess:
@@ -377,7 +375,7 @@ class PoolingTest(tf.test.TestCase):
 
   def testMaxPoolingGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
@@ -641,7 +639,7 @@ class PoolingTest(tf.test.TestCase):
         window_rows=2, window_cols=2, row_stride=1, col_stride=1,
         padding="VALID", use_gpu=False)
 
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -675,7 +673,7 @@ class PoolingTest(tf.test.TestCase):
         window_rows=2, window_cols=2, row_stride=1, col_stride=1,
         padding="VALID", use_gpu=False)
 
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -813,7 +811,7 @@ class PoolingTest(tf.test.TestCase):
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
   def Test(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     self._CompareMaxPoolingFwd(input_size, filter_size, strides, padding)
   return Test
@@ -822,7 +820,7 @@ def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
 def GetMaxPoolGradTest(input_size, filter_size, output_size, strides, padding):
   def Test(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     self._CompareMaxPoolingBk(input_size, output_size,
                               filter_size, strides, padding)

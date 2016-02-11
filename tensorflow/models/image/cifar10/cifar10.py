@@ -41,7 +41,6 @@ import re
 import sys
 import tarfile
 
-import tensorflow.python.platform
 from six.moves import urllib
 import tensorflow as tf
 

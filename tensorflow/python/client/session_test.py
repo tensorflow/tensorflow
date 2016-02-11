@@ -21,8 +21,6 @@ from __future__ import print_function
 import threading
 import time
 
-import tensorflow.python.platform
-
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin

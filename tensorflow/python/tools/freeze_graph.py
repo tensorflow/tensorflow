@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=g-bad-import-order,unused-import
 """Converts checkpoint variables into Const ops in a standalone GraphDef file.
 
 This script is designed to take a GraphDef proto, a SaverDef proto, and a set of
@@ -37,8 +36,6 @@ You can also look at freeze_graph_test.py for an example of how to use it.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-import tensorflow.python.platform
 
 import tensorflow as tf
 

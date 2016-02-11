@@ -28,9 +28,9 @@
 * `GraphOptions.skip_common_subexpression_elimination` has been removed. All
   graph optimizer options are now specified via
   `GraphOptions.OptimizerOptions`.
-* ASSERT_OK / EXPECT_OK macros conflicted with external projects, so they were
-  renamed TF_ASSERT_OK, TF_EXPECT_OK.  The existing macros are currently
-  maintained for short-term compatibility but will be removed.
+* `ASSERT_OK` / `EXPECT_OK` macros conflicted with external projects, so they
+  were renamed `TF_ASSERT_OK`, `TF_EXPECT_OK`.  The existing macros are
+  currently maintained for short-term compatibility but will be removed.
 * The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
   just the final state instead of the list of all states.
 * `tf.scatter_update` now no longer guarantees that lexicographically largest
@@ -39,6 +39,9 @@
   `tf.random_crop(image, [height, width, depth])`, and `tf.random_crop` works
   for any rank (not just 3-D images).  The C++ `RandomCrop` op has been replaced
   with pure Python.
+* Renamed `tf.test.GetTempDir` and `tf.test.IsBuiltWithCuda` to
+  `tf.test.get_temp_dir` and `tf.test.is_built_with_cuda` for PEP-8
+  compatibility.
 
 
 ## Bug fixes
@@ -73,7 +76,7 @@
 
 ## Backwards-incompatible changes
 
-* tf.nn.fixed_unigram_candidate_sampler changed its default 'distortion'
+* `tf.nn.fixed_unigram_candidate_sampler` changed its default 'distortion'
   attribute from 0.0 to 1.0. This was a bug in the original release
   that is now fixed.
 

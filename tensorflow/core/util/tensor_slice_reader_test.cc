@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -391,6 +393,65 @@ void CachedTensorSliceReaderTesterHelper(
 TEST(CachedTensorSliceReaderTest, SimpleFloat) {
   CachedTensorSliceReaderTesterHelper(CreateTableTensorSliceBuilder,
                                       OpenTableTensorSliceReader);
+}
+
+static void VersionTest(const VersionDef& versions, const string& error) {
+  const string path = io::JoinPath(testing::TmpDir(), "checkpoint");
+
+  {
+    // Prepare an empty checkpoint with some version information
+    SavedTensorSlices sts;
+    sts.mutable_meta()->mutable_versions()->CopyFrom(versions);
+    string contents;
+    EXPECT_TRUE(sts.SerializeToString(&contents));
+
+    // Write it to disk
+    TensorSliceWriter::Builder* builder;
+    TF_ASSERT_OK(CreateTableTensorSliceBuilder(path, &builder));
+    builder->Add(kSavedTensorSlicesKey, contents);
+    int64 file_size;
+    builder->Finish(&file_size);
+    delete builder;
+  }
+
+  // Read it back in and verify that we get the expected error
+  TensorSliceReader reader(path, OpenTableTensorSliceReader);
+  EXPECT_TRUE(reader.status().code() == error::INVALID_ARGUMENT &&
+              StringPiece(reader.status().error_message()).starts_with(error))
+      << "Expected error starting with '" << errors::InvalidArgument(error)
+      << "', got '" << reader.status() << "'";
+}
+
+TEST(CheckpointVersionTest, MinConsumer) {
+  VersionDef versions;
+  versions.set_producer(TF_CHECKPOINT_VERSION + 1);
+  versions.set_min_consumer(TF_CHECKPOINT_VERSION + 1);
+  VersionTest(
+      versions,
+      strings::StrCat("Checkpoint min consumer version ",
+                      TF_CHECKPOINT_VERSION + 1, " above current version ",
+                      TF_CHECKPOINT_VERSION, " for TensorFlow"));
+}
+
+TEST(CheckpointVersionTest, MinProducer) {
+  VersionDef versions;
+  versions.set_producer(TF_CHECKPOINT_VERSION_MIN_PRODUCER - 1);
+  VersionTest(versions, strings::StrCat("Checkpoint producer version ",
+                                        TF_CHECKPOINT_VERSION_MIN_PRODUCER - 1,
+                                        " below min producer ",
+                                        TF_CHECKPOINT_VERSION_MIN_PRODUCER,
+                                        " supported by TensorFlow"));
+}
+
+TEST(CheckpointVersionTest, BadConsumer) {
+  VersionDef versions;
+  versions.set_producer(TF_CHECKPOINT_VERSION + 1);
+  versions.add_bad_consumers(TF_CHECKPOINT_VERSION);
+  VersionTest(
+      versions,
+      strings::StrCat(
+          "Checkpoint disallows consumer version ", TF_CHECKPOINT_VERSION,
+          ".  Please upgrade TensorFlow: this version is likely buggy."));
 }
 
 }  // namespace

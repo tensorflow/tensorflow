@@ -18,21 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order
-
-# pylint: disable=unused-import
-import tensorflow.python.platform
-# pylint: enable=unused_import
-
-import numpy as np
-import tensorflow as tf
 import sys
 import time
 
+import numpy as np
+import tensorflow as tf
+
 from tensorflow.python.client import graph_util
 from tensorflow.python.ops import sparse_ops
-
-# pylint: enable=g-bad-import-order
 
 
 class SparseXentTest(tf.test.TestCase):

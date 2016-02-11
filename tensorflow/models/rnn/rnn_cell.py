@@ -18,6 +18,5 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order,wildcard-import,unused-import
-import tensorflow.python.platform
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.rnn_cell import *

@@ -2182,7 +2182,7 @@ Called when the thread starts.
 
 - - -
 
-### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None)` {#export_meta_graph}
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
 
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -2200,6 +2200,7 @@ a subgraph.
 *  <b>`graph_def`</b>: `GraphDef` protocol buffer.
 *  <b>`saver_def`</b>: `SaverDef` protocol buffer.
 *  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
 
 ##### Returns:
 

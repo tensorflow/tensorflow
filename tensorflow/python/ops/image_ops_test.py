@@ -21,8 +21,6 @@ from __future__ import print_function
 import math
 import os
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 

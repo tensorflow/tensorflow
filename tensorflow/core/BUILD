@@ -40,6 +40,8 @@
 # filegroup ":android_srcs" - Core sources
 # filegroup ":android_core_ops" - Essential kernels
 # filegroup ":android_extended_ops" - Optional kernels
+# filegroup ":android_extended_ops_group1" - Optional kernels, first batch
+# filegroup ":android_extended_ops_group2" - Optional kernels, second batch
 # cc_library ":android_tensorflow_lib" - Native library
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
@@ -170,6 +172,7 @@ tf_cuda_library(
         "framework/function.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/memory_types.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
@@ -586,9 +589,26 @@ filegroup(
 )
 
 # Other kernels we may want on Android.
+#
+# The kernels can be consumed as a whole or in two groups for
+# supporting separate compilation. Note that the split into groups
+# is entirely for improving compilation time, and not for
+# organizational reasons; you should not depend on any
+# of those groups independently.
 filegroup(
     name = "android_extended_ops",
     srcs = [
+        ":android_extended_ops_group1",
+        ":android_extended_ops_group2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group1",
+    srcs = [
+        "//tensorflow/core:kernels/argmax_op.cc",
+        "//tensorflow/core:kernels/argmax_op.h",
         "//tensorflow/core:kernels/avgpooling_op.cc",
         "//tensorflow/core:kernels/avgpooling_op.h",
         "//tensorflow/core:kernels/bcast_ops.cc",
@@ -598,6 +618,7 @@ filegroup(
         "//tensorflow/core:kernels/conv_ops.cc",
         "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/cwise_op_div.cc",
+        "//tensorflow/core:kernels/cwise_op_equal_to.cc",
         "//tensorflow/core:kernels/cwise_op_exp.cc",
         "//tensorflow/core:kernels/cwise_op_greater.cc",
         "//tensorflow/core:kernels/cwise_op_isfinite.cc",
@@ -619,6 +640,14 @@ filegroup(
         "//tensorflow/core:kernels/io.cc",
         "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/lrn_op.cc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group2",
+    srcs = [
+        "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/maxpooling_op.cc",
         "//tensorflow/core:kernels/maxpooling_op.h",
         "//tensorflow/core:kernels/reduction_ops.h",
@@ -781,6 +810,7 @@ tf_cuda_library(
         [
             "framework/**/*.h",
             "framework/**/*.cc",
+            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -897,6 +927,7 @@ tf_cuda_library(
             "client/**/*.cc",
             "common_runtime/*.h",
             "common_runtime/*.cc",
+            "framework/versions.h",
             "graph/**/*.h",
             "graph/**/*.cc",
             "public/session.h",

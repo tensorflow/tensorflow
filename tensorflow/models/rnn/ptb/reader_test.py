@@ -21,10 +21,6 @@ from __future__ import print_function
 
 import os.path
 
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
-import numpy as np
 import tensorflow as tf
 
 from tensorflow.models.rnn.ptb import reader
