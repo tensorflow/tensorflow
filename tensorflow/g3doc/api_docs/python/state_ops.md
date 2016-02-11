@@ -853,13 +853,6 @@ Writes `MetaGraphDef` to save_path/filename.
 
 - - -
 
-#### `tf.train.Saver.graph_def` {#Saver.graph_def}
-
-
-
-
-- - -
-
 #### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
 
 Sets the list of old checkpoint filenames and timestamps.
