@@ -828,36 +828,6 @@ def _ImageEncodeShape(op):
   return [tensor_shape.scalar()]
 
 
-def saturate_cast(image, dtype):
-  """Performs a safe cast of image data to `dtype`.
-
-  This function casts the data in image to `dtype`, without applying any
-  scaling. If there is a danger that image data would over or underflow in the
-  cast, this op applies the appropriate clamping before the cast.
-
-  Args:
-    image: An image to cast to a different data type.
-    dtype: A `DType` to cast `image` to.
-
-  Returns:
-    `image`, safely cast to `dtype`.
-  """
-  clamped = image
-
-  # When casting to a type with smaller representable range, clamp.
-  # Note that this covers casting to unsigned types as well.
-  if image.dtype.min < dtype.min and image.dtype.max > dtype.max:
-    clamped = clip_ops.clip_by_value(clamped,
-                                     math_ops.cast(dtype.min, image.dtype),
-                                     math_ops.cast(dtype.max, image.dtype))
-  elif image.dtype.min < dtype.min:
-    clamped = math_ops.maximum(clamped, math_ops.cast(dtype.min, image.dtype))
-  elif image.dtype.max > dtype.max:
-    clamped = math_ops.minimum(clamped, math_ops.cast(dtype.max, image.dtype))
-
-  return math_ops.cast(clamped, dtype)
-
-
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
@@ -903,14 +873,14 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         scaled = math_ops.div(image, scale)
 
         if saturate:
-          return saturate_cast(scaled, dtype)
+          return math_ops.saturate_cast(scaled, dtype)
         else:
           return math_ops.cast(scaled, dtype)
       else:
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
         if saturate:
-          cast = saturate_cast(scaled, dtype)
+          cast = math_ops.saturate_cast(scaled, dtype)
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
@@ -931,7 +901,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
         scaled = math_ops.mul(image, scale)
         if saturate:
-          return saturate_cast(scaled, dtype)
+          return math_ops.saturate_cast(scaled, dtype)
         else:
           return math_ops.cast(scaled, dtype)
 

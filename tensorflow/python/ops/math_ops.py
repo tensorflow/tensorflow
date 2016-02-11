@@ -365,6 +365,35 @@ def cast(x, dtype, name=None):
       return gen_math_ops.cast(x, dtype, name=name)
 
 
+def saturate_cast(value, dtype, name=None):
+  """Performs a safe saturating cast of `value` to `dtype`.
+
+  This function casts the input to `dtype` without applying any scaling.  If
+  there is a danger that values would over or underflow in the cast, this op
+  applies the appropriate clamping before the cast.
+
+  Args:
+    value: A `Tensor`.
+    dtype: The desired output `DType`.
+    name: A name for the operation (optional).
+
+  Returns:
+    `value` safely cast to `dtype`.
+  """
+  # When casting to a type with smaller representable range, clamp.
+  # Note that this covers casting to unsigned types as well.
+  with ops.op_scope([value], name, "saturate_cast") as name:
+    value = ops.convert_to_tensor(value, name="value")
+    dtype = dtypes.as_dtype(dtype).base_dtype
+    if value.dtype.min < dtype.min:
+      value = maximum(value, ops.convert_to_tensor(
+          dtype.min, dtype=value.dtype, name="min"))
+    if value.dtype.max > dtype.max:
+      value = minimum(value, ops.convert_to_tensor(
+          dtype.max, dtype=value.dtype, name="max"))
+    return cast(value, dtype, name=name)
+
+
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 

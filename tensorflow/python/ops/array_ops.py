@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@saturate_cast
 
 ## Shapes and Shaping
 
