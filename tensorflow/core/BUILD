@@ -172,6 +172,7 @@ tf_cuda_library(
         "framework/function.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/memory_types.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",

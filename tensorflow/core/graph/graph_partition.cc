@@ -19,8 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -643,7 +644,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
     input_memory_types.resize(node->num_inputs());
     output_memory_types.clear();
     output_memory_types.resize(node->num_outputs());
-    status = MemoryTypesForNode(*g.op_registry(), DeviceType(parsed.type),
+    status = MemoryTypesForNode(g.op_registry(), DeviceType(parsed.type),
                                 node->def(), &input_memory_types,
                                 &output_memory_types);
     if (!status.ok()) return status;
