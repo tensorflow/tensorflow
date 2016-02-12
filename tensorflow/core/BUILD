@@ -753,7 +753,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@re2//:re2",
-        ":android_proto_lib",
+        ":protos_cc",
         "//third_party/eigen3",
     ],
 )
