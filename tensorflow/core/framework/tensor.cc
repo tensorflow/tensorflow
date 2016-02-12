@@ -343,6 +343,22 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
+void Tensor::UnsafeCopyFromInternal(const Tensor& other,
+                                    const TensorShape& shape) {
+  int in_size = DataTypeSize(other.dtype());
+  int out_size = DataTypeSize(shape.data_type());
+  CHECK_NE(in_size, 0);
+  CHECK_NE(out_size, 0);
+  CHECK_EQ(shape.num_elements() * out_size,
+           other.shape().num_elements() * in_size);
+  shape_ = shape;
+  if (buf_ != other.buf_) {
+    UnrefIfNonNull(buf_);
+    buf_ = other.buf_;
+    RefIfNonNull(buf_);
+  }
+}
+
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__

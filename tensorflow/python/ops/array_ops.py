@@ -922,6 +922,32 @@ def _SqueezeShape(op):
   return [tensor_shape.TensorShape(result_shape)]
 
 
+@ops.RegisterShape("Bitcast")
+def _BitcastShape(op):
+  """Shape function for Bitcast op."""
+  input_shape = op.inputs[0].get_shape()
+  input_type = op.inputs[0].dtype
+  size_of_input = input_type.size
+  output = dtypes.as_dtype(op.get_attr("type"))
+  size_of_output = output.size
+  if size_of_input == size_of_output:
+    return [tensor_shape.TensorShape(input_shape)]
+  else:
+    if size_of_output > size_of_input:
+      new_shape = input_shape.as_list()
+      last_val = new_shape[-1]
+      if last_val == (size_of_output // size_of_input):
+        new_shape = new_shape[:-1]
+      else:
+        raise ValueError(
+            "Cannot bitcast due to shape. %d is not evenly divisible by %d." %
+            (new_shape[-1], size_of_input // size_of_output))
+    else:
+      new_shape = input_shape
+      new_shape = new_shape.concatenate([size_of_input // size_of_output])
+    return [tensor_shape.TensorShape(new_shape)]
+
+
 @ops.RegisterShape("Reshape")
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
