@@ -13,9 +13,15 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
         "//tensorflow/tensorboard:tensorboard_server",
     ],
+)
+
+py_binary(
+    name = "generate_testdata",
+    srcs = ["generate_testdata.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:platform"],
 )
 
 filegroup(
