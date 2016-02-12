@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order
-from tensorflow.python import flags
-
 import os
 import re
 import sys
+
 from BeautifulSoup import BeautifulStoneSoup
+
+from tensorflow.python import flags
+
 
 ANCHOR_RE = re.compile(r'\W+')
 

@@ -67,26 +67,6 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   return Status::OK();
 }
 
-// Check HostMemory backward compatibility.
-bool CheckHostMemoryCompatibility(const DeviceType device_type,
-                                  const OpKernel* kernel) {
-  if (device_type == DEVICE_GPU) {
-    for (int i = 0; i < kernel->num_inputs(); ++i) {
-      if (kernel->input_type(i) == DT_INT32 &&
-          kernel->input_memory_types()[i] != HOST_MEMORY) {
-        return false;
-      }
-    }
-    for (int i = 0; i < kernel->num_outputs(); ++i) {
-      if (kernel->output_type(i) == DT_INT32 &&
-          kernel->output_memory_types()[i] != HOST_MEMORY) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 }  // namespace
 
 // OpKernel ------------------------------------------------------------------
@@ -553,8 +533,14 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                      const KernelDef** def) {
-  const KernelRegistration* reg;
+  const KernelRegistration* reg = nullptr;
   TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, node_def, &reg));
+  if (reg == nullptr) {
+    return errors::NotFound("No registered '", node_def.op(), "' OpKernel for ",
+                            DeviceTypeString(device_type),
+                            " devices compatible with node ",
+                            SummarizeNodeDef(node_def));
+  }
   *def = &reg->def;
   return Status::OK();
 }
