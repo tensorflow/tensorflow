@@ -7,6 +7,16 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+cc_binary(
+    name = "inspect_checkpoint",
+    srcs = ["inspect_checkpoint.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
 py_library(
     name = "util_py",
     srcs = glob(["**/*.py"]),
