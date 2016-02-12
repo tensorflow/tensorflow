@@ -491,6 +491,159 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayPack")
 
 #endif  // GOOGLE_CUDA
 
+// CONCAT *********************************************************************
+
+// Concatenate the elements in a TensorArray.  All elements must be
+// defined and (excepting the first dimension) have the same shape.
+template <typename Device, typename T>
+class TensorArrayConcatOp : public OpKernel {
+ public:
+  typedef typename TTypes<T, 2>::ConstMatrix ConstMatrix;
+  typedef std::vector<std::unique_ptr<ConstMatrix> > ConstMatrixVector;
+
+  explicit TensorArrayConcatOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
+
+    TensorArray* tensor_array = nullptr;
+    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES(
+        ctx, dtype_ == tensor_array->ElemType(),
+        errors::InvalidArgument(
+            "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
+            " but Op requested dtype ", DataTypeString(dtype_), "."));
+
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
+
+    // Simplest case
+    if (array_size == 0) {
+      Tensor empty(dtype_, TensorShape({}));
+      ctx->set_output(0, empty);
+      return;
+    }
+
+    // Read all the PersistentTensors into a vector to keep track of
+    // their memory.
+    std::vector<PersistentTensor> values;
+    OP_REQUIRES_OK(ctx, tensor_array->ReadMany(&values));
+
+    std::vector<const Tensor*> value_tensors;
+    value_tensors.resize(values.size());
+
+    Tensor* lengths_tensor = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                            1, TensorShape({static_cast<int64>(values.size())}),
+                            &lengths_tensor));
+    auto lengths_tensor_t = lengths_tensor->vec<int64>();
+
+    TensorShape output_shape;
+    TensorShape output_shape_except0;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+      value_tensors[i] = values[i].AccessTensor(ctx);
+      TensorShape value_shape_t = value_tensors[i]->shape();
+
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVectorOrHigher(value_shape_t),
+          errors::InvalidArgument(
+              "Concat saw a scalar shape at index ", i,
+              " but requires at least vectors.  Did you mean to call pack?"));
+
+      lengths_tensor_t(i) = value_shape_t.dim_size(0);
+
+      TensorShape value_shape_t_except0 = value_shape_t;
+      value_shape_t_except0.RemoveDim(0);
+      if (i == 0) {
+        output_shape = value_shape_t;
+        output_shape_except0 = value_shape_t_except0;
+      } else {
+        OP_REQUIRES(ctx, output_shape_except0 == value_shape_t_except0,
+                    errors::InvalidArgument(
+                        "TensorArray has inconsistent shapes.  Index 0 has "
+                        "(excepting dimension 0) shape: ",
+                        output_shape_except0.DebugString(), " but index ", i,
+                        " has (excepting dimension 0) shape: ",
+                        value_shape_t_except0.DebugString()));
+        // Store the previous maximum length as the offset for this tensor.
+        output_shape.set_dim(
+            0, output_shape.dim_size(0) + value_shape_t.dim_size(0));
+      }
+    }
+
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
+    ConstMatrixVector input_tensors_flat;
+    input_tensors_flat.reserve(values.size());
+
+    for (int i = 0; i < values.size(); ++i) {
+      const Tensor* value_t = value_tensors[i];
+      if (value_t->NumElements() > 0) {
+        input_tensors_flat.emplace_back(new ConstMatrix(
+            value_t->shaped<T, 2>({1, value_t->NumElements()})));
+      }
+    }
+
+    if (output_shape.num_elements() > 0) {
+      auto output_flat =
+          output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
+      if (std::is_same<Device, GPUDevice>::value) {
+        ConcatGPU<T>(ctx->eigen_gpu_device(), input_tensors_flat, &output_flat);
+      } else {
+        ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
+      }
+    }
+  }
+
+ private:
+  DataType dtype_;
+};
+
+#define REGISTER_CONCAT(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")          \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("lengths")         \
+                              .HostMemory("handle"),         \
+                          TensorArrayConcatOp<CPUDevice, type>)
+
+TF_CALL_ALL_TYPES(REGISTER_CONCAT);
+REGISTER_CONCAT(quint8);
+REGISTER_CONCAT(qint8);
+REGISTER_CONCAT(qint32);
+REGISTER_CONCAT(bfloat16);
+
+#undef REGISTER_CONCAT
+
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU(type)                                   \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")          \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("lengths")         \
+                              .HostMemory("handle"),         \
+                          TensorArrayConcatOp<GPUDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+REGISTER_GPU(bfloat16);
+#undef REGISTER_GPU
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+
+#endif  // GOOGLE_CUDA
+
 // UNPACK *********************************************************************
 
 template <typename Device, typename T>
@@ -587,6 +740,140 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+// SPLIT *********************************************************************
+
+template <typename Device, typename T>
+class TensorArraySplitOp : public OpKernel {
+ public:
+  explicit TensorArraySplitOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
+
+    TensorArray* tensor_array = nullptr;
+    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    const Tensor* tensor_value;
+    OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
+    const Tensor* tensor_lengths;
+    OP_REQUIRES_OK(ctx, ctx->input("lengths", &tensor_lengths));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(tensor_lengths->shape()),
+                errors::InvalidArgument(
+                    "Expected lengths to be a vector, received shape: ",
+                    tensor_lengths->shape().DebugString()));
+
+    auto tensor_lengths_t = tensor_lengths->vec<int64>();
+    std::vector<int64> cumulative_lengths;
+    int32 num_tensors = tensor_lengths->NumElements();
+    cumulative_lengths.reserve(num_tensors);
+    int32 total_length = 0;
+    for (int i = 0; i < num_tensors; ++i) {
+      total_length += tensor_lengths_t(i);
+      cumulative_lengths.push_back(total_length);
+    }
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVectorOrHigher(tensor_value->shape()),
+        errors::InvalidArgument(
+            "Expected value to be at least a vector, but received shape: ",
+            tensor_value->shape().DebugString()));
+
+    OP_REQUIRES(
+        ctx, total_length == tensor_value->shape().dim_size(0),
+        errors::InvalidArgument("Expected sum of lengths to be equal to "
+                                "values.shape[0], but sum of lengths is ",
+                                total_length, " and value's shape is: ",
+                                tensor_value->shape().DebugString()));
+    int64 elements_per_row =
+        (total_length == 0) ? 0 : (tensor_value->NumElements() / total_length);
+
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
+    bool dynamic_size = tensor_array->HasDynamicSize();
+
+    std::vector<TensorShape> element_shapes(num_tensors, tensor_value->shape());
+    for (int32 i = 0; i < num_tensors; ++i) {
+      element_shapes[i].set_dim(0, tensor_lengths_t(i));
+    }
+
+    // If dynamic size, we may have to resize the TensorArray to fit.
+    if (dynamic_size && array_size < num_tensors) {
+      array_size = num_tensors;
+    }
+
+    OP_REQUIRES(
+        ctx, array_size == num_tensors,
+        errors::InvalidArgument(
+            "TensorArray's size is not equal to the size of lengths (",
+            array_size, " vs. ", num_tensors, "), and the TensorArray is not ",
+            "marked as dynamically resizeable"));
+
+    OP_REQUIRES(
+        ctx, tensor_value->dtype() == tensor_array->ElemType(),
+        errors::InvalidArgument("TensorArray dtype is ",
+                                DataTypeString(tensor_array->ElemType()),
+                                " but Op is trying to write dtype ",
+                                DataTypeString(tensor_value->dtype()), "."));
+
+    auto tensor_value_t =
+        tensor_value->shaped<T, 3>({1, total_length, elements_per_row});
+
+    std::vector<PersistentTensor> write_values;
+    write_values.reserve(array_size);
+
+    for (int i = 0; i < array_size; ++i) {
+      Tensor* tensor_value_i;
+      PersistentTensor persistent_tensor;
+
+      int32 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
+      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, previous_length, 0};
+      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, tensor_lengths_t(i),
+                                                elements_per_row};
+
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
+                              tensor_array->ElemType(), element_shapes[i],
+                              &persistent_tensor, &tensor_value_i));
+
+      if (tensor_lengths_t(i) > 0) {
+        auto tensor_value_i_t = tensor_value_i->shaped<T, 3>(
+            {1, tensor_lengths_t(i), elements_per_row});
+
+        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
+                                    tensor_value_i_t, tensor_value_t, indices,
+                                    sizes);
+      }
+
+      write_values.push_back(persistent_tensor);
+    }
+
+    OP_REQUIRES_OK(ctx, tensor_array->WriteMany(ctx, &write_values));
+  }
+};
+
+#define REGISTER_SPLIT(type)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("TensorArraySplit").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      TensorArraySplitOp<CPUDevice, type>);
+
+TF_CALL_ALL_TYPES(REGISTER_SPLIT);
+#undef REGISTER_SPLIT
+
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU(type)                               \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplit")       \
+                              .Device(DEVICE_GPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("lengths")     \
+                              .HostMemory("handle"),     \
+                          TensorArraySplitOp<GPUDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA
+
 // SIZE ***********************************************************************
 
 // Get the size of the TensorArray
@@ -613,7 +900,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArraySize")
                             .HostMemory("size"),
                         TensorArraySizeOp);
 
-// CLOSE **********************************************************************
+// CLOSE
+// **********************************************************************
 
 // Delete the TensorArray from its resource container.  This enables
 // the user to close and release the resource in the middle of a step/run.

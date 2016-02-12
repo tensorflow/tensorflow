@@ -9284,6 +9284,37 @@ op {
   description: "the user to close and release the resource in the middle of a step/run."
 }
 op {
+  name: "TensorArrayConcat"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    description: "All of the elements in the TensorArray, concatenated along the first\naxis."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    description: "A vector of the row sizes of the original T elements in the\nvalue output.  In the example above, this would be the values:\n(n1, n2, ..., n(T-1))"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  summary: "Concat the elements from the TensorArray."
+  description: "Takes T elements of shapes (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...),\n  ..., (n(T-1) x d0 x d1 x ...)\nand concatenates them into a Tensor of shape:\n  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...).\n\nAll elements must have the same shape (excepting the first dimension)."
+}
+op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
@@ -9381,6 +9412,41 @@ op {
     type: DT_INT32
   }
   summary: "Get the current size of the TensorArray."
+}
+op {
+  name: "TensorArraySplit"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "value"
+    description: "The concatenated tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    description: "The vector of lengths, how to split the rows of value into the\nTensorArray."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Split the data from the input value into TensorArray elements."
+  description: "Assuming that `lengths` takes on values\n  (n0, n1, ..., n(T-1))\nand that `value` has shape\n  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),\nthis splits values into a TensorArray with T tensors.\n\nTensorArray index t will be the subtensor of values with starting position\n  (n0 + n1 + ... + n(t-1), 0, 0, ...)\nand having size\n  nt x d0 x d1 x ..."
 }
 op {
   name: "TensorArrayUnpack"
