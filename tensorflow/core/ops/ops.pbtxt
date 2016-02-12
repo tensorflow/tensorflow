@@ -2580,7 +2580,7 @@ op {
     }
   }
   summary: "PNG-encode an image."
-  description: "`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`\nwhere `channels` is:\n\n*   1: for grayscale.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
+  description: "`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`\nwhere `channels` is:\n\n*   1: for grayscale.\n*   2: for grayscale + alpha.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
 }
 op {
   name: "Enter"
