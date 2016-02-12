@@ -30,7 +30,8 @@ class BitcastOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("type", &output_data_type_));
     in_size_ = DataTypeSize(input_data_type_);
     out_size_ = DataTypeSize(output_data_type_);
-    int check_size = max(in_size_, out_size_) % min(in_size_, out_size_);
+    int check_size =
+        std::max(in_size_, out_size_) % std::min(in_size_, out_size_);
     OP_REQUIRES(
         context, check_size == 0,
         errors::InvalidArgument("cannot convert between datatype ",
