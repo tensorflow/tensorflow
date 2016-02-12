@@ -11,7 +11,7 @@ cc_library(
     name = "set_kernels",
     srcs = ["set_kernels.cc"],
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
