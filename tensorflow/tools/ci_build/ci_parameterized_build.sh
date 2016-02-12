@@ -200,7 +200,7 @@ fi
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
-  EXTRA_PARAMS="${EXTRA_PARAMS} -e PYTHON_BIN_PATH=/usr/bin/python3"
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=python3"
 else
   echo "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
 "\"${TF_BUILD_PYTHON_VERSION}\""
