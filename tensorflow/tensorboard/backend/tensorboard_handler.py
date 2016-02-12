@@ -376,6 +376,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       return
 
     if path.startswith('external'):
+      components = path.split('/')
+      components[1] = components[1].replace('-', '_')
+      path = ('/').join(components)
       path = os.path.join('../', path)
     else:
       path = os.path.join('tensorboard', path)
