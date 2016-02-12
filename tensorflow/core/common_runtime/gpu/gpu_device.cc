@@ -434,6 +434,7 @@ namespace {
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
+  ConcretePerOpGpuDevice() : device_(nullptr) {}
   void Reinitialize(gpu::Stream* stream, Allocator* base_allocator,
                     ::tensorflow::EventMgr* em) {
     allocator_.Reinitialize(stream, base_allocator, em);
