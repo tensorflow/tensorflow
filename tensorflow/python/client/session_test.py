@@ -824,6 +824,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.partial_run(h, r2, feed_dict={c: temp})
       self.assertEqual(153, res)
 
+      # Call again on the same graph.
+      h2 = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+      temp = res * 18
+      res = sess.partial_run(h2, r2, feed_dict={c: temp})
+      self.assertEqual(162, res)
+
   def testPartialRunIncomplete(self):
     with session.Session() as sess:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -859,6 +867,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1.0, dtypes.float32, name='a')
       with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
         sess.run(a, feed_dict={'a': [2.0]})
-    
+
 if __name__ == '__main__':
   googletest.main()

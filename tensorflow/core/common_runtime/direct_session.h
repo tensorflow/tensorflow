@@ -80,12 +80,14 @@ class DirectSession : public Session {
 
   // An ExecutorsAndKeys is created for a given set of feeds/fetches.
   // 'func_defs' are the function definition used by all the
-  // underlying executors. Each item in 'items' is the executor for a
+  // underlying executors. 'graph' is the entire graph being
+  // executed. Each item in 'items' is the executor for a
   // partition of the graph bundled with its dependent library
   // runtime. 'input_keys' are the rendezvous keys for the feeds and
   // 'output_keys' are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
     FunctionLibraryDefinition* func_defs = nullptr;
+    Graph* graph = nullptr;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
@@ -96,19 +98,18 @@ class DirectSession : public Session {
         delete item.flib;
       }
       delete func_defs;
+      delete graph;
     }
   };
 
   // For each live partial execution, the session maintains a RunState.
   // 'status' is the current status of this partial execution. 'executor_done'
-  // is "notified" when all executors are done. 'graph' is the graph being
-  // executed. 'pending_inputs' are the set of pending feeds and
-  // 'pending_outputs' are the set of pending fetches.
+  // is "notified" when all executors are done. 'pending_inputs' are the set
+  // of pending feeds and 'pending_outputs' are the set of pending fetches.
   struct RunState {
     Status status;
     IntraProcessRendezvous* rendez = nullptr;
     Notification executors_done;
-    Graph* graph = nullptr;
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
 
@@ -131,7 +132,6 @@ class DirectSession : public Session {
         }
         rendez->Unref();
       }
-      delete graph;
     }
   };
 
@@ -177,7 +177,8 @@ class DirectSession : public Session {
   // that we have already provided.
   ::tensorflow::Status CheckFetch(
       const std::vector<std::pair<string, Tensor>>& feeds,
-      const std::vector<string>& fetches, const RunState* run_state);
+      const std::vector<string>& fetches, const Graph* graph,
+      const RunState* run_state);
 
   const SessionOptions options_;
 
