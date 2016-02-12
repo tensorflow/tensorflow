@@ -139,31 +139,17 @@ class MatrixSolveLsOp
         *output = matrix.transpose() * llt.solve(rhs);
       }
     } else {
-      // Use a rank revealing factorization (QR with column pivoting).
+      // Use complete orthogonal decomposition which is backwards stable and
+      // will compute the minimum-norm solution for rank-deficient matrices.
+      // This is 6-7 times slower than the fast path.
       //
-      // NOTICE: Currently, Eigen's implementation of column pivoted Householder
-      // QR has a few deficiencies:
-      //  1. It does not implement the post-processing step to compute a
-      //     complete orthogonal factorization. This means that it does not
-      //     return a minimum-norm solution for underdetermined and
-      //     rank-deficient matrices. We could use the Eigen SVD instead, but
-      //     the currently available JacobiSVD is so slow that is it is
-      //     essentially useless (~100x slower than QR).
-      //  2. The implementation is not blocked, so for matrics that do not fit
-      //     in cache, it is significantly slower than the equivalent blocked
-      //     LAPACK routine xGEQP3 (e.g. Eigen is ~3x slower for 4k x 4k
-      //     matrices). See http://www.netlib.org/lapack/lawnspdf/lawn114.pdf
-      //  3. The implementation uses the numerically unstable norm downdating
-      //     formula from the original 1965 Businger & Golub paper. This can
-      //     lead to incorrect rank determination for graded matrices. I
-      //     (rmlarsen@) have a patch to bring this up to date by implementing
-      //     the robust formula from
-      //     http://www.netlib.org/lapack/lawnspdf/lawn176.pdf
-      //
-      // TODO(rmlarsen): a) Contribute 1. and 2. to Eigen.
-      //                 b) Evaluate new divide-and-conquer SVD in Eigen when
-      //                    it becomes available & robust.
-      *output = matrix.colPivHouseholderQr().solve(rhs);
+      // TODO(rmlarsen): The implementation of
+      //   Eigen::CompleteOrthogonalDecomposition is not blocked, so for
+      //   matrices that do not fit in cache, it is significantly slower than
+      //   the equivalent blocked LAPACK routine xGELSY (e.g. Eigen is ~3x
+      //   slower for 4k x 4k matrices).
+      //   See http://www.netlib.org/lapack/lawnspdf/lawn114.pdf
+      *output = matrix.completeOrthogonalDecomposition().solve(rhs);
     }
   }
 

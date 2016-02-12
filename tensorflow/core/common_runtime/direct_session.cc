@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/function.h"
@@ -657,6 +658,12 @@ Status DirectSession::GetOrCreateExecutors(
     };
 
     optimizer.Optimize(lib, &partition_graph);
+    s = ValidateMemoryTypes(DeviceType(device->device_type()), partition_graph);
+    if (!s.ok()) {
+      delete partition_graph;
+      return s;
+    }
+    // NewLocalExecutor takes ownership of *partition_graph.
     s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
       return s;

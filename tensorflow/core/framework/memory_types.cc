@@ -25,6 +25,14 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+// Returns the largest endpoint of anything in the name_map.
+int GetTotal(const NameRangeMap& name_map) {
+  int total = 0;
+  for (const auto& item : name_map) {
+    total = std::max(total, item.second.second);
+  }
+  return total;
+}
 
 // Fills memory_types for either input or output, setting everything
 // to DEVICE_MEMORY except those args in host_memory_args.  Removes
@@ -32,15 +40,9 @@ namespace {
 void MemoryTypesHelper(const NameRangeMap& name_map,
                        std::vector<string>* host_memory_args,
                        MemoryTypeVector* memory_types) {
-  // Set total to the largest endpoint of anything in the name_map.
-  int total = 0;
-  for (const auto& item : name_map) {
-    total = std::max(total, item.second.second);
-  }
-
   // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
   memory_types->clear();
-  memory_types->resize(total, DEVICE_MEMORY);
+  memory_types->resize(GetTotal(name_map), DEVICE_MEMORY);
 
   // Update args that have been marked as in "HOST_MEMORY".
   size_t keep = 0;
@@ -59,48 +61,70 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   host_memory_args->resize(keep);
 }
 
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types) {
-  Status status;
-  const KernelDef* kdef = nullptr;
-  TF_RETURN_IF_ERROR(FindKernelDef(device_type, ndef, &kdef));
+MemoryType MTypeFromDType(const DataType dtype) {
+  return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
+}
 
-  if (kdef != nullptr) {
-    const auto& from_proto = kdef->host_memory_arg();
-    std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
-    MemoryTypesHelper(input_name_map, &host_memory_args, input_memory_types);
-    MemoryTypesHelper(output_name_map, &host_memory_args, output_memory_types);
-    if (!host_memory_args.empty()) {
-      return errors::InvalidArgument(
-          "HostMemory args '", str_util::Join(host_memory_args, "', '"),
-          "' not found in OpDef: ", SummarizeOpDef(op_def));
-    }
+// Returns true if an arg of op_def's input/output is a type list.
+bool HasTypeList(const OpDef& op_def) {
+  for (const auto& a : op_def.input_arg()) {
+    if (!a.type_list_attr().empty()) return true;
   }
-  return status;
+  for (const auto& a : op_def.output_arg()) {
+    if (!a.type_list_attr().empty()) return true;
+  }
+  return false;
 }
 
 }  // namespace
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                           DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types) {
+                          MemoryTypeVector* inp_mtypes,
+                          MemoryTypeVector* out_mtypes) {
   // Look up the Op registered for this op name.
   Status status;
   const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
   if (op_def == nullptr) return status;
 
-  NameRangeMap inputs;
-  NameRangeMap outputs;
-  status = NameRangesForNode(ndef, *op_def, &inputs, &outputs);
-  if (!status.ok()) return status;
+  // Look up the Kernel registered for this node def.
+  const KernelDef* kdef = nullptr;
+  status = FindKernelDef(device_type, ndef, &kdef);
 
-  return MemoryTypesForNode(device_type, ndef, *op_def, inputs, outputs,
-                            input_memory_types, output_memory_types);
+  if (!status.ok() || HasTypeList(*op_def)) {
+    // When there is no kernel def for this op or the op's arg is a
+    // type list, we can only best-effort derive the memory type from
+    // the data type.  For now, we assume int32 is always on host
+    // memory and other types are always on device memory. We should
+    // do type inference over function body to derive the correct
+    // input/output memory types.
+    DataTypeVector inp_dtypes;
+    DataTypeVector out_dtypes;
+    TF_RETURN_IF_ERROR(
+        InOutTypesForNode(ndef, *op_def, &inp_dtypes, &out_dtypes));
+    inp_mtypes->clear();
+    for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
+    out_mtypes->clear();
+    for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
+    return Status::OK();
+  }
+
+  // Gets the input/output names and their corresponding endpoint ranges.
+  NameRangeMap inp_names;
+  NameRangeMap out_names;
+  TF_RETURN_IF_ERROR(NameRangesForNode(ndef, *op_def, &inp_names, &out_names));
+
+  // Fills in host memory types based on the kernel def.
+  const auto& from_proto = kdef->host_memory_arg();
+  std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
+  MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
+  MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
+  if (!host_memory_args.empty()) {
+    return errors::InvalidArgument(
+        "HostMemory args '", str_util::Join(host_memory_args, "', '"),
+        "' not found in OpDef: ", SummarizeOpDef(*op_def));
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

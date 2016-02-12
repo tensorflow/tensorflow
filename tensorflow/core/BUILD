@@ -753,7 +753,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@re2//:re2",
-        ":protos_cc",
+        ":android_proto_lib",
         "//third_party/eigen3",
     ],
 )
@@ -831,7 +831,10 @@ tf_cuda_library(
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = [
+        "-ldl",
+        "-lm",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
