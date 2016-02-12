@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import tensor_shape_pb2
 
 
@@ -741,10 +739,13 @@ class TensorShape(object):
 
   def as_proto(self):
     """Returns this shape as a `TensorShapeProto`."""
-    return tensor_shape_pb2.TensorShapeProto(dim=[
-        tensor_shape_pb2.TensorShapeProto.Dim(
-            size=-1 if d.value is None else d.value)
-        for d in self._dims])
+    if self._dims is None:
+      return tensor_shape_pb2.TensorShapeProto(unknown_rank=True)
+    else:
+      return tensor_shape_pb2.TensorShapeProto(dim=[
+          tensor_shape_pb2.TensorShapeProto.Dim(
+              size=-1 if d.value is None else d.value)
+          for d in self._dims])
 
   def __eq__(self, other):
     """Returns True if `self` is equivalent to `other`."""

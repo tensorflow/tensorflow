@@ -119,7 +119,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   if (op == CONV_OP_FORWARD) {
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X IN_DEPTH X PATCH_ROW X PATH_COL X OUT_DEPTH
-    // We multiply by two since there are mutliplications and additions.
+    // We multiply by two since there are multiplications and additions.
     num_ops = static_cast<int64>(batch * in_depth * out_depth) *
               static_cast<int64>(filter_rows * filter_cols) *
               static_cast<int64>(out_rows * out_cols) * 2;
@@ -127,7 +127,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
     // Backward computation: both input and filter backprop take the same
     // amount of computation:
     // BATCH x IN_ROW X IN_COL X IN_DEPTH X PATCH_ROW X PATCH_COL X OUT_DEPTH
-    // We multiply by two since there are mutliplications and additions.
+    // We multiply by two since there are multiplications and additions.
     num_ops = static_cast<int64>(batch * in_depth * out_depth) *
               static_cast<int64>(filter_rows * filter_cols) *
               static_cast<int64>(rows * cols) * 2;

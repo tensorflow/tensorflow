@@ -144,4 +144,5 @@ toolchain {
     compiler_flag: "-fdata-sections"
     linker_flag: "-Wl,--gc-sections"
   }
+  linking_mode_flags { mode: DYNAMIC }
 }

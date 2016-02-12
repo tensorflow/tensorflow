@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
+# pylint: disable=unused-import
 """This library contains classes for launching graphs and executing operations.
 
 The [basic usage](../../get_started/index.md#basic-usage) guide has

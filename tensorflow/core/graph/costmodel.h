@@ -95,7 +95,7 @@ class CostModel {
   // Check that an estimate is available for every OP node in graph.
   void CheckInitialized(const Graph& graph) const;
 
-  // Helper routines to encapsulate static estimatation heuristics
+  // Helper routines to encapsulate static estimation heuristics
 
   // Compute an estimate of the time to copy "b" bytes over the network,
   // given a fixed cost of "network_latency_millis" milliseconds and

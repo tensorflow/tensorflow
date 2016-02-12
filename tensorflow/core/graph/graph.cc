@@ -253,11 +253,11 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 void Graph::RemoveEdge(const Edge* e) {
   DCHECK(IsValidNode(e->src_)) << e->src_->DebugString();
   DCHECK(IsValidNode(e->dst_)) << e->dst_->DebugString();
-  CHECK_EQ(e->src_->out_edges_.erase(e), 1);
-  CHECK_EQ(e->dst_->in_edges_.erase(e), 1);
+  CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
+  CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
 
-  CHECK_EQ(edge_set_.erase(e), 1);
+  CHECK_EQ(edge_set_.erase(e), size_t{1});
   edges_[e->id_] = nullptr;
 
   Edge* del = const_cast<Edge*>(e);
@@ -354,6 +354,7 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
   int cost_id = cost_node ? cost_node->cost_id() : id;
   node->Initialize(id, cost_id, props);
   nodes_.push_back(node);
+  ++num_nodes_;
   return node;
 }
 
@@ -361,6 +362,7 @@ void Graph::ReleaseNode(Node* node) {
   DCHECK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
+  --num_nodes_;
   node->Clear();
 }
 

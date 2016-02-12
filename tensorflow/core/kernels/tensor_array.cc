@@ -13,46 +13,72 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define EIGEN_USE_THREADS
-
 #include "tensorflow/core/kernels/tensor_array.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 namespace tensorflow {
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
-
-namespace tensor_array {
-
-#define TENSOR_ARRAY_WRITE_OR_ADD(Device, T)                                   \
-  template <>                                                                  \
-  Status TensorArrayWriteOrAdd<T, Device>(OpKernelContext * ctx, Tensor * sum, \
-                                          const Tensor* current,               \
-                                          const Tensor* add) {                 \
-    functor::Add2Functor<Device, T> add_functor;                               \
-    add_functor(ctx->template eigen_device<Device>(), sum->flat<T>(),          \
-                current->flat<T>(), add->flat<T>());                           \
-    return Status::OK();                                                       \
+Status TensorArray::LockedWrite(OpKernelContext* ctx, const int32 index,
+                                PersistentTensor* value) {
+  TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+  size_t index_size = static_cast<size_t>(index);
+  if (index < 0 ||
+      (!dynamic_size_ && index_size >= tensors_.size())) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1), ": Tried to write to index ",
+        index, " but array is not resizeable and size is: ", tensors_.size());
   }
+  if (dynamic_size_) {
+    // We must grow the internal TensorArray
+    if (index_size >= tensors_.capacity()) {
+      tensors_.reserve(2 * (index_size + 1));
+    }
+    if (index_size >= tensors_.size()) {
+      tensors_.resize(index_size + 1);
+    }
+  }
+  TensorAndState& t = tensors_[index];
+  if (t.written) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not write to TensorArray index ",
+                                   index,
+                                   " because it has already been written to.");
+  }
+  Tensor* value_t = value->AccessTensor(ctx);
+  if (value_t->dtype() != dtype_) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1),
+        ": Could not write to TensorArray index ", index,
+        " because the value dtype is ", DataTypeString(value_t->dtype()),
+        " but TensorArray dtype is ", DataTypeString(dtype_), ".");
+  }
+  t.tensor = *value;
+  t.shape = value_t->shape();
+  t.written = true;
+  return Status::OK();
+}
 
-#define TENSOR_ARRAY_WRITE_OR_ADD_CPU(T) TENSOR_ARRAY_WRITE_OR_ADD(CPUDevice, T)
-TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
-#undef TENSOR_ARRAY_WRITE_OR_ADD_CPU
-
-#if GOOGLE_CUDA
-
-#define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
-TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
-#undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
-
-#endif  // GOOGLE_CUDA
-
-#undef TENSOR_ARRAY_WRITE_OR_ADD
-
-}  // namespace tensor_array
+Status TensorArray::LockedRead(const int32 index, PersistentTensor* value) {
+  TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+  if (index < 0 || static_cast<size_t>(index) >= tensors_.size()) {
+    return errors::InvalidArgument("Tried to read from index ", index,
+                                   " but array size is: ", tensors_.size());
+  }
+  TensorAndState& t = tensors_[index];
+  if (t.read) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1), ": Could not read index ",
+        index, " twice because TensorArray a read-once object.");
+  }
+  if (!t.written) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not read from TensorArray index ",
+                                   index,
+                                   " because it has not yet been written to.");
+  }
+  *value = t.tensor;
+  t.read = true;
+  t.tensor = PersistentTensor();
+  return Status::OK();
+}
 
 }  // namespace tensorflow

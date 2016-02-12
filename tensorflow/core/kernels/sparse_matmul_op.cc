@@ -67,7 +67,7 @@ static const int N = 128;
 // Note that all the data/indices of all the blocks are stored in the same
 // vectors respectively. To identify block boundaries, we store the block
 // offsets using index3_offset/index_offset. If there are n blocks in the slice,
-// index3_offset and index_offset have n entires. The indices for the ith block
+// index3_offset and index_offset have n entries. The indices for the ith block
 // are the values in the following range:
 // [index3[index3_offset[i-1]], index3[index3_offset[i]]). Similarly for
 // index_offset.
@@ -475,7 +475,7 @@ class SparseMatMulOp : public OpKernel {
     if (!a_is_sparse_ && !b_is_sparse_) {
       // Fallback to Eigen contract.
       // Note that we currently don't optimize the case where only right is
-      // sparse. That can generally be handled by tranposing the order of the
+      // sparse. That can generally be handled by transposing the order of the
       // matmul.
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0].first = transpose_a_ ? 0 : 1;
@@ -540,7 +540,7 @@ class SparseMatMulOp : public OpKernel {
   // Encodes "mat" using a sparse representation and stores that in
   // "mat_slices". "mat" is broken into a grid with sizes "slice_num_rows" and
   // "slice_num_cols", each grid element is converted into a SparseSlice and
-  // stored in mat_slices. "slice_block_size" is used to perform futher column
+  // stored in mat_slices. "slice_block_size" is used to perform further column
   // blocking of each slice.
   static inline BlockingCounter* CreateSparseSlices(
       const ConstMatrixMap& mat, bool transpose, int slice_num_rows,
@@ -776,7 +776,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
   *KR = std::min(static_cast<int>(right.dimension(0)), mem / 256);
   *NR = right.dimension(1);
   if (*KR * *NR > mem) {
-    // 4096 may be enough to ammortize the cost of writes.
+    // 4096 may be enough to amortize the cost of writes.
     *KR = std::min<int>(*KR, 4096);
   }
   // Use sizes that are multiples of K and 256.
@@ -803,7 +803,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
 
   *JB = std::max(1, static_cast<int>(sqrt(num_threads) / 2.0));
   *IB = 8 * *JB;
-  DCHECK_EQ(N * sizeof(float) % 64, 0);
+  DCHECK_EQ(N * sizeof(float) % 64, size_t{0});
 }
 
 // Here is a an overview of the SparseMatMul code. Note that we assume that the

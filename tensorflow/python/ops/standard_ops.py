@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import
+# pylint: disable=unused-import
 """Import names of Tensor Flow standard Ops."""
 
 # Imports the following modules so that @RegisterGradient get executed.
@@ -25,7 +25,9 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import state_grad
+from tensorflow.python.ops import tensor_array_grad
 
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.array_ops import *
 from tensorflow.python.ops.clip_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
@@ -61,3 +63,4 @@ from tensorflow.python.ops.summary_ops import scalar_summary
 from tensorflow.python.ops.template import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
+# pylint: enable=wildcard-import

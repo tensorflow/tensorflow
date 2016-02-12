@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
@@ -39,6 +37,34 @@ class MovingAveragesTest(tf.test.TestCase):
       self.assertAllClose([10.0 * 0.25 + 1.0 * (1.0 - 0.25),
                            11.0 * 0.25 + 2.0 * (1.0 - 0.25)],
                           var.eval())
+
+  def testWeightedMovingAverage(self):
+    with self.test_session() as sess:
+      decay = 0.5
+      weight = tf.placeholder(tf.float32, [])
+      val = tf.placeholder(tf.float32, [])
+
+      wma = moving_averages.weighted_moving_average(val, decay, weight)
+      tf.initialize_all_variables().run()
+
+      # Get the first weighted moving average.
+      val_1 = 3.0
+      weight_1 = 4.0
+      wma_array = sess.run(
+          wma, feed_dict={val: val_1, weight: weight_1})
+      numerator_1 = val_1 * weight_1 * (1.0 - decay)
+      denominator_1 = weight_1 * (1.0 - decay)
+      self.assertAllClose(numerator_1 / denominator_1, wma_array)
+
+      # Get the second weighted moving average.
+      val_2 = 11.0
+      weight_2 = 22.0
+      wma_array = sess.run(
+          wma, feed_dict={val: val_2, weight: weight_2})
+      numerator_2 = numerator_1 * decay + val_2 * weight_2 * (1.0 - decay)
+      denominator_2 = denominator_1 * decay + weight_2 * (1.0 - decay)
+      self.assertAllClose(numerator_2 / denominator_2, wma_array)
+
 
 def _Repeat(value, dim):
   if dim == 1:
@@ -179,17 +205,17 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
 
   def testAverageVariablesDeviceAssignment(self):
-    with tf.device("dev_v0"):
+    with tf.device("/job:dev_v0"):
       v0 = tf.Variable(10.0, name="v0")
-    with tf.device("dev_v1"):
+    with tf.device("/job:dev_v1"):
       v1 = state_ops.variable_op(shape=[1], dtype=tf.float32, name="v1")
     tensor2 = v0 + v1
     ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
-    with tf.device("default"):
+    with tf.device("/job:default"):
       ema.apply([v0, v1, tensor2])
-    self.assertEqual("dev_v0", ema.average(v0).device)
-    self.assertEqual("dev_v1", ema.average(v1).device)
-    self.assertEqual("default", ema.average(tensor2).device)
+    self.assertDeviceEqual("/job:dev_v0", ema.average(v0).device)
+    self.assertDeviceEqual("/job:dev_v1", ema.average(v1).device)
+    self.assertDeviceEqual("/job:default", ema.average(tensor2).device)
 
 
 if __name__ == "__main__":

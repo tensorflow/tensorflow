@@ -59,10 +59,25 @@ limitations under the License.
 //    parsing more strict with respect to empty list values (see
 //    111635679, 7jan2016).
 // 5. Graphs are wholly-validated during Session::Create() (7jan2016).
-// 6. TensorFlow is scalar strict within Google (reserved, will be turned on
-//    once the GraphDef version rewrite settles).
+// 6. TensorFlow is scalar strict within Google (27jan2016).
+// 7. Remove TopK in favor of TopKV2 (5feb2016).
+// 8. Replace RandomCrop from C++ with pure Python (5feb2016).
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 5
+#define TF_GRAPH_DEF_VERSION 8
+
+// Checkpoint compatibility versions (the versions field in SavedSliceMeta).
+//
+// The checkpoint versions have the same semantics as GraphDef versions, but the
+// numbering scheme is separate.  We have no plans to ever deprecate checkpoint
+// versions, but it's good to have this in place in case we ever need to.
+//
+// Version history:
+//
+// 0. Checkpoints saved before checkpoint versioning.
+// 1. First real version (10feb2015).
+#define TF_CHECKPOINT_VERSION_MIN_PRODUCER 0
+#define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
+#define TF_CHECKPOINT_VERSION 1
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

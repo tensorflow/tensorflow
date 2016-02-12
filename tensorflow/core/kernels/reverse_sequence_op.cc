@@ -67,7 +67,7 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
                                       "), ", "(", seq_lens.NumElements(),
                                       " vs. ", input.dim_size(batch_dim)));
 
-  for (int d = 0; d < seq_lens_vec.size(); ++d) {
+  for (size_t d = 0; d < seq_lens_vec.size(); ++d) {
     OP_REQUIRES(context, seq_lens_vec[d] >= 0,
                 errors::InvalidArgument("seq_lens(", d, ") < 0"));
     OP_REQUIRES(context, seq_lens_vec[d] <= input.dim_size(seq_dim),

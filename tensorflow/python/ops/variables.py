@@ -18,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
+from tensorflow.core.framework import variable_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -142,8 +141,8 @@ class Variable(object):
   # TODO(touts): Add @@value and @@ref in the docstring above once they are
   # ready for consumption.
 
-  def __init__(self, initial_value, trainable=True, collections=None,
-               validate_shape=True, name=None):
+  def __init__(self, initial_value=None, trainable=True, collections=None,
+               validate_shape=True, name=None, variable_def=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -169,52 +168,99 @@ class Variable(object):
         `initial_value` must be known.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
+      variable_def: `VariableDef` protocol buffer. If not `None`, recreates
+        the Variable object with its contents. `variable_def` and the other
+        arguments are mutually exclusive.
 
     Returns:
       A Variable.
 
     Raises:
-      ValueError: If the initial value does not have a shape and
-        `validate_shape` is `True`.
+      ValueError: If both `variable_def` and initial_value are specified.
+      ValueError: If the initial value is not specified, or does not have a
+        shape and `validate_shape` is `True`.
     """
+    if variable_def:
+      # If variable_def is provided, recreates the variable from its fields.
+      if initial_value:
+        raise ValueError("variable_def and initial_value are mutually "
+                         "exclusive.")
+      self._init_from_proto(variable_def)
+    else:
+      # Create from initial_value.
+      self._init_from_args(initial_value=initial_value,
+                           trainable=trainable,
+                           collections=collections,
+                           validate_shape=validate_shape,
+                           name=name)
+
+  def _init_from_args(self, initial_value=None, trainable=True,
+                      collections=None, validate_shape=True, name=None):
+    """Creates a new variable from arguments.
+
+    Args:
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`.
+        The initial value for the Variable. Must have a shape specified unless
+        `validate_shape` is set to False.
+      trainable: If `True`, the default, also adds the variable to the graph
+        collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
+        the default list of variables to use by the `Optimizer` classes.
+      collections: List of graph collections keys. The new variable is added to
+        these collections. Defaults to `[GraphKeys.VARIABLES]`.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+
+    Raises:
+      ValueError: If the initial value is not specified, or does not have a
+        shape and `validate_shape` is `True`.
+    """
+    if initial_value is None:
+      raise ValueError("initial_value must be specified.")
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
-      # pylint: disable=g-no-augmented-assignment
-      #
-      # Pylint wants us to write collections += [...TRAINABLE_VARIABLES] which
-      # is not the same (it modifies the list in place.)  Here, we only want to
-      # modify the value of the variable, not the list.
-      collections = collections + [ops.GraphKeys.TRAINABLE_VARIABLES]
-      # pylint: enable=g-no-augmented-assignment
+      collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
       with ops.op_scope([initial_value], name, "Variable") as name:
         self._initial_value = ops.convert_to_tensor(initial_value,
                                                     name="initial_value")
-        if not self._initial_value.get_shape().is_fully_defined():
-          if validate_shape:
-            raise ValueError(
-                "initial_value must have a shape specified: %s"
-                % self._initial_value)
-          self._variable = state_ops.variable_op(
-              [], self._initial_value.dtype.base_dtype, set_shape=False,
-              name=name)
-          with ops.device(self._variable.device):
-            self._initializer_op = state_ops.assign(
-                self._variable, self._initial_value, validate_shape=False).op
-            self._snapshot = array_ops.identity(self._variable, name="read")
-        else:
-          self._variable = state_ops.variable_op(
-              self._initial_value.get_shape(),
-              self._initial_value.dtype.base_dtype,
-              name=name)
-          with ops.device(self._variable.device):
-            self._initializer_op = state_ops.assign(
-                self._variable, self._initial_value).op
-            self._snapshot = array_ops.identity(self._variable, name="read")
-    for key in collections:
-      ops.add_to_collection(key, self)
+        initial_value_shape = self._initial_value.get_shape()
+        if validate_shape and not initial_value_shape.is_fully_defined():
+          raise ValueError("initial_value must have a shape specified: %s"
+                           % self._initial_value)
+        shape_to_set = initial_value_shape if validate_shape else []
+        self._variable = state_ops.variable_op(
+            shape_to_set, self._initial_value.dtype.base_dtype,
+            set_shape=validate_shape, name=name)
+        with ops.device(self._variable.device):
+          self._initializer_op = state_ops.assign(
+              self._variable, self._initial_value,
+              validate_shape=validate_shape).op
+          self._snapshot = array_ops.identity(self._variable, name="read")
+
+    ops.add_to_collections(collections, self)
     self._save_slice_info = None
+
+  def _init_from_proto(self, variable_def):
+    """Creates a new variable from `VariableDef` protocol buffer.
+
+    Args:
+      variable_def: `VariableDef` protocol buffer.
+    """
+    assert isinstance(variable_def, variable_pb2.VariableDef)
+    # Create from variable_def.
+    g = ops.get_default_graph()
+    self._variable = g.as_graph_element(variable_def.variable_name)
+    self._initializer_op = g.as_graph_element(variable_def.initializer_name)
+    self._snapshot = g.as_graph_element(variable_def.snapshot_name)
+    if variable_def.HasField("save_slice_info_def"):
+      self._save_slice_info = Variable.SaveSliceInfo(
+          save_slice_info_def=variable_def.save_slice_info_def)
+    else:
+      self._save_slice_info = None
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -508,11 +554,30 @@ class Variable(object):
     """
     return self._variable.get_shape()
 
+  def to_proto(self):
+    """Converts a `Variable` to a `VariableDef` protocol buffer.
+
+    Returns:
+      A `VariableDef` protocol buffer.
+    """
+    var_def = variable_pb2.VariableDef()
+    var_def.variable_name = self._variable.name
+    var_def.initializer_name = self.initializer.name
+    var_def.snapshot_name = self._snapshot.name
+    if self._save_slice_info:
+      var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto())
+    return var_def
+
+  @staticmethod
+  def from_proto(variable_def):
+    return Variable(variable_def=variable_def)
+
   # Experimental support for saving variables as slices of a larger variable.
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice."""
 
-    def __init__(self, full_name, full_shape, var_offset, var_shape):
+    def __init__(self, full_name=None, full_shape=None, var_offset=None,
+                 var_shape=None, save_slice_info_def=None):
       """Create a `SaveSliceInfo`.
 
       Args:
@@ -522,11 +587,22 @@ class Variable(object):
         var_offset: Offset of this `Variable` into the full variable, as a
             list of int.
         var_shape: Shape of this `Variable`, as a list of int.
+        save_slice_info_def: `SaveSliceInfoDef` protocol buffer. If not `None`,
+          recreates the SaveSliceInfo object its contents.
+          `save_slice_info_def` and other arguments are mutually
+          exclusive.
       """
-      self.full_name = full_name
-      self.full_shape = full_shape
-      self.var_offset = var_offset
-      self.var_shape = var_shape
+      if save_slice_info_def:
+        assert isinstance(save_slice_info_def, variable_pb2.SaveSliceInfoDef)
+        self.full_name = save_slice_info_def.full_name
+        self.full_shape = [i for i in save_slice_info_def.full_shape]
+        self.var_offset = [i for i in save_slice_info_def.var_offset]
+        self.var_shape = [i for i in save_slice_info_def.var_shape]
+      else:
+        self.full_name = full_name
+        self.full_shape = full_shape
+        self.var_offset = var_offset
+        self.var_shape = var_shape
 
     @property
     def spec(self):
@@ -535,6 +611,18 @@ class Variable(object):
       sl_spec = ":".join([
           "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
       return full_shape_str + sl_spec
+
+    def to_proto(self):
+      """Returns a SaveSliceInfoDef() proto."""
+      save_slice_info_def = variable_pb2.SaveSliceInfoDef()
+      save_slice_info_def.full_name = self.full_name
+      for i in self.full_shape:
+        save_slice_info_def.full_shape.append(i)
+      for i in self.var_offset:
+        save_slice_info_def.var_offset.append(i)
+      for i in self.var_shape:
+        save_slice_info_def.var_shape.append(i)
+      return save_slice_info_def
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `Variable`.
@@ -666,3 +754,16 @@ ops.register_tensor_conversion_function(Variable,
                                         Variable._TensorConversionFunction)
 Variable._OverloadAllOperators()
 # pylint: enable=protected-access
+
+ops.register_proto_function(ops.GraphKeys.VARIABLES,
+                            proto_type=variable_pb2.VariableDef,
+                            to_proto=Variable.to_proto,
+                            from_proto=Variable.from_proto)
+ops.register_proto_function(ops.GraphKeys.TRAINABLE_VARIABLES,
+                            proto_type=variable_pb2.VariableDef,
+                            to_proto=Variable.to_proto,
+                            from_proto=Variable.from_proto)
+ops.register_proto_function(ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+                            proto_type=variable_pb2.VariableDef,
+                            to_proto=Variable.to_proto,
+                            from_proto=Variable.from_proto)

@@ -104,6 +104,19 @@ class OpRegistry : public OpRegistryInterface {
   mutable bool initialized_ GUARDED_BY(mu_);
 };
 
+// An adapter to allow an OpList to be used as an OpRegistryInterface.
+class OpListOpRegistry : public OpRegistryInterface {
+ public:
+  // Does not take ownership of op_list, *op_list must outlive *this.
+  OpListOpRegistry(const OpList* op_list);
+  ~OpListOpRegistry() override {}
+  const OpDef* LookUp(const string& op_type_name,
+                      Status* status) const override;
+
+ private:
+  std::unordered_map<string, const OpDef*> index_;
+};
+
 // Treats 'registry_ptr' as a pointer to OpRegistry, and calls
 // registry_ptr->Register(op_def) for each op_def that has been registered with
 // the current library's global op registry (obtained by calling

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -54,6 +52,11 @@ class InTopKTest(tf.test.TestCase):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     target = np.asarray([0, 2]).astype(np.int64)
     self._validateInTopK(predictions, target, 2, [False, True])
+
+  def testInTopNan(self):
+    predictions = [[0.1, float("nan"), 0.2, 0.4], [0.1, 0.2, 0.3, float("inf")]]
+    target = [0, 2]
+    self._validateInTopK(predictions, target, 2, [False, False])
 
 
 if __name__ == "__main__":

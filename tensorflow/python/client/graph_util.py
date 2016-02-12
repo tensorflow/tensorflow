@@ -21,8 +21,6 @@ from __future__ import division
 from __future__ import print_function
 import copy
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -34,10 +32,10 @@ _VARIABLE_OPS = {
     "AssignAdd",
     "AssignSub",
     "Queue",
-    "RandomParameters",
     "ScatterAdd",
     "ScatterSub",
     "ScatterUpdate",
+    "TruncatedNormal",
     "Variable",
 }
 

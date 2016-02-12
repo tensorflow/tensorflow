@@ -238,8 +238,9 @@ below (see also for example
 This explains why these vectors are also useful as features for many canonical
 NLP prediction tasks, such as part-of-speech tagging or named entity recognition
 (see for example the original work by
-[Collobert et al.](http://arxiv.org/pdf/1103.0398v1.pdf), or follow-up work by
-[Turian et al.](http://www.aclweb.org/anthology/P10-1040)).
+[Collobert et al., 2011](http://arxiv.org/abs/1103.0398)
+([pdf](http://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
+[Turian et al., 2010](http://www.aclweb.org/anthology/P10-1040)).
 
 But for now, let's just use them to draw pretty pictures!
 

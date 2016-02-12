@@ -169,6 +169,9 @@ def _FillGrad(_, grad):
   return None, math_ops.reduce_sum(grad)
 
 
+ops.NoGradient("ZerosLike")
+
+
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   # op.inputs[0] can be large, so colocate the shape calculation with it.
@@ -295,3 +298,17 @@ def _ReverseSequenceGrad(op, grad):
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
   return array_ops.reverse(grad, reverse_dims), None
+
+
+@ops.RegisterGradient("SpaceToDepth")
+def _SpaceToDepthGrad(op, grad):
+  # Its gradient is the opposite op: DepthToSpace.
+  block_size = op.get_attr("block_size")
+  return array_ops.depth_to_space(grad, block_size)
+
+
+@ops.RegisterGradient("DepthToSpace")
+def _DepthToSpaceGrad(op, grad):
+  # Its gradient is the opposite op: SpaceToDepth.
+  block_size = op.get_attr("block_size")
+  return array_ops.space_to_depth(grad, block_size)

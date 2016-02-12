@@ -3,7 +3,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
-load("/tensorflow/core/platform/default/build_config_root",
+load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds
@@ -28,6 +28,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/types.proto",
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
+        "//tensorflow/core:protobuf/saver.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
 	]
 
@@ -190,8 +191,6 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                        **kwargs):
-  # We have to disable variadic templates in Eigen for NVCC even though
-  # std=c++11 are enabled
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
                 "-nvcc_options=relaxed-constexpr"] + cuda_copts
   native.cc_library(
@@ -253,6 +252,7 @@ def _py_wrap_cc_impl(ctx):
     cc_include_dirs += [h.dirname for h in dep.cc.transitive_headers]
     cc_includes += dep.cc.transitive_headers
   args += ["-I" + x for x in cc_include_dirs]
+  args += ["-I" + ctx.label.workspace_root]
   args += ["-o", cc_out.path]
   args += ["-outdir", py_out.dirname]
   args += [src.path]
@@ -260,7 +260,7 @@ def _py_wrap_cc_impl(ctx):
   ctx.action(executable=ctx.executable.swig_binary,
              arguments=args,
              mnemonic="PythonSwig",
-             inputs=list(set([src]) + cc_includes + ctx.files.swig_includes +
+             inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
              progress_message="SWIGing {input}".format(input=src.path))
@@ -288,6 +288,28 @@ _py_wrap_cc = rule(attrs={
                        "py_out": "%{py_module_name}.py",
                    },
                    implementation=_py_wrap_cc_impl,)
+
+
+# Bazel rule for collecting the header files that a target depends on.
+def _transitive_hdrs_impl(ctx):
+  outputs = set()
+  for dep in ctx.attr.deps:
+    outputs += dep.cc.transitive_headers
+  return struct(files=outputs)
+
+
+_transitive_hdrs = rule(attrs={
+    "deps": attr.label_list(allow_files=True,
+                            providers=["cc"]),
+},
+                        implementation=_transitive_hdrs_impl,)
+
+
+def transitive_hdrs(name, deps=[], **kwargs):
+  _transitive_hdrs(name=name + "_gather",
+                   deps=deps)
+  native.filegroup(name=name,
+                   srcs=[":" + name + "_gather"])
 
 def tf_extension_linkopts():
   return []  # No extension link opts

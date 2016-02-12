@@ -119,7 +119,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER)
 struct HistogramResource : public ResourceBase {
   histogram::ThreadSafeHistogram histogram;
 
-  string DebugString() override { return "A historam summary. Stats ..."; }
+  string DebugString() override { return "A histogram summary. Stats ..."; }
 };
 
 class SummaryMergeOp : public OpKernel {

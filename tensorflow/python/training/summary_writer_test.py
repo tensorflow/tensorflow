@@ -23,9 +23,8 @@ import os.path
 import shutil
 import time
 
-import tensorflow.python.platform
-
 import tensorflow as tf
+from tensorflow.core.util.event_pb2 import SessionLog
 
 
 class SummaryWriterTestCase(tf.test.TestCase):
@@ -50,9 +49,11 @@ class SummaryWriterTestCase(tf.test.TestCase):
   def _assertRecent(self, t):
     self.assertTrue(abs(t - time.time()) < 5)
 
-  def testBasics(self):
+  def testAddingSummaryAndGraph(self):
     test_dir = self._CleanTestDir("basics")
     sw = tf.train.SummaryWriter(test_dir)
+
+    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
     sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="mee",
                                                       simple_value=10.0)]),
                    10)
@@ -69,7 +70,13 @@ class SummaryWriterTestCase(tf.test.TestCase):
     # The first event should list the file_version.
     ev = next(rr)
     self._assertRecent(ev.wall_time)
-    self.assertEquals("brain.Event:1", ev.file_version)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(1, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
 
     # The next event should have the value 'mee=10.0'.
     ev = next(rr)
@@ -91,12 +98,14 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(30, ev.step)
-    self.assertProtoEquals(gd, ev.graph_def)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(gd, ev_graph)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
-  def testConstructWithGraph(self):
+  def testInitializingWithGraphDef(self):
     test_dir = self._CleanTestDir("basics_with_graph")
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
@@ -108,13 +117,15 @@ class SummaryWriterTestCase(tf.test.TestCase):
     # The first event should list the file_version.
     ev = next(rr)
     self._assertRecent(ev.wall_time)
-    self.assertEquals("brain.Event:1", ev.file_version)
+    self.assertEquals("brain.Event:2", ev.file_version)
 
     # The next event should have the graph.
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(0, ev.step)
-    self.assertProtoEquals(gd, ev.graph_def)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(gd, ev_graph)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
@@ -122,7 +133,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
-  def testSummariesAndStopFromSessionRunCalls(self):
+  def testAddingSummariesFromSessionRunCalls(self):
     test_dir = self._CleanTestDir("global_step")
     sw = tf.train.SummaryWriter(test_dir)
     with self.test_session():
@@ -142,7 +153,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self.assertTrue(ev)
     self._assertRecent(ev.wall_time)
-    self.assertEquals("brain.Event:1", ev.file_version)
+    self.assertEquals("brain.Event:2", ev.file_version)
 
     # Summary passed serialized.
     ev = next(rr)

@@ -21,8 +21,6 @@ from __future__ import print_function
 import collections
 import warnings
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -30,17 +28,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-# pylint: disable=unused-import
-from tensorflow.python.ops import array_grad
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import control_flow_grad
+from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import image_grad
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import linalg_grad
-from tensorflow.python.ops import math_grad
-# pylint: enable=unused-import
+from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import functional_ops
@@ -158,7 +154,7 @@ def _GetGradsDevice(op, colocate_gradients_with_ops):
   if colocate_gradients_with_ops and op.device:
     return op.device
   else:
-    return op.graph.get_default_device()
+    return ""
 
 
 def _PendingCount(graph, to_ops, from_ops):

@@ -173,6 +173,31 @@ Returns element-wise remainder of division.
   A `Tensor`. Has the same type as `x`.
 
 
+- - -
+
+### `tf.cross(a, b, name=None)` {#cross}
+
+Compute the pairwise cross product.
+
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+    A tensor containing 3-element vectors.
+*  <b>`b`</b>: A `Tensor`. Must have the same type as `a`.
+    Another tensor, of same type and shape as `a`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `a`.
+  Pairwise cross product of the vectors in `a` and `b`.
+
+
 
 ## Basic Math Functions
 
@@ -1128,6 +1153,7 @@ solution. If `fast` is `False` then `l2_regularizer` is ignored.
 *  <b>`rhs`</b>: 2-D `Tensor` of shape is `[M, K]`.
 *  <b>`l2_regularizer`</b>: 0-D  `double` `Tensor`. Ignored if `fast=False`.
 *  <b>`fast`</b>: bool. Defaults to `True`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
@@ -1185,6 +1211,7 @@ version does not compute a minimum norm solution. If `fast` is `False` then
 *  <b>`rhs`</b>: `Tensor` of shape `[..., M, K]`.
 *  <b>`l2_regularizer`</b>: 0-D `double` `Tensor`. Ignored if `fast=False`.
 *  <b>`fast`</b>: bool. Defaults to `True`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
@@ -2300,6 +2327,32 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 
 
 ## Other Functions and Classes
+- - -
+
+### `tf.scalar_mul(scalar, x)` {#scalar_mul}
+
+Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+Intended for use in gradient code which might deal with `IndexedSlices`
+objects, which are easy to multiply by a scalar but more expensive to
+multiply with arbitrary tensors.
+
+##### Args:
+
+
+*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
+*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
+
+##### Returns:
+
+  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
+
+
 - - -
 
 ### `tf.sparse_segment_sqrt_n_grad(grad, indices, segment_ids, output_dim0, name=None)` {#sparse_segment_sqrt_n_grad}

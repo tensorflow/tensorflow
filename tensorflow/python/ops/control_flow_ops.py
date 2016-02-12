@@ -68,6 +68,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -81,8 +83,10 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
+# pylint: enable=wildcard-import
 from tensorflow.python.platform import logging
 
 
@@ -281,6 +285,25 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
         return ref_switch(data, pred, name=name)
     else:
       return switch(data, pred, name=name)
+
+
+def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
+  return [ta.flow if isinstance(ta, tensor_array_ops.TensorArray)
+          else ta
+          for ta in tensors_or_tensor_arrays]
+
+
+def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
+  if len(tensors_or_tensorarrays) != len(tensors_or_flows):
+    raise ValueError(
+        "Lengths of original Tensor list and new list do not match: %d vs. %d"
+        % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
+  return [
+      tensor_array_ops.TensorArray(
+          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      if isinstance(ta, tensor_array_ops.TensorArray)
+      else t_or_flow
+      for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
 class ControlFlowOpWrapper(object):
@@ -608,9 +631,9 @@ class GradLoopState(object):
       # value is not nested in the forward context.
       self.forward_context.Enter()
       push = gen_data_flow_ops._stack_push(enter_acc, value)
+      self.forward_context.Exit()
       # Protect stack push and order it before forward_index.
       self.forward_index.op._add_control_input(push.op)
-      self.forward_context.Exit()
     else:
       # value is in a cond context within the forward context.
       assert isinstance(value_ctxt, CondContext)
@@ -620,13 +643,7 @@ class GradLoopState(object):
         value_ctxt.outer_context.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
         value_ctxt.outer_context.Exit()
-        # Guard with a switch but take the other branch.
-        pred = self.history_map.get(value_ctxt.pred.name)
-        branch = value_ctxt.branch
-        value_ctxt.AddName(push.name)
-        value_ctxt.Enter()
-        push = _SwitchRefOrTensor(push, pred)[1 - branch]
-        value_ctxt.Exit()
+        push.op._set_control_flow_context(value_ctxt)
       else:
         value_ctxt.Enter()
         push = gen_data_flow_ops._stack_push(enter_acc, value)
@@ -857,7 +874,6 @@ class ControlFlowState(object):
       A zero tensor of the same shape of op.outputs[index].
     """
     if IsLoopSwitch(op): return None
-
     dead_branch = op.type in {"Switch", "RefSwitch"}
     forward_ctxt = _GetWhileContext(op)
     if forward_ctxt is None:
@@ -877,16 +893,29 @@ class ControlFlowState(object):
         result = _SwitchRefOrTensor(result, pred)[1 - branch]
     else:
       # Unknown shape so keep a history of the shape at runtime.
-      op_ctxt.Enter()
-      zeros_shape = shape(val)
-      op_ctxt.Exit()
+      if dead_branch:
+        # Need to add a special switch to guard the value.
+        pred = op_ctxt.pred
+        branch = op_ctxt.branch
+        op_ctxt.outer_context.Enter()
+        val = _SwitchRefOrTensor(op.inputs[0], pred)[1 - branch]
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.outer_context.Exit()
+        val.op._set_control_flow_context(op_ctxt)
+        zeros_shape.op._set_control_flow_context(op_ctxt)
+      else:
+        op_ctxt.Enter()
+        zeros_shape = array_ops.shape(val)
+        op_ctxt.Exit()
+
       # Add forward accumulator for shape.
       grad_state.grad_context.Exit()
       history_shape = grad_state.AddForwardAccumulator(zeros_shape, dead_branch)
       grad_state.grad_context.Enter()
+
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-          history_shape, zero_shape, dead_branch)
+          history_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
 
@@ -1122,14 +1151,17 @@ def cond(pred, fn1, fn2, name=None):
                 return tensors of different types.
 
   Example:
+
   ```python
-    x = constant(2)
-    y = constant(5)
-    def f1(): return constant(17)
-    def f2(): return constant(23)
+    x = tf.constant(2)
+    y = tf.constant(5)
+    def f1(): return tf.mul(x, 17)
+    def f2(): return tf.add(y, 23)
     r = cond(math_ops.less(x, y), f1, f2)
-    # r is set to f1()
+    # r is set to f1().
+    # Operations in f2 (e.g., tf.add) are not executed.
   ```
+
   """
   with ops.op_scope([pred], name, "cond") as name:
     if not callable(fn1):
@@ -1402,6 +1434,10 @@ class WhileContext(ControlFlowContext):
   def BuildLoop(self, pred, body, loop_vars):
     """Add the loop termination condition and body to the graph."""
 
+    # Keep original_loop_vars to identify which are TensorArrays
+    original_loop_vars = loop_vars
+    # Connvert TensorArrays to their flow variables
+    loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
     # would be added in the outer contexts properly.
@@ -1421,18 +1457,28 @@ class WhileContext(ControlFlowContext):
     self._pivot_for_pred = merge_vars[0]
 
     # Build the graph for pred.
-    c = ops.convert_to_tensor(pred(*merge_vars))
+    merge_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, merge_vars))
+    c = ops.convert_to_tensor(pred(*merge_vars_with_tensor_arrays))
     self._pivot = loop_cond(c, name="LoopCond")
     switch_vars = [_SwitchRefOrTensor(x, self._pivot) for x in merge_vars]
 
     # Build the graph for body.
     vars_for_body = [_Identity(x[1]) for x in switch_vars]
     self._pivot_for_body = vars_for_body[0]
+    # Convert TensorArray flow variables inside the context back into
+    # their associated TensorArrays for calling the body.
+    vars_for_body_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_loop_vars, vars_for_body))
 
-    body_result = body(*vars_for_body)
-    if not isinstance(body_result, (list, _basetuple)):
+    body_result = body(*vars_for_body_with_tensor_arrays)
+    if not isinstance(body_result, collections.Sequence):
       body_result = [body_result]
-    result = ops.convert_n_to_tensor_or_indexed_slices(body_result)
+    # Store body_result to keep track of TensorArrays returned by body
+    original_body_result = body_result
+    # Convert TensorArrays returned by body into their flow variables
+    result = _convert_tensorarrays_to_flows(body_result)
+    result = ops.convert_n_to_tensor_or_indexed_slices(result)
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
@@ -1450,7 +1496,14 @@ class WhileContext(ControlFlowContext):
 
     # Exit the loop.
     self.ExitResult(exit_vars)
-    return exit_vars[0] if len(exit_vars) == 1 else exit_vars
+
+    # Convert TensorArray flow variables outside the context back into
+    # their associated TensorArrays for returning to caller.
+    exit_vars_with_tensor_arrays = (
+        _convert_flows_to_tensorarrays(original_body_result, exit_vars))
+    return (exit_vars_with_tensor_arrays[0]
+            if len(exit_vars) == 1
+            else exit_vars_with_tensor_arrays)
 
 
 def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
@@ -1461,6 +1514,10 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   tensor. `body` is a function taking a list of tensors and returning a list of
   tensors of the same length and with the same types as the input. `loop_vars`
   is a list of tensors that is passed to both `cond` and `body`.
+
+  In addition to regular Tensors or IndexedSlices, the body may accept and
+  return TensorArray objects.  The flows of the TensorArray objects will
+  be appropriately forwarded between loops and during gradient calculations.
 
   While `cond` evaluates to true, `body` is executed.
 
@@ -1481,7 +1538,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Example:
     ```python
-    i =  Constant(0)
+    i = constant(0)
     c = lambda i: math_ops.less(i, 10)
     b = lambda i: math_ops.add(i, 1)
     r = While(c, b, [i])
@@ -1566,8 +1623,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   """
   with ops.op_scope(dependencies + [output_tensor], name,
                     "control_dependency") as name:
-    with ops.device(output_tensor.device
-                    or ops.get_default_graph().get_default_device()):
+    with ops.device(output_tensor.device):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
         if isinstance(output_tensor, ops.Tensor):
@@ -1694,51 +1750,155 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-# TODO(yuanbyu): It would be nicer if we could have the distributed list
-# support that Derek has been proposing.
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
-def fold(fn, elems, elem_shape, name=None):
-  """The fold operator on slices of a tensor.
+def foldl(fn, elems, initializer=None, name=None):
+  """The foldl operator on the unpacked tensors of a tensor.
 
-  This fold operator applies the function `fn` to slices of `elems` on
-  dimension 0. The shape of the slices is specified by `elem_shape`. `elems`
-  must contain at least one slice (`shape(elems)[0] / elem_shape[0] > 0`).
+  This foldl operator applies the function `fn` to a sequence of elements
+  from left to right. The elements are made of the tensors unpacked from
+  `elems`. If `initializer` is None, `elems` must contain at least one
+  element.
 
   Args:
-    fn: The function to be performed on each slice of the tensor.
-    elems: The tensor to whose slices we want to apply `fn`.
-    elem_shape: The shape definition for the slices.
-    name: Optional name prefix for the returned tensors.
+    fn: The function to be performed.
+    elems: A tensor to be unpacked.
+    initializer: (optional) The initial value for the accumulator.
+    name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each slice of
-    `elems`.
+    A tensor resulting from applying `fn` consecutively on each
+    element/slice of `elems`, from left to right.
 
   Raises:
     TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    sum = foldl(lambda a, x: a + x, elems)
+    ```
   """
-  with ops.op_scope([elems], name, "fold") as name:
+  with ops.op_scope([elems], name, "foldl") as name:
     if not callable(fn):
       raise TypeError("fn must be callable.")
 
-    s0 = array_ops.shape(elems)[0]
-    d0 = elem_shape[0]
-    n = math_ops.div(s0, d0)
-    b1 = array_ops.zeros(array_ops.expand_dims(array_ops.rank(elems) - 1, 0),
-                         dtype=dtypes.int32)
-    # Initialize the output with slice 0
-    b = array_ops.concat(0, [[0], b1])
-    o = array_ops.slice(elems, b, elem_shape)
-    i = ops.convert_to_tensor(d0)
+    # Convert elems to tensor array.
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
+    elems_ta = elems_ta.unpack(elems)
 
-    def Compute(i, o):
-      b = array_ops.concat(0, [array_ops.expand_dims(i, 0), b1])
-      x = array_ops.slice(elems, b, elem_shape)
-      o = fn(o, x)
-      i = math_ops.add(i, d0)
-      return [i, o]
-    r = While(lambda i, o: math_ops.less(i, n), Compute, [i, o])
-    return r[1]
+    if initializer is None:
+      a = elems_ta.read(0)
+      i = constant_op.constant(1)
+    else:
+      a = ops.convert_to_tensor(initializer)
+      i = constant_op.constant(0)
+
+    def compute(i, a):
+      a = fn(a, elems_ta.read(i))
+      return [i + 1, a]
+    _, r_a = While(lambda i, a: i < n, compute, [i, a])
+    return r_a
+
+
+def foldr(fn, elems, initializer=None, name=None):
+  """The foldr operator operator on the unpacked tensors of a tensor.
+
+  This foldr operator applies the function `fn` to a sequence of elements
+  from right to left. The elements are made of the tensors unpacked from
+  `elems`. If `initializer` is None, `elems` must contain at least one
+  element.
+
+  Args:
+    fn: The function to be performed.
+    elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
+    initializer: (optional) The initial value for the accumulator.
+    use_tensor_array: (optional) use tensor_array if true.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor resulting from applying `fn` consecutively on each
+    element/slice of `elems`, from right to left.
+
+  Raises:
+    TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    sum = foldr(lambda a, x: a + x, elems)
+    ```
+  """
+  with ops.op_scope([elems], name, "foldr") as name:
+    if not callable(fn):
+      raise TypeError("fn must be callable.")
+
+    # Convert elems to tensor array.
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
+    elems_ta = elems_ta.unpack(elems)
+
+    if initializer is None:
+      i = n - 1
+      a = elems_ta.read(i)
+    else:
+      i = n
+      a = ops.convert_to_tensor(initializer)
+    def compute(i, a):
+      i -= 1
+      a = fn(a, elems_ta.read(i))
+      return [i, a]
+    _, r_a = While(lambda i, a: i > 0, compute, [i, a])
+    return r_a
+
+
+def map(fn, elems, dtype=None, name=None):
+  """The map operator on on the unpacked tensors of a tensor.
+
+  This map operator applies the function `fn` to a sequence of elements
+  from right to left. The elements are made of the tensors unpacked from
+  `elems`.
+
+  Args:
+    fn: The function to be performed.
+    elems: A tensor to be unpacked to apply `fn`.
+    dtype: (optional) The output type of `fn`.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor that packs the results of applying `fn` on each element
+    of `elems`.
+
+  Raises:
+    TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    squares = map(lambda x: x * x, elems)
+    ```
+  """
+  with ops.op_scope([elems], name, "map") as name:
+    if not callable(fn):
+      raise TypeError("fn must be callable.")
+    dtype = dtype if dtype else elems.dtype
+
+    # Convert elems to tensor array.
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=0,
+                                            dynamic_size=True)
+    elems_ta = elems_ta.unpack(elems)
+
+    n = elems_ta.size()
+    i = constant_op.constant(0)
+    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n)
+    def compute(i, a):
+      a = a.write(i, fn(elems_ta.read(i)))
+      i = math_ops.add(i, 1)
+      return [i, a]
+    _, r_a = While(lambda i, a: math_ops.less(i, n), compute, [i, acc_ta])
+    return r_a.pack()
 
 
 def case(pred_fn_pairs, default, exclusive=False, name="case"):
@@ -1829,7 +1989,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([[f() for f in fns] + preds + [default()]], name, "case"):
+  with ops.op_scope([preds], name, "case"):
     if not preds:
       return default()
     not_preds = []
@@ -1873,22 +2033,28 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       with ops.control_dependencies([
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
-        prev_case_seq = default()
+        prev_case_seq = None
         for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-          prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+          prev_case_seq = cond(
+              cp, fn,
+              default if i == 0 else lambda: prev_case_seq,
+              name="If_%d" % i)
     else:
-      prev_case_seq = default()
+      prev_case_seq = None
       for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
-        prev_case_seq = cond(cp, fn, lambda: prev_case_seq, name="If_%d" % i)
+        prev_case_seq = cond(
+            cp, fn,
+            default if i == 0 else lambda: prev_case_seq,
+            name="If_%d" % i)
 
     return prev_case_seq
 
 
 ops.RegisterShape("Enter")(common_shapes.unchanged_shape)
-ops.RegisterShape("Exit")(common_shapes.unknown_shape)
+ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
 ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefExit")(common_shapes.unknown_shape)
+ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)

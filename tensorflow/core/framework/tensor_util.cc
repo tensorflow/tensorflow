@@ -41,7 +41,7 @@ Tensor DeepCopy(const Tensor& other) {
 }
 
 Tensor Concat(const gtl::ArraySlice<Tensor>& tensors) {
-  CHECK_GT(tensors.size(), 0);
+  CHECK_GT(tensors.size(), size_t{0});
   int64 total_dim0_size = 0;
   for (const Tensor& tensor : tensors) {
     CHECK_GT(tensor.dims(), 0);

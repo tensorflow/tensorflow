@@ -18,12 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
-
-from tensorflow.python.ops import gen_array_ops
 
 
 class ConstantTest(tf.test.TestCase):
@@ -303,46 +299,34 @@ class ZerosTest(tf.test.TestCase):
 
 class ZerosLikeTest(tf.test.TestCase):
 
-  def testZerosLike(self):
-    for dtype in [tf.float32, tf.float64, tf.int32,
-                  tf.uint8, tf.int16, tf.int8,
-                  tf.complex64, tf.int64]:
+  def _compareZeros(self, dtype, use_gpu):
+    with self.test_session(use_gpu=False):
+      # Creates a tensor of non-zero values with shape 2 x 3.
       numpy_dtype = dtype.as_numpy_dtype
-      with self.test_session():
-        # Creates a tensor of non-zero values with shape 2 x 3.
-        d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
-        # Constructs a tensor of zeros of the same dimensions and type as "d".
-        z_var = tf.zeros_like(d)
-        # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
-        z_value = z_var.eval()
+      d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
+      # Constructs a tensor of zeros of the same dimensions and type as "d".
+      z_var = tf.zeros_like(d)
+      # Test that the type is correct
+      self.assertEqual(z_var.dtype, dtype)
+      z_value = z_var.eval()
 
       # Test that the value is correct
       self.assertTrue(np.array_equal(z_value, np.array([[0] * 3] * 2)))
       self.assertEqual([2, 3], z_var.get_shape())
+
+  def testZerosLikeCPU(self):
+    for dtype in [tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8,
+                  tf.complex64, tf.int64]:
+      self._compareZeros(dtype, False)
+
+  def testZerosLikeGPU(self):
+    for dtype in [tf.float32, tf.float64, tf.int32]:
+      self._compareZeros(dtype, True)
 
   def testZerosLikePartialShape(self):
     d = tf.placeholder(tf.float32, shape=[None, 4, None])
     z = tf.zeros_like(d)
     self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
-
-  def testGenZerosLike(self):
-    for dtype in [tf.float32, tf.float64, tf.int32,
-                  tf.uint8, tf.int16, tf.int8,
-                  tf.complex64, tf.int64]:
-      numpy_dtype = dtype.as_numpy_dtype
-      with self.test_session():
-        # Creates a tensor of non-zero values with shape 2 x 3.
-        d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
-        # Constructs a tensor of zeros of the same dimensions and type as "d".
-        z_var = gen_array_ops._zeros_like(d)
-        # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
-        z_value = z_var.eval()
-
-      # Test that the value is correct
-      self.assertTrue(np.array_equal(z_value, np.array([[0] * 3] * 2)))
-      self.assertEqual([2, 3], z_var.get_shape())
 
 
 class OnesTest(tf.test.TestCase):
@@ -413,26 +397,8 @@ class OnesLikeTest(tf.test.TestCase):
 
   def testOnesLikePartialShape(self):
     d = tf.placeholder(tf.float32, shape=[None, 4, None])
-    z = tf.zeros_like(d)
+    z = tf.ones_like(d)
     self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
-
-  def testGenOnesLike(self):
-    for dtype in [tf.float32, tf.float64, tf.int32,
-                  tf.uint8, tf.int16, tf.int8,
-                  tf.complex64, tf.int64]:
-      numpy_dtype = dtype.as_numpy_dtype
-      with self.test_session():
-        # Creates a tensor of non-zero values with shape 2 x 3.
-        d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
-        # Constructs a tensor of zeros of the same dimensions and type as "d".
-        z_var = tf.ones_like(d)
-        # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
-        z_value = z_var.eval()
-
-      # Test that the value is correct
-      self.assertTrue(np.array_equal(z_value, np.array([[1] * 3] * 2)))
-      self.assertEqual([2, 3], z_var.get_shape())
 
 
 class FillTest(tf.test.TestCase):

@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
+
+from tensorflow.python.framework import ops
 
 
 class MatMulTest(tf.test.TestCase):
@@ -228,6 +228,31 @@ class MatMulGradientTest(tf.test.TestCase):
     self._VerifyInput1(transpose_a=True, transpose_b=False)
     self._VerifyInput1(transpose_a=False, transpose_b=True)
     self._VerifyInput1(transpose_a=True, transpose_b=True)
+
+
+class MatMulStatsTest(tf.test.TestCase):
+
+  def testSimpleStatistics(self):
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.Variable(tf.random_normal([25, 16]))
+      b = tf.Variable(tf.random_normal([16, 9]))
+      tf.matmul(a, b)
+      for op in g.get_operations():
+        flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
+        if op.name == "MatMul":
+          self.assertEqual(7200, flops)
+
+  def testTransposedStatistics(self):
+    g = tf.Graph()
+    with g.as_default():
+      a = tf.Variable(tf.random_normal([16, 25]))
+      b = tf.Variable(tf.random_normal([16, 9]))
+      tf.matmul(a, b, transpose_a=True)
+      for op in g.get_operations():
+        flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
+        if op.name == "MatMul":
+          self.assertEqual(7200, flops)
 
 
 if __name__ == "__main__":

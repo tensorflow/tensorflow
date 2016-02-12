@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(zhengxq): move this to gpu_util.h. The use of such wrapers is wide
+// TODO(zhengxq): move this to gpu_util.h. The use of such wrappers is wide
 // spread.
 template <typename T>
 perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
@@ -67,6 +67,9 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
           perftools::gputools::DeviceMemory<uint8>>(
           AsDeviceMemory<uint8>(nullptr, 0));
     }
+    // Hold the reference of the allocated tensors until the end of the
+    // allocator.
+    allocated_tensors_.push_back(temporary_memory);
     return perftools::gputools::port::StatusOr<
         perftools::gputools::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
@@ -76,6 +79,7 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
  private:
   int64 memory_limit_;
   OpKernelContext* context_;
+  std::vector<Tensor> allocated_tensors_;
 };
 
 }  // namespace tensorflow

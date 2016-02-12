@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -293,6 +291,15 @@ class ShapeTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("(32, ?, 1, 9)",
                      str(tensor_shape.TensorShape([32, None, 1, 9])))
+
+  def testAsProto(self):
+    self.assertTrue(tensor_shape.unknown_shape().as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.unknown_shape(ndims=3).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, 2, 3]).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, None, 3]).as_proto().unknown_rank)
 
 
 if __name__ == "__main__":

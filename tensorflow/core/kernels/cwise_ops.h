@@ -302,7 +302,7 @@ struct use_bcast_optimization<double> {
 // sqrt(x) = x^(1/2)
 // rsqrt(x) = x^(-1/2)
 // exp(x) = e^x
-// log(x) = natural logrithm of x
+// log(x) = natural logarithm of x
 // tanh = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 // sigmoid = 1 / (1 + exp(-x))  // a.k.a, logistic
 //
@@ -614,7 +614,7 @@ struct BinaryFunctor {
 
 template <int NDIMS>
 bool AllOne(const typename Eigen::array<Eigen::DenseIndex, NDIMS>& a) {
-  for (int i = 0; i < a.size(); ++i) {
+  for (size_t i = 0; i < a.size(); ++i) {
     if (a[i] != 1) return false;
   }
   return true;
@@ -626,6 +626,15 @@ struct SelectFunctor {
                   typename TTypes<bool>::ConstFlat cond_flat,
                   typename TTypes<T>::ConstFlat then_flat,
                   typename TTypes<T>::ConstFlat else_flat);
+};
+
+template <typename Device, typename T>
+struct BatchSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T>::Matrix output_flat_outer_dims,
+                  TTypes<bool>::ConstVec cond_vec,
+                  typename TTypes<T>::ConstMatrix then_flat_outer_dims,
+                  typename TTypes<T>::ConstMatrix else_flat_outer_dims);
 };
 
 }  // end namespace functor

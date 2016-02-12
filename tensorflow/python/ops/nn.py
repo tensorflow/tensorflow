@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order
+# pylint: disable=unused-import,g-bad-import-order
 """## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
@@ -151,6 +151,7 @@ TensorFlow provides several operations that help you perform classification.
 @@sigmoid_cross_entropy_with_logits
 @@softmax
 @@softmax_cross_entropy_with_logits
+@@sparse_softmax_cross_entropy_with_logits
 
 ## Embeddings
 
@@ -207,6 +208,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -229,10 +231,12 @@ from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 
 # Bring more nn-associated functionality into this package.
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 from tensorflow.python.ops.rnn import *
+# pylint: enable=wildcard-import
 
 
 def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
@@ -491,7 +495,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
-def moments(x, axes, name=None):
+def moments(x, axes, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -506,6 +510,7 @@ def moments(x, axes, name=None):
     x: A `Tensor`.
     axes: array of ints.  Axes along which to compute mean and
       variance.
+    keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
@@ -527,7 +532,7 @@ def moments(x, axes, name=None):
       for d in set(axes):
         divisor *= math_ops.cast(x_dynamic_shape[d], x.dtype)
       divisor = math_ops.inv(divisor, name="divisor")
-    axes = constant_op.constant(axes, name="axes")
+    constant_axes = constant_op.constant(axes, name="axes")
     # Note: We do not use Mean here because it is very slow on GPU.
     # Note 2: The expression below is potentially more stable.
     # It is however a bit slower and stability doesn't appear to be an issue.
@@ -535,14 +540,27 @@ def moments(x, axes, name=None):
     # var = math_ops.reduce_sum(math_ops.mul(math_ops.square(x - mean),
     #                                        divisor), axes,
     #                    name="variance")
-    mean = math_ops.mul(math_ops.reduce_sum(x, axes), divisor, name="mean")
+    mean = math_ops.mul(
+        math_ops.reduce_sum(x,
+                            constant_axes,
+                            keep_dims=True),
+        divisor,
+        name="mean")
     # Give x-mean a specific name, so the caller might take advantage of it.
     # The caller should have a fallback plan, however: this tensor may not be
     # available if this function implementation changes.
     x_centered = math_ops.sub(x, mean, name="x_centered")
-    var = math_ops.mul(math_ops.reduce_sum(math_ops.square(x_centered), axes),
-                       divisor, name="variance")
-    return mean, var
+    var = math_ops.mul(
+        math_ops.reduce_sum(
+            math_ops.square(x_centered),
+            constant_axes,
+            keep_dims=keep_dims),
+        divisor,
+        name="variance")
+    if keep_dims:
+      return mean, var
+    else:
+      return array_ops.squeeze(mean, squeeze_dims=axes), var
 
 
 def _sum_rows(x):
@@ -806,7 +824,8 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)
 
-  Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`

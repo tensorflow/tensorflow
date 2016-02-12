@@ -22,10 +22,11 @@ from __future__ import print_function
 import os
 import threading
 
+import six
+
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
-import six
 
 
 class EventMultiplexer(object):
@@ -68,7 +69,6 @@ class EventMultiplexer(object):
   @@AddRun
   @@AddRunsFromDirectory
   @@Reload
-  @@AutoUpdate
   @@Runs
   @@Scalars
   @@Graph
@@ -93,8 +93,6 @@ class EventMultiplexer(object):
     self._accumulators = {}
     self._paths = {}
     self._reload_called = False
-    self._autoupdate_called = False
-    self._autoupdate_interval = None
     self._size_guidance = size_guidance
     if run_path_map is not None:
       for (run, path) in six.iteritems(run_path_map):
@@ -109,9 +107,9 @@ class EventMultiplexer(object):
       do nothing. If we are watching a different path, replace the event
       accumulator.
 
-    If `AutoUpdate` or `Reload` have been called, it will `AutoUpdate` or
-    `Reload` the newly created accumulators. This maintains the invariant that
-    once the Multiplexer was activated, all of its accumulators are active.
+    If `Reload` has been called, it will `Reload` the newly created
+    accumulators. This maintains the invariant that once the Multiplexer was
+    activated, all of its accumulators are active.
 
     Args:
       path: Path to the event files (or event directory) for given run.
@@ -138,8 +136,6 @@ class EventMultiplexer(object):
     if accumulator:
       if self._reload_called:
         accumulator.Reload()
-      if self._autoupdate_called:
-        accumulator.AutoUpdate(self._autoupdate_interval)
     return self
 
   def AddRunsFromDirectory(self, path, name=None):
@@ -153,9 +149,8 @@ class EventMultiplexer(object):
       can call AddRunsFromDirectory at the root of a tree of event logs and
       TensorBoard will load them all.
 
-    If the `EventMultiplexer` is already loaded or autoupdating, this will cause
-    the newly created accumulators to also `Reload()` or `AutoUpdate()`.
-
+    If the `EventMultiplexer` is already loaded this will cause
+    the newly created accumulators to `Reload()`.
     Args:
       path: A string path to a directory to load runs from.
       name: Optionally, what name to apply to the runs. If name is provided
@@ -193,16 +188,6 @@ class EventMultiplexer(object):
 
     for l in loaders:
       l.Reload()
-    return self
-
-  def AutoUpdate(self, interval=60):
-    """Call `AutoUpdate(interval)` on every `EventAccumulator`."""
-    self._autoupdate_interval = interval
-    self._autoupdate_called = True
-    with self._accumulators_mutex:
-      loaders = list(self._accumulators.values())
-    for l in loaders:
-      l.AutoUpdate(interval)
     return self
 
   def Scalars(self, run, tag):
@@ -317,43 +302,3 @@ class EventMultiplexer(object):
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:
       return self._accumulators[run]
-
-
-def AutoloadingMultiplexer(path_to_run, interval_secs=60,
-    size_guidance=event_accumulator.DEFAULT_SIZE_GUIDANCE):
-  """Create an `EventMultiplexer` that automatically loads runs in directories.
-
-  Args:
-    path_to_run: Dict `{path: name}` which specifies the path to a directory,
-      and its name (or `None`). The path may contain tfevents files (in which
-      case they are loaded, with name as the name of the run) and subdirectories
-      containing tfevents files (in which case each subdirectory is added as a
-      run, named `'name/subdirectory'`).
-
-    interval_secs: How often to poll the directory for new runs.
-    size_guidance: How much data to store for each tag of various types - see
-      `event_accumulator.EventAccumulator`.
-
-  Returns:
-    The multiplexer which will automatically load from the directories.
-
-  Raises:
-    ValueError: if `path_to_run` is `None`
-    TypeError: if `path_to_run` is not a dict
-  """
-  multiplexer = EventMultiplexer(size_guidance=size_guidance)
-  if path_to_run is None:
-    raise ValueError('Cant construct an autoloading multiplexer without runs.')
-  if not isinstance(path_to_run, dict):
-    raise TypeError('path_to_run should be a dict, was %s', path_to_run)
-  def Load():
-    for (path, name) in six.iteritems(path_to_run):
-      logging.info('Checking for new runs in %s', path)
-      multiplexer.AddRunsFromDirectory(path, name)
-    t = threading.Timer(interval_secs, Load)
-    t.daemon = True
-    t.start()
-  t = threading.Timer(0, Load)
-  t.daemon = True
-  t.start()
-  return multiplexer

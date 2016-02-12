@@ -21,10 +21,6 @@ from __future__ import print_function
 import random
 import time
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -429,12 +425,8 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       string_val, int_val = sess.run(dequeued_t)
 
       self.assertAllEqual(
-          [["a", "", ""],
-           ["ab", "", ""],
-           ["abc", "", ""],
-           ["abc", "d", ""],
-           ["abc", "d", "e"]],
-          string_val)
+          [[b"a", b"", b""], [b"ab", b"", b""], [b"abc", b"", b""],
+           [b"abc", b"d", b""], [b"abc", b"d", b"e"]], string_val)
       self.assertAllEqual(
           [[[1, 0, 0]],
            [[2, 0, 0]],
@@ -450,7 +442,7 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
               dequeued_t[1].get_shape()))
 
       string_val, int_val = sess.run(dequeued_single_t)
-      self.assertAllEqual(["abc", "d", "e", "f"], string_val)
+      self.assertAllEqual([b"abc", b"d", b"e", b"f"], string_val)
       self.assertAllEqual([[1, 2, 3, 4]], int_val)
       self.assertTrue(
           tf.TensorShape(string_val.shape).is_compatible_with(
@@ -1290,6 +1282,10 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
 
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
+
+  def testUnknownRank(self):
+    with self.assertRaisesRegexp(ValueError, "must have a defined rank"):
+      tf.PaddingFIFOQueue(32, [tf.float32], [tf.TensorShape(None)])
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -66,26 +67,6 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   return Status::OK();
 }
 
-// Check HostMemory backward compatibility.
-bool CheckHostMemoryCompatibility(const DeviceType device_type,
-                                  const OpKernel* kernel) {
-  if (device_type == DEVICE_GPU) {
-    for (int i = 0; i < kernel->num_inputs(); ++i) {
-      if (kernel->input_type(i) == DT_INT32 &&
-          kernel->input_memory_types()[i] != HOST_MEMORY) {
-        return false;
-      }
-    }
-    for (int i = 0; i < kernel->num_outputs(); ++i) {
-      if (kernel->output_type(i) == DT_INT32 &&
-          kernel->output_memory_types()[i] != HOST_MEMORY) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 }  // namespace
 
 // OpKernel ------------------------------------------------------------------
@@ -94,8 +75,12 @@ OpKernel::OpKernel(OpKernelConstruction* context)
     : def_(context->def()),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
+      input_memory_types_(context->input_memory_types().begin(),
+                          context->input_memory_types().end()),
       output_types_(context->output_types().begin(),
                     context->output_types().end()),
+      output_memory_types_(context->output_memory_types().begin(),
+                           context->output_memory_types().end()),
       graph_def_version_(context->graph_def_version()),
       is_internal_(StringPiece(type_string()).starts_with("_")),
       input_name_map_(context->num_inputs()),
@@ -103,28 +88,6 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
-
-  // By default, the input and output memory types are always in device memory,
-  // but can be overridden by individual implementations of OpKernels in their
-  // constructor.
-  input_memory_types_ = MemoryTypeVector(input_types_.size(), DEVICE_MEMORY);
-  output_memory_types_ = MemoryTypeVector(output_types_.size(), DEVICE_MEMORY);
-  // TODO(yuanbyu): For now we assume the memory types of function
-  // inputs/outputs to be DEVICE_MEMORY.
-  auto lib = context->function_library();
-  if (lib == nullptr || !lib->IsDefined(def_.op())) {
-    OP_REQUIRES_OK(context, MemoryTypesForNode(
-                                context->device_type(), def_, context->op_def(),
-                                input_name_map_, output_name_map_,
-                                &input_memory_types_, &output_memory_types_));
-    // Log all the uses of int32 on GPU.
-    // TODO(yunabyu): Remove once everyone transitions to HostMemory.
-    if (VLOG_IS_ON(2)) {
-      if (!CheckHostMemoryCompatibility(context->device_type(), this)) {
-        VLOG(2) << "Using int32 on GPU at node: " << SummarizeNodeDef(def());
-      }
-    }
-  }
 }
 
 Status OpKernel::InputRange(const string& input_name, int* start,
@@ -568,6 +531,20 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 
 }  // namespace
 
+Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+                     const KernelDef** def) {
+  const KernelRegistration* reg = nullptr;
+  TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, node_def, &reg));
+  if (reg == nullptr) {
+    return errors::NotFound("No registered '", node_def.op(), "' OpKernel for ",
+                            DeviceTypeString(device_type),
+                            " devices compatible with node ",
+                            SummarizeNodeDef(node_def));
+  }
+  *def = &reg->def;
+  return Status::OK();
+}
+
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types) {
@@ -640,92 +617,25 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
     return s;
   }
 
+  // We are creating a kernel for an op registered in
+  // OpRegistry::Global(), we consult the kernel registry to decide
+  // the kernel's input and output memory types.
+  MemoryTypeVector input_memory_types;
+  MemoryTypeVector output_memory_types;
+  TF_RETURN_IF_ERROR(MemoryTypesForNode(OpRegistry::Global(), device_type,
+                                        node_def, &input_memory_types,
+                                        &output_memory_types));
+
   // Everything needed for OpKernel construction.
-  OpKernelConstruction context(device_type, device, allocator, &node_def,
-                               op_def, flib, inputs, outputs, graph_def_version,
-                               &s);
+  OpKernelConstruction context(
+      device_type, device, allocator, &node_def, op_def, flib, inputs,
+      input_memory_types, outputs, output_memory_types, graph_def_version, &s);
   *kernel = (*registration->factory)(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;
   }
   return s;
-}
-
-namespace {  // Helper for MemoryTypesForNode.
-// Fills memory_types for either input or output, setting everything
-// to DEVICE_MEMORY except those args in host_memory_args.  Removes
-// elements of host_memory_args that were used.
-void MemoryTypesHelper(const NameRangeMap& name_map,
-                       std::vector<string>* host_memory_args,
-                       MemoryTypeVector* memory_types) {
-  // Set total to the largest endpoint of anything in the name_map.
-  int total = 0;
-  for (const auto& item : name_map) {
-    total = std::max(total, item.second.second);
-  }
-
-  // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
-  memory_types->clear();
-  memory_types->resize(total, DEVICE_MEMORY);
-
-  // Update args that have been marked as in "HOST_MEMORY".
-  size_t keep = 0;
-  for (size_t i = 0; i < host_memory_args->size(); ++i) {
-    auto iter = name_map.find((*host_memory_args)[i]);
-    if (iter != name_map.end()) {
-      for (int j = iter->second.first; j < iter->second.second; ++j) {
-        (*memory_types)[j] = HOST_MEMORY;
-      }
-    } else {
-      // (*host_memory_args)[i] not found, save it for the next pass.
-      if (i > keep) (*host_memory_args)[keep] = (*host_memory_args)[i];
-      ++keep;
-    }
-  }
-  host_memory_args->resize(keep);
-}
-}  // namespace
-
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types) {
-  Status status;
-  const KernelRegistration* registration;
-  TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, ndef, &registration));
-
-  if (registration != nullptr) {
-    const auto& from_proto = registration->def.host_memory_arg();
-    std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
-    MemoryTypesHelper(input_name_map, &host_memory_args, input_memory_types);
-    MemoryTypesHelper(output_name_map, &host_memory_args, output_memory_types);
-    if (!host_memory_args.empty()) {
-      return errors::InvalidArgument(
-          "HostMemory args '", str_util::Join(host_memory_args, "', '"),
-          "' not found in OpDef: ", SummarizeOpDef(op_def));
-    }
-  }
-  return status;
-}
-
-Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types) {
-  // Look up the Op registered for this op name.
-  Status status;
-  const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
-  if (op_def == nullptr) return status;
-
-  NameRangeMap inputs, outputs;
-  status = NameRangesForNode(ndef, *op_def, &inputs, &outputs);
-  if (!status.ok()) return status;
-
-  return MemoryTypesForNode(device_type, ndef, *op_def, inputs, outputs,
-                            input_memory_types, output_memory_types);
 }
 
 namespace {
@@ -742,11 +652,11 @@ bool FindArgInOp(const string& arg_name,
 
 }  // namespace
 
-Status ValidateKernelRegistrations(const OpRegistryInterface* op_registry) {
+Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
   Status unused_status;
   for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
     const KernelDef& kernel_def(key_registration.second.def);
-    const OpDef* op_def = op_registry->LookUp(kernel_def.op(), &unused_status);
+    const OpDef* op_def = op_registry.LookUp(kernel_def.op(), &unused_status);
     if (op_def == nullptr) {
       // TODO(josh11b): Make this a hard error.
       LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()

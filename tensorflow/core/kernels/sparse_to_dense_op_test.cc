@@ -42,13 +42,13 @@ class SparseToDenseTest : public OpsTestBase {
   void SetUp() override { RequireDefaultOps(); }
 
   void MakeOp(int dim, DataType index_type, DataType value_type) {
-    ASSERT_OK(NodeDefBuilder("sparsetodense", "SparseToDense")
-                  .Input(FakeInput(index_type))
-                  .Input(FakeInput(index_type))
-                  .Input(FakeInput(value_type))
-                  .Input(FakeInput(value_type))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("sparsetodense", "SparseToDense")
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(value_type))
+                     .Input(FakeInput(value_type))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -64,7 +64,7 @@ TEST_F(SparseToDenseTest, OneD_OneValue) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {5});
   test::FillValues<float>(&expected, {-2, 2, -2, 2, 2});
@@ -83,7 +83,7 @@ TEST_F(SparseToDenseTest, OneD_OneValue_int64_double) {
   // default_value
   AddInputFromArray<double>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_DOUBLE, {5});
   test::FillValues<double>(&expected, {-2, 2, -2, 2, 2});
@@ -102,7 +102,7 @@ TEST_F(SparseToDenseTest, OneD_MultValues) {
   // default_value
   AddInputFromArray<float>({}, {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {5});
   test::FillValues<float>(&expected, {-2, 3, -2, 4, 5});
@@ -121,7 +121,7 @@ TEST_F(SparseToDenseTest, TwoD_OneValue) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {3, 4});
   expected.flat<float>().setConstant(-2);
@@ -143,7 +143,7 @@ TEST_F(SparseToDenseTest, TwoD_MultValues) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {3, 4});
   expected.flat<float>().setConstant(-2);
@@ -165,7 +165,7 @@ TEST_F(SparseToDenseTest, ThreeD_OneValue) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {3, 4, 2});
   expected.flat<float>().setConstant(-2);
@@ -187,7 +187,7 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {-2});
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, {3, 4, 2});
   expected.flat<float>().setConstant(-2);
@@ -264,7 +264,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
   for (int i = 0; i < iters; ++i) {
     delete sparse_context->release_output(0).tensor;
     op->Compute(sparse_context.get());
-    ASSERT_OK(sparse_context->status());
+    TF_ASSERT_OK(sparse_context->status());
   }
   tensorflow::testing::StopTiming();
 

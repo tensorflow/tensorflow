@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -34,7 +35,8 @@ typedef std::function<void()> Closure;
 typedef std::function<void(Closure)> Runner;
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
     Device* device, Runner runner, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def);
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
 // instantiated function that is represented as a Graph with arg/ret
@@ -89,6 +91,10 @@ bool RemoveListArrayConverter(Graph* g);
 // inlining.  The caller may decide to apply the inlining on "graph"
 // multiple times by calling ExpandInlineFunctions a few times.
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
+
+// Dump the contents of the "graph" to log files if the logging level is
+// sufficiently high.
+void DumpGraph(StringPiece label, const Graph* g);
 
 // Applies graph rewrite optimization such as inlining, dead code
 // removal, etc.

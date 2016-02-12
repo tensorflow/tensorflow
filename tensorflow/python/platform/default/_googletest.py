@@ -21,10 +21,12 @@ from __future__ import print_function
 import inspect
 import itertools
 import os
+import sys
 import tempfile
 
 # pylint: disable=wildcard-import
 from unittest import *
+# pylint: enable=wildcard-import
 
 
 unittest_main = main

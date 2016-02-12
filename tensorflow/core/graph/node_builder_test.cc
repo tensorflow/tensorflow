@@ -31,18 +31,18 @@ TEST(NodeBuilderTest, Simple) {
   RequireDefaultOps();
   Graph graph(OpRegistry::Global());
   Node* source_node;
-  EXPECT_OK(NodeBuilder("source_op", "Source")
-                .Attr("out_types", {DT_INT32, DT_STRING})
-                .Finalize(&graph, &source_node));
+  TF_EXPECT_OK(NodeBuilder("source_op", "Source")
+                   .Attr("out_types", {DT_INT32, DT_STRING})
+                   .Finalize(&graph, &source_node));
   ASSERT_TRUE(source_node != nullptr);
 
   // Try connecting to each of source_node's outputs.
-  EXPECT_OK(NodeBuilder("sink1", "Sink")
-                .Input(source_node)
-                .Finalize(&graph, nullptr));
-  EXPECT_OK(NodeBuilder("sink2", "Sink")
-                .Input(source_node, 1)
-                .Finalize(&graph, nullptr));
+  TF_EXPECT_OK(NodeBuilder("sink1", "Sink")
+                   .Input(source_node)
+                   .Finalize(&graph, nullptr));
+  TF_EXPECT_OK(NodeBuilder("sink2", "Sink")
+                   .Input(source_node, 1)
+                   .Finalize(&graph, nullptr));
 
   // Generate an error if the index is out of range.
   EXPECT_FALSE(NodeBuilder("sink3", "Sink")

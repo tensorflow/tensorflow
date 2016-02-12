@@ -43,56 +43,56 @@ class PrintingGraphTest : public OpsTestBase {
 };
 
 TEST_F(PrintingGraphTest, Int32Success_6) {
-  ASSERT_OK(Init(DT_INT32, DT_INT32));
+  TF_ASSERT_OK(Init(DT_INT32, DT_INT32));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 }
 
 TEST_F(PrintingGraphTest, Int32Success_Summarize6) {
-  ASSERT_OK(Init(DT_INT32, DT_INT32, "", -1, 6));
+  TF_ASSERT_OK(Init(DT_INT32, DT_INT32, "", -1, 6));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 }
 
 TEST_F(PrintingGraphTest, StringSuccess) {
-  ASSERT_OK(Init(DT_INT32, DT_STRING));
+  TF_ASSERT_OK(Init(DT_INT32, DT_STRING));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<string>(TensorShape({}), {"foo"});
   AddInputFromArray<string>(TensorShape({}), {"bar"});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 }
 
 TEST_F(PrintingGraphTest, MsgSuccess) {
-  ASSERT_OK(Init(DT_INT32, DT_STRING, "Message: "));
+  TF_ASSERT_OK(Init(DT_INT32, DT_STRING, "Message: "));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<string>(TensorShape({}), {"foo"});
   AddInputFromArray<string>(TensorShape({}), {"bar"});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 }
 
 TEST_F(PrintingGraphTest, FirstNSuccess) {
-  ASSERT_OK(Init(DT_INT32, DT_STRING, "", 3));
+  TF_ASSERT_OK(Init(DT_INT32, DT_STRING, "", 3));
   AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<string>(TensorShape({}), {"foo"});
   AddInputFromArray<string>(TensorShape({}), {"bar"});
   // run 4 times but we only print 3 as intended
-  for (int i = 0; i < 4; i++) ASSERT_OK(RunOpKernel());
+  for (int i = 0; i < 4; i++) TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));

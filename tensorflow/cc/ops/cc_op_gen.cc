@@ -255,13 +255,24 @@ Returns a pointer to the created Node)comment");
 }
 
 // Converts:
-//   bazel-out/.../genfiles/XX
+//   bazel-out/.../genfiles/(external/YYY/)?XX
 // to: XX.
 string GetPath(const std::string& dot_h_fname) {
   auto pos = dot_h_fname.find("/genfiles/");
-  if (pos == string::npos) return dot_h_fname;
-  // - 1 account for the terminating null character (\0) in "/genfiles/".
-  return dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+  string result = dot_h_fname;
+  if (pos != string::npos) {
+    // - 1 account for the terminating null character (\0) in "/genfiles/".
+    result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
+  }
+  if (result.size() > sizeof("external/") &&
+      result.compare(0, sizeof("external/") - 1, "external/") == 0) {
+    result = result.substr(sizeof("external/") - 1);
+    pos = result.find("/");
+    if (pos != string::npos) {
+      result = result.substr(pos + 1);
+    }
+  }
+  return result;
 }
 
 // Converts:

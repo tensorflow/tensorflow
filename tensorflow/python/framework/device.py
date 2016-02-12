@@ -203,6 +203,17 @@ def check_valid(spec):
   from_string(spec)
 
 
+def canonical_name(device):
+  """Returns a canonical name for the given device or device name."""
+  if device is None:
+    return ""
+  if isinstance(device, Device):
+    return device.to_string()
+  else:
+    device = from_string(device)
+    return device.to_string()
+
+
 def merge_device(spec):
   """Returns a device function that merges devices specifications.
 

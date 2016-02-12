@@ -107,7 +107,7 @@ Status RandomShuffleQueue::Initialize() {
 }
 
 void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
-  DCHECK_GT(queues_[0].size(), 0);
+  DCHECK_GT(queues_[0].size(), size_t{0});
   int64 index = generator_() % queues_[0].size();
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
@@ -326,7 +326,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
             for (; s > 0; --s) {
               if (attempt->tuple.empty()) {
                 // Only allocate tuple when we have something to dequeue
-                // so we don't use exceessive memory when there are many
+                // so we don't use excessive memory when there are many
                 // blocked dequeue attempts waiting.
                 attempt->tuple.reserve(num_components());
                 for (int i = 0; i < num_components(); ++i) {

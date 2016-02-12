@@ -21,7 +21,7 @@ http://tensorflow.org/tutorials/mnist/beginners/index.md
 See documentation on the TensorBoard specific pieces at
 http://tensorflow.org/how_tos/summaries_and_tensorboard/index.md
 
-If you modify this file, please update the exerpt in
+If you modify this file, please update the excerpt in
 how_tos/summaries_and_tensorboard/index.md.
 
 """
@@ -29,9 +29,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
+
+from tensorflow.examples.tutorials.mnist import input_data
+
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS

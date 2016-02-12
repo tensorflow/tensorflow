@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -288,15 +286,15 @@ class DeviceTest(tf.test.TestCase):
   def testNoDevice(self):
     with tf.Graph().as_default():
       var = tf.Variable([[1.0, 1.0]])
-    self.assertEqual(None, var.device)
-    self.assertEqual(None, var.initializer.device)
+    self.assertDeviceEqual(None, var.device)
+    self.assertDeviceEqual(None, var.initializer.device)
 
   def testDevice(self):
     with tf.Graph().as_default():
       with tf.device("/job:ps"):
         var = tf.Variable([[1.0, 1.0]])
-    self.assertEqual("/job:ps", var.device)
-    self.assertEqual("/job:ps", var.initializer.device)
+    self.assertDeviceEqual("/job:ps", var.device)
+    self.assertDeviceEqual("/job:ps", var.initializer.device)
 
 
 if __name__ == "__main__":

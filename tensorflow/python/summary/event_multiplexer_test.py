@@ -20,8 +20,6 @@ from __future__ import print_function
 import os
 import os.path
 
-import tensorflow.python.platform
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
@@ -47,8 +45,6 @@ class _FakeAccumulator(object):
 
   def __init__(self, path):
     self._path = path
-    self.autoupdate_called = False
-    self.autoupdate_interval = None
     self.reload_called = False
 
   def Tags(self):
@@ -76,10 +72,6 @@ class _FakeAccumulator(object):
     if tag_name not in self.Tags()[event_accumulator.IMAGES]:
       raise KeyError
     return ['%s/%s' % (self._path, tag_name)]
-
-  def AutoUpdate(self, interval):
-    self.autoupdate_called = True
-    self.autoupdate_interval = interval
 
   def Reload(self):
     self.reload_called = True
@@ -112,14 +104,6 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.Reload()
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
-
-  def testAutoUpdate(self):
-    x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
-    x.AutoUpdate(5)
-    self.assertTrue(x._GetAccumulator('run1').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run1').autoupdate_interval, 5)
-    self.assertTrue(x._GetAccumulator('run2').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run2').autoupdate_interval, 5)
 
   def testScalars(self):
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
@@ -274,16 +258,6 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.AddRun('run2')
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
-
-  def testAddRunMaintainsAutoUpdate(self):
-    x = event_multiplexer.EventMultiplexer()
-    x.AutoUpdate(5)
-    x.AddRun('run1')
-    x.AddRun('run2')
-    self.assertTrue(x._GetAccumulator('run1').autoupdate_called)
-    self.assertTrue(x._GetAccumulator('run2').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run1').autoupdate_interval, 5)
-    self.assertEqual(x._GetAccumulator('run2').autoupdate_interval, 5)
 
 if __name__ == '__main__':
   googletest.main()

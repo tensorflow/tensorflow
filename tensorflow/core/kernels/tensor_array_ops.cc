@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_op.h"
 #include "tensorflow/core/kernels/tensor_array.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -47,7 +47,7 @@ Status GetHandle(const string& input_name, OpKernelContext* ctx,
                  string* container, string* ta_handle) {
   {
     Tensor tensor;
-    // Assuming that input_name is at position 0 for puposes of
+    // Assuming that input_name is at position 0 for purposes of
     // has_input.
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, false));
     if (tensor.NumElements() != 2) {
@@ -81,6 +81,8 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
   }
   return Status::OK();
 }
+
+// CREATION *******************************************************************
 
 // Virtual class for shared behavior between TensorArrayOp and
 // TensorArrayGradOp.
@@ -124,6 +126,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
   explicit TensorArrayOp(OpKernelConstruction* context)
       : TensorArrayCreationOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
     if (tensor_array_name_ == "") tensor_array_name_ = name();
@@ -146,8 +149,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
     handle(0) = "_tensor_arrays";
     handle(1) = tensor_array_name_;
 
-    TensorArray* tensor_array =
-        new TensorArray(dtype_, *tensor_array_output_handle, size);
+    TensorArray* tensor_array = new TensorArray(
+        dtype_, *tensor_array_output_handle, size, dynamic_size_);
 
     TF_RETURN_IF_ERROR(rm->Create(handle(0), tensor_array_name_, tensor_array));
 
@@ -158,7 +161,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
  private:
   DataType dtype_;
-  string tensor_array_name_;
+  bool dynamic_size_;
+  string tensor_array_name_;  // The name used to create the TensorArray.
 
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
 };
@@ -181,10 +185,14 @@ REGISTER_GPU(bfloat16);
 
 #endif  // GOOGLE_CUDA
 
+// GRADIENT *******************************************************************
+
 class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
-      : TensorArrayCreationOp(context) {}
+      : TensorArrayCreationOp(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("source", &source_));
+  }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
                            Tensor* tensor_array_output_handle,
@@ -202,15 +210,22 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
 
     auto output_handle = tensor_array_output_handle->flat<string>();
     output_handle(0) = "_tensor_array_grads";
-    output_handle(1) = tensor_array_name;
+    output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
+    int32 array_size;
     TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
 
-    auto creator = [this, tensor_array,
+    // Once gradients are being calculated, the forward TensorArray
+    // may no longer be resized by new Writes.
+    tensor_array->DisableDynamicSize();
+    TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
+
+    auto creator = [this, tensor_array, array_size,
                     tensor_array_output_handle](TensorArray** ret) {
-      *ret = new TensorArray(tensor_array->ElemType(),
-                             *tensor_array_output_handle, tensor_array->Size());
+      *ret =
+          new TensorArray(tensor_array->ElemType(), *tensor_array_output_handle,
+                          array_size, false /* dynamic_size */);
       return Status::OK();
     };
 
@@ -221,6 +236,11 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
   }
 
  private:
+  // The gradient source for creating the given
+  // gradient TensorArray.  This should be unique to each gradients
+  // call.  Typical values look like "gradients", "gradients_1", ...
+  string source_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
 };
 
@@ -233,13 +253,13 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
 
+// WRITE **********************************************************************
+
 template <typename Device, typename T>
 class TensorArrayWriteOp : public OpKernel {
  public:
   explicit TensorArrayWriteOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("gradient_add", &gradient_add_));
-  }
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
@@ -264,17 +284,10 @@ class TensorArrayWriteOp : public OpKernel {
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
     PersistentTensor persistent_tensor(*tensor_value);
-    if (gradient_add_) {
-      Status s =
-          tensor_array->WriteOrAdd<Device, T>(ctx, index, persistent_tensor);
-      OP_REQUIRES_OK(ctx, s);
-    } else {
-      OP_REQUIRES_OK(ctx, tensor_array->Write(index, persistent_tensor));
-    }
+    OP_REQUIRES_OK(ctx, tensor_array->Write(ctx, index, &persistent_tensor));
   }
 
- private:
-  bool gradient_add_;
+  bool IsExpensive() override { return false; }
 };
 
 #define REGISTER_WRITE(type)                                                 \
@@ -301,6 +314,8 @@ REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+// READ ***********************************************************************
 
 class TensorArrayReadOp : public OpKernel {
  public:
@@ -334,6 +349,8 @@ class TensorArrayReadOp : public OpKernel {
     ctx->set_output(0, *value.AccessTensor(ctx));
   }
 
+  bool IsExpensive() override { return false; }
+
  private:
   DataType dtype_;
 };
@@ -357,6 +374,8 @@ REGISTER_GPU(bfloat16);
 
 #endif  // GOOGLE_CUDA
 
+// PACK ***********************************************************************
+
 // Concatenate the elements in a TensorArray.  All elements must be
 // defined and have the same shape.
 template <typename Device, typename T>
@@ -375,7 +394,8 @@ class TensorArrayPackOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
-    const int32 array_size = tensor_array->Size();
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
@@ -389,9 +409,12 @@ class TensorArrayPackOp : public OpKernel {
       return;
     }
 
-    PersistentTensor value_0;
-    OP_REQUIRES_OK(ctx, tensor_array->Read(0, &value_0));
-    Tensor* value_0_t = value_0.AccessTensor(ctx);
+    // Read all the PersistentTensors into a vector to keep track of
+    // their memory.
+    std::vector<PersistentTensor> values;
+    OP_REQUIRES_OK(ctx, tensor_array->ReadMany(&values));
+
+    const Tensor* value_0_t = values[0].AccessTensor(ctx);
     TensorShape output_shape(value_0_t->shape());
     output_shape.InsertDim(0, array_size);
 
@@ -402,10 +425,12 @@ class TensorArrayPackOp : public OpKernel {
     auto output_flat =
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
-    for (int i = 0; i < array_size; ++i) {
-      PersistentTensor value;
-      OP_REQUIRES_OK(ctx, tensor_array->Read(i, &value));
-      const Tensor* value_t = value.AccessTensor(ctx);
+    // Insert the first value
+    input_tensors_flat.emplace_back(new ConstMatrix(
+        value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
+
+    for (int i = 1; i < array_size; ++i) {
+      const Tensor* value_t = values[i].AccessTensor(ctx);
       OP_REQUIRES(
           ctx, value_0_t->shape() == value_t->shape(),
           errors::InvalidArgument(
@@ -466,31 +491,39 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayPack")
 
 #endif  // GOOGLE_CUDA
 
+// UNPACK *********************************************************************
+
 template <typename Device, typename T>
 class TensorArrayUnpackOp : public OpKernel {
  public:
   explicit TensorArrayUnpackOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("gradient_add", &gradient_add_));
-  }
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
-
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
 
-    const int32 array_size = tensor_array->Size();
+    int32 array_size;
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
+    bool dynamic_size = tensor_array->HasDynamicSize();
+
+    TensorShape element_shape(tensor_value->shape());
+
+    // If dynamic size, we may have to resize the TensorArray to fit.
+    if (dynamic_size && array_size < element_shape.dim_size(0)) {
+      array_size = element_shape.dim_size(0);
+    }
+
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
         errors::InvalidArgument("TensorArray dtype is ",
                                 DataTypeString(tensor_array->ElemType()),
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
-    TensorShape element_shape(tensor_value->shape());
     OP_REQUIRES(ctx, element_shape.dims() > 0,
                 errors::InvalidArgument("Input value for unpack must be at "
                                         "least a vector but received shape: ",
@@ -509,6 +542,9 @@ class TensorArrayUnpackOp : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1,
                                               element_shape.num_elements()};
 
+    std::vector<PersistentTensor> write_values;
+    write_values.reserve(array_size);
+
     for (int i = 0; i < array_size; ++i) {
       Tensor* tensor_value_i;
       PersistentTensor persistent_tensor;
@@ -522,18 +558,11 @@ class TensorArrayUnpackOp : public OpKernel {
       functor::Split<Device, T>()(ctx->eigen_device<Device>(), tensor_value_i_t,
                                   tensor_value_t, indices, sizes);
 
-      if (gradient_add_) {
-        Status s =
-            tensor_array->WriteOrAdd<Device, T>(ctx, i, persistent_tensor);
-        OP_REQUIRES_OK(ctx, s);
-      } else {
-        OP_REQUIRES_OK(ctx, tensor_array->Write(i, persistent_tensor));
-      }
+      write_values.push_back(persistent_tensor);
     }
-  }
 
- private:
-  bool gradient_add_;
+    OP_REQUIRES_OK(ctx, tensor_array->WriteMany(ctx, &write_values));
+  }
 };
 
 #define REGISTER_UNPACK(type)                                                 \
@@ -558,6 +587,34 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+// SIZE ***********************************************************************
+
+// Get the size of the TensorArray
+class TensorArraySizeOp : public OpKernel {
+ public:
+  explicit TensorArraySizeOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    TensorArray* tensor_array;
+    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    OP_REQUIRES_OK(ctx, tensor_array->Size(&(output->scalar<int32>()())));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorArraySize").Device(DEVICE_CPU),
+                        TensorArraySizeOp);
+
+REGISTER_KERNEL_BUILDER(Name("TensorArraySize")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .HostMemory("size"),
+                        TensorArraySizeOp);
+
+// CLOSE **********************************************************************
+
 // Delete the TensorArray from its resource container.  This enables
 // the user to close and release the resource in the middle of a step/run.
 // TODO(ebrevdo): decide whether closing the grad op should happen
@@ -571,13 +628,13 @@ class TensorArrayCloseOp : public OpKernel {
     TensorArray* tensor_array;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
     // Instead of deleting this TA from the ResourceManager, we just
-    // clear it away and mark it as dead.  The remaining memory
+    // clear it away and mark it as closed.  The remaining memory
     // consumed store its mutex and handle Tensor.  This will be
     // cleared out at the end of the step anyway, so it's fine to keep
-    // it around temporarily.  The next call to GetTensorArray will
-    // fail because GetTensorArray checks to see if the TensorArray is
-    // dead or not.
-    tensor_array->ClearAndMarkDead();
+    // it around until the end of the step.  Further calls to the
+    // TensorArray will fail because TensorArray checks internally to
+    // see if it is closed or not.
+    tensor_array->ClearAndMarkClosed();
   }
 };
 

@@ -86,7 +86,7 @@ class InitializableLookupTable : public LookupInterface {
     // Returns a tensor that contains the current batch of 'value' values.
     virtual const Tensor& values() const = 0;
 
-    // Returns an error if one has occurred, otherwire returns Status::OK.
+    // Returns an error if one has occurred, otherwise returns Status::OK.
     virtual Status status() const = 0;
 
     // Returns the total number of elements that the iterator will produce.

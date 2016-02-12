@@ -16,17 +16,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import collections
 import math
-import numpy as np
 import os
 import random
+import zipfile
+
+import numpy as np
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import zipfile
 
 # Step 1: Download the data.
 url = 'http://mattmahoney.net/dc/'

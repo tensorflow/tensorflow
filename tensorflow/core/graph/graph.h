@@ -15,7 +15,7 @@ limitations under the License.
 
 // A Graph describes a set of computations that are to be
 // performed, as well as the dependencies between those
-// compuations. The basic model is a DAG (directed acyclic graph) with
+// computations. The basic model is a DAG (directed acyclic graph) with
 // * internal nodes representing computational operations to be performed;
 // * edges represent dependencies, indicating the target may only be
 //   executed once the source has completed; and
@@ -267,8 +267,21 @@ class Graph {
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
-  // Returns one more than the maximum id assigned to any node.
-  int num_node_ids() const { return nodes_.size(); }
+  // The number of live nodes in the graph.
+  //
+  // Because nodes can be removed from the graph, num_nodes() is often
+  // smaller than num_node_ids(). If one needs to create an array of
+  // nodes indexed by node ids, num_node_ids() should be used as the
+  // array's size.
+  int num_nodes() const { return num_nodes_; }
+
+  // The number of live edges in the graph.
+  //
+  // Because edges can be removed from the graph, num_edges() is often
+  // smaller than num_edge_ids(). If one needs to create an array of
+  // edges indexed by edge ids, num_edge_ids() should be used as the
+  // array's size.
+  int num_edges() const { return edges().size(); }
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
@@ -280,6 +293,9 @@ class Graph {
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
   gtl::iterator_range<NodeIter> nodes() const;
+
+  // Returns one more than the maximum id assigned to any node.
+  int num_node_ids() const { return nodes_.size(); }
 
   // Returns the node associated with an id, or nullptr if no node
   // with that id (the node with that id was removed and the id has
@@ -329,6 +345,9 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
+
+  // Number of nodes alive.
+  int64 num_nodes_ = 0;
 
   // Map from edge ids to allocated edges.  edges_[id] may be nullptr if
   // the edge with that id was removed from the graph.

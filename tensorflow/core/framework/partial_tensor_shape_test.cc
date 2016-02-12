@@ -22,10 +22,10 @@ namespace tensorflow {
 namespace {
 
 TEST(PartialTensorShapeTest, Default) {
-  // The default PartialTensorShape constructor constructs a shape of 0-dim
-  // and 1-element.
-  const PartialTensorShape s({});
-  EXPECT_EQ(s.dims(), 0);
+  // The default PartialTensorShape constructor constructs a shape
+  // with unknown rank.
+  const PartialTensorShape s;
+  EXPECT_EQ(s.dims(), -1);
 }
 
 TEST(PartialTensorShapeTest, Concatenate) {
@@ -52,6 +52,9 @@ TEST(PartialTensorShapeTest, Concatenate) {
   EXPECT_EQ(-1, s2.dim_size(2));
   EXPECT_EQ(-1, s3.dim_size(2));
   EXPECT_EQ(0, s3.dim_size(3));
+
+  const auto s4 = s.Concatenate(PartialTensorShape());
+  ASSERT_EQ(-1, s4.dims());
 }
 
 TEST(PartialTensorShapeTest, InvalidShapeProto) {
@@ -68,6 +71,13 @@ TEST(PartialTensorShapeTest, InvalidShapeProto) {
   EXPECT_TRUE(PartialTensorShape::IsValid(proto));
 
   proto.Clear();
+  proto.set_unknown_rank(true);
+  EXPECT_TRUE(PartialTensorShape::IsValid(proto));
+
+  proto.add_dim()->set_size(1);
+  EXPECT_FALSE(PartialTensorShape::IsValid(proto));
+
+  proto.Clear();
   proto.add_dim()->set_size(-2);
   EXPECT_FALSE(PartialTensorShape::IsValid(proto));
 }
@@ -78,17 +88,20 @@ TEST(PartialTensorShapeTest, PartialShapeFullyDefined) {
   const PartialTensorShape c({-1, -1, 1});
   const PartialTensorShape d({1, 0});
   const PartialTensorShape e({});
+  const PartialTensorShape f;
   EXPECT_FALSE(a.IsFullyDefined());
   EXPECT_FALSE(c.IsFullyDefined());
   EXPECT_TRUE(b.IsFullyDefined());
   EXPECT_TRUE(d.IsFullyDefined());
   EXPECT_TRUE(e.IsFullyDefined());
+  EXPECT_FALSE(f.IsFullyDefined());
 }
 
 TEST(PartialTensorShapeTest, ToTensorShape) {
   const PartialTensorShape a({});
   const PartialTensorShape b({1, 0});
   const PartialTensorShape c({-1, 0});
+  const PartialTensorShape d;
   TensorShape full;
   EXPECT_TRUE(a.AsTensorShape(&full));
   EXPECT_EQ(full.dims(), 0);
@@ -97,6 +110,7 @@ TEST(PartialTensorShapeTest, ToTensorShape) {
   EXPECT_EQ(full.dim_size(0), 1);
   EXPECT_EQ(full.dim_size(1), 0);
   EXPECT_FALSE(c.AsTensorShape(&full));
+  EXPECT_FALSE(d.AsTensorShape(&full));
 }
 
 
@@ -107,6 +121,7 @@ TEST(PartialTensorShapeTest, PartialShapeCompatibleWith) {
   const PartialTensorShape d({1, 0});
   const PartialTensorShape e({-1, 0, 2});
   const PartialTensorShape f({});
+  const PartialTensorShape g;
 
   EXPECT_TRUE(f.IsCompatibleWith(f));
   EXPECT_TRUE(a.IsCompatibleWith(b));
@@ -123,10 +138,14 @@ TEST(PartialTensorShapeTest, PartialShapeCompatibleWith) {
   EXPECT_FALSE(a.IsCompatibleWith(f));
   EXPECT_FALSE(b.IsCompatibleWith(f));
   EXPECT_FALSE(c.IsCompatibleWith(f));
+  EXPECT_TRUE(a.IsCompatibleWith(g));
+  EXPECT_TRUE(g.IsCompatibleWith(a));
+  EXPECT_TRUE(g.IsCompatibleWith(g));
 }
 
 TEST(PartialTensorShapeTest, ShapeCompatibleWith) {
   const PartialTensorShape a({-1, 0, 1});
+  const PartialTensorShape unknown;
   TensorShape b({0, 1});
   TensorShape c({0, 0, 1});
   TensorShape d({1, 0, 1});
@@ -136,6 +155,11 @@ TEST(PartialTensorShapeTest, ShapeCompatibleWith) {
   EXPECT_TRUE(a.IsCompatibleWith(c));
   EXPECT_TRUE(a.IsCompatibleWith(d));
   EXPECT_FALSE(a.IsCompatibleWith(e));
+
+  EXPECT_TRUE(unknown.IsCompatibleWith(b));
+  EXPECT_TRUE(unknown.IsCompatibleWith(c));
+  EXPECT_TRUE(unknown.IsCompatibleWith(d));
+  EXPECT_TRUE(unknown.IsCompatibleWith(e));
 }
 
 TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
@@ -145,29 +169,48 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   const PartialTensorShape d({1, 0});
   const PartialTensorShape e({-1, 0, 2});
   const PartialTensorShape f({});
+  const PartialTensorShape g;
 
-  PartialTensorShape test({});
+  PartialTensorShape test;
   EXPECT_EQ(Status::OK(), a.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
+  test = PartialTensorShape();
   EXPECT_EQ(Status::OK(), a.MergeWith(b, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), 1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
+  test = PartialTensorShape();
   EXPECT_TRUE(errors::IsInvalidArgument(a.MergeWith(d, &test)));
 
+  test = PartialTensorShape();
   EXPECT_EQ(Status::OK(), a.MergeWith(c, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
+  test = PartialTensorShape();
   EXPECT_EQ(Status::OK(), c.MergeWith(a, &test));
+  EXPECT_EQ(test.dims(), 3);
+  EXPECT_EQ(test.dim_size(0), -1);
+  EXPECT_EQ(test.dim_size(1), 0);
+  EXPECT_EQ(test.dim_size(2), 1);
+
+  test = PartialTensorShape();
+  EXPECT_EQ(Status::OK(), a.MergeWith(g, &test));
+  EXPECT_EQ(test.dims(), 3);
+  EXPECT_EQ(test.dim_size(0), -1);
+  EXPECT_EQ(test.dim_size(1), 0);
+  EXPECT_EQ(test.dim_size(2), 1);
+
+  test = PartialTensorShape();
+  EXPECT_EQ(Status::OK(), g.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);

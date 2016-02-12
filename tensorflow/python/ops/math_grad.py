@@ -26,7 +26,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -418,7 +417,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(c), dtype=x.dtype)
+  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 
@@ -487,8 +486,8 @@ def _SparseMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("Floor")
-def _FloorGrad(_, grad):
-  return grad
+def _FloorGrad(_, unused_grad):
+  return [None]
 
 
 @ops.RegisterGradient("BatchMatMul")
@@ -568,3 +567,10 @@ def _FFT2DGrad(_, grad):
 def _IFFT2DGrad(_, grad):
   rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
   return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("Cross")
+def _CrossGrad(op, grad):
+  u = op.inputs[0]
+  v = op.inputs[1]
+  return (math_ops.cross(v, grad), math_ops.cross(grad, u))

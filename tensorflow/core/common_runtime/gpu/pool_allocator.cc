@@ -39,7 +39,7 @@ PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
       size_rounder_(size_rounder),
       allocation_begun_(false) {
   if (auto_resize) {
-    CHECK_LT(0, pool_size_limit)
+    CHECK_LT(size_t{0}, pool_size_limit)
         << "size limit must be > 0 if auto_resize is true.";
   }
 }
