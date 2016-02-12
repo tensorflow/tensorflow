@@ -521,6 +521,61 @@ flow_in: A float scalar that enforces proper chaining of operations.
 flow_out: A float scalar that enforces proper chaining of operations.
 )doc");
 
+REGISTER_OP("TensorArrayConcat")
+    .Input("handle: Ref(string)")
+    .Input("flow_in: float")
+    .Output("value: dtype")
+    .Output("lengths: int64")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Concat the elements from the TensorArray.
+
+Takes T elements of shapes (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...),
+  ..., (n(T-1) x d0 x d1 x ...)
+and concatenates them into a Tensor of shape:
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...).
+
+All elements must have the same shape (excepting the first dimension).
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
+value: All of the elements in the TensorArray, concatenated along the first
+  axis.
+lengths: A vector of the row sizes of the original T elements in the
+  value output.  In the example above, this would be the values:
+  (n1, n2, ..., n(T-1))
+)doc");
+
+REGISTER_OP("TensorArraySplit")
+    .Input("handle: Ref(string)")
+    .Input("value: T")
+    .Input("lengths: int64")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
+    .Attr("T: type")
+    .Doc(R"doc(
+Split the data from the input value into TensorArray elements.
+
+Assuming that `lengths` takes on values
+  (n0, n1, ..., n(T-1))
+and that `value` has shape
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+this splits values into a TensorArray with T tensors.
+
+TensorArray index t will be the subtensor of values with starting position
+  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+and having size
+  nt x d0 x d1 x ...
+
+handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+lengths: The vector of lengths, how to split the rows of value into the
+  TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
+)doc");
+
 REGISTER_OP("TensorArraySize")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")

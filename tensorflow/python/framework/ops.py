@@ -3340,6 +3340,7 @@ class GraphKeys(object):
   # Key to indicate various ops.
   INIT_OP = "init_op"
   READY_OP = "ready_op"
+  SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
 
