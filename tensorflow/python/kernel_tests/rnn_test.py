@@ -732,23 +732,55 @@ class BidirectionalRNNTest(tf.test.TestCase):
         tf.placeholder(tf.float32,
                        shape=(batch_size, input_size) if use_shape else None)
     ]
-    outputs = tf.nn.bidirectional_rnn(cell_fw,
+    outputs, state_fw, state_bw = tf.nn.bidirectional_rnn(cell_fw,
                                       cell_bw,
                                       inputs,
                                       dtype=tf.float32,
                                       sequence_length=sequence_length)
     self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state_fw.get_shape().as_list(),[batch_size,num_units])
+    self.assertEqual(state_bw.get_shape().as_list(),[batch_size,num_units])
     for out in outputs:
       self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
                                                    else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
 
-    return input_value, inputs, outputs, sequence_length
+    return input_value, inputs, outputs, state_fw, state_bw, sequence_length
+
+  def _createSimpleBidirectionalRNN(self, use_gpu, use_shape, use_sequence_length):
+    """Creates a bi-directional RNN with the Plus1RNNCell to check state output"""
+    num_units = 5
+    input_size = 5
+    batch_size = 2
+    max_length = 3
+
+    initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+    sequence_length = tf.placeholder(tf.int64) if use_sequence_length else None
+    cell_fw = Plus1RNNCell()
+    cell_bw = Plus1RNNCell()
+    inputs = max_length * [
+        tf.placeholder(tf.float32,
+                       shape=(batch_size, input_size) if use_shape else None)
+    ]
+    outputs, state_fw, state_bw = tf.nn.bidirectional_rnn(cell_fw,
+                                      cell_bw,
+                                      inputs,
+                                      dtype=tf.float32,
+                                      sequence_length=sequence_length)
+    self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state_fw.get_shape().as_list(),[batch_size,num_units])
+    self.assertEqual(state_bw.get_shape().as_list(),[batch_size,num_units])
+    for out in outputs:
+      self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
+                                                   else None, 2 * num_units])
+
+    input_value = np.random.randn(batch_size, input_size)
+    return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testBidirectionalRNN(self, use_gpu, use_shape):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      input_value, inputs, outputs, sequence_length = (
+      input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalRNN(use_gpu, use_shape, True))
       tf.initialize_all_variables().run()
       # Run with pre-specified sequence length of 2, 3
@@ -788,7 +820,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
 
   def _testBidirectionalRNNWithoutSequenceLength(self, use_gpu, use_shape):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      input_value, inputs, outputs, _ = self._createBidirectionalRNN(
+      input_value, inputs, outputs, state_fw, state_bw, _ = self._createBidirectionalRNN(
           use_gpu, use_shape, False)
       tf.initialize_all_variables().run()
       out = sess.run(outputs, feed_dict={inputs[0]: input_value})
@@ -811,6 +843,23 @@ class BidirectionalRNNTest(tf.test.TestCase):
         self.assertEqual(out[i][1][1], out[8 - 1 - i][1][4])
         self.assertEqual(out[i][1][2], out[8 - 1 - i][1][5])
 
+  def _testSimpleBidirectionalRNN(self, use_gpu, use_shape):
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
+          self._createBidirectionalRNN(use_gpu, use_shape, False))
+      tf.initialize_all_variables().run()
+      s_fw, s_bw = sess.run([state_fw, state_bw],
+                     feed_dict={inputs[0]: input_value})
+      # Since the forward and backward Plus1 cells were initialized with the
+      # same parameters, the forward and backward state should end up being
+      # the exact same thing, namely the zero state + (max_length)
+      # Both sequences are length 3, batch size 2, num units 5
+      self.assertEqual(s_fw, s_bw)
+      self.assertEqual(s_fw, np.array([[3,3,3,3,3],
+                                       [3,3,3,3,3]]))
+
+
+
   def testBidirectionalRNN(self):
     self._testBidirectionalRNN(use_gpu=False, use_shape=False)
     self._testBidirectionalRNN(use_gpu=True, use_shape=False)
@@ -826,6 +875,12 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                                     use_shape=True)
     self._testBidirectionalRNNWithoutSequenceLength(use_gpu=True,
                                                     use_shape=True)
+  def testSimpleBidirectionalRNNState(self):
+    self._testSimpleBidirectionalRNN(use_gpu=False, use_shape=False)
+    self._testSimpleBidirectionalRNN(use_gpu=False, use_shape=True)
+    self._testSimpleBidirectionalRNN(use_gpu=True, use_shape=False)
+    self._testSimpleBidirectionalRNN(use_gpu=True, use_shape=True)
+
 
 
 ######### Benchmarking RNN code
