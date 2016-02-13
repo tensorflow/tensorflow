@@ -12,8 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import random
-
 from sklearn import datasets, metrics, cross_validation
 
 import skflow
@@ -23,7 +21,6 @@ import dask.dataframe as dd
 # Sometimes when your dataset is too large to hold in the memory
 # you may want to load it into a out-of-core dataframe as provided by dask library
 # to firstly draw sample batches and then load into memory for training. 
-random.seed(42)
 
 # Load dataset.
 iris = datasets.load_iris()

@@ -15,15 +15,11 @@
 import tensorflow as tf
 from tensorflow.python.platform import googletest
 
-import random
-
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
 import skflow
 
-
-random.seed(42)
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = train_test_split(iris.data,

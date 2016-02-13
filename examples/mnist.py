@@ -18,7 +18,6 @@ It follows description from this TensorFlow tutorial:
     https://www.tensorflow.org/versions/master/tutorials/mnist/pros/index.html#deep-mnist-for-experts
 """
 
-import random
 from sklearn import metrics
 
 import tensorflow as tf

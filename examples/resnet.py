@@ -21,7 +21,6 @@ to make this better.
 """
 
 import os
-import random
 from sklearn import metrics
 
 import tensorflow as tf

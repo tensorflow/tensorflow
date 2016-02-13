@@ -12,8 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import random
-
 import skflow
 import tensorflow as tf
 from sklearn import datasets, metrics, cross_validation
@@ -21,8 +19,6 @@ from sklearn import datasets, metrics, cross_validation
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
     test_size=0.2, random_state=42)
-
-random.seed(42)
 
 def my_model(X, y):
     """
