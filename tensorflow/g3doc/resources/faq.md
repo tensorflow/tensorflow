@@ -317,12 +317,3 @@ The TensorFlow C++ code base adheres to the
 (<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
 indentation.)
 
-#### Why do we disable bad import lint warnings in many of our Python scripts?
-
-Because we run TensorFlow in Google's internal code environment too, there are
-import dependencies that require us to pull in
-`third_party.tensorflow.python.platform` first before other modules. This
-doesn't apply externally, but to allow reuse of the scripts in both environments
-we keep the import order, and disable warnings around this special case.
-
-We're hoping to create a better solution to this in the future.
