@@ -334,6 +334,7 @@ PNG-encode an image.
 where `channels` is:
 
 *   1: for grayscale.
+*   2: for grayscale + alpha.
 *   3: for RGB.
 *   4: for RGBA.
 

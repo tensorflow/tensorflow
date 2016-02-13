@@ -1160,3 +1160,15 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+py_binary(
+    name = "batch_norm_benchmark",
+    srcs = [
+        "ops/batch_norm_benchmark.py",
+    ],
+    main = "ops/batch_norm_benchmark.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)

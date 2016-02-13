@@ -72,10 +72,13 @@ limitations under the License.
   TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m); \
   m(complex64)
 
+#define TF_CALL_POD_TYPES(m) \
+  TF_CALL_NUMBER_TYPES(m);   \
+  m(bool)
+
 // Call "m" on all types.
 #define TF_CALL_ALL_TYPES(m) \
-  TF_CALL_NUMBER_TYPES(m);   \
-  m(bool);                   \
+  TF_CALL_POD_TYPES(m);      \
   m(string)
 
 // Call "m" on all types supported on GPU.
@@ -100,6 +103,8 @@ limitations under the License.
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) m(float)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)
+
+#define TF_CALL_POD_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 
 #define TF_CALL_ALL_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 

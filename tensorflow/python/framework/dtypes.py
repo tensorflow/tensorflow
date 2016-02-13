@@ -245,6 +245,10 @@ class DType(object):
   def __hash__(self):
     return self._type_enum
 
+  @property
+  def size(self):
+    return np.dtype(self.as_numpy_dtype).itemsize
+
 
 # Define standard wrappers for the types_pb2.DataType enum.
 float32 = DType(types_pb2.DT_FLOAT)

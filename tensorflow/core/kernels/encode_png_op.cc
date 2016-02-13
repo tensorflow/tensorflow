@@ -54,9 +54,9 @@ class EncodePngOp : public OpKernel {
                 errors::InvalidArgument("image must be 3-dimensional",
                                         image.shape().DebugString()));
     const int64 channels = image.dim_size(2);
-    OP_REQUIRES(context, channels == 1 || channels == 3 || channels == 4,
+    OP_REQUIRES(context, channels >= 1 && channels <= 4,
                 errors::InvalidArgument(
-                    "image must have 1, 3, or 4 channels, got ", channels));
+                    "image must have 1, 2, 3, or 4 channels, got ", channels));
 
     // Encode image to png string
     Tensor* output = NULL;
