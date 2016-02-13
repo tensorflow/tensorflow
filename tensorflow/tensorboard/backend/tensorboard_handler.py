@@ -31,8 +31,6 @@ import json
 import mimetypes
 import os
 
-import tensorflow.python.platform
-
 from six import BytesIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib

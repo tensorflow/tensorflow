@@ -18,14 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order,
-# pylint: disable=unused-import
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
-# pylint: enable=g-bad-import-order
-# pylint: enable=unused-import
 
 
 class ResizeNearestNeighborOpTest(tf.test.TestCase):

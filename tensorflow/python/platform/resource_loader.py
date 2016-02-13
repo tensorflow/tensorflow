@@ -22,12 +22,10 @@ import inspect
 import os.path
 import sys
 
-# pylint: disable=unused-import
 # pylint: disable=g-import-not-at-top
 # pylint: disable=wildcard-import
 # pylint: disable=protected-access
 from . import control_imports
-import tensorflow.python.platform
 if control_imports.USE_OSS:
   from tensorflow.python.platform.default._resource_loader import *
 else:

@@ -1700,6 +1700,9 @@ The following standard keys are defined:
   for more details.
 * `REGULARIZATION_LOSSES`: regularization losses collected during graph
   construction.
+* `WEIGHTS`: weights inside neural network layers
+* `BIASES`: biases inside neural network layers
+* `ACTIVATIONS`: activations of neural network layers
 
 
 ## Defining new operations

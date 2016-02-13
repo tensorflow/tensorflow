@@ -104,6 +104,16 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        UnpackOp<CPUDevice, int32>);
+
 #endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow

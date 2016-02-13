@@ -18,10 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import numpy as np
 import tensorflow as tf
 
@@ -88,6 +84,44 @@ class TensorArrayTest(tf.test.TestCase):
     self._testTensorArrayWritePackWithType(tf.complex64)
     self._testTensorArrayWritePackWithType(tf.string)
 
+  def _testTensorArrayWriteConcat(self, tf_dtype, use_gpu):
+    dtype = tf_dtype.as_numpy_dtype()
+    with self.test_session(use_gpu=use_gpu):
+      h = tensor_array_ops.TensorArray(
+          dtype=tf_dtype, tensor_array_name="foo", size=3)
+
+      if tf_dtype == tf.string:
+        # In Python3, np.str is unicode, while we always want bytes
+        convert = lambda x: np.asarray(x).astype("|S")
+      else:
+        convert = lambda x: np.asarray(x).astype(dtype)
+
+      w0 = h.write(0, convert([[4.0, 5.0], [104.0, 105.0], [204.0, 205.0]]))
+      w1 = w0.write(1, convert([[6.0, 7.0], [106.0, 107.0]]))
+      w2 = w1.write(2, convert([[8.0, 9.0]]))
+
+      c0 = w2.concat()
+
+      self.assertAllEqual(
+          convert([[4.0, 5.0],
+                   [104.0, 105.0],
+                   [204.0, 205.0],
+                   [6.0, 7.0],
+                   [106.0, 107.0],
+                   [8.0, 9.0]]), c0.eval())
+
+  def _testTensorArrayWriteConcatWithType(self, tf_dtype):
+    self._testTensorArrayWriteConcat(tf_dtype=tf_dtype, use_gpu=False)
+    self._testTensorArrayWriteConcat(tf_dtype=tf_dtype, use_gpu=True)
+
+  def testTensorArrayWriteConcat(self):
+    self._testTensorArrayWriteConcatWithType(tf.float32)
+    self._testTensorArrayWriteConcatWithType(tf.float64)
+    self._testTensorArrayWriteConcatWithType(tf.int32)
+    self._testTensorArrayWriteConcatWithType(tf.int64)
+    self._testTensorArrayWriteConcatWithType(tf.complex64)
+    self._testTensorArrayWriteConcatWithType(tf.string)
+
   def testTensorArrayUnpackWrongMajorSizeFails(self):
     with self.test_session():
       h = tensor_array_ops.TensorArray(
@@ -153,6 +187,68 @@ class TensorArrayTest(tf.test.TestCase):
     self._testTensorArrayUnpackReadWithType(tf.int64)
     self._testTensorArrayUnpackReadWithType(tf.complex64)
     self._testTensorArrayUnpackReadWithType(tf.string)
+
+  def _testTensorArraySplitRead(self, tf_dtype, use_gpu):
+    dtype = tf_dtype.as_numpy_dtype()
+    with self.test_session(use_gpu=use_gpu) as sess:
+      h = tensor_array_ops.TensorArray(
+          dtype=tf_dtype, tensor_array_name="foo", size=3)
+
+      if tf_dtype == tf.string:
+        # In Python3, np.str is unicode, while we always want bytes
+        convert = lambda x: np.asarray(x).astype("|S")
+      else:
+        convert = lambda x: np.asarray(x).astype(dtype)
+
+      # Split an empty vector
+      lengths = tf.constant([0, 0, 0])
+      w0 = h.split(convert([]), lengths=lengths)
+      r0 = w0.read(0)
+      r1 = w0.read(1)
+      r2 = w0.read(2)
+
+      d0, d1, d2 = sess.run([r0, r1, r2])
+      self.assertAllEqual(convert([]), d0)
+      self.assertAllEqual(convert([]), d1)
+      self.assertAllEqual(convert([]), d2)
+
+      # Split a vector
+      lengths = tf.constant([2, 0, 1])
+      w0 = h.split(
+          convert([1.0, 2.0, 3.0]), lengths=lengths)
+      r0 = w0.read(0)
+      r1 = w0.read(1)
+      r2 = w0.read(2)
+
+      d0, d1, d2 = sess.run([r0, r1, r2])
+      self.assertAllEqual(convert([1.0, 2.0]), d0)
+      self.assertAllEqual(convert([]), d1)
+      self.assertAllEqual(convert([3.0]), d2)
+
+      # Split a matrix
+      lengths = tf.constant([2, 0, 1])
+      w0 = h.split(
+          convert([[1.0, 101.0], [2.0, 201.0], [3.0, 301.0]]), lengths=lengths)
+      r0 = w0.read(0)
+      r1 = w0.read(1)
+      r2 = w0.read(2)
+
+      d0, d1, d2 = sess.run([r0, r1, r2])
+      self.assertAllEqual(convert([[1.0, 101.0], [2.0, 201.0]]), d0)
+      self.assertAllEqual(convert([]).reshape(0, 2), d1)
+      self.assertAllEqual(convert([[3.0, 301.0]]), d2)
+
+  def _testTensorArraySplitReadWithType(self, tf_dtype):
+    self._testTensorArraySplitRead(tf_dtype=tf_dtype, use_gpu=False)
+    self._testTensorArraySplitRead(tf_dtype=tf_dtype, use_gpu=True)
+
+  def testTensorArraySplitRead(self):
+    self._testTensorArraySplitReadWithType(tf.float32)
+    self._testTensorArraySplitReadWithType(tf.float64)
+    self._testTensorArraySplitReadWithType(tf.int32)
+    self._testTensorArraySplitReadWithType(tf.int64)
+    self._testTensorArraySplitReadWithType(tf.complex64)
+    self._testTensorArraySplitReadWithType(tf.string)
 
   def _testTensorGradArrayWriteRead(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -323,6 +419,68 @@ class TensorArrayTest(tf.test.TestCase):
     self._testTensorArrayWriteMultipleFails(use_gpu=False)
     self._testTensorArrayWriteMultipleFails(use_gpu=True)
 
+  def _testTensorArrayConcatIncompatibleShapesFails(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
+
+      w1 = h.write(0, 3.0)
+      w2 = w1.write(1, 4.0)
+      w3 = w2.write(2, [3.0])
+
+      with self.assertRaisesOpError(
+          "Concat saw a scalar shape at index 0 but requires at least vectors"):
+        w3.concat().eval()
+
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
+
+      w1 = h.write(0, [3.0])
+      w2 = w1.write(1, [4.0])
+      w3 = w2.write(2, [[3.0]])
+
+      with self.assertRaisesOpError(
+          r"TensorArray has inconsistent shapes.  Index 0 has "
+          r"\(excepting dimension 0\) shape: \[\] but index 2 has \(excepting "
+          r"dimension 0\) shape: \[1\]"):
+        w3.concat().eval()
+
+  def testTensorArrayConcatIncompatibleShapesFails(self):
+    self._testTensorArrayConcatIncompatibleShapesFails(use_gpu=False)
+    self._testTensorArrayConcatIncompatibleShapesFails(use_gpu=True)
+
+  def _testTensorArraySplitIncompatibleShapesFails(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
+
+      with self.assertRaisesOpError(
+          r"Expected lengths to be a vector, received shape: \[\]"):
+        lengths = tf.placeholder(tf.int64)
+        h.split([1.0, 2.0, 3.0], lengths).flow.eval(feed_dict={lengths: 1})
+
+      with self.assertRaisesOpError(
+          r"Expected sum of lengths to be equal to values.shape\[0\], "
+          r"but sum of lengths is 1 and value's shape is: \[3\]"):
+        h.split([1.0, 2.0, 3.0], [1]).flow.eval()
+
+      with self.assertRaisesOpError(
+          r"Expected value to be at least a vector, but received shape: \[\]"):
+        h.split(1.0, [1]).flow.eval()
+
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=2)
+
+      with self.assertRaisesOpError(
+          r"TensorArray's size is not equal to the size of lengths "
+          r"\(2 vs. 1\), and the TensorArray is not marked as "
+          r"dynamically resizeable"):
+        h.split([1.0], [1]).flow.eval()
+
+  def testTensorArraySplitIncompatibleShapesFails(self):
+    self._testTensorArraySplitIncompatibleShapesFails(use_gpu=False)
+    self._testTensorArraySplitIncompatibleShapesFails(use_gpu=True)
+
   def _testMultiTensorArray(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       h1 = tensor_array_ops.TensorArray(
@@ -389,7 +547,7 @@ class TensorArrayTest(tf.test.TestCase):
           grad_ys=[c(-1.0), c([[2.0, 3.0]])])
       grad_vals = sess.run(grad)
       self.assertEqual(len(grad_vals), 2)
-      self.assertAllClose(c(-1.0), grad_vals[0])
+      self.assertAllEqual(c(-1.0), grad_vals[0])
       self.assertAllEqual(c([[2.0, 3.0]]), grad_vals[1])
 
   def _testTensorArrayGradientWriteRead(self, use_gpu):
@@ -417,11 +575,35 @@ class TensorArrayTest(tf.test.TestCase):
       grad_vals = sess.run(grad)
 
       self.assertEqual(len(grad_vals), 1)
-      self.assertAllClose([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
+      self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
   def testTensorArrayGradientUnpackRead(self):
     self._testTensorArrayGradientUnpackRead(False)
     self._testTensorArrayGradientUnpackRead(True)
+
+  def _testTensorArrayGradientSplitConcat(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      h = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=2)
+
+      value = tf.constant([[1.0, -1.0], [10.0, -10.0], [100.0, -100.0]])
+
+      w = h.split(value, [2, 1])
+      r = w.concat()
+
+      # Test combined gradients
+      grad = tf.gradients(
+          ys=[r], xs=[value],
+          grad_ys=[[[2.0, -2.0], [20.0, -20.0], [200.0, -200.0]]])
+      grad_vals = sess.run(grad)
+
+      self.assertEqual(len(grad_vals), 1)
+      self.assertAllEqual(
+          [[2.0, -2.0], [20.0, -20.0], [200.0, -200.0]], grad_vals[0])
+
+  def testTensorArrayGradientSplitConcat(self):
+    self._testTensorArrayGradientSplitConcat(False)
+    self._testTensorArrayGradientSplitConcat(True)
 
   def _testTensorArrayGradientDynamicUnpackRead(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -440,7 +622,7 @@ class TensorArrayTest(tf.test.TestCase):
       grad_vals = sess.run(grad)
 
       self.assertEqual(len(grad_vals), 1)
-      self.assertAllClose([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
+      self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
   def testTensorArrayGradientDynamicUnpackRead(self):
     self._testTensorArrayGradientDynamicUnpackRead(False)

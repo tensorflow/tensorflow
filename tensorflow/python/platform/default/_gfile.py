@@ -25,8 +25,9 @@ import functools
 import glob as _glob
 import os
 import shutil
-import six
 import threading
+
+import six
 
 
 class _GFileBase(six.Iterator):

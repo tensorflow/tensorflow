@@ -405,13 +405,12 @@ class ExecutorState {
     Tensor* ref = nullptr;       // A tensor reference.
     mutex* ref_mu = nullptr;     // mutex for *ref if ref is not nullptr.
     bool has_value = false;      // Whether the value exists
+    // The attributes of the allocator that creates the tensor.
+    AllocatorAttributes alloc_attr;
 
     // Every entry carries an optional DeviceContext containing
     // Device-specific information about how the Tensor was produced.
     DeviceContext* device_context = nullptr;
-
-    // The attributes of the allocator that creates the tensor.
-    AllocatorAttributes alloc_attr;
   };
 
   // Contains a map from node id to the DeviceContext object that was
@@ -973,6 +972,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         OpKernelContext ctx(&params);
         if (stats_collector_) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+        // The final node in the step is always a Sink node. Block
+        // this Op from completing until the device has finished all
+        // queued operations. For devices like GPUs that continue to
+        // execute Ops after their Compute methods have completed,
+        // this ensures that control is not returned to the user until
+        // the step (and its side-effects) has actually completed.
+        if (node->IsSink()) {
+          s = device->Sync();
+        }
         if (stats_collector_) nodestats::SetOpEnd(stats);
 
         s = ProcessOutputs(item, &ctx, &outputs, stats);
@@ -1160,7 +1168,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
   ready->clear();
-
   {
     FrameState* output_frame = input_frame;
     int64 output_iter = input_iter;

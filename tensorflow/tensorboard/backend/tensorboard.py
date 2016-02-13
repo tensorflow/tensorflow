@@ -24,8 +24,6 @@ from __future__ import print_function
 import os
 import socket
 
-import tensorflow.python.platform
-
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import logging

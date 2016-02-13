@@ -137,6 +137,16 @@ TF_CALL_NUMBER_TYPES(REGISTER_ADDN_CPU);
 
 #if GOOGLE_CUDA
 REGISTER_ADDN(float, GPU);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AddN")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("inputs")
+                            .HostMemory("sum"),
+                        AddNOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_ADDN

@@ -28,8 +28,6 @@ import sys
 import threading
 import weakref
 
-import tensorflow.python.platform
-
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
@@ -3342,6 +3340,7 @@ class GraphKeys(object):
   # Key to indicate various ops.
   INIT_OP = "init_op"
   READY_OP = "ready_op"
+  SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
 
