@@ -8759,6 +8759,55 @@ op {
   description: "If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices\n`[0 : shape[split_dim] % num_split]` gets one extra dimension.\nFor example, if `split_dim = 1` and `num_split = 2` and the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    output_tensor[0] = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    output_tensor[1] = shape = [2, 3]\n    [ d e  ]\n    [      ]"
 }
 op {
+  name: "SparseTensorDenseMatMul"
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`, size [nnz x 2] Matrix."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    description: "1-D.  The `values` of the `SparseTensor`, size [nnz] Vector."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`, size [2] Vector."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b"
+    description: "2-D.  A dense Matrix."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "product"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use the adjoint of A in the matrix multiply.  If A is complex, this\nis transpose(conj(A)).  Otherwise it\'s transpose(A)."
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use the adjoint of B in the matrix multiply.  If B is complex, this\nis transpose(conj(B)).  Otherwise it\'s transpose(B)."
+  }
+  summary: "Multiply SparseTensor (of rank 2) \"A\" by dense matrix \"B\"."
+  description: "No validity checking is performed on the indices of A.  However, the following\ninput format is recommended for optimal behavior:\n\nif adjoint_a == false:\n  A should be sorted in lexicographically increasing order.  Use SparseReorder\n  if you\'re not sure.\nif adjoint_a == true:\n  A should be sorted in order of increasing dimension 1 (i.e., \"column major\"\n  order instead of \"row major\" order)."
+}
+op {
   name: "SparseToDense"
   input_arg {
     name: "sparse_indices"
