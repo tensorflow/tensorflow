@@ -69,17 +69,22 @@ abs_path() {
     [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
 }
 
+# Exit after a failure
+die() {
+    echo $@
+    exit 1
+}
+
 # Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
-  bazel build -c opt ${PIP_BUILD_TARGET}
+  bazel build -c opt ${PIP_BUILD_TARGET} || die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${PIP_BUILD_TARGET}
+  bazel build -c opt --config=cuda ${PIP_BUILD_TARGET} || die "Build failed."
 else
-  echo "Unrecognized container type: \"${CONTAINER_TYPE}\""
-  exit 1
+  die "Unrecognized container type: \"${CONTAINER_TYPE}\""
 fi
 
 echo "PY_TEST_WHITELIST: ${PY_TEST_WHITELIST}"
@@ -96,8 +101,7 @@ source tools/python_bin_path.sh
 
 # Assume: PYTHON_BIN_PATH is exported by the script above
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
-  echo "PYTHON_BIN_PATH was not provided. Did you run configure?"
-  exit 1
+  die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
 # Determine the major and minor versions of Python being used (e.g., 2.7)
@@ -117,9 +121,8 @@ bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} &&
 # Perform installation
 WHL_PATH=`ls ${PIP_WHL_DIR}/tensorflow*.whl`
 if [[ `echo ${WHL_PATH} | wc -w` -ne 1 ]]; then
-  echo "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
+  die "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
 "directory: ${PIP_WHL_DIR}"
-  exit 1
 fi
 
 echo "whl file path = ${WHL_PATH}"
@@ -169,8 +172,7 @@ for CAND in ${LIB_PYTHON_DIR_CANDS}; do
 done
 
 if [[ -z ${LIB_PYTHON_DIR} ]]; then
-  echo "Failed to find local Python library directory"
-  exit 1
+  die "Failed to find local Python library directory"
 else
   echo "Found local Python library directory at: ${LIB_PYTHON_DIR}"
 fi
@@ -204,8 +206,7 @@ ALL_PY_TESTS=`find tensorflow/python -name "*_test.py"`
 PY_TEST_COUNT=`echo ${ALL_PY_TESTS} | wc -w`
 
 if [[ ${PY_TEST_COUNT} -eq 0 ]]; then
-  echo "ERROR: Cannot find any tensorflow Python unit tests to run on install"
-  exit 1
+  die "ERROR: Cannot find any tensorflow Python unit tests to run on install"
 fi
 
 # Iterate through all the Python unit test files using the installation
