@@ -38,7 +38,8 @@ def dropout(tensor_in, prob, name=None):
     with tf.op_scope([tensor_in], name, "dropout") as name:
         if isinstance(prob, float):
             prob = tf.get_variable("prob", [],
-                                   initializer=tf.constant_initializer(prob))
+                                   initializer=tf.constant_initializer(prob),
+                                   trainable=False)
         tf.add_to_collection(DROPOUTS, prob)
         return tf.nn.dropout(tensor_in, prob)
 
