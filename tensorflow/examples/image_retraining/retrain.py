@@ -63,14 +63,9 @@ import re
 import sys
 import tarfile
 
-# For an explanation of why we need to disable lint warnings here, see
-# https://www.tensorflow.org/versions/0.6.0/resources/faq.html#miscellaneous
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-from six.moves import urllib
 import numpy as np
+from six.moves import urllib
 import tensorflow as tf
-# pylint: enable=unused-import,g-bad-import-order
 
 from tensorflow.python.client import graph_util
 from tensorflow.python.framework import tensor_shape
