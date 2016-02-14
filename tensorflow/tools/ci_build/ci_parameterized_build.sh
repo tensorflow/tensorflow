@@ -92,6 +92,10 @@ BAZEL_TARGET="//tensorflow/..."
 
 ##########################################################
 
+echo "Parameterized build starts at: $(date)"
+echo ""
+START_TIME=$(date +'%s')
+
 # Convert all the required environment variables to lower case
 TF_BUILD_CONTAINER_TYPE=$(to_lower ${TF_BUILD_CONTAINER_TYPE})
 TF_BUILD_PYTHON_VERSION=$(to_lower ${TF_BUILD_PYTHON_VERSION})
@@ -110,6 +114,7 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
+echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 
 # Process container type
@@ -180,7 +185,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
       # The 1st (build) step will be done in parallel, as default
       # But the 2nd (test) step will be done serially.
 
-      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
+      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
       echo "Build-only command: ${BUILD_ONLY_CMD}"
 
@@ -213,7 +218,7 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    EXTRA_PARAMS="${EXTRA_PARAMS} -e PYTHON_BIN_PATH=/usr/bin/python3"
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=python3"
   else
     # Determine the path to python3
     PYTHON3_PATH=$(which python3 | head -1)
@@ -283,3 +288,8 @@ else
 fi &&
 
 rm -f ${TMP_SCRIPT}
+
+END_TIME=$(date +'%s')
+echo ""
+echo "Parameterized build ends at: $(date) "\
+"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
