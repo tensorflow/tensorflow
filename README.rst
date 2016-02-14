@@ -10,23 +10,27 @@ predictive analytics and data mining.
 Library covers variety of needs from linear models to *Deep Learning*
 applications like text and image understanding.
 
-Why *TensorFlow*? \* TensorFlow provides a good backbone for building
-different shapes of machine learning applications. \* It will continue
-to evolve both in the distributed direction and as general pipelinining
-machinery.
+Why *TensorFlow*? 
+-----------------
+- TensorFlow provides a good backbone for building different shapes of machine learning applications. 
+- It will continue to evolve both in the distributed direction and as general pipelinining machinery.
 
-Why *Scikit Flow*? \* To smooth the transition from the Scikit Learn
+Why *Scikit Flow*? 
+-----------------
+- To smooth the transition from the Scikit Learn
 world of one-liner machine learning into the more open world of building
 different shapes of ML models. You can start by using fit/predict and
-slide into TensorFlow APIs as you are getting comfortable. \* To provide
-a set of reference models that would be easy to integrate with existing
-code.
+slide into TensorFlow APIs as you are getting comfortable. 
+- To provide a set of reference models that would be easy to integrate with existing code.
 
 Installation
 ------------
 
-Support versions of dependencies: \* Python: 2.7, 3.4+ \* Scikit learn:
-0.16, 0.17, 0.18+ \* Tensorflow: 0.6+
+Dependencies
+~~~~~~~~~~~~
+- Python: 2.7, 3.4+ 
+- Scikit learn: 0.16, 0.17, 0.18+ 
+- Tensorflow: 0.6+
 
 First, make sure you have TensorFlow and Scikit Learn installed, then
 just run the following to install the stable version from PyPI:
