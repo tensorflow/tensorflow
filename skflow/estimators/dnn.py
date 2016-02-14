@@ -40,6 +40,9 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
+        class_weight: None or list of n_classes floats. Weight associated with
+                     classes for loss computation. If not given, all classes are suppose to have
+                     weight one.
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -57,6 +60,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
+                 class_weight=None,
                  tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
@@ -65,7 +69,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            learning_rate=learning_rate, class_weight=class_weight,
+            tf_random_seed=tf_random_seed,
             continue_training=continue_training, verbose=verbose,
             early_stopping_rounds=early_stopping_rounds,
             max_to_keep=max_to_keep,

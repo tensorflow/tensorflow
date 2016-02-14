@@ -36,15 +36,21 @@ class BaseTest(tf.test.TestCase):
         self.assertLess(score, 0.3, "Failed with score = {0}".format(score))
 
     def testIris(self):
-        random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
         score = accuracy_score(iris.target, classifier.predict(iris.data))
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
+
+    def testIrisClassWeight(self):
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowLinearClassifier(
+            n_classes=3, class_weight=[0.1, 0.8, 0.1])
+        classifier.fit(iris.data, iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
+        self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
 
     def testIrisSummaries(self):
-        random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target, logdir='/tmp/skflow_tests/')
@@ -53,7 +59,6 @@ class BaseTest(tf.test.TestCase):
 
 
     def testIrisContinueTraining(self):
-        random.seed(42)
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3,
             learning_rate=0.01, continue_training=True, steps=250)

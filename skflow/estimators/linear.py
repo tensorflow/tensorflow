@@ -53,14 +53,16 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
 
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=200, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False,
+                 learning_rate=0.1, class_weight=None,
+                 tf_random_seed=42, continue_training=False,
                  verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         super(TensorFlowLinearClassifier, self).__init__(
             model_fn=models.logistic_regression, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            learning_rate=learning_rate, class_weight=class_weight,
+            tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             verbose=verbose, early_stopping_rounds=early_stopping_rounds,
             max_to_keep=max_to_keep,

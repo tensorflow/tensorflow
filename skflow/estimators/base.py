@@ -57,6 +57,9 @@ class TensorFlowEstimator(BaseEstimator):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
+        class_weight: None or list of n_classes floats. Weight associated with
+                     classes for loss computation. If not given, all classes are suppose to have
+                     weight one.
         tf_random_seed: Random seed for TensorFlow initializers.
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
@@ -79,7 +82,8 @@ class TensorFlowEstimator(BaseEstimator):
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD",
-                 learning_rate=0.1, tf_random_seed=42, continue_training=False,
+                 learning_rate=0.1, class_weight=None,
+                 tf_random_seed=42, continue_training=False,
                  num_cores=4, verbose=1, early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.n_classes = n_classes
@@ -97,6 +101,7 @@ class TensorFlowEstimator(BaseEstimator):
         self._early_stopping_rounds = early_stopping_rounds
         self.max_to_keep = max_to_keep
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+        self.class_weight = class_weight
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -116,6 +121,12 @@ class TensorFlowEstimator(BaseEstimator):
             self._out = tf.placeholder(
                 tf.as_dtype(self._data_feeder.output_dtype), output_shape,
                 name="output")
+
+            # If class weights are provided, add them to the graph.
+            # Different loss functions can use this tensor by name.
+            if self.class_weight:
+                self._class_weight_node = tf.constant(
+                    self.class_weight, name='class_weight')
 
             # Add histograms for X and y if they are floats.
             if self._data_feeder.input_dtype in (np.float32, np.float64):
