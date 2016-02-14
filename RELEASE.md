@@ -1,5 +1,18 @@
 # Changes since last release
 
+# Release 0.7.0
+
+## Major Features and Improvements
+
+* Allow using any installed Cuda and cuDNN, and add support for cuDNN R4
+* Scalar strictness: TensorFlow doesn't pretend that [1] == 1 any more
+* Added a contrib/ directory for unsupported or experimental features
+* Added an easy way to add and dynamically load user-defined ops
+* Built out a good suite of tests, things should break less!
+* Added a versioning framework for GraphDefs to ensure compatibility
+* Added assignments for "Deep Learning with TensorFlow" udacity course 
+* Un-fork Eigen
+
 ## Breaking changes to the API
 
 * `AdjustContrast` kernel deprecated, new kernel `AdjustContrastv2` takes and
@@ -42,16 +55,51 @@
 * Renamed `tf.test.GetTempDir` and `tf.test.IsBuiltWithCuda` to
   `tf.test.get_temp_dir` and `tf.test.is_built_with_cuda` for PEP-8
   compatibility.
-
-
-## Bug fixes
-
+* `parse_example`'s interface has changed, the old interface is accessible in
+  `legacy_parse_example` (same for related functions).
+* New `Variable`s are not added to the same collection several times even if
+  a list with duplicates is passed to the constructor.
 * The Python API will now properly set the `list` member of `AttrValue` in
   constructed `GraphDef` messages for empty lists.  The serialization of some
   graphs will change, but the change is both forwards and backwards compatible.
   It will break tests that compare a generated `GraphDef` to a golden serialized
-  `GraphDef`.
+  `GraphDef` (which is discouraged).
 
+
+## Bug fixes and Minor changes
+
+* Enforced Python 3 compatibility
+* Simplified the BUILD files and cleaned up C++ headers
+* Internal changes now show up as sensibly separated commits
+* Open-sourced the doc generator
+* TensorFlow can now be used as a submodule in another bazel build
+* Added `MetaGraphDef` which makes it easier to save graphs with metadata
+* Image processing ops don't require size information any more
+* Support for more data types for many ops
+* Many new features and ops (notably, `*fft`, `*_matrix_solve`)
+* Various small bugfixes and performance improvements
+* Various docs fixes and improvements
+
+## Thanks to our contributors
+
+This release contains contributions from a many people at Google, as well as 
+
+Akiomi Kamakura, Alex Vig, Alexander Rosenberg Johansen, Andre Cruz, Arun Ahuja,
+Bart Coppens, Bernardo Pires, Bi-Ruei, Chiu, Carl Vondrick, Cesar Salgado, Chen Yu, 
+Christian Jauvin, Damien Aymeric, Dan Vanderkam, Denny Britz, Dongjoon Hyun,
+Eren Güven, Erik Erwitt, Fabrizio Milo, G. Hussain Chinoy, Jim Fleming,
+Joao Felipe Santos, Jonas Meinertz Hansen, Joshi Rekha, Julian Viereck,
+Keiji Ariyama, Kenton Lee, Krishna Sankar, Kristina Chodorow, Linchao Zhu,
+Lukas Krecan, Mark Borgerding, Mark Daoust, Moussa Taifi,
+Nathan Howell, Naveen Sundar G, Nick Sweeting, Niklas Riekenbrauck,
+Olivier Grisel, Patrick Christ, Povilas Liubauskas, Rainer Wasserfuhr,
+Romain Thouvenin, Sagan Bolliger, Sam Abrahams, Taehoon Kim, Timothy J Laurent,
+Vlad Zavidovych, Yangqing Jia, Yi-Lin Juang, Yuxin Wu, Zachary Lipton,
+Zero Chen, Alan Wu, @emmjaykay, @jalammar, @Mandar-Shinde, @nsipplswezey,
+@ninotoshi, @panmari, @prolearner, @rizzomichaelg.
+
+We are also grateful to all who filed issed or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
 
 # Release 0.6.0
 
