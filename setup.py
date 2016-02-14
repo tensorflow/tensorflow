@@ -16,12 +16,15 @@
 from setuptools import setup, find_packages
 
 META_DATA = dict(
-    name = 'skflow',
-    version = '0.1.0',
-    url = 'https://github.com/tensorflow/skflow',
-    license = 'Apache-2',
-    packages = find_packages(),
-    install_requires = [
+    name='skflow',
+    version='0.1.0',
+    url='https://github.com/tensorflow/skflow',
+    license='Apache-2',
+    description='Simplified Interface for TensorFlow for Deep Learning',
+    packages=find_packages(),
+    maintainer='Yuan Tang',
+    maintainer_email='terrytangyuan@gmail.com',
+    install_requires=[
         'sklearn',
         'scipy',
         'numpy',
