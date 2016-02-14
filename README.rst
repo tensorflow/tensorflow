@@ -4,11 +4,9 @@ https://gitter.im/tensorflow/skflow|
 Scikit Flow
 ===========
 
-This is a simplified interface for TensorFlow, to get people started on
-predictive analytics and data mining.
+This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
-Library covers variety of needs from linear models to *Deep Learning*
-applications like text and image understanding.
+Library covers variety of needs from linear models to *Deep Learning* applications like text and image understanding.
 
 Why *TensorFlow*? 
 -----------------
@@ -17,10 +15,7 @@ Why *TensorFlow*?
 
 Why *Scikit Flow*? 
 -----------------
-- To smooth the transition from the Scikit Learn
-world of one-liner machine learning into the more open world of building
-different shapes of ML models. You can start by using fit/predict and
-slide into TensorFlow APIs as you are getting comfortable. 
+- To smooth the transition from the Scikit Learn world of one-liner machine learning into the more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable. 
 - To provide a set of reference models that would be easy to integrate with existing code.
 
 Installation
@@ -32,8 +27,7 @@ Dependencies
 - Scikit learn: 0.16, 0.17, 0.18+ 
 - Tensorflow: 0.6+
 
-First, make sure you have TensorFlow and Scikit Learn installed, then
-just run the following to install the stable version from PyPI:
+First, make sure you have TensorFlow and Scikit Learn installed, then run the following to install the stable version from PyPI:
 
 .. code:: bash
 
@@ -59,19 +53,14 @@ Tutorial
 Usage
 -----
 
-Below are few simple examples of the API. For more examples, please see
-`examples <https://github.com/tensorflow/skflow/tree/master/examples>`__.
+Below are few simple examples of the API. For more examples, please see `examples <https://github.com/tensorflow/skflow/tree/master/examples>`__.
 
 General tips
 ~~~~~~~~~~~~
 
--  It's useful to re-scale dataset before passing to estimator to 0 mean
-   and unit standard deviation. Stochastic Gradient Descent doesn't
-   always do the right thing when variable are very different scale.
+-  It's useful to re-scale dataset before passing to estimator to 0 mean and unit standard deviation. Stochastic Gradient Descent doesn't always do the right thing when variable are very different scale.
 
--  Categorical variables should be managed before passing input to the
-   estimator. I'll write a tutorial in coming days on how to handle
-   categorical variables Deep Learning-style.
+-  Categorical variables should be managed before passing input to the estimator. 
 
 Linear Classifier
 ~~~~~~~~~~~~~~~~~
@@ -147,9 +136,7 @@ Example of how to pass a custom model to the TensorFlowEstimator:
 Custom model with multiple GPUs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To use multiple GPUs to build a custom model, everything else is the
-same as the example above except that in the definition of custom model
-you'll need to specify the device:
+To use multiple GPUs to build a custom model, everything else is the same as the example above except that in the definition of custom model you'll need to specify the device:
 
 .. code:: python
 
@@ -170,10 +157,7 @@ you'll need to specify the device:
 Saving / Restoring models
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Each estimator has a ``save`` method which takes folder path where all
-model information will be saved. For restoring you can just call
-``skflow.TensorFlowEstimator.restore(path)`` and it will return object
-of your class.
+Each estimator has a ``save`` method which takes folder path where all model information will be saved. For restoring you can just call ``skflow.TensorFlowEstimator.restore(path)`` and it will return object of your class.
 
 Some example code:
 
@@ -191,18 +175,14 @@ Some example code:
 Summaries
 ~~~~~~~~~
 
-To get nice visualizations and summaries you can use ``logdir``
-parameter on ``fit``. It will start writing summaries for ``loss`` and
-histograms for variables in your model. You can also add custom
-summaries in your custom model function by calling ``tf.summary`` and
-passing Tensors to report.
+To get nice visualizations and summaries you can use ``logdir`` parameter on ``fit``. It will start writing summaries for ``loss`` and histograms for variables in your model. You can also add custom summaries in your custom model function by calling ``tf.summary`` and passing Tensors to report.
 
 .. code:: python
 
     classifier = skflow.TensorFlowLinearRegression()
     classifier.fit(X, y, logdir='/tmp/tf_examples/my_model_1/')
 
-Then run next command in commandline:
+Then run next command in command line:
 
 .. code:: bash
 
@@ -219,10 +199,9 @@ More examples
 
 See examples folder for:
 
--  Easy way to handle categorical variables - words are just an example
-   of categorical variable.
--  Text Classification - see examples for RNN, CNN on word and
-   characters.
+-  Easy way to handle categorical variables - words are just an example of categorical variable.
+-  Text Classification - see examples for RNN, CNN on word and characters.
+-  Language modeling and text sequence to sequence. 
 -  Images (CNNs) - see example for digit recognition.
 -  More & deeper - different examples showing DNNs and CNNs
 
