@@ -27,7 +27,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.examples.tutorials.mnist import mnist
+from tensorflow.examples.tutorials.mnist import FourLayeredFFNN
+from tensorflow.examples.tutorials.mnist import FourLayeredFFCNN
 
 
 # Basic model parameters as external flags.
@@ -35,16 +36,15 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('max_steps', 2000, 'Number of steps to run trainer.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
                      'Must divide evenly into the dataset sizes.')
 flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                      'for unit testing.')
+flags.DEFINE_boolean('one_hot', False, 'Use one-hot teaching label.')
 
 
-def placeholder_inputs(batch_size):
+def placeholder_inputs(batch_size, input_nums, output_nums=1):
   """Generate placeholder variables to represent the input tensors.
 
   These placeholders are used as inputs by the rest of the model building
@@ -61,8 +61,12 @@ def placeholder_inputs(batch_size):
   # image and label tensors, except the first dimension is now batch_size
   # rather than the full size of the train or test data sets.
   images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
-                                                         mnist.IMAGE_PIXELS))
-  labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
+                                                         input_nums))
+  if output_nums == 1:
+    labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
+  else:
+    labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size,
+                                                         output_nums))
   return images_placeholder, labels_placeholder
 
 
@@ -94,8 +98,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
   return feed_dict
 
 
-def do_eval(sess,
-            eval_correct,
+def do_eval(net,
             images_placeholder,
             labels_placeholder,
             data_set):
@@ -117,7 +120,7 @@ def do_eval(sess,
     feed_dict = fill_feed_dict(data_set,
                                images_placeholder,
                                labels_placeholder)
-    true_count += sess.run(eval_correct, feed_dict=feed_dict)
+    true_count += net.eval(feed_dict)
   precision = true_count / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
         (num_examples, true_count, precision))
@@ -127,27 +130,24 @@ def run_training():
   """Train MNIST for a number of steps."""
   # Get the sets of images and labels for training, validation, and
   # test on MNIST.
-  data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data)
+  data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data, one_hot=FLAGS.one_hot)
 
   # Tell TensorFlow that the model will be built into the default Graph.
   with tf.Graph().as_default():
+    # Generate network
+    mnist = FourLayeredFFNN()
+    #mnist = FourLayeredFFCNN()
+
     # Generate placeholders for the images and labels.
-    images_placeholder, labels_placeholder = placeholder_inputs(
-        FLAGS.batch_size)
+    if FLAGS.one_hot == True:
+      images_placeholder, labels_placeholder = placeholder_inputs(
+          FLAGS.batch_size, mnist.IMAGE_PIXELS, mnist.NUM_CLASSES)
+    else:
+      images_placeholder, labels_placeholder = placeholder_inputs(
+          FLAGS.batch_size, mnist.IMAGE_PIXELS)
 
-    # Build a Graph that computes predictions from the inference model.
-    logits = mnist.inference(images_placeholder,
-                             FLAGS.hidden1,
-                             FLAGS.hidden2)
-
-    # Add to the Graph the Ops for loss calculation.
-    loss = mnist.loss(logits, labels_placeholder)
-
-    # Add to the Graph the Ops that calculate and apply gradients.
-    train_op = mnist.training(loss, FLAGS.learning_rate)
-
-    # Add the Op to compare the logits to the labels during evaluation.
-    eval_correct = mnist.evaluation(logits, labels_placeholder)
+    # Initialize network
+    mnist.init(images_placeholder, labels_placeholder, FLAGS.learning_rate)
 
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
@@ -155,16 +155,9 @@ def run_training():
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver()
 
-    # Create a session for running Ops on the Graph.
-    sess = tf.Session()
-
-    # Run the Op to initialize the variables.
-    init = tf.initialize_all_variables()
-    sess.run(init)
-
     # Instantiate a SummaryWriter to output summaries and the Graph.
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=sess.graph_def)
+                                            graph_def=mnist.sess.graph_def)
 
     # And then after everything is built, start the training loop.
     for step in xrange(FLAGS.max_steps):
@@ -181,8 +174,7 @@ def run_training():
       # inspect the values of your Ops or variables, you may include them
       # in the list passed to sess.run() and the value tensors will be
       # returned in the tuple from the call.
-      _, loss_value = sess.run([train_op, loss],
-                               feed_dict=feed_dict)
+      loss_value = mnist.train(feed_dict)
 
       duration = time.time() - start_time
 
@@ -191,30 +183,27 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict)
+        summary_str = mnist.run(summary_op, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        saver.save(sess, FLAGS.train_dir, global_step=step)
+        saver.save(mnist.sess, FLAGS.train_dir, global_step=step)
         # Evaluate against the training set.
         print('Training Data Eval:')
-        do_eval(sess,
-                eval_correct,
+        do_eval(mnist,
                 images_placeholder,
                 labels_placeholder,
                 data_sets.train)
         # Evaluate against the validation set.
         print('Validation Data Eval:')
-        do_eval(sess,
-                eval_correct,
+        do_eval(mnist,
                 images_placeholder,
                 labels_placeholder,
                 data_sets.validation)
         # Evaluate against the test set.
         print('Test Data Eval:')
-        do_eval(sess,
-                eval_correct,
+        do_eval(mnist,
                 images_placeholder,
                 labels_placeholder,
                 data_sets.test)
