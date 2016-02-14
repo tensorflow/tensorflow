@@ -55,7 +55,7 @@ def logistic_regression(X, y, class_weight=None):
            shape should be [batch_size, n_classes].
         class_weight: tensor, [n_classes], where for each class
                       it has weight of the class. If not provided
-                      will check if graph contains tensor `class_weight:0`. 
+                      will check if graph contains tensor `class_weight:0`.
                       If that is not provided either all ones are used.
 
     Returns:
