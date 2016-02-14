@@ -17,7 +17,7 @@ from setuptools import setup, find_packages
 
 META_DATA = dict(
     name = 'skflow',
-    version = '0.0.1',
+    version = '0.1.0',
     url = 'https://github.com/google/skflow',
     license = 'Apache-2',
     packages = find_packages(),
