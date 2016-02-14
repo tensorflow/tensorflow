@@ -22,8 +22,6 @@ META_DATA = dict(
     license='Apache-2',
     description='Simplified Interface for TensorFlow for Deep Learning',
     packages=find_packages(),
-    maintainer='Yuan Tang',
-    maintainer_email='terrytangyuan@gmail.com',
     install_requires=[
         'sklearn',
         'scipy',
