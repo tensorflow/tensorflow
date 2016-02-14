@@ -21,6 +21,7 @@ META_DATA = dict(
     url='https://github.com/tensorflow/skflow',
     license='Apache-2',
     description='Simplified Interface for TensorFlow for Deep Learning',
+    author=['Scikit Flow Authors'],
     packages=find_packages(),
     install_requires=[
         'sklearn',
