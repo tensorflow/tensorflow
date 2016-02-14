@@ -160,7 +160,6 @@ class FillOp : public OpKernel {
   }
 };
 
-#if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                         \
   REGISTER_KERNEL_BUILDER(Name("Fill")                   \
                               .Device(DEVICE_##D)        \
@@ -172,6 +171,7 @@ class FillOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
+#if GOOGLE_CUDA
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -179,8 +179,6 @@ REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 // Currently we do not support filling strings and complex64 on GPU
-
-#undef REGISTER_KERNEL
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -193,6 +191,8 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
 #endif
+
+#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class ZerosLikeOp : public OpKernel {
