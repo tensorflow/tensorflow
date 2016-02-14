@@ -313,9 +313,4 @@ def main(unused_argv):
   return 0
 
 if __name__ == '__main__':
-  try:
-    argv = FLAGS(sys.argv)  # parse flags
-  except flags.FlagsError as e:
-    print('%s\\nUsage: %s ARGS\\n%s' % (e, sys.argv[0], FLAGS))
-    sys.exit(1)
-  main(argv)
+  main(sys.argv)

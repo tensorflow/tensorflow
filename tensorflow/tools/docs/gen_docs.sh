@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script needs to be run from the tensorflow/tools directory
+# This script needs to be run from the tensorflow/tools/docs directory
 # Pass -a to also rebuild C++ docs. This requires doxygen.
 
 set -e
