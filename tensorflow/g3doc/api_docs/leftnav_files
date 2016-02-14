@@ -17,7 +17,7 @@ python/script_ops.md
 python/test.md
 python/contrib.layers.md
 python/contrib.util.md
-### [C++ API](/api_docs/cc/index.md)
+>>> [C++ API](/api_docs/cc/index.md)
 cc/ClassEnv.md
 cc/ClassRandomAccessFile.md
 cc/ClassWritableFile.md

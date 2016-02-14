@@ -413,3 +413,21 @@
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
   * [`main`](../../api_docs/python/test.md#main)
 
+* **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
+  * [`assert_same_float_dtype`](../../api_docs/python/contrib.layers.md#assert_same_float_dtype)
+  * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)
+  * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
+  * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
+  * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
+  * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)
+  * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
+  * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
+  * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
+  * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
+  * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
+
+* **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
+  * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
+  * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
+

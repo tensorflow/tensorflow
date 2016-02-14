@@ -25,56 +25,33 @@ write the graph to a file.
 
 ## Env
 
-* [tensorflow::Env](ClassEnv.md)
-* [tensorflow::RandomAccessFile](ClassRandomAccessFile.md)
-* [tensorflow::WritableFile](ClassWritableFile.md)
-* [tensorflow::EnvWrapper](ClassEnvWrapper.md)
+* [tensorflow::Env](classEnv.md)
+* [tensorflow::RandomAccessFile](classRandomAccessFile.md)
+* [tensorflow::WritableFile](classWritableFile.md)
+* [tensorflow::EnvWrapper](classEnvWrapper.md)
 
 ## Session
 
-* [tensorflow::Session](ClassSession.md)
-* [tensorflow::SessionOptions](StructSessionOptions.md)
+* [tensorflow::Session](classSession.md)
+* [tensorflow::SessionOptions](structSessionOptions.md)
 
 ## Status
 
-* [tensorflow::Status](ClassStatus.md)
-* [tensorflow::Status::State](StructState.md)
+* [tensorflow::Status](classStatus.md)
+* [tensorflow::Status::State](structState.md)
 
 ## Tensor
 
-* [tensorflow::Tensor](ClassTensor.md)
-* [tensorflow::TensorShape](ClassTensorShape.md)
-* [tensorflow::TensorShapeDim](StructTensorShapeDim.md)
-* [tensorflow::TensorShapeUtils](ClassTensorShapeUtils.md)
-* [tensorflow::PartialTensorShape](ClassPartialTensorShape.md)
-* [tensorflow::PartialTensorShapeUtils](ClassPartialTensorShapeUtils.md)
-* [TF_Buffer](StructTF_Buffer.md)
+* [tensorflow::Tensor](classTensor.md)
+* [tensorflow::TensorShape](classTensorShape.md)
+* [tensorflow::TensorShapeDim](structTensorShapeDim.md)
+* [tensorflow::TensorShapeUtils](classTensorShapeUtils.md)
+* [tensorflow::PartialTensorShape](classPartialTensorShape.md)
+* [tensorflow::PartialTensorShapeUtils](classPartialTensorShapeUtils.md)
+* [TF_Buffer](structTF_Buffer.md)
 
 ## Thread
 
-* [tensorflow::Thread](ClassThread.md)
-* [tensorflow::ThreadOptions](StructThreadOptions.md)
+* [tensorflow::Thread](classThread.md)
+* [tensorflow::ThreadOptions](structThreadOptions.md)
 
-
-
-<div class='sections-order' style="display: none;">
-<!--
-<!-- ClassEnv.md -->
-<!-- ClassRandomAccessFile.md -->
-<!-- ClassWritableFile.md -->
-<!-- ClassEnvWrapper.md -->
-<!-- ClassSession.md -->
-<!-- StructSessionOptions.md -->
-<!-- ClassStatus.md -->
-<!-- StructState.md -->
-<!-- ClassTensor.md -->
-<!-- ClassTensorShape.md -->
-<!-- StructTensorShapeDim.md -->
-<!-- ClassTensorShapeUtils.md -->
-<!-- ClassPartialTensorShape.md -->
-<!-- ClassPartialTensorShapeUtils.md -->
-<!-- StructTF_Buffer.md -->
-<!-- ClassThread.md -->
-<!-- StructThreadOptions.md -->
--->
-</div>

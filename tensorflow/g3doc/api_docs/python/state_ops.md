@@ -3,7 +3,7 @@
 # Variables
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -1371,7 +1371,8 @@ to keep the scale intact, where `dim = W.shape[0]` (the size of the input).
 A similar calculation for convolutional networks gives an analogous result
 with `dim` equal to the product of the first 3 dimensions.  When
 nonlinearities are present, we need to multiply this by a constant `factor`.
-See <https://arxiv.org/pdf/1412.6558v3.pdf> for deeper motivation, experiments
+See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
+([pdf](http://arxiv.org/pdf/1412.6558.pdf)) for deeper motivation, experiments
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
@@ -1436,8 +1437,9 @@ This operation computes
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
-If `indices` contains duplicate entries, lexicographically later entries
-override earlier entries.
+If values in `ref` is to be updated more than once, because there are
+duplicate entires in `indices`, the order at which the updates happen
+for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
