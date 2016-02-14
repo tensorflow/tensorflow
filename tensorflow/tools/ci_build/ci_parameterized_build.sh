@@ -213,7 +213,7 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    EXTRA_PARAMS="${EXTRA_PARAMS} -e PYTHON_BIN_PATH=/usr/bin/python3"
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=python3"
   else
     # Determine the path to python3
     PYTHON3_PATH=$(which python3 | head -1)
