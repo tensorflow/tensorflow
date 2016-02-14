@@ -3,7 +3,7 @@
 # Neural Network
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -1045,7 +1045,8 @@ expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
 
-Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
 ##### Args:
 
