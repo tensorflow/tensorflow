@@ -13,7 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-"""contrib module containing volatile or experimental utility code."""
+"""Utilities for dealing with Tensors.
+
+## Miscellaneous Utility Functions
+
+@@constant_value
+@@make_tensor_proto
+
+"""
 
 from __future__ import absolute_import
 from __future__ import division
