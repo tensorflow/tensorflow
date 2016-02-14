@@ -32,11 +32,11 @@ PAGE_TEMPLATE = '''# {0} `{1}`
 
 {2}
 
-##Member Summary
+###Member Summary
 
 {3}
 
-##Member Details
+###Member Details
 
 {4}'''
 
@@ -234,13 +234,6 @@ def index_page(pages):
       all_md_files.append(pages[page_index].get_md_filename())
       pages.pop(page_index)
 
-  # Footer
-  lines.append('''
-
-<div class='sections-order' style="display: none;">
-<!--''')
-  lines.extend([('<!-- %s -->' % f) for f in all_md_files])
-  lines.extend(['-->', '</div>'])
   return '\n'.join(lines)
 
 
