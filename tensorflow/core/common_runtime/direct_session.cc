@@ -272,7 +272,6 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 
   // Create a run state and start execution.
   RunState run_state(input_tensor_names, output_names);
-  run_state.graph = run_state_args.graph;
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 
   // Send inputs.
@@ -326,7 +325,6 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
 
   // Create the run state and save it for future PRun calls.
   RunState* run_state = new RunState(input_names, output_names);
-  run_state->graph = run_state_args.graph;
   run_state->rendez = new IntraProcessRendezvous(device_mgr_.get());
   {
     mutex_lock l(executor_lock_);
@@ -409,7 +407,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
 
   // Check that this new set of fetches can be computed from all the
   // feeds we have supplied.
-  TF_RETURN_IF_ERROR(CheckFetch(inputs, output_names, run_state));
+  TF_RETURN_IF_ERROR(
+      CheckFetch(inputs, output_names, executors_and_keys->graph, run_state));
 
   // Send inputs.
   Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
@@ -511,10 +510,10 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
 
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
+                                 const Graph* graph,
                                  const RunState* run_state) {
-  const Graph* g = run_state->graph;
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
-  for (Node* n : g->nodes()) {
+  for (Node* n : graph->nodes()) {
     name_to_node[n->name()] = n;
   }
 
@@ -548,7 +547,7 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   }
 
   // Any tensor needed for fetches can't be in pending_feeds.
-  std::vector<bool> visited(g->num_node_ids(), false);
+  std::vector<bool> visited(graph->num_node_ids(), false);
   while (!stack.empty()) {
     const Node* n = stack.back();
     stack.pop_back();
@@ -591,6 +590,12 @@ Status DirectSession::GetOrCreateExecutors(
                                      str_util::Join(outputs_sorted, ","), "/",
                                      str_util::Join(tn_sorted, ","));
 
+  // Set the handle.
+  {
+    mutex_lock l(mu_);
+    run_state_args->handle = strings::StrCat(key, ";", name_counter_++);
+  }
+
   // See if we already have the executors for this run.
   {
     mutex_lock l(executor_lock_);  // could use reader lock
@@ -611,6 +616,9 @@ Status DirectSession::GetOrCreateExecutors(
 
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   ek->func_defs = fdefs;
+  if (run_state_args->is_partial_run) {
+    ek->graph = run_state_args->graph;
+  }
   ek->items.reserve(graphs.size());
   auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
   const auto& optimizer_opts =
@@ -681,12 +689,6 @@ Status DirectSession::GetOrCreateExecutors(
   for (const string& output : outputs) {
     ek->output_keys[output] = GetRendezvousKey(
         output, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
-  }
-
-  // Set the handle.
-  {
-    mutex_lock l(mu_);
-    run_state_args->handle = strings::StrCat(key, ";", name_counter_++);
   }
 
   // Reacquire the lock, try to insert into the map.

@@ -6,6 +6,11 @@ node_modules
 /bazel-tensorflow
 /bazel-testlogs
 /bazel-tf
+/third_party/gpus/cuda/bin
+/third_party/gpus/cuda/cuda.config
+/third_party/gpus/cuda/include
+/third_party/gpus/cuda/lib64
+/third_party/gpus/cuda/nvvm
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
 /tools/python_bin_path.sh

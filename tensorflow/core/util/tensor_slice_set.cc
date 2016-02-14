@@ -35,15 +35,24 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
   string str = slice.DebugString();
-  // We check if there is any intersection between this slice and any of the
-  // registered slices.
-  for (const auto x : slices_) {
-    if (slice.Overlaps(x.second.slice)) {
-      return errors::Internal("Overlapping slices: existing slice = ", x.first,
-                              ", new slice = ", str);
+
+  if (slices_.empty()) {
+    slices_hull_ = slice;
+  } else {
+    // We check if there is any intersection between this slice and any of the
+    // registered slices.
+    if (slices_hull_.Overlaps(slice)) {
+      for (const auto x : slices_) {
+        if (slice.Overlaps(x.second.slice)) {
+          return errors::Internal("Overlapping slices: existing slice = ",
+                                  x.first, ", new slice = ", str);
+        }
+      }
     }
+    // No overlap: we can now insert the slice
+    slices_hull_.UpdateToCover(slice);
   }
-  // No overlap: we can now insert the slice
+
   TensorSliceSet::SliceInfo info = {slice, tag, data,
                                     result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));

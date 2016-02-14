@@ -19,9 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order
-import tensorflow.python.platform  # pylint: disable=unused-import
-
 import base64
 import bisect
 import math
@@ -32,7 +29,6 @@ import shutil
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-# pylint: enable=g-bad-import-order
 
 tf.flags.DEFINE_string("target", None, """The directoy where serialized data
 will be written""")

@@ -45,10 +45,13 @@ TensorFlow provides several classes and operations that you can use to
 create variables contingent on certain conditions.
 
 @@get_variable
+@@VariableScope
+@@variable_scope
+@@variable_op_scope
 @@get_variable_scope
 @@make_template
-@@variable_op_scope
-@@variable_scope
+
+@@no_regularizer
 
 @@constant_initializer
 @@random_normal_initializer

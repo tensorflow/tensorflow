@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
@@ -235,6 +236,17 @@ TEST(TensorSliceSetTest, QueryMetaTwoD) {
     EXPECT_EQ(0, results.size());
   }
 }
+
+static void BM_RegisterOneByOne(int parts) {
+  TensorShape shape({parts, 41});
+  TensorSliceSet slice_set(shape, DT_INT32);
+  for (int i = 0; i < parts; ++i) {
+    TensorSlice part({{i, 1}, {0, -1}});
+    slice_set.Register(part, part.DebugString(), nullptr);
+  }
+}
+
+BENCHMARK(BM_RegisterOneByOne);
 
 }  // namespace
 
