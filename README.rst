@@ -29,7 +29,13 @@ Support versions of dependencies: \* Python: 2.7, 3.4+ \* Scikit learn:
 0.16, 0.17, 0.18+ \* Tensorflow: 0.6+
 
 First, make sure you have TensorFlow and Scikit Learn installed, then
-just run:
+just run the following to install the stable version from PyPI:
+
+.. code:: bash
+
+    pip install skflow
+
+Or run the following to install from the development version from Github:
 
 .. code:: bash
 
