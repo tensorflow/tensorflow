@@ -22,6 +22,7 @@ META_DATA = dict(
     license='Apache-2',
     description='Simplified Interface for TensorFlow for Deep Learning',
     author=['Scikit Flow Authors'],
+    author_email='terrytangyuan@Gmail.com',
     packages=find_packages(),
     install_requires=[
         'sklearn',

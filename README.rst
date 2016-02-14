@@ -1,4 +1,4 @@
-|Travis-CI Build Status| |Codecov Status| |License| |Join the chat at
+|Travis-CI Build Status| |Codecov Status| |License| |PyPI version| |Join the chat at
 https://gitter.im/tensorflow/skflow|
 
 Scikit Flow
@@ -226,4 +226,5 @@ See examples folder for:
    :target: https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 .. |Text classification RNN Graph| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_graph.png
 .. |Text classification RNN Loss| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_loss.png
-
+.. |PyPI version| image:: https://badge.fury.io/py/skflow.svg
+   :target: http://badge.fury.io/py/skflow
