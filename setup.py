@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 META_DATA = dict(
     name = 'skflow',
     version = '0.1.0',
-    url = 'https://github.com/google/skflow',
+    url = 'https://github.com/tensorflow/skflow',
     license = 'Apache-2',
     packages = find_packages(),
     install_requires = [
@@ -26,6 +26,19 @@ META_DATA = dict(
         'scipy',
         'numpy',
     ],
+    classifiers=[
+        'Programming Language :: Python',
+        'Operating System :: OS Independent',
+        'Intended Audience :: Science/Research',
+        'Topic :: Scientific/Engineering'
+    ],
+    keywords=[
+        'Deep Learning',
+        'Neural Networks',
+        'Google',
+        'TensorFlow',
+        'Machine Learning'
+    ]
 )
 
 
