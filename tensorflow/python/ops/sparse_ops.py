@@ -786,7 +786,7 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Will the SparseTensor A fit in memory if densified?
   * Is the column count of the product large (>> 1)?
   * Is the density of A larger than approximately 15%?
-  * Are gradients with respect to A necessary?
+  * Is backprop into A necessary?
 
   If the answer to several of these questions is yes, consider
   converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
