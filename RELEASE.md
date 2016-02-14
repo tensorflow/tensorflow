@@ -4,7 +4,8 @@
 
 ## Major Features and Improvements
 
-* Allow using any installed Cuda and cuDNN, and add support for cuDNN R4
+* Allow using any installed Cuda >= 7.0 and cuDNN >= R2, and add support
+  for cuDNN R4
 * Scalar strictness: TensorFlow doesn't pretend that [1] == 1 any more
 * Added a contrib/ directory for unsupported or experimental features
 * Added an easy way to add and dynamically load user-defined ops
@@ -82,23 +83,23 @@
 
 ## Thanks to our contributors
 
-This release contains contributions from a many people at Google, as well as 
+This release contains contributions from a many people at Google, as well as:
 
 Akiomi Kamakura, Alex Vig, Alexander Rosenberg Johansen, Andre Cruz, Arun Ahuja,
-Bart Coppens, Bernardo Pires, Bi-Ruei, Chiu, Carl Vondrick, Cesar Salgado, Chen Yu, 
+Bart Coppens, Bernardo Pires, Carl Vondrick, Cesar Salgado, Chen Yu,
 Christian Jauvin, Damien Aymeric, Dan Vanderkam, Denny Britz, Dongjoon Hyun,
 Eren Güven, Erik Erwitt, Fabrizio Milo, G. Hussain Chinoy, Jim Fleming,
 Joao Felipe Santos, Jonas Meinertz Hansen, Joshi Rekha, Julian Viereck,
 Keiji Ariyama, Kenton Lee, Krishna Sankar, Kristina Chodorow, Linchao Zhu,
 Lukas Krecan, Mark Borgerding, Mark Daoust, Moussa Taifi,
-Nathan Howell, Naveen Sundar G, Nick Sweeting, Niklas Riekenbrauck,
+Nathan Howell, Naveen Sundar Govindarajulu, Nick Sweeting, Niklas Riekenbrauck,
 Olivier Grisel, Patrick Christ, Povilas Liubauskas, Rainer Wasserfuhr,
 Romain Thouvenin, Sagan Bolliger, Sam Abrahams, Taehoon Kim, Timothy J Laurent,
 Vlad Zavidovych, Yangqing Jia, Yi-Lin Juang, Yuxin Wu, Zachary Lipton,
-Zero Chen, Alan Wu, @emmjaykay, @jalammar, @Mandar-Shinde, @nsipplswezey,
-@ninotoshi, @panmari, @prolearner, @rizzomichaelg.
+Zero Chen, Alan Wu, @brchiu, @emmjaykay, @jalammar, @Mandar-Shinde,
+@nsipplswezey, @ninotoshi, @panmari, @prolearner and @rizzomichaelg.
 
-We are also grateful to all who filed issed or helped resolve them, asked and 
+We are also grateful to all who filed issues or helped resolve them, asked and 
 answered questions, and were part of inspiring discussions. 
 
 # Release 0.6.0
