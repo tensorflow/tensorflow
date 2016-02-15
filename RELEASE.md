@@ -12,7 +12,7 @@
 * Added assignments for "Deep Learning with TensorFlow" udacity course 
 
 
-## Bug fixes and other changes
+## Bug Fixes and Other Changes
 
 * Scalar strictness: TensorFlow doesn't pretend that `[1] == 1` any more
 * Added a versioning framework for `GraphDef`s to ensure compatibility
@@ -29,7 +29,7 @@
 * Documentation fixes and improvements
 
 
-## Breaking changes to the API
+## Breaking Changes to the API
 
 * `AdjustContrast` kernel deprecated, new kernel `AdjustContrastv2` takes and
   outputs float only. `adjust_contrast` now takes all data types.
@@ -82,7 +82,7 @@
   `GraphDef` (which is discouraged).
 
 
-## Thanks to our contributors
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
@@ -118,14 +118,14 @@ answered questions, and were part of inspiring discussions.
   come in later releases.
 
 
-## Bug fixes
+## Bug Fixes
 
 * Lots of fixes to documentation and tutorials, many contributed
   by the public.
 
 * 271 closed issues on github issues.
 
-## Backwards-incompatible changes
+## Backwards-Incompatible Changes
 
 * `tf.nn.fixed_unigram_candidate_sampler` changed its default 'distortion'
   attribute from 0.0 to 1.0. This was a bug in the original release
