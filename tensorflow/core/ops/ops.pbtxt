@@ -2337,6 +2337,26 @@ op {
   summary: "Returns x / y element-wise."
 }
 op {
+  name: "DrawBoundingBoxes"
+  input_arg {
+    name: "images"
+    description: "4-D with shape `[batch, height, width, depth]`. A batch of images."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "boxes"
+    description: "3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding\nboxes."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "4-D with the same shape as `images`. The batch of input images with\nbounding boxes drawn on the images."
+    type: DT_FLOAT
+  }
+  summary: "Draw bounding boxes on a batch of images."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0)` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
@@ -7097,6 +7117,100 @@ op {
   }
   summary: "Computes reciprocal of square root of x element-wise."
   description: "I.e., \\\\(y = 1 / \\sqrt{x}\\\\)."
+}
+op {
+  name: "SampleDistortedBoundingBox"
+  input_arg {
+    name: "image_size"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "bounding_boxes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "begin"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "size"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bboxes"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "min_object_covered"
+    type: "float"
+    default_value {
+      f: 0.1
+    }
+  }
+  attr {
+    name: "aspect_ratio_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.75
+        f: 1.33
+      }
+    }
+  }
+  attr {
+    name: "area_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.05
+        f: 1
+      }
+    }
+  }
+  attr {
+    name: "max_attempts"
+    type: "int"
+    default_value {
+      i: 100
+    }
+  }
+  attr {
+    name: "use_image_if_no_bounding_boxes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_box` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0)` relative to the width and\nheight of the underlying image."
+  is_stateful: true
 }
 op {
   name: "Save"
