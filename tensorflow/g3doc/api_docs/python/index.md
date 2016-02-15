@@ -232,6 +232,7 @@
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
+  * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
   * [`encode_jpeg`](../../api_docs/python/image.md#encode_jpeg)
   * [`encode_png`](../../api_docs/python/image.md#encode_png)
   * [`extract_glimpse`](../../api_docs/python/image.md#extract_glimpse)
@@ -255,6 +256,7 @@
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
+  * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
   * [`saturate_cast`](../../api_docs/python/image.md#saturate_cast)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
