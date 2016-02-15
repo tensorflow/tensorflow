@@ -223,7 +223,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
       for (std::size_t i = 0; i < nnz; ++i) {
         const int64 m = a_indices(i, lhs_index_a);
         const int64 k = a_indices(i, rhs_index_a);
-        const T a_value = (ADJ_A) ? std::conj(a_values(i)) : a_values(i);
+        const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
         for (std::size_t n = 0; n < rhs_right; ++n) {
           const T b_value = maybe_adjoint_b(k, n);
           out(m, n) += a_value * b_value;
@@ -233,7 +233,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
       for (std::size_t i = 0; i < nnz; ++i) {
         const int64 m = a_indices(i, lhs_index_a);
         const int64 k = a_indices(i, rhs_index_a);
-        const T a_value = (ADJ_A) ? std::conj(a_values(i)) : a_values(i);
+        const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);
         if (ADJ_B) {
           out.template chip<0>(m) +=
               b.template chip<1>(k).unaryExpr(
