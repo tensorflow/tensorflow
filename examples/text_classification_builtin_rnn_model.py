@@ -61,7 +61,7 @@ def input_op_fn(X):
 # Single direction GRU with a single layer
 classifier = skflow.TensorFlowRNNClassifier(rnn_size=EMBEDDING_SIZE, 
     n_classes=15, cell_type='gru', input_op_fn=input_op_fn,
-    num_layers=1, bidirection=False, sequence_length=None,
+    num_layers=1, bidirectional=False, sequence_length=None,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continously train for 1000 steps & predict on test set.
