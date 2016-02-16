@@ -14,7 +14,6 @@
 
 ## Bug Fixes and Other Changes
 
-* Scalar strictness: TensorFlow doesn't pretend that `[1] == 1` any more
 * Added a versioning framework for `GraphDef`s to ensure compatibility
 * Enforced Python 3 compatibility
 * Internal changes now show up as sensibly separated commits
