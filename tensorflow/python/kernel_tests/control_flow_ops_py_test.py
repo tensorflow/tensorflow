@@ -66,36 +66,6 @@ def isum(s):
 
 class ControlFlowTest(tf.test.TestCase):
 
-  def testWhileWithRefsWithGradients_1(self):
-    with self.test_session() as sess:
-      x = tf.Variable(0).ref()
-      i = tf.constant(0)
-      c = lambda i, x: tf.less(i, 10)
-
-      self.assertEqual(x.dtype, tf.int32_ref)
-
-      # pylint: disable=protected-access
-      def body(i, x):
-        self.assertEqual(x.dtype, tf.int32_ref)
-        return (i+1, gen_array_ops._ref_identity(x))
-      # pylint: enable=protected-access
-
-      r = control_flow_ops.While(c, body, [i, x], parallel_iterations=5)
-
-      grad_ys = [tf.Variable(73).ref()]
-      grad = tf.gradients([r[1]], [x], grad_ys=grad_ys)
-
-      tf.initialize_all_variables().run()
-
-      self.assertEqual(r[0].dtype, tf.int32)
-      self.assertEqual(r[1].dtype, tf.int32_ref)
-
-      value_i, value_x, value_x_grad = sess.run(r + grad)
-
-    self.assertEqual(10, value_i)
-    self.assertEqual(0, value_x)
-    self.assertEqual(73, value_x_grad)
-
   def testRefIdentity(self):
     with self.test_session():
       v = tf.Variable(7)
@@ -132,16 +102,7 @@ class ControlFlowTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertEqual(9, v2.eval())
 
-  def testEnterExit_1(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      enter_op = control_flow_ops.enter(data, "foo_1", False)
-      exit_op = control_flow_ops.exit(enter_op)
-
-      result = exit_op.eval()
-    self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), result)
-
-  def testEnterMulExit_1(self):
+  def testEnterMulExit(self):
     with self.test_session():
       data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
       enter_data = control_flow_ops.enter(data, "foo_1", False)
@@ -152,16 +113,6 @@ class ControlFlowTest(tf.test.TestCase):
 
       result = exit_op.eval()
     self.assertAllEqual(np.array([x * 5 for x in [1, 2, 3, 4, 5, 6]]), result)
-
-  def testEnterNextExit_1(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      enter_op = control_flow_ops.enter(data, "foo_1", False)
-      next_op = control_flow_ops.next_iteration(enter_op)
-      exit_op = control_flow_ops.exit(next_op)
-
-      result = exit_op.eval()
-    self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), result)
 
   def testSwitchMergeIndexedSlices(self):
     with self.test_session():
@@ -177,20 +128,6 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertAllEqual(np.arange(1, 7), val)
     self.assertAllEqual(np.arange(0, 12, 2), ind)
 
-  def _testSwitchMerge_1(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      ports = tf.convert_to_tensor(True, name="ports")
-      switch_op = control_flow_ops.switch(data, ports)
-      merge_op = control_flow_ops.merge(switch_op)[0]
-
-      result = merge_op.eval()
-    self.assertAllEqual(np.arange(1, 7), result)
-
-  def testSwitchMerge_1(self):
-    self._testSwitchMerge_1(use_gpu=False)
-    self._testSwitchMerge_1(use_gpu=True)
-
   def testSwitchDeadBranch(self):
     with self.test_session():
       data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -202,30 +139,7 @@ class ControlFlowTest(tf.test.TestCase):
           StatusNotOK, lambda e: "The tensor returned for" in str(e)):
         dead_branch.eval()
 
-  def testSwitchMergeIdentity_1(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      ports = tf.convert_to_tensor(True, name="ports")
-      switch_op = control_flow_ops.switch(data, ports)
-      merge_op = control_flow_ops.merge(switch_op)[0]
-      id_op = tf.identity(merge_op)
-
-      result = id_op.eval()
-    self.assertAllEqual(np.arange(1, 7), result)
-
-  def testSwitchMergeLess_0(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      zero = tf.constant(0)
-      one = tf.constant(1)
-      less_op = tf.less(zero, one)
-      switch_op = control_flow_ops.switch(data, less_op)
-      merge_op = control_flow_ops.merge(switch_op)[0]
-
-      result = merge_op.eval()
-    self.assertAllEqual(np.arange(1, 7), result)
-
-  def testSwitchMergeLess_1(self):
+  def testSwitchMergeLess(self):
     with self.test_session():
       data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
       zero = tf.convert_to_tensor(0)
@@ -237,7 +151,7 @@ class ControlFlowTest(tf.test.TestCase):
       result = merge_op.eval()
     self.assertAllEqual(np.arange(1, 7), result)
 
-  def testSwitchMergeAddIdentity_0(self):
+  def testSwitchMergeAddIdentity(self):
     with self.test_session():
       data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
       ports = tf.convert_to_tensor(False, name="ports")
@@ -250,34 +164,7 @@ class ControlFlowTest(tf.test.TestCase):
       result = merge_op.eval()
     self.assertAllEqual(np.array([x + 1 for x in [1, 2, 3, 4, 5, 6]]), result)
 
-  def testSwitchMergeAddIdentity_1(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      ports = tf.convert_to_tensor(True, name="ports")
-      switch_op = control_flow_ops.switch(data, ports)
-      one = tf.constant(1)
-      add_op = tf.add(switch_op[0], one)
-      id_op = tf.identity(switch_op[1])
-      merge_op = control_flow_ops.merge([add_op, id_op])[0]
-
-      result = merge_op.eval()
-    self.assertAllEqual(np.arange(1, 7), result)
-
-  def testSwitchMergeAddMul_0(self):
-    with self.test_session():
-      data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-      ports = tf.convert_to_tensor(False, name="ports")
-      switch_op = control_flow_ops.switch(data, ports)
-      one = tf.constant(1)
-      add_op = tf.add(switch_op[0], one)
-      five = tf.constant(5)
-      mul_op = tf.mul(switch_op[1], five)
-      merge_op = control_flow_ops.merge([add_op, mul_op])[0]
-
-      result = merge_op.eval()
-    self.assertAllEqual(np.array([x + 1 for x in [1, 2, 3, 4, 5, 6]]), result)
-
-  def testSwitchMergeAddMul_1(self):
+  def testSwitchMergeAddMul(self):
     with self.test_session():
       data = tf.constant([1, 2, 3, 4, 5, 6], name="data")
       ports = tf.convert_to_tensor(True, name="ports")
@@ -511,7 +398,6 @@ class ControlFlowTest(tf.test.TestCase):
       fn1 = lambda: [tf.add(x, 1), tf.add(x, 2)]
       fn2 = lambda: [y, y]
       r = tf.cond(pred, fn1, fn2)
-
       self.assertAllEqual([11, 12], sess.run(r))
 
   def testCondGrad_1(self):
@@ -567,10 +453,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, 10000)
       b = lambda x: tf.add(x, 1)
       r = control_flow_ops.While(c, b, [n], parallel_iterations=20)
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertEqual(10000, result)
+      self.assertEqual(10000, r.eval())
 
   def testWhileWithRefs_1(self):
     with self.test_session() as sess:
@@ -600,10 +483,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       s = tf.constant(0)
       r = isum(s)
-
-      result = r.eval()
-    self.assertTrue(check_op_order(s.graph))
-    self.assertAllEqual(45, result)
+      self.assertAllEqual(45, r.eval())
 
   # Have more than 10 parallel iterations and hence exercise k-bound
   # most of the time.
@@ -676,9 +556,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, 10.0)
       b = lambda x: tf.add(x, 1.0)
       r = control_flow_ops.While(c, b, [n])
-
-      result = r.eval()
-    self.assertAllClose(10.0, result)
+      self.assertAllClose(10.0, r.eval())
 
   def testWhile_Gpu_1(self):
     self._testWhile_Gpu_1(use_gpu=False)
@@ -692,9 +570,7 @@ class ControlFlowTest(tf.test.TestCase):
         with tf.device("/cpu:0"):
           return tf.add(x, 1.0)
       r = control_flow_ops.While(c, b, [n])
-
-      result = r.eval()
-    self.assertAllClose(10.0, result)
+      self.assertAllClose(10.0, r.eval())
 
   def testWhile_Gpu_2(self):
     self._testWhile_Gpu_1(use_gpu=False)
@@ -715,9 +591,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, 200)
       b = lambda x: tf.add(x, cpu_sum(n))
       r = control_flow_ops.While(c, b, [n])
-
-      result = r.eval()
-    self.assertEqual(225, result)
+      self.assertEqual(225, r.eval())
 
   def testNestedWhile_1(self):
     self._testNestedWhile_1(use_gpu=False)
@@ -739,9 +613,7 @@ class ControlFlowTest(tf.test.TestCase):
                                    body,
                                    [n, r],
                                    parallel_iterations=1)
-      result = res[1].eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(12, result)
+      self.assertAllEqual(12, res[1].eval())
 
   def testWhileWithControl_2(self):
     with self.test_session():
@@ -754,9 +626,7 @@ class ControlFlowTest(tf.test.TestCase):
         return [r_]
 
       res = control_flow_ops.While(condition, body, [r], parallel_iterations=1)
-      result = res.eval()
-    self.assertTrue(check_op_order(r.graph))
-    self.assertAllEqual(12, result)
+      self.assertAllEqual(12, res.eval())
 
   def testCondWhile_1(self):
     with self.test_session():
@@ -766,10 +636,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.cond(tf.less(0, 1),
                   lambda: control_flow_ops.While(c, b, [n]),
                   lambda: n)
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(10, result)
+      self.assertAllEqual(10, r.eval())
 
   def testCondWhile_2(self):
     with self.test_session():
@@ -778,10 +645,7 @@ class ControlFlowTest(tf.test.TestCase):
       b = lambda x: tf.add(x, 1)
       r = tf.cond(tf.less(1, 0), lambda: tf.add(n, 1),
                   lambda: control_flow_ops.While(c, b, [n]))
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(10, result)
+      self.assertAllEqual(10, r.eval())
 
   def testWhileCond_1(self):
     with self.test_session():
@@ -792,10 +656,7 @@ class ControlFlowTest(tf.test.TestCase):
       b = lambda x: tf.cond(
           tf.constant(True), lambda: tf.add(x, one), lambda: tf.sub(x, one))
       r = control_flow_ops.While(c, b, [i])
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(10, result)
+      self.assertAllEqual(10, r.eval())
 
   def testWhileCond_2(self):
     with self.test_session():
@@ -803,10 +664,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, 10)
       b = lambda x: tf.cond(tf.constant(True), lambda: tf.add(x, 1), lambda: n)
       r = control_flow_ops.While(c, b, [n])
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(10, result)
+      self.assertAllEqual(10, r.eval())
 
   def testWhileCond_3(self):
     with self.test_session():
@@ -815,10 +673,7 @@ class ControlFlowTest(tf.test.TestCase):
       b = lambda x: tf.cond(tf.less(0, 1), lambda: tf.add(x, 1),
                             lambda: tf.sub(x, 1))
       r = control_flow_ops.While(c, b, [n])
-
-      result = r.eval()
-    self.assertTrue(check_op_order(n.graph))
-    self.assertAllEqual(10, result)
+      self.assertAllEqual(10, r.eval())
 
   # NOTE: It is ok to have parallel_iterations > 1
   def testWhileUpdateVariable_1(self):
@@ -1030,8 +885,29 @@ class ControlFlowTest(tf.test.TestCase):
       r = control_flow_ops.cond(tf.less(1, 2), lambda: r, lambda: v)
 
       r = tf.gradients(r, v)[0]
-      result = r.eval()
-      self.assertAllClose(1024.0, result)
+      self.assertAllClose(1024.0, r.eval())
+
+  def testWhileGrad_MultipleUses(self):
+    with self.test_session():
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = tf.square
+      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
+      r = tf.mul(r, r)
+
+      r = tf.gradients(r, v)[0]
+      self.assertEqual(524288.0, r.eval())
+
+  def testWhileGrad_LoopAdd(self):
+    with self.test_session():
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      b = tf.square
+      r = control_flow_ops.While(c, b, [v], parallel_iterations=1)
+      r = tf.add(r, r)
+
+      r = tf.gradients(r, v)[0]
+      self.assertAllClose(2048.0, r.eval())
 
   def _testWhileGrad_Mul(self, use_gpu, p_iters):
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -1063,8 +939,7 @@ class ControlFlowTest(tf.test.TestCase):
 
       r = tf.gradients(r, a)
       tf.initialize_all_variables().run()
-      result = r[0].eval()
-      self.assertAllClose(216.0, result)
+      self.assertAllClose(216.0, r[0].eval())
 
   def testWhileGrad_ys_xs(self):
     with self.test_session():
@@ -1112,8 +987,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = control_flow_ops.While(c, b, [v], back_prop=False)
       r = tf.add(r, v)
       r = tf.gradients(r, v)
-      result = r[0].eval()
-      self.assertAllClose(1.0, result)
+      self.assertAllClose(1.0, r[0].eval())
 
   def testWhileGrad_SerialTwoLoops(self):
     with self.test_session():
@@ -1236,6 +1110,36 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
       self.assertAllClose(1024.0, r)
+
+  def testWhileWithRefsWithGradients_1(self):
+    with self.test_session() as sess:
+      x = tf.Variable(0).ref()
+      i = tf.constant(0)
+      c = lambda i, x: tf.less(i, 10)
+
+      self.assertEqual(x.dtype, tf.int32_ref)
+
+      # pylint: disable=protected-access
+      def body(i, x):
+        self.assertEqual(x.dtype, tf.int32_ref)
+        return (i+1, gen_array_ops._ref_identity(x))
+      # pylint: enable=protected-access
+
+      r = control_flow_ops.While(c, body, [i, x], parallel_iterations=5)
+
+      grad_ys = [tf.Variable(73).ref()]
+      grad = tf.gradients([r[1]], [x], grad_ys=grad_ys)
+
+      tf.initialize_all_variables().run()
+
+      self.assertEqual(r[0].dtype, tf.int32)
+      self.assertEqual(r[1].dtype, tf.int32_ref)
+
+      value_i, value_x, value_x_grad = sess.run(r + grad)
+
+    self.assertEqual(10, value_i)
+    self.assertEqual(0, value_x)
+    self.assertEqual(73, value_x_grad)
 
   def testFoldl_Simple(self):
     with self.test_session():

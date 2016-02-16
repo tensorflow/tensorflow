@@ -16,28 +16,66 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
-namespace functor {
 
-template <typename Device, typename T, int NDIMS>
-void Transpose(const Device& d, typename TTypes<T, NDIMS>::Tensor out,
-               typename TTypes<T, NDIMS>::ConstTensor in, const int* perm) {
-  // perm[] is a permutation of 0, 1, ..., NDIMS-1. perm[] is on CPU.
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  out.device(d) = in.shuffle(p);
+// Transpose tensor 'in' into tensor 'out' according to dimension
+// permutation 'perm'.
+//
+// REQUIRES: in.dtype() == out->dtype()
+// REQUIRES: in.dims() == out->dims()
+// REQUIRES: in.dims() == perm.size()
+// REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
+template <typename Device>
+Status DoTranspose(const Device& device, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out);
+
+// Implementation details.
+namespace internal {
+
+// Helper to compute 'strides' given a tensor 'shape'. I.e.,
+// strides[i] = prod(shape.dim_size[(i+1):])
+template <typename Index>
+void ComputeStride(const TensorShape& shape, Index* strides) {
+  const int ndims = shape.dims();
+  Index stride = 1;
+  for (int i = ndims - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= static_cast<Index>(shape.dim_size(i));
+  }
 }
 
-template <typename Device, typename T, int NDIMS>
-struct TransposeFunctor {
-  void operator()(const Device& d, typename TTypes<T, NDIMS>::Tensor out,
-                  typename TTypes<T, NDIMS>::ConstTensor in, const int* perm);
-};
+// Device-specific naive implementation for tranpose.
+template <typename Device, typename T>
+void TransposeSimple(const Device& d, const Tensor& in,
+                     const gtl::ArraySlice<int32> perm, Tensor* out);
 
-}  // namespace functor
+// Uses Eigen to transpose.
+template <typename Device, typename T, int NDIMS>
+void TransposeUsingEigen(const Device& d, const Tensor& in,
+                         const gtl::ArraySlice<int32> perm, Tensor* out);
+
+template <typename Device, typename T>
+void Transpose(const Device& d, const Tensor& in,
+               const gtl::ArraySlice<int32> perm, Tensor* out) {
+  switch (in.dims()) {
+    case 2:
+      TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      break;
+    case 3:
+      TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      break;
+    case 4:
+      TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      break;
+    default:
+      TransposeSimple<Device, T>(d, in, perm, out);
+      break;
+  }
+}
+}  // namespace internal
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_

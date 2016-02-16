@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/examples/label_image/command_line_flags.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace tensorflow {
 namespace {
 // The returned array is only valid for the lifetime of the input vector.
 // We're using const casting because we need to pass in an argv-style array of
@@ -77,3 +78,5 @@ TEST(CommandLineFlagsTest, BadBoolValue) {
   EXPECT_EQ(false, some_switch);
   EXPECT_EQ(argc, 1);
 }
+
+}  // namespace tensorflow

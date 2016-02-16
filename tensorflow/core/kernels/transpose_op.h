@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,39 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_TRANSPOSE_OP_H_
 #define TENSORFLOW_KERNELS_TRANSPOSE_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
-template <typename Device, typename T>
 class TransposeOp : public OpKernel {
  public:
-  explicit TransposeOp(OpKernelConstruction* context);
-  void Compute(OpKernelContext* context) override;
+  explicit TransposeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  virtual Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                             gtl::ArraySlice<int32> perm, Tensor* out) = 0;
 };
 
-// Exposed for use in reduction ops
-template <typename Device, typename T>
-void TransposeTensor(const Device& device, const Tensor& input,
-                     const gtl::ArraySlice<int64> input_shape,
-                     gtl::ArraySlice<int32> permutation, Tensor* output);
+class TransposeCpuOp : public TransposeOp {
+ public:
+  explicit TransposeCpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+
+class TransposeGpuOp : public TransposeOp {
+ public:
+  explicit TransposeGpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
 
 }  // namespace tensorflow
 
