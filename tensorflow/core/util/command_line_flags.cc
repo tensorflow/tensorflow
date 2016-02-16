@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/examples/label_image/command_line_flags.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 
-using tensorflow::string;
-
+namespace tensorflow {
 namespace {
 
 bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
@@ -133,3 +132,5 @@ bool ParseFlags(int* argc, char** argv, const std::vector<Flag>& flag_list) {
   *argc = unknown_flags.size() + 1;
   return result;
 }
+
+}  // namespace tensorflow

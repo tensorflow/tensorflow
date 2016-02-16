@@ -837,6 +837,7 @@ tf_cuda_library(
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],

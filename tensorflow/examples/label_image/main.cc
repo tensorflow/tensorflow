@@ -49,9 +49,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/examples/label_image/command_line_flags.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using tensorflow::Flag;
 using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
@@ -248,18 +249,18 @@ int main(int argc, char* argv[]) {
   string output_layer = "softmax";
   bool self_test = false;
   string root_dir = "";
-  const bool parse_result =
-      ParseFlags(&argc, argv, {Flag("image", &image),                //
-                               Flag("graph", &graph),                //
-                               Flag("labels", &labels),              //
-                               Flag("input_width", &input_width),    //
-                               Flag("input_height", &input_height),  //
-                               Flag("input_mean", &input_mean),      //
-                               Flag("input_std", &input_std),        //
-                               Flag("input_layer", &input_layer),    //
-                               Flag("output_layer", &output_layer),  //
-                               Flag("self_test", &self_test),        //
-                               Flag("root_dir", &root_dir)});
+  const bool parse_result = tensorflow::ParseFlags(
+      &argc, argv, {Flag("image", &image),                //
+                    Flag("graph", &graph),                //
+                    Flag("labels", &labels),              //
+                    Flag("input_width", &input_width),    //
+                    Flag("input_height", &input_height),  //
+                    Flag("input_mean", &input_mean),      //
+                    Flag("input_std", &input_std),        //
+                    Flag("input_layer", &input_layer),    //
+                    Flag("output_layer", &output_layer),  //
+                    Flag("self_test", &self_test),        //
+                    Flag("root_dir", &root_dir)});
   if (!parse_result) {
     LOG(ERROR) << "Error parsing command-line flags.";
     return -1;
