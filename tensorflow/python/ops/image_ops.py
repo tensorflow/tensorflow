@@ -109,9 +109,9 @@ Example:
 
 ```python
 # Decode an image and convert it to HSV.
-rgb_image = tf.decode_png(...,  channels=3)
-rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.rgb_to_hsv(rgb_image)
+rgb_image = tf.image.decode_png(...,  channels=3)
+rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.image.rgb_to_hsv(rgb_image)
 ```
 
 @@rgb_to_grayscale
@@ -776,7 +776,7 @@ def adjust_contrast(images, contrast_factor):
     contrast_factor: A float multiplier for adjusting contrast.
 
   Returns:
-    The constrast-adjusted image or images.
+    The contrast-adjusted image or images.
   """
   with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
     # Remember original dtype to so we can convert back if needed
