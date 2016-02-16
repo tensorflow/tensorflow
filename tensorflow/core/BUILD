@@ -686,6 +686,7 @@ filegroup(
         "//tensorflow/core:kernels/topk_op.cc",
         "//tensorflow/core:kernels/training_ops.cc",
         "//tensorflow/core:kernels/transpose_op.cc",
+        "//tensorflow/core:kernels/transpose_op_cpu.cc",
         "//tensorflow/core:kernels/where_op.cc",
         "//tensorflow/core:kernels/xent_op.cc",
     ],
@@ -836,6 +837,7 @@ tf_cuda_library(
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],

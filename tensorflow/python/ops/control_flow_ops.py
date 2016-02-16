@@ -131,9 +131,9 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
   """Creates or finds a child frame, and makes `data` available to it.
 
   The unique `frame_name` is used by the `Executor` to identify frames. If
-  `is_constant` is true, `output` is a constant in the child frame; otherwise
-  it may be changed in the child frame. At most `parallel_iterations` iterations
-  are run in parallel in the child frame.
+  `is_constant` is true, `data` is a constant in the child frame; otherwise
+  it may be changed in the child frame. At most `parallel_iterations`
+  iterations are run in parallel in the child frame.
 
   Args:
     data: The tensor to be made available to the child frame.
@@ -753,16 +753,25 @@ class ControlFlowState(object):
     self._map = {}   # maps forward loop context to GradLoopState
 
   def _GetGradState(self, op):
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt is None:
-      return None
-    return self._map.get(forward_ctxt)
+    """Get the gradient loop state for this op if any."""
+    if _IsLoopExit(op):
+      forward_ctxt = op._get_control_flow_context()
+      forward_ctxt = forward_ctxt.outer_context
+      if forward_ctxt:
+        forward_ctxt = forward_ctxt.GetWhileContext()
+    else:
+      forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt:
+      return self._map.get(forward_ctxt)
+    return None
 
   def MakeWrapper(self, op):
     """Make a wrapper for op if it is in a WhileContext."""
-    grad_state = self._GetGradState(op)
-    if grad_state:
-      return ControlFlowOpWrapper(op, grad_state)
+    forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt:
+      grad_state = self._map.get(forward_ctxt)
+      if grad_state:
+        return ControlFlowOpWrapper(op, grad_state)
     return op
 
   def GetAllLoopExits(self):

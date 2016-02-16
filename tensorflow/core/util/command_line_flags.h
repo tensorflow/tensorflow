@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_LABEL_IMAGE_COMMAND_LINE_FLAGS_H
-#define TENSORFLOW_EXAMPLES_LABEL_IMAGE_COMMAND_LINE_FLAGS_H
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
 
 #include <vector>
 #include "tensorflow/core/platform/types.h"
 
+namespace tensorflow {
+
+// N.B. This library is for INTERNAL use only.
+//
 // This is a simple command-line argument parsing module to help us handle
-// example parameters. The recommended way of using it is with local variables
-// and an initializer list of Flag objects, for example:
+// parameters for C++ binaries. The recommended way of using it is with local
+// variables and an initializer list of Flag objects, for example:
 //
 // int some_int = 10;
 // bool some_switch = false;
@@ -38,22 +42,28 @@ limitations under the License.
 // The result indicates if there were any errors parsing the values that were
 // passed to the command-line switches. For example, --some_int=foo would return
 // false because the argument is expected to be an integer.
+//
+// NOTE: Unlike gflags-style libraries, this library is intended to be
+// used in the `main()` function of your binary. It does not handle
+// flag definitions that are scattered around the source code.
 class Flag {
  public:
-  Flag(const char* name, tensorflow::int32* dst1);
+  Flag(const char* name, int32* dst1);
   Flag(const char* name, bool* dst);
-  Flag(const char* name, tensorflow::string* dst);
+  Flag(const char* name, string* dst);
 
-  bool Parse(tensorflow::string arg, bool* value_parsing_ok) const;
+  bool Parse(string arg, bool* value_parsing_ok) const;
 
  private:
-  tensorflow::string name_;
+  string name_;
   enum { TYPE_INT, TYPE_BOOL, TYPE_STRING } type_;
   int* int_value_;
   bool* bool_value_;
-  tensorflow::string* string_value_;
+  string* string_value_;
 };
 
 bool ParseFlags(int* argc, char** argv, const std::vector<Flag>& flag_list);
 
-#endif  // TENSORFLOW_EXAMPLES_LABEL_IMAGE_COMMAND_LINE_FLAGS_H
+}  // namespace tensorflow
+
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H

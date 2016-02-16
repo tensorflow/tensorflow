@@ -33,11 +33,24 @@ curl -O http://download.tensorflow.org/example_images/flower_photos.tgz
 tar xzf flower_photos.tgz
 ```
 
-Once you have the images, you can run the retrainer like this, from the root of
-your TensorFlow source directory:
+Once you have the images, you can build the retrainer like this, from the root
+of your TensorFlow source directory:
 
 ```sh
 bazel build tensorflow/examples/image_retraining:retrain
+```
+
+If you have a machine which supports [the AVX instruction set](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
+(common in x86 CPUs produced in the last few years) you can improve the running
+speed of the retraining by building for that architecture, like this:
+
+```sh
+bazel build -c opt --copt=-mavx tensorflow/examples/image_retraining:retrain
+```
+
+The retrainer can then be run like this:
+
+```sh
 bazel-bin/tensorflow/examples/image_retraining/retrain --image_dir ~/flower_photos
 ```
 
