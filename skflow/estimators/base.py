@@ -170,7 +170,7 @@ class TensorFlowEstimator(BaseEstimator):
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
             graph_def=self._session.graph_def)
 
-    def fit(self, X, y, logdir=None):
+    def fit(self, X, y, val_X=None, val_y=None, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
         data X and y.
 
@@ -189,6 +189,15 @@ class TensorFlowEstimator(BaseEstimator):
             (class labels in classification, real numbers in regression).
             logdir: the directory to save the log file that can be used for
             optional visualization.
+            val_X: matrix or tensor of shape [n_samples, n_features...]. Can be
+            iterator that returns arrays of features. The validation
+            samples used for early stopping and for monitoring accuracy.
+            val_y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+            iterator that returns array of targets. The validation values
+            (class labels in classification, real numbers in regression).
+            logdir: the directory to save the log file that can be used for
+            optional visualization.
+
 
         Returns:
             Returns self.
@@ -197,12 +206,22 @@ class TensorFlowEstimator(BaseEstimator):
         self._data_feeder = setup_train_data_feeder(X, y,
                                                     self.n_classes,
                                                     self.batch_size)
+
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
             # Initialize model parameters.
             self._trainer.initialize(self._session)
             self._initialized = True
+
+        if val_X is not None and val_y is not None:
+            self.val_feeder = setup_train_data_feeder(val_X, val_y,
+                                                      self.n_classes,
+                                                      self.batch_size)
+            self.val_dict = self.val_feeder.get_feed_dict_fn(self._inp, self._out)()
+        else:
+            self.val_dict = None
+
 
         # Sets up summary writer for later optional visualization.
         # Due to not able to setup _summary_writer in __init__ as it's not a
@@ -222,6 +241,7 @@ class TensorFlowEstimator(BaseEstimator):
                             self._data_feeder.get_feed_dict_fn(
                                 self._inp, self._out),
                             self.steps,
+                            self.val_dict,
                             self._summary_writer,
                             self._summaries,
                             verbose=self.verbose,

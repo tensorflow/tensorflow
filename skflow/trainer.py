@@ -22,7 +22,6 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 import tensorflow as tf
 
-
 OPTIMIZER_CLS_NAMES = {
     "SGD": tf.train.GradientDescentOptimizer,
     "Adagrad": tf.train.AdagradOptimizer,
@@ -30,15 +29,22 @@ OPTIMIZER_CLS_NAMES = {
 }
 
 
-def _print_report(print_loss_buffer, global_step, epoch):
+def _print_report(print_train_loss_buffer, print_val_loss_buffer, global_step, epoch):
     """Prints report for given losses and global step."""
-    avg_loss = np.mean(print_loss_buffer)
+    avg_train_loss = np.mean(print_train_loss_buffer)
     if epoch:
-        print("Step #{step}, epoch #{epoch}, avg. loss: {loss:.5f}"
-              .format(step=global_step, loss=avg_loss, epoch=epoch))
+        train_summary_string = ("Step #{step}, epoch #{epoch}, avg. train loss: {loss:.5f}" \
+                .format(step=global_step, loss=avg_train_loss, epoch=epoch))
     else:
-        print("Step #{step}, avg. loss: {loss:.5f}"
-              .format(step=global_step, loss=avg_loss))
+        train_summary_string = ("Step #{step}, avg. train loss: {loss:.5f}" \
+                .format(step=global_step, loss=avg_train_loss))
+
+    if print_val_loss_buffer:
+        avg_val_loss = np.mean(print_val_loss_buffer)
+        val_loss_string = "avg. val loss: {val_loss:.5f}".format(val_loss=avg_val_loss)
+        print(", ".join([train_summary_string, val_loss_string]))
+    else:
+        print(train_summary_string)
 
 
 class TensorFlowTrainer(object):
@@ -110,10 +116,11 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
+    # pylint: disable=too-many-branches
     def train(self, sess, feed_dict_fn, steps,
-              summary_writer=None, summaries=None,
-              print_steps=0, verbose=1, early_stopping_rounds=None,
-              feed_params_fn=None):
+              val_feed_dict=None, summary_writer=None,
+              summaries=None, print_steps=0, verbose=1,
+              early_stopping_rounds=None, feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
@@ -132,7 +139,8 @@ class TensorFlowTrainer(object):
         Returns:
             List of losses for each step.
         """
-        losses, print_loss_buffer = [], []
+
+        losses, val_losses, print_train_loss_buffer, print_val_loss_buffer = [], [], [], []
         print_steps = (print_steps if print_steps else
                        math.ceil(float(steps) / 10))
 
@@ -152,9 +160,19 @@ class TensorFlowTrainer(object):
                     [self.global_step, self.loss, self.trainer],
                     feed_dict=feed_dict)
 
+            if val_feed_dict is not None:
+                val_loss = sess.run(self.loss, feed_dict=val_feed_dict)
+                val_losses.append(val_loss)
+                print_val_loss_buffer.append(val_loss)
+
             if early_stopping_rounds is not None:
-                if loss < min_loss:
-                    min_loss = loss
+                if val_feed_dict:
+                    relevant_loss = val_loss
+                else:
+                    relevant_loss = loss
+
+                if relevant_loss < min_loss:
+                    min_loss = relevant_loss
                     min_loss_i = step
                 elif step - min_loss_i >= early_stopping_rounds:
                     sys.stderr.write("Stopping. Best step:\n \
@@ -163,7 +181,7 @@ class TensorFlowTrainer(object):
                     break
 
             losses.append(loss)
-            print_loss_buffer.append(loss)
+            print_train_loss_buffer.append(loss)
             if summaries and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
             if verbose > 0:
@@ -171,8 +189,12 @@ class TensorFlowTrainer(object):
                     if feed_params_fn:
                         feed_params = feed_params_fn()
                         epoch = feed_params['epoch'] if 'epoch' in feed_params else None
-                    _print_report(print_loss_buffer, global_step, epoch)
-                    print_loss_buffer = []
+                    _print_report(print_train_loss_buffer,
+                                  print_val_loss_buffer,
+                                  global_step,
+                                  epoch)
+                    print_train_loss_buffer = []
+                    print_val_loss_buffer = []
 
         return losses
 

@@ -17,13 +17,20 @@ import tensorflow as tf
 
 import skflow
 
-# Load dataset and split it into train / test subsets.
+# Load dataset 
 
 digits = datasets.load_digits()
 X = digits.images
 y = digits.target
 
+# Split it into train / test subsets
+
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y,
+    test_size=0.2, random_state=42)
+
+# Split X_train again to create validation data
+
+X_train, X_val, y_train, y_val = cross_validation.train_test_split(X_train, y_train,
     test_size=0.2, random_state=42)
 
 # TensorFlow model using Scikit Flow ops
@@ -36,8 +43,8 @@ def conv_model(X, y):
 
 # Create a classifier, train and predict.
 classifier = skflow.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
-                                        steps=500, learning_rate=0.05,
-                                        batch_size=128)
-classifier.fit(X_train, y_train)
+                                        steps=1000, learning_rate=0.05,
+                                        batch_size=128, early_stopping_rounds=200)
+classifier.fit(X_train, y_train, X_val, y_val)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
-print('Accuracy: {0:f}'.format(score))
+print('Test Accuracy: {0:f}'.format(score))
