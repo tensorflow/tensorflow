@@ -144,9 +144,12 @@ def _ExitGrad(op, grad):
   grad_ctxt = op.grad_state.grad_context
   grad_ctxt.AddName(grad.name)
   enter_fn = control_flow_ops._Enter  # pylint: disable=protected-access
-  return enter_fn(grad, grad_ctxt.name, is_constant=False,
-                  parallel_iterations=grad_ctxt.parallel_iterations,
-                  name="b_exit")
+  grad_ctxt.Enter()
+  result = enter_fn(grad, grad_ctxt.name, is_constant=False,
+                    parallel_iterations=grad_ctxt.parallel_iterations,
+                    name="b_exit")
+  grad_ctxt.Exit()
+  return result
 
 
 ops.RegisterGradient("RefExit")(_ExitGrad)
