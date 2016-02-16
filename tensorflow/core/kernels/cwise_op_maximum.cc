@@ -20,7 +20,6 @@ REGISTER4(BinaryOp, CPU, "Maximum", functor::maximum, float, double, int32,
           int64);
 #if GOOGLE_CUDA
 REGISTER3(BinaryOp, GPU, "Maximum", functor::maximum, float, double, int64);
-#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -32,5 +31,6 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
+#endif
 
 }  // namespace tensorflow
