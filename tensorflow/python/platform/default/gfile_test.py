@@ -220,6 +220,12 @@ class FunctionTests(_BaseTest, googletest.TestCase):
                       lambda: gfile.Rename(self.tmp + "dir1/file1",
                                            self.tmp + "newdir/file1"))
 
+  def testOpen(self):
+    with gfile.Open(self.tmp + "test_open", "wb") as f:
+      f.write("foo")
+    with gfile.Open(self.tmp + "test_open") as f:
+      result = f.readlines()
+    self.assertEqual([b"foo"], result)
 
 if __name__ == "__main__":
   googletest.main()

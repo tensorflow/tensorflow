@@ -438,3 +438,16 @@ def Copy(oldpath, newpath, overwrite=False):
   if not overwrite and Exists(newpath):
     raise OSError(errno.EEXIST, os.strerror(errno.EEXIST), newpath)
   shutil.copy(oldpath, newpath)
+
+
+def Open(name, mode='r'):
+  """Exact API match to the standard open.
+
+  Args:
+    name:  a file name, either local or a gfile compatible.
+    mode:  for example "w" to open the file for writing.
+
+  Returns:
+    A threadsafe gfile.GFile object.
+  """
+  return GFile(name, mode=mode)
