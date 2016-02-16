@@ -91,7 +91,7 @@ MAX_DOCUMENT_LENGTH = 10
 
 X_vocab_processor = skflow.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH,
     min_frequency=5)
-y_vocab_processor = skflow.preprocessing.VocabularyPRocessor(MAX_DOCUMENT_LENGTH,
+y_vocab_processor = skflow.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH,
     min_frequency=5)
 Xtrainff, ytrainff = Xy(read_iterator('train.data'))
 print('Fitting dictionary for English...')
