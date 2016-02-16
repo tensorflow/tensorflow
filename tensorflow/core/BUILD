@@ -611,7 +611,6 @@ filegroup(
         "//tensorflow/core:kernels/avgpooling_op.h",
         "//tensorflow/core:kernels/control_flow_ops.h",
         "//tensorflow/core:kernels/conv_2d.h",
-        "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/maxpooling_op.h",
         "//tensorflow/core:kernels/reduction_ops.h",
