@@ -49,9 +49,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/examples/label_image/command_line_flags.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using tensorflow::Flag;
 using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
@@ -60,7 +61,8 @@ using tensorflow::int32;
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
 // of the result is a multiple of 16, because our model expects that.
-Status ReadLabelsFile(string file_name, std::vector<string>* result) {
+Status ReadLabelsFile(string file_name, std::vector<string>* result,
+                      size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
     return tensorflow::errors::NotFound("Labels file ", file_name,
@@ -71,6 +73,7 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
+  *found_label_count = result->size();
   const int padding = 16;
   while (result->size() % padding) {
     result->emplace_back();
@@ -146,7 +149,6 @@ Status LoadGraph(string graph_file_name,
     return tensorflow::errors::NotFound("Failed to load compute graph at '",
                                         graph_file_name, "'");
   }
-
   session->reset(tensorflow::NewSession(tensorflow::SessionOptions()));
   Status session_create_status = (*session)->Create(graph_def);
   if (!session_create_status.ok()) {
@@ -186,12 +188,14 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
                       string labels_file_name) {
   std::vector<string> labels;
-  Status read_labels_status = ReadLabelsFile(labels_file_name, &labels);
+  size_t label_count;
+  Status read_labels_status =
+      ReadLabelsFile(labels_file_name, &labels, &label_count);
   if (!read_labels_status.ok()) {
     LOG(ERROR) << read_labels_status;
     return read_labels_status;
   }
-  const int how_many_labels = 5;
+  const int how_many_labels = std::min(5, static_cast<int>(label_count));
   Tensor indices;
   Tensor scores;
   TF_RETURN_IF_ERROR(GetTopLabels(outputs, how_many_labels, &indices, &scores));
@@ -245,18 +249,18 @@ int main(int argc, char* argv[]) {
   string output_layer = "softmax";
   bool self_test = false;
   string root_dir = "";
-  const bool parse_result =
-      ParseFlags(&argc, argv, {Flag("image", &image),                //
-                               Flag("graph", &graph),                //
-                               Flag("labels", &labels),              //
-                               Flag("input_width", &input_width),    //
-                               Flag("input_height", &input_height),  //
-                               Flag("input_mean", &input_mean),      //
-                               Flag("input_std", &input_std),        //
-                               Flag("input_layer", &input_layer),    //
-                               Flag("output_layer", &output_layer),  //
-                               Flag("self_test", &self_test),        //
-                               Flag("root_dir", &root_dir)});
+  const bool parse_result = tensorflow::ParseFlags(
+      &argc, argv, {Flag("image", &image),                //
+                    Flag("graph", &graph),                //
+                    Flag("labels", &labels),              //
+                    Flag("input_width", &input_width),    //
+                    Flag("input_height", &input_height),  //
+                    Flag("input_mean", &input_mean),      //
+                    Flag("input_std", &input_std),        //
+                    Flag("input_layer", &input_layer),    //
+                    Flag("output_layer", &output_layer),  //
+                    Flag("self_test", &self_test),        //
+                    Flag("root_dir", &root_dir)});
   if (!parse_result) {
     LOG(ERROR) << "Error parsing command-line flags.";
     return -1;

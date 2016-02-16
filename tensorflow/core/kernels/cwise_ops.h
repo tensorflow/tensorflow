@@ -29,42 +29,6 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-// TODO(zhifengc): Eigen::internal::pow_impl does not have proper
-// EIGEN host/device decoration. We duplicate code here for now.
-template <typename T, bool IsInteger>
-struct pow {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
-                                                     const T& y) const {
-    return std::pow(x, y);
-  }
-};
-
-template <typename T>
-struct pow<T, true> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x, T y) const {
-    T res(1);
-    if (y & 1) res *= x;
-    y >>= 1;
-    while (y) {
-      x *= x;
-      if (y & 1) res *= x;
-      y >>= 1;
-    }
-    return res;
-  }
-};
-
-template <typename T>
-struct scalar_pow2_op : pow<T, NumTraits<T>::IsInteger> {};
-
-template <typename T>
-struct functor_traits<scalar_pow2_op<T> > {
-  enum {
-    Cost = 5 * NumTraits<T>::MulCost,
-    PacketAccess = false,
-  };
-};
-
 template <typename T>
 struct scalar_fmod2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
@@ -517,7 +481,7 @@ template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T> > {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow2_op<T> > {};
+struct pow : base<T, Eigen::internal::scalar_binary_pow_op<T, T> > {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};

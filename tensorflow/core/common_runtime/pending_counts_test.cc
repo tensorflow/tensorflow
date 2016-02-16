@@ -49,6 +49,20 @@ TEST(PendingCounts, Simple) {
   }
 }
 
+TEST(PendingCounts, InitializeFrom) {
+  const int C = 300;
+  PendingCounts c(C);
+  for (int id = 0; id < C; id++) {
+    c.set_initial_count(id, id, id);
+  }
+  PendingCounts c2(C);
+  c2.InitializeFrom(c);
+  for (int id = 0; id < C; id++) {
+    EXPECT_EQ(c.pending(id), c2.pending(id));
+    EXPECT_EQ(c.dead_count(id), c2.dead_count(id));
+  }
+}
+
 TEST(PendingCounts, SmallPendingLargeDead) {
   PendingCounts c(1);
   c.set_initial_count(0, 1, 10);

@@ -158,6 +158,16 @@ class TensorSlice {
   // otherwise the result is undefined.
   void ComputeRelative(const TensorSlice& sub, TensorSlice* relative) const;
 
+  // Updates the slice in such a way that it fully covers "other" slice.
+  // Note, "other" slice should refer to the same tensor shape.
+  // Example:
+  //   given a slice [2:4, :, 3:] and "other" slice [:, 1:4, 2:4] the
+  //   updated slice would be [:, :, 2:]. Here is why:
+  //   dim 0: "2:4"  U  ":"    ->  ":"
+  //   dim 1: ":"    U  "1-4"  ->  ":"
+  //   dim 2: "3:"   U  "2:4"  ->  "2:"
+  void UpdateToCover(const TensorSlice& other);
+
   // Returns true if the length field was specified in an Extent.
   static bool HasExtentLength(const TensorSliceProto::Extent& extent);
 

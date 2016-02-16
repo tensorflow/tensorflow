@@ -496,10 +496,12 @@ tf_gen_op_wrapper_py(
         "StackClose",
         "TensorArray",
         "TensorArrayClose",
+        "TensorArrayConcat",
         "TensorArrayGrad",
         "TensorArrayRead",
         "TensorArrayPack",
         "TensorArraySize",
+        "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
     ],
@@ -660,6 +662,7 @@ tf_gen_op_wrapper_py(
         "SparseSelectLastK",
         "SparseReorder",
         "SparseToDense",
+        "SparseTensorDenseMatMul",
     ],
     require_shape_functions = True,
 )
@@ -1156,4 +1159,16 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_binary(
+    name = "batch_norm_benchmark",
+    srcs = [
+        "ops/batch_norm_benchmark.py",
+    ],
+    main = "ops/batch_norm_benchmark.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )

@@ -194,5 +194,38 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     gfile.Rename(self.tmp + "dir2", self.tmp + "newdir")
     self.assertTrue(gfile.Exists(self.tmp + "newdir"))
 
+  def testCopy(self):
+    gfile.MkDir(self.tmp + "dir1")
+    gfile.MkDir(self.tmp + "dir2")
+    with gfile.GFile(self.tmp + "dir1/file1", "w"):
+      pass  # Create file
+    with gfile.GFile(self.tmp + "dir2/file2", "w"):
+      pass  # Create file
+
+    # Dest file already exists, overwrite=False (default).
+    self.assertRaises(
+        OSError, lambda: gfile.Copy(self.tmp + "dir1/file1",
+                                    self.tmp + "dir2/file2"))
+    # Overwrite succeeds
+    gfile.Copy(self.tmp + "dir1/file1", self.tmp + "dir2/file2",
+               overwrite=True)
+    self.assertTrue(gfile.Exists(self.tmp + "dir2/file2"))
+
+    # Normal copy.
+    gfile.Rename(self.tmp + "dir1/file1", self.tmp + "dir2/file1")
+    self.assertTrue(gfile.Exists(self.tmp + "dir2/file1"))
+
+    # Normal copy to non-existent dir
+    self.assertRaises(OSError,
+                      lambda: gfile.Rename(self.tmp + "dir1/file1",
+                                           self.tmp + "newdir/file1"))
+
+  def testOpen(self):
+    with gfile.Open(self.tmp + "test_open", "wb") as f:
+      f.write("foo")
+    with gfile.Open(self.tmp + "test_open") as f:
+      result = f.readlines()
+    self.assertEqual([b"foo"], result)
+
 if __name__ == "__main__":
   googletest.main()

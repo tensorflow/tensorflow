@@ -523,6 +523,7 @@ class OpKernelContext {
 
   // params must outlive the OpKernelContext.
   explicit OpKernelContext(Params* params);
+  OpKernelContext(Params* params, int noutputs);
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
@@ -958,6 +959,7 @@ class OpKernelContext {
   gtl::InlinedVector<TensorValue, 4> outputs_;
   UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
   bool is_output_dead_ = false;
+  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1081,7 +1083,9 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  if (params_->device->RequiresRecordingAccessedTensors()) {
+  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
+         record_tensor_accesses_);
+  if (record_tensor_accesses_) {
     mutex_lock l(mu_);
     // Keep a reference to the underlying memory around.
     referenced_tensors_.Add(tensor);
@@ -1090,8 +1094,10 @@ inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
 
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
-  mutex_lock l(mu_);
-  referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  if (record_tensor_accesses_) {
+    mutex_lock l(mu_);
+    referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  }
 }
 
 inline const Tensor& OpKernelContext::input(int index) {

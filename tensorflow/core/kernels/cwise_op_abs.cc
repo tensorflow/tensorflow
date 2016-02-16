@@ -23,7 +23,6 @@ REGISTER_KERNEL_BUILDER(Name("ComplexAbs").Device(DEVICE_CPU),
 #endif
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Abs", functor::abs, float, double, int64);
-#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -34,5 +33,6 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::abs<int32>>);
+#endif
 
 }  // namespace tensorflow
