@@ -285,11 +285,14 @@ else
   else
     ${TMP_SCRIPT}
   fi
-fi &&
+fi && FAILURE=0 || FAILURE=1
+[[ ${FAILURE} == "0" ]] && RESULT="SUCCESS" || RESULT="FAILURE"
 
 rm -f ${TMP_SCRIPT}
 
 END_TIME=$(date +'%s')
 echo ""
-echo "Parameterized build ends at: $(date) "\
+echo "Parameterized build ends with ${RESULT} at: $(date) "\
 "(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+
+exit ${FAILURE}
