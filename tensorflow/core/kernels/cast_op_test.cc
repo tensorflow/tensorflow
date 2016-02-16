@@ -66,6 +66,7 @@ class CastOpTest : public OpsTestBase {
 
 #define TEST_ALL_CASTS_FROM(in) \
   TEST_CAST(in, uint8);         \
+  TEST_CAST(in, uint16);        \
   TEST_CAST(in, int16);         \
   TEST_CAST(in, int32);         \
   TEST_CAST(in, int64);         \
@@ -73,6 +74,7 @@ class CastOpTest : public OpsTestBase {
   TEST_CAST(in, double)
 
 TEST_ALL_CASTS_FROM(uint8)
+TEST_ALL_CASTS_FROM(uint16)
 TEST_ALL_CASTS_FROM(int16)
 TEST_ALL_CASTS_FROM(int32)
 TEST_ALL_CASTS_FROM(int64)
