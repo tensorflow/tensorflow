@@ -686,6 +686,7 @@ filegroup(
         "//tensorflow/core:kernels/topk_op.cc",
         "//tensorflow/core:kernels/training_ops.cc",
         "//tensorflow/core:kernels/transpose_op.cc",
+        "//tensorflow/core:kernels/transpose_op_cpu.cc",
         "//tensorflow/core:kernels/where_op.cc",
         "//tensorflow/core:kernels/xent_op.cc",
     ],
