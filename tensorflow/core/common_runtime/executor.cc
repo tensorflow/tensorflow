@@ -311,10 +311,10 @@ Status ExecutorImpl::Initialize() {
     item->num_inputs = n->num_inputs();
     item->num_outputs = n->num_outputs();
 
-    for (int i = 0; i < min(4, item->num_inputs); i++) {
+    for (int i = 0; i < std::min(4, item->num_inputs); i++) {
       item->inlined_input_type[i] = n->input_type(i);
     }
-    for (int i = 0; i < min(4, item->num_outputs); i++) {
+    for (int i = 0; i < std::min(4, item->num_outputs); i++) {
       item->inlined_output_type[i] = n->output_type(i);
     }
 
