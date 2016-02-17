@@ -87,6 +87,8 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     avg1 = ema.average(var1)
     avg2 = ema.average(tensor2)
 
+    self.assertItemsEqual([var0, var1], tf.moving_average_variables())
+
     self.assertFalse(avg0 in tf.trainable_variables())
     self.assertFalse(avg1 in tf.trainable_variables())
     self.assertFalse(avg2 in tf.trainable_variables())
