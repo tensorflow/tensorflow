@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace gpu = ::perftools::gputools;
@@ -174,6 +175,51 @@ TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   EXPECT_EQ(nullptr, second_ptr);
   a.DeallocateRaw(first_ptr);
 }
+
+static void BM_Allocation(int iters) {
+  GPUBFCAllocator a(0, 1 << 30);
+  // Exercise a few different allocation sizes
+  std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
+  int size_index = 0;
+
+  while (--iters > 0) {
+    int bytes = sizes[size_index++ % sizes.size()];
+    void* p = a.AllocateRaw(1, bytes);
+    a.DeallocateRaw(p);
+  }
+}
+BENCHMARK(BM_Allocation);
+
+// A more complex benchmark that defers deallocation of an object for
+// "delay" allocations.
+static void BM_AllocationDelayed(int iters, int delay) {
+  GPUBFCAllocator a(0, 1 << 30);
+  // Exercise a few different allocation sizes
+  std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
+  int size_index = 0;
+
+  std::vector<void*> ptrs;
+  for (int i = 0; i < delay; i++) {
+    ptrs.push_back(nullptr);
+  }
+  int pindex = 0;
+  while (--iters > 0) {
+    if (ptrs[pindex] != nullptr) {
+      a.DeallocateRaw(ptrs[pindex]);
+      ptrs[pindex] = nullptr;
+    }
+    int bytes = sizes[size_index++ % sizes.size()];
+    void* p = a.AllocateRaw(1, bytes);
+    ptrs[pindex] = p;
+    pindex = (pindex + 1) % ptrs.size();
+  }
+  for (int i = 0; i < ptrs.size(); i++) {
+    if (ptrs[i] != nullptr) {
+      a.DeallocateRaw(ptrs[i]);
+    }
+  }
+}
+BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 
 }  // namespace
 }  // namespace tensorflow

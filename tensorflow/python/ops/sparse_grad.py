@@ -29,3 +29,6 @@ ops.NoGradient("SparseConcat")
 
 
 ops.NoGradient("SparseReorder")
+
+
+ops.NoGradient("SparseTensorDenseMatMul")

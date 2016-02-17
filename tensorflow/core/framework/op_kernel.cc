@@ -175,12 +175,15 @@ Status OpKernelConstruction::allocate_persistent(
 // OpKernelContext -----------------------------------------------------------
 
 OpKernelContext::OpKernelContext(Params* params)
-    : params_(params), outputs_(params_->op_kernel->output_types().size()) {
+    : OpKernelContext(params, params->op_kernel->output_types().size()) {}
+OpKernelContext::OpKernelContext(Params* params, int noutputs)
+    : params_(params), outputs_(noutputs) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(params_->eigen_gpu_device,
                                          params_->op_device_context,
                                          eigen_gpu_allocator);
+  record_tensor_accesses_ = params_->device->RequiresRecordingAccessedTensors();
 }
 
 OpKernelContext::~OpKernelContext() {

@@ -1,6 +1,7 @@
 mnist/beginners/index.md
 mnist/pros/index.md
 mnist/tf/index.md
+tfserve/index.md
 deep_cnn/index.md
 word2vec/index.md
 recurrent/index.md

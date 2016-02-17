@@ -28,8 +28,8 @@ class BitcastTest(tf.test.TestCase):
     with self.test_session():
       tf_ans = tf.bitcast(x, datatype)
       out = tf_ans.eval()
-      buff_after = np.getbuffer(out)
-      buff_before = np.getbuffer(x)
+      buff_after = memoryview(out).tobytes()
+      buff_before = memoryview(x).tobytes()
       self.assertEqual(buff_before, buff_after)
       self.assertEqual(tf_ans.get_shape(), shape)
 

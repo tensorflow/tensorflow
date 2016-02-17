@@ -376,6 +376,14 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       return
 
     if path.startswith('external'):
+      # For compatibility with latest version of Bazel, we renamed bower
+      # packages to use '_' rather than '-' in their package name.
+      # This means that the directory structure is changed too.
+      # So that all our recursive imports work, we need to modify incoming
+      # requests to map onto the new directory structure.
+      components = path.split('/')
+      components[1] = components[1].replace('-', '_')
+      path = ('/').join(components)
       path = os.path.join('../', path)
     else:
       path = os.path.join('tensorboard', path)

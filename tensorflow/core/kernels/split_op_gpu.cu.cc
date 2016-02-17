@@ -41,6 +41,69 @@ void Split<Device, T>::operator()(
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 
 }  // namespace functor
+
+namespace {
+
+template <typename T>
+__global__ void SplitOpKernel(const T* input, int32 num_split,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size, int64* output_ptrs) {
+  eigen_assert(blockDim.y == 1);
+  eigen_assert(blockDim.z == 1);
+  eigen_assert(split_dim_size % num_split == 0);
+
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+  int32 size = prefix_dim_size * split_dim_size * suffix_dim_size;
+  int32 piece_size = split_dim_size / num_split;
+
+  while (offset < size) {
+    int32 prefix_dim = offset / (split_dim_size * suffix_dim_size);
+    int32 split_dim =
+        (offset % (split_dim_size * suffix_dim_size)) / suffix_dim_size;
+    int32 suffix_dim = offset % suffix_dim_size;
+
+    T* output_ptr = reinterpret_cast<T*>(output_ptrs[split_dim / piece_size]);
+    // output_ptr is pointing to an array of size
+    //  [prefix_dim_size][piece_size][suffix_dim_size].
+    //
+    // output_ptr[prefix_dim][split_dim % piece_size][suffix_dim] =
+    //   input[offset];
+    *(output_ptr + prefix_dim * piece_size * suffix_dim_size +
+      (split_dim % piece_size) * suffix_dim_size + suffix_dim) =
+        *(input + offset);
+    offset += total_thread_count;
+  }
+}
+
+}  // namespace
+
+template <typename T>
+struct SplitOpGPULaunch {
+  void Run(const Eigen::GpuDevice& d, const T* input, int32 num_split,
+           int32 prefix_dim_size, int32 split_dim_size, int32 suffix_dim_size,
+           int64* output_ptrs) {
+    const int32 block_size = d.maxCudaThreadsPerBlock();
+    const int32 max_blocks =
+        (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+        block_size;
+    const int32 num_blocks = std::min(
+        max_blocks,
+        (prefix_dim_size * split_dim_size * suffix_dim_size) / block_size + 1);
+
+    SplitOpKernel<T><<<num_blocks, block_size, 0, d.stream()>>>(
+        input, num_split, prefix_dim_size, split_dim_size, suffix_dim_size,
+        output_ptrs);
+  }
+};
+
+#define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
