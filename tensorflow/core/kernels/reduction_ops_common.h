@@ -197,7 +197,6 @@ class ReductionHelper {
 
   // Shape of shuffled input
   TensorShape data_reshape() const {
-    const int dims = data_reshape_.size();
     TensorShape shape;
     for (auto s : data_reshape_) shape.AddDim(s);
     return shape;
