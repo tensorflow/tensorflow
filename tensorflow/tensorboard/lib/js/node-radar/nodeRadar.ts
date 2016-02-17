@@ -39,15 +39,15 @@ limitations under the License.
  */
 
 interface NodeVisibility {
-  node: HTMLElement,
-  partial: Boolean,
-  full: Boolean,
-  almost: Boolean
+  node: HTMLElement;
+  partial: Boolean;
+  full: Boolean;
+  almost: Boolean;
 }
 
 interface NodeData {
-  callback: NodeRadarCallback
-  visibility: NodeVisibility,
+  callback: NodeRadarCallback;
+  visibility: NodeVisibility;
 }
 
 interface NodeRadarCallback {
@@ -97,8 +97,11 @@ class NodeRadar {
 
   public checkVisibility(node: Element) {
     var matches = this._nodes.filter(function(n) { return n.visibility.node === node; });
-    if (matches.length > 0) return matches[0].visibility;
-    else throw new Error("Couldn't find node to check visibility.");
+    if (matches.length > 0) {
+      return matches[0].visibility;
+    } else {
+      throw new Error("Couldn't find node to check visibility.");
+    }
   }
 
   public getNodes(): Array<NodeData> {
