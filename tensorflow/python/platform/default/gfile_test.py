@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
 import shutil
 import time
@@ -147,6 +148,22 @@ class FunctionTests(_BaseTest, googletest.TestCase):
                      sorted(gfile.Glob(self.tmp + "test_dir/*")))
     gfile.DeleteRecursively(self.tmp + "test_dir")
     self.assertFalse(gfile.Exists(self.tmp + "test_dir"))
+
+  @contextlib.contextmanager
+  def _working_directory(self, wd):
+    original_cwd = os.getcwd()
+    os.chdir(wd)
+    try:
+      yield
+    finally:
+      os.chdir(original_cwd)
+
+  def testMakeDirsWithEmptyString(self):
+    gfile.MakeDirs(self.tmp + "test_dir")
+    with self._working_directory(self.tmp + "test_dir"):
+      gfile.MakeDirs("")
+    # Should succeed because MakeDirs("") is a no-op.
+    gfile.RmDir(self.tmp + "test_dir")
 
   def testErrors(self):
     self.assertRaises(
