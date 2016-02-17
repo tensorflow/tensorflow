@@ -222,7 +222,7 @@ class FunctionTests(_BaseTest, googletest.TestCase):
 
   def testOpen(self):
     with gfile.Open(self.tmp + "test_open", "wb") as f:
-      f.write("foo")
+      f.write(b"foo")
     with gfile.Open(self.tmp + "test_open") as f:
       result = f.readlines()
     self.assertEqual([b"foo"], result)
