@@ -74,4 +74,24 @@ TEST(CPUAllocatorTest, Sizes) {
   EXPECT_EQ(false, a->TracksAllocationSizes());
 }
 
+namespace {
+
+AllocatorAttributes DeviceAllocatorAttribute() {
+  AllocatorAttributes attr;
+  attr.value |= (0x1 << 24);
+  return attr;
+}
+
+bool HasDeviceAllocatorAttribute(const AllocatorAttributes& attr) {
+  return attr.value & (0x1 << 24);
+}
+
+}  // namespace
+
+TEST(CustomAllocatorAttributes, TestSetterAndGetter) {
+  AllocatorAttributes attr = DeviceAllocatorAttribute();
+  EXPECT_TRUE(HasDeviceAllocatorAttribute(attr));
+  EXPECT_FALSE(HasDeviceAllocatorAttribute(AllocatorAttributes()));
+}
+
 }  // namespace tensorflow

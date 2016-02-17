@@ -217,11 +217,6 @@ inline void Allocator::RunDtor(string* p, size_t n) {
 // specification of the desired memory attributes in order to select
 // an Allocator.
 //
-// NOTE: The upper 8 bits of the value are reserved for
-// device-specific uses.  Implementors of a device can interpret these
-// upper 8 bits in device-specific ways, and ops implemented for those
-// devices are responsible for setting those 8 bits appropriately.
-//
 // Example use:
 //  // Allocator for ordinary device memory:
 //  Allocator* a = allocator(AllocatorAttributes());
@@ -240,7 +235,11 @@ struct AllocatorAttributes {
 
   void Merge(AllocatorAttributes other) { value |= other.value; }
 
-  uint8 value = 0;
+  // NOTE: The upper 8 bits of the value are reserved for
+  // device-specific uses.  Implementors of a device can interpret these
+  // upper 8 bits in device-specific ways, and ops implemented for those
+  // devices are responsible for setting those 8 bits appropriately.
+  uint32 value = 0;
 };
 
 // Returns a trivial implementation of Allocator which uses the system
