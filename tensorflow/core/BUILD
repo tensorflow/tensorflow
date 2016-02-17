@@ -565,7 +565,9 @@ filegroup(
         "//tensorflow/core:kernels/matmul_op.h",
         "//tensorflow/core:kernels/no_op.cc",
         "//tensorflow/core:kernels/no_op.h",
+        "//tensorflow/core:kernels/ops_util.h",
         "//tensorflow/core:kernels/pack_op.cc",
+        "//tensorflow/core:kernels/pooling_ops_common.h",
         "//tensorflow/core:kernels/reshape_op.cc",
         "//tensorflow/core:kernels/reshape_op.h",
         "//tensorflow/core:kernels/reverse_sequence_op.cc",
@@ -783,6 +785,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@re2//:re2",
+        ":android_tensorflow_lib_lite",
         ":protos_cc",
         "//third_party/eigen3",
     ],
