@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/allocator.h"
+
 #include <algorithm>
 #include <vector>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
+
 namespace tensorflow {
 
 TEST(CPUAllocatorTest, Simple) {
@@ -93,5 +97,19 @@ TEST(CustomAllocatorAttributes, TestSetterAndGetter) {
   EXPECT_TRUE(HasDeviceAllocatorAttribute(attr));
   EXPECT_FALSE(HasDeviceAllocatorAttribute(AllocatorAttributes()));
 }
+
+static void BM_Allocation(int iters) {
+  Allocator* a = cpu_allocator();
+  // Exercise a few different allocation sizes
+  std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
+  int size_index = 0;
+
+  while (--iters > 0) {
+    int bytes = sizes[size_index++ % sizes.size()];
+    void* p = a->AllocateRaw(1, bytes);
+    a->DeallocateRaw(p);
+  }
+}
+BENCHMARK(BM_Allocation);
 
 }  // namespace tensorflow
