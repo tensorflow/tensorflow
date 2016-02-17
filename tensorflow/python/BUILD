@@ -591,6 +591,7 @@ tf_gen_op_wrapper_py(
     name = "nn_ops",
     hidden = [
         "AvgPoolGrad",  # "*Grad" accessible through nn_grad instead of nn_ops.
+        "BatchNormWithGlobalNormalization",
         "BatchNormWithGlobalNormalizationGrad",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
@@ -741,6 +742,7 @@ py_library(
         "ops/nn_ops.py",
         "ops/numerics.py",
         "ops/parsing_ops.py",
+        "ops/partitioned_variables.py",
         "ops/random_ops.py",
         "ops/rnn.py",
         "ops/rnn_cell.py",
@@ -997,6 +999,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/matrix_solve_ls_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
+    "kernel_tests/partitioned_variables_test.py",
     "kernel_tests/queue_ops_test.py",
     "kernel_tests/random_shuffle_queue_test.py",
     "kernel_tests/save_restore_ops_test.py",

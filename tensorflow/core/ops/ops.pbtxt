@@ -1272,6 +1272,7 @@ op {
     description: "A bool indicating whether the resulted tensor\nneeds to be multiplied with gamma."
   }
   summary: "Batch normalization."
+  description: "This op is deprecated. Prefer `tf.nn.batch_normalization`."
 }
 op {
   name: "BatchNormWithGlobalNormalizationGrad"
@@ -1356,6 +1357,7 @@ op {
     description: "A bool indicating whether the resulted tensor\nneeds to be multiplied with gamma."
   }
   summary: "Gradients for batch normalization."
+  description: "This op is deprecated. See `tf.nn.batch_normalization`."
 }
 op {
   name: "BatchSelfAdjointEig"
