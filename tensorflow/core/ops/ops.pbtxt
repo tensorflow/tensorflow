@@ -7122,22 +7122,27 @@ op {
   name: "SampleDistortedBoundingBox"
   input_arg {
     name: "image_size"
+    description: "1-D, containing `[height, width, channels]`."
     type_attr: "T"
   }
   input_arg {
     name: "bounding_boxes"
+    description: "3-D with shape `[batch, N, 4]` describing the N bounding boxes\nassociated with the image."
     type: DT_FLOAT
   }
   output_arg {
     name: "begin"
+    description: "1-D, containing `[offset_height, offset_width, 0]`. Provide as input to\n`tf.slice`."
     type_attr: "T"
   }
   output_arg {
     name: "size"
+    description: "1-D, containing `[target_height, target_width, -1]`. Provide as input to\n`tf.slice`."
     type_attr: "T"
   }
   output_arg {
     name: "bboxes"
+    description: "3-D with shape `[1, 1, 4]` containing the distorted bounding box.\nProvide as input to `tf.image.draw_bounding_boxes`."
     type: DT_FLOAT
   }
   attr {
@@ -7159,6 +7164,7 @@ op {
     default_value {
       i: 0
     }
+    description: "If either `seed` or `seed2` are set to non-zero, the random number\ngenerator is seeded by the given `seed`.  Otherwise, it is seeded by a random\nseed."
   }
   attr {
     name: "seed2"
@@ -7166,6 +7172,7 @@ op {
     default_value {
       i: 0
     }
+    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "min_object_covered"
@@ -7173,6 +7180,7 @@ op {
     default_value {
       f: 0.1
     }
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied."
   }
   attr {
     name: "aspect_ratio_range"
@@ -7183,6 +7191,7 @@ op {
         f: 1.33
       }
     }
+    description: "The cropped area of the image must have an aspect ratio =\nwidth / height within this range."
   }
   attr {
     name: "area_range"
@@ -7193,6 +7202,7 @@ op {
         f: 1
       }
     }
+    description: "The cropped area of the image must contain a fraction of the\nsupplied image within in this range."
   }
   attr {
     name: "max_attempts"
@@ -7200,6 +7210,7 @@ op {
     default_value {
       i: 100
     }
+    description: "Number of attempts at generating a cropped region of the image\nof the specified constraints. After `max_attempts` failures, return the entire\nimage."
   }
   attr {
     name: "use_image_if_no_bounding_boxes"
@@ -7207,9 +7218,10 @@ op {
     default_value {
       b: false
     }
+    description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
   }
   summary: "Generate a single randomly distorted bounding box for an image."
-  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_box` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_box` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
   is_stateful: true
 }
 op {
@@ -7482,7 +7494,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf `indices` contains duplicate entries, lexicographically later entries\noverride earlier entries.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMax"
