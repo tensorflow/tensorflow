@@ -144,7 +144,7 @@ new_git_repository(
   name = "iron_ajax",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-ajax.git",
-  tag = "v1.0.7",
+  tag = "v1.1.1",
 )
 
 new_git_repository(
@@ -172,7 +172,7 @@ new_git_repository(
   name = "iron_collapse",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-collapse.git",
-  tag = "v1.0.4",
+  tag = "v1.0.5",
 )
 
 new_git_repository(
@@ -249,7 +249,7 @@ new_git_repository(
   name = "iron_list",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-list.git",
-  tag = "v1.1.5",
+  tag = "v1.1.7",
 )
 
 new_git_repository(
@@ -347,7 +347,7 @@ new_git_repository(
   name = "paper_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/paper-button.git",
-  tag = "v1.0.8",
+  tag = "v1.0.11",
 )
 
 new_git_repository(
@@ -368,7 +368,7 @@ new_git_repository(
   name = "paper_header_panel",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/paper-header-panel.git",
-  tag = "v1.0.5",
+  tag = "v1.1.2",
 )
 
 new_git_repository(
@@ -459,7 +459,7 @@ new_git_repository(
   name = "paper_tabs",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/paper-tabs.git",
-  tag = "v1.0.10",
+  tag = "v1.0.4",
 )
 
 new_git_repository(
@@ -487,7 +487,7 @@ new_git_repository(
   name = "polymer",
   build_file = "bower.BUILD",
   remote = "https://github.com/Polymer/polymer.git",
-  tag = "v1.1.5",
+  tag = "v1.2.4",
 )
 
 new_git_repository(

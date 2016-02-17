@@ -611,7 +611,6 @@ filegroup(
         "//tensorflow/core:kernels/avgpooling_op.h",
         "//tensorflow/core:kernels/control_flow_ops.h",
         "//tensorflow/core:kernels/conv_2d.h",
-        "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/maxpooling_op.h",
         "//tensorflow/core:kernels/reduction_ops.h",
@@ -718,12 +717,6 @@ config_setting(
     },
 )
 
-ANDROID_TF_SOURCES = [
-    "//tensorflow/core:android_core_ops",
-    "//tensorflow/core:android_extended_ops",
-    "//tensorflow/core:android_srcs",
-]
-
 ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
@@ -732,13 +725,16 @@ ANDROID_TF_COPTS = [
 ]
 
 # Native library support for Android applications.
-# Compiles to a trivial library on non-android.
+# Does not contain operators, use :android_tensorflow_lib if you want full
+# operator support.
+# Compiles to a trivial library on non-android to prevent irrelevant
+# build errors.
 cc_library(
-    name = "android_tensorflow_lib",
+    name = "android_tensorflow_lib_lite",
     srcs = select({
-        ":android": ANDROID_TF_SOURCES,
-        ":android_32": ANDROID_TF_SOURCES,
-        ":android_64": ANDROID_TF_SOURCES,
+        ":android": ["//tensorflow/core:android_srcs"],
+        ":android_32": ["//tensorflow/core:android_srcs"],
+        ":android_64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -763,8 +759,48 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@re2//:re2",
-        ":protos_cc",
+        ":android_proto_lib",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "android_tensorflow_operators",
+    srcs = [
+        "//tensorflow/core:android_core_ops",
+        "//tensorflow/core:android_extended_ops",
+    ],
+    copts = select({
+        ":android": ANDROID_TF_COPTS,
+        ":android_32": ANDROID_TF_COPTS,
+        ":android_64": ANDROID_TF_COPTS,
+        "//conditions:default": [],
+    }),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@re2//:re2",
+        ":android_proto_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+# Full Tensorflow library with operator support. Use this unless reducing
+# binary size (by packaging a reduced operator set) is a concern.
+cc_library(
+    name = "android_tensorflow_lib",
+    srcs = [],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_tensorflow_lib_lite",
+        ":android_tensorflow_operators",
     ],
 )
 

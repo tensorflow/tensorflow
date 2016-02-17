@@ -37,7 +37,7 @@ from six.moves import http_client
 import tensorflow as tf
 
 from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard.backend import tensorboard_server
+from tensorflow.tensorboard.backend import server
 
 tf.flags.DEFINE_string('logdir', None, """the logdir to pass to the TensorBoard
 backend; data will be read from this logdir for serialization.""")
@@ -157,19 +157,19 @@ def main(unused_argv=None):
       PrintAndLog('Refusing to overwrite target %s without --overwrite' %
                   target, tf.logging.ERROR)
       return -2
-  path_to_run = tensorboard_server.ParseEventFilesSpec(FLAGS.logdir)
+  path_to_run = server.ParseEventFilesSpec(FLAGS.logdir)
 
   PrintAndLog('About to load Multiplexer. This may take some time.')
   multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=tensorboard_server.TENSORBOARD_SIZE_GUIDANCE)
-  tensorboard_server.ReloadMultiplexer(multiplexer, path_to_run)
+      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
+  server.ReloadMultiplexer(multiplexer, path_to_run)
 
   PrintAndLog('Multiplexer load finished. Starting TensorBoard server.')
-  server = tensorboard_server.BuildServer(multiplexer, 'localhost', 0)
-  server_thread = threading.Thread(target=server.serve_forever)
+  s = server.BuildServer(multiplexer, 'localhost', 0)
+  server_thread = threading.Thread(target=s.serve_forever)
   server_thread.daemon = True
   server_thread.start()
-  connection = http_client.HTTPConnection('localhost', server.server_address[1])
+  connection = http_client.HTTPConnection('localhost', s.server_address[1])
 
   PrintAndLog('Server setup! Downloading data from the server.')
   x = TensorBoardStaticSerializer(connection, target)
@@ -177,8 +177,8 @@ def main(unused_argv=None):
 
   PrintAndLog('Done downloading data.')
   connection.close()
-  server.shutdown()
-  server.server_close()
+  s.shutdown()
+  s.server_close()
 
 
 if __name__ == '__main__':

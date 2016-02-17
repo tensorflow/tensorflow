@@ -27,13 +27,12 @@ import os
 import shutil
 import threading
 
-
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard.backend import tensorboard_server
+from tensorflow.tensorboard.backend import server
 
 
 class TensorboardServerTest(tf.test.TestCase):
@@ -44,12 +43,10 @@ class TensorboardServerTest(tf.test.TestCase):
   def setUp(self):
     self._GenerateTestData()
     self._multiplexer = event_multiplexer.EventMultiplexer(
-        size_guidance=tensorboard_server.TENSORBOARD_SIZE_GUIDANCE)
-    tensorboard_server.ReloadMultiplexer(self._multiplexer,
-                                         {self.get_temp_dir(): None})
+        size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
+    server.ReloadMultiplexer(self._multiplexer, {self.get_temp_dir(): None})
     # 0 to pick an unused port.
-    self._server = tensorboard_server.BuildServer(self._multiplexer,
-                                                  'localhost', 0)
+    self._server = server.BuildServer(self._multiplexer, 'localhost', 0)
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()

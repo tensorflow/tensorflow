@@ -196,7 +196,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     seq += 1
 
   for d in dest_nodes:
-    assert d in name_to_node_map, "%d is not in graph" % d
+    assert d in name_to_node_map, "%s is not in graph" % d
 
   nodes_to_keep = set()
   # Breadth first search to find all the nodes that we should keep.

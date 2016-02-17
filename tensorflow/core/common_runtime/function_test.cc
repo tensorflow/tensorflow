@@ -172,7 +172,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     CHECK_EQ(rets.size(), out.size());
-    for (int i = 0; i < rets.size(); ++i) {
+    for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
     return Status::OK();
