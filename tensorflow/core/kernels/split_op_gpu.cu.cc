@@ -63,7 +63,7 @@ __global__ void SplitOpKernel(const T* input, int32 num_split,
     int32 k = offset % suffix_dim_size;
 
     // Find the output buffer that should be written to.
-    T* output_ptr = ldg(output_ptrs + j / piece_size);
+    T* output_ptr = output_ptrs[j / piece_size];
     // output_ptr is pointing to an array of size
     //  [prefix_dim_size][piece_size][suffix_dim_size].
     //
