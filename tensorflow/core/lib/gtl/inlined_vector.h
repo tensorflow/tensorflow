@@ -60,7 +60,7 @@ class InlinedVector {
   typedef T& reference;
   typedef const T& const_reference;
   typedef size_t size_type;
-  typedef ssize_t difference_type;
+  typedef ptrdiff_t difference_type;
   typedef pointer iterator;
   typedef const_pointer const_iterator;
 

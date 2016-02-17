@@ -25,7 +25,7 @@ namespace tensorflow {
 
 Device::Device(Env* env, const DeviceAttributes& device_attributes,
                Allocator* device_allocator)
-    : DeviceBase(env), device_attributes_(device_attributes) {
+    : DeviceBase(env, device_attributes) {
   CHECK(DeviceNameUtils::ParseFullName(name(), &parsed_name_))
       << "Invalid device name: " << name();
   rmgr_ = new ResourceMgr(parsed_name_.job);
