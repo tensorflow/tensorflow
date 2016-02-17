@@ -18,19 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import time
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import function
-# pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops
-# pylint: enable=unused-import
 
 
 class FunctionTest(tf.test.TestCase):

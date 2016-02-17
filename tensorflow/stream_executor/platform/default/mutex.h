@@ -45,20 +45,29 @@ typedef std::mutex BaseMutex;
 
 // A class that wraps around the std::mutex implementation, only adding an
 // additional LinkerInitialized constructor interface.
-class mutex : public BaseMutex {
+class LOCKABLE mutex : public BaseMutex {
  public:
   mutex() {}
   // The default implementation of std::mutex is safe to use after the linker
   // initializations
   explicit mutex(LinkerInitialized x) {}
+
+  void lock() ACQUIRE() { BaseMutex::lock(); }
+  void unlock() RELEASE() { BaseMutex::unlock(); }
 };
 
-typedef std::unique_lock<BaseMutex> mutex_lock;
+class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<BaseMutex> {
+ public:
+  mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<BaseMutex>(m) {}
+  ~mutex_lock() RELEASE() {}
+};
 
 #ifdef STREAM_EXECUTOR_USE_SHARED_MUTEX
+// TODO(vrv): Annotate these with ACQUIRE_SHARED after implementing
+// as classes.
 typedef std::shared_lock<BaseMutex> shared_lock;
 #else
-typedef std::unique_lock<BaseMutex> shared_lock;
+typedef mutex_lock shared_lock;
 #endif
 
 using std::condition_variable;

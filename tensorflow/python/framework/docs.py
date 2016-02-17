@@ -17,6 +17,7 @@
 
 Updates the documentation files.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -97,6 +98,7 @@ class Index(Document):
           print("  * %s" % link, file=f)
         print("", file=f)
 
+
 def collect_members(module_to_name):
   """Collect all symbols from a list of modules.
 
@@ -108,9 +110,11 @@ def collect_members(module_to_name):
   """
   members = {}
   for module, module_name in module_to_name.items():
+    all_names = getattr(module, "__all__", None)
     for name, member in inspect.getmembers(module):
       if ((inspect.isfunction(member) or inspect.isclass(member)) and
-          not _always_drop_symbol_re.match(name)):
+          not _always_drop_symbol_re.match(name) and
+          (all_names is None or name in all_names)):
         fullname = '%s.%s' % (module_name, name)
         if name in members:
           other_fullname, other_member = members[name]

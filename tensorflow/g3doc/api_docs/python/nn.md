@@ -3,7 +3,7 @@
 # Neural Network
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -620,7 +620,7 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None)` {#moments}
+### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -638,6 +638,7 @@ For so-called "global normalization" needed for convolutional filters pass
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
 ##### Returns:
@@ -825,7 +826,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -864,6 +865,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`validate_indices`</b>: Whether or not to validate gather indices.
 
 ##### Returns:
 
@@ -1043,7 +1045,8 @@ expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
 
-Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
 ##### Args:
 

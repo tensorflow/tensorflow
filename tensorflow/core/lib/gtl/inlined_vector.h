@@ -374,7 +374,7 @@ class InlinedVector {
 
   // Moves srcs[0,n-1] contents to dst[0,n-1].
   static void Move(const T* src, size_t n, T* dst) {
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
       new (dst + i) T(std::move(*(src + i)));
     }
   }

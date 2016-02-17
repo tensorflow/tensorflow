@@ -20,6 +20,9 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 
 
+__all__ = ['assert_same_float_dtype']
+
+
 def _assert_same_base_type(items, expected_type=None):
   """Asserts all items are of the same base type.
 
@@ -41,12 +44,12 @@ def _assert_same_base_type(items, expected_type=None):
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
-        original_item_str = item.name if hasattr(item, "name") else str(item)
+        original_item_str = item.name if hasattr(item, 'name') else str(item)
       elif expected_type != item_type:
-        raise ValueError("%s, type=%s, must be of the same type (%s)%s." % (
-            item.name if hasattr(item, "name") else str(item),
+        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+            item.name if hasattr(item, 'name') else str(item),
             item_type, expected_type,
-            (" as %s" % original_item_str) if original_item_str else ""))
+            (' as %s' % original_item_str) if original_item_str else ''))
   return expected_type
 
 
@@ -74,5 +77,5 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   if not dtype:
     dtype = dtypes.float32
   elif not dtype.is_floating:
-    raise ValueError("Expected float, got %s." % dtype)
+    raise ValueError('Expected float, got %s.' % dtype)
   return dtype

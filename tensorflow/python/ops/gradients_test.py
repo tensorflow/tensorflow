@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import warnings
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -29,22 +27,18 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-# pylint: disable=unused-import
-from tensorflow.python.ops import array_grad
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import data_flow_grad
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad
-from tensorflow.python.ops import state_grad
-# pylint: enable=unused-import
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.constant_op import constant
-# pylint: disable=unused-import
-from tensorflow.python.ops import functional_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest

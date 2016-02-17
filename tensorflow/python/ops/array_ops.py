@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@saturate_cast
 
 ## Shapes and Shaping
 
@@ -66,7 +67,6 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -560,8 +560,8 @@ def transpose(a, perm=None, name="transpose"):
   """
   with ops.op_scope([a], name, "transpose") as name:
     if perm is None:
-      dims = gen_math_ops._range(0, gen_array_ops.rank(a), 1)
-      perm = gen_array_ops.reverse(dims, [True])
+      rank = gen_array_ops.rank(a)
+      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
       ret = gen_array_ops.transpose(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
@@ -920,6 +920,32 @@ def _SqueezeShape(op):
               i, dim))
     result_shape.append(dim)
   return [tensor_shape.TensorShape(result_shape)]
+
+
+@ops.RegisterShape("Bitcast")
+def _BitcastShape(op):
+  """Shape function for Bitcast op."""
+  input_shape = op.inputs[0].get_shape()
+  input_type = op.inputs[0].dtype
+  size_of_input = input_type.size
+  output = dtypes.as_dtype(op.get_attr("type"))
+  size_of_output = output.size
+  if size_of_input == size_of_output:
+    return [tensor_shape.TensorShape(input_shape)]
+  else:
+    if size_of_output > size_of_input:
+      new_shape = input_shape.as_list()
+      last_val = new_shape[-1]
+      if last_val == (size_of_output // size_of_input):
+        new_shape = new_shape[:-1]
+      else:
+        raise ValueError(
+            "Cannot bitcast due to shape. %d is not evenly divisible by %d." %
+            (new_shape[-1], size_of_input // size_of_output))
+    else:
+      new_shape = input_shape
+      new_shape = new_shape.concatenate([size_of_input // size_of_output])
+    return [tensor_shape.TensorShape(new_shape)]
 
 
 @ops.RegisterShape("Reshape")

@@ -33,7 +33,6 @@ from __future__ import print_function
 import os.path
 import time
 
-import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 

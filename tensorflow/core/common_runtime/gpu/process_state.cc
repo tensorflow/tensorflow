@@ -66,7 +66,7 @@ ProcessState* ProcessState::instance_ = nullptr;
   return instance_;
 }
 
-ProcessState::ProcessState() : gpu_count_(0) {
+ProcessState::ProcessState() : gpu_device_enabled_(false) {
   CHECK(instance_ == nullptr);
   instance_ = this;
 }
@@ -92,15 +92,6 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
   }
   return MemDesc();
 }
-
-void ProcessState::SetGPUCount(int c) {
-  CHECK(gpu_count_ == 0 || gpu_count_ == c)
-      << "Cannot call SetGPUCount with a non-zero value "
-      << "not equal to prior set value.";
-  gpu_count_ = c;
-}
-
-int ProcessState::GPUCount() const { return gpu_count_; }
 
 Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
                                          const string& allocator_type) {
@@ -187,7 +178,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
 }
 
 Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
-  if (gpu_count_ == 0 || !FLAGS_brain_mem_reg_cuda_dma) {
+  if (!HasGPUDevice() || !FLAGS_brain_mem_reg_cuda_dma) {
     return GetCPUAllocator(numa_node);
   }
   // Although we're temporarily ignoring numa_node, check for legality.

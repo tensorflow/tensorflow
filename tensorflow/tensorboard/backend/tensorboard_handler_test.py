@@ -22,6 +22,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import xrange
+
 from tensorflow.python.platform import googletest
 from tensorflow.tensorboard.backend import tensorboard_handler
 

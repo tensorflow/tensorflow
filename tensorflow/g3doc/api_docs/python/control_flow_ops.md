@@ -3,7 +3,7 @@
 # Control Flow
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -170,13 +170,15 @@ the same non-zero number and type of outputs.
 
 
 *  <b>`Example`</b>: 
+
 ```python
-  x = constant(2)
-  y = constant(5)
-  def f1(): return constant(17)
-  def f2(): return constant(23)
+  x = tf.constant(2)
+  y = tf.constant(5)
+  def f1(): return tf.mul(x, 17)
+  def f2(): return tf.add(y, 23)
   r = cond(math_ops.less(x, y), f1, f2)
-  # r is set to f1()
+  # r is set to f1().
+  # Operations in f2 (e.g., tf.add) are not executed.
 ```
 
 

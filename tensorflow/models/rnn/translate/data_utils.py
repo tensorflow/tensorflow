@@ -23,8 +23,9 @@ import os
 import re
 import tarfile
 
-from tensorflow.python.platform import gfile
 from six.moves import urllib
+
+from tensorflow.python.platform import gfile
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = "_PAD"

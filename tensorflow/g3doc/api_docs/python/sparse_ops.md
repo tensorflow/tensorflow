@@ -3,7 +3,7 @@
 # Sparse Tensors
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -26,7 +26,7 @@ collected into a `SparseTensor` class for ease of use.  If you have separate
 `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
 object before passing to the ops below.
 
-Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
+Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
 
 * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
 * `values`: A 1-D tensor of any type and shape `[N]`.
@@ -51,7 +51,7 @@ obtained by calling `tf.sparse_reorder(st)`.
 Example: The sparse tensor
 
 ```python
-SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
 ```
 
 represents the dense tensor

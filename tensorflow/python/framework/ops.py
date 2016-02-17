@@ -28,8 +28,6 @@ import sys
 import threading
 import weakref
 
-import tensorflow.python.platform
-
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
@@ -1876,7 +1874,7 @@ class Graph(object):
     """
     self._control_flow_context = context
 
-  def as_graph_def(self, from_version=None):
+  def as_graph_def(self, from_version=None, add_shapes=False):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -1889,6 +1887,8 @@ class Graph(object):
       from_version: Optional.  If this is set, returns a `GraphDef`
         containing only the nodes that were added to this graph since
         its `version` property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each
+        node with the inferred shapes of each of its outputs.
 
     Returns:
       A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
@@ -1904,6 +1904,9 @@ class Graph(object):
       op = self._nodes_by_id[op_id]
       if from_version is None or op_id > from_version:
         graph.node.extend([op.node_def])
+        if op.outputs and add_shapes:
+          graph.node[-1].attr["_output_shapes"].list.shape.extend([
+              output.get_shape().as_proto() for output in op.outputs])
         bytesize += op.node_def.ByteSize()
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
@@ -2898,7 +2901,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
 
-def device(dev):
+def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
@@ -2913,7 +2916,7 @@ def device(dev):
     A context manager that specifies the default device to use for newly
     created ops.
   """
-  return get_default_graph().device(dev)
+  return get_default_graph().device(device_name_or_function)
 
 
 def name_scope(name):
@@ -3299,6 +3302,9 @@ class GraphKeys(object):
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
+  * `WEIGHTS`: weights inside neural network layers
+  * `BIASES`: biases inside neural network layers
+  * `ACTIVATIONS`: activations of neural network layers
   """
 
   # Key to collect Variable objects that must be saved and restored
@@ -3324,10 +3330,17 @@ class GraphKeys(object):
   CONCATENATED_VARIABLES = "concatenated_variables"
   # Key to collect savers.
   SAVERS = "savers"
+  # Key to collect weights
+  WEIGHTS = "weights"
+  # Key to collect biases
+  BIASES = "biases"
+  # Key to collect activations
+  ACTIVATIONS = "activations"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
   READY_OP = "ready_op"
+  SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
 

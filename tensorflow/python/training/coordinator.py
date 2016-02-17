@@ -22,10 +22,10 @@ import sys
 import threading
 import time
 
+import six
+
 from tensorflow.python.platform import logging
 from tensorflow.python.util import compat
-
-import six
 
 
 class Coordinator(object):

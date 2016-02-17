@@ -19,7 +19,7 @@ limitations under the License.
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
 #define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 6
+#define TF_MINOR_VERSION 7
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
@@ -65,5 +65,19 @@ limitations under the License.
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
 #define TF_GRAPH_DEF_VERSION 8
+
+// Checkpoint compatibility versions (the versions field in SavedSliceMeta).
+//
+// The checkpoint versions have the same semantics as GraphDef versions, but the
+// numbering scheme is separate.  We have no plans to ever deprecate checkpoint
+// versions, but it's good to have this in place in case we ever need to.
+//
+// Version history:
+//
+// 0. Checkpoints saved before checkpoint versioning.
+// 1. First real version (10feb2015).
+#define TF_CHECKPOINT_VERSION_MIN_PRODUCER 0
+#define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
+#define TF_CHECKPOINT_VERSION 1
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

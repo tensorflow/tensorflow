@@ -18,27 +18,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order
-from tensorflow.python import flags
-
 import os
 import re
 import sys
+
 from BeautifulSoup import BeautifulStoneSoup
+
+from tensorflow.python import flags
+
 
 ANCHOR_RE = re.compile(r'\W+')
 
-PAGE_TEMPLATE = '''# {0} `{1}`
+PAGE_TEMPLATE = '''# `{0} {1}`
 
 {2}
 
-##Member Summary
+###Member Details
 
-{3}
-
-##Member Details
-
-{4}'''
+{3}'''
 
 INDEX_TEMPLATE = '''# TensorFlow C++ Session API reference documentation
 
@@ -234,13 +231,6 @@ def index_page(pages):
       all_md_files.append(pages[page_index].get_md_filename())
       pages.pop(page_index)
 
-  # Footer
-  lines.append('''
-
-<div class='sections-order' style="display: none;">
-<!--''')
-  lines.extend([('<!-- %s -->' % f) for f in all_md_files])
-  lines.extend(['-->', '</div>'])
   return '\n'.join(lines)
 
 
@@ -269,7 +259,7 @@ class Page(object):
     fulls = all_fulls(members)
     self.overview = page_overview(soup.find('compounddef'))
     self.page_text = PAGE_TEMPLATE.format(
-        self.type, self.name, self.overview, briefs, fulls)
+        self.type, self.name, self.overview, fulls)
 
   def get_text(self):
     return self.page_text
@@ -297,9 +287,9 @@ def main(unused_argv):
     if len(fname) < 6: continue
     newpage = None
     if fname[0:5] == 'class':
-      newpage = Page(os.path.join(FLAGS.src_dir, fname), 'Class')
+      newpage = Page(os.path.join(FLAGS.src_dir, fname), 'class')
     elif fname[0:6] == 'struct':
-      newpage = Page(os.path.join(FLAGS.src_dir, fname), 'Struct')
+      newpage = Page(os.path.join(FLAGS.src_dir, fname), 'struct')
     if newpage is not None and page_in_name_list(newpage, all_pages):
       pages.append(newpage)
       md_filename = newpage.get_md_filename()
@@ -313,9 +303,4 @@ def main(unused_argv):
   return 0
 
 if __name__ == '__main__':
-  try:
-    argv = FLAGS(sys.argv)  # parse flags
-  except flags.FlagsError as e:
-    print('%s\\nUsage: %s ARGS\\n%s' % (e, sys.argv[0], FLAGS))
-    sys.exit(1)
-  main(argv)
+  main(sys.argv)

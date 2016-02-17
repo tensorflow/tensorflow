@@ -23,8 +23,6 @@ import os.path
 import shutil
 import time
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 from tensorflow.core.util.event_pb2 import SessionLog
 

@@ -40,14 +40,9 @@ import re
 import sys
 import tarfile
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-from six.moves import urllib
 import numpy as np
+from six.moves import urllib
 import tensorflow as tf
-# pylint: enable=unused-import,g-bad-import-order
-
-from tensorflow.python.platform import gfile
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -96,13 +91,13 @@ class NodeLookup(object):
     Returns:
       dict from integer node ID to human-readable string.
     """
-    if not gfile.Exists(uid_lookup_path):
+    if not tf.gfile.Exists(uid_lookup_path):
       tf.logging.fatal('File does not exist %s', uid_lookup_path)
-    if not gfile.Exists(label_lookup_path):
+    if not tf.gfile.Exists(label_lookup_path):
       tf.logging.fatal('File does not exist %s', label_lookup_path)
 
     # Loads mapping from string UID to human-readable string
-    proto_as_ascii_lines = gfile.GFile(uid_lookup_path).readlines()
+    proto_as_ascii_lines = tf.gfile.GFile(uid_lookup_path).readlines()
     uid_to_human = {}
     p = re.compile(r'[n\d]*[ \S,]*')
     for line in proto_as_ascii_lines:
@@ -113,7 +108,7 @@ class NodeLookup(object):
 
     # Loads mapping from string UID to integer node ID.
     node_id_to_uid = {}
-    proto_as_ascii = gfile.GFile(label_lookup_path).readlines()
+    proto_as_ascii = tf.gfile.GFile(label_lookup_path).readlines()
     for line in proto_as_ascii:
       if line.startswith('  target_class:'):
         target_class = int(line.split(': ')[1])
@@ -138,9 +133,9 @@ class NodeLookup(object):
 
 
 def create_graph():
-  """"Creates a graph from saved GraphDef file and returns a saver."""
+  """Creates a graph from saved GraphDef file and returns a saver."""
   # Creates graph from saved graph_def.pb.
-  with gfile.FastGFile(os.path.join(
+  with tf.gfile.FastGFile(os.path.join(
       FLAGS.model_dir, 'classify_image_graph_def.pb'), 'rb') as f:
     graph_def = tf.GraphDef()
     graph_def.ParseFromString(f.read())
@@ -156,9 +151,9 @@ def run_inference_on_image(image):
   Returns:
     Nothing
   """
-  if not gfile.Exists(image):
+  if not tf.gfile.Exists(image):
     tf.logging.fatal('File does not exist %s', image)
-  image_data = gfile.FastGFile(image, 'rb').read()
+  image_data = tf.gfile.FastGFile(image, 'rb').read()
 
   # Creates graph from saved GraphDef.
   create_graph()

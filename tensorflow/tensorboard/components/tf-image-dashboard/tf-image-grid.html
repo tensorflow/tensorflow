@@ -39,6 +39,7 @@ is high)
         <template
           is="dom-repeat"
           items="[[_runs]]"
+          sort="_sort"
           as="run"
         >
         <div class="run-name-cell noshrink">
@@ -60,6 +61,7 @@ is high)
             <template
               is="dom-repeat"
               items="[[_runs]]"
+              sort="_sort"
               as="run"
             >
               <div class="image-cell noshrink">

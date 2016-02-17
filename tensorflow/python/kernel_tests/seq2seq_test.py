@@ -21,11 +21,6 @@ from __future__ import print_function
 import math
 import random
 
-# The pylint exception below is needed to make the code compatible with
-# the open-source conversion script.
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -130,6 +125,11 @@ class Seq2SeqTest(tf.test.TestCase):
 
         # Test that previous-feeding model ignores inputs after the first.
         dec_inp2 = [tf.constant(0, tf.int32, shape=[2]) for _ in range(3)]
+        with tf.variable_scope("other"):
+          d3, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
+              enc_inp, dec_inp2, cell, 2, 5,
+              feed_previous=tf.constant(True))
+        sess.run([tf.initialize_all_variables()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp, cell, 2, 5,
@@ -137,9 +137,6 @@ class Seq2SeqTest(tf.test.TestCase):
         d2, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp2, cell, 2, 5,
             feed_previous=True)
-        d3, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
-            enc_inp, dec_inp2, cell, 2, 5,
-            feed_previous=tf.constant(True))
         res1 = sess.run(d1)
         res2 = sess.run(d2)
         res3 = sess.run(d3)
@@ -175,6 +172,10 @@ class Seq2SeqTest(tf.test.TestCase):
 
         # Test that previous-feeding model ignores inputs after the first.
         dec_inp2 = [tf.constant(0, tf.int32, shape=[2])] * 3
+        with tf.variable_scope("other"):
+          d3, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
+              enc_inp, dec_inp2, cell, 5, feed_previous=tf.constant(True))
+        sess.run([tf.initialize_all_variables()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp, cell, 5,
@@ -182,8 +183,6 @@ class Seq2SeqTest(tf.test.TestCase):
         d2, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp2, cell, 5,
             feed_previous=True)
-        d3, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
-            enc_inp, dec_inp2, cell, 5, feed_previous=tf.constant(True))
         res1 = sess.run(d1)
         res2 = sess.run(d2)
         res3 = sess.run(d3)
@@ -281,16 +280,70 @@ class Seq2SeqTest(tf.test.TestCase):
 
         # Test that previous-feeding model ignores inputs after the first.
         dec_inp2 = [tf.constant(0, tf.int32, shape=[2]) for _ in range(3)]
+        with tf.variable_scope("other"):
+          d3, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
+              enc_inp, dec_inp2, cell, 2, 5, feed_previous=tf.constant(True))
+        sess.run([tf.initialize_all_variables()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
             enc_inp, dec_inp, cell, 2, 5, feed_previous=True)
         d2, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
             enc_inp, dec_inp2, cell, 2, 5, feed_previous=True)
-        d3, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
-            enc_inp, dec_inp2, cell, 2, 5, feed_previous=tf.constant(True))
         res1 = sess.run(d1)
         res2 = sess.run(d2)
         res3 = sess.run(d3)
+        self.assertAllClose(res1, res2)
+        self.assertAllClose(res1, res3)
+
+  def testOne2ManyRNNSeq2Seq(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        enc_inp = [tf.constant(1, tf.int32, shape=[2]) for i in range(2)]
+        dec_inp_dict = {}
+        dec_inp_dict["0"] = [
+            tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
+        dec_inp_dict["1"] = [
+            tf.constant(i, tf.int32, shape=[2]) for i in range(4)]
+        dec_symbols_dict = {"0": 5, "1": 6}
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        outputs_dict, state_dict = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict)
+
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(outputs_dict["0"])
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 5), res[0].shape)
+        res = sess.run(outputs_dict["1"])
+        self.assertEqual(4, len(res))
+        self.assertEqual((2, 6), res[0].shape)
+        res = sess.run([state_dict["0"]])
+        self.assertEqual((2, 4), res[0].shape)
+        res = sess.run([state_dict["1"]])
+        self.assertEqual((2, 4), res[0].shape)
+
+        # Test that previous-feeding model ignores inputs after the first, i.e.
+        # dec_inp_dict2 has different inputs from dec_inp_dict after the first
+        # time-step.
+        dec_inp_dict2 = {}
+        dec_inp_dict2["0"] = [
+            tf.constant(0, tf.int32, shape=[2]) for _ in range(3)]
+        dec_inp_dict2["1"] = [
+            tf.constant(0, tf.int32, shape=[2]) for _ in range(4)]
+        with tf.variable_scope("other"):
+          outputs_dict3, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+              enc_inp, dec_inp_dict2, cell, 2, dec_symbols_dict,
+              feed_previous=tf.constant(True))
+        sess.run([tf.initialize_all_variables()])
+        tf.get_variable_scope().reuse_variables()
+        outputs_dict1, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict,
+            feed_previous=True)
+        outputs_dict2, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
+            enc_inp, dec_inp_dict2, cell, 2, dec_symbols_dict,
+            feed_previous=True)
+        res1 = sess.run(outputs_dict1["0"])
+        res2 = sess.run(outputs_dict2["0"])
+        res3 = sess.run(outputs_dict3["0"])
         self.assertAllClose(res1, res2)
         self.assertAllClose(res1, res3)
 
@@ -341,14 +394,14 @@ class Seq2SeqTest(tf.test.TestCase):
       res = sess.run(loss_per_sequence)
       self.assertAllClose(np.asarray([4.828314, 4.828314]), res)
 
-  def testModelWithBucketsScope(self):
+  def testModelWithBucketsScopeAndLoss(self):
     """Test that variable scope reuse is not reset after model_with_buckets."""
     classes = 10
     buckets = [(4, 4), (8, 8)]
 
     with self.test_session():
       # Here comes a sample Seq2Seq model using GRU cells.
-      def SampleGRUSeq2Seq(enc_inp, dec_inp, weights):
+      def SampleGRUSeq2Seq(enc_inp, dec_inp, weights, per_example_loss):
         """Example sequence-to-sequence model that uses GRU cells."""
         def GRUSeq2Seq(enc_inp, dec_inp):
           cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2)
@@ -356,16 +409,23 @@ class Seq2SeqTest(tf.test.TestCase):
               enc_inp, dec_inp, cell, classes, classes)
         targets = [dec_inp[i+1] for i in range(len(dec_inp) - 1)] + [0]
         return tf.nn.seq2seq.model_with_buckets(
-            enc_inp, dec_inp, targets, weights, buckets, GRUSeq2Seq)
+            enc_inp, dec_inp, targets, weights, buckets, GRUSeq2Seq,
+            per_example_loss=per_example_loss)
 
       # Now we construct the copy model.
       inp = [tf.placeholder(tf.int32, shape=[None]) for _ in range(8)]
       out = [tf.placeholder(tf.int32, shape=[None]) for _ in range(8)]
       weights = [tf.ones_like(inp[0], dtype=tf.float32) for _ in range(8)]
       with tf.variable_scope("root"):
-        _ = SampleGRUSeq2Seq(inp, out, weights)
+        _, losses1 = SampleGRUSeq2Seq(inp, out, weights, per_example_loss=False)
         # Now check that we did not accidentally set reuse.
         self.assertEqual(False, tf.get_variable_scope().reuse)
+        # Construct one more model with per-example loss.
+        tf.get_variable_scope().reuse_variables()
+        _, losses2 = SampleGRUSeq2Seq(inp, out, weights, per_example_loss=True)
+        # First loss is scalar, the second one is a 1-dimensinal tensor.
+        self.assertEqual([], losses1[0].get_shape().as_list())
+        self.assertEqual([None], losses2[0].get_shape().as_list())
 
   def testModelWithBuckets(self):
     """Larger tests that does full sequence-to-sequence model training."""
@@ -433,7 +493,7 @@ class Seq2SeqTest(tf.test.TestCase):
         perplexities[bucket].append(math.exp(float(res[1])))
       for bucket in range(len(buckets)):
         if len(perplexities[bucket]) > 1:  # Assert that perplexity went down.
-          self.assertLess(perplexities[bucket][1], perplexities[bucket][0])
+          self.assertLess(perplexities[bucket][-1], perplexities[bucket][0])
 
 
 if __name__ == "__main__":

@@ -98,6 +98,16 @@ class PendingCounts {
     }
   }
 
+  // Initialize the state from "b".
+  // REQUIRES: "num_nodes_ == b.num_nodes_"
+  void InitializeFrom(const PendingCounts& b) {
+    DCHECK_EQ(num_nodes_, b.num_nodes_);
+    for (int id = 0; id < num_nodes_; id++) {
+      counts_[id] = b.counts_[id];
+    }
+    overflow_ = b.overflow_;
+  }
+
  private:
   // We keep track of the pending count and dead input count for each
   // graph node.  The representation used here is designed to be cache

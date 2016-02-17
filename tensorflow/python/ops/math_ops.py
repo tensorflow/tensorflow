@@ -25,6 +25,7 @@ operators to your graph.
 @@truediv
 @@floordiv
 @@mod
+@@cross
 
 ## Basic Math Functions
 
@@ -169,8 +170,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import six.moves
 
@@ -255,7 +254,7 @@ def pow(x, y, name=None):
   corresponding elements in `x` and `y`. For example:
 
   ```
-  # tensor 'x' is [[2, 2]], [3, 3]]
+  # tensor 'x' is [[2, 2], [3, 3]]
   # tensor 'y' is [[8, 16], [2, 3]]
   tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   ```
@@ -364,6 +363,35 @@ def cast(x, dtype, name=None):
       if x.dtype.base_dtype == dtype:
         return x
       return gen_math_ops.cast(x, dtype, name=name)
+
+
+def saturate_cast(value, dtype, name=None):
+  """Performs a safe saturating cast of `value` to `dtype`.
+
+  This function casts the input to `dtype` without applying any scaling.  If
+  there is a danger that values would over or underflow in the cast, this op
+  applies the appropriate clamping before the cast.
+
+  Args:
+    value: A `Tensor`.
+    dtype: The desired output `DType`.
+    name: A name for the operation (optional).
+
+  Returns:
+    `value` safely cast to `dtype`.
+  """
+  # When casting to a type with smaller representable range, clamp.
+  # Note that this covers casting to unsigned types as well.
+  with ops.op_scope([value], name, "saturate_cast") as name:
+    value = ops.convert_to_tensor(value, name="value")
+    dtype = dtypes.as_dtype(dtype).base_dtype
+    if value.dtype.min < dtype.min:
+      value = maximum(value, ops.convert_to_tensor(
+          dtype.min, dtype=value.dtype, name="min"))
+    if value.dtype.max > dtype.max:
+      value = minimum(value, ops.convert_to_tensor(
+          dtype.max, dtype=value.dtype, name="max"))
+    return cast(value, dtype, name=name)
 
 
 def to_float(x, name="ToFloat"):
@@ -1052,7 +1080,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   For example:
 
   ```python
-  # tensor 'a' is [[1, 2], [3, 4]
+  # tensor 'a' is [[1, 2], [3, 4]]
   # tensor `b` is [[5, 0], [0, 6]]
   tf.accumulate_n([a, b, a]) ==> [[7, 4], [6, 14]]
 
@@ -1223,6 +1251,7 @@ ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
+ops.RegisterShape("Cross")(common_shapes.unchanged_shape)
 ops.RegisterShape("Exp")(common_shapes.unchanged_shape)
 ops.RegisterShape("Floor")(common_shapes.unchanged_shape)
 ops.RegisterShape("Imag")(common_shapes.unchanged_shape)

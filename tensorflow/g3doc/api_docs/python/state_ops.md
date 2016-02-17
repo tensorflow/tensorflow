@@ -3,7 +3,7 @@
 # Variables
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -104,7 +104,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value, trainable=True, collections=None, validate_shape=True, name=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, name=None, variable_def=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -133,6 +133,9 @@ variable to its initial value.
     `initial_value` must be known.
 *  <b>`name`</b>: Optional name for the variable. Defaults to `'Variable'` and gets
     uniquified automatically.
+*  <b>`variable_def`</b>: `VariableDef` protocol buffer. If not `None`, recreates
+    the Variable object with its contents. `variable_def` and the other
+    arguments are mutually exclusive.
 
 ##### Returns:
 
@@ -141,8 +144,9 @@ variable to its initial value.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the initial value does not have a shape and
-    `validate_shape` is `True`.
+*  <b>`ValueError`</b>: If both `variable_def` and initial_value are specified.
+*  <b>`ValueError`</b>: If the initial value is not specified, or does not have a
+    shape and `validate_shape` is `True`.
 
 
 - - -
@@ -383,6 +387,13 @@ The `Operation` of this variable.
 #### Other Methods
 - - -
 
+#### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
+
+
+
+
+- - -
+
 #### `tf.Variable.ref()` {#Variable.ref}
 
 Returns a reference to this variable.
@@ -398,6 +409,17 @@ variable.
 ##### Returns:
 
   A `Tensor` that is a reference to the variable.
+
+
+- - -
+
+#### `tf.Variable.to_proto()` {#Variable.to_proto}
+
+Converts a `Variable` to a `VariableDef` protocol buffer.
+
+##### Returns:
+
+  A `VariableDef` protocol buffer.
 
 
 - - -
@@ -695,7 +717,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None)` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta')` {#Saver.save}
 
 Saves variables.
 
@@ -720,6 +742,7 @@ path can be passed directly to a call to `restore()`.
     kept in the same directory as the checkpoint files, is automatically
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
+*  <b>`meta_graph_suffix`</b>: Suffix for MetaGraphDef file. Defaults to 'meta'.
 
 ##### Returns:
 
@@ -775,6 +798,8 @@ You can pass any of the returned values to `restore()`.
 
 #### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
+DEPRECATED: Use set_last_checkpoints_with_time.
+
 Sets the list of old checkpoint filenames.
 
 ##### Args:
@@ -797,6 +822,58 @@ Generates a `SaverDef` representation of this saver.
 ##### Returns:
 
   A `SaverDef` proto.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
+
+Writes `MetaGraphDef` to save_path/filename.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional meta_graph filename including the path.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+#### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
+
+
+
+
+- - -
+
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+
+Sets the list of old checkpoint filenames and timestamps.
+
+##### Args:
+
+
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
+
+##### Raises:
+
+
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.to_proto()` {#Saver.to_proto}
+
+Returns a `SaverDef` protocol buffer.
 
 
 
@@ -1294,7 +1371,8 @@ to keep the scale intact, where `dim = W.shape[0]` (the size of the input).
 A similar calculation for convolutional networks gives an analogous result
 with `dim` equal to the product of the first 3 dimensions.  When
 nonlinearities are present, we need to multiply this by a constant `factor`.
-See <https://arxiv.org/pdf/1412.6558v3.pdf> for deeper motivation, experiments
+See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
+([pdf](http://arxiv.org/pdf/1412.6558.pdf)) for deeper motivation, experiments
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
@@ -1359,8 +1437,9 @@ This operation computes
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
-If `indices` contains duplicate entries, lexicographically later entries
-override earlier entries.
+If values in `ref` is to be updated more than once, because there are
+duplicate entires in `indices`, the order at which the updates happen
+for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 

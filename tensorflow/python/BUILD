@@ -496,10 +496,12 @@ tf_gen_op_wrapper_py(
         "StackClose",
         "TensorArray",
         "TensorArrayClose",
+        "TensorArrayConcat",
         "TensorArrayGrad",
         "TensorArrayRead",
         "TensorArrayPack",
         "TensorArraySize",
+        "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
     ],
@@ -660,6 +662,7 @@ tf_gen_op_wrapper_py(
         "SparseSelectLastK",
         "SparseReorder",
         "SparseToDense",
+        "SparseTensorDenseMatMul",
     ],
     require_shape_functions = True,
 )
@@ -728,7 +731,6 @@ py_library(
         "ops/image_ops.py",
         "ops/init_ops.py",
         "ops/io_ops.py",
-        "ops/learn.py",
         "ops/linalg_grad.py",
         "ops/linalg_ops.py",
         "ops/logging_ops.py",
@@ -1143,7 +1145,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":docs",
-        ":platform",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -1158,4 +1159,16 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_binary(
+    name = "batch_norm_benchmark",
+    srcs = [
+        "ops/batch_norm_benchmark.py",
+    ],
+    main = "ops/batch_norm_benchmark.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )

@@ -70,7 +70,7 @@ class Tensor {
   ~Tensor();
 
   /// Returns the data type.
-  DataType dtype() const { return type_; }
+  DataType dtype() const { return shape_.data_type(); }
 
   /// Returns the shape of the tensor.
   const TensorShape& shape() const { return shape_; }
@@ -350,8 +350,14 @@ class Tensor {
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
 
+  /// Copy the other tensor into this tensor and reshape it and reinterpret the
+  /// buffer's datatype.
+  ///
+  /// This tensor shares other's underlying storage.
+  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+
  private:
-  DataType type_;
+  void set_dtype(DataType t) { shape_.set_data_type(t); }
   TensorShape shape_;
   TensorBuffer* buf_;
 
@@ -372,7 +378,11 @@ class Tensor {
   // Tensor.
   // TODO: Remove this when we have a better story for detecting
   // uninitialized tensors.
-  void set_shape(const TensorShape& shape) { shape_ = shape; }
+  void set_shape(const TensorShape& shape) {
+    DataType dt = dtype();
+    shape_ = shape;
+    set_dtype(dt);
+  }
 
   void CopyFromInternal(const Tensor& other, const TensorShape& shape);
 

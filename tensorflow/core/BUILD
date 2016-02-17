@@ -40,6 +40,8 @@
 # filegroup ":android_srcs" - Core sources
 # filegroup ":android_core_ops" - Essential kernels
 # filegroup ":android_extended_ops" - Optional kernels
+# filegroup ":android_extended_ops_group1" - Optional kernels, first batch
+# filegroup ":android_extended_ops_group2" - Optional kernels, second batch
 # cc_library ":android_tensorflow_lib" - Native library
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
@@ -170,6 +172,7 @@ tf_cuda_library(
         "framework/function.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/memory_types.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
@@ -213,67 +216,6 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
-)
-
-filegroup(
-    name = "framework_headers",
-    srcs = [
-        "framework/allocator.h",
-        "framework/attr_value_util.h",
-        "framework/bfloat16.h",
-        "framework/cancellation.h",
-        "framework/control_flow.h",
-        "framework/device_base.h",
-        "framework/function.h",
-        "framework/kernel_def_builder.h",
-        "framework/node_def_util.h",
-        "framework/numeric_types.h",
-        "framework/op.h",
-        "framework/op_def_builder.h",
-        "framework/op_def_util.h",
-        "framework/op_kernel.h",
-        "framework/partial_tensor_shape.h",
-        "framework/rendezvous.h",
-        "framework/tensor.h",
-        "framework/tensor_reference.h",
-        "framework/tensor_shape.h",
-        "framework/tensor_types.h",
-        "framework/tracking_allocator.h",
-        "framework/type_traits.h",
-        "framework/types.h",
-        "framework/unique_tensor_references.h",
-        "lib/core/errors.h",
-        "lib/core/notification.h",
-        "lib/core/refcount.h",
-        "lib/core/status.h",
-        "lib/core/stringpiece.h",
-        "lib/gtl/array_slice.h",
-        "lib/gtl/array_slice_internal.h",
-        "lib/gtl/inlined_vector.h",
-        "lib/gtl/manual_constructor.h",
-        "lib/hash/hash.h",
-        "lib/strings/numbers.h",
-        "lib/strings/str_util.h",
-        "lib/strings/strcat.h",
-        "platform/default/dynamic_annotations.h",
-        "platform/default/integral_types.h",
-        "platform/default/logging.h",
-        "platform/default/mutex.h",
-        "platform/default/protobuf.h",
-        "platform/default/thread_annotations.h",
-        "platform/env.h",
-        "platform/host_info.h",
-        "platform/logging.h",
-        "platform/macros.h",
-        "platform/mem.h",
-        "platform/mutex.h",
-        "platform/platform.h",
-        "platform/protobuf.h",
-        "platform/thread_annotations.h",
-        "platform/types.h",
-        "public/version.h",
-        "util/device_name_utils.h",
-    ],
 )
 
 cc_binary(
@@ -647,18 +589,58 @@ filegroup(
 )
 
 # Other kernels we may want on Android.
+#
+# The kernels can be consumed as a whole or in two groups for
+# supporting separate compilation. Note that the split into groups
+# is entirely for improving compilation time, and not for
+# organizational reasons; you should not depend on any
+# of those groups independently.
 filegroup(
     name = "android_extended_ops",
     srcs = [
-        "//tensorflow/core:kernels/avgpooling_op.cc",
+        ":android_extended_ops_group1",
+        ":android_extended_ops_group2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_headers",
+    srcs = [
+        "//tensorflow/core:kernels/argmax_op.h",
         "//tensorflow/core:kernels/avgpooling_op.h",
+        "//tensorflow/core:kernels/control_flow_ops.h",
+        "//tensorflow/core:kernels/conv_2d.h",
+        "//tensorflow/core:kernels/cwise_op_add.cc",
+        "//tensorflow/core:kernels/io.h",
+        "//tensorflow/core:kernels/maxpooling_op.h",
+        "//tensorflow/core:kernels/reduction_ops.h",
+        "//tensorflow/core:kernels/reduction_ops_common.h",
+        "//tensorflow/core:kernels/relu_op.h",
+        "//tensorflow/core:kernels/softplus_op.h",
+        "//tensorflow/core:kernels/softsign_op.h",
+        "//tensorflow/core:kernels/tile_ops.h",
+        "//tensorflow/core:kernels/training_ops.h",
+        "//tensorflow/core:kernels/transpose_op.h",
+        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/where_op.h",
+        "//tensorflow/core:kernels/xent_op.h",
+    ],
+)
+
+filegroup(
+    name = "android_extended_ops_group1",
+    srcs = [
+        ":android_extended_ops_headers",
+        "//tensorflow/core:kernels/argmax_op.cc",
+        "//tensorflow/core:kernels/avgpooling_op.cc",
         "//tensorflow/core:kernels/bcast_ops.cc",
         "//tensorflow/core:kernels/control_flow_ops.cc",
-        "//tensorflow/core:kernels/control_flow_ops.h",
         "//tensorflow/core:kernels/conv_2d.h",
         "//tensorflow/core:kernels/conv_ops.cc",
         "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/cwise_op_div.cc",
+        "//tensorflow/core:kernels/cwise_op_equal_to.cc",
         "//tensorflow/core:kernels/cwise_op_exp.cc",
         "//tensorflow/core:kernels/cwise_op_greater.cc",
         "//tensorflow/core:kernels/cwise_op_isfinite.cc",
@@ -675,42 +657,38 @@ filegroup(
         "//tensorflow/core:kernels/cwise_op_sub.cc",
         "//tensorflow/core:kernels/cwise_op_tanh.cc",
         "//tensorflow/core:kernels/dynamic_partition_op.cc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group2",
+    srcs = [
+        ":android_extended_ops_headers",
         "//tensorflow/core:kernels/dynamic_stitch_op.cc",
         "//tensorflow/core:kernels/in_topk_op.cc",
         "//tensorflow/core:kernels/io.cc",
-        "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/lrn_op.cc",
         "//tensorflow/core:kernels/maxpooling_op.cc",
-        "//tensorflow/core:kernels/maxpooling_op.h",
-        "//tensorflow/core:kernels/reduction_ops.h",
-        "//tensorflow/core:kernels/reduction_ops_common.h",
         "//tensorflow/core:kernels/reduction_ops_max.cc",
         "//tensorflow/core:kernels/reduction_ops_mean.cc",
         "//tensorflow/core:kernels/reduction_ops_min.cc",
         "//tensorflow/core:kernels/reduction_ops_prod.cc",
         "//tensorflow/core:kernels/reduction_ops_sum.cc",
         "//tensorflow/core:kernels/relu_op.cc",
-        "//tensorflow/core:kernels/relu_op.h",
         "//tensorflow/core:kernels/restore_op.cc",
         "//tensorflow/core:kernels/save_op.cc",
         "//tensorflow/core:kernels/softplus_op.cc",
-        "//tensorflow/core:kernels/softplus_op.h",
         "//tensorflow/core:kernels/softsign_op.cc",
-        "//tensorflow/core:kernels/softsign_op.h",
         "//tensorflow/core:kernels/sparse_to_dense_op.cc",
         "//tensorflow/core:kernels/stack_ops.cc",
         "//tensorflow/core:kernels/tile_ops.cc",
-        "//tensorflow/core:kernels/tile_ops.h",
         "//tensorflow/core:kernels/topk_op.cc",
         "//tensorflow/core:kernels/training_ops.cc",
-        "//tensorflow/core:kernels/training_ops.h",
         "//tensorflow/core:kernels/transpose_op.cc",
-        "//tensorflow/core:kernels/transpose_op.h",
-        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/transpose_op_cpu.cc",
         "//tensorflow/core:kernels/where_op.cc",
-        "//tensorflow/core:kernels/where_op.h",
         "//tensorflow/core:kernels/xent_op.cc",
-        "//tensorflow/core:kernels/xent_op.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -727,14 +705,16 @@ config_setting(
 config_setting(
     name = "android_32",
     values = {
-        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:everything",
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:custom_malloc",
     },
 )
 
 config_setting(
     name = "android_64",
     values = {
-        "crosstool_top": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:everything",
+        "crosstool_top": "//external:android/crosstool",
+        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:custom_malloc",
     },
 )
 
@@ -840,6 +820,7 @@ tf_cuda_library(
         [
             "framework/**/*.h",
             "framework/**/*.cc",
+            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -856,11 +837,15 @@ tf_cuda_library(
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = [
+        "-ldl",
+        "-lm",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -868,6 +853,67 @@ tf_cuda_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "framework_headers",
+    srcs = [
+        "framework/allocator.h",
+        "framework/attr_value_util.h",
+        "framework/bfloat16.h",
+        "framework/cancellation.h",
+        "framework/control_flow.h",
+        "framework/device_base.h",
+        "framework/function.h",
+        "framework/kernel_def_builder.h",
+        "framework/node_def_util.h",
+        "framework/numeric_types.h",
+        "framework/op.h",
+        "framework/op_def_builder.h",
+        "framework/op_def_util.h",
+        "framework/op_kernel.h",
+        "framework/partial_tensor_shape.h",
+        "framework/rendezvous.h",
+        "framework/tensor.h",
+        "framework/tensor_reference.h",
+        "framework/tensor_shape.h",
+        "framework/tensor_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+        "framework/types.h",
+        "framework/unique_tensor_references.h",
+        "lib/core/errors.h",
+        "lib/core/notification.h",
+        "lib/core/refcount.h",
+        "lib/core/status.h",
+        "lib/core/stringpiece.h",
+        "lib/gtl/array_slice.h",
+        "lib/gtl/array_slice_internal.h",
+        "lib/gtl/inlined_vector.h",
+        "lib/gtl/manual_constructor.h",
+        "lib/hash/hash.h",
+        "lib/strings/numbers.h",
+        "lib/strings/str_util.h",
+        "lib/strings/strcat.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/default/mutex.h",
+        "platform/default/protobuf.h",
+        "platform/default/thread_annotations.h",
+        "platform/env.h",
+        "platform/host_info.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/mem.h",
+        "platform/mutex.h",
+        "platform/platform.h",
+        "platform/protobuf.h",
+        "platform/thread_annotations.h",
+        "platform/types.h",
+        "public/version.h",
+        "util/device_name_utils.h",
+    ],
 )
 
 tf_cuda_library(
@@ -895,6 +941,7 @@ tf_cuda_library(
             "client/**/*.cc",
             "common_runtime/*.h",
             "common_runtime/*.cc",
+            "framework/versions.h",
             "graph/**/*.h",
             "graph/**/*.cc",
             "public/session.h",

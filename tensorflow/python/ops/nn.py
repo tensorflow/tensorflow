@@ -208,6 +208,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -823,7 +824,8 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)
 
-  Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`

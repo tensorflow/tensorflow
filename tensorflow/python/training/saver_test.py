@@ -25,14 +25,15 @@ import contextlib
 import shutil
 import tempfile
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 import numpy as np
 import six
 
+from google.protobuf.any_pb2 import Any
+
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 
 
@@ -215,7 +216,7 @@ class SaverTest(tf.test.TestCase):
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
   def testGPU(self):
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
@@ -746,18 +747,21 @@ class MetaGraphTest(tf.test.TestCase):
       tf.add_to_collection("variable_collection", v0)
       # Add QueueRunners.
       tf.train.add_queue_runner(qr)
-      # Adds user_defined proto in three formats: string and bytes.
+      # Adds user_defined proto in three formats: string, bytes and Any.
       queue_runner = queue_runner_pb2.QueueRunnerDef(queue_name="test_queue")
       tf.add_to_collection("user_defined_string_collection", str(queue_runner))
       tf.add_to_collection("user_defined_bytes_collection",
                            queue_runner.SerializeToString())
+      any_buf = Any()
+      any_buf.Pack(queue_runner)
+      tf.add_to_collection("user_defined_any_collection", any_buf)
 
       # Generates MetaGraphDef.
       meta_graph_def = save.export_meta_graph(filename)
       self.assertTrue(meta_graph_def.HasField("saver_def"))
       self.assertTrue(meta_graph_def.HasField("graph_def"))
       collection_def = meta_graph_def.collection_def
-      self.assertEqual(len(collection_def), 9)
+      self.assertEqual(len(collection_def), 10)
 
     with tf.Graph().as_default():
       # Restores from MetaGraphDef.
@@ -862,6 +866,36 @@ class MetaGraphTest(tf.test.TestCase):
   def testMultiSaverCollection(self):
     self._testMultiSaverCollectionSave()
     self._testMultiSaverCollectionRestore()
+
+  def testBinaryAndTextFormat(self):
+    test_dir = self._TestDir("binary_and_text")
+    filename = os.path.join(test_dir, "metafile")
+    with self.test_session(graph=tf.Graph()):
+      # Creates a graph.
+      tf.Variable(10.0, name="v0")
+      # Exports the graph as binary format.
+      tf.train.export_meta_graph(filename, as_text=False)
+    with self.test_session(graph=tf.Graph()):
+      # Imports the binary format graph.
+      saver = tf.train.import_meta_graph(filename)
+      # Exports the graph as text format.
+      saver.export_meta_graph(filename, as_text=True)
+    with self.test_session(graph=tf.Graph()):
+      # Imports the text format graph.
+      tf.train.import_meta_graph(filename)
+      # Writes wrong contents to the file.
+      tf.train.write_graph(saver.as_saver_def(), os.path.dirname(filename),
+                           os.path.basename(filename))
+    with self.test_session(graph=tf.Graph()):
+      # Import should fail.
+      with self.assertRaisesWithPredicateMatch(
+          IOError, lambda e: "Cannot parse file"):
+        tf.train.import_meta_graph(filename)
+      # Deletes the file
+      gfile.Remove(filename)
+      with self.assertRaisesWithPredicateMatch(
+          IOError, lambda e: "does not exist"):
+        tf.train.import_meta_graph(filename)
 
   def testSliceVariable(self):
     test_dir = self._TestDir("slice_saver")
@@ -973,6 +1007,10 @@ class MetaGraphTest(tf.test.TestCase):
       v0 = tf.Variable(0.0)
       var = tf.Variable(10.0)
       tf.add(v0, var)
+      @function.Defun(x=tf.float32)
+      def minus_one(x):
+        return x - 1
+      minus_one(tf.identity(v0))
       save = tf.train.Saver({"v0": v0})
       tf.initialize_all_variables()
 
@@ -980,7 +1018,7 @@ class MetaGraphTest(tf.test.TestCase):
       meta_graph_def = save.export_meta_graph()
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
-                             "RestoreSlice", "SaveSlices", "Variable"])
+                             "RestoreSlice", "SaveSlices", "Sub", "Variable"])
 
 
 if __name__ == "__main__":
