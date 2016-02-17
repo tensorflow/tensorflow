@@ -662,6 +662,7 @@ tf_gen_op_wrapper_py(
         "SparseSelectLastK",
         "SparseReorder",
         "SparseToDense",
+        "SparseTensorDenseMatMul",
     ],
     require_shape_functions = True,
 )
@@ -1144,7 +1145,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":docs",
-        ":platform",
         "//tensorflow:tensorflow_py",
     ],
 )

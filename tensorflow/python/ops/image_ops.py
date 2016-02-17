@@ -109,9 +109,9 @@ Example:
 
 ```python
 # Decode an image and convert it to HSV.
-rgb_image = tf.decode_png(...,  channels=3)
-rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.rgb_to_hsv(rgb_image)
+rgb_image = tf.image.decode_png(...,  channels=3)
+rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.image.rgb_to_hsv(rgb_image)
 ```
 
 @@rgb_to_grayscale
@@ -146,6 +146,11 @@ type and representation (RGB or HSV).
 @@random_saturation
 
 @@per_image_whitening
+
+## Working with Bounding Boxes
+
+@@draw_bounding_boxes
+@@sample_distorted_bounding_box
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -172,6 +177,8 @@ from tensorflow.python.ops.gen_image_ops import *
 ops.NoGradient('RandomCrop')
 ops.NoGradient('RGBToHSV')
 ops.NoGradient('HSVToRGB')
+ops.NoGradient('DrawBoundingBoxes')
+ops.NoGradient('SampleDistortedBoundingBox')
 
 
 def _ImageDimensions(images):
@@ -769,7 +776,7 @@ def adjust_contrast(images, contrast_factor):
     contrast_factor: A float multiplier for adjusting contrast.
 
   Returns:
-    The constrast-adjusted image or images.
+    The contrast-adjusted image or images.
   """
   with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
     # Remember original dtype to so we can convert back if needed
@@ -789,6 +796,16 @@ ops.RegisterShape('AdjustContrast')(
     common_shapes.unchanged_shape_with_rank_at_least(3))
 ops.RegisterShape('AdjustContrastv2')(
     common_shapes.unchanged_shape_with_rank_at_least(3))
+ops.RegisterShape('DrawBoundingBoxes')(
+    common_shapes.unchanged_shape_with_rank_at_least(3))
+
+
+@ops.RegisterShape('SampleDistortedBoundingBox')
+def _SampleDistortedBoundingBoxShape(unused_op):  # pylint: disable=invalid-name
+  """Shape function for the sample distorted bounding box."""
+  return [tensor_shape.TensorShape([3]),
+          tensor_shape.TensorShape([3]),
+          tensor_shape.TensorShape([1, 1, 4])]
 
 
 @ops.RegisterShape('ResizeBilinear')

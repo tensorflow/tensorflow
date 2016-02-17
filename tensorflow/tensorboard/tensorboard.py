@@ -30,7 +30,7 @@ from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
 from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard.backend import tensorboard_server
+from tensorflow.tensorboard.backend import server
 
 flags.DEFINE_string('logdir', None, """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.
@@ -69,14 +69,14 @@ def main(unused_argv=None):
     return -1
 
   logging.info('Starting TensorBoard in directory %s', os.getcwd())
-  path_to_run = tensorboard_server.ParseEventFilesSpec(FLAGS.logdir)
+  path_to_run = server.ParseEventFilesSpec(FLAGS.logdir)
   logging.info('TensorBoard path_to_run is: %s', path_to_run)
 
   multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=tensorboard_server.TENSORBOARD_SIZE_GUIDANCE)
-  tensorboard_server.StartMultiplexerReloadingThread(multiplexer, path_to_run)
+      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
+  server.StartMultiplexerReloadingThread(multiplexer, path_to_run)
   try:
-    server = tensorboard_server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
+    tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
   except socket.error:
     if FLAGS.port == 0:
       msg = 'Unable to find any open ports.'
@@ -99,7 +99,7 @@ def main(unused_argv=None):
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
   print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
   print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
-  server.serve_forever()
+  tb_server.serve_forever()
 
 
 if __name__ == '__main__':

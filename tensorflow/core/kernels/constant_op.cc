@@ -85,6 +85,7 @@ void HostConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
 }
 
+#if GOOGLE_CUDA
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -93,6 +94,7 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         HostConstantOp);
+#endif
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -178,10 +180,6 @@ REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 // Currently we do not support filling strings and complex64 on GPU
 
-#endif  // GOOGLE_CUDA
-
-#undef REGISTER_KERNEL
-
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -192,6 +190,9 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
+#endif
+
+#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class ZerosLikeOp : public OpKernel {

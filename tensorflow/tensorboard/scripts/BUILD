@@ -12,8 +12,9 @@ py_binary(
     srcs = ["serialize_tensorboard.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
-        "//tensorflow/tensorboard:tensorboard_server",
+        "//tensorflow/tensorboard/backend:server",
     ],
 )
 
@@ -21,7 +22,10 @@ py_binary(
     name = "generate_testdata",
     srcs = ["generate_testdata.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:platform"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 filegroup(

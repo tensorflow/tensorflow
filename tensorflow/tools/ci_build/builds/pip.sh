@@ -132,7 +132,7 @@ echo "Installing pip whl file: ${WHL_PATH}"
 
 # Call pip install twice, first time with --upgrade and second time without it
 # This addresses the sporadic test failures related to protobuf version
-${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} &&
+${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} numpy==1.8.2 &&
 ${PYTHON_BIN_PATH} -m pip install -v --user ${WHL_PATH} &&
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
