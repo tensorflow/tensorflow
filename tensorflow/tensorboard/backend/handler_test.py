@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for utility functions in tensorboard_handler.py.
+"""Tests for utility functions in handler.py.
 
 We import and test the utility functions directly because it's easier than
 starting up a server.
@@ -23,28 +23,26 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import googletest
-from tensorflow.tensorboard.backend import tensorboard_handler
+from tensorflow.tensorboard.backend import handler
 
 
 class UniformSampleTest(googletest.TestCase):
 
   def testNotEnoughValues(self):
-    self.assertEqual(
-        tensorboard_handler._uniform_sample(
-            [1, 2, 3], 10), [1, 2, 3])
+    self.assertEqual(handler._uniform_sample([1, 2, 3], 10), [1, 2, 3])
 
   def includesProperNumberOfValues(self):
     values = range(10)
     for count in xrange(2, len(values)):
       self.assertEqual(
-          len(tensorboard_handler._uniform_sample(values, count)), count,
+          len(handler._uniform_sample(values, count)), count,
           'Sampling %d values from 10 produced the wrong number of values' %
           count)
 
   def testIncludesBeginningAndEnd(self):
     values = range(10)
     for count in xrange(2, len(values)):
-      sampled = tensorboard_handler._uniform_sample(values, count)
+      sampled = handler._uniform_sample(values, count)
       self.assertEqual(
           sampled[0], values[0],
           'Sampling %d values from 10 didn\'t start with the first value' %
@@ -55,10 +53,10 @@ class UniformSampleTest(googletest.TestCase):
 
   def testNonIntegerCountFails(self):
     with self.assertRaises(TypeError):
-      tensorboard_handler._uniform_sample([1, 2, 3, 4], 3.14159)
+      handler._uniform_sample([1, 2, 3, 4], 3.14159)
 
     with self.assertRaises(TypeError):
-      tensorboard_handler._uniform_sample([1, 2, 3, 4], 3.0)
+      handler._uniform_sample([1, 2, 3, 4], 3.0)
 
 
 if __name__ == '__main__':

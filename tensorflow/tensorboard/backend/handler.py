@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """TensorBoard server handler logic.
 
 TensorboardHandler contains all the logic for serving static files off of disk
@@ -44,7 +43,6 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import float_wrapper
-
 
 DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
@@ -430,8 +428,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       value_count = len(query_params[key])
       if value_count != 1:
         self.send_error(
-            400,
-            'query parameter %s should have exactly one value, had %d' %
+            400, 'query parameter %s should have exactly one value, had %d' %
             (key, value_count))
         return
       query_params[key] = query_params[key][0]
