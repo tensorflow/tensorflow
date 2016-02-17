@@ -37,7 +37,7 @@ namespace tensorflow {
 //     node_builder.Input(input);
 //     return opts.FinalizeBuilder(&node_builder);
 //   }
-//   }  // namspace ops
+//   }  // namespace ops
 //
 //   // Or, alternatively:
 //   namespace ops {
@@ -45,7 +45,7 @@ namespace tensorflow {
 //     static const string kOpName = "Identity";
 //     return UnaryOp(kOpName, input, opts);
 //   }
-//   }  // namspace ops
+//   }  // namespace ops
 //
 // You call it like:
 //   GraphDefBuilder b;

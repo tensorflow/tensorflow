@@ -17,15 +17,14 @@ filegroup(
     ] + glob(["lib/**/*"]),
 )
 
-
 py_binary(
     name = "tensorboard",
     srcs = ["tensorboard.py"],
     data = [":frontend"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/tensorboard/backend:server",
         "//tensorflow/python:platform",
+        "//tensorflow/tensorboard/backend:server",
     ],
 )
 

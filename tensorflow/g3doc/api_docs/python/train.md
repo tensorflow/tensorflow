@@ -356,7 +356,8 @@ Construct a new Momentum optimizer.
 
 Optimizer that implements the Adam algorithm.
 
-See this [paper](http://arxiv.org/pdf/1412.6980v7.pdf).
+See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
 
 - - -
 
@@ -725,8 +726,8 @@ otherwise they're all shrunk by the global ratio.
 Any of the entries of `t_list` that are of type `None` are ignored.
 
 This is the correct way to perform gradient clipping (for example, see
-R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
-Recurrent Neural Networks".  http://arxiv.org/abs/1211.5063)
+[Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
+([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
 However, it is slower than `clip_by_norm()` because all the parameters must be
 ready before the clipping operation can be performed.
@@ -1878,7 +1879,7 @@ a Python iterator that yields `Event` protocol buffers.
 Example: Print the contents of an events file.
 
 ```python
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     print(e)
 ```
 
@@ -1889,7 +1890,7 @@ Example: Print selected summary values.
 # summary value tag 'loss'.  These could have been added by calling
 # `add_summary()`, passing the output of a scalar summary op created with
 # with: `tf.scalar_summary(['loss'], loss_tensor)`.
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     for v in e.summary.value:
         if v.tag == 'loss':
             print(v.simple_value)

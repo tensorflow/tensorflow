@@ -234,7 +234,7 @@ def summary_iterator(path):
   Example: Print the contents of an events file.
 
   ```python
-  for e in tf.summary_iterator(path to events file):
+  for e in tf.train.summary_iterator(path to events file):
       print(e)
   ```
 
@@ -245,7 +245,7 @@ def summary_iterator(path):
   # summary value tag 'loss'.  These could have been added by calling
   # `add_summary()`, passing the output of a scalar summary op created with
   # with: `tf.scalar_summary(['loss'], loss_tensor)`.
-  for e in tf.summary_iterator(path to events file):
+  for e in tf.train.summary_iterator(path to events file):
       for v in e.summary.value:
           if v.tag == 'loss':
               print(v.simple_value)

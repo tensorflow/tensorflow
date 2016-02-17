@@ -446,22 +446,20 @@ Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
-Example:
+For example,
 
-```
-# Generate a single distorted bounding box.
-begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
-   tf.shape(image),
-   bounding_boxes=bounding_boxes)
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
 
-# Draw the bounding box in an image summary.
-image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
-                                              bbox_for_draw)
-tf.image_summary('images_with_box', image_with_box)
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
 
-# Employ the bounding box to distort the image.
-distorted_image = tf.slice(image, begin, size)
-```
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
 
 Note that if no bounding box information is available, setting
 `use_image_if_no_bounding_boxes = true` will assume there is a single implicit

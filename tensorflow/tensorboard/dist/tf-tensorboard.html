@@ -2333,7 +2333,7 @@ var TF;
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
         <div class="noshrink" id="paddingCell"></div>
-        <template is="dom-repeat" items="[[_runs]]" as="run">
+        <template is="dom-repeat" items="[[_runs]]" sort="_sort" as="run">
         <div class="run-name-cell noshrink">
           <span>[[run]]</span>
         </div>
@@ -2345,7 +2345,7 @@ var TF;
             <div class="tag-name-cell noshrink">
               <span class="tag-name">[[tag]]</span>
             </div>
-            <template is="dom-repeat" items="[[_runs]]" as="run">
+            <template is="dom-repeat" items="[[_runs]]" sort="_sort" as="run">
               <div class="image-cell noshrink">
                 <template is="dom-if" if="[[_exists(run, tag, runToImages.*)]]">
                   <tf-image-loader id="loader" run="[[run]]" tag="[[tag]]" images-generator="[[imagesGenerator]]" individual-image-generator="[[individualImageGenerator]]">

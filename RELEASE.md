@@ -1,6 +1,34 @@
-# Changes since last release
+# Release 0.7.0
 
-## Breaking changes to the API
+## Major Features and Improvements
+
+* Allow using any installed Cuda >= 7.0 and cuDNN >= R2, and add support
+  for cuDNN R4
+* Added a `contrib/` directory for unsupported or experimental features, 
+  including higher level `layers` module
+* Added an easy way to add and dynamically load user-defined ops
+* Built out a good suite of tests, things should break less!
+* Added `MetaGraphDef` which makes it easier to save graphs with metadata
+* Added assignments for "Deep Learning with TensorFlow" udacity course 
+
+
+## Bug Fixes and Other Changes
+
+* Added a versioning framework for `GraphDef`s to ensure compatibility
+* Enforced Python 3 compatibility
+* Internal changes now show up as sensibly separated commits
+* Open-sourced the doc generator
+* Un-fork Eigen
+* Simplified the `BUILD` files and cleaned up C++ headers
+* TensorFlow can now be used as a submodule in another bazel build
+* New ops (e.g., `*fft`, `*_matrix_solve`)
+* Support for more data types in many ops
+* Performance improvements
+* Various bugfixes
+* Documentation fixes and improvements
+
+
+## Breaking Changes to the API
 
 * `AdjustContrast` kernel deprecated, new kernel `AdjustContrastv2` takes and
   outputs float only. `adjust_contrast` now takes all data types.
@@ -33,6 +61,8 @@
   currently maintained for short-term compatibility but will be removed.
 * The non-public `nn.rnn` and the various `nn.seq2seq` methods now return
   just the final state instead of the list of all states.
+* `tf.scatter_update` now no longer guarantees that lexicographically largest
+  index be used for update when duplicate entries exist.
 * `tf.image.random_crop(image, [height, width])` is now
   `tf.random_crop(image, [height, width, depth])`, and `tf.random_crop` works
   for any rank (not just 3-D images).  The C++ `RandomCrop` op has been replaced
@@ -40,15 +70,37 @@
 * Renamed `tf.test.GetTempDir` and `tf.test.IsBuiltWithCuda` to
   `tf.test.get_temp_dir` and `tf.test.is_built_with_cuda` for PEP-8
   compatibility.
-
-
-## Bug fixes
-
+* `parse_example`'s interface has changed, the old interface is accessible in
+  `legacy_parse_example` (same for related functions).
+* New `Variable`s are not added to the same collection several times even if
+  a list with duplicates is passed to the constructor.
 * The Python API will now properly set the `list` member of `AttrValue` in
   constructed `GraphDef` messages for empty lists.  The serialization of some
   graphs will change, but the change is both forwards and backwards compatible.
   It will break tests that compare a generated `GraphDef` to a golden serialized
-  `GraphDef`.
+  `GraphDef` (which is discouraged).
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Akiomi Kamakura, Alex Vig, Alexander Rosenberg Johansen, Andre Cruz, Arun Ahuja,
+Bart Coppens, Bernardo Pires, Carl Vondrick, Cesar Salgado, Chen Yu,
+Christian Jauvin, Damien Aymeric, Dan Vanderkam, Denny Britz, Dongjoon Hyun,
+Eren Güven, Erik Erwitt, Fabrizio Milo, G. Hussain Chinoy, Jim Fleming,
+Joao Felipe Santos, Jonas Meinertz Hansen, Joshi Rekha, Julian Viereck,
+Keiji Ariyama, Kenton Lee, Krishna Sankar, Kristina Chodorow, Linchao Zhu,
+Lukas Krecan, Mark Borgerding, Mark Daoust, Moussa Taifi,
+Nathan Howell, Naveen Sundar Govindarajulu, Nick Sweeting, Niklas Riekenbrauck,
+Olivier Grisel, Patrick Christ, Povilas Liubauskas, Rainer Wasserfuhr,
+Romain Thouvenin, Sagan Bolliger, Sam Abrahams, Taehoon Kim, Timothy J Laurent,
+Vlad Zavidovych, Yangqing Jia, Yi-Lin Juang, Yuxin Wu, Zachary Lipton,
+Zero Chen, Alan Wu, @brchiu, @emmjaykay, @jalammar, @Mandar-Shinde,
+@nsipplswezey, @ninotoshi, @panmari, @prolearner and @rizzomichaelg.
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
 
 
 # Release 0.6.0
@@ -65,14 +117,14 @@
   come in later releases.
 
 
-## Bug fixes
+## Bug Fixes
 
 * Lots of fixes to documentation and tutorials, many contributed
   by the public.
 
 * 271 closed issues on github issues.
 
-## Backwards-incompatible changes
+## Backwards-Incompatible Changes
 
 * `tf.nn.fixed_unigram_candidate_sampler` changed its default 'distortion'
   attribute from 0.0 to 1.0. This was a bug in the original release

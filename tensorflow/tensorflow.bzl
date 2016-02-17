@@ -252,6 +252,7 @@ def _py_wrap_cc_impl(ctx):
     cc_include_dirs += [h.dirname for h in dep.cc.transitive_headers]
     cc_includes += dep.cc.transitive_headers
   args += ["-I" + x for x in cc_include_dirs]
+  args += ["-I" + ctx.label.workspace_root]
   args += ["-o", cc_out.path]
   args += ["-outdir", py_out.dirname]
   args += [src.path]

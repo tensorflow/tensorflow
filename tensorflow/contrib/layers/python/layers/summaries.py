@@ -35,7 +35,7 @@ __all__ = ['summarize_tensor', 'summarize_activation', 'summarize_tensors',
 def _assert_summary_tag_unique(tag):
   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES):
     old_tag = tensor_util.constant_value(summary.op.inputs[0])
-    if tag == str(old_tag):
+    if tag.encode() == old_tag:
       raise ValueError('Conflict with summary tag: %s exists on summary %s %s' %
                        (tag, summary, old_tag))
 

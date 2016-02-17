@@ -38,7 +38,7 @@ this one, and even here we already have 4 different variables: `conv1_weights`,
 
 The problem arises when you want to reuse this model. Assume you want to
 apply your image filter to 2 different images, `image1` and `image2`.
-You want both images processed by the same filer with the same parameters.
+You want both images processed by the same filter with the same parameters.
 You can call `my_image_filter()` twice, but this will create two sets
 of variables:
 

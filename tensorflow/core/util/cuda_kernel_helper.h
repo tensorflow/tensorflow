@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/core/platform/types.h"
+
 #define CUDA_1D_KERNEL_LOOP(i, n)                            \
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; \
        i += blockDim.x * gridDim.x)
@@ -68,6 +70,58 @@ __device__ __host__ inline T ldg(const T* address) {
   return *address;
 #endif
 }
+
+// CUDA provides atomic ops, but not for all types.  We provide wrappers
+// for some ops and provide implementation for all reasonable types.
+#define CUDA_ATOMIC_WRAPPER(op, T)                                      \
+  __device__ __forceinline__ T CudaAtomic##op(T* address, T val)
+
+#define USE_CUDA_ATOMIC(op, T)       \
+  CUDA_ATOMIC_WRAPPER(op, T) {       \
+    return atomic##op(address, val); \
+  }
+
+// For atomicAdd.
+USE_CUDA_ATOMIC(Add, int32);
+USE_CUDA_ATOMIC(Add, uint32);
+USE_CUDA_ATOMIC(Add, uint64);
+USE_CUDA_ATOMIC(Add, float);
+
+// Custom implementation of atomicAdd for double.
+// This implementation is copied from CUDA manual.
+CUDA_ATOMIC_WRAPPER(Add, double) {
+  uint64* address_as_ull = (uint64*)address;
+  uint64 old = *address_as_ull, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(val + __longlong_as_double(assumed)));
+
+    // Note: uses integer comparison to avoid hang in case of NaN
+  } while (assumed != old);
+
+  return __longlong_as_double(old);
+}
+
+// For atomicSub.
+
+// Custom implementation for sub by just negating the value.
+#define WRAPPED_ATOMIC_SUB(T)                       \
+  CUDA_ATOMIC_WRAPPER(Sub, T) {                     \
+    return CudaAtomicAdd(address, -val);            \
+  }
+
+WRAPPED_ATOMIC_SUB(uint64);
+WRAPPED_ATOMIC_SUB(int32);
+WRAPPED_ATOMIC_SUB(uint32);
+WRAPPED_ATOMIC_SUB(float);
+WRAPPED_ATOMIC_SUB(double);
+
+#undef WRAPPED_ATOMIC_SUB
+
+#undef USE_CUDA_ATOMIC
+#undef CUDA_ATOMIC_WRAPPER
 
 }  // namespace tensorflow
 

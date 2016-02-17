@@ -192,7 +192,7 @@ class SingleSampleAdapter {
 //              each invocation. It needs to define kResultElementCount for the
 //              sample count for each invocation, and ResultType for actual
 //              returned sample type.
-//   RealType: the data type of the real numberes that will be returned by the
+//   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
@@ -259,7 +259,7 @@ class NormalDistribution<Generator, double> {
 //              each invocation. It needs to define kResultElementCount for the
 //              sample count for each invocation, and ResultType for actual
 //              returned sample type.
-//   RealType: the data type of the real numberes that will be returned by the
+//   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.

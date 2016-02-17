@@ -40,7 +40,7 @@ class Seq2SeqModel(object):
   version of this model, but with bi-directional encoder, was presented in
     http://arxiv.org/abs/1409.0473
   and sampled softmax is described in Section 3 of the following paper.
-    http://arxiv.org/pdf/1412.2007v2.pdf
+    http://arxiv.org/abs/1412.2007
   """
 
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,

@@ -60,7 +60,7 @@ def load_op_library(library_filename):
 
   op_list_str = py_tf.TF_GetOpList(lib_handle)
   op_list = op_def_pb2.OpList()
-  op_list.ParseFromString(bytes(op_list_str))
+  op_list.ParseFromString(compat.as_bytes(op_list_str))
   wrappers = py_tf.GetPythonWrappers(op_list_str, len(op_list_str))
 
   # Get a unique name for the module.

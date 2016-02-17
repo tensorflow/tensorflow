@@ -159,7 +159,7 @@ class GRUCell(RNNCell):
 class BasicLSTMCell(RNNCell):
   """Basic LSTM recurrent network cell.
 
-  The implementation is based on: http://arxiv.org/pdf/1409.2329v5.pdf.
+  The implementation is based on: http://arxiv.org/abs/1409.2329.
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
