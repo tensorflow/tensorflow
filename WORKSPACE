@@ -557,7 +557,7 @@ new_git_repository(
   name = "polymer",
   build_file = "bower.BUILD",
   remote = "https://github.com/Polymer/polymer.git",
-  tag = "v1.1.5",
+  tag = "v1.2.4",
 )
 
 new_git_repository(
