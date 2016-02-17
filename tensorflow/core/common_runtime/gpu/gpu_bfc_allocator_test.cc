@@ -190,6 +190,39 @@ static void BM_Allocation(int iters) {
 }
 BENCHMARK(BM_Allocation);
 
+static void BM_AllocationThreaded(int iters, int num_threads) {
+  GPUBFCAllocator a(0, 1 << 30);
+  thread::ThreadPool pool(Env::Default(), "test", num_threads);
+  std::atomic_int_fast32_t count(iters);
+  mutex done_lock;
+  condition_variable done;
+  bool done_flag = false;
+
+  for (int t = 0; t < num_threads; t++) {
+    pool.Schedule([&a, &count, &done_lock, &done, &done_flag, iters]() {
+      // Exercise a few different allocation sizes
+      std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
+      int size_index = 0;
+      for (int i = 0; i < iters; i++) {
+        int bytes = sizes[size_index++ % sizes.size()];
+        void* p = a.AllocateRaw(1, bytes);
+        a.DeallocateRaw(p);
+        if (count.fetch_sub(1) == 1) {
+          mutex_lock l(done_lock);
+          done_flag = true;
+          done.notify_all();
+          break;
+        }
+      }
+    });
+  }
+  mutex_lock l(done_lock);
+  if (!done_flag) {
+    done.wait(l);
+  }
+}
+BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
+
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
 static void BM_AllocationDelayed(int iters, int delay) {
