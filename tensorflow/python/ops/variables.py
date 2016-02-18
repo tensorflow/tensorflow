@@ -570,6 +570,7 @@ class Variable(object):
 
   @staticmethod
   def from_proto(variable_def):
+    """Returns a `Variable` object created from `variable_def`."""
     return Variable(variable_def=variable_def)
 
   # Experimental support for saving variables as slices of a larger variable.

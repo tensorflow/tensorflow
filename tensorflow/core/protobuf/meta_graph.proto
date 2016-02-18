@@ -13,7 +13,7 @@ import "tensorflow/core/framework/op_def.proto";
 import "tensorflow/core/protobuf/saver.proto";
 
 // NOTE: This protocol buffer is evolving, and will go through revisions in the
-// following months.
+// coming months.
 //
 // Protocol buffer containing the following which are necessary to restart
 // training, run inference. It can be used to serialize/de-serialize memory
@@ -60,20 +60,7 @@ message MetaGraphDef {
 //    strings will be stored as bytes_list.
 //
 // 2. For Protobuf types, there are three ways to add them:
-//    1) tf.add_to_collection("your_collection_name", str(your_proto))
-//
-//       collection_def {
-//         key: "user_defined_string_collection"
-//         value {
-//          bytes_list {
-//             value: "\n\ntest_queue"
-//           }
-//         }
-//       }
-//
-//  or
-//
-//    2) tf.add_to_collection("your_collection_name",
+//    1) tf.add_to_collection("your_collection_name",
 //         your_proto.SerializeToString())
 //
 //       collection_def {
@@ -84,6 +71,20 @@ message MetaGraphDef {
 //           }
 //         }
 //       }
+//
+//  or
+//
+//    2) tf.add_to_collection("your_collection_name", str(your_proto))
+//
+//       collection_def {
+//         key: "user_defined_string_collection"
+//         value {
+//          bytes_list {
+//             value: "\n\ntest_queue"
+//           }
+//         }
+//       }
+//
 //  or
 //
 //    3) any_buf = any_pb2.Any()
@@ -102,14 +103,18 @@ message MetaGraphDef {
 //         }
 //       }
 //
-//
 // 3. For Python objects, implement to_proto() and from_proto(), and register
 //    them in the following manner:
 //    ops.register_proto_function("your_collection_name",
+//                                proto_type,
 //                                to_proto=YourPythonObject.to_proto,
 //                                from_proto=YourPythonObject.from_proto)
 //    These functions will be invoked to serialize and de-serialize the
-//    collection.
+//    collection. For example,
+//    ops.register_proto_function(ops.GraphKeys.VARIABLES,
+//                                proto_type=variable_pb2.VariableDef,
+//                                to_proto=Variable.to_proto,
+//                                from_proto=Variable.from_proto)
 message CollectionDef {
   // NodeList is used for collecting nodes in graph. For example
   // collection_def {
