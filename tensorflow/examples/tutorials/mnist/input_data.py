@@ -54,7 +54,7 @@ def _read32(bytestream):
 def extract_images(filename):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   print('Extracting', filename)
-  with tf.gfile.Open(filename) as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2051:
       raise ValueError(
@@ -81,7 +81,7 @@ def dense_to_one_hot(labels_dense, num_classes):
 def extract_labels(filename, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
-  with tf.gfile.Open(filename) as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2049:
       raise ValueError(
