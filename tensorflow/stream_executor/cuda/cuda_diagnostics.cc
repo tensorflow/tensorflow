@@ -165,7 +165,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   // DSO and yields its version number into the callback data, when found.
   auto iterate_phdr =
       [](struct dl_phdr_info *info, size_t size, void *data) -> int {
-    if (strstr(info->dlpi_name, "libcuda.so")) {
+    if (strstr(info->dlpi_name, "libcuda.so.1")) {
       VLOG(1) << "found DLL info with name: " << info->dlpi_name;
       char resolved_path[PATH_MAX] = {0};
       if (realpath(info->dlpi_name, resolved_path) == nullptr) {
