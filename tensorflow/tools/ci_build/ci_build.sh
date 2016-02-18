@@ -60,7 +60,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 # Add extra params for cuda devices and libraries for GPU container.
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-  libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | xargs -I{} echo '-v {}:{}')
+  libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
 else
   GPU_EXTRA_PARAMS=""

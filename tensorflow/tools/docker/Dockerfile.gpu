@@ -1,4 +1,4 @@
-FROM nvidia/cuda:7.0-cudnn2-runtime
+FROM nvidia/cuda:7.5-cudnn4-runtime
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
