@@ -401,6 +401,25 @@ def _MinimumGrad(op, grad):
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 
+@ops.RegisterGradient("SquaredDifference")
+def _SquaredDifferenceGrad(op, grad):
+  """Returns the gradient for (x-y)^2."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  # .op works with Tensors or IndexedSlices
+  with ops.control_dependencies([grad.op]):
+    # The parens ensure that if grad is IndexedSlices, it'll get multiplied by
+    # Tensor (not a number like 2.0) which causes it to convert to Tensor.
+    x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
+  return (array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx),
+          -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy))
+
+
 # Logical operations have no gradients.
 ops.NoGradient("Less")
 ops.NoGradient("LessEqual")

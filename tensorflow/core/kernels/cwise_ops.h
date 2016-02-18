@@ -199,6 +199,30 @@ struct less_equal : std::binary_function<T, T, bool> {
   }
 };
 
+// Functor that enables composition of multiple Eigen functors.
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct scalar_compose_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return UnaryFunctor()(BinaryFunctor()(a, b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& a, const Packet& b) const {
+    return UnaryFunctor().packetOp(BinaryFunctor().packetOp(a, b));
+  }
+};
+
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
+  enum {
+    Cost = functor_traits<UnaryFunctor>::Cost +
+           functor_traits<BinaryFunctor>::Cost,
+    PacketAccess = functor_traits<UnaryFunctor>::PacketAccess &&
+                   functor_traits<BinaryFunctor>::PacketAccess
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -457,6 +481,7 @@ struct ceil : base<T, ceil_func<T> > {};
 // pow(x, y) = x ^ y
 // maximum(x, y) = x > y ? x : y
 // minimum(x, y) = x < y ? x : y
+// squared_difference(x, y) = (x - y) * (x - y)
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T> > {
@@ -488,6 +513,12 @@ struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};
 
 template <typename T>
 struct minimum : base<T, Eigen::internal::scalar_min_op<T> > {};
+
+template <typename T>
+struct squared_difference
+    : base<T, Eigen::internal::scalar_compose_op<
+                  T, Eigen::internal::scalar_square_op<T>,
+                  Eigen::internal::scalar_difference_op<T>>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

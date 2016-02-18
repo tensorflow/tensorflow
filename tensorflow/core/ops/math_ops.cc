@@ -321,6 +321,13 @@ REGISTER_OP("Div")
 Returns x / y element-wise.
 )doc");
 
+REGISTER_OP("SquaredDifference")
+    .BINARY_FEWER()
+    .SetIsCommutative()
+    .Doc(R"doc(
+Returns (x - y)(x - y) element-wise.
+)doc");
+
 #undef BINARY_FEWER
 #undef BINARY_MORE
 

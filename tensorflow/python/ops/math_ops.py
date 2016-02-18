@@ -53,6 +53,7 @@ mathematical functions to your graph.
 @@lgamma
 @@erf
 @@erfc
+@@squared_difference
 
 ## Matrix Math Functions
 
@@ -1296,6 +1297,7 @@ ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("NotEqual")
 @ops.RegisterShape("Pow")
 @ops.RegisterShape("Sub")
+@ops.RegisterShape("SquaredDifference")
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   shape_x = op.inputs[0].get_shape()
