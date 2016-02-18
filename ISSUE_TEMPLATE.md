@@ -20,4 +20,4 @@ If installed from sources, provide the commit hash:
 1.
 
 ### Logs or other output that would be helpful
-(If logs are large, please attach rather than paste in-line).
+(If logs are large, please upload as attachment).
