@@ -38,6 +38,19 @@ struct AllocationAttributes {
   bool no_retry_on_failure = false;
 };
 
+// Runtime statistics collected by an allocator.
+struct AllocatorStats {
+  int64 num_allocs;        // Number of allocations.
+  int64 bytes_in_use;      // Number of bytes in use.
+  int64 max_bytes_in_use;  // The maximum bytes in use.
+  int64 max_alloc_size;    // The max single allocation seen.
+
+  AllocatorStats() { Clear(); }
+
+  void Clear();
+  string DebugString() const;
+};
+
 // Allocator is an abstract interface for allocating and deallocating
 // device memory.
 class Allocator {
@@ -160,6 +173,9 @@ class Allocator {
                               is_quantized<T>::value;
   };
 
+  // Fills in 'stats' with statistics collected by this allocator.
+  virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
+
  private:
   // No constructors or destructors are run for simple types
   template <typename T>
@@ -243,8 +259,12 @@ struct AllocatorAttributes {
 };
 
 // Returns a trivial implementation of Allocator which uses the system
-// default malloc.
+// default malloc. The returned allocator is a process singleton.
 Allocator* cpu_allocator();
+
+// If 'enable' is true, the process-wide cpu allocator collects
+// AllocatorStats. By default, it's disabled.
+void EnableCPUAllocatorStats(bool enable);
 
 }  // namespace tensorflow
 

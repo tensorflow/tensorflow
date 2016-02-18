@@ -37,6 +37,23 @@ namespace port {
 void* aligned_malloc(size_t size, int minimum_alignment);
 void aligned_free(void* aligned_memory);
 
+// Returns the actual number N of bytes reserved by the malloc for the
+// pointer p.  This number may be equal to or greater than the number
+// of bytes requested when p was allocated.
+//
+// This routine is just useful for statistics collection.  The
+// client must *not* read or write from the extra bytes that are
+// indicated by this call.
+//
+// Example, suppose the client gets memory by calling
+//    p = malloc(10)
+// and GetAllocatedSize(p) may return 16.  The client must only use the
+// first 10 bytes p[0..9], and not attempt to read or write p[10..15].
+//
+// Currently, if a malloc implementation does not support this
+// routine, this routine returns 0.
+std::size_t MallocExtension_GetAllocatedSize(const void* p);
+
 // Prefetching support
 //
 // Defined behavior on some of the uarchs:

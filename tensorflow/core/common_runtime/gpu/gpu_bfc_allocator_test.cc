@@ -34,14 +34,28 @@ namespace gpu = ::perftools::gputools;
 namespace tensorflow {
 namespace {
 
+static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
+                       int64 max_bytes_in_use, int64 max_alloc_size) {
+  AllocatorStats stats;
+  a->GetStats(&stats);
+  LOG(INFO) << "Alloc stats: " << endl << stats.DebugString();
+  EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
+  EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
+  EXPECT_EQ(stats.num_allocs, num_allocs);
+  EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
+}
+
 TEST(GPUBFCAllocatorTest, NoDups) {
   GPUBFCAllocator a(0, 1 << 30);
+  CheckStats(&a, 0, 0, 0, 0);
+
   // Allocate a lot of raw pointers
   std::vector<void*> ptrs;
   for (int s = 1; s < 1024; s++) {
     void* raw = a.AllocateRaw(1, s);
     ptrs.push_back(raw);
   }
+  CheckStats(&a, 1023, 654336, 654336, 1024);
 
   std::sort(ptrs.begin(), ptrs.end());
 
@@ -59,6 +73,7 @@ TEST(GPUBFCAllocatorTest, NoDups) {
   for (size_t i = 0; i < ptrs.size(); i++) {
     a.DeallocateRaw(ptrs[i]);
   }
+  CheckStats(&a, 1023, 0, 654336, 1024);
 }
 
 TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
@@ -118,9 +133,11 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 
 TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
   GPUBFCAllocator a(0, 1 << 30);
+  CheckStats(&a, 0, 0, 0, 0);
 
   float* first_ptr = a.Allocate<float>(1024);
   a.DeallocateRaw(first_ptr);
+  CheckStats(&a, 1, 0, 4096, 4096);
   for (int i = 0; i < 1024; ++i) {
     // Allocate several buffers of different sizes, and then clean them
     // all up.  We should be able to repeat this endlessly without
@@ -136,6 +153,9 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
     a.DeallocateRaw(t3);
     a.DeallocateRaw(t4);
   }
+  CheckStats(&a, 4097, 0, 1024 * sizeof(float) + 1048576 * sizeof(int64) +
+                              2048 * sizeof(double) + 10485760 * sizeof(float),
+             10485760 * sizeof(float));
 
   // At the end, we should have coalesced all memory into one region
   // starting at the beginning, so validate that allocating a pointer
