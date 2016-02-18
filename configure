@@ -1,9 +1,5 @@
 #!/bin/bash
 
-if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
-  echo -e "\nWARNING: You are configuring unofficial settings in TensorFlow. Because some external libraries are not backward compatible, these settings are largely untested and unsupported. \n" 1>&2
-fi
-
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -49,14 +45,8 @@ fi
 # Find out where the CUDA toolkit is installed
 while true; do
   # Configure the Cuda SDK version to use.
-  default_cuda_version="7.0"
-  if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
-    if [ -z "$TF_CUDA_VERSION" ]; then
-      read -p "Please specify the Cuda SDK version you want to use. [Default is $default_cuda_version]: " TF_CUDA_VERSION
-    fi
-  fi
   if [ -z "$TF_CUDA_VERSION" ]; then
-    TF_CUDA_VERSION=$default_cuda_version
+    read -p "Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
@@ -68,29 +58,28 @@ while true; do
       CUDA_TOOLKIT_PATH=$default_cuda_path
     fi
   fi
-  if [ -e "$CUDA_TOOLKIT_PATH/lib64/libcudart.so.$TF_CUDA_VERSION" ]; then
+  if [[ -z "$TF_CUDA_VERSION" ]]; then
+    TF_CUDA_EXT=""
+  else
+    TF_CUDA_EXT=".$TF_CUDA_VERSION"
+  fi
+  if [ -e $CUDA_TOOLKIT_PATH/lib64/libcudart.so$TF_CUDA_EXT ]; then
     break
   fi
-  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.$TF_CUDA_VERSION cannot be found"
+  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. $CUDA_TOOLKIT_PATH/lib64/libcudart.so$TF_CUDA_EXT cannot be found"
   if [ -z "$fromuser" ]; then
     exit 1
   fi
+  # Retry
   TF_CUDA_VERSION=""
   CUDA_TOOLKIT_PATH=""
-  # Retry
 done
 
 # Find out where the cuDNN library is installed
 while true; do
   # Configure the Cudnn version to use.
-  default_cudnn_version="6.5"
-  if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
-    if [ -z "$TF_CUDNN_VERSION" ]; then
-      read -p "Please specify the Cudnn version you want to use. [Default is $default_cudnn_version]: " TF_CUDNN_VERSION
-    fi
-  fi
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    TF_CUDNN_VERSION=$default_cudnn_version
+    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -105,23 +94,27 @@ while true; do
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=$(bash -c "readlink -f $CUDNN_INSTALL_PATH")
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so.${TF_CUDNN_VERSION}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.${TF_CUDNN_VERSION}" ]; then
+  if [[ -z "$TF_CUDNN_VERSION" ]]; then
+    TF_CUDNN_EXT=""
+  else
+    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+  fi
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${CUDNNEXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
     break
   fi
   echo "Invalid path to cuDNN ${TF_CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
-  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so.${TF_CUDNN_VERSION}"
-  echo "$CUDNN_INSTALL_PATH/libcudnn.so.${TF_CUDNN_VERSION}"
+  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}"
+  echo "$CUDNN_INSTALL_PATH/libcudnn.so${TF_CUDNN_EXT}"
   if [ -z "$fromuser" ]; then
     exit 1
   fi
+  # Retry
   TF_CUDNN_VERSION=""
   CUDNN_INSTALL_PATH=""
-  # Retry
 done
 
 cat > third_party/gpus/cuda/cuda.config <<EOF
-# CUDA_TOOLKIT_PATH refers to the CUDA toolkit. Tensorflow requires Cuda $TF_CUDA_VERSION
-# at the moment.
+# CUDA_TOOLKIT_PATH refers to the CUDA toolkit.
 CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 
 # CUDNN_INSTALL_PATH refers to the cuDNN toolkit. The cuDNN header and library
@@ -129,82 +122,75 @@ CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 # directories separately.
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 
-# The Cuda SDK version that should be used in this build
-TF_CUDA_VERSION=$TF_CUDA_VERSION
+# The Cuda SDK version that should be used in this build (empty to use libcudart.so symlink)
+TF_CUDA_VERSION=$TF_CUDA_EXT
 
-# The Cudnn version that should be used in this build
-TF_CUDNN_VERSION=$TF_CUDNN_VERSION
+# The Cudnn version that should be used in this build (empty to use libcudnn.so symlink)
+TF_CUDNN_VERSION=$TF_CUDNN_EXT
 
 EOF
 
-function UnofficialSetting() {
-  # Configure the Cuda toolkit version to work with.
-  perl -pi -e "s,CUDA_VERSION = '[0-9\.]*',CUDA_VERSION = '$TF_CUDA_VERSION',s" tensorflow/core/platform/default/build_config.bzl
-  perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
+# Configure the Cuda toolkit version to work with.
+perl -pi -e "s,CUDA_VERSION = '[0-9\.]*',CUDA_VERSION = '$TF_CUDA_EXT',s" tensorflow/core/platform/default/build_config.bzl
+perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_EXT\",s" tensorflow/stream_executor/dso_loader.cc
 
-  # Configure the Cudnn version to work with.
-  perl -pi -e "s,CUDNN_VERSION = '[0-9\.]*',CUDNN_VERSION = '$TF_CUDNN_VERSION',s" tensorflow/core/platform/default/build_config.bzl
-  perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
+# Configure the Cudnn version to work with.
+perl -pi -e "s,CUDNN_VERSION = '[0-9\.]*',CUDNN_VERSION = '$TF_CUDNN_EXT',s" tensorflow/core/platform/default/build_config.bzl
+perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_EXT\",s" tensorflow/stream_executor/dso_loader.cc
 
-  # Configure the compute capabilities that TensorFlow builds for.
-  # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
-  while true; do
-    fromuser=""
-    if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+# Configure the compute capabilities that TensorFlow builds for.
+# Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
+while true; do
+  fromuser=""
+  if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
 cat << EOF
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 EOF
-      read -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
-      fromuser=1
-    fi
-    # Check whether all capabilities from the input is valid
-    COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES//,/ }
-    ALL_VALID=1
-    for CAPABILITY in $COMPUTE_CAPABILITIES; do
-      if [[ ! "$CAPABILITY" =~ [0-9]+.[0-9]+ ]]; then
-        echo "Invalid compute capability: " $CAPABILITY
-        ALL_VALID=0
-        break
-      fi
-    done
-    if [ "$ALL_VALID" == "0" ]; then
-      if [ -z "$fromuser" ]; then
-        exit 1
-      fi
-    else
+    read -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+    fromuser=1
+  fi
+  # Check whether all capabilities from the input is valid
+  COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES//,/ }
+  ALL_VALID=1
+  for CAPABILITY in $COMPUTE_CAPABILITIES; do
+    if [[ ! "$CAPABILITY" =~ [0-9]+.[0-9]+ ]]; then
+      echo "Invalid compute capability: " $CAPABILITY
+      ALL_VALID=0
       break
     fi
-    TF_CUDA_COMPUTE_CAPABILITIES=""
   done
-
-  if [ ! -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
-    export WARNING="Unofficial setting. DO NOT"" SUBMIT!!!"
-    function CudaGenCodeOpts() {
-      OUTPUT=""
-      for CAPABILITY in $@; do
-        OUTPUT=${OUTPUT}"   \"${CAPABILITY}\",     "
-      done
-      echo $OUTPUT
-    }
-    export CUDA_GEN_CODES_OPTS=$(CudaGenCodeOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
-    perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\[).*?(\]),\n\1# $ENV{WARNING}\n\1\2$ENV{CUDA_GEN_CODES_OPTS}\3,s' third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
-    function CudaVersionOpts() {
-      OUTPUT=""
-      for CAPABILITY in $@; do
-        OUTPUT=$OUTPUT"CudaVersion(\"${CAPABILITY}\"), "
-      done
-      echo $OUTPUT
-    }
-    export CUDA_VERSION_OPTS=$(CudaVersionOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
-    perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\{).*?(\}),\n\1// $ENV{WARNING}\n\1\2$ENV{CUDA_VERSION_OPTS}\3,s' tensorflow/core/common_runtime/gpu/gpu_device.cc
+  if [ "$ALL_VALID" == "0" ]; then
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+  else
+    break
   fi
-}
+  TF_CUDA_COMPUTE_CAPABILITIES=""
+done
 
-# Only run the unofficial settings when users explicitly choose to.
-if [ "$TF_UNOFFICIAL_SETTING" == "1" ]; then
-  UnofficialSetting
+if [ ! -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+  export WARNING="Unofficial setting. DO NOT"" SUBMIT!!!"
+  function CudaGenCodeOpts() {
+    OUTPUT=""
+    for CAPABILITY in $@; do
+      OUTPUT=${OUTPUT}"   \"${CAPABILITY}\",     "
+    done
+    echo $OUTPUT
+  }
+  export CUDA_GEN_CODES_OPTS=$(CudaGenCodeOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
+  perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\[).*?(\]),\n\1# $ENV{WARNING}\n\1\2$ENV{CUDA_GEN_CODES_OPTS}\3,s' third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+  function CudaVersionOpts() {
+    OUTPUT=""
+    for CAPABILITY in $@; do
+      OUTPUT=$OUTPUT"CudaVersion(\"${CAPABILITY}\"), "
+    done
+    echo $OUTPUT
+  }
+  export CUDA_VERSION_OPTS=$(CudaVersionOpts ${TF_CUDA_COMPUTE_CAPABILITIES//,/ })
+  perl -pi -0 -e 's,\n( *)([^\n]*supported_cuda_compute_capabilities\s*=\s*\{).*?(\}),\n\1// $ENV{WARNING}\n\1\2$ENV{CUDA_VERSION_OPTS}\3,s' tensorflow/core/common_runtime/gpu/gpu_device.cc
 fi
 
 # Invoke the cuda_config.sh and set up the TensorFlow's canonical view of the Cuda libraries

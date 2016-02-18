@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
-class GpuDevice;
+struct ThreadPoolDevice;
+struct GpuDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -148,13 +148,13 @@ class OpKernel {
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
+  const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
+  const MemoryTypeVector output_memory_types_;
   const int graph_def_version_;
   const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
-  MemoryTypeVector input_memory_types_;
-  MemoryTypeVector output_memory_types_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -207,8 +207,10 @@ class OpKernelConstruction {
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
                        const DataTypeSlice& input_types,
-                       const DataTypeSlice& output_types, int graph_def_version,
-                       Status* status)
+                       const MemoryTypeSlice& input_memory_types,
+                       const DataTypeSlice& output_types,
+                       const MemoryTypeSlice& output_memory_types,
+                       int graph_def_version, Status* status)
       : device_type_(device_type),
         device_(device),
         allocator_(allocator),
@@ -216,7 +218,9 @@ class OpKernelConstruction {
         op_def_(op_def),
         flib_(flib),
         input_types_(input_types),
+        input_memory_types_(input_memory_types),
         output_types_(output_types),
+        output_memory_types_(output_memory_types),
         graph_def_version_(graph_def_version),
         status_(status) {}
 
@@ -264,11 +268,17 @@ class OpKernelConstruction {
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
   const DataTypeSlice& input_types() const { return input_types_; }
+  const MemoryTypeSlice& input_memory_types() const {
+    return input_memory_types_;
+  }
 
   // For inspecting the outputs expected from this operation.
   int num_outputs() const { return output_types_.size(); }
   DataType output_type(int i) const { return output_types_[i]; }
   const DataTypeSlice& output_types() const { return output_types_; }
+  const MemoryTypeSlice& output_memory_types() const {
+    return output_memory_types_;
+  }
 
   // If expected_inputs == inputs() and expected_outputs == output_types(),
   // returns OK, else returns INVALID_ARGUMENT with an error message.
@@ -311,7 +321,9 @@ class OpKernelConstruction {
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
   DataTypeSlice input_types_;
+  MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
+  MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
 
@@ -461,7 +473,7 @@ class OpKernelContext {
         // will never use eigen_gpu_device. It seems better to have
         // ensure_eigen_gpu_device fall through and regenerate the
         // nullptr every time an OpKernelContext is instantiated, than
-        // to do an unneccessary allocation of a dummy eigen GPU
+        // to do an unnecessary allocation of a dummy eigen GPU
         // device for CPU device Ops.
         eigen_gpu_device = device->MakeGpuDevice();
       }
@@ -511,6 +523,7 @@ class OpKernelContext {
 
   // params must outlive the OpKernelContext.
   explicit OpKernelContext(Params* params);
+  OpKernelContext(Params* params, int noutputs);
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
@@ -946,6 +959,7 @@ class OpKernelContext {
   gtl::InlinedVector<TensorValue, 4> outputs_;
   UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
   bool is_output_dead_ = false;
+  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1002,23 +1016,6 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
-// Returns into *{input,output}_memory_types the memory type of each
-// {input,output} tensor.
-//
-// REQUIRES: * '*_memory_types' is not nullptr.
-//           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
-Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
@@ -1040,10 +1037,15 @@ typedef ::tensorflow::KernelDefBuilder Name;
   static ::tensorflow::kernel_factory::OpKernelRegistrar         \
       registrar__body__##ctr##__object(                          \
           ::tensorflow::register_kernel::kernel_builder.Build(), \
-          +[](::tensorflow::OpKernelConstruction* context)       \
+          [](::tensorflow::OpKernelConstruction* context)        \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
+
+// If node_def has a corresponding kernel registered on device_type,
+// returns OK and fill in the kernel def.
+Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+                     const KernelDef** def);
 
 // Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
 // registered with the current library's global kernel registry (obtained by
@@ -1081,7 +1083,9 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  if (params_->device->RequiresRecordingAccessedTensors()) {
+  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
+         record_tensor_accesses_);
+  if (record_tensor_accesses_) {
     mutex_lock l(mu_);
     // Keep a reference to the underlying memory around.
     referenced_tensors_.Add(tensor);
@@ -1090,8 +1094,10 @@ inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
 
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
-  mutex_lock l(mu_);
-  referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  if (record_tensor_accesses_) {
+    mutex_lock l(mu_);
+    referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  }
 }
 
 inline const Tensor& OpKernelContext::input(int index) {

@@ -19,14 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_attention_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_attention_ops import *
+# pylint: enable=wildcard-import
 
 
 # TODO(bsteiner): Implement the gradient function for extract_glimpse

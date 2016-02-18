@@ -20,7 +20,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.python.client import graph_util
@@ -35,6 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
+# pylint: enable=wildcard-import
 
 
 # Aliases for some automatically-generated names.
@@ -157,7 +157,7 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**:  While the classes are mutually exclusive, their probabilities
+  **NOTE:**  While the classes are mutually exclusive, their probabilities
   need not be.  All that is required is that each row of `labels` is
   a valid probability distribution.  If using exclusive `labels`
   (wherein one and only one class is true at a time), see
@@ -194,7 +194,7 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**:  For this operation, the probability of a given label is considered
+  **NOTE:**  For this operation, the probability of a given label is considered
   exclusive.  That is, soft classes are not allowed, and the `labels` vector
   must provide a single specific index for the true class for each row of
   `logits` (each minibatch entry).  For soft softmax classification with
@@ -359,7 +359,7 @@ def _TopKShape(op):
   else:
     k = op.get_attr("k")
   last = input_shape[-1].value
-  if last is not None and last < k:
+  if last is not None and k is not None and last < k:
     raise ValueError("input.shape %s must have last dimension >= k = %d" %
                      (input_shape, k))
   output_shape = input_shape[:-1].concatenate([k])
@@ -614,12 +614,7 @@ def top_k(input, k=1, sorted=True, name=None):
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  # TODO(irving): Always use v2 once the GraphDef mechanism is unstuck.
-  if isinstance(k, ops.Tensor):
-    op = gen_nn_ops._top_kv2
-  else:
-    op = gen_nn_ops._top_k
-  return op(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
 
 # pylint: enable=invalid-name

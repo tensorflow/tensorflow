@@ -64,10 +64,11 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from google.protobuf import descriptor
 from google.protobuf import message
 from google.protobuf import text_format
-import six
 
 
 def assertProtoEqual(self, a, b, check_initialized=True,

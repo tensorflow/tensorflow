@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import math_ops
 
 
 # pylint: disable=protected-access
@@ -39,14 +40,17 @@ class TensorArray(object):
 
   @@read
   @@unpack
+  @@split
 
   @@write
   @@pack
+  @@concat
 
   @@grad
   """
 
-  def __init__(self, dtype, size=None, tensor_array_name=None,
+  def __init__(self, dtype, size=None, dynamic_size=None,
+               tensor_array_name=None,
                handle=None, flow=None, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
@@ -54,6 +58,8 @@ class TensorArray(object):
       dtype: (required) data type of the TensorArray.
       size: (optional) int32 scalar `Tensor`: the size of the TensorArray.
         Required if handle is not provided.
+      dynamic_size: (optional) Python bool: If true, writes to the TensorArray
+        can grow the TensorArray past its initial size.  Default: False.
       tensor_array_name: (optional) Python string: the name of the TensorArray.
         This is used when creating the TensorArray handle.  If this value is
         set, handle should be None.
@@ -74,6 +80,14 @@ class TensorArray(object):
       raise TypeError("Handle must be a Tensor")
     if handle is None and size is None:
       raise ValueError("Size must be provided if handle is not provided")
+    if handle and size is not None:
+      raise ValueError("Cannot provide both a handle and size "
+                       "at the same time")
+    if handle and dynamic_size is not None:
+      raise ValueError("Cannot provide both a handle and dynamic_size "
+                       "at the same time")
+
+    dynamic_size = dynamic_size or False
 
     self._dtype = dtype
     with ops.op_scope([handle, size, flow], name, "TensorArray") as scope:
@@ -81,8 +95,8 @@ class TensorArray(object):
         self._handle = handle
       else:
         self._handle = gen_data_flow_ops._tensor_array(
-            dtype=dtype, size=size, tensor_array_name=tensor_array_name,
-            name=scope)
+            dtype=dtype, size=size, dynamic_size=dynamic_size,
+            tensor_array_name=tensor_array_name, name=scope)
     self._flow = flow or constant_op.constant(0, dtype=_dtypes.float32)
 
   @property
@@ -101,9 +115,13 @@ class TensorArray(object):
     return self._handle
 
   def grad(self, source, flow=None):
+    # tensor_array_grad requires a flow input when forward
+    # TensorArrays are dynamically sized.  This forces the creation
+    # of the grad TensorArray only once the final forward array's size
+    # is fixed.
     g_handle = gen_data_flow_ops._tensor_array_grad(
-        handle=self._handle, source=source)
-    g = TensorArray(dtype=self._dtype, size=None, handle=g_handle, flow=flow)
+        handle=self._handle, source=source, flow_in=flow or self.flow)
+    g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow or self.flow)
     return g
 
   def read(self, index, name=None):
@@ -119,7 +137,7 @@ class TensorArray(object):
         handle=self._handle, index=index, value=value, flow_in=self._flow,
         name=name)
     # Size below is ignored
-    ta = TensorArray(dtype=self._dtype, size=-1, handle=self._handle)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle)
     ta._flow = flow_out
     return ta
 
@@ -131,14 +149,38 @@ class TensorArray(object):
 
     return value
 
+  def concat(self, name=None):
+    """Return the values in the TensorArray as a concatenated `Tensor`."""
+    value, _ = gen_data_flow_ops._tensor_array_concat(
+        handle=self._handle, flow_in=self._flow, dtype=self._dtype,
+        name=name)
+    return value
+
   def unpack(self, value, name=None):
-    """Packs the values of a `Tensor` in the TensorArray."""
+    """Pack the values of a `Tensor` in the TensorArray."""
     flow_out = gen_data_flow_ops._tensor_array_unpack(
         handle=self._handle, value=value, flow_in=self._flow,
         name=name)
-    ta = TensorArray(dtype=self._dtype, size=-1, handle=self._handle)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle)
     ta._flow = flow_out
     return ta
+
+  def split(self, value, lengths, name=None):
+    """Split the values of a `Tensor` into the TensorArray."""
+    with ops.op_scope(
+        [self._handle, value, lengths], name, "TensorArraySplit"):
+      lengths = math_ops.to_int64(lengths)
+    flow_out = gen_data_flow_ops._tensor_array_split(
+        handle=self._handle, value=value, lengths=lengths, flow_in=self._flow,
+        name=name)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle)
+    ta._flow = flow_out
+    return ta
+
+  def size(self, name=None):
+    """Return the size of the TensorArray."""
+    return gen_data_flow_ops._tensor_array_size(
+        handle=self._handle, flow_in=self.flow, name=name)
 
   def close(self, name=None):
     """Close the current TensorArray."""
@@ -173,6 +215,12 @@ def _TensorArrayWriteShape(op):
   return [tensor_shape.scalar()]
 
 
+@ops.RegisterShape("TensorArraySize")
+def _TensorArraySizeShape(op):
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  return [tensor_shape.scalar()]
+
+
 @ops.RegisterShape("TensorArrayClose")
 def _TensorArrayCloseShape(op):
   """Shape function for ops that take a scalar and produce no outputs."""
@@ -194,6 +242,25 @@ def _TensorArrayPackShape(op):
   op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   # value
   return [tensor_shape.unknown_shape()]
+
+
+@ops.RegisterShape("TensorArrayConcat")
+def _TensorArrayConcatShape(op):
+  # handle, flow_in
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
+  # value, lengths
+  return [tensor_shape.unknown_shape(), tensor_shape.vector(None)]
+
+
+@ops.RegisterShape("TensorArraySplit")
+def _TensorArraySplitShape(op):
+  # handle, value, lengths, flow_in
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[2].get_shape().merge_with(tensor_shape.vector(None))
+  op.inputs[3].get_shape().merge_with(tensor_shape.scalar())
+  # flow_out
+  return [tensor_shape.scalar()]
 
 
 @ops.RegisterShape("TensorArrayUnpack")

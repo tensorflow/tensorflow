@@ -28,6 +28,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/types.proto",
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
+        "//tensorflow/core:protobuf/saver.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
 	]
 
@@ -190,8 +191,6 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                        **kwargs):
-  # We have to disable variadic templates in Eigen for NVCC even though
-  # std=c++11 are enabled
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
                 "-nvcc_options=relaxed-constexpr"] + cuda_copts
   native.cc_library(
@@ -253,6 +252,7 @@ def _py_wrap_cc_impl(ctx):
     cc_include_dirs += [h.dirname for h in dep.cc.transitive_headers]
     cc_includes += dep.cc.transitive_headers
   args += ["-I" + x for x in cc_include_dirs]
+  args += ["-I" + ctx.label.workspace_root]
   args += ["-o", cc_out.path]
   args += ["-outdir", py_out.dirname]
   args += [src.path]
@@ -260,7 +260,7 @@ def _py_wrap_cc_impl(ctx):
   ctx.action(executable=ctx.executable.swig_binary,
              arguments=args,
              mnemonic="PythonSwig",
-             inputs=list(set([src]) + cc_includes + ctx.files.swig_includes +
+             inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
              progress_message="SWIGing {input}".format(input=src.path))

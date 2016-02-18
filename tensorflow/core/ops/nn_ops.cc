@@ -75,6 +75,8 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Doc(R"doc(
 Batch normalization.
 
+This op is deprecated. Prefer `tf.nn.batch_normalization`.
+
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
   This is the first output from tf.nn.moments,
@@ -108,6 +110,8 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Attr("scale_after_normalization: bool")
     .Doc(R"doc(
 Gradients for batch normalization.
+
+This op is deprecated. See `tf.nn.batch_normalization`.
 
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.

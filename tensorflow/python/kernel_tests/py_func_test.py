@@ -17,9 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
@@ -75,16 +74,16 @@ class PyOpTest(tf.test.TestCase):
   def testStrings(self):
 
     def read_fixed_length_numpy_strings():
-      return np.array([" there"])
+      return np.array([b" there"])
 
     def read_and_return_strings(x, y):
       return x + y
 
     with self.test_session():
-      x = tf.constant(["hello", "hi"], tf.string)
+      x = tf.constant([b"hello", b"hi"], tf.string)
       y, = tf.py_func(read_fixed_length_numpy_strings, [], [tf.string])
       z, = tf.py_func(read_and_return_strings, [x, y], [tf.string])
-      self.assertListEqual(list(z.eval()), ["hello there", "hi there"])
+      self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
   def testLarge(self):
     with self.test_session() as sess:
@@ -100,7 +99,7 @@ class PyOpTest(tf.test.TestCase):
       self.assertAllClose(x.eval(), 42.0)
 
   def testCleanup(self):
-    for _ in range(1000):
+    for _ in xrange(1000):
       g = tf.Graph()
       with g.as_default():
         c = tf.constant([1.], tf.float32)

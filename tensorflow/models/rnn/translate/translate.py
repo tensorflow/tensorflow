@@ -25,7 +25,7 @@ the current checkpoint translates English sentences into French.
 See the following papers for more information on neural translation models.
  * http://arxiv.org/abs/1409.3215
  * http://arxiv.org/abs/1409.0473
- * http://arxiv.org/pdf/1412.2007v2.pdf
+ * http://arxiv.org/abs/1412.2007
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -37,15 +37,12 @@ import random
 import sys
 import time
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.models.rnn.translate import data_utils
 from tensorflow.models.rnn.translate import seq2seq_model
-from tensorflow.python.platform import gfile
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -95,8 +92,8 @@ def read_data(source_path, target_path, max_size=None):
       len(target) < _buckets[n][1]; source and target are lists of token-ids.
   """
   data_set = [[] for _ in _buckets]
-  with gfile.GFile(source_path, mode="r") as source_file:
-    with gfile.GFile(target_path, mode="r") as target_file:
+  with tf.gfile.GFile(source_path, mode="r") as source_file:
+    with tf.gfile.GFile(target_path, mode="r") as target_file:
       source, target = source_file.readline(), target_file.readline()
       counter = 0
       while source and target and (not max_size or counter < max_size):
@@ -123,7 +120,7 @@ def create_model(session, forward_only):
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
       forward_only=forward_only)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
+  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:

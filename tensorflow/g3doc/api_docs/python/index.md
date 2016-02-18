@@ -5,6 +5,7 @@
 * **[Building Graphs](../../api_docs/python/framework.md)**:
   * [`add_to_collection`](../../api_docs/python/framework.md#add_to_collection)
   * [`as_dtype`](../../api_docs/python/framework.md#as_dtype)
+  * [`bytes`](../../api_docs/python/framework.md#bytes)
   * [`control_dependencies`](../../api_docs/python/framework.md#control_dependencies)
   * [`convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor)
   * [`convert_to_tensor_or_indexed_slices`](../../api_docs/python/framework.md#convert_to_tensor_or_indexed_slices)
@@ -35,6 +36,7 @@
   * [`linspace`](../../api_docs/python/constant_op.md#linspace)
   * [`ones`](../../api_docs/python/constant_op.md#ones)
   * [`ones_like`](../../api_docs/python/constant_op.md#ones_like)
+  * [`random_crop`](../../api_docs/python/constant_op.md#random_crop)
   * [`random_normal`](../../api_docs/python/constant_op.md#random_normal)
   * [`random_shuffle`](../../api_docs/python/constant_op.md#random_shuffle)
   * [`random_uniform`](../../api_docs/python/constant_op.md#random_uniform)
@@ -79,8 +81,10 @@
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
+  * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
@@ -95,6 +99,7 @@
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
   * [`slice`](../../api_docs/python/array_ops.md#slice)
+  * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
   * [`string_to_number`](../../api_docs/python/array_ops.md#string_to_number)
@@ -129,6 +134,7 @@
   * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
+  * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`diag`](../../api_docs/python/math_ops.md#diag)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
@@ -167,6 +173,7 @@
   * [`reduce_sum`](../../api_docs/python/math_ops.md#reduce_sum)
   * [`round`](../../api_docs/python/math_ops.md#round)
   * [`rsqrt`](../../api_docs/python/math_ops.md#rsqrt)
+  * [`scalar_mul`](../../api_docs/python/math_ops.md#scalar_mul)
   * [`segment_max`](../../api_docs/python/math_ops.md#segment_max)
   * [`segment_mean`](../../api_docs/python/math_ops.md#segment_mean)
   * [`segment_min`](../../api_docs/python/math_ops.md#segment_min)
@@ -225,6 +232,7 @@
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
+  * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
   * [`encode_jpeg`](../../api_docs/python/image.md#encode_jpeg)
   * [`encode_png`](../../api_docs/python/image.md#encode_png)
   * [`extract_glimpse`](../../api_docs/python/image.md#extract_glimpse)
@@ -236,7 +244,6 @@
   * [`per_image_whitening`](../../api_docs/python/image.md#per_image_whitening)
   * [`random_brightness`](../../api_docs/python/image.md#random_brightness)
   * [`random_contrast`](../../api_docs/python/image.md#random_contrast)
-  * [`random_crop`](../../api_docs/python/image.md#random_crop)
   * [`random_flip_left_right`](../../api_docs/python/image.md#random_flip_left_right)
   * [`random_flip_up_down`](../../api_docs/python/image.md#random_flip_up_down)
   * [`random_hue`](../../api_docs/python/image.md#random_hue)
@@ -249,6 +256,7 @@
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
+  * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
   * [`saturate_cast`](../../api_docs/python/image.md#saturate_cast)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
@@ -371,6 +379,7 @@
   * [`Coordinator`](../../api_docs/python/train.md#Coordinator)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
+  * [`export_meta_graph`](../../api_docs/python/train.md#export_meta_graph)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`global_norm`](../../api_docs/python/train.md#global_norm)
@@ -379,6 +388,7 @@
   * [`gradients`](../../api_docs/python/train.md#gradients)
   * [`histogram_summary`](../../api_docs/python/train.md#histogram_summary)
   * [`image_summary`](../../api_docs/python/train.md#image_summary)
+  * [`import_meta_graph`](../../api_docs/python/train.md#import_meta_graph)
   * [`LooperThread`](../../api_docs/python/train.md#LooperThread)
   * [`merge_all_summaries`](../../api_docs/python/train.md#merge_all_summaries)
   * [`merge_summary`](../../api_docs/python/train.md#merge_summary)
@@ -386,7 +396,6 @@
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
-  * [`SaverDef`](../../api_docs/python/train.md#SaverDef)
   * [`scalar_summary`](../../api_docs/python/train.md#scalar_summary)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
@@ -398,7 +407,29 @@
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
-* **[Unsupported](../../api_docs/python/unsupported.md)**:
-  * [`constant_value`](../../api_docs/python/unsupported.md#constant_value)
-  * [`make_all`](../../api_docs/python/unsupported.md#make_all)
+* **[Testing](../../api_docs/python/test.md)**:
+  * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
+  * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
+  * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
+  * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
+  * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
+  * [`main`](../../api_docs/python/test.md#main)
+
+* **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
+  * [`assert_same_float_dtype`](../../api_docs/python/contrib.layers.md#assert_same_float_dtype)
+  * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)
+  * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
+  * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
+  * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
+  * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)
+  * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
+  * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
+  * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
+  * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
+  * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
+
+* **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
+  * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
+  * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
 

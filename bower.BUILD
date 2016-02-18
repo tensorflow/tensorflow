@@ -3,100 +3,36 @@
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
-    name = "iron-ajax",
-    srcs = [
-        "index.html",
-        "iron-ajax.html",
-        "iron-request.html",
-    ],
-)
-
-filegroup(
-    name = "iron-dropdown",
-    srcs = [
-        "index.html",
-        "iron-dropdown.html",
-        "iron-dropdown-scroll-manager.html",
-    ],
-)
-
-filegroup(
-    name = "accessibility-developer-tools",
+    name = "accessibility_developer_tools",
     srcs = ["dist/js/axs_testing.js"],
 )
 
 filegroup(
-    name = "iron-doc-viewer",
+    name = "async",
     srcs = [
-        "index.html",
-        "iron-doc-property.html",
-        "iron-doc-property-styles.html",
-        "iron-doc-viewer.html",
-        "iron-doc-viewer-styles.html",
+        "deps/nodeunit.css",
+        "deps/nodeunit.js",
+        "dist/async.js",
+        "dist/async.min.js",
+        "karma.conf.js",
+        "lib/async.js",
+        "mocha_test/compose.js",
+        "mocha_test/forever.js",
+        "mocha_test/support/is_browser.js",
+        "perf/benchmark.js",
+        "perf/memory.js",
+        "perf/suites.js",
+        "support/sync-package-managers.js",
     ],
 )
 
 filegroup(
-    name = "iron-icons",
+    name = "chai",
     srcs = [
-        "av-icons.html",
-        "communication-icons.html",
-        "device-icons.html",
-        "editor-icons.html",
-        "hardware-icons.html",
-        "image-icons.html",
-        "index.html",
-        "iron-icons.html",
-        "maps-icons.html",
-        "notification-icons.html",
-        "social-icons.html",
-    ],
-)
-
-filegroup(
-    name = "paper-icon-button",
-    srcs = [
-        "index.html",
-        "paper-icon-button.html",
-    ],
-)
-
-filegroup(
-    name = "test-fixture",
-    srcs = [
-        "test-fixture.html",
-        "test-fixture-mocha.js",
-    ],
-)
-
-filegroup(
-    name = "sinonjs",
-    srcs = ["sinon.js"],
-)
-
-filegroup(
-    name = "paper-dropdown-menu",
-    srcs = [
-        "index.html",
-        "paper-dropdown-menu.html",
-    ],
-)
-
-filegroup(
-    name = "iron-flex-layout",
-    srcs = [
-        "classes/iron-flex-layout.html",
-        "classes/iron-shadow-flex-layout.html",
-        "index.html",
-        "iron-flex-layout.html",
-    ],
-)
-
-filegroup(
-    name = "iron-autogrow-textarea",
-    srcs = [
-        "index.html",
-        "iron-autogrow-textarea.html",
+        "chai.js",
+        "karma.conf.js",
+        "karma.sauce.js",
+        "sauce.browsers.js",
     ],
 )
 
@@ -110,7 +46,96 @@ filegroup(
 )
 
 filegroup(
-    name = "iron-component-page",
+    name = "dagre",
+    srcs = [
+        "dist/dagre.core.js",
+        "dist/dagre.core.min.js",
+    ],
+)
+
+filegroup(
+    name = "es6_promise",
+    srcs = [
+        "promise.js",
+        "promise.min.js",
+    ],
+)
+
+filegroup(
+    name = "font_roboto",
+    srcs = ["roboto.html"],
+)
+
+filegroup(
+    name = "graphlib",
+    srcs = [
+        "dist/graphlib.core.js",
+        "dist/graphlib.core.min.js",
+    ],
+)
+
+filegroup(
+    name = "hydrolysis",
+    srcs = [
+        "hydrolysis.html",
+        "hydrolysis.js",
+        "hydrolysis-analyzer.html",
+        "index.js",
+    ],
+)
+
+filegroup(
+    name = "iron_a11y_keys_behavior",
+    srcs = [
+        "index.html",
+        "iron-a11y-keys-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_ajax",
+    srcs = [
+        "index.html",
+        "iron-ajax.html",
+        "iron-request.html",
+    ],
+)
+
+filegroup(
+    name = "iron_autogrow_textarea",
+    srcs = [
+        "index.html",
+        "iron-autogrow-textarea.html",
+    ],
+)
+
+filegroup(
+    name = "iron_behaviors",
+    srcs = [
+        "index.html",
+        "iron-button-state.html",
+        "iron-control-state.html",
+    ],
+)
+
+filegroup(
+    name = "iron_checked_element_behavior",
+    srcs = [
+        "index.html",
+        "iron-checked-element-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_collapse",
+    srcs = [
+        "index.html",
+        "iron-collapse.html",
+    ],
+)
+
+filegroup(
+    name = "iron_component_page",
     srcs = [
         "index.html",
         "iron-component-page.html",
@@ -118,12 +143,413 @@ filegroup(
 )
 
 filegroup(
-    name = "stacky",
-    srcs = ["browser.js"],
+    name = "iron_doc_viewer",
+    srcs = [
+        "index.html",
+        "iron-doc-property.html",
+        "iron-doc-property-styles.html",
+        "iron-doc-viewer.html",
+        "iron-doc-viewer-styles.html",
+    ],
 )
 
 filegroup(
-    name = "paper-styles",
+    name = "iron_dropdown",
+    srcs = [
+        "index.html",
+        "iron-dropdown.html",
+        "iron-dropdown-scroll-manager.html",
+    ],
+)
+
+filegroup(
+    name = "iron_fit_behavior",
+    srcs = [
+        "index.html",
+        "iron-fit-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_flex_layout",
+    srcs = [
+        "classes/iron-flex-layout.html",
+        "classes/iron-shadow-flex-layout.html",
+        "index.html",
+        "iron-flex-layout.html",
+    ],
+)
+
+filegroup(
+    name = "iron_form_element_behavior",
+    srcs = [
+        "index.html",
+        "iron-form-element-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_icon",
+    srcs = [
+        "index.html",
+        "iron-icon.html",
+    ],
+)
+
+filegroup(
+    name = "iron_icons",
+    srcs = [
+        "av-icons.html",
+        "communication-icons.html",
+        "device-icons.html",
+        "editor-icons.html",
+        "hardware-icons.html",
+        "image-icons.html",
+        "index.html",
+        "iron-icons.html",
+        "maps-icons.html",
+        "notification-icons.html",
+        "places-icons.html",
+        "social-icons.html",
+    ],
+)
+
+filegroup(
+    name = "iron_iconset_svg",
+    srcs = [
+        "index.html",
+        "iron-iconset-svg.html",
+    ],
+)
+
+filegroup(
+    name = "iron_input",
+    srcs = [
+        "index.html",
+        "iron-input.html",
+    ],
+)
+
+filegroup(
+    name = "iron_list",
+    srcs = [
+        "index.html",
+        "iron-list.html",
+        "test/smoke/avg-worst-case.html",
+        "test/smoke/dummy-data.html",
+        "test/smoke/index.html",
+        "test/smoke/physical-count.html",
+    ],
+)
+
+filegroup(
+    name = "iron_menu_behavior",
+    srcs = [
+        "index.html",
+        "iron-menu-behavior.html",
+        "iron-menubar-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_meta",
+    srcs = [
+        "index.html",
+        "iron-meta.html",
+    ],
+)
+
+filegroup(
+    name = "iron_overlay_behavior",
+    srcs = [
+        "index.html",
+        "iron-overlay-backdrop.html",
+        "iron-overlay-behavior.html",
+        "iron-overlay-manager.html",
+    ],
+)
+
+filegroup(
+    name = "iron_range_behavior",
+    srcs = [
+        "index.html",
+        "iron-range-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_resizable_behavior",
+    srcs = [
+        "demo/src/x-app.html",
+        "index.html",
+        "iron-resizable-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_selector",
+    srcs = [
+        "index.html",
+        "iron-multi-selectable.html",
+        "iron-selectable.html",
+        "iron-selection.html",
+        "iron-selector.html",
+    ],
+)
+
+filegroup(
+    name = "iron_validatable_behavior",
+    srcs = [
+        "index.html",
+        "iron-validatable-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "lodash",
+    srcs = [
+        "lodash.js",
+        "lodash.min.js",
+    ],
+)
+
+filegroup(
+    name = "marked",
+    srcs = [
+        "Gulpfile.js",
+        "index.js",
+        "lib/marked.js",
+        "marked.min.js",
+    ],
+)
+
+filegroup(
+    name = "marked_element",
+    srcs = [
+        "index.html",
+        "marked-element.html",
+        "marked-import.html",
+    ],
+)
+
+filegroup(
+    name = "mocha",
+    srcs = [
+        "mocha.css",
+        "mocha.js",
+    ],
+)
+
+filegroup(
+    name = "neon_animation",
+    srcs = [
+        "animations/cascaded-animation.html",
+        "animations/fade-in-animation.html",
+        "animations/fade-out-animation.html",
+        "animations/hero-animation.html",
+        "animations/opaque-animation.html",
+        "animations/reverse-ripple-animation.html",
+        "animations/ripple-animation.html",
+        "animations/scale-down-animation.html",
+        "animations/scale-up-animation.html",
+        "animations/slide-down-animation.html",
+        "animations/slide-from-bottom-animation.html",
+        "animations/slide-from-left-animation.html",
+        "animations/slide-from-right-animation.html",
+        "animations/slide-from-top-animation.html",
+        "animations/slide-left-animation.html",
+        "animations/slide-right-animation.html",
+        "animations/slide-up-animation.html",
+        "animations/transform-animation.html",
+        "demo/card/index.html",
+        "demo/card/x-card.html",
+        "demo/card/x-cards-list.html",
+        "demo/declarative/index.html",
+        "demo/doc/index.html",
+        "demo/doc/my-animatable.html",
+        "demo/doc/my-dialog.html",
+        "demo/dropdown/animated-dropdown.html",
+        "demo/dropdown/index.html",
+        "demo/grid/animated-grid.html",
+        "demo/grid/fullsize-page-with-card.html",
+        "demo/grid/index.html",
+        "demo/list/full-view.html",
+        "demo/list/index.html",
+        "demo/list/list-demo.html",
+        "demo/list/list-view.html",
+        "demo/load/animated-grid.html",
+        "demo/load/full-page.html",
+        "demo/load/index.html",
+        "demo/reprojection/animated-grid.html",
+        "demo/reprojection/fullsize-page-with-card.html",
+        "demo/reprojection/index.html",
+        "demo/reprojection/reprojected-pages.html",
+        "demo/tiles/circles-page.html",
+        "demo/tiles/index.html",
+        "demo/tiles/squares-page.html",
+        "index.html",
+        "neon-animatable.html",
+        "neon-animatable-behavior.html",
+        "neon-animated-pages.html",
+        "neon-animation.html",
+        "neon-animation-behavior.html",
+        "neon-animation-runner-behavior.html",
+        "neon-animations.html",
+        "neon-shared-element-animatable-behavior.html",
+        "neon-shared-element-animation-behavior.html",
+        "web-animations.html",
+    ],
+)
+
+filegroup(
+    name = "paper_behaviors",
+    srcs = [
+        "index.html",
+        "paper-button-behavior.html",
+        "paper-checked-element-behavior.html",
+        "paper-inky-focus-behavior.html",
+        "paper-ripple-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "paper_button",
+    srcs = [
+        "index.html",
+        "paper-button.html",
+    ],
+)
+
+filegroup(
+    name = "paper_checkbox",
+    srcs = [
+        "index.html",
+        "metadata.html",
+        "paper-checkbox.html",
+    ],
+)
+
+filegroup(
+    name = "paper_dropdown_menu",
+    srcs = [
+        "index.html",
+        "paper-dropdown-menu.html",
+    ],
+)
+
+filegroup(
+    name = "paper_header_panel",
+    srcs = [
+        "index.html",
+        "paper-header-panel.html",
+    ],
+)
+
+filegroup(
+    name = "paper_icon_button",
+    srcs = [
+        "index.html",
+        "paper-icon-button.html",
+    ],
+)
+
+filegroup(
+    name = "paper_input",
+    srcs = [
+        "all-imports.html",
+        "index.html",
+        "paper-input.html",
+        "paper-input-addon-behavior.html",
+        "paper-input-behavior.html",
+        "paper-input-char-counter.html",
+        "paper-input-container.html",
+        "paper-input-error.html",
+        "paper-textarea.html",
+    ],
+)
+
+filegroup(
+    name = "paper_item",
+    srcs = [
+        "all-imports.html",
+        "index.html",
+        "paper-icon-item.html",
+        "paper-item.html",
+        "paper-item-body.html",
+        "paper-item-shared-styles.html",
+    ],
+)
+
+filegroup(
+    name = "paper_material",
+    srcs = [
+        "index.html",
+        "paper-material.html",
+        "paper-material-shared-styles.html",
+    ],
+)
+
+filegroup(
+    name = "paper_menu",
+    srcs = [
+        "index.html",
+        "paper-menu.html",
+        "paper-menu-shared.css",
+        "paper-submenu.html",
+    ],
+)
+
+filegroup(
+    name = "paper_menu_button",
+    srcs = [
+        "index.html",
+        "paper-menu-button.html",
+        "paper-menu-button-animations.html",
+    ],
+)
+
+filegroup(
+    name = "paper_progress",
+    srcs = [
+        "index.html",
+        "paper-progress.html",
+    ],
+)
+
+filegroup(
+    name = "paper_radio_button",
+    srcs = [
+        "index.html",
+        "paper-radio-button.html",
+    ],
+)
+
+filegroup(
+    name = "paper_radio_group",
+    srcs = [
+        "index.html",
+        "paper-radio-group.html",
+    ],
+)
+
+filegroup(
+    name = "paper_ripple",
+    srcs = [
+        "index.html",
+        "paper-ripple.html",
+    ],
+)
+
+filegroup(
+    name = "paper_slider",
+    srcs = [
+        "index.html",
+        "paper-slider.html",
+    ],
+)
+
+filegroup(
+    name = "paper_styles",
     srcs = [
         "classes/global.html",
         "classes/shadow.html",
@@ -142,38 +568,46 @@ filegroup(
 )
 
 filegroup(
-    name = "paper-input",
+    name = "paper_tabs",
     srcs = [
-        "all-imports.html",
         "index.html",
-        "paper-input.html",
-        "paper-input-addon-behavior.html",
-        "paper-input-behavior.html",
-        "paper-input-char-counter.html",
-        "paper-input-container.html",
-        "paper-input-error.html",
-        "paper-textarea.html",
+        "paper-tab.html",
+        "paper-tabs.html",
+        "paper-tabs-icons.html",
     ],
 )
 
 filegroup(
-    name = "paper-item",
+    name = "paper_toggle_button",
     srcs = [
-        "all-imports.html",
         "index.html",
-        "paper-icon-item.html",
-        "paper-item.html",
-        "paper-item-body.html",
-        "paper-item-shared-styles.html",
+        "paper-toggle-button.html",
     ],
 )
 
 filegroup(
-    name = "marked-element",
+    name = "paper_toolbar",
     srcs = [
         "index.html",
-        "marked-element.html",
-        "marked-import.html",
+        "paper-toolbar.html",
+    ],
+)
+
+filegroup(
+    name = "plottable",
+    srcs = [
+        "plottable.css",
+        "plottable.js",
+        "plottable.min.js",
+    ],
+)
+
+filegroup(
+    name = "polymer",
+    srcs = [
+        "polymer.html",
+        "polymer-micro.html",
+        "polymer-mini.html",
     ],
 )
 
@@ -279,6 +713,8 @@ filegroup(
         "components/prism-java.min.js",
         "components/prism-javascript.js",
         "components/prism-javascript.min.js",
+        "components/prism-json.js",
+        "components/prism-json.min.js",
         "components/prism-jsx.js",
         "components/prism-jsx.min.js",
         "components/prism-julia.js",
@@ -410,6 +846,9 @@ filegroup(
         "plugins/autolinker/prism-autolinker.min.js",
         "plugins/autoloader/prism-autoloader.js",
         "plugins/autoloader/prism-autoloader.min.js",
+        "plugins/command-line/prism-command-line.css",
+        "plugins/command-line/prism-command-line.js",
+        "plugins/command-line/prism-command-line.min.js",
         "plugins/file-highlight/prism-file-highlight.js",
         "plugins/file-highlight/prism-file-highlight.min.js",
         "plugins/highlight-keywords/prism-highlight-keywords.js",
@@ -470,6 +909,7 @@ filegroup(
         "themes/prism-dark.css",
         "themes/prism-funky.css",
         "themes/prism-okaidia.css",
+        "themes/prism-solarizedlight.css",
         "themes/prism-tomorrow.css",
         "themes/prism-twilight.css",
         "vendor/promise.js",
@@ -477,58 +917,16 @@ filegroup(
 )
 
 filegroup(
-    name = "paper-progress",
+    name = "prism_element",
     srcs = [
         "index.html",
-        "paper-progress.html",
+        "prism-highlighter.html",
+        "prism-import.html",
     ],
 )
 
 filegroup(
-    name = "iron-checked-element-behavior",
-    srcs = [
-        "index.html",
-        "iron-checked-element-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "paper-toolbar",
-    srcs = [
-        "index.html",
-        "paper-toolbar.html",
-    ],
-)
-
-filegroup(
-    name = "async",
-    srcs = [
-        "deps/nodeunit.css",
-        "deps/nodeunit.js",
-        "dist/async.js",
-        "dist/async.min.js",
-        "karma.conf.js",
-        "lib/async.js",
-        "mocha_test/compose.js",
-        "mocha_test/forever.js",
-        "mocha_test/support/is_browser.js",
-        "perf/benchmark.js",
-        "perf/memory.js",
-        "perf/suites.js",
-        "support/sync-package-managers.js",
-    ],
-)
-
-filegroup(
-    name = "es6-promise",
-    srcs = [
-        "promise.js",
-        "promise.min.js",
-    ],
-)
-
-filegroup(
-    name = "promise-polyfill",
+    name = "promise_polyfill",
     srcs = [
         "Gruntfile.js",
         "Promise.js",
@@ -540,145 +938,55 @@ filegroup(
 )
 
 filegroup(
-    name = "font-roboto",
-    srcs = ["roboto.html"],
+    name = "sinon_chai",
+    srcs = ["lib/sinon-chai.js"],
 )
 
 filegroup(
-    name = "paper-menu",
+    name = "sinonjs",
+    srcs = ["sinon.js"],
+)
+
+filegroup(
+    name = "stacky",
     srcs = [
-        "index.html",
-        "paper-menu.html",
-        "paper-menu-shared.css",
-        "paper-submenu.html",
+        "browser.js",
+        "lib/formatting.js",
+        "lib/index.js",
+        "lib/normalization.js",
+        "lib/parsing.js",
     ],
 )
 
 filegroup(
-    name = "iron-icon",
+    name = "svg_typewriter",
+    srcs = ["svgtypewriter.js"],
+)
+
+filegroup(
+    name = "test_fixture",
     srcs = [
-        "index.html",
-        "iron-icon.html",
+        "test-fixture.html",
+        "test-fixture-mocha.js",
     ],
 )
 
 filegroup(
-    name = "iron-meta",
+    name = "web_animations_js",
     srcs = [
-        "index.html",
-        "iron-meta.html",
-    ],
-)
-
-filegroup(
-    name = "lodash",
-    srcs = [
-        "lodash.js",
-        "lodash.min.js",
-    ],
-)
-
-filegroup(
-    name = "iron-resizable-behavior",
-    srcs = [
-        "demo/src/x-app.html",
-        "index.html",
-        "iron-resizable-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "iron-fit-behavior",
-    srcs = [
-        "index.html",
-        "iron-fit-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "iron-overlay-behavior",
-    srcs = [
-        "index.html",
-        "iron-overlay-backdrop.html",
-        "iron-overlay-behavior.html",
-        "iron-overlay-manager.html",
-    ],
-)
-
-filegroup(
-    name = "neon-animation",
-    srcs = [
-        "animations/cascaded-animation.html",
-        "animations/fade-in-animation.html",
-        "animations/fade-out-animation.html",
-        "animations/hero-animation.html",
-        "animations/opaque-animation.html",
-        "animations/reverse-ripple-animation.html",
-        "animations/ripple-animation.html",
-        "animations/scale-down-animation.html",
-        "animations/scale-up-animation.html",
-        "animations/slide-down-animation.html",
-        "animations/slide-from-left-animation.html",
-        "animations/slide-from-right-animation.html",
-        "animations/slide-left-animation.html",
-        "animations/slide-right-animation.html",
-        "animations/slide-up-animation.html",
-        "animations/transform-animation.html",
-        "demo/card/index.html",
-        "demo/card/x-card.html",
-        "demo/card/x-cards-list.html",
-        "demo/declarative/index.html",
-        "demo/doc/basic.html",
-        "demo/doc/my-animatable.html",
-        "demo/doc/my-dialog.html",
-        "demo/doc/types.html",
-        "demo/dropdown/animated-dropdown.html",
-        "demo/dropdown/index.html",
-        "demo/grid/animated-grid.html",
-        "demo/grid/fullsize-page-with-card.html",
-        "demo/grid/index.html",
-        "demo/list/full-view.html",
-        "demo/list/index.html",
-        "demo/list/list-demo.html",
-        "demo/list/list-view.html",
-        "demo/load/animated-grid.html",
-        "demo/load/full-page.html",
-        "demo/load/index.html",
-        "demo/reprojection/animated-grid.html",
-        "demo/reprojection/fullsize-page-with-card.html",
-        "demo/reprojection/index.html",
-        "demo/reprojection/reprojected-pages.html",
-        "demo/tiles/circles-page.html",
-        "demo/tiles/index.html",
-        "demo/tiles/squares-page.html",
-        "index.html",
-        "neon-animatable.html",
-        "neon-animatable-behavior.html",
-        "neon-animated-pages.html",
-        "neon-animation.html",
-        "neon-animation-behavior.html",
-        "neon-animation-runner-behavior.html",
-        "neon-animations.html",
-        "neon-shared-element-animatable-behavior.html",
-        "neon-shared-element-animation-behavior.html",
         "web-animations.html",
+        "web-animations.min.js",
+        "web-animations-next.min.js",
+        "web-animations-next-lite.min.js",
     ],
 )
 
 filegroup(
-    name = "iron-a11y-keys-behavior",
+    name = "web_component_tester",
     srcs = [
-        "index.html",
-        "iron-a11y-keys-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "plottable",
-    srcs = [
-        "plottable.css",
-        "plottable.js",
-        "plottable.min.js",
+        "browser.js",
+        "data/a11ySuite.js",
+        "data/index.html",
     ],
 )
 
@@ -697,299 +1005,5 @@ filegroup(
         "webcomponents.min.js",
         "webcomponents-lite.js",
         "webcomponents-lite.min.js",
-    ],
-)
-
-filegroup(
-    name = "iron-validatable-behavior",
-    srcs = [
-        "index.html",
-        "iron-validatable-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "sinon-chai",
-    srcs = ["lib/sinon-chai.js"],
-)
-
-filegroup(
-    name = "paper-button",
-    srcs = [
-        "index.html",
-        "paper-button.html",
-    ],
-)
-
-filegroup(
-    name = "iron-input",
-    srcs = [
-        "index.html",
-        "iron-input.html",
-    ],
-)
-
-filegroup(
-    name = "iron-menu-behavior",
-    srcs = [
-        "index.html",
-        "iron-menu-behavior.html",
-        "iron-menubar-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "paper-slider",
-    srcs = [
-        "index.html",
-        "paper-slider.html",
-    ],
-)
-
-filegroup(
-    name = "iron-list",
-    srcs = [
-        "index.html",
-        "iron-list.html",
-        "test/smoke/avg-worst-case.html",
-        "test/smoke/dummy-data.html",
-        "test/smoke/index.html",
-    ],
-)
-
-filegroup(
-    name = "marked",
-    srcs = [
-        "Gulpfile.js",
-        "index.js",
-        "lib/marked.js",
-        "marked.min.js",
-    ],
-)
-
-filegroup(
-    name = "paper-material",
-    srcs = [
-        "index.html",
-        "paper-material.html",
-        "paper-material-shared-styles.html",
-    ],
-)
-
-filegroup(
-    name = "iron-range-behavior",
-    srcs = [
-        "index.html",
-        "iron-range-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "svg-typewriter",
-    srcs = ["svgtypewriter.js"],
-)
-
-filegroup(
-    name = "web-animations-js",
-    srcs = [
-        "web-animations.html",
-        "web-animations.min.js",
-        "web-animations-next.min.js",
-        "web-animations-next-lite.min.js",
-    ],
-)
-
-filegroup(
-    name = "hydrolysis",
-    srcs = [
-        "hydrolysis.html",
-        "hydrolysis.js",
-        "hydrolysis-analyzer.html",
-        "index.js",
-    ],
-)
-
-filegroup(
-    name = "web-component-tester",
-    srcs = [
-        "browser.js",
-        "data/a11ySuite.js",
-        "data/index.html",
-    ],
-)
-
-filegroup(
-    name = "paper-toggle-button",
-    srcs = [
-        "index.html",
-        "paper-toggle-button.html",
-    ],
-)
-
-filegroup(
-    name = "paper-behaviors",
-    srcs = [
-        "index.html",
-        "paper-button-behavior.html",
-        "paper-checked-element-behavior.html",
-        "paper-inky-focus-behavior.html",
-        "paper-ripple-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "paper-radio-group",
-    srcs = [
-        "index.html",
-        "paper-radio-group.html",
-    ],
-)
-
-filegroup(
-    name = "iron-selector",
-    srcs = [
-        "index.html",
-        "iron-multi-selectable.html",
-        "iron-selectable.html",
-        "iron-selection.html",
-        "iron-selector.html",
-    ],
-)
-
-filegroup(
-    name = "iron-form-element-behavior",
-    srcs = [
-        "index.html",
-        "iron-form-element-behavior.html",
-    ],
-)
-
-filegroup(
-    name = "mocha",
-    srcs = [
-        "mocha.css",
-        "mocha.js",
-    ],
-)
-
-filegroup(
-    name = "dagre",
-    srcs = [
-        "dist/dagre.core.js",
-        "dist/dagre.core.min.js",
-    ],
-)
-
-filegroup(
-    name = "iron-behaviors",
-    srcs = [
-        "index.html",
-        "iron-button-state.html",
-        "iron-control-state.html",
-    ],
-)
-
-filegroup(
-    name = "graphlib",
-    srcs = [
-        "dist/graphlib.core.js",
-        "dist/graphlib.core.min.js",
-    ],
-)
-
-filegroup(
-    name = "iron-collapse",
-    srcs = [
-        "index.html",
-        "iron-collapse.html",
-    ],
-)
-
-filegroup(
-    name = "paper-checkbox",
-    srcs = [
-        "index.html",
-        "metadata.html",
-        "paper-checkbox.html",
-    ],
-)
-
-filegroup(
-    name = "paper-radio-button",
-    srcs = [
-        "index.html",
-        "paper-radio-button.html",
-    ],
-)
-
-filegroup(
-    name = "paper-header-panel",
-    srcs = [
-        "index.html",
-        "paper-header-panel.css",
-        "paper-header-panel.html",
-    ],
-)
-
-filegroup(
-    name = "prism-element",
-    srcs = [
-        "index.html",
-        "prism-highlighter.html",
-        "prism-import.html",
-    ],
-)
-
-filegroup(
-    name = "chai",
-    srcs = [
-        "chai.js",
-        "karma.conf.js",
-        "karma.sauce.js",
-        "sauce.browsers.js",
-    ],
-)
-
-filegroup(
-    name = "paper-tabs",
-    srcs = [
-        "index.html",
-        "paper-tab.html",
-        "paper-tabs.html",
-        "paper-tabs-icons.html",
-    ],
-)
-
-filegroup(
-    name = "paper-menu-button",
-    srcs = [
-        "index.html",
-        "paper-menu-button.html",
-        "paper-menu-button-animations.html",
-    ],
-)
-
-filegroup(
-    name = "polymer",
-    srcs = [
-        "polymer.html",
-        "polymer-micro.html",
-        "polymer-mini.html",
-    ],
-)
-
-filegroup(
-    name = "paper-ripple",
-    srcs = [
-        "index.html",
-        "paper-ripple.html",
-    ],
-)
-
-filegroup(
-    name = "iron-iconset-svg",
-    srcs = [
-        "index.html",
-        "iron-iconset-svg.html",
     ],
 )

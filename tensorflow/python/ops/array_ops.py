@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@saturate_cast
 
 ## Shapes and Shaping
 
@@ -66,7 +67,6 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -77,10 +77,11 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
-# pylint: disable=wildcard-import
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.ops.constant_op import constant
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+# pylint: enable=wildcard-import
 
 
 # We override the 'slice' for the "slice" op, so we keep python's
@@ -559,8 +560,8 @@ def transpose(a, perm=None, name="transpose"):
   """
   with ops.op_scope([a], name, "transpose") as name:
     if perm is None:
-      dims = gen_math_ops._range(0, gen_array_ops.rank(a), 1)
-      perm = gen_array_ops.reverse(dims, [True])
+      rank = gen_array_ops.rank(a)
+      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
       ret = gen_array_ops.transpose(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
@@ -627,11 +628,9 @@ def zeros_like(tensor, dtype=None, name=None):
   """
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    zeros_shape = shape(tensor)
-    if dtype is None:
-      dtype = tensor.dtype
-    ret = zeros(zeros_shape, dtype=dtype, name=name)
-    ret.set_shape(tensor.get_shape())
+    ret = gen_array_ops._zeros_like(tensor)
+    if (dtype is not None) and (tensor.dtype != dtype):
+      ret = gen_math_ops.cast(ret, dtype)
     return ret
 
 
@@ -905,18 +904,48 @@ def _SqueezeShape(op):
   result_shape = []
   for i, dim in enumerate([d.value for d in input_shape.dims]):
     is_explicit_match = i in wrapped_squeeze_dims
-    if is_explicit_match or not wrapped_squeeze_dims:
-      if dim is None:
+    if dim is None:
+      if is_explicit_match:
+        # Assume that the squeezed dimension will be 1 at runtime.
+        continue
+      if not wrapped_squeeze_dims:
+        # If squeezing all 1 dimensions and we see a None, give up.
         return [tensor_shape.unknown_shape()]
-      if dim != 1:
-        if is_explicit_match:
-          raise ValueError(
-              "Can not squeeze dim[%d], expected a dimension of 1, got %d." % (
-                  i, dim))
-        result_shape.append(dim)
-    else:
-      result_shape.append(dim)
+    elif dim == 1:
+      if is_explicit_match or not wrapped_squeeze_dims:
+        continue
+    elif is_explicit_match:
+      raise ValueError(
+          "Can not squeeze dim[%d], expected a dimension of 1, got %d." % (
+              i, dim))
+    result_shape.append(dim)
   return [tensor_shape.TensorShape(result_shape)]
+
+
+@ops.RegisterShape("Bitcast")
+def _BitcastShape(op):
+  """Shape function for Bitcast op."""
+  input_shape = op.inputs[0].get_shape()
+  input_type = op.inputs[0].dtype
+  size_of_input = input_type.size
+  output = dtypes.as_dtype(op.get_attr("type"))
+  size_of_output = output.size
+  if size_of_input == size_of_output:
+    return [tensor_shape.TensorShape(input_shape)]
+  else:
+    if size_of_output > size_of_input:
+      new_shape = input_shape.as_list()
+      last_val = new_shape[-1]
+      if last_val == (size_of_output // size_of_input):
+        new_shape = new_shape[:-1]
+      else:
+        raise ValueError(
+            "Cannot bitcast due to shape. %d is not evenly divisible by %d." %
+            (new_shape[-1], size_of_input // size_of_output))
+    else:
+      new_shape = input_shape
+      new_shape = new_shape.concatenate([size_of_input // size_of_output])
+    return [tensor_shape.TensorShape(new_shape)]
 
 
 @ops.RegisterShape("Reshape")

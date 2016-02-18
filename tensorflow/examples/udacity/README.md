@@ -61,7 +61,13 @@ This will allow you to save work and have access to generated files on the host 
 Pushing a Google Cloud release
 ------------------------------
 
-    V=0.1.0
+    V=0.2.0
     docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:$V
     docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
     gcloud docker push b.gcr.io/tensorflow-udacity/assignments
+
+History
+-------
+
+* 0.1.0: Initial release.
+* 0.2.0: Many fixes, including lower memory footprint and support for Python 3.

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -246,6 +244,10 @@ class DType(object):
 
   def __hash__(self):
     return self._type_enum
+
+  @property
+  def size(self):
+    return np.dtype(self.as_numpy_dtype).itemsize
 
 
 # Define standard wrappers for the types_pb2.DataType enum.

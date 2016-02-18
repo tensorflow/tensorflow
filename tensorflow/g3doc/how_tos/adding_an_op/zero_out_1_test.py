@@ -19,17 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
-from tensorflow.g3doc.how_tos.adding_an_op import gen_zero_out_op_1
+from tensorflow.g3doc.how_tos.adding_an_op import zero_out_op_1
 
 
 class ZeroOut1Test(tf.test.TestCase):
 
   def test(self):
     with self.test_session():
-      result = gen_zero_out_op_1.zero_out([5, 4, 3, 2, 1])
+      result = zero_out_op_1.zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
 
 

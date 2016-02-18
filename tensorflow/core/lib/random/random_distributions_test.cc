@@ -36,7 +36,7 @@ namespace {
 static constexpr float kZLimit = 6.0;
 
 // A utility function to fill the given array with samples from the given
-// distribution, using the single adatper of the underlying generator
+// distribution, using the single adapter of the underlying generator
 template <class Distribution>
 void FillRandomsWithSingles(PhiloxRandom gen,
                             typename Distribution::ResultElementType* p,
@@ -87,7 +87,7 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
         break;
       }
       // moments[i] store the i-th order measured moments.
-      // bypass std::vector::opeartor[] because they are too slow in the debug
+      // bypass std::vector::operator[] because they are too slow in the debug
       // mode, given the large number of samples.
       moments_data[i] += moment;
       ++moments_sample_count_data[i];

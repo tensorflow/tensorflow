@@ -117,19 +117,19 @@ template <>
 struct unpacket_traits<Packet32q8i> {
   typedef QInt8 type;
   typedef Packet16q8i half;
-  enum { size = 32 };
+  enum { size = 32, alignment=Aligned32 };
 };
 template <>
 struct unpacket_traits<Packet32q8u> {
   typedef QUInt8 type;
   typedef Packet16q8u half;
-  enum { size = 32 };
+  enum { size = 32, alignment=Aligned32 };
 };
 template <>
 struct unpacket_traits<Packet8q32i> {
   typedef QInt32 type;
   typedef Packet4q32i half;
-  enum { size = 8 };
+  enum { size = 8, alignment=Aligned32 };
 };
 
 // Unaligned load
@@ -342,66 +342,33 @@ EIGEN_STRONG_INLINE QInt8 predux_max<Packet32q8i>(const Packet32q8i& a) {
   return std::max(_mm256_extract_epi8(tmp, 0), _mm256_extract_epi8(tmp, 1));
 }
 
-// Comparisons
-template <>
-EIGEN_STRONG_INLINE Packet8q32i peq<Packet8q32i>(const Packet8q32i& a,
-                                                 const Packet8q32i& b) {
-  return _mm256_cmpeq_epi32(a.val, b.val);
-}
-template <>
-EIGEN_STRONG_INLINE Packet32q8i peq<Packet32q8i>(const Packet32q8i& a,
-                                                 const Packet32q8i& b) {
-  return _mm256_cmpeq_epi8(a.val, b.val);
-}
-template <>
-EIGEN_STRONG_INLINE Packet32q8u peq<Packet32q8u>(const Packet32q8u& a,
-                                                 const Packet32q8u& b) {
-  return _mm256_cmpeq_epi8(a.val, b.val);
-}
-
-// Note: There are no instructions in AVX2 for unsigned lt/gt comparison.
-// These are added in AVX-512.
-template <>
-EIGEN_STRONG_INLINE Packet8q32i ple<Packet8q32i>(const Packet8q32i& a,
-                                                 const Packet8q32i& b) {
-  const __m256i gt = _mm256_cmpgt_epi32(a.val, b.val);
-  return _mm256_xor_si256(gt, gt);
-}
-template <>
-EIGEN_STRONG_INLINE Packet32q8i ple<Packet32q8i>(const Packet32q8i& a,
-                                                 const Packet32q8i& b) {
-  const __m256i gt = _mm256_cmpgt_epi8(a.val, b.val);
-  return _mm256_xor_si256(gt, gt);
-}
-
-template <>
-EIGEN_STRONG_INLINE Packet8q32i plt<Packet8q32i>(const Packet8q32i& a,
-                                                 const Packet8q32i& b) {
-  return _mm256_cmpgt_epi32(b.val, a.val);
-}
-template <>
-EIGEN_STRONG_INLINE Packet32q8i plt<Packet32q8i>(const Packet32q8i& a,
-                                                 const Packet32q8i& b) {
-  return _mm256_cmpgt_epi8(b.val, a.val);
-}
-
 // Vectorized scaling of Packet32q8i by float.
+template<>
+struct scalar_multiple2_op<QInt32, double> {
+  typedef Packet8q32i Packet1;
+  typedef typename scalar_product_traits<QInt32, double>::ReturnType result_type;
+  typedef typename packet_traits<result_type>::type packet_result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE scalar_multiple2_op(const scalar_multiple2_op& other) : m_other(other.m_other) { }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE scalar_multiple2_op(const double& other) : m_other(other) { }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE result_type operator() (const QInt32& a) const { return a * m_other; }
+
+  EIGEN_STRONG_INLINE const Packet8q32i packetOp(const Packet8q32i& a) const {
+    __m256d scale = _mm256_set1_pd(m_other);
+    __m256d a_lo = _mm256_cvtepi32_pd(_mm256_castsi256_si128(a));
+    __m128i result_lo = _mm256_cvtpd_epi32(_mm256_mul_pd(scale, a_lo));
+    __m256d a_hi = _mm256_cvtepi32_pd(_mm256_extracti128_si256(a, 1));
+    __m128i result_hi = _mm256_cvtpd_epi32(_mm256_mul_pd(scale, a_hi));
+    return _mm256_insertf128_si256(_mm256_castsi128_si256(result_lo), result_hi, 1);
+  }
+
+  const double m_other;
+};
+
 template <>
 struct functor_traits<scalar_multiple2_op<QInt32, double>> {
   enum { Cost = 4 * NumTraits<float>::MulCost, PacketAccess = true };
 };
-
-template <>
-EIGEN_STRONG_INLINE const Packet8q32i
-scalar_multiple2_op<QInt32, double>::packetOp(const Packet8q32i& a) const {
-  __m256d scale = _mm256_set1_pd(m_other);
-  __m256d a_lo = _mm256_cvtepi32_pd(_mm256_castsi256_si128(a));
-  __m128i result_lo = _mm256_cvtpd_epi32(_mm256_mul_pd(scale, a_lo));
-  __m256d a_hi = _mm256_cvtepi32_pd(_mm256_extracti128_si256(a, 1));
-  __m128i result_hi = _mm256_cvtpd_epi32(_mm256_mul_pd(scale, a_hi));
-  return _mm256_insertf128_si256(_mm256_castsi128_si256(result_lo), result_hi,
-                                 1);
-}
 
 }  // end namespace internal
 }  // end namespace Eigen

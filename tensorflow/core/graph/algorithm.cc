@@ -150,17 +150,21 @@ void PruneForReverseReachability(Graph* g,
   FixupSourceAndSinkEdges(g);
 }
 
-void FixupSourceAndSinkEdges(Graph* g) {
+bool FixupSourceAndSinkEdges(Graph* g) {
   // Connect all nodes with no incoming edges to source.
   // Connect all nodes with no outgoing edges to sink.
+  bool changed = false;
   for (Node* n : g->nodes()) {
     if (!n->IsSource() && n->in_edges().empty()) {
       g->AddControlEdge(g->source_node(), n);
+      changed = true;
     }
     if (!n->IsSink() && n->out_edges().empty()) {
       g->AddControlEdge(n, g->sink_node());
+      changed = true;
     }
   }
+  return changed;
 }
 
 }  // namespace tensorflow

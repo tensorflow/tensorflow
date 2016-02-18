@@ -4,6 +4,7 @@ syntax = "proto3";
 
 import "tensorflow/core/example/feature.proto";
 // option cc_enable_arenas = true;
+option java_outer_classname = "ExampleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
 

@@ -101,7 +101,7 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int TensorIndexToFlat(
   return flat_index;
 }
 
-// A helper function that converts a flat arrary index into a tensor index.
+// A helper function that converts a flat array index into a tensor index.
 template <int IndexCount>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
     int index, const Dimension<IndexCount>& dims) {

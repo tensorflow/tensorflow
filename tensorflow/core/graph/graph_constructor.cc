@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -46,29 +47,10 @@ class GraphConstructor {
   GraphConstructor(const GraphConstructorOptions& opts, const GraphDef* gdef,
                    Graph* g, Status* status)
       : opts_(opts), gdef_(gdef), g_(g), status_(status) {
-    if (gdef->versions().producer() < TF_GRAPH_DEF_VERSION_MIN_PRODUCER) {
-      *status = errors::InvalidArgument(
-          "GraphDef producer version ", gdef->versions().producer(),
-          " below min producer ", TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-          " supported by TensorFlow ", TF_VERSION_STRING,
-          ".  Please regenerate your graph.");
-      return;
-    }
-    if (gdef->versions().min_consumer() > TF_GRAPH_DEF_VERSION) {
-      *status = errors::InvalidArgument(
-          "GraphDef min consumer version ", gdef->versions().min_consumer(),
-          " above current version ", TF_GRAPH_DEF_VERSION, " for TensorFlow ",
-          TF_VERSION_STRING, ".  Please upgrade TensorFlow.");
-      return;
-    }
-    for (const int bad_consumer : gdef->versions().bad_consumers()) {
-      if (bad_consumer == TF_GRAPH_DEF_VERSION) {
-        *status = errors::InvalidArgument(
-            "GraphDef disallows consumer version ", bad_consumer,
-            ".  Please upgrade TensorFlow: this version is likely buggy.");
-        return;
-      }
-    }
+    *status =
+        CheckVersions(gdef->versions(), TF_GRAPH_DEF_VERSION,
+                      TF_GRAPH_DEF_VERSION_MIN_PRODUCER, "GraphDef", "graph");
+    if (!status->ok()) return;
     g->set_versions(gdef->versions());
     BuildNodeIndex();
     InitFromEdges();
@@ -382,15 +364,15 @@ bool GraphConstructor::TypeValidateEdge(const Edge* edge) {
   return true;
 }
 
-static void SetDoCSE(const GraphOptions::OptimizerOptions& optimizer_opt,
-                     bool force, GraphConstructorOptions* graph_opt) {
+static void SetDoCSE(const OptimizerOptions& optimizer_opt, bool force,
+                     GraphConstructorOptions* graph_opt) {
   graph_opt->optimizer_do_cse =
       force || optimizer_opt.do_common_subexpression_elimination();
 }
 
-static void SetDoConstantFolding(
-    const GraphOptions::OptimizerOptions& optimizer_opt, bool force,
-    GraphConstructorOptions* graph_opt) {
+static void SetDoConstantFolding(const OptimizerOptions& optimizer_opt,
+                                 bool force,
+                                 GraphConstructorOptions* graph_opt) {
   graph_opt->optimizer_do_constant_folding =
       force || optimizer_opt.do_constant_folding();
 }
@@ -401,18 +383,19 @@ static void SetDoConstantFolding(
 // GraphConstructorOptions functions
 // ----------------------------------------------------------------------------
 
-GraphConstructorOptions::GraphConstructorOptions(
-    const GraphOptions::OptimizerOptions& opts) {
+GraphConstructorOptions::GraphConstructorOptions() {}
+
+GraphConstructorOptions::GraphConstructorOptions(const OptimizerOptions& opts) {
   // Set the individually specified options first.
   SetDoCSE(opts, false, this);
   SetDoConstantFolding(opts, false, this);
 
   // Set options that the level signifies
-  if (opts.opt_level() == GraphOptions::OptimizerOptions::L0) {
+  if (opts.opt_level() == OptimizerOptions::L0) {
     // No optimizations performed.
-  } else if (opts.opt_level() == GraphOptions::OptimizerOptions::L1) {
+  } else if (opts.opt_level() == OptimizerOptions::L1) {
     SetDoCSE(opts, true, this);
-  } else if (opts.opt_level() == GraphOptions::OptimizerOptions::L2) {
+  } else if (opts.opt_level() == OptimizerOptions::L2) {
     SetDoCSE(opts, true, this);
     SetDoConstantFolding(opts, true, this);
   }

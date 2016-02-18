@@ -20,8 +20,7 @@ from __future__ import print_function
 
 import threading
 
-import tensorflow.python.platform
-
+from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import logging
@@ -44,7 +43,8 @@ class QueueRunner(object):
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
   """
 
-  def __init__(self, queue, enqueue_ops):
+  def __init__(self, queue=None, enqueue_ops=None, close_op=None,
+               cancel_op=None, queue_runner_def=None):
     """Create a QueueRunner.
 
     On construction the `QueueRunner` adds an op to close the queue.  That op
@@ -59,20 +59,88 @@ class QueueRunner(object):
     Args:
       queue: A `Queue`.
       enqueue_ops: List of enqueue ops to run in threads later.
+      close_op: Op to close the queue. Pending enqueue ops are preserved.
+      cancel_op: Op to close the queue and cancel pending enqueue ops.
+      queue_runner_def: Optional `QueueRunnerDef` protocol buffer. If specified,
+        recreates the QueueRunner from its contents. `queue_runner_def` and the
+        other arguments are mutually exclusive.
+
+    Raises:
+      ValueError: If both `queue_runner_def` and `queue` are both specified.
+      ValueError: If `queue` or `enqueue_ops` are not provided when not
+        restoring from `queue_runner_def`.
     """
-    self._queue = queue
-    self._enqueue_ops = enqueue_ops
-    # Close when no more will be produced, but pending enqueues should be
-    # preserved.
-    self._close_op = self._queue.close()
-    # Close and cancel pending enqueues since there was an error and we want
-    # to unblock everything so we can cleanly exit.
-    self._cancel_op = self._queue.close(cancel_pending_enqueues=True)
+    if queue_runner_def:
+      if queue or enqueue_ops:
+        raise ValueError("queue_runner_def and queue are mutually exclusive.")
+      self._init_from_proto(queue_runner_def)
+    else:
+      self._init_from_args(queue=queue, enqueue_ops=enqueue_ops,
+                           close_op=close_op, cancel_op=cancel_op)
     # Protect the count of runs to wait for.
     self._lock = threading.Lock()
     self._runs = 0
     # List of exceptions raised by the running threads.
     self._exceptions_raised = []
+
+  def _init_from_args(self, queue=None, enqueue_ops=None, close_op=None,
+                      cancel_op=None):
+    """Create a QueueRunner from arguments.
+
+    Args:
+      queue: A `Queue`.
+      enqueue_ops: List of enqueue ops to run in threads later.
+      close_op: Op to close the queue. Pending enqueue ops are preserved.
+      cancel_op: Op to close the queue and cancel pending enqueue ops.
+
+    Raises:
+      ValueError: If `queue` or `enqueue_ops` are not provided when not
+        restoring from `queue_runner_def`.
+    """
+    if not queue or not enqueue_ops:
+      raise ValueError("Must provide queue and enqueue_ops.")
+    self._queue = queue
+    self._enqueue_ops = enqueue_ops
+    self._close_op = close_op
+    self._cancel_op = cancel_op
+    # Close when no more will be produced, but pending enqueues should be
+    # preserved.
+    if not self._close_op:
+      self._close_op = self._queue.close()
+    # Close and cancel pending enqueues since there was an error and we want
+    # to unblock everything so we can cleanly exit.
+    if not self._cancel_op:
+      self._cancel_op = self._queue.close(cancel_pending_enqueues=True)
+
+  def _init_from_proto(self, queue_runner_def):
+    """Create a QueueRunner from `QueueRunnerDef`.
+
+    Args:
+      queue_runner_def: Optional `QueueRunnerDef` protocol buffer.
+    """
+    assert isinstance(queue_runner_def, queue_runner_pb2.QueueRunnerDef)
+    g = ops.get_default_graph()
+    self._queue = g.as_graph_element(queue_runner_def.queue_name)
+    self._enqueue_ops = [g.as_graph_element(op) for op
+                         in queue_runner_def.enqueue_op_name]
+    self._close_op = g.as_graph_element(queue_runner_def.close_op_name)
+    self._cancel_op = g.as_graph_element(queue_runner_def.cancel_op_name)
+
+  @property
+  def queue(self):
+    return self._queue
+
+  @property
+  def enqueue_ops(self):
+    return self._enqueue_ops
+
+  @property
+  def close_op(self):
+    return self._close_op
+
+  @property
+  def cancel_op(self):
+    return self._cancel_op
 
   @property
   def exceptions_raised(self):
@@ -208,6 +276,24 @@ class QueueRunner(object):
         t.start()
     return ret_threads
 
+  def to_proto(self):
+    """Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
+
+    Returns:
+      A `QueueRunnerDef` protocol buffer.
+    """
+    queue_runner_def = queue_runner_pb2.QueueRunnerDef()
+    queue_runner_def.queue_name = self.queue.name
+    for enqueue_op in self.enqueue_ops:
+      queue_runner_def.enqueue_op_name.append(enqueue_op.name)
+    queue_runner_def.close_op_name = self.close_op.name
+    queue_runner_def.cancel_op_name = self.cancel_op.name
+    return queue_runner_def
+
+  @staticmethod
+  def from_proto(queue_runner_def):
+    return QueueRunner(queue_runner_def=queue_runner_def)
+
 
 def add_queue_runner(qr, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Adds a `QueueRunner` to a collection in the graph.
@@ -259,3 +345,9 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
     threads.extend(qr.create_threads(sess, coord=coord, daemon=daemon,
                                      start=start))
   return threads
+
+
+ops.register_proto_function(ops.GraphKeys.QUEUE_RUNNERS,
+                            proto_type=queue_runner_pb2.QueueRunnerDef,
+                            to_proto=QueueRunner.to_proto,
+                            from_proto=QueueRunner.from_proto)

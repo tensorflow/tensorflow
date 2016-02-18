@@ -18,3 +18,4 @@ components/tf-graph/demo/tf_model_zoo/*
 # All standalone code for TensorBoard components should be written in
 # typescript, and the compiled javascript code should be ignored.
 components/tf-*/**/*.js
+lib/js/**/*.js

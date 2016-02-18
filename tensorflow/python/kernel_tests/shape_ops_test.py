@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 
 import tensorflow as tf
@@ -222,6 +220,19 @@ class ShapeOpsTest(tf.test.TestCase):
 
       err = tf.test.compute_gradient_error(a, [4, 1, 2, 1], squeezed, [4, 2, 1])
     self.assertLess(err, 1e-3)
+
+  def testSqueezeWithUnknownShape(self):
+    with self.test_session():
+      a = tf.placeholder(tf.float32, shape=[2, None])
+
+      squeezed = tf.squeeze(a, [1])
+      self.assertEqual([2], squeezed.get_shape().as_list())
+
+      squeezed = tf.squeeze(a)
+      self.assertEqual(None, squeezed.get_shape())
+
+      self.assertRaises(ValueError, tf.squeeze, a, [0])
+      self.assertRaises(ValueError, tf.squeeze, a, [100])
 
 
 class TileTest(tf.test.TestCase):

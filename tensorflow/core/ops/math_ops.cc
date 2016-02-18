@@ -1180,4 +1180,23 @@ out: The inverse 2D Fourier Transform of `in`.
 
 )doc");
 
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Cross")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Compute the pairwise cross product.
+
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+
+a: A tensor containing 3-element vectors.
+b: Another tensor, of same type and shape as `a`.
+product: Pairwise cross product of the vectors in `a` and `b`.
+)doc");
+
 }  // namespace tensorflow

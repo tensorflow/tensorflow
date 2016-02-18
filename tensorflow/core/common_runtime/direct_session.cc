@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/function.h"
@@ -158,14 +160,13 @@ DirectSession::~DirectSession() {
   for (auto& it : partial_runs_) {
     delete it.second;
   }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->op_segment()->RemoveHold(session_handle_);
-  }
   for (auto it : executors_) {
     delete it.second;
   }
+  for (auto d : device_mgr_->ListDevices()) {
+    d->op_segment()->RemoveHold(session_handle_);
+  }
   delete cancellation_manager_;
-
   if (options_.config.use_per_session_threads()) {
     delete thread_pool_;
   }
@@ -271,7 +272,6 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 
   // Create a run state and start execution.
   RunState run_state(input_tensor_names, output_names);
-  run_state.graph = run_state_args.graph;
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 
   // Send inputs.
@@ -325,7 +325,6 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
 
   // Create the run state and save it for future PRun calls.
   RunState* run_state = new RunState(input_names, output_names);
-  run_state->graph = run_state_args.graph;
   run_state->rendez = new IntraProcessRendezvous(device_mgr_.get());
   {
     mutex_lock l(executor_lock_);
@@ -408,7 +407,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
 
   // Check that this new set of fetches can be computed from all the
   // feeds we have supplied.
-  TF_RETURN_IF_ERROR(CheckFetch(inputs, output_names, run_state));
+  TF_RETURN_IF_ERROR(
+      CheckFetch(inputs, output_names, executors_and_keys->graph, run_state));
 
   // Send inputs.
   Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
@@ -510,10 +510,10 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
 
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
+                                 const Graph* graph,
                                  const RunState* run_state) {
-  const Graph* g = run_state->graph;
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
-  for (Node* n : g->nodes()) {
+  for (Node* n : graph->nodes()) {
     name_to_node[n->name()] = n;
   }
 
@@ -535,7 +535,7 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
     pending_feeds.erase(id);
   }
 
-  // Initialize the stack with the fecth nodes.
+  // Initialize the stack with the fetch nodes.
   std::vector<const Node*> stack;
   for (const string& fetch : fetches) {
     TensorId id(ParseTensorName(fetch));
@@ -547,7 +547,7 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   }
 
   // Any tensor needed for fetches can't be in pending_feeds.
-  std::vector<bool> visited(g->num_node_ids(), false);
+  std::vector<bool> visited(graph->num_node_ids(), false);
   while (!stack.empty()) {
     const Node* n = stack.back();
     stack.pop_back();
@@ -590,6 +590,12 @@ Status DirectSession::GetOrCreateExecutors(
                                      str_util::Join(outputs_sorted, ","), "/",
                                      str_util::Join(tn_sorted, ","));
 
+  // Set the handle.
+  {
+    mutex_lock l(mu_);
+    run_state_args->handle = strings::StrCat(key, ";", name_counter_++);
+  }
+
   // See if we already have the executors for this run.
   {
     mutex_lock l(executor_lock_);  // could use reader lock
@@ -610,8 +616,14 @@ Status DirectSession::GetOrCreateExecutors(
 
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   ek->func_defs = fdefs;
+  if (run_state_args->is_partial_run) {
+    ek->graph = run_state_args->graph;
+  }
   ek->items.reserve(graphs.size());
   auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  const auto& optimizer_opts =
+      options_.config.graph_options().optimizer_options();
+  GraphOptimizer optimizer(optimizer_opts);
   for (const auto& graph : graphs) {
     const string& partition_name = graph.first;
     Graph* partition_graph = graph.second;
@@ -623,8 +635,8 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib =
-        NewFunctionLibraryRuntime(device, runner, graph_def_version, fdefs);
+    item->flib = NewFunctionLibraryRuntime(device, runner, graph_def_version,
+                                           fdefs, optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -633,6 +645,10 @@ Status DirectSession::GetOrCreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
+      // Caches the kernel only if the node is stateful.
+      if (!lib->IsStateful(ndef.op())) {
+        return lib->CreateKernel(ndef, kernel);
+      }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
         return lib->CreateKernel(ndef, kernel);
       };
@@ -642,10 +658,20 @@ Status DirectSession::GetOrCreateExecutors(
       return opseg->FindOrCreate(session_handle_, ndef.name(), kernel,
                                  create_fn);
     };
-    params.delete_kernel = [](OpKernel* kernel) {
-      // Do nothing because 'kernel' is owned by opseg above.
+    params.delete_kernel = [lib](OpKernel* kernel) {
+      // If the node is stateful, opseg owns it. Otherwise, delete it.
+      if (kernel && !lib->IsStateful(kernel->type_string())) {
+        delete kernel;
+      }
     };
 
+    optimizer.Optimize(lib, &partition_graph);
+    s = ValidateMemoryTypes(DeviceType(device->device_type()), partition_graph);
+    if (!s.ok()) {
+      delete partition_graph;
+      return s;
+    }
+    // NewLocalExecutor takes ownership of *partition_graph.
     s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
       return s;
@@ -663,12 +689,6 @@ Status DirectSession::GetOrCreateExecutors(
   for (const string& output : outputs) {
     ek->output_keys[output] = GetRendezvousKey(
         output, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
-  }
-
-  // Set the handle.
-  {
-    mutex_lock l(mu_);
-    run_state_args->handle = strings::StrCat(key, ";", name_counter_++);
   }
 
   // Reacquire the lock, try to insert into the map.
@@ -715,38 +735,11 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
                                    RunStateArgs* run_state_args) {
   std::unique_ptr<FunctionLibraryDefinition> fdefs;
   std::unique_ptr<Graph> graph;
-  GraphConstructorOptions opts{
-      options_.config.graph_options().optimizer_options()};
-
-  std::unordered_set<StringPiece, StringPiece::Hasher> keep_nodes;
-  for (const string& feed : feeds) {
-    keep_nodes.insert(ParseTensorName(feed).first);
-  }
-  for (const string& fetch : fetches) {
-    keep_nodes.insert(ParseTensorName(fetch).first);
-  }
-  for (const string& target_node : target_nodes) {
-    keep_nodes.insert(target_node);
-  }
-
-  if (opts.optimizer_do_cse) {
-    // Prevent CSE from eliminating nodes that will be required during
-    // RewriteGraphForExecution, below.
-    opts.cse_consider_function = [&keep_nodes](const Node* n) {
-      return n->IsConstant() && !keep_nodes.count(n->name());
-    };
-  }
-
-  if (opts.optimizer_do_constant_folding) {
-    opts.constant_folding_opts.consider = [&keep_nodes](const Node* n) {
-      return keep_nodes.count(n->name()) > 0;
-    };
-  }
-
   {
     mutex_lock l(graph_def_lock_);
     fdefs.reset(new FunctionLibraryDefinition(graph_def_.library()));
     graph.reset(new Graph(fdefs.get()));
+    GraphConstructorOptions opts;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def_, graph.get()));
   }
 
@@ -759,16 +752,6 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph.get(), feeds, fetches, target_nodes,
       device_set_.client_device()->attributes()));
-
-  if (opts.optimizer_do_constant_folding) {
-    bool constant_folded =
-        DoConstantFolding(opts.constant_folding_opts, graph.get());
-    VLOG(2) << (constant_folded ? "Folded some constants"
-                                : "Found no constant folding opportunity");
-  }
-
-  GraphDef graph_def;
-  graph->ToGraphDef(&graph_def);
 
   // Run the simple placer after rewriting the graph.
   std::unordered_map<string, int32> node_name_to_cost_map;

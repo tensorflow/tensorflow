@@ -120,7 +120,7 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
 }
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
-// extracted from image at 'input_data', which is requred to be in storage
+// extracted from image at 'input_data', which is required to be in storage
 // order (batch, height, width, depth).
 // Implementation written by Yangqing Jia (jiayq).
 template <typename T>

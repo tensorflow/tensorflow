@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=unused-import,g-bad-import-order
 
 """Utilities for parsing PTB text files."""
 from __future__ import absolute_import
@@ -22,20 +21,13 @@ from __future__ import print_function
 
 import collections
 import os
-import sys
-import time
-
-import tensorflow.python.platform
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-
-from tensorflow.python.platform import gfile
 
 
 def _read_words(filename):
-  with gfile.GFile(filename, "r") as f:
+  with tf.gfile.GFile(filename, "r") as f:
     return f.read().replace("\n", "<eos>").split()
 
 

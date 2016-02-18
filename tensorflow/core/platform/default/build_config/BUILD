@@ -75,7 +75,7 @@ filegroup(
 cc_library(
     name = "cuda",
     data = [
-        "//third_party/gpus/cuda:lib64/libcudart.so." + tf_get_cuda_version(),
+        "//third_party/gpus/cuda:lib64/libcudart.so" + tf_get_cuda_version(),
     ],
     linkopts = [
         "-Wl,-rpath,third_party/gpus/cuda/lib64",

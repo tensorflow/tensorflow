@@ -43,7 +43,7 @@ class ReshapeOp : public OpKernel {
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one.
     TensorShape shape;
-    int32 product = 1;
+    int64 product = 1;
     int unknown_index = -1;
     auto Svec = sizes.flat<int32>();
     for (int d = 0; d < num_dims; ++d) {
@@ -66,19 +66,22 @@ class ReshapeOp : public OpKernel {
     if (unknown_index != -1) {
       OP_REQUIRES(
           context, product > 0,
-          errors::InvalidArgument("cannot infer the missing input size for "
-                                  "an empty tensor unless all specified "
+          errors::InvalidArgument("Reshape cannot infer the missing input size "
+                                  "for an empty tensor unless all specified "
                                   "input sizes are non-zero"));
-      const int32 missing = input.NumElements() / product;
-      OP_REQUIRES(context, product * missing == input.NumElements(),
-                  errors::InvalidArgument("Input has ", input.NumElements(),
-                                          " values, which isn't divisible by ",
-                                          product));
+      const int64 missing = input.NumElements() / product;
+      OP_REQUIRES(
+          context, product * missing == input.NumElements(),
+          errors::InvalidArgument(
+              "Input to reshape is a tensor with ", input.NumElements(),
+              " values, but the requested shape requires a multiple of ",
+              product));
       shape.set_dim(unknown_index, missing);
     }
     OP_REQUIRES(context, shape.num_elements() == input.NumElements(),
-                errors::InvalidArgument("Input has ", input.NumElements(),
-                                        " values, which isn't the same as ",
+                errors::InvalidArgument("Input to reshape is a tensor with ",
+                                        input.NumElements(),
+                                        " values, but the requested shape has ",
                                         shape.num_elements()));
 
     // Actually produce the reshaped output.

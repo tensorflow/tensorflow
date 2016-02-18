@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import math
 
-import tensorflow.python.platform
-
 import numpy as np
 
 from tensorflow.python.framework import test_util

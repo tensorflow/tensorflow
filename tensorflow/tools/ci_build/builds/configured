@@ -24,7 +24,8 @@ CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
 COMMAND=("$@")
 
-export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which python)}"
+export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
+export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
 if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   export TF_NEED_CUDA=1
 else
@@ -32,5 +33,9 @@ else
 fi
 
 ./configure
+
+# Gather and print build information
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+${SCRIPT_DIR}/print_build_info.sh ${CONTAINER_TYPE} ${COMMAND[@]}
 
 ${COMMAND[@]}

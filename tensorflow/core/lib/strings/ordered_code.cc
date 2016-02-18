@@ -125,7 +125,6 @@ static const char kNullCharacter = '\xff';  // Combined with kEscape1
 static const char kSeparator = '\001';      // Combined with kEscape1
 
 static const char kEscape2 = '\xff';
-static const char kInfinity = '\xff';     // Combined with kEscape2
 static const char kFFCharacter = '\000';  // Combined with kEscape2
 
 static const char kEscape1_Separator[2] = {kEscape1, kSeparator};

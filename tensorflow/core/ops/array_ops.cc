@@ -93,7 +93,7 @@ concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 ```
 
 concat_dim: The dimension along which to concatenate.
-shape: The `N` int32 vetors representing shape of tensors being concatenated.
+shape: The `N` int32 vectors representing shape of tensors being concatenated.
 output: The `N` int32 vectors representing the starting offset
         of input tensors within the concatenated output.
 
@@ -565,7 +565,7 @@ For example:
 
 ```prettyprint
 # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique(x)
+y, idx, count = unique_with_counts(x)
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 count ==> [2, 1, 3, 1, 2]
@@ -1181,6 +1181,25 @@ x = [[ [1],   [2],  [5],  [6]],
 ```
 
 block_size: The size of the spatial block, same as in Space2Depth.
+)doc");
+
+REGISTER_OP("Bitcast")
+    .Input("input: T")
+    .Output("output: type")
+    .Attr("T: numbertype")
+    .Attr("type: numbertype")
+    .Doc(R"doc(
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
 )doc");
 
 }  // namespace tensorflow

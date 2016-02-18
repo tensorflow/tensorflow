@@ -1387,14 +1387,14 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "Input 'a' of 'RefIn' Op requires l-value input")
 
   def testSpecifyDevice(self):
-    with self._g.device("ADevice"):
+    with self._g.device("/job:ADevice"):
       self._lib.apply_op("Simple", a=3)
     # We look at the whole graph here to make sure the Const op is also given
     # the specified device.
     graph_def = self._g.as_graph_def()
     self.assertEqual(len(graph_def.node), 2)
     for node in graph_def.node:
-      self.assertEqual(node.device, "ADevice")
+      self.assertDeviceEqual(node.device, "/job:ADevice")
 
   def testStructuredOutputSingleList(self):
     self._add_op("name: 'SimpleStruct' "
