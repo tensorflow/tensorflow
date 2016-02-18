@@ -68,7 +68,7 @@ class TensorboardServerTest(tf.test.TestCase):
     self._connection.request('GET', path)
     response = self._connection.getresponse()
     self.assertEqual(response.status, 200)
-    return json.load(response)
+    return json.loads(response.read().decode('utf-8'))
 
   def testBasicStartup(self):
     """Start the server up and then shut it down immediately."""
