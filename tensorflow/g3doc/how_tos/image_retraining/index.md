@@ -121,7 +121,9 @@ The script will write out a version of the Inception v3 network with a final
 layer retrained to your categories to /tmp/output_graph.pb, and a text file
 containing the labels to /tmp/output_labels.txt. These are both in a format that
 the [C++ and Python image classification examples](https://www.tensorflow.org/versions/master/tutorials/image_recognition/index.html)
-can read in, so you can start using your new model immediately.
+can read in, so you can start using your new model immediately. Since you've
+replaced the top layer, you will need to specify the new name in the script, for
+example with the flag `--output_layer=final_output` if you're using label_image.
 
 ## Training on Your Own Categories
 
