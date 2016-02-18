@@ -127,6 +127,7 @@ Graph* GetConstantGraph(const Graph* orig_graph,
   for (auto const& added_nodes : node_map) {
     for (const Edge* out_edge : added_nodes.first->out_edges()) {
       if (node_map.count(out_edge->dst()) == 0) {
+        if (out_edge->IsControlEdge()) continue;
         tensors_to_fetch->insert(
             {{added_nodes.second, out_edge->src_output()}, added_nodes.first});
       }
@@ -139,29 +140,6 @@ Graph* GetConstantGraph(const Graph* orig_graph,
 int64 UniqueConstantId() {
   static std::atomic_int_fast64_t id;
   return id.fetch_add(1);
-}
-
-void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
-                               const Tensor& constant) {
-  Node* n = tensor.first;
-  std::vector<const Edge*> edges_to_remove;
-  for (const Edge* out_edge : n->out_edges()) {
-    if (out_edge->src_output() == tensor.second) {
-      edges_to_remove.push_back(out_edge);
-    }
-  }
-  string node_name = n->name();
-  Node* constant_node;
-  TF_CHECK_OK(NodeBuilder(strings::StrCat(graph->NewName(node_name), "__cf__",
-                                          UniqueConstantId()),
-                          "Const")
-                  .Attr("dtype", constant.dtype())
-                  .Attr("value", constant)
-                  .Finalize(graph, &constant_node));
-  for (auto edge : edges_to_remove) {
-    graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());
-    graph->RemoveEdge(edge);
-  }
 }
 
 Device* GetCPUDevice() {
@@ -231,6 +209,30 @@ class SimpleRendezvous : public Rendezvous {
 };
 
 }  // namespace
+
+void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
+                               const Tensor& constant) {
+  Node* n = tensor.first;
+  std::vector<const Edge*> edges_to_remove;
+  for (const Edge* out_edge : n->out_edges()) {
+    if (out_edge->src_output() == tensor.second) {
+      edges_to_remove.push_back(out_edge);
+    }
+  }
+  string node_name = n->name();
+  Node* constant_node;
+  TF_CHECK_OK(NodeBuilder(strings::StrCat(graph->NewName(node_name), "__cf__",
+                                          UniqueConstantId()),
+                          "Const")
+                  .Attr("dtype", constant.dtype())
+                  .Attr("value", constant)
+                  .Finalize(graph, &constant_node));
+  for (auto edge : edges_to_remove) {
+    graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());
+    graph->RemoveEdge(edge);
+  }
+  graph->AddEdge(graph->source_node(), -1, constant_node, -1);
+}
 
 bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   DumpGraph("Before", graph);
