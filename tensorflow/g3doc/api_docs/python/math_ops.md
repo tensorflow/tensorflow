@@ -573,6 +573,25 @@ Computes `ln(|gamma(x)|)` element-wise.
 
 - - -
 
+### `tf.digamma(x, name=None)` {#digamma}
+
+Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
+    or `qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+    the return type is `quint8`.
+
+
+- - -
+
 ### `tf.erf(x, name=None)` {#erf}
 
 Computes Gauss error function of `x` element-wise.
@@ -1197,11 +1216,10 @@ the minimum-norm solution to the under-determined linear system, i.e.
 \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\) or\\(\lambda\\)
 is sufficiently large.
 
-If `fast` is `False` then the solution is computed using the rank revealing
-QR decomposition with column pivoting. This will always compute a
-least-squares solution that minimizes the residual norm \\(||A X - B||_F^2\\),
-even when \\(A\\) is rank deficient or ill-conditioned. Notice: The current
-version does not compute a minimum norm solution. If `fast` is `False` then
+If `fast` is `False` an algorithm based on the numerically robust complete
+orthogonal decomposition is used. This computes the minimum-norm
+least-squares solution, even when \\(A\\) is rank deficient. This path is
+typically 6-7 times slower than the fast path. If `fast` is `False` then
 `l2_regularizer` is ignored.
 
 ##### Args:

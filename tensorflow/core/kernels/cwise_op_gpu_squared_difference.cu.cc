@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
-#define TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
+#if GOOGLE_CUDA
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/build_config/thread_annotations.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/default/thread_annotations.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
+namespace tensorflow {
+namespace functor {
+DEFINE_BINARY3(squared_difference, float, double, int64);
+}  // namespace functor
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_THREAD_ANNOTATIONS_H_
+#endif  // GOOGLE_CUDA

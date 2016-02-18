@@ -69,7 +69,7 @@ string GetCudnnVersion() { return ""; }
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcuda.so",
+  return GetDsoHandle(FindDsoPath("libcuda.so" + GetCudaVersion(),
                                   "third_party/gpus/cuda/driver/lib64"),
                       dso_handle);
 }

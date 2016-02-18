@@ -581,6 +581,7 @@ tf_gen_op_wrapper_py(
         "Sigmoid",
         "Tanh",
         "Lgamma",
+        "Digamma",
         "Erf",
         "Erfc",
     ],
