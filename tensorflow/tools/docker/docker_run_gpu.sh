@@ -24,7 +24,7 @@ if [ ! -d ${CUDA_HOME}/lib64 ]; then
   exit 1
 fi
 
-export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | \
+export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | \
                     xargs -I{} echo '-v {}:{}')
 export DEVICES=$(\ls /dev/nvidia* | \
                     xargs -I{} echo '--device {}:{}')
