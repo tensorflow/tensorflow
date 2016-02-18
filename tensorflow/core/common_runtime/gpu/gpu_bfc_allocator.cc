@@ -290,8 +290,8 @@ void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::ChunkHandle h,
 }
 
 void GPUBFCAllocator::DeallocateRaw(void* ptr) {
-  retry_helper_.DeallocateRaw([this](void* p) { DeallocateRawInternal(p); },
-                              ptr);
+  DeallocateRawInternal(ptr);
+  retry_helper_.NotifyDealloc();
 }
 
 void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
