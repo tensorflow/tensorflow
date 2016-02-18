@@ -157,7 +157,7 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**:  While the classes are mutually exclusive, their probabilities
+  **NOTE:**  While the classes are mutually exclusive, their probabilities
   need not be.  All that is required is that each row of `labels` is
   a valid probability distribution.  If using exclusive `labels`
   (wherein one and only one class is true at a time), see
@@ -194,7 +194,7 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**:  For this operation, the probability of a given label is considered
+  **NOTE:**  For this operation, the probability of a given label is considered
   exclusive.  That is, soft classes are not allowed, and the `labels` vector
   must provide a single specific index for the true class for each row of
   `logits` (each minibatch entry).  For soft softmax classification with

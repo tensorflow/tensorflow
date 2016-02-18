@@ -22,8 +22,7 @@ limitations under the License.
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include "tensorflow/core/platform/default/thread_annotations.h"
-
+#include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
 
 enum LinkerInitialized { LINKER_INITIALIZED };

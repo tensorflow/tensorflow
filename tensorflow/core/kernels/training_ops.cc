@@ -58,6 +58,67 @@ struct ApplyAdagrad<CPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrl<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    if (DoInline(var.size())) {
+      auto new_accum = accum + grad.square();
+      // special case if lr_power=-0.5.
+      if (lr_power() == -0.5) {
+        linear += grad - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
+      } else {
+        linear +=
+            grad -
+            (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
+      }
+      auto x = (linear.constant(l1()) * linear.sign() - linear);
+      // special case if lr_power=-0.5.
+      if (lr_power() == -0.5) {
+        auto y = new_accum.sqrt() / new_accum.constant(lr()) +
+                 linear.constant(2 * l2());
+        var = x / y;
+      } else {
+        auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
+                 linear.constant(2 * l2());
+        var = x / y;
+      }
+      var = (linear.abs() > linear.constant(l1())).select(var, var.constant(0));
+      accum += grad.square();
+    } else {
+      auto new_accum = accum + grad.square();
+      // special case for which lr_power=-0.5.
+      if (lr_power() == -0.5) {
+        linear.device(d) +=
+            grad - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
+      } else {
+        linear.device(d) +=
+            grad -
+            (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
+      }
+      auto x = (linear.constant(l1()) * linear.sign() - linear);
+      if (lr_power() == -0.5) {
+        auto y = new_accum.sqrt() / new_accum.constant(lr()) +
+                 linear.constant(2 * l2());
+        var.device(d) = x / y;
+      } else {
+        auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
+                 linear.constant(2 * l2());
+        var.device(d) = x / y;
+      }
+      var.device(d) =
+          (linear.abs() > linear.constant(l1())).select(var, var.constant(0));
+      accum.device(d) += grad.square();
+    }
+  }
+};
+
+template <typename T>
 struct ApplyMomentum<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -300,6 +361,29 @@ REGISTER_KERNELS(GPU, double);
 #endif
 #undef REGISTER_KERNELS
 
+namespace {
+template <class T>
+inline T sgn(const T x) {
+  return (x == 0 ? 0 : (x < 0 ? -1 : 1));
+}
+
+template <typename T>
+inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
+                     const T& l2, const T& lr_power) {
+  T quadratic;
+  if (lr_power == -0.5) {
+    quadratic = std::sqrt(accum) / lr + 2 * l2;
+  } else {
+    quadratic = pow(accum, -lr_power) / lr + 2 * l2;
+  }
+  if (std::abs(linear) > l1) {
+    return (l1 * sgn(linear) - linear) / quadratic;
+  } else {
+    return static_cast<T>(0.0);
+  }
+}
+}  // namespace
+
 // Note, this op works on cpu only.
 template <typename T, typename Tindex>
 class SparseApplyAdagradOp : public OpKernel {
@@ -418,6 +502,287 @@ class SparseApplyAdagradOp : public OpKernel {
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
                           SparseApplyAdagradOp<T, Tindices>);
+
+REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int64);
+REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int64);
+#undef REGISTER_KERNELS
+
+template <typename Device, typename T>
+class ApplyFtrlOp : public OpKernel {
+ public:
+  explicit ApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    if (use_exclusive_lock_) {
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      // Don't try to acquire a lock on the second ref as they share the same
+      // mutex.
+      //
+      // mutex_lock l2(*ctx->input_ref_mutex(1));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
+    ctx->forward_ref_input_to_ref_output(0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+
+  void DoValidate(OpKernelContext* ctx) {
+    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
+    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
+    Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(0)));
+    OP_REQUIRES(
+        ctx, accum.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(1)));
+    OP_REQUIRES(
+        ctx, linear.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(2)));
+
+    const Tensor& grad = ctx->input(3);
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(accum.shape()),
+        errors::InvalidArgument("var and accum do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                accum.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(linear.shape()),
+        errors::InvalidArgument("var and linear do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                linear.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Tensor& lr = ctx->input(4);
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) && lr.scalar<T>()() > 0,
+                errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
+                                        lr.shape().DebugString()));
+    const Tensor& l1 = ctx->input(5);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(l1.shape()),
+        errors::InvalidArgument("l1 regularization strength is not a scalar: ",
+                                l1.shape().DebugString()));
+    const Tensor& l2 = ctx->input(6);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(l2.shape()),
+        errors::InvalidArgument("l2 regularization strength is not a scalar: ",
+                                l2.shape().DebugString()));
+    const Tensor& lr_power = ctx->input(7);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()),
+                errors::InvalidArgument("lr power is not a scalar: ",
+                                        lr_power.shape().DebugString()));
+  }
+
+  void DoCompute(OpKernelContext* ctx) {
+    const Device& device = ctx->template eigen_device<Device>();
+    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
+    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
+    Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
+    const Tensor& grad = ctx->input(3);
+    const Tensor& lr = ctx->input(4);
+    const Tensor& l1 = ctx->input(5);
+    const Tensor& l2 = ctx->input(6);
+    const Tensor& lr_power = ctx->input(7);
+    functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
+                                    linear.flat<T>(), grad.flat<T>(),
+                                    lr.scalar<T>(), l1.scalar<T>(),
+                                    l2.scalar<T>(), lr_power.scalar<T>());
+  }
+};
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+#define REGISTER_KERNELS(D, T)                                     \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyFtrlOp<D##Device, T>);
+
+REGISTER_KERNELS(CPU, float);
+REGISTER_KERNELS(CPU, double);
+#undef REGISTER_KERNELS
+
+// Note, this op works on cpu only.
+template <typename Device, typename T, typename Tindex>
+class SparseApplyFtrlOp : public OpKernel {
+ public:
+  explicit SparseApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+    const Device& device = ctx->template eigen_device<Device>();
+    mutex* mu_var = ctx->input_ref_mutex(0);
+    // mu_accum is actually the same mutex as mu_var since currently we use a
+    // global mutex.
+    //
+    // mutex* mu_accum = ctx->input_ref_mutex(1);
+    if (use_exclusive_lock_) {
+      mu_var->lock();
+    }
+    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
+    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
+    Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(0)));
+    OP_REQUIRES(
+        ctx, accum.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(1)));
+    OP_REQUIRES(
+        ctx, linear.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(2)));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(accum.shape()),
+        errors::InvalidArgument("var and accum do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                accum.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(linear.shape()),
+        errors::InvalidArgument("var and linear do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                linear.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
+                errors::InvalidArgument("var must be at least 1 dimensional"));
+
+    const Tensor& grad = ctx->input(3);
+    const Tensor& indices = ctx->input(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
+                errors::InvalidArgument("indices must be one-dimensional"));
+
+    const Tensor& lr = ctx->input(5);
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) && lr.scalar<T>()() > 0,
+                errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
+                                        lr.shape().DebugString()));
+
+    const Tensor& l1 = ctx->input(6);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()),
+                errors::InvalidArgument("l1 is not a scalar: ",
+                                        l1.shape().DebugString()));
+    const Tensor& l2 = ctx->input(7);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()),
+                errors::InvalidArgument("l2 is not a scalar: ",
+                                        l2.shape().DebugString()));
+    const Tensor& lr_power = ctx->input(8);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()),
+                errors::InvalidArgument("lr_power is not a scalar: ",
+                                        lr_power.shape().DebugString()));
+
+    int64 inner_dim = 1;
+    for (int d = 1; d < var.dims(); d++) {
+      OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
+                  errors::InvalidArgument(strings::StrCat(
+                      "var and grad must match in dimension ", d)));
+      inner_dim *= grad.dim_size(d);
+    }
+    const Tindex N = indices.dim_size(0);
+    OP_REQUIRES(
+        ctx, grad.dim_size(0) == N,
+        errors::InvalidArgument(
+            "grad must be the same size as indices in the first dimension."));
+
+    if (N > 0) {
+      if (inner_dim > 1) {
+        const Tindex first_dim_size = var.dim_size(0);
+        // Validate all the indices are in range
+        auto indices_vec = indices.vec<Tindex>();
+        for (Tindex i = 0; i < N; i++) {
+          const Tindex index = indices_vec(i);
+          OP_REQUIRES(ctx, index >= 0 && index < first_dim_size,
+                      errors::InvalidArgument(
+                          strings::StrCat("Index ", index, " at offset ", i,
+                                          " in indices is out of range")));
+        }
+        auto var_flat = var.flat_outer_dims<T>();
+        auto accum_flat = accum.flat_outer_dims<T>();
+        auto linear_flat = linear.flat_outer_dims<T>();
+        auto grad_flat = grad.flat_outer_dims<T>();
+
+        for (Tindex i = 0; i < N; i++) {
+          const Tindex index = indices_vec(i);
+          typename TTypes<T>::Flat accum(&accum_flat(index, 0),
+                                         accum_flat.dimension(1));
+          typename TTypes<T>::Flat linear(&linear_flat(index, 0),
+                                          linear_flat.dimension(1));
+          typename TTypes<T>::Flat var(&var_flat(index, 0),
+                                       var_flat.dimension(1));
+          typename TTypes<T>::ConstFlat grad(&grad_flat(i, 0),
+                                             grad_flat.dimension(1));
+
+          functor::ApplyFtrl<Device, T>()(device, var, accum, linear, grad,
+                                          lr.scalar<T>(), l1.scalar<T>(),
+                                          l2.scalar<T>(), lr_power.scalar<T>());
+        }
+      } else {
+        CHECK_EQ(1, inner_dim);
+        auto indices_vec = indices.vec<Tindex>();
+        auto var_flat = var.flat<T>();
+        auto accum_flat = accum.flat<T>();
+        auto linear_flat = linear.flat<T>();
+        auto grad_flat = grad.flat<T>();
+        T lr_scalar = lr.scalar<T>()();
+        T l1_scalar = l1.scalar<T>()();
+        T l2_scalar = l2.scalar<T>()();
+        T lr_power_scalar = lr_power.scalar<T>()();
+
+        for (Tindex i = 0; i < N; i++) {
+          const Tindex index = indices_vec(i);
+          T& a = accum_flat(index);
+          T& l = linear_flat(index);
+          T& v = var_flat(index);
+          const T& g = grad_flat(i);
+
+          T updated_a = a + g * g;
+          T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
+          sigma /= lr_scalar;
+          T updated_l = l + g - sigma * v;
+          v = FtrlCompute(updated_a, updated_l, lr_scalar, l1_scalar, l2_scalar,
+                          lr_power_scalar);
+          a = updated_a;
+          l = updated_l;
+        }
+      }
+    }
+    if (use_exclusive_lock_) {
+      mu_var->unlock();
+    }
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(T, Tindices)                                \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyFtrl")                    \
+                              .Device(DEVICE_CPU)                    \
+                              .TypeConstraint<T>("T")                \
+                              .TypeConstraint<Tindices>("Tindices"), \
+                          SparseApplyFtrlOp<CPUDevice, T, Tindices>);
 
 REGISTER_KERNELS(float, int32);
 REGISTER_KERNELS(float, int64);

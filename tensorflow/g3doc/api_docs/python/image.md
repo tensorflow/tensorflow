@@ -163,6 +163,7 @@ PNG-encode an image.
 where `channels` is:
 
 *   1: for grayscale.
+*   2: for grayscale + alpha.
 *   3: for RGB.
 *   4: for RGBA.
 
@@ -678,9 +679,9 @@ Example:
 
 ```python
 # Decode an image and convert it to HSV.
-rgb_image = tf.decode_png(...,  channels=3)
-rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.rgb_to_hsv(rgb_image)
+rgb_image = tf.image.decode_png(...,  channels=3)
+rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.image.rgb_to_hsv(rgb_image)
 ```
 
 - - -
@@ -908,7 +909,7 @@ channel and then adjusts each component `x` of each pixel to
 
 ##### Returns:
 
-  The constrast-adjusted image or images.
+  The contrast-adjusted image or images.
 
 
 - - -
@@ -1217,28 +1218,5 @@ false and no bounding boxes are supplied, an error is raised.
     `tf.slice`.
 *  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.image.saturate_cast(image, dtype)` {#saturate_cast}
-
-Performs a safe cast of image data to `dtype`.
-
-This function casts the data in image to `dtype`, without applying any
-scaling. If there is a danger that image data would over or underflow in the
-cast, this op applies the appropriate clamping before the cast.
-
-##### Args:
-
-
-*  <b>`image`</b>: An image to cast to a different data type.
-*  <b>`dtype`</b>: A `DType` to cast `image` to.
-
-##### Returns:
-
-  `image`, safely cast to `dtype`.
 
 

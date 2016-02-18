@@ -64,6 +64,7 @@
   * [`latest_checkpoint`](../../api_docs/python/state_ops.md#latest_checkpoint)
   * [`make_template`](../../api_docs/python/state_ops.md#make_template)
   * [`moving_average_variables`](../../api_docs/python/state_ops.md#moving_average_variables)
+  * [`no_regularizer`](../../api_docs/python/state_ops.md#no_regularizer)
   * [`random_normal_initializer`](../../api_docs/python/state_ops.md#random_normal_initializer)
   * [`random_uniform_initializer`](../../api_docs/python/state_ops.md#random_uniform_initializer)
   * [`Saver`](../../api_docs/python/state_ops.md#Saver)
@@ -78,9 +79,11 @@
   * [`Variable`](../../api_docs/python/state_ops.md#Variable)
   * [`variable_op_scope`](../../api_docs/python/state_ops.md#variable_op_scope)
   * [`variable_scope`](../../api_docs/python/state_ops.md#variable_scope)
+  * [`VariableScope`](../../api_docs/python/state_ops.md#VariableScope)
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`bitcast`](../../api_docs/python/array_ops.md#bitcast)
   * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
@@ -95,6 +98,7 @@
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
+  * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
   * [`shape`](../../api_docs/python/array_ops.md#shape)
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
@@ -136,6 +140,7 @@
   * [`cos`](../../api_docs/python/math_ops.md#cos)
   * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`diag`](../../api_docs/python/math_ops.md#diag)
+  * [`digamma`](../../api_docs/python/math_ops.md#digamma)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
   * [`erf`](../../api_docs/python/math_ops.md#erf)
@@ -257,7 +262,6 @@
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
   * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
-  * [`saturate_cast`](../../api_docs/python/image.md#saturate_cast)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
@@ -267,6 +271,7 @@
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
+  * [`sparse_tensor_dense_matmul`](../../api_docs/python/sparse_ops.md#sparse_tensor_dense_matmul)
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
   * [`sparse_to_dense`](../../api_docs/python/sparse_ops.md#sparse_to_dense)
   * [`sparse_to_indicator`](../../api_docs/python/sparse_ops.md#sparse_to_indicator)
