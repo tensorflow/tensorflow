@@ -333,6 +333,9 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
 
 template <typename T>
+struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+
+template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
 
 template <typename T>

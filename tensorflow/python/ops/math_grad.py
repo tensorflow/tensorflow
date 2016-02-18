@@ -263,9 +263,16 @@ def _ErfcGrad(op, grad):
 
 
 @ops.RegisterGradient("Lgamma")
-def _LgammaGrad(op, grad):  # pylint: disable=unused-argument
-  # TODO(ebrevdo): implement digamma
-  raise NotImplementedError("grad(Lgamma) == Digamma is not implemented")
+def _LgammaGrad(op, grad):
+  """Returns grad * digamma(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.digamma(x)
+
+
+@ops.RegisterGradient("Digamma")
+def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
+  raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
 
 
 @ops.RegisterGradient("Sigmoid")

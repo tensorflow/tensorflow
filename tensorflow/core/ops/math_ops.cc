@@ -191,7 +191,14 @@ Computes hyperbolic tangent of `x` element-wise.
 REGISTER_OP("Lgamma")
     .UNARY()
     .Doc(R"doc(
-Computes the log of the absolute value of Gamma of `x` element-wise.
+Computes the log of the absolute value of `Gamma(x)` element-wise.
+)doc");
+
+REGISTER_OP("Digamma")
+    .UNARY()
+    .Doc(R"doc(
+Computes Psi, the derivative of Lgamma (the log of the absolute value of
+`Gamma(x)`), element-wise.
 )doc");
 
 REGISTER_OP("Erf")
