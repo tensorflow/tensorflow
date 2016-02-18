@@ -21,7 +21,7 @@
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3)
 #   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
-#   TF_BUILD_IS_PIP:           (NO_PIP | PIP)
+#   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
 # Note: certain combinations of parameter values are regarded
 # as invalid and will cause the script to exit with code 0. For example:
@@ -167,7 +167,8 @@ fi
 OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
 # Process PIP install-test option
-if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
+if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
+   [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   # Process optional bazel target override
   if [[ ! -z "${TF_BUILD_BAZEL_TARGET}" ]]; then
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
@@ -175,9 +176,9 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
   if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
-    MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
-    MAIN_CMD=$(str_strip "${MAIN_CMD}")
+    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
 
     if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
        [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
@@ -189,15 +190,19 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
       echo "Build-only command: ${BUILD_ONLY_CMD}"
 
-      MAIN_CMD="${BUILD_ONLY_CMD} && "\
+      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
 "${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${MAIN_CMD}"
+      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
     fi
   elif [[ ${CTYPE} == "android" ]]; then
-    MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+    NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
   fi
-elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+
+fi
+
+if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
+   [[ ${TF_BUILD_IS_PIP} == "both"  ]]; then
   # Android builds conflict with PIP builds
   if [[ ${CTYPE} == "android" ]]; then
     echo "Skipping parameter combination: ${TF_BUILD_IS_PIP} & "\
@@ -205,12 +210,22 @@ elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
     exit 0
   fi
 
-  MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
 "${TF_BUILD_APPEND_ARGUMENTS}"
+
+fi
+
+if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
+  MAIN_CMD="${NO_PIP_MAIN_CMD}"
+elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+  MAIN_CMD="${PIP_MAIN_CMD}"
+elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
+  MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
   echo "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
   exit 1
 fi
+
 
 # Process Python version
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
@@ -253,6 +268,15 @@ TMP_SCRIPT=/tmp/ci_parameterized_build_${RAND_STR}.sh
 if [[ "${DO_DOCKER}" == "1" ]]; then
   # Map the tmp script into the Docker container
   EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TMP_SCRIPT}:/tmp/tf_build.sh"
+
+  if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
+     [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]] &&
+     [[ "${TF_BUILD_IS_PIP}" != "both" ]]; then
+    # For TF_BUILD_IS_PIP == both, "bazel clean" will have already
+    # been performed before the "bazel test" step
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_BAZEL_CLEAN=1"
+  fi
+
   EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
 
   echo "Exporting CI_DOCKER_EXTRA_PARAMS: ${EXTRA_PARAMS}"
