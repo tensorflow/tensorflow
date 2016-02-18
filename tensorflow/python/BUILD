@@ -251,6 +251,17 @@ py_test(
     ],
 )
 
+py_test(
+    name = "proto_test",
+    srcs = ["framework/proto_test.py"],
+    main = "framework/proto_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_gen_op_wrapper_py(
     name = "functional_ops",
     out = "ops/gen_functional_ops.py",
