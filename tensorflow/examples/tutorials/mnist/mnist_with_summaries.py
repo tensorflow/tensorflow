@@ -52,7 +52,7 @@ def main(_):
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784], name='x-input')
   W = tf.Variable(tf.zeros([784, 10]), name='weights')
-  b = tf.Variable(tf.zeros([10], name='bias'))
+  b = tf.Variable(tf.zeros([10]), name='bias')
 
   # Use a name scope to organize nodes in the graph visualizer
   with tf.name_scope('Wx_b'):
