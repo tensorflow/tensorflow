@@ -55,17 +55,4 @@ void* GPUAllocatorRetry::AllocateRaw(
   return ptr;
 }
 
-void GPUAllocatorRetry::DeallocateRaw(std::function<void(void*)> dealloc_func,
-                                      void* ptr) {
-  if (ptr == nullptr) {
-    LOG(ERROR) << "Request to free nullptr";
-    return;
-  }
-  dealloc_func(ptr);
-  {
-    mutex_lock l(mu_);
-    memory_returned_.notify_all();
-  }
-}
-
 }  // namespace tensorflow
