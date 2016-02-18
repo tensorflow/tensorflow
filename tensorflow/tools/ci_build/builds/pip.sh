@@ -125,7 +125,8 @@ echo "Python binary path to be used in PIP install-test: ${PYTHON_BIN_PATH} "\
 PIP_WHL_DIR="pip_test/whl"
 PIP_WHL_DIR=$(abs_path ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
-bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} &&
+bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
+die "build_pip_package FAILED"
 
 # Perform installation
 WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
@@ -141,8 +142,10 @@ echo "Installing pip whl file: ${WHL_PATH}"
 
 # Call pip install twice, first time with --upgrade and second time without it
 # This addresses the sporadic test failures related to protobuf version
-${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} numpy==1.8.2 &&
-${PYTHON_BIN_PATH} -m pip install -v --user ${WHL_PATH} &&
+${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} numpy==1.8.2 \
+|| die "pip install (1st step, with --upgrade) FAILED"
+${PYTHON_BIN_PATH} -m pip install -v --user ${WHL_PATH} \
+|| die "pip install (2nd step, without --upgrade) FAILED"
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
 # tests-on-install and exit right away
