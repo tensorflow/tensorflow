@@ -30,9 +30,11 @@ struct SessionOptions;
 class SessionFactory {
  public:
   virtual Session* NewSession(const SessionOptions& options) = 0;
+  virtual bool AcceptsOptions(const SessionOptions& options) = 0;
   virtual ~SessionFactory() {}
   static void Register(const string& runtime_type, SessionFactory* factory);
-  static SessionFactory* GetFactory(const string& runtime_type);
+  static Status GetFactory(const SessionOptions& options,
+                           SessionFactory** out_factory);
 };
 
 }  // namespace tensorflow
