@@ -41,6 +41,9 @@
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/...
+#   TF_BUILD_BAZEL_CLEAN:
+#                      Will perform "bazel clean", if and only if this variable
+#                      is set to any non-empty and non-0 value
 #   TF_BUILD_SERIAL_TESTS:
 #                      Build parallely, but test serially
 #                      (i.e., bazel test --job=1), potentially useful for
@@ -70,16 +73,23 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names"
+NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
+"--genrule_strategy=standalone"
+
+DO_DOCKER=1
 
 BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
+BAZEL_CLEAN_CMD="bazel clean"
 BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BAZEL_TARGET="//tensorflow/..."
+
+
+
 ##########################################################
 
 # Convert all the required environment variables to lower case
@@ -120,13 +130,14 @@ fi
 EXTRA_PARAMS=""
 
 # Determine if Docker is available
-MAIN_CMD=${DOCKER_MAIN_CMD}
 if [[ -z "$(which docker)" ]]; then
+  DO_DOCKER=0
+
   echo "It appears that Docker is not available on this system. "\
 "Will perform build without Docker."
-  echo "In addition, the additional option flags will be applied to the build:"
+  echo "Also, the additional option flags will be applied to the build:"
   echo "  ${NO_DOCKER_OPT_FLAG}"
-  MAIN_CMD=${NO_DOCKER_MAIN_CMD}
+  MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
   OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
 
 fi
@@ -159,9 +170,9 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
   if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
-    MAIN_CMD_PREFIX="${MAIN_CMD}"
-    MAIN_CMD="${MAIN_CMD} ${CTYPE} ${BAZEL_CMD} ${OPT_FLAG} "\
+    MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+    MAIN_CMD=$(str_strip "${MAIN_CMD}")
 
     if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
        [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
@@ -169,17 +180,17 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
       # The 1st (build) step will be done in parallel, as default
       # But the 2nd (test) step will be done serially.
 
-      BUILD_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
+      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG}"\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
-      echo "Build-only command: ${BUILD_CMD}"
+      echo "Build-only command: ${BUILD_ONLY_CMD}"
 
-      MAIN_CMD="${MAIN_CMD_PREFIX} ${CTYPE} ${BUILD_CMD} && "\
+      MAIN_CMD="${BUILD_ONLY_CMD} && "\
 "${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
 "${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
       echo "Parallel-build + serial-test command: ${MAIN_CMD}"
     fi
   elif [[ ${CTYPE} == "android" ]]; then
-    MAIN_CMD="${MAIN_CMD} ${CTYPE} ${ANDROID_CMD} ${OPT_FLAG} "
+    MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
   fi
 elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
   # Android builds conflict with PIP builds
@@ -189,7 +200,7 @@ elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
     exit 0
   fi
 
-  MAIN_CMD="${MAIN_CMD} ${CTYPE} ${PIP_CMD} ${CTYPE} "\
+  MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
 "${TF_BUILD_APPEND_ARGUMENTS}"
 else
   echo "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
@@ -200,7 +211,22 @@ fi
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
-  EXTRA_PARAMS="${EXTRA_PARAMS} -e PYTHON_BIN_PATH=/usr/bin/python3"
+  # Supply proper environment variable to select Python 3
+  if [[ "${DO_DOCKER}" == "1" ]]; then
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e PYTHON_BIN_PATH=/usr/bin/python3"
+  else
+    # Determine the path to python3
+    PYTHON3_PATH=$(which python3 | head -1)
+    if [[ -z "${PYTHON3_PATH}" ]]; then
+      echo "ERROR: Failed to locate python3 binary on the system"
+      exit 1
+    else
+      echo "Found python3 binary at: ${PYTHON3_PATH}"
+    fi
+
+    export PYTHON_BIN_PATH="${PYTHON3_PATH}"
+  fi
+
 else
   echo "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
 "\"${TF_BUILD_PYTHON_VERSION}\""
@@ -209,9 +235,6 @@ fi
 
 # Append additional Docker extra parameters
 EXTRA_PARAMS="${EXTRA_PARAMS} ${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
-
-# Strip leading and trailing whitespaces
-EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
 
 # Finally, do a dry run or call the command
 
@@ -222,12 +245,28 @@ EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
 RAND_STR=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 TMP_SCRIPT=/tmp/ci_parameterized_build_${RAND_STR}.sh
 
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  # Map the tmp script into the Docker container
+  EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TMP_SCRIPT}:/tmp/tf_build.sh"
+  EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
+
+  echo "Exporting CI_DOCKER_EXTRA_PARAMS: ${EXTRA_PARAMS}"
+  export CI_DOCKER_EXTRA_PARAMS="${EXTRA_PARAMS}"
+fi
+
+# Write to the tmp script
 echo "#!/bin/bash" > ${TMP_SCRIPT}
-echo "export CI_DOCKER_EXTRA_PARAMS=\"${EXTRA_PARAMS}\"" >> ${TMP_SCRIPT}
+if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
+   [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
+  echo ${BAZEL_CLEAN_CMD} >> ${TMP_SCRIPT}
+fi
 echo ${MAIN_CMD} >> ${TMP_SCRIPT}
 
 echo "Executing final command (${TMP_SCRIPT})..."
+echo "=========================================="
 cat ${TMP_SCRIPT}
+echo "=========================================="
+echo ""
 
 chmod +x ${TMP_SCRIPT}
 
@@ -236,7 +275,11 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   echo "*** This is a DRY RUN ***"
 else
   # Actually run the command
-  ${TMP_SCRIPT}
+  if [[ "${DO_DOCKER}" == "1" ]]; then
+    ${DOCKER_MAIN_CMD} ${CTYPE} /tmp/tf_build.sh
+  else
+    ${TMP_SCRIPT}
+  fi
 fi &&
 
 rm -f ${TMP_SCRIPT}

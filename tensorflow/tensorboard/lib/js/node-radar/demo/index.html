@@ -1,0 +1,59 @@
+<!doctype html>
+<head>
+  <meta charset="utf-8">
+  <script src="../../../../../components/webcomponentsjs/webcomponents-lite.min.js"></script>
+  <script src="../../../../components/web-component-tester/browser.js"></script>
+  <link rel="import" href="../../../../../components/polymer/polymer.html">
+</head>
+
+<script src="../nodeRadar.js"></script>
+<script src="../test/nodeRadarTest.js"></script>
+
+<style media="screen">
+  body {
+    margin: 0;
+  }
+  .container {
+    border: solid 1px cyan;
+    overflow-y: scroll;
+    height: calc(100vh - 130px);
+    margin: 40px;
+  }
+  .node {
+    height: calc(100vh - 300px);
+    border: solid 1px grey;
+  }
+  .node.staged {
+    background-color: yellow;
+  }
+  .node.in-view {
+    border-color: magenta;
+  }
+  .node.fully-visible {
+    background-color: magenta;
+  }
+</style>
+
+<div class="container">
+  <div class="node"></div>
+  <div class="node"></div>
+  <div class="node"></div>
+  <div class="node"></div>
+  <div class="node"></div>
+  <div class="node"></div>
+</div>
+
+<script type="text/javascript" src="nodeRadar.js"></script>
+<script type="text/javascript">
+  var parent = document.querySelector(".container");
+  var radar = new NodeRadar(parent);
+  radar.add(document.querySelectorAll(".node"), function(d) {
+    d.node.setAttribute("class", "node");
+    if (d.fullyVisible) d.node.classList.add("fully-visible");
+    if (d.inView) d.node.classList.add("in-view");
+    if (d.staged) d.node.classList.add("staged");
+  });
+  parent.addEventListener("scroll", function(event) {
+    radar.scan();
+  });
+</script>
