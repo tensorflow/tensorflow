@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """TensorBoard server handler logic.
 
 TensorboardHandler contains all the logic for serving static files off of disk
@@ -44,7 +43,6 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import float_wrapper
-
 
 DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
@@ -376,6 +374,14 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       return
 
     if path.startswith('external'):
+      # For compatibility with latest version of Bazel, we renamed bower
+      # packages to use '_' rather than '-' in their package name.
+      # This means that the directory structure is changed too.
+      # So that all our recursive imports work, we need to modify incoming
+      # requests to map onto the new directory structure.
+      components = path.split('/')
+      components[1] = components[1].replace('-', '_')
+      path = ('/').join(components)
       path = os.path.join('../', path)
     else:
       path = os.path.join('tensorboard', path)
@@ -422,8 +428,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       value_count = len(query_params[key])
       if value_count != 1:
         self.send_error(
-            400,
-            'query parameter %s should have exactly one value, had %d' %
+            400, 'query parameter %s should have exactly one value, had %d' %
             (key, value_count))
         return
       query_params[key] = query_params[key][0]

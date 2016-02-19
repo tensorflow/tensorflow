@@ -172,7 +172,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     CHECK_EQ(rets.size(), out.size());
-    for (int i = 0; i < rets.size(); ++i) {
+    for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
     return Status::OK();
@@ -334,13 +334,12 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   ExpandInlineFunctions(lib_, g);
   OptimizeGraph(lib_, &g);
   const char* e0 = R"P(
-(n2:float) -> (n9:float) {
-  n7 = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
-  n8 = Cast[DstT=float, SrcT=int64](n7)
+(n2:float) -> (n7:float) {
+  n8 = Const[dtype=float, value=Tensor<type: float shape: [] values: 2>]()
   n4 = Mul[T=float](n2, n8)
   n5 = Mul[T=float](n4, n8)
   n6 = Mul[T=float](n5, n8)
-  n9 = Mul[T=float](n6, n8)
+  n7 = Mul[T=float](n6, n8)
 }
 )P";
   EXPECT_EQ(e0, DebugString(g));
@@ -487,15 +486,14 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
 
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
-(n4:float, n5:float) -> (n12:float) {
-  n2 = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
-  n3 = Cast[DstT=float, SrcT=int64](n2)
-  n9 = Shape[T=float](n4)
-  n8 = Shape[T=float](n3)
-  n7 = Mul[T=float](n5, n3)
-  n10 = BroadcastGradientArgs(n9, n8)
-  n11 = Sum[T=float, keep_dims=false](n7, n10)
-  n12 = Reshape[T=float](n11, n9)
+(n2:float, n3:float) -> (n9:float) {
+  n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [0] values: >]()
+  n10 = Const[dtype=float, value=Tensor<type: float shape: [] values: 2>]()
+  n6 = Shape[T=float](n2)
+  n5 = Mul[T=float](n3, n10)
+  n7 = BroadcastGradientArgs(n6, n11)
+  n8 = Sum[T=float, keep_dims=false](n5, n7)
+  n9 = Reshape[T=float](n8, n6)
 }
 )P";
   EXPECT_EQ(e2, DebugString(g));

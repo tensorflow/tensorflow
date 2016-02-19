@@ -54,11 +54,11 @@ Status ValidateMemoryTypes(DeviceType device_type, const Graph* g) {
   for (const Node* n : g->nodes()) {
     TF_RETURN_IF_ERROR(MemoryTypesForNode(g->op_registry(), device_type,
                                           n->def(), &inp_mvec, &out_mvec));
-    for (int i = 0; i < inp_mvec.size(); ++i) {
-      inp[{n->id(), i}] = inp_mvec[i];
+    for (size_t i = 0; i < inp_mvec.size(); ++i) {
+      inp[{n->id(), static_cast<int>(i)}] = inp_mvec[i];
     }
-    for (int i = 0; i < out_mvec.size(); ++i) {
-      out[{n->id(), i}] = out_mvec[i];
+    for (size_t i = 0; i < out_mvec.size(); ++i) {
+      out[{n->id(), static_cast<int>(i)}] = out_mvec[i];
     }
   }
   for (const Edge* e : g->edges()) {

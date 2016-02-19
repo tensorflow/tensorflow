@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// <reference path="../../../typings/tsd.d.ts" />
+/// <reference path="../../../../typings/tsd.d.ts" />
 
 module TF {
+  let assert = chai.assert;
+  let expect = chai.expect;
+
   describe("NodeRadar", function() {
-    var container, r:NodeRadar;
+    var container, r: NodeRadar;
 
     beforeEach(function() {
       var root = document.body;
@@ -48,26 +51,26 @@ module TF {
 
     it("adds a html element", function() {
       var node = document.querySelector(".node");
-      r.add(node, function() {});
+      r.add(node, null);
       assert.equal(r.getNodes().length, 1);
       assert.equal(r.getNodes()[0].visibility.node, node);
     });
 
     it("adds a nodelist", function() {
-      var nodes = document.querySelectorAll(".node"); //returns a NodeList
-      r.add(nodes, function() {});
+      var nodes = document.querySelectorAll(".node"); // returns a NodeList
+      r.add(nodes, null);
       assert.equal(r.getNodes().length, nodes.length);
     });
 
     it("adds an html collection", function() {
-      var nodes = document.body.children; //returns an HTMLCollection
-      r.add(nodes, function() {});
+      var nodes = document.body.children; // returns an HTMLCollection
+      r.add(nodes, null);
       assert.equal(r.getNodes().length, nodes.length);
     });
 
     it("removes a node", function() {
       var node = document.querySelector(".node");
-      r.add(node, function() {});
+      r.add(node, null);
       assert.equal(r.getNodes().length, 1);
       r.remove(node);
       assert.equal(r.getNodes().length, 0);
@@ -75,7 +78,7 @@ module TF {
 
     it("throws an error if it can't find a node", function() {
       var node = document.querySelector(".node");
-      r.add(node, function() {});
+      r.add(node, null);
       expect(() => {
         r.checkVisibility(document.createElement("div"));
       }).to.throw("Couldn't find node to check visibility.");
@@ -84,7 +87,7 @@ module TF {
     it("scans correctly on startup", function() {
       window.scrollTo(0, 0);
       var nodes = document.querySelectorAll(".node");
-      r.add(nodes, function() {});
+      r.add(nodes, null);
       var zero = r.checkVisibility(nodes[0]),
           one = r.checkVisibility(nodes[1]),
           four = r.checkVisibility(nodes[4]),
@@ -125,7 +128,7 @@ module TF {
     it("scans correctly after scrolling", function() {
       window.scrollTo(0, 0);
       var nodes = document.querySelectorAll(".node");
-      r.add(nodes, function() {});
+      r.add(nodes, null);
       var zero = r.checkVisibility(nodes[0]),
           one = r.checkVisibility(nodes[1]),
           four = r.checkVisibility(nodes[4]),
@@ -170,7 +173,7 @@ module TF {
       window.scrollTo(0, 0);
       var node = document.querySelectorAll(".node")[5];
       var called;
-      r.add(node, () => { called = true; console.log("called") });
+      r.add(node, () => { called = true; });
       called = false;
       window.scrollTo(0, 60);
       r.scan();
@@ -181,7 +184,7 @@ module TF {
       window.scrollTo(0, 0);
       var node = document.querySelectorAll(".node")[5];
       var called;
-      r.add(node, () => { called = true; console.log("called") });
+      r.add(node, () => { called = true; });
       called = false;
       window.scrollTo(0, 2);
       r.scan();

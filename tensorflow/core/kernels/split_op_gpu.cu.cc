@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -41,6 +42,61 @@ void Split<Device, T>::operator()(
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 
 }  // namespace functor
+
+namespace {
+
+template <typename T>
+__global__ void SplitOpKernel(const T* input, int32 num_split,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size, T** output_ptrs) {
+  eigen_assert(blockDim.y == 1);
+  eigen_assert(blockDim.z == 1);
+  eigen_assert(split_dim_size % num_split == 0);
+
+  int32 size = prefix_dim_size * split_dim_size * suffix_dim_size;
+  int32 piece_size = split_dim_size / num_split;
+
+  CUDA_1D_KERNEL_LOOP(offset, size) {
+    // Calculate the index into input from offset.
+    int32 i = offset / (split_dim_size * suffix_dim_size);
+    int32 j = (offset % (split_dim_size * suffix_dim_size)) / suffix_dim_size;
+    int32 k = offset % suffix_dim_size;
+
+    // Find the output buffer that should be written to.
+    T* output_ptr = output_ptrs[j / piece_size];
+    // output_ptr is pointing to an array of size
+    //  [prefix_dim_size][piece_size][suffix_dim_size].
+    //
+    // output_ptr[i][j % piece_size][k] = input[offset];
+    // Linearize (i, j % piece_size, k) into an offset.
+    int32 output_offset = i * piece_size * suffix_dim_size +
+                          (j % piece_size) * suffix_dim_size + k;
+    *(output_ptr + output_offset) = ldg(input + offset);
+  }
+}
+
+}  // namespace
+
+template <typename T>
+struct SplitOpGPULaunch {
+  void Run(const Eigen::GpuDevice& d, const T* input, int32 num_split,
+           int32 prefix_dim_size, int32 split_dim_size, int32 suffix_dim_size,
+           T** output_ptrs) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        prefix_dim_size * split_dim_size * suffix_dim_size, d);
+
+    SplitOpKernel<
+        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+        input, num_split, prefix_dim_size, split_dim_size, suffix_dim_size,
+        static_cast<T**>(output_ptrs));
+  }
+};
+
+#define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

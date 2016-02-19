@@ -428,6 +428,88 @@ op {
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
 }
 op {
+  name: "ApplyFtrl"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' according to the Ftrl-proximal scheme."
+  description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
   name: "ApplyGradientDescent"
   input_arg {
     name: "var"
@@ -1272,6 +1354,7 @@ op {
     description: "A bool indicating whether the resulted tensor\nneeds to be multiplied with gamma."
   }
   summary: "Batch normalization."
+  description: "This op is deprecated. Prefer `tf.nn.batch_normalization`."
 }
 op {
   name: "BatchNormWithGlobalNormalizationGrad"
@@ -1356,6 +1439,7 @@ op {
     description: "A bool indicating whether the resulted tensor\nneeds to be multiplied with gamma."
   }
   summary: "Gradients for batch normalization."
+  description: "This op is deprecated. See `tf.nn.batch_normalization`."
 }
 op {
   name: "BatchSelfAdjointEig"
@@ -2305,6 +2389,32 @@ op {
   description: "Given a `diagonal`, this operation returns a tensor with the `diagonal` and\neverything else padded with zeros. The diagonal is computed as follows:\n\nAssume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of\nrank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:\n\n`output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.\n\nFor example:\n\n```prettyprint\n# \'diagonal\' is [1, 2, 3, 4]\ntf.diag(diagonal) ==> [[1, 0, 0, 0]\n                       [0, 2, 0, 0]\n                       [0, 0, 3, 0]\n                       [0, 0, 0, 4]]\n```"
 }
 op {
+  name: "Digamma"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes Psi, the derivative of Lgamma (the log of the absolute value of"
+  description: "`Gamma(x)`), element-wise."
+}
+op {
   name: "Div"
   input_arg {
     name: "x"
@@ -2335,6 +2445,26 @@ op {
     }
   }
   summary: "Returns x / y element-wise."
+}
+op {
+  name: "DrawBoundingBoxes"
+  input_arg {
+    name: "images"
+    description: "4-D with shape `[batch, height, width, depth]`. A batch of images."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "boxes"
+    description: "3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding\nboxes."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "4-D with the same shape as `images`. The batch of input images with\nbounding boxes drawn on the images."
+    type: DT_FLOAT
+  }
+  summary: "Draw bounding boxes on a batch of images."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -3952,7 +4082,7 @@ op {
       }
     }
   }
-  summary: "Computes the log of the absolute value of Gamma of `x` element-wise."
+  summary: "Computes the log of the absolute value of `Gamma(x)` element-wise."
 }
 op {
   name: "LinSpace"
@@ -7099,6 +7229,112 @@ op {
   description: "I.e., \\\\(y = 1 / \\sqrt{x}\\\\)."
 }
 op {
+  name: "SampleDistortedBoundingBox"
+  input_arg {
+    name: "image_size"
+    description: "1-D, containing `[height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "bounding_boxes"
+    description: "3-D with shape `[batch, N, 4]` describing the N bounding boxes\nassociated with the image."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "begin"
+    description: "1-D, containing `[offset_height, offset_width, 0]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "size"
+    description: "1-D, containing `[target_height, target_width, -1]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bboxes"
+    description: "3-D with shape `[1, 1, 4]` containing the distorted bounding box.\nProvide as input to `tf.image.draw_bounding_boxes`."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to non-zero, the random number\ngenerator is seeded by the given `seed`.  Otherwise, it is seeded by a random\nseed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "min_object_covered"
+    type: "float"
+    default_value {
+      f: 0.1
+    }
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied."
+  }
+  attr {
+    name: "aspect_ratio_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.75
+        f: 1.33
+      }
+    }
+    description: "The cropped area of the image must have an aspect ratio =\nwidth / height within this range."
+  }
+  attr {
+    name: "area_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.05
+        f: 1
+      }
+    }
+    description: "The cropped area of the image must contain a fraction of the\nsupplied image within in this range."
+  }
+  attr {
+    name: "max_attempts"
+    type: "int"
+    default_value {
+      i: 100
+    }
+    description: "Number of attempts at generating a cropped region of the image\nof the specified constraints. After `max_attempts` failures, return the entire\nimage."
+  }
+  attr {
+    name: "use_image_if_no_bounding_boxes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_box` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  is_stateful: true
+}
+op {
   name: "Save"
   input_arg {
     name: "filename"
@@ -7368,7 +7604,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf `indices` contains duplicate entries, lexicographically later entries\noverride earlier entries.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMax"
@@ -8271,6 +8507,103 @@ op {
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
 }
 op {
+  name: "SparseApplyFtrl"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
   name: "SparseApplyMomentum"
   input_arg {
     name: "var"
@@ -8759,6 +9092,55 @@ op {
   description: "If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices\n`[0 : shape[split_dim] % num_split]` gets one extra dimension.\nFor example, if `split_dim = 1` and `num_split = 2` and the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    output_tensor[0] = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    output_tensor[1] = shape = [2, 3]\n    [ d e  ]\n    [      ]"
 }
 op {
+  name: "SparseTensorDenseMatMul"
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`, size [nnz x 2] Matrix."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    description: "1-D.  The `values` of the `SparseTensor`, size [nnz] Vector."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`, size [2] Vector."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b"
+    description: "2-D.  A dense Matrix."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "product"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use the adjoint of A in the matrix multiply.  If A is complex, this\nis transpose(conj(A)).  Otherwise it\'s transpose(A)."
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use the adjoint of B in the matrix multiply.  If B is complex, this\nis transpose(conj(B)).  Otherwise it\'s transpose(B)."
+  }
+  summary: "Multiply SparseTensor (of rank 2) \"A\" by dense matrix \"B\"."
+  description: "No validity checking is performed on the indices of A.  However, the following\ninput format is recommended for optimal behavior:\n\nif adjoint_a == false:\n  A should be sorted in lexicographically increasing order.  Use SparseReorder\n  if you\'re not sure.\nif adjoint_a == true:\n  A should be sorted in order of increasing dimension 1 (i.e., \"column major\"\n  order instead of \"row major\" order)."
+}
+op {
   name: "SparseToDense"
   input_arg {
     name: "sparse_indices"
@@ -8892,6 +9274,36 @@ op {
   }
   summary: "Computes square of x element-wise."
   description: "I.e., \\\\(y = x * x = x^2\\\\)."
+}
+op {
+  name: "SquaredDifference"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Returns (x - y)(x - y) element-wise."
+  is_commutative: true
 }
 op {
   name: "Squeeze"

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.math_ops.matrix_solve."""
 from __future__ import absolute_import
 from __future__ import division
@@ -141,6 +140,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
 
   def testSquare(self):
     # 2x2 matrices, 2x3 right-hand sides.
+
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]])
     self._verifySolve(matrix, rhs)
@@ -187,6 +187,15 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
         self.assertEqual(tf_ans.shape, (2, 0))
         tf_ans = tf.matrix_solve_ls(empty1, empty1, fast=fast).eval()
         self.assertEqual(tf_ans.shape, (2, 2))
+
+  def testBatchResultSize(self):
+    # 3x3x3 matrices, 3x3x1 right-hand sides.
+    matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)
+    rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)
+    answer = tf.batch_matrix_solve(matrix, rhs)
+    ls_answer = tf.batch_matrix_solve_ls(matrix, rhs)
+    self.assertEqual(ls_answer.get_shape(), [3, 3, 1])
+    self.assertEqual(answer.get_shape(), [3, 3, 1])
 
 
 if __name__ == "__main__":

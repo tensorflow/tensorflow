@@ -28,6 +28,14 @@ example.
 [View Tutorial](../tutorials/mnist/tf/index.md)
 
 
+## TensorFlow Serving
+
+An introduction to TensorFlow Serving, a flexible, high-performance system for
+serving machine learning models, designed for production environments.
+
+[View Tutorial](https://tensorflow.github.io/serving/serving_basic)
+
+
 ## Convolutional Neural Networks
 
 An introduction to convolutional neural networks using the CIFAR-10 data set.

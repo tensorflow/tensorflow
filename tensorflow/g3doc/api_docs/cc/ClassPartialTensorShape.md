@@ -1,42 +1,16 @@
-# Class `tensorflow::PartialTensorShape`
+# `class tensorflow::PartialTensorShape`
 
 Manages the partially known dimensions of a Tensor and their sizes.
 
 
 
-##Member Summary
+###Member Details
 
-* [`tensorflow::PartialTensorShape::PartialTensorShape(gtl::ArraySlice< int64 > dim_sizes)`](#tensorflow_PartialTensorShape_PartialTensorShape)
-  * Construct a ` PartialTensorShape ` from the provided sizes. REQUIRES: `dim_sizes[i] >= 0`
-* [`tensorflow::PartialTensorShape::PartialTensorShape(std::initializer_list< int64 > dim_sizes)`](#tensorflow_PartialTensorShape_PartialTensorShape)
-* [`tensorflow::PartialTensorShape::PartialTensorShape(const TensorShapeProto &proto)`](#tensorflow_PartialTensorShape_PartialTensorShape)
-  * REQUIRES: `IsValid(proto)`
-* [`PartialTensorShape tensorflow::PartialTensorShape::Concatenate(int64 size) const`](#PartialTensorShape_tensorflow_PartialTensorShape_Concatenate)
-* [`PartialTensorShape tensorflow::PartialTensorShape::Concatenate(const PartialTensorShape &shape) const`](#PartialTensorShape_tensorflow_PartialTensorShape_Concatenate)
-* [`Status tensorflow::PartialTensorShape::MergeWith(const PartialTensorShape &shape, PartialTensorShape *result) const`](#Status_tensorflow_PartialTensorShape_MergeWith)
-* [`int tensorflow::PartialTensorShape::dims() const`](#int_tensorflow_PartialTensorShape_dims)
-  * Return the number of dimensions in the tensor.
-* [`bool tensorflow::PartialTensorShape::IsFullyDefined() const`](#bool_tensorflow_PartialTensorShape_IsFullyDefined)
-  * Return true iff the rank and all of the dimensions are well defined.
-* [`bool tensorflow::PartialTensorShape::IsCompatibleWith(const PartialTensorShape &shape) const`](#bool_tensorflow_PartialTensorShape_IsCompatibleWith)
-* [`bool tensorflow::PartialTensorShape::IsCompatibleWith(const TensorShape &shape) const`](#bool_tensorflow_PartialTensorShape_IsCompatibleWith)
-* [`int64 tensorflow::PartialTensorShape::dim_size(int d) const`](#int64_tensorflow_PartialTensorShape_dim_size)
-  * Returns the number of elements in dimension `d`. REQUIRES: `0 <= d < dims() `
-* [`gtl::ArraySlice<int64> tensorflow::PartialTensorShape::dim_sizes() const`](#gtl_ArraySlice_int64_tensorflow_PartialTensorShape_dim_sizes)
-  * Returns sizes of all dimensions.
-* [`void tensorflow::PartialTensorShape::AsProto(TensorShapeProto *proto) const`](#void_tensorflow_PartialTensorShape_AsProto)
-  * Fill `*proto` from `*this`.
-* [`bool tensorflow::PartialTensorShape::AsTensorShape(TensorShape *tensor_shape) const`](#bool_tensorflow_PartialTensorShape_AsTensorShape)
-* [`string tensorflow::PartialTensorShape::DebugString() const`](#string_tensorflow_PartialTensorShape_DebugString)
-  * For error messages.
-* [`bool tensorflow::PartialTensorShape::IsValid(const TensorShapeProto &proto)`](#bool_tensorflow_PartialTensorShape_IsValid)
-  * Returns `true` iff `proto` is a valid partial tensor shape.
-* [`Status tensorflow::PartialTensorShape::IsValidShape(const TensorShapeProto &proto)`](#Status_tensorflow_PartialTensorShape_IsValidShape)
-* [`string tensorflow::PartialTensorShape::DebugString(const TensorShapeProto &proto)`](#string_tensorflow_PartialTensorShape_DebugString)
-* [`Status tensorflow::PartialTensorShape::MakePartialShape(const T *dims, int n, PartialTensorShape *out)`](#Status_tensorflow_PartialTensorShape_MakePartialShape)
-  * Returns a ` PartialTensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[n-1]`. Values of -1 are considered "unknown".
+#### `tensorflow::PartialTensorShape::PartialTensorShape()` {#tensorflow_PartialTensorShape_PartialTensorShape}
 
-##Member Details
+Construct an unknown ` PartialTensorShape `.
+
+
 
 #### `tensorflow::PartialTensorShape::PartialTensorShape(gtl::ArraySlice< int64 > dim_sizes)` {#tensorflow_PartialTensorShape_PartialTensorShape}
 
@@ -76,9 +50,9 @@ Merges all the dimensions from `shape`. Returns `InvalidArgument` error if eithe
 
 #### `int tensorflow::PartialTensorShape::dims() const` {#int_tensorflow_PartialTensorShape_dims}
 
-Return the number of dimensions in the tensor.
 
 
+Return the number of dimensions in the tensor. If the number of dimensions is unknown, return -1.
 
 #### `bool tensorflow::PartialTensorShape::IsFullyDefined() const` {#bool_tensorflow_PartialTensorShape_IsFullyDefined}
 

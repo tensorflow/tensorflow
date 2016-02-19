@@ -320,9 +320,9 @@ Here's an example from the module docsting in `image_ops.py`:
 
     ```python
     # Decode an image and convert it to HSV.
-    rgb_image = tf.decode_png(...,  channels=3)
-    rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-    hsv_image = tf.rgb_to_hsv(rgb_image)
+    rgb_image = tf.image.decode_png(...,  channels=3)
+    rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+    hsv_image = tf.image.rgb_to_hsv(rgb_image)
     ```
 
 ### Requirements, caveats, important notes.

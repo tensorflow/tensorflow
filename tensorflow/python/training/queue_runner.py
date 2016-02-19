@@ -292,6 +292,7 @@ class QueueRunner(object):
 
   @staticmethod
   def from_proto(queue_runner_def):
+    """Returns a `QueueRunner` object created from `queue_runner_def`."""
     return QueueRunner(queue_runner_def=queue_runner_def)
 
 

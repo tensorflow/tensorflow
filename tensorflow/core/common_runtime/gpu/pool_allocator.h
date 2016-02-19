@@ -119,6 +119,8 @@ class PoolAllocator : public VisitableAllocator {
     return pool_size_limit_;
   }
 
+  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
+
  private:
   struct PtrRecord {
     void* ptr;

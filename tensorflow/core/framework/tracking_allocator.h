@@ -55,6 +55,7 @@ class TrackingAllocator : public Allocator {
   size_t RequestedSize(void* ptr) override;
   size_t AllocatedSize(void* ptr) override;
   int64 AllocationId(void* ptr) override;
+  void GetStats(AllocatorStats* stats) override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a pair where the first value is the total number of bytes

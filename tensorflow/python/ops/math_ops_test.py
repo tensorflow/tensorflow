@@ -81,5 +81,16 @@ class ModTest(test_util.TensorFlowTestCase):
           y_np = np.mod(x_np, denom)
         self.assertAllClose(y_tf_np, y_np)
 
+
+class SquaredDifferenceTest(test_util.TensorFlowTestCase):
+
+  def testSquaredDifference(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    y = np.array([-3, -2, -1], dtype=np.int32)
+    z = (x - y)*(x - y)
+    with self.test_session():
+      z_tf = math_ops.squared_difference(x, y).eval()
+      self.assertAllClose(z, z_tf)
+
 if __name__ == "__main__":
   googletest.main()
