@@ -319,7 +319,6 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   # Concat each of the forward/backward outputs
   outputs = [array_ops.concat(1, [fw, bw])
              for fw, bw in zip(output_fw, output_bw)]
-
   return (outputs, output_state_fw, output_state_bw)
 
 
