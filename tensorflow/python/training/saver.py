@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import os.path
+import re
 import time
 
 import numpy as np
@@ -810,6 +811,23 @@ class Saver(object):
     name, _ = p
     return name
 
+  def _MetaGraphFilename(self, checkpoint_filename, meta_graph_suffix="meta"):
+    """Returns the meta graph filename.
+
+    Args:
+      checkpoint_filename: Name of the checkpoint file.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+
+    Returns:
+      MetaGraph file name.
+    """
+    # If the checkpoint_filename is sharded, the checkpoint_filename could
+    # be of format model.ckpt-step#-?????-of-shard#. For example,
+    # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
+    basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
+    meta_graph_filename = ".".join([basename, meta_graph_suffix])
+    return meta_graph_filename
+
   def _MaybeDeleteOldCheckpoints(self, latest_save_path,
                                  meta_graph_suffix="meta"):
     """Deletes old checkpoints if necessary.
@@ -822,7 +840,7 @@ class Saver(object):
 
     Args:
       latest_save_path: Name including path of checkpoint file to save.
-      meta_graph_suffix: Suffix for MetaGraphDef file. Defaults to 'meta'.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
     """
     if not self.saver_def.max_to_keep:
       return
@@ -846,7 +864,10 @@ class Saver(object):
       for f in gfile.Glob(self._CheckpointFilename(p)):
         try:
           gfile.Remove(f)
-          gfile.Remove(".".join([f, meta_graph_suffix]))
+          meta_graph_filename = self._MetaGraphFilename(
+              f, meta_graph_suffix=meta_graph_suffix)
+          if gfile.Exists(meta_graph_filename):
+            gfile.Remove(meta_graph_filename)
         except OSError as e:
           logging.warning("Ignoring: %s", str(e))
 
@@ -935,7 +956,7 @@ class Saver(object):
         kept in the same directory as the checkpoint files, is automatically
         managed by the saver to keep track of recent checkpoints.  Defaults to
         'checkpoint'.
-      meta_graph_suffix: Suffix for MetaGraphDef file. Defaults to 'meta'.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
 
     Returns:
       A string: path at which the variables were saved.  If the saver is
@@ -970,9 +991,10 @@ class Saver(object):
                                     meta_graph_suffix=meta_graph_suffix)
     update_checkpoint_state(save_path, model_checkpoint_path,
                             self.last_checkpoints, latest_filename)
-    meta_graph_file_name = ".".join([checkpoint_file, meta_graph_suffix])
+    meta_graph_filename = self._MetaGraphFilename(
+        checkpoint_file, meta_graph_suffix=meta_graph_suffix)
     with sess.graph.as_default():
-      self.export_meta_graph(meta_graph_file_name)
+      self.export_meta_graph(meta_graph_filename)
 
     return model_checkpoint_path
 
