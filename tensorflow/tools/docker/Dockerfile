@@ -28,7 +28,7 @@ RUN pip --no-cache-dir install \
     python -m ipykernel.kernelspec
 
 # Install TensorFlow CPU version.
-ENV TENSORFLOW_VERSION 0.7.0
+ENV TENSORFLOW_VERSION 0.7.1
 RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-py2-none-linux_x86_64.whl
 
