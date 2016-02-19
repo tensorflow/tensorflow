@@ -67,6 +67,8 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   int64 AllocationId(void* ptr) override;
 
+  void GetStats(AllocatorStats* stats) override;
+
  private:
   struct Bin;
 
@@ -280,6 +282,9 @@ class GPUBFCAllocator : public VisitableAllocator {
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
   int64 next_allocation_id_ GUARDED_BY(lock_);
+
+  // Stats.
+  AllocatorStats stats_ GUARDED_BY(lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 };

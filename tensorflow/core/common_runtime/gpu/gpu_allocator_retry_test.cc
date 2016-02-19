@@ -49,12 +49,9 @@ class FakeAllocator {
   }
 
   void DeallocateRaw(void* ptr) {
-    retry_.DeallocateRaw(
-        [this](void* p) {
-          mutex_lock l(mu_);
-          ++memory_capacity_;
-        },
-        ptr);
+    mutex_lock l(mu_);
+    ++memory_capacity_;
+    retry_.NotifyDealloc();
   }
 
  private:

@@ -94,7 +94,7 @@ new_git_repository(
 new_git_repository(
   name = "d3",
   build_file = "bower.BUILD",
-  remote = "https://github.com/mbostock/d3.git",
+  remote = "https://github.com/mbostock-bower/d3-bower.git",
   tag = "v3.5.6",
 )
 
@@ -136,7 +136,7 @@ new_git_repository(
 new_git_repository(
   name = "iron_a11y_keys_behavior",
   build_file = "bower.BUILD",
-  remote = "https://github.com/PolymerElements/iron-a11y-keys-behavior.git",
+  remote = "https://github.com/polymerelements/iron-a11y-keys-behavior.git",
   tag = "v1.1.1",
 )
 
@@ -151,7 +151,7 @@ new_git_repository(
   name = "iron_autogrow_textarea",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-autogrow-textarea.git",
-  tag = "v1.0.10",
+  tag = "v1.0.11",
 )
 
 new_git_repository(
@@ -179,7 +179,7 @@ new_git_repository(
   name = "iron_component_page",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-component-page.git",
-  tag = "v1.1.4",
+  tag = "v1.1.3",
 )
 
 new_git_repository(
@@ -193,7 +193,7 @@ new_git_repository(
   name = "iron_dropdown",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-dropdown.git",
-  tag = "v1.1.0",
+  tag = "v1.2.0",
 )
 
 new_git_repository(
@@ -206,8 +206,8 @@ new_git_repository(
 new_git_repository(
   name = "iron_flex_layout",
   build_file = "bower.BUILD",
-  remote = "https://github.com/polymerelements/iron-flex-layout.git",
-  tag = "v1.2.2",
+  remote = "https://github.com/PolymerElements/iron-flex-layout.git",
+  tag = "v1.2.3",
 )
 
 new_git_repository(
@@ -220,14 +220,14 @@ new_git_repository(
 new_git_repository(
   name = "iron_icon",
   build_file = "bower.BUILD",
-  remote = "https://github.com/PolymerElements/iron-icon.git",
+  remote = "https://github.com/polymerelements/iron-icon.git",
   tag = "v1.0.7",
 )
 
 new_git_repository(
   name = "iron_icons",
   build_file = "bower.BUILD",
-  remote = "https://github.com/PolymerElements/iron-icons.git",
+  remote = "https://github.com/polymerelements/iron-icons.git",
   tag = "v1.1.3",
 )
 
@@ -256,7 +256,7 @@ new_git_repository(
   name = "iron_menu_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/PolymerElements/iron-menu-behavior.git",
-  tag = "v1.1.0",
+  tag = "v1.1.1",
 )
 
 new_git_repository(
@@ -270,7 +270,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.2.0",
+  tag = "v1.3.2",
 )
 
 new_git_repository(
@@ -284,7 +284,7 @@ new_git_repository(
   name = "iron_resizable_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-resizable-behavior.git",
-  tag = "v1.0.2",
+  tag = "v1.0.3",
 )
 
 new_git_repository(

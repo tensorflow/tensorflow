@@ -51,8 +51,10 @@ mathematical functions to your graph.
 @@cos
 @@sin
 @@lgamma
+@@digamma
 @@erf
 @@erfc
+@@squared_difference
 
 ## Matrix Math Functions
 
@@ -1213,6 +1215,23 @@ def lgamma(x, name=None):
     return gen_math_ops._lgamma(x, name=name)
 
 
+def digamma(x, name=None):
+  """Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Digamma") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._digamma(x, name=name)
+
+
 def erf(x, name=None):
   """Computes Gauss error function of `x` element-wise.
 
@@ -1271,6 +1290,7 @@ ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
 ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
+ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
@@ -1296,6 +1316,7 @@ ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("NotEqual")
 @ops.RegisterShape("Pow")
 @ops.RegisterShape("Sub")
+@ops.RegisterShape("SquaredDifference")
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   shape_x = op.inputs[0].get_shape()

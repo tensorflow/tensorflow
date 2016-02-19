@@ -263,9 +263,16 @@ def _ErfcGrad(op, grad):
 
 
 @ops.RegisterGradient("Lgamma")
-def _LgammaGrad(op, grad):  # pylint: disable=unused-argument
-  # TODO(ebrevdo): implement digamma
-  raise NotImplementedError("grad(Lgamma) == Digamma is not implemented")
+def _LgammaGrad(op, grad):
+  """Returns grad * digamma(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.digamma(x)
+
+
+@ops.RegisterGradient("Digamma")
+def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
+  raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
 
 
 @ops.RegisterGradient("Sigmoid")
@@ -399,6 +406,25 @@ def _MaximumGrad(op, grad):
 def _MinimumGrad(op, grad):
   """Returns grad*(x < y, x >= y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
+
+
+@ops.RegisterGradient("SquaredDifference")
+def _SquaredDifferenceGrad(op, grad):
+  """Returns the gradient for (x-y)^2."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  # .op works with Tensors or IndexedSlices
+  with ops.control_dependencies([grad.op]):
+    # The parens ensure that if grad is IndexedSlices, it'll get multiplied by
+    # Tensor (not a number like 2.0) which causes it to convert to Tensor.
+    x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
+  return (array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx),
+          -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy))
 
 
 # Logical operations have no gradients.

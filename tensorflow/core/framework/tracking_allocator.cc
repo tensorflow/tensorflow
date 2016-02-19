@@ -96,6 +96,10 @@ int64 TrackingAllocator::AllocationId(void* ptr) {
   return allocator_->AllocationId(ptr);
 }
 
+void TrackingAllocator::GetStats(AllocatorStats* stats) {
+  allocator_->GetStats(stats);
+}
+
 std::pair<size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
   size_t high_watermark;
   size_t total_bytes;

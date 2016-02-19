@@ -955,7 +955,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, trainable=True, collections=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -973,9 +973,13 @@ with tf.variable_scope("foo", reuse=True)
 ```
 
 If initializer is `None` (the default), the default initializer passed in
-the constructor is used. If that one is `None` too, a
+the variable scope will be used. If that one is `None` too, a
 `UniformUnitScalingInitializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
+
+Similarly, if the regularizer is `None` (the default), the default regularizer
+passed in the variable scope will be used (if that is `None` too,
+then by default no regularization is performed).
 
 ##### Args:
 
@@ -984,6 +988,9 @@ a Tensor, in which case the variable is initialized to this value and shape.
 *  <b>`shape`</b>: shape of the new or existing variable.
 *  <b>`dtype`</b>: type of the new or existing variable (defaults to `DT_FLOAT`).
 *  <b>`initializer`</b>: initializer for the variable if one is created.
+*  <b>`regularizer`</b>: a (Tensor -> Tensor or None) function; the result of
+    applying it on a newly created variable will be added to the collection
+    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
@@ -999,6 +1006,221 @@ a Tensor, in which case the variable is initialized to this value and shape.
 *  <b>`ValueError`</b>: when creating a new variable and shape is not declared,
     or when violating reuse during variable creation. Reuse is set inside
     `variable_scope`.
+
+
+- - -
+
+### `class tf.VariableScope` {#VariableScope}
+
+Variable scope object to carry defaults to provide to get_variable.
+
+Many of the arguments we need for get_variable in a variable store are most
+easily handled with a context. This object is used for the defaults.
+
+Attributes:
+  name: name of the current scope, used as prefix in get_variable.
+  initializer: default initializer passed to get_variable.
+  regularizer: default regularizer passed to get_variable.
+  reuse: Boolean or None, setting the reuse in get_variable.
+  name_scope: The name passed to tf.name_scope.
+- - -
+
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, name_scope='')` {#VariableScope.__init__}
+
+Creates a new VariableScope with the given properties.
+
+
+- - -
+
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#VariableScope.get_variable}
+
+Gets an existing variable with this name or create a new one.
+
+
+- - -
+
+#### `tf.VariableScope.initializer` {#VariableScope.initializer}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.name` {#VariableScope.name}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.regularizer` {#VariableScope.regularizer}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.reuse` {#VariableScope.reuse}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.reuse_variables()` {#VariableScope.reuse_variables}
+
+Reuse variables in this scope.
+
+
+- - -
+
+#### `tf.VariableScope.set_initializer(initializer)` {#VariableScope.set_initializer}
+
+Set initializer for this scope.
+
+
+- - -
+
+#### `tf.VariableScope.set_regularizer(regularizer)` {#VariableScope.set_regularizer}
+
+Set regularizer for this scope.
+
+
+
+- - -
+
+### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None)` {#variable_scope}
+
+Returns a context for variable scope.
+
+Variable scope allows to create new variables and to share already created
+ones while providing checks to not create or share by accident. For details,
+see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+here we present only a few basic examples.
+
+Simple example of how to create a new variable:
+
+```python
+with tf.variable_scope("foo"):
+    with tf.variable_scope("bar"):
+        v = tf.get_variable("v", [1])
+        assert v.name == "foo/bar/v:0"
+```
+
+Basic example of sharing a variable:
+
+```python
+with tf.variable_scope("foo"):
+    v = tf.get_variable("v", [1])
+with tf.variable_scope("foo", reuse=True):
+    v1 = tf.get_variable("v", [1])
+assert v1 == v
+```
+
+Sharing a variable by capturing a scope and setting reuse:
+
+```python
+with tf.variable_scope("foo") as scope:
+    v = tf.get_variable("v", [1])
+    scope.reuse_variables()
+    v1 = tf.get_variable("v", [1])
+assert v1 == v
+```
+
+To prevent accidental sharing of variables, we raise an exception when
+getting an existing variable in a non-reusing scope.
+
+```python
+with tf.variable_scope("foo"):
+    v = tf.get_variable("v", [1])
+    v1 = tf.get_variable("v", [1])
+    #  Raises ValueError("... v already exists ...").
+```
+
+Similarly, we raise an exception when trying to get a variable that
+does not exist in reuse mode.
+
+```python
+with tf.variable_scope("foo", reuse=True):
+    v = tf.get_variable("v", [1])
+    #  Raises ValueError("... v does not exists ...").
+```
+
+Note that the `reuse` flag is inherited: if we open a reusing scope,
+then all its sub-scopes become reusing as well.
+
+##### Args:
+
+
+*  <b>`name_or_scope`</b>: `string` or `VariableScope`: the scope to open.
+*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
+    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+*  <b>`initializer`</b>: default initializer for variables within this scope.
+*  <b>`regularizer`</b>: default regularizer for variables within this scope.
+
+##### Returns:
+
+  A scope that can be to captured and reused.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
+    a reuse scope, or if reuse is not `None` or `True`.
+*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
+
+
+- - -
+
+### `tf.variable_op_scope(values, name, default_name, initializer=None, regularizer=None)` {#variable_op_scope}
+
+Returns a context manager for defining an op that creates variables.
+
+This context manager validates that the given `values` are from the
+same graph, ensures that that graph is the default graph, and pushes a
+name scope and a variable scope.
+
+If `name` is not None, it is used as is in the variable scope. If `name`
+is None, then `default_name` is used.  In that case, if the same name has been
+previously used in the same scope, it will made unique be appending `_N` to
+it.
+
+This is intended to be used when defining generic ops and so reuse is always
+inherited.
+
+For example, to define a new Python op called `my_op_with_vars`:
+
+```python
+def my_op_with_vars(a, b, name=None):
+  with tf.variable_op_scope([a, b], name, "MyOp") as scope:
+    a = tf.convert_to_tensor(a, name="a")
+    b = tf.convert_to_tensor(b, name="b")
+    c = tf.get_variable('c')
+    # Define some computation that uses `a`, `b`, and `c`.
+    return foo_op(..., name=scope)
+```
+
+##### Args:
+
+
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
+*  <b>`name`</b>: The name argument that is passed to the op function, this name is not
+    uniquified in the variable scope.
+*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
+    name will be uniquified.
+*  <b>`initializer`</b>: A default initializer to pass to variable scope.
+*  <b>`regularizer`</b>: default regularizer for variables within this scope.
+
+##### Returns:
+
+  A context manager for use in defining a Python op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
+    a reuse scope, or if reuse is not `None` or `True`.
+*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
 
 
 - - -
@@ -1106,138 +1328,12 @@ of collisions with kwargs.
 *  <b>`ValueError`</b>: if the name is None.
 
 
-- - -
-
-### `tf.variable_op_scope(values, name, default_name, initializer=None)` {#variable_op_scope}
-
-Returns a context manager for defining an op that creates variables.
-
-This context manager validates that the given `values` are from the
-same graph, ensures that that graph is the default graph, and pushes a
-name scope and a variable scope.
-
-If `name` is not None, it is used as is in the variable scope. If `name`
-is None, then `default_name` is used.  In that case, if the same name has been
-previously used in the same scope, it will made unique be appending `_N` to
-it.
-
-This is intended to be used when defining generic ops and so reuse is always
-inherited.
-
-For example, to define a new Python op called `my_op_with_vars`:
-
-```python
-def my_op_with_vars(a, b, name=None):
-  with tf.variable_op_scope([a, b], name, "MyOp") as scope:
-    a = tf.convert_to_tensor(a, name="a")
-    b = tf.convert_to_tensor(b, name="b")
-    c = tf.get_variable('c')
-    # Define some computation that uses `a`, `b`, and `c`.
-    return foo_op(..., name=scope)
-```
-
-##### Args:
-
-
-*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
-*  <b>`name`</b>: The name argument that is passed to the op function, this name is not
-    uniquified in the variable scope.
-*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
-    name will be uniquified.
-*  <b>`initializer`</b>: A default initializer to pass to variable scope.
-
-##### Returns:
-
-  A context manager for use in defining a Python op.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
-    a reuse scope, or if reuse is not `None` or `True`.
-*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
-
 
 - - -
 
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None)` {#variable_scope}
+### `tf.no_regularizer(_)` {#no_regularizer}
 
-Returns a context for variable scope.
-
-Variable scope allows to create new variables and to share already created
-ones while providing checks to not create or share by accident. For details,
-see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
-here we present only a few basic examples.
-
-Simple example of how to create a new variable:
-
-```python
-with tf.variable_scope("foo"):
-    with tf.variable_scope("bar"):
-        v = tf.get_variable("v", [1])
-        assert v.name == "foo/bar/v:0"
-```
-
-Basic example of sharing a variable:
-
-```python
-with tf.variable_scope("foo"):
-    v = tf.get_variable("v", [1])
-with tf.variable_scope("foo", reuse=True):
-    v1 = tf.get_variable("v", [1])
-assert v1 == v
-```
-
-Sharing a variable by capturing a scope and setting reuse:
-
-```python
-with tf.variable_scope("foo") as scope:
-    v = tf.get_variable("v", [1])
-    scope.reuse_variables()
-    v1 = tf.get_variable("v", [1])
-assert v1 == v
-```
-
-To prevent accidental sharing of variables, we raise an exception when
-getting an existing variable in a non-reusing scope.
-
-```python
-with tf.variable_scope("foo"):
-    v = tf.get_variable("v", [1])
-    v1 = tf.get_variable("v", [1])
-    #  Raises ValueError("... v already exists ...").
-```
-
-Similarly, we raise an exception when trying to get a variable that
-does not exist in reuse mode.
-
-```python
-with tf.variable_scope("foo", reuse=True):
-    v = tf.get_variable("v", [1])
-    #  Raises ValueError("... v does not exists ...").
-```
-
-Note that the `reuse` flag is inherited: if we open a reusing scope,
-then all its sub-scopes become reusing as well.
-
-##### Args:
-
-
-*  <b>`name_or_scope`</b>: `string` or `VariableScope`: the scope to open.
-*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
-    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
-*  <b>`initializer`</b>: default initializer for variables within this scope.
-
-##### Returns:
-
-  A scope that can be to captured and reused.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
-    a reuse scope, or if reuse is not `None` or `True`.
-*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
+Use this function to prevent regularization of variables.
 
 
 

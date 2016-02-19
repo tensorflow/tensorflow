@@ -536,25 +536,15 @@ def moments(x, axes, name=None, keep_dims=False):
       divisor = math_ops.inv(divisor, name="divisor")
     constant_axes = constant_op.constant(axes, name="axes")
     # Note: We do not use Mean here because it is very slow on GPU.
-    # Note 2: The expression below is potentially more stable.
-    # It is however a bit slower and stability doesn't appear to be an issue.
-    # mean = math_ops.reduce_sum(math_ops.mul(x, divisor), axes, name="mean")
-    # var = math_ops.reduce_sum(math_ops.mul(math_ops.square(x - mean),
-    #                                        divisor), axes,
-    #                    name="variance")
     mean = math_ops.mul(
         math_ops.reduce_sum(x,
                             constant_axes,
                             keep_dims=True),
         divisor,
         name="mean")
-    # Give x-mean a specific name, so the caller might take advantage of it.
-    # The caller should have a fallback plan, however: this tensor may not be
-    # available if this function implementation changes.
-    x_centered = math_ops.sub(x, mean, name="x_centered")
     var = math_ops.mul(
         math_ops.reduce_sum(
-            math_ops.square(x_centered),
+            math_ops.squared_difference(x, mean),
             constant_axes,
             keep_dims=keep_dims),
         divisor,
