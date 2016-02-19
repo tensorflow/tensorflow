@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -200,27 +201,27 @@ typedef Eigen::GpuDevice GPUDevice;
   OP_REQUIRES(                                                                 \
       context, out_backprop.dims() == 4,                                       \
       errors::InvalidArgument(label, ": out_backprop must be 4-dimensional")); \
-  const int64 batch = input_shape.dim_size(0);                                 \
+  const int64 batch = GetTensorDim(input_shape, data_format_, 'N');            \
   OP_REQUIRES(                                                                 \
-      context, batch == out_backprop.dim_size(0),                              \
+      context, batch == GetTensorDim(out_backprop, data_format_, 'N'),         \
       errors::InvalidArgument(                                                 \
           label, ": input and out_backprop must have the same batch size"));   \
-  const int64 input_rows = input_shape.dim_size(1);                            \
-  const int64 input_cols = input_shape.dim_size(2);                            \
+  const int64 input_rows = GetTensorDim(input_shape, data_format_, 'H');       \
+  const int64 input_cols = GetTensorDim(input_shape, data_format_, 'W');       \
   const int64 filter_rows = filter_shape.dim_size(0);                          \
   const int64 filter_cols = filter_shape.dim_size(1);                          \
-  const int64 output_rows = out_backprop.dim_size(1);                          \
-  const int64 output_cols = out_backprop.dim_size(2);                          \
-  const int64 in_depth = input_shape.dim_size(3);                              \
+  const int64 output_rows = GetTensorDim(out_backprop, data_format_, 'H');     \
+  const int64 output_cols = GetTensorDim(out_backprop, data_format_, 'W');     \
+  const int64 in_depth = GetTensorDim(input_shape, data_format_, 'C');         \
   OP_REQUIRES(context, in_depth == filter_shape.dim_size(2),                   \
               errors::InvalidArgument(                                         \
                   label, ": input and filter must have the same depth"));      \
   const int64 out_depth = filter_shape.dim_size(3);                            \
   OP_REQUIRES(                                                                 \
-      context, out_depth == out_backprop.dim_size(3),                          \
+      context, out_depth == GetTensorDim(out_backprop, data_format_, 'C'),     \
       errors::InvalidArgument(                                                 \
           label, ": filter and out_backprop must have the same out_depth"));   \
-  const auto stride = strides_[1];                                             \
+  const auto stride = GetTensorDim(strides_, data_format_, 'H');               \
   int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                  \
   if (filter_cols == filter_rows && filter_rows == 1 && stride == 1) {         \
     out_rows = input_rows;                                                     \
@@ -290,6 +291,13 @@ class Conv2DFastBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DFastBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Eigen Conv2DFastBackpropInputOp only supports NHWC."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -332,6 +340,7 @@ class Conv2DFastBackpropInputOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DFastBackpropInputOp);
 };
@@ -342,6 +351,13 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Conv2DCustomBackpropInputOp only supports NHWC."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -524,6 +540,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);
 };
@@ -550,6 +567,13 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DFastBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Conv2DFastBackpropFilterOp only supports NHWC."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -593,6 +617,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DFastBackpropFilterOp);
 };
@@ -603,6 +628,13 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Conv2DCustomBackpropFilterOp only supports NHWC."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
@@ -746,6 +778,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropFilterOp);
 };
@@ -777,16 +810,24 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DSlowBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
+    int stride_n = GetTensorDim(strides_, data_format_, 'N');
+    int stride_h = GetTensorDim(strides_, data_format_, 'H');
+    int stride_w = GetTensorDim(strides_, data_format_, 'W');
+    int stride_c = GetTensorDim(strides_, data_format_, 'C');
+    OP_REQUIRES(context, stride_h == stride_w,
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
     OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
+        context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
@@ -829,7 +870,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
-      if (filter_rows == 1 && filter_cols == 1 && stride == 1) {
+      if (filter_rows == 1 && filter_cols == 1 && stride == 1 &&
+          data_format_ == FORMAT_NHWC) {
         // 1x1 filter, so call cublas directly.
         const uint64 m = batch * input_rows * input_cols;
         const uint64 k = out_depth;
@@ -861,17 +903,17 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         // If a padding dimension is odd, we have one more element on the right
         // side or the bottom side. This is unsupported in cudnn. Therefore,
         // we pad that extra element and make it compatible.
-        compatible_input_shape = TensorShape(
-            {input_shape.dim_size(0), input_shape.dim_size(1) + rows_odd,
-             input_shape.dim_size(2) + cols_odd, input_shape.dim_size(3)});
+        compatible_input_shape =
+            ShapeFromFormat(data_format_, batch, input_rows + rows_odd,
+                            input_cols + cols_odd, in_depth);
       } else {
         compatible_input_shape = input_shape;
       }
 
       perftools::gputools::dnn::BatchDescriptor input_desc;
       input_desc.set_count(batch)
-          .set_height(compatible_input_shape.dim_size(1))
-          .set_width(compatible_input_shape.dim_size(2))
+          .set_height(GetTensorDim(compatible_input_shape, data_format_, 'H'))
+          .set_width(GetTensorDim(compatible_input_shape, data_format_, 'W'))
           .set_feature_map_count(in_depth)
           .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
       perftools::gputools::dnn::BatchDescriptor output_desc;
@@ -917,27 +959,33 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           To32Bit(transformed_filter.tensor<T, 4>()));
 
       Tensor transformed_out_backprop;
+      if (data_format_ == FORMAT_NHWC) {
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(
+                           DataTypeToEnum<T>::value,
+                           ShapeFromFormat(FORMAT_NCHW, batch, output_rows,
+                                           output_cols, out_depth),
+                           &transformed_out_backprop));
+
+        functor::NHWCToNCHW<Device, T>()(
+            context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+            transformed_out_backprop.tensor<T, 4>());
+      } else {
+        transformed_out_backprop = out_backprop;
+      }
+
+      Tensor pre_transformed_in_backprop;
       OP_REQUIRES_OK(
           context,
           context->allocate_temp(
               DataTypeToEnum<T>::value,
-              TensorShape({batch, out_depth, output_rows, output_cols}),
-              &transformed_out_backprop));
-
-      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
-                                       out_backprop.tensor<T, 4>(),
-                                       transformed_out_backprop.tensor<T, 4>());
-
-      Tensor pre_transformed_in_backprop;
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  TensorShape({
-                                      compatible_input_shape.dim_size(0),
-                                      compatible_input_shape.dim_size(3),
-                                      compatible_input_shape.dim_size(1),
-                                      compatible_input_shape.dim_size(2),
-                                  }),
-                                  &pre_transformed_in_backprop));
+              ShapeFromFormat(
+                  FORMAT_NCHW,
+                  GetTensorDim(compatible_input_shape, data_format_, 'N'),
+                  GetTensorDim(compatible_input_shape, data_format_, 'H'),
+                  GetTensorDim(compatible_input_shape, data_format_, 'W'),
+                  GetTensorDim(compatible_input_shape, data_format_, 'C')),
+              &pre_transformed_in_backprop));
 
       auto out_backprop_ptr =
           AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -955,9 +1003,10 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
       bool cudnn_launch_status =
-          stream->ThenConvolveBackwardDataWithScratch(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator)
+          stream
+              ->ThenConvolveBackwardDataWithScratch(
+                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator)
               .ok();
 
       if (!cudnn_launch_status) {
@@ -969,14 +1018,16 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
 
       if (rows_odd || cols_odd) {
         Tensor in_backprop_remove_padding;
-        OP_REQUIRES_OK(context,
-                       context->allocate_temp(
-                           DataTypeToEnum<T>::value,
-                           TensorShape({
-                               input_shape.dim_size(0), input_shape.dim_size(3),
-                               input_shape.dim_size(1), input_shape.dim_size(2),
-                           }),
-                           &in_backprop_remove_padding));
+        OP_REQUIRES_OK(
+            context,
+            context->allocate_temp(
+                DataTypeToEnum<T>::value,
+                ShapeFromFormat(FORMAT_NCHW,
+                                GetTensorDim(input_shape, data_format_, 'N'),
+                                GetTensorDim(input_shape, data_format_, 'H'),
+                                GetTensorDim(input_shape, data_format_, 'W'),
+                                GetTensorDim(input_shape, data_format_, 'C')),
+                &in_backprop_remove_padding));
 
         // Remove the padding for odd rows or cols.
         functor::PadInput<GPUDevice, T, int>()(
@@ -984,17 +1035,23 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
             To32Bit(const_cast<const Tensor&>(pre_transformed_in_backprop)
                         .tensor<T, 4>()),
             0, -rows_odd, 0, -cols_odd,
-            To32Bit(in_backprop_remove_padding.tensor<T, 4>()));
+            To32Bit(in_backprop_remove_padding.tensor<T, 4>()), FORMAT_NCHW);
 
         pre_transformed_in_backprop = in_backprop_remove_padding;
       }
 
-      auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-      functor::NCHWToNHWC<Device, T>()(
-          context->eigen_device<Device>(),
-          toConstTensor(pre_transformed_in_backprop).template tensor<T, 4>(),
-          in_backprop->tensor<T, 4>());
+      if (data_format_ == FORMAT_NHWC) {
+        auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
+        functor::NCHWToNHWC<Device, T>()(
+            context->eigen_device<Device>(),
+            toConstTensor(pre_transformed_in_backprop).template tensor<T, 4>(),
+            in_backprop->tensor<T, 4>());
+      } else {
+        *in_backprop = pre_transformed_in_backprop;
+      }
     } else {
+      CHECK(data_format_ == FORMAT_NHWC)
+          << "Non-Cudnn convolution only supports NHWC";
       // We fill out a padded out_backprop
       TensorShape padded_out_shape(
           {batch, padded_out_rows, padded_out_cols, out_depth});
@@ -1045,6 +1102,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
   std::vector<int32> strides_;
   Padding padding_;
   bool use_cudnn_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropInputOp);
 };
@@ -1055,16 +1113,21 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DSlowBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
+    int stride_n = GetTensorDim(strides_, data_format_, 'N');
+    int stride_h = GetTensorDim(strides_, data_format_, 'H');
+    int stride_w = GetTensorDim(strides_, data_format_, 'W');
+    int stride_c = GetTensorDim(strides_, data_format_, 'C');
+    OP_REQUIRES(context, stride_h == stride_w,
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
     OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
+        context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
@@ -1107,7 +1170,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
-      if (filter_rows == 1 && filter_cols == 1 && stride == 1) {
+      if (filter_rows == 1 && filter_cols == 1 && stride == 1 &&
+          data_format_ == FORMAT_NHWC) {
         const uint64 m = in_depth;
         const uint64 k = batch * input_rows * input_cols;
         const uint64 n = out_depth;
@@ -1152,22 +1216,22 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
             context,
             context->allocate_temp(
                 DataTypeToEnum<T>::value,
-                TensorShape({input.dim_size(0), input.dim_size(1) + rows_odd,
-                             input.dim_size(2) + cols_odd, input.dim_size(3)}),
+                ShapeFromFormat(data_format_, batch, input_rows + rows_odd,
+                                input_cols + cols_odd, in_depth),
                 &compatible_input));
 
         functor::PadInput<GPUDevice, T, int>()(
             context->template eigen_device<GPUDevice>(),
             To32Bit(input.tensor<T, 4>()), 0, rows_odd, 0, cols_odd,
-            To32Bit(compatible_input.tensor<T, 4>()));
+            To32Bit(compatible_input.tensor<T, 4>()), data_format_);
       } else {
         compatible_input = input;
       }
 
       perftools::gputools::dnn::BatchDescriptor input_desc;
       input_desc.set_count(batch)
-          .set_height(compatible_input.dim_size(1))
-          .set_width(compatible_input.dim_size(2))
+          .set_height(GetTensorDim(compatible_input, data_format_, 'H'))
+          .set_width(GetTensorDim(compatible_input, data_format_, 'W'))
           .set_feature_map_count(in_depth)
           .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
       perftools::gputools::dnn::BatchDescriptor output_desc;
@@ -1210,30 +1274,40 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
               &pre_transformed_filter_backprop));
 
       Tensor transformed_out_backprop;
-      OP_REQUIRES_OK(
-          context,
-          context->allocate_temp(
-              DataTypeToEnum<T>::value,
-              TensorShape({batch, out_depth, output_rows, output_cols}),
-              &transformed_out_backprop));
-      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
-                                       out_backprop.tensor<T, 4>(),
-                                       transformed_out_backprop.tensor<T, 4>());
+      if (data_format_ == FORMAT_NHWC) {
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(
+                           DataTypeToEnum<T>::value,
+                           ShapeFromFormat(FORMAT_NCHW, batch, output_rows,
+                                           output_cols, out_depth),
+                           &transformed_out_backprop));
+        functor::NHWCToNCHW<Device, T>()(
+            context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+            transformed_out_backprop.tensor<T, 4>());
+      } else {
+        transformed_out_backprop = out_backprop;
+      }
 
       Tensor transformed_input;
-      OP_REQUIRES_OK(
-          context,
-          context->allocate_temp(
-              DataTypeToEnum<T>::value,
-              TensorShape({
-                  compatible_input.dim_size(0), compatible_input.dim_size(3),
-                  compatible_input.dim_size(1), compatible_input.dim_size(2),
-              }),
-              &transformed_input));
-      functor::NHWCToNCHW<Device, T>()(
-          context->eigen_device<Device>(),
-          const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
-          transformed_input.tensor<T, 4>());
+      if (data_format_ == FORMAT_NHWC) {
+        OP_REQUIRES_OK(
+            context, context->allocate_temp(
+                         DataTypeToEnum<T>::value,
+                         ShapeFromFormat(
+                             FORMAT_NCHW,
+                             GetTensorDim(compatible_input, data_format_, 'N'),
+                             GetTensorDim(compatible_input, data_format_, 'H'),
+                             GetTensorDim(compatible_input, data_format_, 'W'),
+                             GetTensorDim(compatible_input, data_format_, 'C')),
+                         &transformed_input));
+        functor::NHWCToNCHW<Device, T>()(
+            context->eigen_device<Device>(),
+            const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
+            transformed_input.tensor<T, 4>());
+      } else {
+        transformed_input = compatible_input;
+      }
+
       auto out_backprop_ptr =
           AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
                          transformed_out_backprop.template flat<T>().size());
@@ -1278,6 +1352,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       //   [batch, out_rows, out_cols, out_depth]
       // And we need to change it to
       //   [out_depth, out_rows, out_cols, batch]
+      CHECK(data_format_ == FORMAT_NHWC)
+          << "Non-Cudnn convolution only supports NHWC";
+
       Eigen::DSizes<int, 4> out_order{3, 1, 2, 0};
       TensorShape padded_out_shape(
           {out_depth, padded_out_rows, padded_out_cols, batch});
@@ -1349,58 +1426,60 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   std::vector<int32> strides_;
   Padding padding_;
   bool use_cudnn_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
 };
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                  \
-  template <>                                                                \
-  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(                  \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,     \
-      const Eigen::DSizes<int, 4>& order,                                    \
-      const Eigen::array<bool, 4>& reverse_dims,                             \
-      typename TTypes<T, 4, int>::Tensor output);                            \
-  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;            \
-  template <>                                                                \
-  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(               \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,     \
-      const Eigen::DSizes<int, 4>& strides,                                  \
-      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,                \
-      const Eigen::DSizes<int, 4>& order,                                    \
-      typename TTypes<T, 4, int>::Tensor output);                            \
-  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;         \
-  template <>                                                                \
-  void TransformFilter<GPUDevice, T, int>::operator()(                       \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
-      typename TTypes<T, 4, int>::Tensor out);                               \
-  extern template struct TransformFilter<GPUDevice, T, int>;                 \
-  template <>                                                                \
-  void TransformDepth<GPUDevice, T, int>::operator()(                        \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
-      const Eigen::DSizes<int, 4>& shuffle,                                  \
-      typename TTypes<T, 4, int>::Tensor out);                               \
-  extern template struct TransformDepth<GPUDevice, T, int>;                  \
-  template <>                                                                \
-  void SpatialConvolution<GPUDevice, T>::operator()(                         \
-      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,              \
-      typename TTypes<T, 4>::ConstTensor input,                              \
-      typename TTypes<T, 4>::ConstTensor filter, int stride,                 \
-      const Eigen::PaddingType& padding);                                    \
-  extern template struct SpatialConvolution<GPUDevice, T>;                   \
-  template <>                                                                \
-  void SpatialConvolutionBackwardInput<GPUDevice, T>::operator()(            \
-      const GPUDevice& d, typename TTypes<T, 4>::Tensor in_backprop,         \
-      typename TTypes<T, 4>::ConstTensor filter,                             \
-      typename TTypes<T, 4>::ConstTensor output_backprop, int input_rows,    \
-      int input_cols, int stride);                                           \
-  extern template struct SpatialConvolutionBackwardInput<GPUDevice, T>;      \
-  template <>                                                                \
-  void PadInput<GPUDevice, T, int>::operator()(                              \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
-      int padding_rows_left, int padding_rows_right, int padding_cols_left,  \
-      int padding_cols_right, typename TTypes<T, 4, int>::Tensor out);       \
+#define DECLARE_GPU_SPEC(T)                                                 \
+  template <>                                                               \
+  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(                 \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,    \
+      const Eigen::DSizes<int, 4>& order,                                   \
+      const Eigen::array<bool, 4>& reverse_dims,                            \
+      typename TTypes<T, 4, int>::Tensor output);                           \
+  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;           \
+  template <>                                                               \
+  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(              \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,    \
+      const Eigen::DSizes<int, 4>& strides,                                 \
+      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,               \
+      const Eigen::DSizes<int, 4>& order,                                   \
+      typename TTypes<T, 4, int>::Tensor output);                           \
+  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;        \
+  template <>                                                               \
+  void TransformFilter<GPUDevice, T, int>::operator()(                      \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
+      typename TTypes<T, 4, int>::Tensor out);                              \
+  extern template struct TransformFilter<GPUDevice, T, int>;                \
+  template <>                                                               \
+  void TransformDepth<GPUDevice, T, int>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
+      const Eigen::DSizes<int, 4>& shuffle,                                 \
+      typename TTypes<T, 4, int>::Tensor out);                              \
+  extern template struct TransformDepth<GPUDevice, T, int>;                 \
+  template <>                                                               \
+  void SpatialConvolution<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,             \
+      typename TTypes<T, 4>::ConstTensor input,                             \
+      typename TTypes<T, 4>::ConstTensor filter, int stride,                \
+      const Eigen::PaddingType& padding);                                   \
+  extern template struct SpatialConvolution<GPUDevice, T>;                  \
+  template <>                                                               \
+  void SpatialConvolutionBackwardInput<GPUDevice, T>::operator()(           \
+      const GPUDevice& d, typename TTypes<T, 4>::Tensor in_backprop,        \
+      typename TTypes<T, 4>::ConstTensor filter,                            \
+      typename TTypes<T, 4>::ConstTensor output_backprop, int input_rows,   \
+      int input_cols, int stride);                                          \
+  extern template struct SpatialConvolutionBackwardInput<GPUDevice, T>;     \
+  template <>                                                               \
+  void PadInput<GPUDevice, T, int>::operator()(                             \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
+      int padding_rows_left, int padding_rows_right, int padding_cols_left, \
+      int padding_cols_right, typename TTypes<T, 4, int>::Tensor out,       \
+      TensorFormat data_format);                                            \
   extern template struct PadInput<GPUDevice, T, int>;
 
 DECLARE_GPU_SPEC(float);

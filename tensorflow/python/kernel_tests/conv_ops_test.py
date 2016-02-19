@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import test_util
+
 
 def GetInceptionShapes():
   """Iterator for the convolution shapes used in the Inception 2015 model.
@@ -105,10 +107,51 @@ def GetInceptionShapes():
     yield i, f, o, s, p
 
 
+def NHWCToNCHW(input_tensor):
+  """Convert the input from NHWC format to NCHW.
+
+  Args:
+    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+  Returns:
+    the converted tensor or a shape array
+  """
+  if isinstance(input_tensor, tf.Tensor):
+    return tf.transpose(input_tensor, [0, 3, 1, 2])
+  else:
+    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
+
+
+def NCHWToNHWC(input_tensor):
+  """Convert the input from NCHW format to NHWC.
+
+  Args:
+    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+  Returns:
+    the converted tensor or a shape array
+  """
+  if isinstance(input_tensor, tf.Tensor):
+    return tf.transpose(input_tensor, [0, 2, 3, 1])
+  else:
+    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
+
+
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [("NHWC", False), ("NHWC", True)]
+  if test_util.IsGoogleCudaEnabled():
+    # "NCHW" format is not currently supported on CPU.
+    test_configs += [("NCHW", True)]
+  return test_configs
+
+
 class Conv2DTest(tf.test.TestCase):
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
-                            padding, use_gpu):
+                            padding, data_format, use_gpu):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -118,6 +161,7 @@ class Conv2DTest(tf.test.TestCase):
         [kernel_rows, kernel_cols, input_depth, output_depth].
       stride: Stride.
       padding: Padding type.
+      data_format: Format of the data tensors.
       use_gpu: True if the operations should be run on GPU
     Returns:
       Symbolic tensor value that can be used to execute the computation
@@ -135,9 +179,18 @@ class Conv2DTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       t1 = tf.constant(x1, shape=tensor_in_sizes)
       t2 = tf.constant(x2, shape=filter_in_sizes)
-      conv = tf.nn.conv2d(t1, t2,
-                           strides=[1, stride, stride, 1],
-                           padding=padding)
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        t1 = NHWCToNCHW(t1)
+        strides = NHWCToNCHW(strides)
+      conv = tf.nn.conv2d(t1,
+                          t2,
+                          strides=strides,
+                          padding=padding,
+                          data_format=data_format)
+      if data_format == "NCHW":
+        conv = NCHWToNHWC(conv)
+
       return conv
 
   def _CompareFwdValues(self, tensor_in_sizes, filter_in_sizes,
@@ -154,29 +207,43 @@ class Conv2DTest(tf.test.TestCase):
     """
     x1 = np.random.rand(*tensor_in_sizes).astype(np.float32)
     x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
-    def _SetupVal(use_gpu):
+    def _SetupVal(data_format, use_gpu):
       with self.test_session(use_gpu=use_gpu):
         t1 = tf.constant(x1, shape=tensor_in_sizes)
         t2 = tf.constant(x2, shape=filter_in_sizes)
-        conv = tf.nn.conv2d(t1, t2, strides=[1, stride, stride, 1],
-                             padding=padding)
+        strides = [1, stride, stride, 1]
+        if data_format == "NCHW":
+          t1 = NHWCToNCHW(t1)
+          strides = NHWCToNCHW(strides)
+        conv = tf.nn.conv2d(t1,
+                            t2,
+                            strides=strides,
+                            padding=padding,
+                            data_format=data_format)
+        if data_format == "NCHW":
+          conv = NCHWToNHWC(conv)
         return conv
-    gpu_tensor = _SetupVal(use_gpu=True)
-    cpu_tensor = _SetupVal(use_gpu=False)
+    tensors = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      tensors.append(_SetupVal(data_format, use_gpu))
     with self.test_session() as sess:
-      (gpu_value, cpu_value) = sess.run([gpu_tensor, cpu_tensor])
-      self.assertAllClose(cpu_value, gpu_value, rtol=1e-5, atol=1e-5)
+      values = sess.run(tensors)
+      for i in range(1, len(values)):
+        self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride,
                     padding, expected):
-    tensor_cpu = self._SetupValuesForDevice(tensor_in_sizes, filter_in_sizes,
-                                            stride, padding, use_gpu=False)
-    tensor_gpu = self._SetupValuesForDevice(tensor_in_sizes, filter_in_sizes,
-                                            stride, padding, use_gpu=True)
+    tensors = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      result = self._SetupValuesForDevice(tensor_in_sizes,
+                                          filter_in_sizes,
+                                          stride,
+                                          padding,
+                                          data_format,
+                                          use_gpu=use_gpu)
+      tensors.append(result)
     with self.test_session() as sess:
-      tensors = [tensor_cpu, tensor_gpu]
-      (value_cpu, value_gpu) = sess.run(tensors)
-      values = [value_cpu, value_gpu]
+      values = sess.run(tensors)
       for i in range(len(tensors)):
         conv = tensors[i]
         value = values[i]
@@ -234,7 +301,8 @@ class Conv2DTest(tf.test.TestCase):
 
   # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
-                                 stride, padding, expected, use_gpu):
+                                 stride, padding, expected, data_format,
+                                 use_gpu):
     total_output_size = 1
     total_filter_size = 1
     for s in output_sizes:
@@ -246,12 +314,23 @@ class Conv2DTest(tf.test.TestCase):
     x1 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == "NCHW":
+        input_sizes = NHWCToNCHW(input_sizes)
       t0 = tf.constant(input_sizes, shape=[len(input_sizes)])
       t1 = tf.constant(x1, shape=filter_sizes)
       t2 = tf.constant(x2, shape=output_sizes)
-      conv = tf.nn.conv2d_backprop_input(t0, t1, t2,
-                                        strides=[1, stride, stride, 1],
-                                        padding=padding)
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        t2 = NHWCToNCHW(t2)
+        strides = NHWCToNCHW(strides)
+      conv = tf.nn.conv2d_backprop_input(t0,
+                                         t1,
+                                         t2,
+                                         strides=strides,
+                                         padding=padding,
+                                         data_format=data_format)
+      if data_format == "NCHW":
+        conv = NCHWToNHWC(conv)
       # "values" consists of two tensors for two backprops
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
@@ -263,33 +342,48 @@ class Conv2DTest(tf.test.TestCase):
                             stride, padding):
     x1 = np.random.rand(*filter_sizes).astype(np.float32)
     x2 = np.random.rand(*output_sizes).astype(np.float32)
-    def _GetVal(use_gpu):
+    def _GetVal(data_format, use_gpu):
       with self.test_session(use_gpu=use_gpu) as sess:
-        t0 = tf.constant(input_sizes, shape=[len(input_sizes)])
+        if data_format == "NCHW":
+          new_input_sizes = NHWCToNCHW(input_sizes)
+        else:
+          new_input_sizes = input_sizes
+        t0 = tf.constant(new_input_sizes, shape=[len(new_input_sizes)])
         t1 = tf.constant(x1, shape=filter_sizes)
         t2 = tf.constant(x2, shape=output_sizes)
-        conv = tf.nn.conv2d_backprop_input(t0, t1, t2,
-                                          strides=[1, stride, stride, 1],
-                                          padding=padding)
+        strides = [1, stride, stride, 1]
+        if data_format == "NCHW":
+          t2 = NHWCToNCHW(t2)
+          strides = NHWCToNCHW(strides)
+        conv = tf.nn.conv2d_backprop_input(t0,
+                                           t1,
+                                           t2,
+                                           strides=strides,
+                                           padding=padding,
+                                           data_format=data_format)
+        if data_format == "NCHW":
+          conv = NCHWToNHWC(conv)
         ret = conv.eval()
         self.assertShapeEqual(ret, conv)
         return ret
-    gpu_value = _GetVal(use_gpu=True)
-    cpu_value = _GetVal(use_gpu=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    values = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      values.append(_GetVal(data_format, use_gpu))
+
+    for i in range(1, len(values)):
+      self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
 
   def testConv2D2x2Depth1ValidBackpropInput(self):
     expected_output = [1.0, 4.0, 4.0, 3.0, 10.0, 8.0]
-    self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 1],
-                                    filter_sizes=[2, 2, 1, 1],
-                                    output_sizes=[1, 1, 2, 1],
-                                    stride=1, padding="VALID",
-                                    expected=expected_output, use_gpu=False)
-    self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 1],
-                                    filter_sizes=[2, 2, 1, 1],
-                                    output_sizes=[1, 1, 2, 1],
-                                    stride=1, padding="VALID",
-                                    expected=expected_output, use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 1],
+                                      filter_sizes=[2, 2, 1, 1],
+                                      output_sizes=[1, 1, 2, 1],
+                                      stride=1,
+                                      padding="VALID",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
 
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [14.0, 32.0, 50.0,
@@ -298,20 +392,20 @@ class Conv2DTest(tf.test.TestCase):
                        122.0, 140.0, 158.0,
                        478.0, 541.0, 604.0,
                        437.0, 482.0, 527.0]
-    self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 3],
-                                    filter_sizes=[2, 2, 3, 3],
-                                    output_sizes=[1, 1, 2, 3],
-                                    stride=1, padding="VALID",
-                                    expected=expected_output, use_gpu=False)
-    self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 3],
-                                    filter_sizes=[2, 2, 3, 3],
-                                    output_sizes=[1, 1, 2, 3],
-                                    stride=1, padding="VALID",
-                                    expected=expected_output, use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 3],
+                                      filter_sizes=[2, 2, 3, 3],
+                                      output_sizes=[1, 1, 2, 3],
+                                      stride=1,
+                                      padding="VALID",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
 
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
-                                  stride, padding, expected, use_gpu):
+                                  stride, padding, expected, data_format,
+                                  use_gpu):
     total_input_size = 1
     total_output_size = 1
     for s in input_sizes:
@@ -326,9 +420,17 @@ class Conv2DTest(tf.test.TestCase):
       t0 = tf.constant(x0, shape=input_sizes)
       t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
       t2 = tf.constant(x2, shape=output_sizes)
-      conv = tf.nn.conv2d_backprop_filter(t0, t1, t2,
-                                         strides=[1, stride, stride, 1],
-                                         padding=padding)
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        t0 = NHWCToNCHW(t0)
+        t2 = NHWCToNCHW(t2)
+        strides = NHWCToNCHW(strides)
+      conv = tf.nn.conv2d_backprop_filter(t0,
+                                          t1,
+                                          t2,
+                                          strides=strides,
+                                          padding=padding,
+                                          data_format=data_format)
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
     print("expected = ", expected)
@@ -339,54 +441,62 @@ class Conv2DTest(tf.test.TestCase):
                          stride, padding):
     x0 = np.random.rand(*input_sizes).astype(np.float32)
     x2 = np.random.rand(*output_sizes).astype(np.float32)
-    def _GetVal(use_gpu):
+    def _GetVal(data_format, use_gpu):
       with self.test_session(use_gpu=use_gpu) as sess:
         t0 = tf.constant(x0, shape=input_sizes)
         t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = tf.constant(x2, shape=output_sizes)
-        conv = tf.nn.conv2d_backprop_filter(t0, t1, t2,
-                                           strides=[1, stride, stride, 1],
-                                           padding=padding)
+        strides = [1, stride, stride, 1]
+        if data_format == "NCHW":
+          t0 = NHWCToNCHW(t0)
+          t2 = NHWCToNCHW(t2)
+          strides = NHWCToNCHW(strides)
+        conv = tf.nn.conv2d_backprop_filter(t0,
+                                            t1,
+                                            t2,
+                                            strides=strides,
+                                            padding=padding,
+                                            data_format=data_format)
         ret = conv.eval()
         self.assertShapeEqual(ret, conv)
         return ret
-    gpu_value = _GetVal(use_gpu=True)
-    cpu_value = _GetVal(use_gpu=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    values = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      values.append(_GetVal(data_format, use_gpu))
+    for i in range(1, len(values)):
+      self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
 
   def testConv2D2x2Depth1ValidBackpropFilter(self):
     expected = [5.0, 8.0, 14.0, 17.0]
-    self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 1],
-                                     filter_sizes=[2, 2, 1, 1],
-                                     output_sizes=[1, 1, 2, 1],
-                                     stride=1, padding="VALID",
-                                     expected=expected, use_gpu=False)
-    self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 1],
-                                     filter_sizes=[2, 2, 1, 1],
-                                     output_sizes=[1, 1, 2, 1],
-                                     stride=1, padding="VALID",
-                                     expected=expected, use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 1],
+                                       filter_sizes=[2, 2, 1, 1],
+                                       output_sizes=[1, 1, 2, 1],
+                                       stride=1,
+                                       padding="VALID",
+                                       expected=expected,
+                                       data_format=data_format,
+                                       use_gpu=use_gpu)
 
   def testConv2D2x2Depth3ValidBackpropFilter(self):
     expected = [17.0, 22.0, 27.0, 22.0, 29.0, 36.0, 27.0, 36.0, 45.0,
                 32.0, 43.0, 54.0, 37.0, 50.0, 63.0, 42.0, 57.0, 72.0,
                 62.0, 85.0, 108.0, 67.0, 92.0, 117.0, 72.0, 99.0, 126.0,
                 77.0, 106.0, 135.0, 82.0, 113.0, 144.0, 87.0, 120.0, 153.0]
-    self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 3],
-                                     filter_sizes=[2, 2, 3, 3],
-                                     output_sizes=[1, 1, 2, 3],
-                                     stride=1, padding="VALID",
-                                     expected=expected, use_gpu=False)
-    self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 3],
-                                     filter_sizes=[2, 2, 3, 3],
-                                     output_sizes=[1, 1, 2, 3],
-                                     stride=1, padding="VALID",
-                                     expected=expected, use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(input_sizes=[1, 2, 3, 3],
+                                       filter_sizes=[2, 2, 3, 3],
+                                       output_sizes=[1, 1, 2, 3],
+                                       stride=1,
+                                       padding="VALID",
+                                       expected=expected,
+                                       data_format=data_format,
+                                       use_gpu=use_gpu)
 
   # Gradient checkers
   def ConstructAndTestGradient(self, batch, input_rows, input_cols, filter_rows,
                                filter_cols, in_depth, out_depth, stride,
-                               padding, test_input, use_gpu):
+                               padding, test_input, data_format, use_gpu):
     input_shape = [batch, input_rows, input_cols, in_depth]
     filter_shape = [filter_rows, filter_cols, in_depth, out_depth]
     # TODO(yangke): re-factor the computation of output shape.
@@ -420,9 +530,20 @@ class Conv2DTest(tf.test.TestCase):
                                           dtype=data_type, name="input")
       filter_tensor = tf.constant(filter_data, shape=filter_shape,
                                            dtype=data_type, name="filter")
-      conv = tf.nn.conv2d(input_tensor, filter_tensor,
-                           [1, stride, stride, 1], padding,
-                           name="conv")
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        new_input_tensor = NHWCToNCHW(input_tensor)
+        strides = NHWCToNCHW(strides)
+      else:
+        new_input_tensor = input_tensor
+      conv = tf.nn.conv2d(new_input_tensor,
+                          filter_tensor,
+                          strides,
+                          padding,
+                          data_format=data_format,
+                          name="conv")
+      if data_format == "NCHW":
+        conv = NCHWToNHWC(conv)
       self.assertEqual(output_shape, conv.get_shape())
       if test_input:
         err = tf.test.compute_gradient_error(input_tensor, input_shape, conv,
@@ -434,316 +555,184 @@ class Conv2DTest(tf.test.TestCase):
       self.assertLess(err, tolerance)
 
   def testInputGradientValidPaddingStrideOne(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=5,
-        input_cols=4,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="VALID",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=5,
-        input_cols=4,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="VALID",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=5,
+                                    input_cols=4,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=1,
+                                    padding="VALID",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientValidPaddingStrideOne(self):
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="VALID",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="VALID",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=4,
+                                    input_rows=6,
+                                    input_cols=5,
+                                    filter_rows=2,
+                                    filter_cols=2,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=1,
+                                    padding="VALID",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testInputGradientValidPaddingStrideTwo(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=4,
-        input_cols=5,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="VALID",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=4,
-        input_cols=5,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="VALID",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=4,
+                                    input_cols=5,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=2,
+                                    padding="VALID",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientValidPaddingStrideTwo(self):
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="VALID",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="VALID",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=4,
+                                    input_rows=6,
+                                    input_cols=5,
+                                    filter_rows=2,
+                                    filter_cols=2,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=2,
+                                    padding="VALID",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testInputGradientValidPaddingStrideThree(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=4,
-        out_depth=5,
-        stride=3,
-        padding="VALID",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=4,
-        out_depth=5,
-        stride=3,
-        padding="VALID",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=7,
+                                    input_cols=6,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=4,
+                                    out_depth=5,
+                                    stride=3,
+                                    padding="VALID",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientValidPaddingStrideThree(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=8,
-        input_cols=7,
-        filter_rows=4,
-        filter_cols=4,
-        in_depth=2,
-        out_depth=3,
-        stride=3,
-        padding="VALID",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=8,
-        input_cols=7,
-        filter_rows=4,
-        filter_cols=4,
-        in_depth=2,
-        out_depth=3,
-        stride=3,
-        padding="VALID",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=8,
+                                    input_cols=7,
+                                    filter_rows=4,
+                                    filter_cols=4,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=3,
+                                    padding="VALID",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testInputGradientSamePaddingStrideOne(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="SAME",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="SAME",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=7,
+                                    input_cols=6,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=1,
+                                    padding="SAME",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientSamePaddingStrideOne(self):
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="SAME",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=1,
-        padding="SAME",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=4,
+                                    input_rows=6,
+                                    input_cols=5,
+                                    filter_rows=2,
+                                    filter_cols=2,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=1,
+                                    padding="SAME",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testInputGradientSamePaddingStrideTwo(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=5,
-        input_cols=4,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=3,
-        out_depth=3,
-        stride=2,
-        padding="SAME",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=5,
-        input_cols=4,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=3,
-        out_depth=3,
-        stride=2,
-        padding="SAME",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=5,
+                                    input_cols=4,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=3,
+                                    out_depth=3,
+                                    stride=2,
+                                    padding="SAME",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientSamePaddingStrideTwo(self):
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="SAME",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=4,
-        input_rows=6,
-        input_cols=5,
-        filter_rows=2,
-        filter_cols=2,
-        in_depth=2,
-        out_depth=3,
-        stride=2,
-        padding="SAME",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=4,
+                                    input_rows=6,
+                                    input_cols=5,
+                                    filter_rows=2,
+                                    filter_cols=2,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=2,
+                                    padding="SAME",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testInputGradientSamePaddingStrideThree(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=4,
-        out_depth=5,
-        stride=3,
-        padding="SAME",
-        test_input=True,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=7,
-        input_cols=6,
-        filter_rows=3,
-        filter_cols=3,
-        in_depth=4,
-        out_depth=5,
-        stride=3,
-        padding="SAME",
-        test_input=True,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=7,
+                                    input_cols=6,
+                                    filter_rows=3,
+                                    filter_cols=3,
+                                    in_depth=4,
+                                    out_depth=5,
+                                    stride=3,
+                                    padding="SAME",
+                                    test_input=True,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testFilterGradientSamePaddingStrideThree(self):
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=8,
-        input_cols=7,
-        filter_rows=4,
-        filter_cols=4,
-        in_depth=2,
-        out_depth=3,
-        stride=3,
-        padding="SAME",
-        test_input=False,
-        use_gpu=False)
-    self.ConstructAndTestGradient(
-        batch=2,
-        input_rows=8,
-        input_cols=7,
-        filter_rows=4,
-        filter_cols=4,
-        in_depth=2,
-        out_depth=3,
-        stride=3,
-        padding="SAME",
-        test_input=False,
-        use_gpu=True)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(batch=2,
+                                    input_rows=8,
+                                    input_cols=7,
+                                    filter_rows=4,
+                                    filter_cols=4,
+                                    in_depth=2,
+                                    out_depth=3,
+                                    stride=3,
+                                    padding="SAME",
+                                    test_input=False,
+                                    data_format=data_format,
+                                    use_gpu=use_gpu)
 
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
