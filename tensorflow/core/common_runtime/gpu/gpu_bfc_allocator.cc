@@ -41,6 +41,7 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
 
   // Allocate the requested amount of memory.
   gpu_memory_size_ = total_memory;
+  stats_.bytes_limit = static_cast<int64>(total_memory);
 
   // Create a bunch of bins of various good sizes.
 
@@ -256,7 +257,7 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << "Ran out of memory trying to allocate "
                  << strings::HumanReadableNumBytes(num_bytes)
-                 << ".  See logs for memory state";
+                 << ".  See logs for memory state.";
   }
   return nullptr;
 }
@@ -544,6 +545,7 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
+  LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 
 void GPUBFCAllocator::GetStats(AllocatorStats* stats) {
