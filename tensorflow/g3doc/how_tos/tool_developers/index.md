@@ -27,18 +27,20 @@ inputs and outputs. After you've created a `Graph` object, you can save it out
 by calling `as_graph_def()`, which returns a `GraphDef` object.
 
 The GraphDef class is an object created by the ProtoBuf library from the
-definition in [tensorflow/core/framework/graph.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/graph.proto).
-The protobuf tools parse this text file, and generate the code to load, store,
-and manipulate graph definitions. If you see a standalone TensorFlow file
-representing a model, it's likely to contain a serialized version of one of
-these `GraphDef` objects saved out by the protobuf code.
+definition in
+[tensorflow/core/framework/graph.proto](https://github.com/tensorflow/tensorflow
+/blob/master/tensorflow/core/framework/graph.proto). The protobuf tools parse
+this text file, and generate the code to load, store, and manipulate graph
+definitions. If you see a standalone TensorFlow file representing a model, it's
+likely to contain a serialized version of one of these `GraphDef` objects
+saved out by the protobuf code.
 
 This generated code is used to save and load the GraphDef files from disk. A
 good example to look at as we dig into this is
-[graph_metrics.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/graph_metrics.py).
-This Python script takes a saved graph definition, and analyzes the model to
-estimate performance and resource statistics. The code that actually loads the
-model looks like this:
+[graph_metrics.py](https://github.com/tensorflow/tensorflow/blob/master/tensorfl
+ow/python/tools/graph_metrics.py). This Python script takes a saved graph
+definition, and analyzes the model to estimate performance and resource
+statistics. The code that actually loads the model looks like this:
 
 ```python
 graph_def = graph_pb2.GraphDef()
@@ -67,14 +69,16 @@ There are actually two different formats that a ProtoBuf can be saved in.
 TextFormat is a human-readable form, which makes it nice for debugging and
 editing, but can get large when there's numerical data like weights stored in
 it. You can see a small example of that in
-[poly5-graph.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/components/tf-tensorboard/demo/data/poly5-graph.pbtxt).
+[poly5-graph.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorf
+low/tensorboard/components/tf-tensorboard/demo/data/poly5-graph.pbtxt).
 
 Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a
 flag indicating whether the input file is binary or text, so we know the right
 function to call. You can find an example of a large binary file inside the
-[inception_dec_2015.zip archive](https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip),
-as `tensorflow_inception_graph.pb`.
+[inception_dec_2015.zip
+archive](https://storage.googleapis.com/download.tensorflow.org/models/inception
+_dec_2015.zip), as `tensorflow_inception_graph.pb`.
 
 The API itself can be a bit confusing - the binary call is actually
 `ParseFromString()`, whereas you use a utility function from the `text_format`
@@ -111,7 +115,8 @@ This defines what operation to run, for example `"Add"`, `"MatMul"`, or
 `"Conv2D"`. When a graph is run, this op name is looked up in a registry to
 find an implementation. The registry is populated by calls to the
 `REGISTER_OP()` macro, like those in
-[tensorflow/core/ops/nn_ops.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/nn_ops.cc).
+[tensorflow/core/ops/nn_ops.cc](https://github.com/tensorflow/tensorflow/blob/ma
+ster/tensorflow/core/ops/nn_ops.cc).
 
 ### `input`
 
@@ -156,9 +161,9 @@ the file format during training. Instead, they're held in separate checkpoint
 files, and there are `Variable` ops in the graph that load the latest values
 when they're initialized. It's often not very convenient to have separate files
 when you're deploying to production, so there's the
-[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)
-script that takes a graph definition and a set of checkpoints and freezes them
-together into a single file.
+[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflo
+w/python/tools/freeze_graph.py) script that takes a graph definition and a set
+of checkpoints and freezes them together into a single file.
 
 What this does is load the `GraphDef`, pull in the values for all the variables
 from the latest checkpoint file, and then replace each `Variable` op with a
@@ -172,11 +177,12 @@ If you're dealing with TensorFlow models that represent neural networks, one of
 the most common problems is extracting and interpreting the weight values. A
 common way to store them, for example in graphs created by the freeze_graph
 script, is as `Const` ops containing the weights as `Tensors`. These are
-defined in [tensorflow/core/framework/tensor.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor.proto),
-and contain information about the size and type of the data, as well as the
-values themselves. In Python, you get a `TensorProto` object from a `NodeDef`
-representing a `Const` op by calling something like
-`some_node_def.attr['value'].tensor`.
+defined in
+[tensorflow/core/framework/tensor.proto](https://github.com/tensorflow/tensorflo
+w/blob/master/tensorflow/core/framework/tensor.proto), and contain information
+about the size and type of the data, as well as the values themselves. In
+Python, you get a `TensorProto` object from a `NodeDef` representing a `Const` 
+op by calling something like `some_node_def.attr['value'].tensor`.
 
 This will give you an object representing the weights data. The data itself
 will be stored in one of the lists with the suffix _val as indicated by the
