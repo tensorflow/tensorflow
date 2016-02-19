@@ -134,6 +134,10 @@ int64 GPUDebugAllocator::AllocationId(void* ptr) {
   return base_allocator_->AllocationId(static_cast<char*>(ptr) - MASK_BYTES);
 }
 
+void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
+  base_allocator_->GetStats(stats);
+}
+
 bool GPUDebugAllocator::CheckHeader(void* ptr) {
   return CheckMask(stream_exec_, static_cast<char*>(ptr) - MASK_BYTES,
                    before_mask);
@@ -200,6 +204,10 @@ size_t GPUNanResetAllocator::RequestedSize(void* ptr) {
 
 size_t GPUNanResetAllocator::AllocatedSize(void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
+}
+
+void GPUNanResetAllocator::GetStats(AllocatorStats* stats) {
+  base_allocator_->GetStats(stats);
 }
 
 }  // namespace tensorflow

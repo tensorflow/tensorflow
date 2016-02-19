@@ -854,6 +854,10 @@ class DirectSessionFactory : public SessionFactory {
  public:
   DirectSessionFactory() {}
 
+  bool AcceptsOptions(const SessionOptions& options) override {
+    return options.target.empty();
+  }
+
   Session* NewSession(const SessionOptions& options) override {
     std::vector<Device*> devices;
     DeviceFactory::AddDevices(options, "/job:localhost/replica:0/task:0",

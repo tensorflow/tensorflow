@@ -235,6 +235,14 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
         // chunk as being in use.
         chunk->allocation_id = next_allocation_id_++;
 
+        // Update stats.
+        ++stats_.num_allocs;
+        stats_.bytes_in_use += chunk->size;
+        stats_.max_bytes_in_use =
+            std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
+        stats_.max_alloc_size =
+            std::max<std::size_t>(stats_.max_alloc_size, chunk->size);
+
         VLOG(4) << "Returning: " << chunk->ptr;
         return chunk->ptr;
       }
@@ -381,6 +389,9 @@ void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::ChunkHandle h) {
 
   // Mark the chunk as no longer in use
   c->allocation_id = -1;
+
+  // Updates the stats.
+  stats_.bytes_in_use -= c->size;
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
@@ -534,4 +545,10 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
 }
+
+void GPUBFCAllocator::GetStats(AllocatorStats* stats) {
+  mutex_lock l(lock_);
+  *stats = stats_;
+}
+
 }  // namespace tensorflow
