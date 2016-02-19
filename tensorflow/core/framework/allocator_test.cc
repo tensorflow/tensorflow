@@ -28,7 +28,7 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
                        int64 max_bytes_in_use, int64 max_alloc_size) {
   AllocatorStats stats;
   a->GetStats(&stats);
-  LOG(INFO) << "Alloc stats: " << endl << stats.DebugString();
+  LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
 #if defined(PLATFORM_GOOGLE) && defined(NDEBUG)
   // NOTE: allocator stats expectation depends on the system malloc.
   EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
