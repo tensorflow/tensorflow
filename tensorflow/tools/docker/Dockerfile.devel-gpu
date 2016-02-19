@@ -96,7 +96,6 @@ WORKDIR /root
 
 # Set up CUDA variables
 ENV CUDA_PATH /usr/local/cuda
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64
 
 # TensorBoard
 EXPOSE 6006
