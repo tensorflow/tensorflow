@@ -80,6 +80,14 @@ class FloatDTypeTest(tf.test.TestCase):
     self.assertRaises(
         ValueError, tf.contrib.layers.assert_same_float_dtype, [const_int])
 
+  def test_assert_scalar_int(self):
+    tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.int32))
+    tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.int64))
+    with self.assertRaisesRegexp(ValueError, "Unexpected type"):
+      tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.float32))
+    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
+      tf.contrib.layers.assert_scalar_int(tf.constant([3, 4], dtype=tf.int32))
+
 
 if __name__ == "__main__":
   tf.test.main()
