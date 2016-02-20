@@ -416,9 +416,11 @@ class TensorFlowEstimator(BaseEstimator):
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
 
             # Restore session.
+            if not isinstance(self.config_addon, ConfigAddon):
+                self.config_addon = ConfigAddon(verbose=self.verbose)
             self._session = tf.Session(
                 self.tf_master,
-                config=ConfigAddon(verbose=self.verbose).config)
+                config=self.config_addon.config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
