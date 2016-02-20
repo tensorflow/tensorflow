@@ -430,6 +430,7 @@ class TensorFlowEstimator(BaseEstimator):
         # Set to be initialized.
         self._initialized = True
 
+    # pylint: disable=unused-argument
     @classmethod
     def restore(cls, path, config_addon=None):
         """Restores model from give path.
@@ -437,7 +438,7 @@ class TensorFlowEstimator(BaseEstimator):
         Args:
             path: Path to the checkpoints and other model information.
             config_addon: ConfigAddon object that controls the configurations of the session,
-                e.g. num_cores, gpu_memory_fraction, etc.
+                e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
         Returns:
             Estiamator, object of the subclass of TensorFlowEstimator.
@@ -445,6 +446,8 @@ class TensorFlowEstimator(BaseEstimator):
         model_def_filename = os.path.join(path, 'model.def')
         if not os.path.exists(model_def_filename):
             raise ValueError("Restore folder doesn't contain model definition.")
+        # list of parameters that are allowed to be reconfigured
+        reconfigurable_params = ['config_addon']
         with open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
@@ -453,10 +456,13 @@ class TensorFlowEstimator(BaseEstimator):
                 if (isinstance(value, string_types) and
                         not isinstance(value, str)):
                     model_def[key] = str(value)
+                if key in reconfigurable_params:
+                    newValue = locals()[key]
+                    if newValue is not None:
+                        model_def[key] = newValue
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
-            custom_estimator = TensorFlowEstimator(
-                model_fn=None, **model_def, config_addon=config_addon)
+            custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
             custom_estimator._restore(path)
             return custom_estimator
 
