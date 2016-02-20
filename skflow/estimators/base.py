@@ -87,7 +87,7 @@ class TensorFlowEstimator(BaseEstimator):
                  steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1, 
+                 config_addon=None, verbose=1,
                  early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.n_classes = n_classes
@@ -354,7 +354,9 @@ class TensorFlowEstimator(BaseEstimator):
                 if not callable(value) and value is not None:
                     params[key] = value
             params['class_name'] = type(self).__name__
-            fmodel.write(json.dumps(params, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None))
+            fmodel.write(json.dumps(
+                params,
+                default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None))
         with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
             foutputs.write('%s\n%s\n%s\n%s' % (
                 self._inp.name,
@@ -414,7 +416,9 @@ class TensorFlowEstimator(BaseEstimator):
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
 
             # Restore session.
-            self._session = tf.Session(self.tf_master, config=ConfigAddon(verbose=self.verbose).config)
+            self._session = tf.Session(
+                self.tf_master,
+                config=ConfigAddon(verbose=self.verbose).config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
