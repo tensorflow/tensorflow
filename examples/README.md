@@ -6,6 +6,7 @@
 * [Deep Neural Network with Customized Decay Function](iris_custom_decay_dnn.py)
 * [Building A Custom Model](iris_custom_model.py)
 * [Building A Custom Model Using Multiple GPUs](multiple_gpu.py)
+* [Building A Model Using Different GPU Configurations](iris_config_addon.py)
 * [Using skflow with Pipeline](iris_with_pipeline.py)
 * [Example of Saving and Restoring Models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
