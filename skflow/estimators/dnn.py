@@ -49,23 +49,22 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             model will be continuely trained on every call of fit.
         config_addon: ConfigAddon object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
+        monitor: Monitor object to track of training progress (and induce early stopping)
      """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, early_stopping_rounds=None,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
+                 monitor=None):
+
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
@@ -75,9 +74,9 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             config_addon=config_addon, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
             max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
+            monitor=monitor)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -126,29 +125,25 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             model will be continuely trained on every call of fit.
         config_addon: ConfigAddon object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
+        monitor: Monitor object to track of training progress (and induce early stopping)
    """
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, early_stopping_rounds=None,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
+                 monitor=None):
+
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
@@ -157,9 +152,9 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             config_addon=config_addon, verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
             max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
+            monitor=monitor)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -182,4 +177,3 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
         biases.append(self.get_tensor_value('linear_regression/bias:0'))
         return biases
-

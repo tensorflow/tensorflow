@@ -15,11 +15,7 @@
 
 from __future__ import division, print_function, absolute_import
 
-import sys
-import math
 from six.moves import xrange   # pylint: disable=redefined-builtin
-
-import numpy as np
 import tensorflow as tf
 
 OPTIMIZER_CLS_NAMES = {
@@ -27,24 +23,6 @@ OPTIMIZER_CLS_NAMES = {
     "Adagrad": tf.train.AdagradOptimizer,
     "Adam": tf.train.AdamOptimizer,
 }
-
-
-def _print_report(print_train_loss_buffer, print_val_loss_buffer, global_step, epoch):
-    """Prints report for given losses and global step."""
-    avg_train_loss = np.mean(print_train_loss_buffer)
-    if epoch:
-        train_summary_string = ("Step #{step}, epoch #{epoch}, avg. train loss: {loss:.5f}" \
-                .format(step=global_step, loss=avg_train_loss, epoch=epoch))
-    else:
-        train_summary_string = ("Step #{step}, avg. train loss: {loss:.5f}" \
-                .format(step=global_step, loss=avg_train_loss))
-
-    if print_val_loss_buffer:
-        avg_val_loss = np.mean(print_val_loss_buffer)
-        val_loss_string = "avg. val loss: {val_loss:.5f}".format(val_loss=avg_val_loss)
-        print(", ".join([train_summary_string, val_loss_string]))
-    else:
-        print(train_summary_string)
 
 
 class TensorFlowTrainer(object):
@@ -56,7 +34,7 @@ class TensorFlowTrainer(object):
     """
 
     def __init__(self, loss, global_step, optimizer,
-                 learning_rate, clip_gradients=5.0):
+                 learning_rate, monitor, clip_gradients=5.0):
         """Build a trainer part of graph.
 
         Args:
@@ -71,6 +49,7 @@ class TensorFlowTrainer(object):
                             return tf.train.exponential_decay(
                                 learning_rate=0.1, global_step=global_step,
                                 decay_steps=2, decay_rate=0.001)
+          monitor: Monitor object that tracks performance during training
         Raises:
             ValueError: if learning_rate is not a float or a callable.
         """
@@ -104,6 +83,7 @@ class TensorFlowTrainer(object):
         self.trainer = tf.group(self.trainer, *tf.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
         self._initializers = tf.initialize_all_variables()
+        self.monitor = monitor
 
     def initialize(self, sess):
         """Initalizes all variables.
@@ -116,39 +96,21 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
-    # pylint: disable=too-many-branches
     def train(self, sess, feed_dict_fn, steps,
-              val_feed_dict=None, summary_writer=None,
-              summaries=None, print_steps=0, verbose=1,
-              early_stopping_rounds=None, feed_params_fn=None):
+              summary_writer=None, summaries=None,
+              feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
 
         Args:
             sess: Session object.
             feed_dict_fn: Function that will return a feed dictionary.
-            steps: Number of steps to run.
             summary_writer: SummaryWriter object to use for writing summaries.
+            steps: Number of steps to run.
             summaries: Joined object of all summaries that should be ran.
-            print_steps: Number of steps in between printing cost.
-            verbose: Controls the verbosity. If set to 0, the algorithm is muted.
-            early_stopping_rounds: Activates early stopping if this is not None.
-                Loss needs to decrease at least every every <early_stopping_rounds>
-                round(s) to continue training. (default: None)
-            feed_params_fn: params about data feeder state (epoch, offset)
 
         Returns:
             List of losses for each step.
         """
-
-        losses, val_losses, print_train_loss_buffer, print_val_loss_buffer = [], [], [], []
-        print_steps = (print_steps if print_steps else
-                       math.ceil(float(steps) / 10))
-
-        min_loss = float('inf')
-        min_loss_i = 0
-        if early_stopping_rounds is not None:
-            sys.stderr.write("Performing early stopping. \n")
-
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
             if summaries:
@@ -159,44 +121,13 @@ class TensorFlowTrainer(object):
                 global_step, loss, _ = sess.run(
                     [self.global_step, self.loss, self.trainer],
                     feed_dict=feed_dict)
-
-            if val_feed_dict is not None:
-                val_loss = sess.run(self.loss, feed_dict=val_feed_dict)
-                val_losses.append(val_loss)
-                print_val_loss_buffer.append(val_loss)
-
-            if early_stopping_rounds is not None:
-                if val_feed_dict:
-                    relevant_loss = val_loss
-                else:
-                    relevant_loss = loss
-
-                if relevant_loss < min_loss:
-                    min_loss = relevant_loss
-                    min_loss_i = step
-                elif step - min_loss_i >= early_stopping_rounds:
-                    sys.stderr.write("Stopping. Best step:\n \
-                                     step {} with loss {}\n".format(min_loss_i,
-                                                                    min_loss))
-                    break
-
-            losses.append(loss)
-            print_train_loss_buffer.append(loss)
+            self.monitor.update(step, global_step, loss, sess,
+                                feed_params_fn, loss_expression_tensor=self.loss)
             if summaries and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
-            if verbose > 0:
-                if step % print_steps == 0:
-                    if feed_params_fn:
-                        feed_params = feed_params_fn()
-                        epoch = feed_params['epoch'] if 'epoch' in feed_params else None
-                    _print_report(print_train_loss_buffer,
-                                  print_val_loss_buffer,
-                                  global_step,
-                                  epoch)
-                    print_train_loss_buffer = []
-                    print_val_loss_buffer = []
-
-        return losses
+            if self.monitor.monitor_inducing_stop():
+                break
+        return
 
 
 class RestoredTrainer(TensorFlowTrainer):
@@ -207,4 +138,3 @@ class RestoredTrainer(TensorFlowTrainer):
         self.global_step = global_step
         self.loss = loss
         self.trainer = trainer
-
