@@ -161,8 +161,8 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create session to run model with.
             if self.config_addon is None:
-                self.config_addon = ConfigAddon()
-            self._session = tf.Session(self.tf_master, config=self.config_addon)
+                self.config_addon = ConfigAddon(verbose=self.verbose)
+            self._session = tf.Session(self.tf_master, config=self.config_addon.config)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -354,7 +354,7 @@ class TensorFlowEstimator(BaseEstimator):
                 if not callable(value) and value is not None:
                     params[key] = value
             params['class_name'] = type(self).__name__
-            fmodel.write(json.dumps(params))
+            fmodel.write(json.dumps(params, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None))
         with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
             foutputs.write('%s\n%s\n%s\n%s' % (
                 self._inp.name,
@@ -414,11 +414,7 @@ class TensorFlowEstimator(BaseEstimator):
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
 
             # Restore session.
-            self._session = tf.Session(self.tf_master,
-                                       config=tf.ConfigProto(
-                                           log_device_placement=self.verbose > 1,
-                                           inter_op_parallelism_threads=self.num_cores,
-                                           intra_op_parallelism_threads=self.num_cores))
+            self._session = tf.Session(self.tf_master, config=ConfigAddon(verbose=self.verbose).config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
