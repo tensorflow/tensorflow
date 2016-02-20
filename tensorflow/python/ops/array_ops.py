@@ -1355,7 +1355,7 @@ def _SpaceToDepthShape(op):
   * input: a tensor of shape like that [B, H, W, D]
   * block_size: an int.
 
-  Its output is the the same-rank tensor but with changed
+  Its output is the same-rank tensor but with changed
   dimensions like that: [B, H/block_size, W/block_size, D*block_size*block_size]
 
   Args:
@@ -1403,7 +1403,7 @@ def _DepthToSpaceShape(op):
   * input: a tensor of shape like that [B, H, W, D]
   * block_size: an int.
 
-  Its output is the the same-rank tensor but with changed
+  Its output is the same-rank tensor but with changed
   dimensions like that:
       [B, H*block_size, W*block_size, D/(block_size*block_size)]
 

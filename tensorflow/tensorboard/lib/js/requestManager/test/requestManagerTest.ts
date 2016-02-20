@@ -137,8 +137,8 @@ module TF.Backend {
       /* This test is a bit tricky.
       * We want to verify that the RequestManager queue has LIFO semantics.
       * So we construct three requests off the bat: A, B, C.
-      * So LIFO semantis ensure these will resolve in order A, C, B.
-      * (Beacuse the A request launches immediately when we create it, it's not in queue)
+      * So LIFO semantics ensure these will resolve in order A, C, B.
+      * (Because the A request launches immediately when we create it, it's not in queue)
       * Then after resolving A, C moves out of queue, and we create X.
       * So expected final order is A, C, X, B.
       * We verify this with an external var that counts how many requests were resolved.
