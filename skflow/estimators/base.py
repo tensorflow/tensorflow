@@ -36,6 +36,8 @@ from skflow.io.data_feeder import setup_train_data_feeder
 from skflow.io.data_feeder import setup_predict_data_feeder
 from skflow.ops.dropout_ops import DROPOUTS
 
+from skflow.addons.config_addon import ConfigAddon
+
 
 class TensorFlowEstimator(BaseEstimator):
     """Base class for all TensorFlow estimators.
@@ -64,7 +66,8 @@ class TensorFlowEstimator(BaseEstimator):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        num_cores: Number of cores to be used. (default: 4)
+        config_addon: ConfigAddon object that controls the configurations of the session,
+            e.g. num_cores, gpu_memory_fraction, etc.
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
@@ -84,7 +87,8 @@ class TensorFlowEstimator(BaseEstimator):
                  steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
-                 num_cores=4, verbose=1, early_stopping_rounds=None,
+                 config_addon=None, verbose=1, 
+                 early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
         self.n_classes = n_classes
         self.tf_master = tf_master
@@ -96,12 +100,12 @@ class TensorFlowEstimator(BaseEstimator):
         self.tf_random_seed = tf_random_seed
         self.model_fn = model_fn
         self.continue_training = continue_training
-        self.num_cores = num_cores
         self._initialized = False
         self._early_stopping_rounds = early_stopping_rounds
         self.max_to_keep = max_to_keep
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
+        self.config_addon = config_addon
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -156,11 +160,9 @@ class TensorFlowEstimator(BaseEstimator):
                 keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
 
             # Create session to run model with.
-            self._session = tf.Session(self.tf_master,
-                                       config=tf.ConfigProto(
-                                           log_device_placement=self.verbose > 1,
-                                           inter_op_parallelism_threads=self.num_cores,
-                                           intra_op_parallelism_threads=self.num_cores))
+            if self.config_addon is None:
+                self.config_addon = ConfigAddon()
+            self._session = tf.Session(self.tf_master, config=self.config_addon)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
