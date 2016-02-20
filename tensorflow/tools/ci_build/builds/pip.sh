@@ -140,12 +140,11 @@ echo "whl file path = ${WHL_PATH}"
 # Install, in user's local home folder
 echo "Installing pip whl file: ${WHL_PATH}"
 
-# Call pip install twice, first time with --upgrade and second time without it
-# This addresses the sporadic test failures related to protobuf version
-${PYTHON_BIN_PATH} -m pip install -v --user --upgrade ${WHL_PATH} numpy==1.8.2 \
-|| die "pip install (1st step, with --upgrade) FAILED"
+# Call pip install on the whl file. We are doing it without the --upgrade
+# option. So dependency updates will need to be performed separately in
+# the environment.
 ${PYTHON_BIN_PATH} -m pip install -v --user ${WHL_PATH} \
-|| die "pip install (2nd step, without --upgrade) FAILED"
+|| die "pip install (without --upgrade) FAILED"
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
 # tests-on-install and exit right away
