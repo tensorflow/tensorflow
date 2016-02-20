@@ -45,6 +45,11 @@ struct AllocatorStats {
   int64 max_bytes_in_use;  // The maximum bytes in use.
   int64 max_alloc_size;    // The max single allocation seen.
 
+  // The upper limit what the allocator can allocate, if such a limit
+  // is known. Certain allocator may return 0 to indicate the limit is
+  // unknown.
+  int64 bytes_limit;
+
   AllocatorStats() { Clear(); }
 
   void Clear();

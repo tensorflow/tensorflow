@@ -38,15 +38,14 @@ def _Conv2DBackpropGrad(op, grad):
     the gradients w.r.t. the input and the filter
   """
   return [None,
-          nn_ops.conv2d_backprop_filter(grad,
-                                      array_ops.shape(op.inputs[1]),
-                                      op.inputs[2],
-                                      op.get_attr("strides"),
-                                      op.get_attr("padding")),
-          nn_ops.conv2d(grad,
-                        op.inputs[1],
-                        op.get_attr("strides"),
-                        op.get_attr("padding"))]
+          nn_ops.conv2d_backprop_filter(
+              grad, array_ops.shape(op.inputs[1]), op.inputs[2],
+              op.get_attr("strides"), op.get_attr("padding"),
+              op.get_attr("use_cudnn_on_gpu"), op.get_attr("data_format")),
+          nn_ops.conv2d(
+              grad, op.inputs[1], op.get_attr("strides"),
+              op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
+              op.get_attr("data_format"))]
 
 
 @ops.RegisterGradient("Softmax")
@@ -169,15 +168,17 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
   return [nn_ops.conv2d_backprop_input(array_ops.shape(op.inputs[0]),
-                                       op.inputs[1],
-                                       grad,
+                                       op.inputs[1], grad,
                                        op.get_attr("strides"),
-                                       op.get_attr("padding")),
+                                       op.get_attr("padding"),
+                                       op.get_attr("use_cudnn_on_gpu"),
+                                       op.get_attr("data_format")),
           nn_ops.conv2d_backprop_filter(op.inputs[0],
-                                        array_ops.shape(op.inputs[1]),
-                                        grad,
+                                        array_ops.shape(op.inputs[1]), grad,
                                         op.get_attr("strides"),
-                                        op.get_attr("padding"))]
+                                        op.get_attr("padding"),
+                                        op.get_attr("use_cudnn_on_gpu"),
+                                        op.get_attr("data_format"))]
 
 
 @ops.RegisterGradient("LRN")

@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
@@ -189,12 +190,15 @@ struct PadInput {
                   typename TTypes<T, 4, IndexType>::ConstTensor in,
                   int padding_rows_left, int padding_rows_right,
                   int padding_cols_left, int padding_cols_right,
-                  typename TTypes<T, 4, IndexType>::Tensor out) {
+                  typename TTypes<T, 4, IndexType>::Tensor out,
+                  TensorFormat format) {
     Eigen::array<std::pair<IndexType, IndexType>, 4> padding;
-    padding[0] = std::make_pair(0, 0);
-    padding[1] = std::make_pair(padding_rows_left, padding_rows_right);
-    padding[2] = std::make_pair(padding_cols_left, padding_cols_right);
-    padding[3] = std::make_pair(0, 0);
+    padding[GetTensorDimIndex(format, 'N')] = std::make_pair(0, 0);
+    padding[GetTensorDimIndex(format, 'H')] =
+        std::make_pair(padding_rows_left, padding_rows_right);
+    padding[GetTensorDimIndex(format, 'W')] =
+        std::make_pair(padding_cols_left, padding_cols_right);
+    padding[GetTensorDimIndex(format, 'C')] = std::make_pair(0, 0);
     out.device(d) = in.pad(padding);
   }
 };

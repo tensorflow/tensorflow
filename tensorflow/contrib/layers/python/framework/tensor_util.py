@@ -18,9 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework.ops import Tensor
 
 
-__all__ = ['assert_same_float_dtype']
+__all__ = ['assert_same_float_dtype', 'is_numeric_tensor']
+
+
+NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
+                           dtypes.int16, dtypes.int32, dtypes.int64,
+                           dtypes.uint8, dtypes.qint8, dtypes.qint32,
+                           dtypes.quint8, dtypes.complex64])
+
+
+def is_numeric_tensor(tensor):
+  return isinstance(tensor, Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
 def _assert_same_base_type(items, expected_type=None):

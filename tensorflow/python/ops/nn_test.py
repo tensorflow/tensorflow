@@ -698,7 +698,7 @@ class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
           self.assertAllClose(
               tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
 
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape):
+  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.000001):
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     m_val = np.random.random_sample(param_shape).astype(np.float32)
     v_val = np.random.random_sample(param_shape).astype(np.float32)
@@ -721,7 +721,7 @@ class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
           [tf_batch_norm] = sess.run([bn])
           self.assertEquals(x_shape, np_batch_norm.shape)
           self.assertEquals(x_shape, tf_batch_norm.shape)
-          self.assertAllClose(np_batch_norm, tf_batch_norm, atol=0.000001)
+          self.assertAllClose(np_batch_norm, tf_batch_norm, atol=atol)
 
   def testBatchNormArbitraryShapes(self):
     """Test for a variety of shapes and moments.
@@ -732,7 +732,8 @@ class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
     self._testBatchNormArbitraryShapes((3, 3), (1, 3))
     self._testBatchNormArbitraryShapes((3, 3), (3, 1))
     self._testBatchNormArbitraryShapes((3, 2, 4, 5), (1, 2, 1, 1))
-    self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5))
+    self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
+                                       atol=0.005)
 
 
 class MomentsTest(tf.test.TestCase):
