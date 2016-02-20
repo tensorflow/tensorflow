@@ -38,7 +38,7 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
                        int64 max_bytes_in_use, int64 max_alloc_size) {
   AllocatorStats stats;
   a->GetStats(&stats);
-  LOG(INFO) << "Alloc stats: " << endl << stats.DebugString();
+  LOG(INFO) << "Alloc stats: " << std::endl << stats.DebugString();
   EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
   EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
   EXPECT_EQ(stats.num_allocs, num_allocs);
