@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""DType functions."""
+"""Tensor utility functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,7 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import Tensor
 
 
-__all__ = ['assert_same_float_dtype', 'is_numeric_tensor']
+__all__ = ['assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int']
 
 
 NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
@@ -90,3 +90,22 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   elif not dtype.is_floating:
     raise ValueError('Expected float, got %s.' % dtype)
   return dtype
+
+
+def assert_scalar_int(tensor):
+  """Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
+
+  Args:
+    tensor: Tensor to test.
+  Returns:
+    `tensor`, for chaining.
+  Raises:
+    ValueError: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
+  """
+  data_type = tensor.dtype
+  if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
+    raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
+  shape = tensor.get_shape()
+  if shape.ndims != 0:
+    raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
+  return tensor

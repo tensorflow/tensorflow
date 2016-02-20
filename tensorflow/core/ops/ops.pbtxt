@@ -1901,6 +1901,7 @@ op {
     default_value {
       s: "NHWC"
     }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
     allowed_values {
       list {
         s: "NHWC"
@@ -1972,6 +1973,7 @@ op {
     default_value {
       s: "NHWC"
     }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
     allowed_values {
       list {
         s: "NHWC"
@@ -2042,6 +2044,7 @@ op {
     default_value {
       s: "NHWC"
     }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
     allowed_values {
       list {
         s: "NHWC"

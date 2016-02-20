@@ -30,7 +30,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:protobuf/saver.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
-	]
+  ]
 
 
 def if_cuda(a, b=[]):
@@ -192,7 +192,8 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                        **kwargs):
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
-                "-nvcc_options=relaxed-constexpr"] + cuda_copts
+                "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+                "--gcudacc_flag=-ftz=true"] + cuda_copts
   native.cc_library(
       srcs = srcs,
       hdrs = hdrs,
