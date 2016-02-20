@@ -64,7 +64,7 @@ class IOTest(tf.test.TestCase):
             extracted_ddf = extract_dask_data(ddf)
             self.assertEqual(extracted_ddf.divisions, (0, 2, 4, 6),
                              "Failed with divisions = {0}".format(extracted_ddf.divisions))
-            self.assertEqual(extracted_ddf.columns, ('a', 'b'),
+            self.assertEqual(extracted_ddf.columns.tolist(), ['a', 'b'],
                              "Failed with columns = {0}".format(extracted_ddf.columns))
             # test dask.series
             labels = ddf['a']

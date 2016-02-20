@@ -63,8 +63,12 @@ def extract_dask_data(data):
 
 def extract_dask_labels(labels):
     """Extract data from dask.Series for labels"""
+    if isinstance(labels, dd.DataFrame):
+        ncol = labels.columns
+    elif isinstance(labels, dd.Series):
+        ncol = labels.name
     if isinstance(labels, allowed_classes):
-        if len(labels.columns) > 1:
+        if len(ncol) > 1:
             raise ValueError('Only one column for labels is allowed.')
         return _construct_dask_df_with_divisions(labels)
     else:
