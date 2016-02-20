@@ -41,34 +41,6 @@ def _apply_activation(y, activation_fn, output_collections):
   return y
 
 
-def _make_variable(name, shape, dtype, collections, initializer, regularizer):
-  """Makes a variables, adds it to collections, and applies regularization."""
-
-  # We have to make sure to add w to VARIABLES, otherwise we'll get nasty
-  # surprises when trying to save or load.
-  collections = set(list(collections or []) + [ops.GraphKeys.VARIABLES])
-
-  w = variable_scope.get_variable(name,
-                                  shape=shape,
-                                  dtype=dtype,
-                                  initializer=initializer,
-                                  collections=collections)
-  if regularizer:
-    loss = regularizer(w)
-    if loss:
-      ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
-
-  return w
-
-
-# Convenience function for _make_variable for weights.
-_weight_variable = functools.partial(_make_variable, 'weights')
-
-
-# Convenience function for _make_variable for biases.
-_bias_variable = functools.partial(_make_variable, 'bias')
-
-
 def fully_connected(x,
                     num_output_units,
                     activation_fn=None,
@@ -134,20 +106,26 @@ def fully_connected(x,
     num_input_units = x.get_shape().dims[1].value
     dtype = x.dtype.base_dtype
 
-    w = _weight_variable(shape=[num_input_units, num_output_units],
-                         dtype=dtype,
-                         initializer=weight_init,
-                         collections=weight_collections,
-                         regularizer=weight_regularizer)
+    weight_collections = set(list(weight_collections or []) +
+                             [ops.GraphKeys.VARIABLES])
+    w = variable_scope.get_variable('weights',
+                                    shape=[num_input_units, num_output_units],
+                                    dtype=dtype,
+                                    initializer=weight_init,
+                                    collections=weight_collections,
+                                    regularizer=weight_regularizer)
 
     y = standard_ops.matmul(x, w)
 
     if bias_init is not None:
-      b = _bias_variable(shape=[num_output_units],
-                         dtype=dtype,
-                         initializer=bias_init,
-                         collections=bias_collections,
-                         regularizer=bias_regularizer)
+      bias_collections = set(list(bias_collections or []) +
+                             [ops.GraphKeys.VARIABLES])
+      b = variable_scope.get_variable('bias',
+                                      shape=[num_output_units],
+                                      dtype=dtype,
+                                      initializer=bias_init,
+                                      collections=bias_collections,
+                                      regularizer=bias_regularizer)
 
       y = nn.bias_add(y, b)
 
@@ -238,20 +216,26 @@ def convolution2d(x,
              num_output_channels]
     dtype = x.dtype.base_dtype
 
-    w = _weight_variable(shape=shape,
-                         dtype=dtype,
-                         initializer=weight_init,
-                         collections=weight_collections,
-                         regularizer=weight_regularizer)
+    weight_collections = set(list(weight_collections or []) +
+                             [ops.GraphKeys.VARIABLES])
+    w = variable_scope.get_variable('weights',
+                                    shape=shape,
+                                    dtype=dtype,
+                                    initializer=weight_init,
+                                    collections=weight_collections,
+                                    regularizer=weight_regularizer)
 
     y = nn.conv2d(x, w, stride, padding)
 
     if bias_init is not None:
-      b = _bias_variable(shape=[num_output_channels],
-                         dtype=dtype,
-                         initializer=bias_init,
-                         collections=bias_collections,
-                         regularizer=bias_regularizer)
+      bias_collections = set(list(bias_collections or []) +
+                             [ops.GraphKeys.VARIABLES])
+      b = variable_scope.get_variable('bias',
+                                      shape=[num_output_channels],
+                                      dtype=dtype,
+                                      initializer=bias_init,
+                                      collections=bias_collections,
+                                      regularizer=bias_regularizer)
 
       y = nn.bias_add(y, b)
 
