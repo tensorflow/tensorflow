@@ -431,11 +431,13 @@ class TensorFlowEstimator(BaseEstimator):
         self._initialized = True
 
     @classmethod
-    def restore(cls, path):
+    def restore(cls, path, config_addon=None):
         """Restores model from give path.
 
         Args:
             path: Path to the checkpoints and other model information.
+            config_addon: ConfigAddon object that controls the configurations of the session,
+                e.g. num_cores, gpu_memory_fraction, etc.
 
         Returns:
             Estiamator, object of the subclass of TensorFlowEstimator.
@@ -453,7 +455,8 @@ class TensorFlowEstimator(BaseEstimator):
                     model_def[key] = str(value)
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
-            custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
+            custom_estimator = TensorFlowEstimator(
+                model_fn=None, **model_def, config_addon=config_addon)
             custom_estimator._restore(path)
             return custom_estimator
 
