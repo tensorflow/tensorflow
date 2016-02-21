@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <sstream>
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/flags.h"
 
 namespace tensorflow {
 const int INFO = 0;            // base_logging::INFO;
@@ -51,12 +52,16 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _TF_LOG_INFO \
+  if (tensorflow::INFO >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
 #define _TF_LOG_WARNING \
+  if (tensorflow::WARNING >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::WARNING)
 #define _TF_LOG_ERROR \
+  if (tensorflow::ERROR >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::ERROR)
 #define _TF_LOG_FATAL \
+  if (tensorflow::FATAL >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 
 #define LOG(severity) _TF_LOG_##severity
