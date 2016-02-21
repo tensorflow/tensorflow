@@ -246,7 +246,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
   }
 }
 
-// A Cuda custom kernel that converst input to output, given proper padding on
+// A Cuda custom kernel that convert input to output, given proper padding on
 // the left and the top. The padded value is zero.
 template <typename T>
 __global__ void PadInputCustomKernelNHWC(int nthreads, const T* input,

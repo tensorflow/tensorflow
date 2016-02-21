@@ -521,7 +521,7 @@ export class RenderGraphInfo {
       // (which ignores control edges) and seeing that Z comes AFTER A.
       //
       // The property of being backwards is independent of whether the edge
-      // is inbound or outbound. In the preceeding example, if we were building
+      // is inbound or outbound. In the preceding example, if we were building
       // the subhierarchy for Z, we'd find bridge edge Z/Y=>A, walk to its
       // topmost adjoining metaedge Z=>A and discover that it's backwards.
       let backwards = false;
@@ -629,7 +629,7 @@ export class RenderGraphInfo {
     // one edge in the bridgegraph from Z->A/C.
     //
     // At this point, we've added a container bridge node IN to house all
-    // incoming bridge nodes. We'v alse added a bridge node Z' (with parent IN)
+    // incoming bridge nodes. We've also added a bridge node Z' (with parent IN)
     // to A, and a bridge edge from Z'->C.
     //
     //     +----------------------+
@@ -1032,7 +1032,7 @@ export class RenderMetaedgeInfo {
   metaedge: Metaedge;
 
   /**
-   * Reference to the adjoining RenderMeteaedgeInfo from the parent's
+   * Reference to the adjoining RenderMetaedgeInfo from the parent's
    * coreGraph. This is used during layout to determine the point at which this
    * edge should touch the node's bounding box. This property will be null for
    * edges which terminate at a node on both ends (all non-bridge edges).
@@ -1042,7 +1042,7 @@ export class RenderMetaedgeInfo {
   /**
    * Most of the time, a RenderMetaedgeInfo object represents a real
    * edge between nodes in the underlying graph structure. But sometimes, an
-   * edge only exsts for layout purposes. These structural edges are added
+   * edge only exists for layout purposes. These structural edges are added
    * during buildSubhierarchy() to force dagre.layout() to put bridge nodes
    * at the ends of the flow.
    * @see buildSubhierarchy()
@@ -1264,7 +1264,7 @@ function hasTypeIn(node: Node, types: string[]): boolean {
   return false;
 }
 
-/** Move nodes that are speficied to be excluded out of the core graph. */
+/** Move nodes that are specified to be excluded out of the core graph. */
 function extractSpecifiedNodes(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;

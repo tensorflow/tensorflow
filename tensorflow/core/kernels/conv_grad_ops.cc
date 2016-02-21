@@ -1398,7 +1398,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       //   [filter_rows, filter_cols, in_depth, out_depth];
       // And we need to reverse the filter backprops
       // So we need to allocated (sigh) yet another piece of memory to hold the
-      // ouptut.
+      // output.
       TensorShape filter_shuffle_shape(
           {out_depth, filter_rows, filter_cols, in_depth});
       Tensor filter_shuffle;

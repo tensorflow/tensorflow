@@ -21,7 +21,7 @@ module TF.Backend {
   * more urls are requested than can be handled at once. The queue can be cleared.
   *
   * When a request is made, a Promise is returned which resolves with the parsed
-  * JSON rseult from the reqest.
+  * JSON result from the request.
   */
 
   export class RequestCancellationError extends Error {
