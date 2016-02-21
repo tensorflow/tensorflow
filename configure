@@ -47,9 +47,9 @@ fi
 # Set up which gcc nvcc should use as the host compiler
 while true; do
   fromuser=""
-  if [-z "$GCC_HOST_COMPILER_PATH"]; then
+  if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
     default_gcc_host_compiler_path=$(which gcc)
-    read -p "Please specify which gcc nvcc should use as the host compiler. [Default is $default_gcc_host_compiler]: " GCC_HOST_COMPILER_PATH
+    read -p "Please specify which gcc nvcc should use as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
     fromuser="1"
     if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
       GCC_HOST_COMPILER_PATH=$default_gcc_host_compiler_path
@@ -157,8 +157,8 @@ EOF
 
 # Configure the gcc host compiler to use
 export WARNING=$DO_NOT_SUBMIT_WARNING
-perl -pi -e "s,CPU_COMPILER = \('.*'\),# ENV{WARNING}\nCPU_COMPILER = ('ENV{GCC_HOST_COMPILER_PATH}'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
-perl -pi -e "s,GCC_HOST_COMPILER_PATH = \('.*'\),# ENV{WARNING}\nGCC_HOST_COMPILER_PATH = ('ENV{GCC_HOST_COMPILER_PATH}'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+perl -pi -e "s,CPU_COMPILER = \('.*'\),# \$ENV{WARNING}\nCPU_COMPILER = ('$GCC_HOST_COMPILER_PATH'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
+perl -pi -e "s,GCC_HOST_COMPILER_PATH = \('.*'\),# \$ENV{WARNING}\nGCC_HOST_COMPILER_PATH = ('$GCC_HOST_COMPILER_PATH'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
 
 # Configure the Cuda toolkit version to work with.
 perl -pi -e "s,CUDA_VERSION = '[0-9\.]*',CUDA_VERSION = '$TF_CUDA_EXT',s" tensorflow/core/platform/default/build_config.bzl
