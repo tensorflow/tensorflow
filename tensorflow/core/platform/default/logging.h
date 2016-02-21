@@ -52,19 +52,17 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _TF_LOG_INFO \
-  if (tensorflow::INFO >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
 #define _TF_LOG_WARNING \
-  if (tensorflow::WARNING >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::WARNING)
 #define _TF_LOG_ERROR \
-  if (tensorflow::ERROR >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::ERROR)
 #define _TF_LOG_FATAL \
-  if (tensorflow::FATAL >= re2::FLAGS_minloglevel) { \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 
-#define LOG(severity) _TF_LOG_##severity
+#define LOG(severity) \
+   if (severity >= re2::FLAGS_minloglevel) \
+   _TF_LOG_##severity
 
 // TODO(jeff): Define a proper implementation of VLOG_IS_ON
 #define VLOG_IS_ON(lvl) ((lvl) <= 0)
