@@ -629,7 +629,7 @@ export class RenderGraphInfo {
     // one edge in the bridgegraph from Z->A/C.
     //
     // At this point, we've added a container bridge node IN to house all
-    // incoming bridge nodes. We'v also added a bridge node Z' (with parent IN)
+    // incoming bridge nodes. We've also added a bridge node Z' (with parent IN)
     // to A, and a bridge edge from Z'->C.
     //
     //     +----------------------+
