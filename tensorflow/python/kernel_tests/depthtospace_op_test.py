@@ -156,7 +156,7 @@ class DepthToSpaceTest(tf.test.TestCase):
       out_tf.eval()
 
   def testBlockSizeNotDivisibleDepth(self):
-    # The the depth is not divisible by the square of the block size.
+    # The depth is not divisible by the square of the block size.
     x_np = [[[[1, 1, 1, 1],
               [2, 2, 2, 2]],
              [[3, 3, 3, 3],
