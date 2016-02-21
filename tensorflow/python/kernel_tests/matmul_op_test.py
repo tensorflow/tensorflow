@@ -120,7 +120,7 @@ class MatMulTest(tf.test.TestCase):
       self._testCpuMatmul(x, y, True, True)
       self._testGpuMatmul(x, y, True, True)
 
-  def testDoubleRandomTranposeBoth(self):
+  def testDoubleRandomTransposeBoth(self):
     for _ in range(10):
       n, k, m = np.random.randint(1, 100, size=3)
       x = self._randMatrix(k, n, np.float64)
