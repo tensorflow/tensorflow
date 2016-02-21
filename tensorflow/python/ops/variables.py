@@ -142,7 +142,8 @@ class Variable(object):
   # ready for consumption.
 
   def __init__(self, initial_value=None, trainable=True, collections=None,
-               validate_shape=True, name=None, variable_def=None):
+               validate_shape=True, caching_device=None, name=None,
+               variable_def=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -166,6 +167,11 @@ class Variable(object):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
@@ -192,10 +198,12 @@ class Variable(object):
                            trainable=trainable,
                            collections=collections,
                            validate_shape=validate_shape,
+                           caching_device=caching_device,
                            name=name)
 
   def _init_from_args(self, initial_value=None, trainable=True,
-                      collections=None, validate_shape=True, name=None):
+                      collections=None, validate_shape=True,
+                      caching_device=None, name=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -210,6 +218,11 @@ class Variable(object):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      caching_device: Optional device string or function describing where the
+        Variable should be cached for reading.  Defaults to the Variable's
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
 
@@ -239,9 +252,12 @@ class Variable(object):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value,
               validate_shape=validate_shape).op
+        with ops.device(caching_device if caching_device is not None
+                        else self._variable.device):
           self._snapshot = array_ops.identity(self._variable, name="read")
 
     ops.add_to_collections(collections, self)
+    self._caching_device = caching_device
     self._save_slice_info = None
 
   def _init_from_proto(self, variable_def):
@@ -261,6 +277,7 @@ class Variable(object):
           save_slice_info_def=variable_def.save_slice_info_def)
     else:
       self._save_slice_info = None
+    self._caching_device = None
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -366,7 +383,9 @@ class Variable(object):
     """
     with ops.control_dependencies(None):
       with ops.control_dependencies([self._initializer_op]):
-        with ops.device(self._variable.device):
+        with ops.device(
+            self._caching_device if self._caching_device is not None
+            else self._variable.device):
           return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):

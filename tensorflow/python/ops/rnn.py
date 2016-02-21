@@ -89,7 +89,13 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     raise ValueError("inputs must not be empty")
 
   outputs = []
-  with vs.variable_scope(scope or "RNN"):
+  # Create a new scope in which the caching device is either
+  # determined by the parent scope, or is set to place the cached
+  # Variable using the same placement as for the rest of the RNN.
+  with vs.variable_scope(scope or "RNN") as varscope:
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
+
     fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
     if fixed_batch_size.value:
       batch_size = fixed_batch_size.value
@@ -307,14 +313,14 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
 
   name = scope or "BiRNN"
   # Forward direction
-  with vs.variable_scope(name + "_FW"):
+  with vs.variable_scope(name + "_FW") as fw_scope:
     output_fw, _ = rnn(cell_fw, inputs, initial_state_fw, dtype,
-                       sequence_length)
+                       sequence_length, scope=fw_scope)
 
   # Backward direction
-  with vs.variable_scope(name + "_BW"):
+  with vs.variable_scope(name + "_BW") as bw_scope:
     tmp, _ = rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                 initial_state_bw, dtype, sequence_length)
+                 initial_state_bw, dtype, sequence_length, scope=bw_scope)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [array_ops.concat(1, [fw, bw])
@@ -392,7 +398,12 @@ def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
   sequence_length = math_ops.to_int32(sequence_length)
   sequence_length = array_ops.identity(sequence_length, name="sequence_length")
 
-  with vs.variable_scope(scope or "RNN"):
+  # Create a new scope in which the caching device is either
+  # determined by the parent scope, or is set to place the cached
+  # Variable using the same placement as for the rest of the RNN.
+  with vs.variable_scope(scope or "RNN") as varscope:
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
     input_shape = array_ops.shape(inputs)
     batch_size = input_shape[1]
 
