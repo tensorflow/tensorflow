@@ -402,7 +402,7 @@ class TensorFlowEstimator(BaseEstimator):
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
             with open(saver_filename) as fsaver:
-                saver_def = tf.python.training.saver_pb2.SaverDef()
+                saver_def = tf.python.training.saver.saver_pb2.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
                 self._saver = tf.train.Saver(saver_def=saver_def)
 
