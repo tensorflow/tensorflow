@@ -438,7 +438,7 @@ class Tensor(object):
     Raises:
       TypeError: when invoked.
     """
-    raise TypeError("'Tensor' object is not iterable")
+    raise TypeError("'Tensor' object is not iterable.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.

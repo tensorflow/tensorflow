@@ -44,6 +44,15 @@ class TensorTest(test_util.TensorFlowTestCase):
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
 
+  def testIterable(self):
+    op = ops.Operation(
+        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(isinstance(t, ops.Tensor))
+    with self.assertRaisesRegexp(TypeError, "not iterable"):
+      for _ in t:
+        pass
+
 
 class SparseTensorTest(test_util.TensorFlowTestCase):
 
