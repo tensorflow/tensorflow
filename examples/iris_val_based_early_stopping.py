@@ -12,7 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import tensorflow as tf
 from tensorflow.python.platform import googletest
 
 from sklearn import datasets, metrics
@@ -27,18 +26,23 @@ X_train, X_test, y_train, y_test = train_test_split(iris.data,
                                                     test_size=0.2,
                                                     random_state=42)
 
-# classifier without early stopping - overfitting
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train,
+                                                  test_size=0.2, random_state=42)
+val_monitor = skflow.monitors.ValidationMonitor(X_val, y_val,
+                                                early_stopping_rounds=200,
+                                                n_classes=3)
+
+# classifier with early stopping on training data
 classifier1 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                            n_classes=3, steps=800)
+                                             n_classes=3, steps=2000)
 classifier1.fit(X_train, y_train)
 score1 = metrics.accuracy_score(y_test, classifier1.predict(X_test))
 
-# classifier with early stopping - improved accuracy on testing set
+# classifier with early stopping on validation data
 classifier2 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                            n_classes=3, steps=1000,
-                                            early_stopping_rounds=200)
-classifier2.fit(X_train, y_train)
+                                             n_classes=3, steps=2000)
+classifier2.fit(X_train, y_train, val_monitor)
 score2 = metrics.accuracy_score(y_test, classifier2.predict(X_test))
 
-# you can expect the score is improved by using early stopping
+# in many applications, the score is improved by using early stopping on val data
 print(score2 > score1)

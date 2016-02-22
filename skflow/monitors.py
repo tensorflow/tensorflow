@@ -35,7 +35,7 @@ class BaseMonitor(object):
                                 round(s) to continue training. (default: None)
 
     """
-    def __init__(self, print_steps=100, early_stopping_rounds=200, verbose=1):
+    def __init__(self, print_steps=100, early_stopping_rounds=500, verbose=1):
         self.print_steps = print_steps
         self.early_stopping_rounds = early_stopping_rounds
 
@@ -80,7 +80,7 @@ class BaseMonitor(object):
 
     def report(self):
         """Checks whether to report, and prints loss information if appropriate"""
-        if self.verbose and self.steps % self.print_steps == 0:
+        if self.verbose and (self.steps % self.print_steps == 0):
             self._set_training_summary()
             print(self._summary_str)
 
@@ -108,7 +108,7 @@ class BaseMonitor(object):
         self.print_train_loss_buffer = []
         if self.epoch:
             self._summary_str = ("Step #{step}, epoch #{epoch}, avg. train loss: {loss:.5f}"
-                                 .format(step=self.global_step, loss=avg_train_loss,
+                                 .format(step=self.steps, loss=avg_train_loss,
                                          epoch=self.epoch))
         else:
             self._summary_str = ("Step #{step}, avg. train loss: {loss:.5f}"
