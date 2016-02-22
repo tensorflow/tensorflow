@@ -119,7 +119,7 @@
             on-click="_toggleExpanded"
             class="toggle-button">
           </paper-icon-button>
-          <div class="node-name">[[_getNodeName(nodeName)]]</div>
+          <div class="node-name" id="nodetitle"></div>
         </div>
         <div secondary>
           <tf-graph-icon class="node-icon" node="[[_node]]"
@@ -351,10 +351,10 @@
         _getNode: function(nodeName, graphHierarchy) {
           return graphHierarchy.node(nodeName);
         },
-        _getNodeName: function(nodeName) {
-          // Insert a zero-width whitespace character before each slash so that
+        _getPrintableHTMLNodeName: function(nodeName) {
+          // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
-          return (nodeName || '').replace(/\//g, '\u200B/');
+          return (nodeName || '').replace(/\//g, '<wbr>/');
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
@@ -401,6 +401,11 @@
         _resetState: function() {
           this._openedControlPred = false;
           this._openedControlSucc = false;
+
+          if (this._node) {
+            Polymer.dom(this.$.nodetitle).innerHTML =
+              this._getPrintableHTMLNodeName(this._node.name);
+          }
         },
         _resizeList: function(selector) {
           var list = document.querySelector(selector);
