@@ -141,6 +141,8 @@ class UnaryOpTest(tf.test.TestCase):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
     y = (x + .5).astype(np.float32)     # no zero
     z = (x + 15.5).astype(np.float32)   # all positive
+    k = np.arange(-0.90, 0.90, 0.25).astype(np.float32) # between -1 and 1
+
     self._compareBoth(x, np.abs, tf.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
@@ -156,6 +158,10 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(y, np.sign, tf.sign)
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
+    self._compareBoth(k, np.arcsin, tf.asin)
+    self._compareBoth(k, np.arccos, tf.acos)
+    self._compareBoth(x, np.arctan, tf.atan)
+    self._compareBoth(x, np.tan, tf.tan)
     self._compareBoth(
         y,
         np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
@@ -190,11 +196,16 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.sign, tf.lgamma)
     self._compareBoth(x, np.sign, tf.erf)
     self._compareBoth(x, np.sign, tf.erfc)
+    self._compareBoth(x, np.tan, tf.tan)
+    self._compareBoth(x, np.arcsin, tf.asin)
+    self._compareBoth(x, np.arccos, tf.acos)
+    self._compareBoth(x, np.arctan, tf.atan)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
     y = (x + .5).astype(np.float64)    # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
+    k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(np.float64) # between -1 and 1
     self._compareBoth(x, np.abs, tf.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
@@ -216,6 +227,10 @@ class UnaryOpTest(tf.test.TestCase):
         tf.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), tf.erf)
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
+    self._compareBoth(x, np.arctan, tf.atan)
+    self._compareBoth(k, np.arcsin, tf.asin)
+    self._compareBoth(k, np.arccos, tf.acos)
+    self._compareBoth(k, np.tan, tf.tan)
 
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
@@ -280,7 +295,6 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
     self._compareCpu(x, np.cos, tf.cos)
-
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):
       return x / np.abs(x)

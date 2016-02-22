@@ -243,6 +243,30 @@ REGISTER_OP("Cos")
 Computes cos of x element-wise.
 )doc");
 
+REGISTER_OP("Tan")
+    .UNARY()
+    .Doc(R"doc(
+Computes tan of x element-wise.
+)doc");
+
+REGISTER_OP("Asin")
+    .UNARY()
+    .Doc(R"doc(
+Computes asin of x element-wise.
+)doc");
+
+REGISTER_OP("Acos")
+    .UNARY()
+    .Doc(R"doc(
+Computes acos of x element-wise.
+)doc");
+
+REGISTER_OP("Atan")
+    .UNARY()
+    .Doc(R"doc(
+Computes atan of x element-wise.
+)doc");
+
 #undef UNARY
 #undef UNARY_REAL
 #undef UNARY_COMPLEX
