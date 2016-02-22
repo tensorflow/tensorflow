@@ -30,6 +30,7 @@ from tensorflow.python.ops import constant_op
 # Import gradients to register _IndexedSlicesToTensor.
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -356,30 +357,68 @@ class NameStackTest(test_util.TensorFlowTestCase):
 
   def testBasics(self):
     g = ops.Graph()
+    self.assertEqual("foo", g.unique_name("foo", mark_as_used=False))
+    self.assertEqual("foo", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo", g.unique_name("foo"))
+    self.assertEqual("foo_1", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_1", g.unique_name("foo"))
+    self.assertEqual("foo_2", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_2", g.unique_name("foo"))
+    self.assertEqual("foo_1_1", g.unique_name("foo_1", mark_as_used=False))
     self.assertEqual("foo_1_1", g.unique_name("foo_1"))
+    self.assertEqual("foo_1_2", g.unique_name("foo_1", mark_as_used=False))
     self.assertEqual("foo_1_2", g.unique_name("foo_1"))
+    self.assertEqual("foo_1_2_1", g.unique_name("foo_1_2", mark_as_used=False))
     self.assertEqual("foo_1_2_1", g.unique_name("foo_1_2"))
     with g.name_scope("bar"):
+      self.assertEqual("bar/foo", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("bar/foo", g.unique_name("foo"))
+      self.assertEqual("bar/foo_1", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("bar/foo_1", g.unique_name("foo"))
       with g.name_scope(None):
+        self.assertEqual("foo_3", g.unique_name("foo", mark_as_used=False))
         self.assertEqual("foo_3", g.unique_name("foo"))
       with g.name_scope("baz"):
+        self.assertEqual("bar/baz/foo", g.unique_name("foo",
+                                                      mark_as_used=False))
         self.assertEqual("bar/baz/foo", g.unique_name("foo"))
+        self.assertEqual("bar/baz/foo_1", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar/baz/foo_1", g.unique_name("foo"))
       with g.name_scope("baz"):
+        self.assertEqual("bar/baz_1/foo", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar/baz_1/foo", g.unique_name("foo"))
+        self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo",
+                                                          mark_as_used=False))
         self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo"))
     with g.name_scope("quux"):
+      self.assertEqual("quux/foo", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("quux/foo", g.unique_name("foo"))
     with g.name_scope("bar"):
       with g.name_scope("baz"):
+        self.assertEqual("bar_1/baz/foo", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar_1/baz/foo", g.unique_name("foo"))
+    self.assertEqual("foo_4", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_4", g.unique_name("foo"))
+    self.assertEqual("bar_2", g.unique_name("bar", mark_as_used=False))
     self.assertEqual("bar_2", g.unique_name("bar"))
+
+  def testNameAndVariableScope(self):
+    with self.test_session() as sess:
+      with sess.graph.name_scope("l0"):
+        with variable_scope.variable_scope("l1"):
+          with sess.graph.name_scope("l1") as scope:
+            self.assertEqual("l0/l1/l1/", scope)
+            self.assertEqual("l0/l1/l1/foo",
+                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual("l0/l1/l1/foo", sess.graph.unique_name("foo"))
+          with sess.graph.name_scope("l2") as scope:
+            self.assertEqual("l0/l1/l2/", scope)
+            self.assertEqual("l0/l1/l2/foo",
+                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual("l0/l1/l2/foo", sess.graph.unique_name("foo"))
 
   def testOutOfOrderUniqueName(self):
     g = ops.Graph()
