@@ -565,7 +565,9 @@ filegroup(
         "//tensorflow/core:kernels/matmul_op.h",
         "//tensorflow/core:kernels/no_op.cc",
         "//tensorflow/core:kernels/no_op.h",
+        "//tensorflow/core:kernels/ops_util.h",
         "//tensorflow/core:kernels/pack_op.cc",
+        "//tensorflow/core:kernels/pooling_ops_common.h",
         "//tensorflow/core:kernels/reshape_op.cc",
         "//tensorflow/core:kernels/reshape_op.h",
         "//tensorflow/core:kernels/reverse_sequence_op.cc",
@@ -605,15 +607,36 @@ filegroup(
 )
 
 filegroup(
+    name = "android_extended_ops_headers",
+    srcs = [
+        "//tensorflow/core:kernels/argmax_op.h",
+        "//tensorflow/core:kernels/avgpooling_op.h",
+        "//tensorflow/core:kernels/control_flow_ops.h",
+        "//tensorflow/core:kernels/conv_2d.h",
+        "//tensorflow/core:kernels/io.h",
+        "//tensorflow/core:kernels/maxpooling_op.h",
+        "//tensorflow/core:kernels/reduction_ops.h",
+        "//tensorflow/core:kernels/reduction_ops_common.h",
+        "//tensorflow/core:kernels/relu_op.h",
+        "//tensorflow/core:kernels/softplus_op.h",
+        "//tensorflow/core:kernels/softsign_op.h",
+        "//tensorflow/core:kernels/tile_ops.h",
+        "//tensorflow/core:kernels/training_ops.h",
+        "//tensorflow/core:kernels/transpose_op.h",
+        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/where_op.h",
+        "//tensorflow/core:kernels/xent_op.h",
+    ],
+)
+
+filegroup(
     name = "android_extended_ops_group1",
     srcs = [
+        ":android_extended_ops_headers",
         "//tensorflow/core:kernels/argmax_op.cc",
-        "//tensorflow/core:kernels/argmax_op.h",
         "//tensorflow/core:kernels/avgpooling_op.cc",
-        "//tensorflow/core:kernels/avgpooling_op.h",
         "//tensorflow/core:kernels/bcast_ops.cc",
         "//tensorflow/core:kernels/control_flow_ops.cc",
-        "//tensorflow/core:kernels/control_flow_ops.h",
         "//tensorflow/core:kernels/conv_2d.h",
         "//tensorflow/core:kernels/conv_ops.cc",
         "//tensorflow/core:kernels/cwise_op_add.cc",
@@ -635,11 +658,6 @@ filegroup(
         "//tensorflow/core:kernels/cwise_op_sub.cc",
         "//tensorflow/core:kernels/cwise_op_tanh.cc",
         "//tensorflow/core:kernels/dynamic_partition_op.cc",
-        "//tensorflow/core:kernels/dynamic_stitch_op.cc",
-        "//tensorflow/core:kernels/in_topk_op.cc",
-        "//tensorflow/core:kernels/io.cc",
-        "//tensorflow/core:kernels/io.h",
-        "//tensorflow/core:kernels/lrn_op.cc",
     ],
     visibility = ["//visibility:public"],
 )
@@ -647,38 +665,31 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
-        "//tensorflow/core:kernels/io.h",
+        ":android_extended_ops_headers",
+        "//tensorflow/core:kernels/dynamic_stitch_op.cc",
+        "//tensorflow/core:kernels/in_topk_op.cc",
+        "//tensorflow/core:kernels/io.cc",
+        "//tensorflow/core:kernels/lrn_op.cc",
         "//tensorflow/core:kernels/maxpooling_op.cc",
-        "//tensorflow/core:kernels/maxpooling_op.h",
-        "//tensorflow/core:kernels/reduction_ops.h",
-        "//tensorflow/core:kernels/reduction_ops_common.h",
         "//tensorflow/core:kernels/reduction_ops_max.cc",
         "//tensorflow/core:kernels/reduction_ops_mean.cc",
         "//tensorflow/core:kernels/reduction_ops_min.cc",
         "//tensorflow/core:kernels/reduction_ops_prod.cc",
         "//tensorflow/core:kernels/reduction_ops_sum.cc",
         "//tensorflow/core:kernels/relu_op.cc",
-        "//tensorflow/core:kernels/relu_op.h",
         "//tensorflow/core:kernels/restore_op.cc",
         "//tensorflow/core:kernels/save_op.cc",
         "//tensorflow/core:kernels/softplus_op.cc",
-        "//tensorflow/core:kernels/softplus_op.h",
         "//tensorflow/core:kernels/softsign_op.cc",
-        "//tensorflow/core:kernels/softsign_op.h",
         "//tensorflow/core:kernels/sparse_to_dense_op.cc",
         "//tensorflow/core:kernels/stack_ops.cc",
         "//tensorflow/core:kernels/tile_ops.cc",
-        "//tensorflow/core:kernels/tile_ops.h",
         "//tensorflow/core:kernels/topk_op.cc",
         "//tensorflow/core:kernels/training_ops.cc",
-        "//tensorflow/core:kernels/training_ops.h",
         "//tensorflow/core:kernels/transpose_op.cc",
-        "//tensorflow/core:kernels/transpose_op.h",
-        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/transpose_op_cpu.cc",
         "//tensorflow/core:kernels/where_op.cc",
-        "//tensorflow/core:kernels/where_op.h",
         "//tensorflow/core:kernels/xent_op.cc",
-        "//tensorflow/core:kernels/xent_op.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -708,12 +719,6 @@ config_setting(
     },
 )
 
-ANDROID_TF_SOURCES = [
-    "//tensorflow/core:android_core_ops",
-    "//tensorflow/core:android_extended_ops",
-    "//tensorflow/core:android_srcs",
-]
-
 ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
@@ -722,13 +727,16 @@ ANDROID_TF_COPTS = [
 ]
 
 # Native library support for Android applications.
-# Compiles to a trivial library on non-android.
+# Does not contain operators, use :android_tensorflow_lib if you want full
+# operator support.
+# Compiles to a trivial library on non-android to prevent irrelevant
+# build errors.
 cc_library(
-    name = "android_tensorflow_lib",
+    name = "android_tensorflow_lib_lite",
     srcs = select({
-        ":android": ANDROID_TF_SOURCES,
-        ":android_32": ANDROID_TF_SOURCES,
-        ":android_64": ANDROID_TF_SOURCES,
+        ":android": ["//tensorflow/core:android_srcs"],
+        ":android_32": ["//tensorflow/core:android_srcs"],
+        ":android_64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -755,6 +763,47 @@ cc_library(
         "@re2//:re2",
         ":protos_cc",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "android_tensorflow_operators",
+    srcs = [
+        "//tensorflow/core:android_core_ops",
+        "//tensorflow/core:android_extended_ops",
+    ],
+    copts = select({
+        ":android": ANDROID_TF_COPTS,
+        ":android_32": ANDROID_TF_COPTS,
+        ":android_64": ANDROID_TF_COPTS,
+        "//conditions:default": [],
+    }),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@re2//:re2",
+        ":android_tensorflow_lib_lite",
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+)
+
+# Full Tensorflow library with operator support. Use this unless reducing
+# binary size (by packaging a reduced operator set) is a concern.
+cc_library(
+    name = "android_tensorflow_lib",
+    srcs = [],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_tensorflow_lib_lite",
+        ":android_tensorflow_operators",
     ],
 )
 
@@ -827,11 +876,15 @@ tf_cuda_library(
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = [
+        "-ldl",
+        "-lm",
+    ],
     deps = [
         ":lib",
         ":lib_internal",

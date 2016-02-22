@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/register_types.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -247,6 +248,18 @@ bool DataTypeIsQuantized(DataType dt) {
     default:
       return false;
   }
+}
+
+int DataTypeSize(DataType dt) {
+#define CASE(T)                  \
+  case DataTypeToEnum<T>::value: \
+    return sizeof(T);
+  switch (dt) {
+    TF_CALL_POD_TYPES(CASE);
+    default:
+      return 0;
+  }
+#undef CASE
 }
 
 }  // namespace tensorflow

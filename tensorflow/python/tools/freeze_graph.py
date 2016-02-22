@@ -41,7 +41,6 @@ import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.python.client import graph_util
-from tensorflow.python.framework import tensor_util
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -64,23 +63,6 @@ tf.app.flags.DEFINE_string("filename_tensor_name", "save/Const:0",
                            """The name of the tensor holding the save path.""")
 tf.app.flags.DEFINE_boolean("clear_devices", True,
                             """Whether to remove device specifications.""")
-
-
-def set_attr_dtype(node, key, value):
-  try:
-    node.attr[key].CopyFrom(value)
-  except KeyError:
-    pass
-
-
-def set_attr_tensor(node, key, value, dtype, shape=None):
-  try:
-    node.attr[key].CopyFrom(tf.AttrValue(
-        tensor=tensor_util.make_tensor_proto(value,
-                                             dtype=dtype,
-                                             shape=shape)))
-  except KeyError:
-    pass
 
 
 def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
@@ -130,36 +112,11 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
         saver.restore(sess, input_checkpoint)
     else:
       sess.run([restore_op_name], {filename_tensor_name: input_checkpoint})
-    found_variables = {}
-    for node in input_graph_def.node:
-      if node.op == "Assign":
-        variable_name = node.input[0]
-        found_variables[variable_name] = sess.run(variable_name + ":0")
-
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = graph_util.extract_sub_graph(
-      input_graph_def, output_node_names.split(","))
-
-  output_graph_def = tf.GraphDef()
-  how_many_converted = 0
-  for input_node in inference_graph.node:
-    output_node = tf.NodeDef()
-    if input_node.name in found_variables:
-      output_node.op = "Const"
-      output_node.name = input_node.name
-      dtype = input_node.attr["dtype"]
-      data = found_variables[input_node.name]
-      set_attr_dtype(output_node, "dtype", dtype)
-      set_attr_tensor(output_node, "value", data, dtype.type, data.shape)
-      how_many_converted += 1
-    else:
-      output_node.CopyFrom(input_node)
-    output_graph_def.node.extend([output_node])
+    output_graph_def = graph_util.convert_variables_to_constants(
+        sess, input_graph_def, output_node_names.split(","))
 
   with tf.gfile.FastGFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
-  print("Converted %d variables to const ops." % how_many_converted)
   print("%d ops in the final graph." % len(output_graph_def.node))
 
 

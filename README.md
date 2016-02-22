@@ -5,7 +5,7 @@
 
 |  **`Linux CPU`**   |  **`Linux GPU PIP`** | **`Mac OS CPU`** |  **`Android`** |
 |-------------------|----------------------|------------------|----------------|
-| [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master)](http://ci.tensorflow.org/job/tensorflow-master) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-gpu_pip)](http://ci.tensorflow.org/job/tensorflow-master-gpu_pip) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-mac)](http://ci.tensorflow.org/job/tensorflow-master-mac) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-android)](http://ci.tensorflow.org/job/tensorflow-master-android) |
+| [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-cpu)](http://ci.tensorflow.org/job/tensorflow-master-cpu) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-gpu_pip)](http://ci.tensorflow.org/job/tensorflow-master-gpu_pip) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-mac)](http://ci.tensorflow.org/job/tensorflow-master-mac) | [![Build Status](http://ci.tensorflow.org/buildStatus/icon?job=tensorflow-master-android)](http://ci.tensorflow.org/job/tensorflow-master-android) |
 
 **TensorFlow** is an open source software library for numerical computation using
 data flow graphs.  Nodes in the graph represent mathematical operations, while

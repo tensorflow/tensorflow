@@ -43,7 +43,7 @@ class ReshapeOp : public OpKernel {
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one.
     TensorShape shape;
-    int32 product = 1;
+    int64 product = 1;
     int unknown_index = -1;
     auto Svec = sizes.flat<int32>();
     for (int d = 0; d < num_dims; ++d) {
@@ -69,7 +69,7 @@ class ReshapeOp : public OpKernel {
           errors::InvalidArgument("Reshape cannot infer the missing input size "
                                   "for an empty tensor unless all specified "
                                   "input sizes are non-zero"));
-      const int32 missing = input.NumElements() / product;
+      const int64 missing = input.NumElements() / product;
       OP_REQUIRES(
           context, product * missing == input.NumElements(),
           errors::InvalidArgument(

@@ -13,22 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_COSTUTIL_H_
-#define TENSORFLOW_GRAPH_COSTUTIL_H_
+// See docs in ../ops/array_ops.cc.
 
-#include <vector>
-#include "tensorflow/core/platform/types.h"
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
 
-namespace tensorflow {
+#include <string.h>  // for memcpy
 
-class CostModel;
-class Graph;
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/casts.h"
 
-// result[i] is an estimate of the longest execution path from
-// the node with id i to the sink node.
-std::vector<int64> LongestOutgoingPathCost(const Graph& graph,
-                                           const CostModel& cm);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_GRAPH_COSTUTIL_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_

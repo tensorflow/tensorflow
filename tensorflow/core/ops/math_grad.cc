@@ -43,7 +43,7 @@ Status GradForUnaryCwise(FunctionDef* g, std::vector<FDH::Node> nodes) {
 Status AbsGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"sign"}, "Sign", {"x"}},
+      {{"sign"}, "Sign", {"x"}, {}, {"dy"}},
       {{"dx"}, "Mul", {"dy", "sign"}},
   });
   // clang-format on
@@ -63,7 +63,7 @@ Status InvGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
       {{"y"}, "Inv", {"x"}},
-      {{"y2"}, "Square", {"y"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dy"}},
       {{"y2_neg"}, "Neg", {"y2"}},
       {{"dx"}, "Mul", {"dy", "y2_neg"}}
   });
@@ -76,8 +76,8 @@ Status SquareGrad(const AttrSlice& attrs, FunctionDef* g) {
   return GradForUnaryCwise(g, {
       FDH::Const("c", 2LL),
       {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
-      {{"x2"}, "Mul", {"x", "two"}},  // x * 2
-      {{"dx"}, "Mul", {"dy", "x2"}},  // dy * (x * 2)
+      {{"x2"}, "Mul", {"x", "two"}, {}, {"dy"}},  // x * 2
+      {{"dx"}, "Mul", {"dy", "x2"}},              // dy * (x * 2)
   });
   // clang-format on
 }
@@ -87,7 +87,7 @@ Status SqrtGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
       {{"y"}, "Sqrt", {"x"}},
-      {{"y_inv"}, "Inv", {"y"}},
+      {{"y_inv"}, "Inv", {"y"}, {}, {"dy"}},
       FDH::Const("const", 0.5f),
       {{"half"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
       {{"a"}, "Mul", {"half", "y_inv"}},  // .5 * 1/y
@@ -100,7 +100,7 @@ REGISTER_OP_GRADIENT("Sqrt", SqrtGrad);
 Status RsqrtGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"x_inv"}, "Inv", {"x"}},
+      {{"x_inv"}, "Inv", {"x"}, {}, {"dy"}},
       {{"y"}, "Rsqrt", {"x"}},
       FDH::Const("const", -.5f),
       {{"neghalf"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
@@ -125,7 +125,7 @@ REGISTER_OP_GRADIENT("Exp", ExpGrad);
 Status LogGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"x_inv"}, "Inv", {"x"}},
+      {{"x_inv"}, "Inv", {"x"}, {}, {"dy"}},
       {{"dx"}, "Mul", {"dy", "x_inv"}},           // dy * 1/x
   });
   // clang-format on
@@ -136,7 +136,7 @@ Status TanhGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
       {{"y"}, "Tanh", {"x"}},
-      {{"y2"}, "Square", {"y"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dy"}},
       FDH::Const("const", 1.0f),
       {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
       {{"a"}, "Sub", {"one", "y2"}},
@@ -152,7 +152,7 @@ Status SigmoidGrad(const AttrSlice& attrs, FunctionDef* g) {
       {{"y"}, "Sigmoid", {"x"}},
       FDH::Const("const", 1.0f),
       {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
-      {{"a"}, "Sub", {"one", "y"}},
+      {{"a"}, "Sub", {"one", "y"}, {}, {"dy"}},
       {{"b"}, "Mul", {"y", "a"}},             // y * (1 - y)
       {{"dx"}, "Mul", {"dy", "b"}},           // dy * y * (1 - y)
   });
@@ -175,7 +175,7 @@ REGISTER_OP_GRADIENT("Sign", SignGrad);
 Status SinGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"cos"}, "Cos", {"x"}},
+      {{"cos"}, "Cos", {"x"}, {}, {"dy"}},
       {{"dx"}, "Mul", {"dy", "cos"}},  // dy * cos(x)
   });
   // clang-format on
@@ -185,7 +185,7 @@ REGISTER_OP_GRADIENT("Sin", SinGrad);
 Status CosGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"sin"}, "Sin", {"x"}},
+      {{"sin"}, "Sin", {"x"}, {}, {"dy"}},
       {{"neg"}, "Neg", {"sin"}},
       {{"dx"}, "Mul", {"dy", "neg"}},  // dy * (-sin(x))
   });
@@ -287,9 +287,9 @@ Status MulGrad(const AttrSlice& attrs, FunctionDef* g) {
   if (T == DT_COMPLEX64) {
     return GradForBinaryCwise(
         g, {
-               {{"cy"}, "Conj", {"y"}},
+               {{"cy"}, "Conj", {"y"}, {}, {"dz"}},
                {{"gx"}, "Mul", {"dz", "cy"}},  // dz * Conj(y)
-               {{"cx"}, "Conj", {"x"}},
+               {{"cx"}, "Conj", {"x"}, {}, {"dz"}},
                {{"gy"}, "Mul", {"cx", "dz"}},  // Conj(x) * dz
            });
   } else {
@@ -307,8 +307,8 @@ Status DivGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
       {{"gx"}, "Div", {"dz", "y"}},
-      {{"nx"}, "Neg", {"x"}},
-      {{"y2"}, "Square", {"y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
       {{"nx_y2"}, "Div", {"nx", "y2"}},
       {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
   });
@@ -323,12 +323,12 @@ Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
       // dz * y * Pow(x, y - 1)
       FDH::Const("const", 1.0f),
       {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
-      {{"t0"}, "Sub", {"y", "one"}},
+      {{"t0"}, "Sub", {"y", "one"}, {}, {"dz"}},
       {{"t1"}, "Pow", {"x", "t0"}},
       {{"t2"}, "Mul", {"dz", "y"}},
       {{"gx"}, "Mul", {"t1", "t2"}},
       // dz * z * Log(x)
-      {{"t3"}, "Log", {"x"}},
+      {{"t3"}, "Log", {"x"}, {}, {"dz"}},
       {{"t4"}, "Mul", {"dz", "z"}},
       {{"gy"}, "Mul", {"t3", "t4"}},
   });
@@ -340,7 +340,7 @@ Status MaximumMinimumGradHelper(const string& comparator,
                                 const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
-      {{"c"}, comparator, {"x", "y"}},
+      {{"c"}, comparator, {"x", "y"}, {}, {"dz"}},
       {{"mask"}, "Cast", {"c"}, {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
       {{"gx"}, "Mul", {"dz", "mask"}},
       {{"gy"}, "Sub", {"dz", "gx"}},
@@ -376,8 +376,8 @@ Status SelectGrad(const AttrSlice& attrs, FunctionDef* g) {
       {"dc:bool", "dx:T", "dy:T"},
       {{"T: {float, double}"}},
       {
-        {{"dc"}, "ZerosLike", {"c"}, {{"T", DT_BOOL}}},
-        {{"zeros"}, "ZerosLike", {"x"}, {{"T", "$T"}}},
+        {{"dc"}, "ZerosLike", {"c"}, {{"T", DT_BOOL}}, {"dz"}},
+        {{"zeros"}, "ZerosLike", {"x"}, {{"T", "$T"}}, {"dz"}},
         {{"dx"}, "Select", {"c", "dz", "zeros"}, {{"T", "$T"}}},
         {{"dy"}, "Select", {"c", "zeros", "dz"}, {{"T", "$T"}}},
       });

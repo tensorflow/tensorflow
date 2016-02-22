@@ -431,7 +431,7 @@ static int64 SkewedSize(random::SimplePhilox* gen, int64 current_elements) {
     } else {
       result = gen->Uniform(2);
     }
-  } while ((result * current_elements >= 1uLL << 34) ||
+  } while ((result * current_elements >= 1LL << 34) ||
            (result * current_elements < 0));
   return result;
 }

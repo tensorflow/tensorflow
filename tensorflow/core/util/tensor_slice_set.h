@@ -80,6 +80,10 @@ class TensorSliceSet {
   };
   // We maintain a mapping from the slice string to the slice information.
   std::unordered_map<string, SliceInfo> slices_;
+
+  // Minimal slice which contains all presented slices. Used for speeding up
+  // overlap check when slices are being added consequently.
+  TensorSlice slices_hull_;
 };
 
 }  // namespace checkpoint

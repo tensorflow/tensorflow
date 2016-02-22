@@ -1181,6 +1181,28 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(len(png0), 800)
       self.assertLessEqual(len(png0), 1500)
 
+  def testSyntheticTwoChannel(self):
+    with self.test_session() as sess:
+      # Strip the b channel from an rgb image to get a two-channel image.
+      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      image0 = constant_op.constant(gray_alpha)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+      self.assertEqual(2, image0.shape[-1])
+      self.assertAllEqual(image0, image1)
+
+  def testSyntheticTwoChannelUint16(self):
+    with self.test_session() as sess:
+      # Strip the b channel from an rgb image to get a two-channel image.
+      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+      self.assertEqual(2, image0.shape[-1])
+      self.assertAllEqual(image0, image1)
+
   def testShape(self):
     with self.test_session():
       png = constant_op.constant('nonsense')

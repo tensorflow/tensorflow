@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_region_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -35,22 +35,11 @@ limitations under the License.
 // CUDA driver.
 const bool FLAGS_brain_mem_reg_cuda_dma = true;
 
-// If true, checks for memory overwrites by writing
-// distinctive patterns on both ends of allocated memory.
-const bool FLAGS_brain_gpu_region_allocator_debug = false;
-
-// If true, initializes all new Malloc buffers to NaN, and resets the
-// buffer to NaN upon Free.
-const bool FLAGS_brain_gpu_region_allocator_reset_to_nan = false;
-
-// If true, uses the Best-Fit GPU allocator.
-const bool FLAGS_brain_gpu_use_bfc_allocator = true;
-
 // If true, record attributes of memory allocations and
 // dynamically check for appropriate use of registered memory.
 // Should only be true for debugging or diagnosis of
 // performance issues.
-bool FLAGS_brain_gpu_record_mem_types = false;
+const bool FLAGS_brain_gpu_record_mem_types = false;
 
 namespace gpu = ::perftools::gputools;
 
@@ -117,19 +106,15 @@ Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
       return nullptr;
     }
 
-    if (FLAGS_brain_gpu_use_bfc_allocator || allocator_type == "BFC") {
-      gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes);
-    } else {
-      gpu_allocator = new GPURegionAllocator(gpu_id, total_bytes);
-    }
+    gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes);
 
-    if (FLAGS_brain_gpu_region_allocator_debug) {
+    // If true, checks for memory overwrites by writing
+    // distinctive patterns on both ends of allocated memory.
+    static const bool kGPUDebug = false;
+    if (kGPUDebug) {
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, gpu_id);
-    }
-    if (FLAGS_brain_gpu_region_allocator_reset_to_nan) {
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, gpu_id);
     }
-
     gpu_allocators_[gpu_id] = gpu_allocator;
 
     // If there are any pending AllocVisitors for this bus, add

@@ -350,6 +350,12 @@ class Tensor {
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
 
+  /// Copy the other tensor into this tensor and reshape it and reinterpret the
+  /// buffer's datatype.
+  ///
+  /// This tensor shares other's underlying storage.
+  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+
  private:
   void set_dtype(DataType t) { shape_.set_data_type(t); }
   TensorShape shape_;

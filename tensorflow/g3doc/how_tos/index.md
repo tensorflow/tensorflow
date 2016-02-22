@@ -100,4 +100,14 @@ If you're developing a tool to load, analyze, or manipulate TensorFlow model
 files, it's useful to understand a bit about the format in which they're stored.
 This guide covers the details of the saved model format.
 
-[View Tutorial](tool_developers/index.md)
+[View Tutorial](../how_tos/tool_developers/index.md)
+
+## How to Retrain Inception using Transfer Learning
+
+Training a full object recognition model like Inception takes a long time and a
+lot of images. This example shows how to use the technique of transfer learning
+to retrain just the final layer of a fully-trained model to recognize new
+categories of objects, which is a lot faster and easier than completely
+retraining a new model.
+
+[View Tutorial](../how_tos/image_retraining/index.md)
