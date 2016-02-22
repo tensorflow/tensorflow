@@ -34,7 +34,7 @@ class TensorFlowTrainer(object):
     """
 
     def __init__(self, loss, global_step, optimizer,
-                 learning_rate, monitor, clip_gradients=5.0):
+                 learning_rate, clip_gradients=5.0):
         """Build a trainer part of graph.
 
         Args:
@@ -49,7 +49,6 @@ class TensorFlowTrainer(object):
                             return tf.train.exponential_decay(
                                 learning_rate=0.1, global_step=global_step,
                                 decay_steps=2, decay_rate=0.001)
-          monitor: Monitor object that tracks performance during training
         Raises:
             ValueError: if learning_rate is not a float or a callable.
         """
@@ -83,7 +82,6 @@ class TensorFlowTrainer(object):
         self.trainer = tf.group(self.trainer, *tf.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
         self._initializers = tf.initialize_all_variables()
-        self.monitor = monitor
 
     def initialize(self, sess):
         """Initalizes all variables.
@@ -96,7 +94,7 @@ class TensorFlowTrainer(object):
         """
         return sess.run(self._initializers)
 
-    def train(self, sess, feed_dict_fn, steps,
+    def train(self, sess, feed_dict_fn, steps, monitor,
               summary_writer=None, summaries=None,
               feed_params_fn=None):
         """Trains a model for given number of steps, given feed_dict function.
@@ -106,6 +104,7 @@ class TensorFlowTrainer(object):
             feed_dict_fn: Function that will return a feed dictionary.
             summary_writer: SummaryWriter object to use for writing summaries.
             steps: Number of steps to run.
+            monitor: Monitor object to track training progress and induce early stopping
             summaries: Joined object of all summaries that should be ran.
 
         Returns:
@@ -121,11 +120,11 @@ class TensorFlowTrainer(object):
                 global_step, loss, _ = sess.run(
                     [self.global_step, self.loss, self.trainer],
                     feed_dict=feed_dict)
-            self.monitor.update(step, global_step, loss, sess,
-                                feed_params_fn, loss_expression_tensor=self.loss)
+            monitor.update(step, global_step, loss, sess,
+                           feed_params_fn, loss_expression_tensor=self.loss)
             if summaries and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
-            if self.monitor.monitor_inducing_stop():
+            if monitor.monitor_inducing_stop():
                 break
         return
 

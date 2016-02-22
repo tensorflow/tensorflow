@@ -55,15 +55,13 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
-        monitor: Monitor object to track of training progress (and induce early stopping)
      """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
-                 monitor=None):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
@@ -75,8 +73,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             continue_training=continue_training,
             config_addon=config_addon, verbose=verbose,
             max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-            monitor=monitor)
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -135,14 +132,12 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
-        monitor: Monitor object to track of training progress (and induce early stopping)
    """
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
-                 monitor=None):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
@@ -153,8 +148,7 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             continue_training=continue_training,
             config_addon=config_addon, verbose=verbose,
             max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-            monitor=monitor)
+            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,

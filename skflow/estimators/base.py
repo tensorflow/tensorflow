@@ -86,8 +86,7 @@ class TensorFlowEstimator(BaseEstimator):
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000,
-                 monitor=None):
+                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.n_classes = n_classes
         self.tf_master = tf_master
@@ -103,12 +102,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.max_to_keep = max_to_keep
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
-
         self.config_addon = config_addon
-        if monitor is None:
-            self.monitor = monitors.BaseMonitor()
-        else:
-            self.monitor = monitor
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -155,8 +149,7 @@ class TensorFlowEstimator(BaseEstimator):
             # Additionally creates initialization ops.
             self._trainer = TensorFlowTrainer(
                 loss=self._model_loss, global_step=self._global_step,
-                optimizer=self.optimizer, learning_rate=self.learning_rate,
-                monitor=self.monitor)
+                optimizer=self.optimizer, learning_rate=self.learning_rate)
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver(
@@ -164,7 +157,7 @@ class TensorFlowEstimator(BaseEstimator):
                 keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
 
             # Enable monitor to create validation data dict with appropriate tf placeholders
-            self.monitor.create_val_feed_dict(self._inp, self._out)
+            self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
             if self.config_addon is None:
@@ -177,7 +170,7 @@ class TensorFlowEstimator(BaseEstimator):
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
             graph_def=self._session.graph_def)
 
-    def fit(self, X, y, logdir=None):
+    def fit(self, X, y, monitor=None, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
         data X and y.
 
@@ -194,6 +187,7 @@ class TensorFlowEstimator(BaseEstimator):
             y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
             iterator that returns array of targets. The training target values
             (class labels in classification, real numbers in regression).
+            monitor: Monitor object to print training progress and invoke early stopping
             logdir: the directory to save the log file that can be used for
             optional visualization.
 
@@ -204,6 +198,11 @@ class TensorFlowEstimator(BaseEstimator):
         self._data_feeder = setup_train_data_feeder(X, y,
                                                     self.n_classes,
                                                     self.batch_size)
+
+        if monitor is None:
+            self._monitor = monitors.BaseMonitor()
+        else:
+            self._monitor = monitor
 
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
@@ -230,6 +229,7 @@ class TensorFlowEstimator(BaseEstimator):
                             self._data_feeder.get_feed_dict_fn(
                                 self._inp, self._out),
                             self.steps,
+                            self._monitor,
                             self._summary_writer,
                             self._summaries,
                             feed_params_fn=self._data_feeder.get_feed_params)
