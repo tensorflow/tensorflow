@@ -267,7 +267,7 @@ function addInteraction(selection, d: render.RenderNodeInfo,
  * Returns the d3 context menu specification for the provided node.
  */
 export function getContextMenu(node: Node, sceneBehavior) {
-  return [{
+  let menu = [{
     title: d => {
       return tf.graph.getIncludeNodeButtonString(node.include);
     },
@@ -275,6 +275,68 @@ export function getContextMenu(node: Node, sceneBehavior) {
       sceneBehavior.fire("node-toggle-extract", { name: node.name });
     }
   }];
+  if (canBeInSeries(node)) {
+    menu.push({
+      title: d => {
+        return getGroupSettingLabel(node);
+      },
+      action: (elm, d, i) => {
+        sceneBehavior.fire("node-toggle-seriesgroup",
+          { name: getSeriesName(node) });
+      }
+    });
+  }
+  return menu;
+}
+
+/** Returns if a node can be part of a grouped series */
+export function canBeInSeries(node: Node) {
+  return getSeriesName(node) !== null;
+}
+
+/**
+ * Returns the name of the possible grouped series containing this node.
+ * Returns null if the node cannot be part of a grouped series of nodes.
+ */
+export function getSeriesName(node: Node) {
+  if (!node) {
+    return null;
+  }
+  if (node.type === NodeType.SERIES) {
+    return node.name;
+  }
+  if (node.type === NodeType.OP) {
+    let op = <OpNode>node;
+    return op.owningSeries;
+  }
+  return null;
+}
+
+/**
+ * Returns the SeriesNode that represents the series that the provided node
+ * is contained in (or itself if the provided node is itself a SeriesNode).
+ * Returns null if the node is not rendered as part of a series.
+ */
+function getContainingSeries(node: Node) {
+  let s: SeriesNode = null;
+  if (!node) {
+    return null;
+  } else if (node.type === NodeType.SERIES) {
+    s = <SeriesNode>node;
+  } else if (node.parentNode && node.parentNode.type === NodeType.SERIES) {
+    s = <SeriesNode>node.parentNode;
+  }
+  return s;
+}
+
+/**
+ * Returns the label for a button to toggle the group setting of the provided
+ * node.
+ */
+export function getGroupSettingLabel(node: Node) {
+  return tf.graph.getGroupSeriesNodeButtonString(
+    getContainingSeries(node) !== null ? tf.graph.SeriesGroupingType.GROUP :
+     tf.graph.SeriesGroupingType.UNGROUP);
 }
 
 /**

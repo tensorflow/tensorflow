@@ -21,7 +21,6 @@ Polymer({
     progress: {
       type: Object,
       notify: true,
-      readOnly: true // Produces, does not consume.
     },
     datasets: Array,
     hasStats: {
@@ -48,39 +47,35 @@ Polymer({
       type: String,
       readOnly: true,
       notify: true
-    }
+    },
+    outHierarchyParams: {
+      type: Object,
+      readOnly: true,
+      notify: true
+    },
   },
   observers: [
     '_selectedDatasetChanged(selectedDataset, datasets)'
   ],
   _parseAndConstructHierarchicalGraph: function(dataset, pbTxtContent) {
-    var self = this;
     // Reset the progress bar to 0.
-    self._setProgress({
+    this.set('progress', {
       value: 0,
       msg: ''
     });
-    var tracker = {
-      setMessage: function(msg) {
-        self._setProgress({
-          value: self.progress.value,
-          msg: msg
-        });
-      },
-      updateProgress: function(value) {
-        self._setProgress({
-          value: self.progress.value + value,
-          msg: self.progress.msg
-        });
-      },
-      reportError: function(msg) {
-        self._setProgress({
-          value: self.progress.value,
-          msg: msg,
-          error: true
-        });
-      },
+    var tracker = tf.getTracker(this);
+    var hierarchyParams = {
+      verifyTemplate: true,
+      // If a set of numbered op nodes has at least this number of nodes
+      // then group them into a series node.
+      seriesNodeMinSize: 5,
+      // A map of series node names to series grouping settings, to indicate
+      // if a series is to be rendered as grouped or ungrouped.
+      // Starts out empty which allows the renderer to decide which series
+      // are initially rendered grouped and which aren't.
+      seriesMap: {},
     };
+    this._setOutHierarchyParams(hierarchyParams);
     var statsJson;
     var dataTracker = tf.getSubtaskTracker(tracker, 30, 'Data');
     tf.graph.parser.readAndParseData(dataset, pbTxtContent, dataTracker)
@@ -124,12 +119,6 @@ Polymer({
           tf.graph.joinStatsInfoWithGraph(graph, statsJson);
         });
       }
-      var hierarchyParams = {
-        verifyTemplate: true,
-        // If a set of numbered op nodes has at least this number of nodes
-        // then group them into a series node.
-        seriesNodeMinSize: 5,
-      };
       var hierarchyTracker = tf.getSubtaskTracker(tracker, 50,
           'Namespace hierarchy');
       return tf.graph.hierarchy.build(graph, hierarchyParams, hierarchyTracker);

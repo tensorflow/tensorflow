@@ -917,7 +917,8 @@ class OpKernelContext {
           return wrapped.second;
         }
       }
-      TrackingAllocator* wrapped_allocator = new TrackingAllocator(allocator);
+      TrackingAllocator* wrapped_allocator =
+          new TrackingAllocator(allocator, attr.track_sizes());
       wrapped_allocators_.push_back(
           std::make_pair(allocator, wrapped_allocator));
       return wrapped_allocator;

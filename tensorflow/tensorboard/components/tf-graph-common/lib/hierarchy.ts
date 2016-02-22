@@ -386,6 +386,7 @@ function findEdgeTargetsInGraph(
 export interface HierarchyParams {
   verifyTemplate: boolean;
   seriesNodeMinSize: number;
+  seriesMap: { [name: string]: tf.graph.SeriesGroupingType };
 }
 
 /**
@@ -410,7 +411,8 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   .then(() => {
     return runAsyncTask("Detect series", 20, () => {
       if (params.seriesNodeMinSize > 0) {
-        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize);
+        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize,
+          params.seriesMap);
       }
     }, tracker);
   })
@@ -564,18 +566,23 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
  *
  * @param metanode
  * @param hierarchy
+ * @param seriesNames Map of node names to their series they are contained in.
+ *     This should be provided empty and is populated by this method.
  * @param threshold If the series has this many nodes or more, then group them
  *     into a series.
+ * @param map Map of series names to their series grouping type, if one has
+ *     been set.
  * @return A dictionary from node name to series node name that contains the
  *     node.
  */
 function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
-    seriesNames: { [name: string]: string }, threshold: number) {
+    seriesNames: { [name: string]: string }, threshold: number,
+    map: { [name: string]: tf.graph.SeriesGroupingType }) {
   let metagraph = metanode.metagraph;
   _.each(metagraph.nodes(), n => {
     let child = metagraph.node(n);
     if (child.type === tf.graph.NodeType.META) {
-      groupSeries(<Metanode>child, hierarchy, seriesNames, threshold);
+      groupSeries(<Metanode>child, hierarchy, seriesNames, threshold, map);
     }
   });
 
@@ -586,7 +593,21 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
   // metagraph.
   _.each(seriesDict, function(seriesNode: SeriesNode, seriesName: string) {
     let nodeMemberNames = seriesNode.metagraph.nodes();
-    if (nodeMemberNames.length < threshold) {
+    _.each(nodeMemberNames, n => {
+      let child = <OpNode>metagraph.node(n);
+      if (!child.owningSeries) {
+        child.owningSeries = seriesName;
+      }
+    });
+    // If the series contains less than the threshold number of nodes and
+    // this series has not been adding to the series map, then set this
+    // series to be shown ungrouped in the map.
+    if (nodeMemberNames.length < threshold && !(seriesNode.name in map)) {
+      map[seriesNode.name] = tf.graph.SeriesGroupingType.UNGROUP;
+    }
+    // If the series is in the map as ungrouped then do not group the series.
+    if (seriesNode.name in map
+      && map[seriesNode.name] === tf.graph.SeriesGroupingType.UNGROUP) {
       return;
     }
     hierarchy.setNode(seriesName, seriesNode); // add to the index

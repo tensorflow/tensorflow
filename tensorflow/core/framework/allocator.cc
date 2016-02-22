@@ -88,6 +88,10 @@ class CPUAllocator : public Allocator {
     *stats = stats_;
   }
 
+  size_t AllocatedSizeSlow(void* ptr) override {
+    return port::MallocExtension_GetAllocatedSize(ptr);
+  }
+
  private:
   mutex mu_;
   AllocatorStats stats_ GUARDED_BY(mu_);

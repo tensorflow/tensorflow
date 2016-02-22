@@ -31,6 +31,9 @@ export enum NodeType {META, OP, SERIES, BRIDGE, ELLIPSIS};
 /** Indicates if a node is to be included in the main graph when rendered. */
 export enum InclusionType {INCLUDE, EXCLUDE, UNSPECIFIED};
 
+/** Indicates if a series is to be grouped in the graph when rendered. */
+export enum SeriesGroupingType {GROUP, UNGROUP};
+
 /**
  * A BaseEdge is the label object (in the graphlib sense) for an edge in the
  * original, full graph produced after parsing. Subsequent graphs, like those
@@ -115,6 +118,9 @@ export interface OpNode extends Node {
   inputs: NormalizedInput[];
   inEmbeddings: OpNode[];
   outEmbeddings: OpNode[];
+  // The name of the SeriesNode that can contain this node in its series.
+  // If there is no such node, then this is null.
+  owningSeries: string;
 }
 
 export interface BridgeNode extends Node {
@@ -307,6 +313,7 @@ class OpNodeImpl implements OpNode {
   outEmbeddings: OpNode[];
   parentNode: Node;
   include: InclusionType;
+  owningSeries: string;
 
   /**
    * Constructs a new Op node.
@@ -331,6 +338,7 @@ class OpNodeImpl implements OpNode {
     this.outEmbeddings = [];
     this.parentNode = null;
     this.include = InclusionType.UNSPECIFIED;
+    this.owningSeries = null;
   }
 };
 
@@ -965,4 +973,30 @@ export function getIncludeNodeButtonString(include: InclusionType) {
     return "Remove from main graph";
   }
 };
+
+/**
+ * Returns the string for the series node grouping toggle button, dependant
+ * on the provided current SeriesGroupingType.
+ */
+export function getGroupSeriesNodeButtonString(group: SeriesGroupingType) {
+  if (group === tf.graph.SeriesGroupingType.GROUP) {
+    return "Ungroup this series of nodes";
+  } else {
+    return "Group this series of nodes";
+  }
+};
+
+/**
+ * Toggle the node series grouping option in the provided map, setting it
+ * to ungroup if the series is not already in the map.
+ */
+export function toggleNodeSeriesGroup(
+  map: { [name: string]: tf.graph.SeriesGroupingType }, name: string) {
+  if (!(name in map) || map[name] === tf.graph.SeriesGroupingType.GROUP) {
+    map[name] = tf.graph.SeriesGroupingType.UNGROUP;
+  } else {
+    map[name] = tf.graph.SeriesGroupingType.GROUP;
+  }
+};
+
 } // close module tf.graph
