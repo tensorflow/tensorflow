@@ -1184,3 +1184,24 @@ def adjust_saturation(image, saturation_factor, name=None):
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
+
+
+# TODO(irving): Remove once the C++ RandomCrop op is deprecated.
+@ops.RegisterShape('RandomCrop')
+def _random_crop_shape(op):
+  """Shape function for RandomCrop op."""
+  image_shape = op.inputs[0].get_shape().with_rank(3)
+  if image_shape.ndims is not None:
+    channels = image_shape[-1].value
+  else:
+    channels = None
+
+  size = tensor_util.constant_value(op.inputs[1])
+  if size is None:
+    output_shape = [None, None, channels]
+  elif size.shape == (2,):
+    output_shape = [size[0], size[1], channels]
+  else:
+    raise ValueError('Input "size" must be a vector of two elements.')
+
+  return [tensor_shape.TensorShape(output_shape)]
