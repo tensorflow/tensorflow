@@ -48,4 +48,5 @@ Hello, TensorFlow!
 ##For more information
 * [TensorFlow website](http://tensorflow.org)
 * [TensorFlow whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf)
-* [Tensorflow MOOC on Udacity] (https://www.udacity.com/course/deep-learning--ud730)
+* [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
+* [TensorFlow tutorial examples](https://github.com/pkmital/tensorflow_tutorials)
