@@ -188,6 +188,18 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertAllClose(3.0, var_y.eval())
       self.assertAllClose(5.0, tf.add(var_x, var_y).eval())
 
+  def testCachingDevice(self):
+    with self.test_session():
+      var = tf.Variable(2.0)
+      self.assertEqual(var.device, var.value().device)
+      self.assertEqual(var.device, var.initialized_value().device)
+
+      var_cached = tf.Variable(2.0, caching_device="/job:foo")
+      self.assertFalse(var_cached.device.startswith("/job:foo"))
+      self.assertTrue(var_cached.value().device.startswith("/job:foo"))
+      self.assertTrue(
+          var_cached.initialized_value().device.startswith("/job:foo"))
+
   def testCollections(self):
     with self.test_session():
       var_x = tf.Variable(2.0)
