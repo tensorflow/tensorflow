@@ -33,7 +33,7 @@ example.
 An introduction to TensorFlow Serving, a flexible, high-performance system for
 serving machine learning models, designed for production environments.
 
-[View Tutorial](https://tensorflow.github.io/serving/serving_basic)
+[View Tutorial](../tutorials/tfserve/index.md)
 
 
 ## Convolutional Neural Networks
