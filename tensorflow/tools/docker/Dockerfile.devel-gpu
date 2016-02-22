@@ -1,4 +1,4 @@
-FROM nvidia/cuda:7.0-cudnn2-devel
+FROM nvidia/cuda:7.5-cudnn4-devel
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
@@ -96,7 +96,6 @@ WORKDIR /root
 
 # Set up CUDA variables
 ENV CUDA_PATH /usr/local/cuda
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64
 
 # TensorBoard
 EXPOSE 6006
