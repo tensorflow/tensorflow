@@ -16,13 +16,18 @@ limitations under the License.
 
 module TF {
   let assert = chai.assert;
-  let expect = chai.expect;
 
   describe("NodeRadar", function() {
-    var container, r: NodeRadar;
+    let container;
+    let r: NodeRadar<number>;
+    function assertScansEqual<T>(expected: ScanResponse<T>, actual: ScanResponse<T>) {
+      assert.deepEqual(expected.visible, actual.visible, "visible");
+      assert.deepEqual(expected.almost, actual.almost, "almost");
+      assert.deepEqual(expected.hidden, actual.hidden, "hidden");
+    }
 
     beforeEach(function() {
-      var root = document.body;
+      let root = document.body;
       container = document.createElement("div");
       container.classList.add("container");
       container.style.border = "solid 4px cyan";
@@ -31,7 +36,7 @@ module TF {
       container.style.width = "calc(100% - 160px)";
       container.style.margin = "250px 80px";
       root.appendChild(container);
-      var tempNode;
+      let tempNode;
       for (let i = 0; i < 100; i++) {
         tempNode = document.createElement("div");
         tempNode.classList.add("node");
@@ -40,7 +45,7 @@ module TF {
         tempNode.textContent = i;
         root.appendChild(tempNode);
       }
-      r = new NodeRadar(container);
+      r = new NodeRadar<number>(container);
     });
 
     afterEach(function() {
@@ -49,146 +54,79 @@ module TF {
       });
     });
 
-    it("adds a html element", function() {
-      var node = document.querySelector(".node");
-      r.add(node, null);
-      assert.equal(r.getNodes().length, 1);
-      assert.equal(r.getNodes()[0].visibility.node, node);
+    it("adds and removes nodes", function() {
+      let node = document.querySelector(".node");
+      function count() {
+        let s = r.scan();
+        return s.visible.length + s.almost.length + s.hidden.length;
+      }
+      assert.equal(count(), 0, "no nodes exist at start");
+      r.add(node, 1);
+      assert.equal(count(), 1, "one node exists after adding it");
+      r.add(node, 2);
+      assert.equal(count(), 2, "then two nodes exist");
+      // removing non-existent node should have no effect
+      r.remove(3);
+      assert.equal(count(), 2, "removing non-existent node did nothing");
+      r.remove(1);
+      assert.equal(count(), 1, "removing a node worked");
+      r.remove(1);
+      assert.equal(count(), 1, "removing a node again did nothing");
+      r.remove(2);
+      assert.equal(count(), 0, "all nodes were removed");
     });
 
-    it("adds a nodelist", function() {
-      var nodes = document.querySelectorAll(".node"); // returns a NodeList
-      r.add(nodes, null);
-      assert.equal(r.getNodes().length, nodes.length);
+    it("throws an error if value is reused", function() {
+      let node = document.querySelector(".node");
+      r.add(node, 1);
+      assert.throws(function() {
+        r.add(node, 1);
+      }, "Values in NodeRadar must be unique");
+      let f = function() {return 3;};
+      let r2 = new NodeRadar<Function>(container);
+      r2.add(node, f);
+      assert.throws(function() {
+        r2.add(node, f);
+      }, "Values in NodeRadar must be unique");
     });
 
-    it("adds an html collection", function() {
-      var nodes = document.body.children; // returns an HTMLCollection
-      r.add(nodes, null);
-      assert.equal(r.getNodes().length, nodes.length);
-    });
-
-    it("removes a node", function() {
-      var node = document.querySelector(".node");
-      r.add(node, null);
-      assert.equal(r.getNodes().length, 1);
-      r.remove(node);
-      assert.equal(r.getNodes().length, 0);
-    });
-
-    it("throws an error if it can't find a node", function() {
-      var node = document.querySelector(".node");
-      r.add(node, null);
-      expect(() => {
-        r.checkVisibility(document.createElement("div"));
-      }).to.throw("Couldn't find node to check visibility.");
-    });
-
-    it("scans correctly on startup", function() {
+    it("scans correctly", function() {
       window.scrollTo(0, 0);
-      var nodes = document.querySelectorAll(".node");
-      r.add(nodes, null);
-      var zero = r.checkVisibility(nodes[0]),
-          one = r.checkVisibility(nodes[1]),
-          four = r.checkVisibility(nodes[4]),
-          five = r.checkVisibility(nodes[5]),
-          seven = r.checkVisibility(nodes[7]),
-          eight = r.checkVisibility(nodes[8]),
-          eleven = r.checkVisibility(nodes[11]);
+      let nodes = document.querySelectorAll(".node");
+      Array.prototype.slice.call(nodes).forEach((n, i) => r.add(n, i));
 
-      assert.equal(zero.almost, false);
-      assert.equal(zero.partial, false);
-      assert.equal(zero.full, false);
-
-      assert.equal(one.almost, true);
-      assert.equal(one.partial, false);
-      assert.equal(one.full, false);
-
-      assert.equal(four.almost, true);
-      assert.equal(four.partial, true);
-      assert.equal(four.full, false);
-
-      assert.equal(five.almost, true);
-      assert.equal(five.partial, true);
-      assert.equal(five.full, true);
-
-      assert.equal(seven.almost, true);
-      assert.equal(seven.partial, true);
-      assert.equal(seven.full, false);
-
-      assert.equal(eight.almost, true);
-      assert.equal(eight.partial, false);
-      assert.equal(eight.full, false);
-
-      assert.equal(eleven.almost, false);
-      assert.equal(eleven.partial, false);
-      assert.equal(eleven.full, false);
+      let actual = r.scan();
+      let expected = {
+        visible: [4,5,6,7],
+        almost: [0,1,2,3,8,9,10,11],
+        hidden: _.range(12, 100),
+      };
+      assertScansEqual(expected, actual);
     });
-
     it("scans correctly after scrolling", function() {
-      window.scrollTo(0, 0);
-      var nodes = document.querySelectorAll(".node");
-      r.add(nodes, null);
-      var zero = r.checkVisibility(nodes[0]),
-          one = r.checkVisibility(nodes[1]),
-          four = r.checkVisibility(nodes[4]),
-          five = r.checkVisibility(nodes[5]),
-          seven = r.checkVisibility(nodes[7]),
-          eight = r.checkVisibility(nodes[8]),
-          eleven = r.checkVisibility(nodes[11]);
-
+      let nodes = document.querySelectorAll(".node");
+      Array.prototype.slice.call(nodes).forEach((n, i) => r.add(n, i));
       window.scrollTo(0, 45);
-      r.scan();
-
-      assert.equal(zero.almost, false);
-      assert.equal(zero.partial, false);
-      assert.equal(zero.full, false);
-
-      assert.equal(one.almost, false);
-      assert.equal(one.partial, false);
-      assert.equal(one.full, false);
-
-      assert.equal(four.almost, true);
-      assert.equal(four.partial, false);
-      assert.equal(four.full, false);
-
-      assert.equal(five.almost, true);
-      assert.equal(five.partial, true);
-      assert.equal(five.full, false);
-
-      assert.equal(seven.almost, true);
-      assert.equal(seven.partial, true);
-      assert.equal(seven.full, true);
-
-      assert.equal(eight.almost, true);
-      assert.equal(eight.partial, true);
-      assert.equal(eight.full, false);
-
-      assert.equal(eleven.almost, true);
-      assert.equal(eleven.partial, false);
-      assert.equal(eleven.full, false);
+      let actual = r.scan();
+      let expected = {
+        visible: [5,6,7,8],
+        almost: [1,2,3,4,9,10,11,12],
+        hidden: [0].concat(_.range(13, 100)),
+      };
+      assertScansEqual(expected, actual);
     });
-
-    it("executes callbacks when visibility changes", function() {
-      window.scrollTo(0, 0);
-      var node = document.querySelectorAll(".node")[5];
-      var called;
-      r.add(node, () => { called = true; });
-      called = false;
-      window.scrollTo(0, 60);
-      r.scan();
-      assert.equal(called, true);
-    });
-
-    it("does not execute callbacks when visibility does not change", function() {
-      window.scrollTo(0, 0);
-      var node = document.querySelectorAll(".node")[5];
-      var called;
-      r.add(node, () => { called = true; });
-      called = false;
-      window.scrollTo(0, 2);
-      r.scan();
-      assert.equal(called, false);
+    it("scans correctly after size change", function() {
+      let nodes = document.querySelectorAll(".node");
+      Array.prototype.slice.call(nodes).forEach((n, i) => r.add(n, i));
+      container.style.margin = "0px 0px";
+      container.style.height = "400px";
+      let actual = r.scan();
+      let expected = {
+        visible: _.range(0,8),
+        almost: _.range(8, 15),
+        hidden: _.range(15, 100),
+      };
+      assertScansEqual(expected, actual);
     });
 
   });
