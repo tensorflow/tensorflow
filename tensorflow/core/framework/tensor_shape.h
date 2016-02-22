@@ -119,6 +119,7 @@ class TensorShape {
   /// dimension names.
   bool IsSameSize(const TensorShape& b) const;
   bool operator==(const TensorShape& b) const { return IsSameSize(b); }
+  bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
