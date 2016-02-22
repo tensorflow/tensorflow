@@ -547,6 +547,9 @@ TEST(Tensor, Slice_Basic) {
 
     // Take an unaligned slice.
     Tensor y = x.Slice(1, 13);
+#if EIGEN_ALIGN == 1
+    EXPECT_FALSE(y.IsAligned());
+#endif
     y.unaligned_flat<float>().setConstant(1.0);
     for (int64 i = 0; i < y.NumElements(); ++i) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));

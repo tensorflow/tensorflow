@@ -13,120 +13,101 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/**
- * Scans HTMLElements to see if they are positioned in view in the browser
- * window, in reference to some other "framing" node. The framing Node does not
- * need to be a parent of the nodes that are monitored. All visibility
- * calculations are simply made with reference to the frameNode's client
- * bounding box.
- *
- * Note: the radar currently only has the circuitry to detect vertical
- * visibility and movements.
- *
- * Note: Callbacks only get fired when one of the three visibility states
- * change. They are all fired once on startup.
- *
- * It calculates three states for each node.
- * full    = All of the node is visible. Other states are also set to true in
- *           this state.
- * partial = At least some part of the node is visible. "almost" is also set to
- *           true in this case.
- * almost  = within one container's height away from becoming partially visible.
- *         = Other states are necessarily false in this case.
- *
- * Scanning updates need to be maintained manually, for instance by calling
- * radar.scan() in a function that is bound to scroll and resize events.
- */
-
-interface NodeVisibility {
-  node: HTMLElement;
-  partial: Boolean;
-  full: Boolean;
-  almost: Boolean;
-}
-
-interface NodeData {
-  callback: NodeRadarCallback;
-  visibility: NodeVisibility;
-}
-
-interface NodeRadarCallback {
-  (nodeVisibility: NodeVisibility);
-}
-
-class NodeRadar {
-
-  private _frameNode: HTMLElement;
-  private _nodes: Array<NodeData> = [];
-
-  // The frameNode does not need to be a parent of the nodes that are monitored.
-  constructor(frameNode: HTMLElement) {
-    this._frameNode = frameNode;
+module TF {
+  interface NodeData<T> {
+    value: T;
+    node: Element | HTMLElement;
   }
 
-  // Public API for adding nodes to be monitored. The callback is called on a
-  // per node basis when any of it's visibility states
-  public add(node: Element | HTMLCollection | NodeList, callback: Function) {
-    var result = Object.prototype.toString.call(node);
-    if ( result === "[object NodeList]" || result === "[object HTMLCollection]") {
-      Array.prototype.forEach.call(node, (n) => {
-        this._push(n, callback);
-      });
-    } else {
-      this._push(node, callback);
+  export interface ScanResponse<T> {
+    visible: T[];
+    almost: T[];
+    hidden: T[];
+  }
+
+  /**
+   * Scans HTMLElements to see if they are positioned in view in the browser
+   * window, in reference to some other "framing" node. The framing Node does not
+   * need to be a parent of the nodes that are monitored. All visibility
+   * calculations are simply made with reference to the frameNode's client
+   * bounding box.
+   *
+   * Note: the radar currently only has the circuitry to detect vertical
+   * visibility and movements.
+   *
+   *
+   * When NodeRadar.scan is called, all nodes are placed into one of four states.
+   * visible = The node is visible on the screen (fully or partially).
+   * almost  = within container's height away from becoming visible.
+   * hidden  = The node is not visible or close to being visible.
+   *
+   * Scanning updates need to be maintained manually, for instance by calling
+   * radar.scan() in a function that is bound to scroll and resize events.
+   */
+  export class NodeRadar<T> {
+
+    private _frameNode: Element | HTMLElement;
+    private _nodes: NodeData<T>[] = [];
+
+    /**
+     * Construct a NodeRadar.
+     * @param frameNode The containing Element that all scans are relative to.
+     * The frameNode doesn't need to be a parent of monitored nodes.
+     */
+    constructor(frameNode: Element | HTMLElement) {
+      this._frameNode = frameNode;
     }
-    this.scan();
-  }
 
-  // Adds a node to our internal nodes array
-  private _push(node, callback) {
-    this._nodes.push({
-      callback: callback,
-      visibility: {
+    /**
+     * Add a node to be monitored, and an identifying value.
+     * When "scan" is called, the value will be returned with metadata
+     * about the state of the associated node.
+     * @param node The Element/HTMLElement to track visibility for.
+     * @param value The identity value associated with that node. Must be unique
+     * wrt strict equality.
+     * An exception will be thrown if the value is not unique.
+     */
+    public add(node: Element | HTMLElement, value: T): this {
+      if (this._nodes.filter(n => n.value === value).length) {
+        throw new Error("Values in NodeRadar must be unique");
+      }
+      this._nodes.push({
+        value: value,
         node: node,
-        full: false,
-        partial: false,
-        almost: false
-      }
-    });
-  }
-
-  public remove(node: Element) {
-    this._nodes = this._nodes.filter(function(n) { return n.visibility.node !== node; });
-  }
-
-  public checkVisibility(node: Element) {
-    var matches = this._nodes.filter(function(n) { return n.visibility.node === node; });
-    if (matches.length > 0) {
-      return matches[0].visibility;
-    } else {
-      throw new Error("Couldn't find node to check visibility.");
+      });
+      return this;
     }
-  }
 
-  public getNodes(): Array<NodeData> {
-    return this._nodes;
-  }
+    /** Remove a value and its associated node from the NodeRadar.
+     * No exception is thrown if the value is not found.
+     */
+    public remove(value: T): this {
+      this._nodes = this._nodes.filter(function(n) { return n.value !== value; });
+      return this;
+    }
 
-  // Scans the DOM and determines the visible state of each node. Fires the
-  // callback on each node that has a change in visible state.
-  public scan() {
-    var containerBox = this._frameNode.getBoundingClientRect();
-    this._nodes.forEach(function(n) {
-      var box = n.visibility.node.getBoundingClientRect();
-      var partial = (box.bottom > containerBox.top
-        && box.top < containerBox.bottom);
-      var full = (box.top > containerBox.top
-        && box.bottom < containerBox.bottom);
-      var almost = (box.top > (containerBox.top - containerBox.height)
-        && box.bottom < (containerBox.bottom + containerBox.height));
-      if (n.visibility.partial !== partial || n.visibility.full !== full || n.visibility.almost !== almost) {
-        n.visibility.partial = partial;
-        n.visibility.full = full;
-        n.visibility.almost = almost;
-        n.callback(n.visibility);
-      }
-    });
-  }
+    /**
+     * Scan the DOM and determine the visibility of each node relative to the
+     * nodeRadar's frameNode. Return a ScansResponse<T> that gives metadata
+     * on the visibility of each Node, by returning the associated value.
+     */
+    public scan(): ScanResponse<T> {
+      var containerBox = this._frameNode.getBoundingClientRect();
+      var visibleC: T[] = [];
+      var almostC: T[] = [];
+      var hiddenC: T[] = [];
 
+      this._nodes.forEach(function(n) {
+        var box = n.node.getBoundingClientRect();
+        var visible = (box.bottom > containerBox.top
+          && box.top < containerBox.bottom);
+        var almost = (box.bottom > (containerBox.top - containerBox.height)
+          && box.top < (containerBox.bottom + containerBox.height))
+        var target = visible ? visibleC : almost ? almostC : hiddenC;
+        target.push(n.value);
+      });
+      return {visible: visibleC, almost: almostC, hidden: hiddenC};
+    }
+
+  }
 }

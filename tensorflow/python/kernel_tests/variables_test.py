@@ -79,6 +79,14 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertAllClose(rnd.eval() + dep.eval() + 2.0,
                           depdep.eval())
 
+  def testIterable(self):
+    with self.assertRaisesRegexp(TypeError, "not iterable"):
+      for _ in tf.Variable(0.0):
+        pass
+    with self.assertRaisesRegexp(TypeError, "not iterable"):
+      for _ in tf.Variable([0.0, 1.0]):
+        pass
+
   def testAssignments(self):
     with self.test_session():
       var = tf.Variable(0.0)

@@ -406,6 +406,8 @@ class EventAccumulator(object):
     bucket_limit = list(histo.bucket_limit)
 
     bucket_total = sum(bucket)
+    if bucket_total == 0:
+      bucket_total = 1
     fraction_weights = [10000 * x / bucket_total for x in bucket]
     cumsum_weights = _CumulativeSum(fraction_weights)
 
