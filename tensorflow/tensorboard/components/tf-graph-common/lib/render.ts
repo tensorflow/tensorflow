@@ -232,6 +232,12 @@ export class RenderGraphInfo {
     }
 
     let node = this.hierarchy.node(nodeName);
+    // Exit early if the node does not exist in the hierarchy. This can happen
+    // when a graph is reloaded while the infocard points to a node not visible
+    // at the top-level.
+    if (!node) {
+      return null;
+    }
     let renderInfo = node.isGroupNode ?
         new RenderGroupNodeInfo(<GroupNode>node) :
         new RenderNodeInfo(node);

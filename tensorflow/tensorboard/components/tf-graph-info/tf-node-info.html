@@ -270,6 +270,13 @@
             <span>[[_auxButtonText]]</span>
           </paper-button>
         </div>
+        <template is="dom-if" if="{{_isInSeries(_node)}}">
+          <div class="toggle-include-group">
+            <paper-button raised class="toggle-include" on-click="_toggleGroup">
+              <span>[[_groupButtonText]]</span>
+            </paper-button>
+          </div>
+        </template>
       </div>
     </template>
     </iron-collapse>
@@ -340,7 +347,8 @@
             type: Boolean,
             value: false
           },
-          _auxButtonText: String
+          _auxButtonText: String,
+          _groupButtonText: String
         },
         expandNode: function() {
           this.fire('_node.expand', this.node);
@@ -402,6 +410,9 @@
           this._openedControlPred = false;
           this._openedControlSucc = false;
 
+          this.set("_groupButtonText",
+            tf.graph.scene.node.getGroupSettingLabel(this._node));
+
           if (this._node) {
             Polymer.dom(this.$.nodetitle).innerHTML =
               this._getPrintableHTMLNodeName(this._node.name);
@@ -422,6 +433,14 @@
         _nodeIncludeStateChanged: function(include, oldInclude) {
           this.set("_auxButtonText",
             tf.graph.getIncludeNodeButtonString(include));
+        },
+        _toggleGroup: function() {
+          var graphElem = document.querySelector("#graph");
+          var seriesName = tf.graph.scene.node.getSeriesName(this._node);
+          graphElem.fire("node-toggle-seriesgroup", { name: seriesName });
+        },
+        _isInSeries: function(node) {
+          return tf.graph.scene.node.canBeInSeries(node);
         }
       });
     })();

@@ -104,6 +104,37 @@ export interface ProgressTracker {
 }
 
 /**
+ * Creates a tracker that sets the progress property of the
+ * provided polymer component. The provided component must have
+ * a property called 'progress' that is not read-only. The progress
+ * property is an object with a numerical 'value' property and a
+ * string 'msg' property.
+ */
+export function getTracker(polymerComponent: any) {
+  return {
+    setMessage: function(msg) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg
+      });
+    },
+    updateProgress: function(value) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value + value,
+        msg: polymerComponent.progress.msg
+      });
+    },
+    reportError: function(msg) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg,
+        error: true
+      });
+    },
+  };
+}
+
+/**
  * Creates a tracker for a subtask given the parent tracker, the total progress
  * of the subtask and the subtask message. The parent task should pass a
  * subtracker to its subtasks. The subtask reports its own progress which
