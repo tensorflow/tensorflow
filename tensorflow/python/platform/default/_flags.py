@@ -106,6 +106,11 @@ def DEFINE_boolean(flag_name, default_value, docstring):
                               dest=flag_name)
 
 
+# The internal google library defines the following alias, so we match
+# the API for consistency.
+DEFINE_bool = DEFINE_boolean  # pylint: disable=invalid-name
+
+
 def DEFINE_float(flag_name, default_value, docstring):
   """Defines a flag of type 'float'.
 
