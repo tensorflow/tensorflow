@@ -223,6 +223,22 @@ class LargeConfig(object):
   vocab_size = 10000
 
 
+class TestConfig(object):
+  """Tiny config, for testing."""
+  init_scale = 0.1
+  learning_rate = 1.0
+  max_grad_norm = 1
+  num_layers = 1
+  num_steps = 2
+  hidden_size = 2
+  max_epoch = 1
+  max_max_epoch = 1
+  keep_prob = 1.0
+  lr_decay = 0.5
+  batch_size = 20
+  vocab_size = 10000
+
+
 def run_epoch(session, m, data, eval_op, verbose=False):
   """Runs the model on the given data."""
   epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
@@ -254,6 +270,8 @@ def get_config():
     return MediumConfig()
   elif FLAGS.model == "large":
     return LargeConfig()
+  elif FLAGS.model == "test":
+    return TestConfig()
   else:
     raise ValueError("Invalid model: %s", FLAGS.model)
 

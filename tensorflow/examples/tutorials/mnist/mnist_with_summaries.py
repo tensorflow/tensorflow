@@ -40,11 +40,13 @@ flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                      'for unit testing.')
 flags.DEFINE_integer('max_steps', 1000, 'Number of steps to run trainer.')
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
+flags.DEFINE_string('data_dir', '/tmp/data', 'Directory for storing data')
+flags.DEFINE_string('summaries_dir', '/tmp/mnist_logs', 'Summaries directory')
 
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets('/tmp/data/', one_hot=True,
+  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True,
                                     fake_data=FLAGS.fake_data)
 
   sess = tf.InteractiveSession()
@@ -78,9 +80,9 @@ def main(_):
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     _ = tf.scalar_summary('accuracy', accuracy)
 
-  # Merge all the summaries and write them out to /tmp/mnist_logs
+  # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.merge_all_summaries()
-  writer = tf.train.SummaryWriter('/tmp/mnist_logs', sess.graph_def)
+  writer = tf.train.SummaryWriter(FLAGS.summaries_dir, sess.graph_def)
   tf.initialize_all_variables().run()
 
   # Train the model, and feed in test data and record summaries every 10 steps

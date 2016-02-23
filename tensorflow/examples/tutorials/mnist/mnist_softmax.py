@@ -27,7 +27,11 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
 
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string('data_dir', '/tmp/data/', 'Directory for storing data')
+
+mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
 sess = tf.InteractiveSession()
 
