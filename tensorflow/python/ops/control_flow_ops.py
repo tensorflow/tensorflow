@@ -1437,9 +1437,15 @@ class WhileContext(ControlFlowContext):
       The gradient for a loop invariant.
     """
     self.Exit()
+    shape = value.get_shape()
+    if not shape.is_fully_defined():
+      shape = None
     if self.outer_context: self.outer_context.Enter()
-    acc = constant_op.constant(0, value.dtype, name="b_acc")
+    acc = constant_op.constant(0, value.dtype, shape=shape, name="b_acc")
+    if not shape:
+      acc._shape = value.get_shape()  # pylint: disable=protected-access
     if self.outer_context: self.outer_context.Exit()
+
     self.Enter()
     self.AddName(acc.name)
     enter_acc = _Enter(acc, self._name, is_constant=False,
