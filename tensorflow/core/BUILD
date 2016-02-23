@@ -171,6 +171,7 @@ tf_cuda_library(
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/device_base.h",
         "framework/function.h",
+        "framework/graph_def_util.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
@@ -811,7 +812,6 @@ tf_cuda_library(
         ],
     ),
     hdrs = [
-        "framework/graph_def_util.h",
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
         "framework/tensor_reference.h",
@@ -982,7 +982,6 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":framework",
-        ":framework_internal",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
