@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_
-#define TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -78,4 +78,4 @@ void Transpose(const Device& d, const Tensor& in,
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_TRANSPOSE_OP_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_

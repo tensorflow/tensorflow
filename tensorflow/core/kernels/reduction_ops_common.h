@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
-#include "tensorflow/core/kernels/transpose_op_functor.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"

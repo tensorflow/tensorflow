@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONCAT_OP_H_
-#define TENSORFLOW_KERNELS_CONCAT_OP_H_
+#ifndef TENSORFLOW_KERNELS_CONCAT_LIB_H_
+#define TENSORFLOW_KERNELS_CONCAT_LIB_H_
 
 #include <vector>
 
@@ -39,4 +39,4 @@ void ConcatGPU(const Eigen::GpuDevice& d,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONCAT_OP_H_
+#endif  // TENSORFLOW_KERNELS_CONCAT_LIB_H_
