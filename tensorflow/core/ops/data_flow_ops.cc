@@ -353,12 +353,14 @@ REGISTER_OP("StackPush")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("swap_memory: bool = false")
     .Doc(R"doc(
 Push an element onto the stack.
 
 handle: The handle to a stack.
 elem: The tensor to be pushed onto the stack.
 output: The same tensor as the input 'elem'.
+swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
 REGISTER_OP("StackPop")
@@ -369,8 +371,8 @@ REGISTER_OP("StackPop")
 Pop the element at the top of the stack.
 
 handle: The handle to a stack.
-elem_type: The type of the elem that is popped.
 elem: The tensor that is popped from the top of the stack.
+elem_type: The type of the elem that is popped.
 )doc");
 
 REGISTER_OP("StackClose")
