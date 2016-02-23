@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../typings/tsd.d.ts" />
-
 module Categorizer {
   /**
    * This module contains methods that allow sorting tags into "categories".

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../../typings/tsd.d.ts" />
 /// <reference path="../categorizer.ts" />
 var assert = chai.assert;
 
