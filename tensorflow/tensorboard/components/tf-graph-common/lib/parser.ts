@@ -128,7 +128,7 @@ export function parsePbtxt(input: string): TFNode[] {
    * attributes into arrays even when the attribute only shows up once in the
    * object.
    */
-  let ARRAY_ATTRIBUTES: {[attrPath: string] : boolean} = {
+  let ARRAY_ATTRIBUTES: {[attrPath: string]: boolean} = {
     "node": true,
     "node.input": true,
     "node.attr": true,

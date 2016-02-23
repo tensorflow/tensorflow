@@ -53,7 +53,7 @@ export let MetanodeColors = {
    * Standard hue values for node color palette.
    */
   HUES: [220, 100, 180, 40, 20, 340, 260, 300, 140, 60],
-  STRUCTURE_PALETTE: function(id: number, lightened? : boolean) {
+  STRUCTURE_PALETTE: function(id: number, lightened?: boolean) {
     // The code below is a flexible way to computationally create a set
     // of colors that go well together.
     let hues = MetanodeColors.HUES;

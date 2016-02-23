@@ -742,7 +742,7 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
  * @param metagraph
  */
 function addSeriesToDict(seriesNodes: SeriesNode[],
-    seriesDict: {[seriesName: string] : SeriesNode},
+    seriesDict: {[seriesName: string]: SeriesNode},
     clusterId: number,
     metagraph: graphlib.Graph<GroupNode|OpNode, Metaedge>) {
   if (seriesNodes.length > 1) {
