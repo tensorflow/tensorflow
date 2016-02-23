@@ -40,7 +40,7 @@ void TestFunction();
 
   TestFunction();
 
-  self.urlContentTextView.text = @"Hello TensorFlow Graph!";
+  self.urlContentTextView.text = @"Hello, TensorFlow Graph!";
 }
 
 @end

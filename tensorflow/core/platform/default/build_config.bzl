@@ -28,7 +28,7 @@ def tf_proto_library(name, srcs = [], has_services = False,
                      deps = [], visibility = [], testonly = 0,
                      cc_api_version = 2, go_api_version = 2,
                      java_api_version = 2,
-                     py_api_version = 2):
+                     py_api_version = 2, copts = []):
   native.filegroup(name=name + "_proto_srcs",
                    srcs=srcs + tf_deps(deps, "_proto_srcs"),
                    testonly=testonly,)
@@ -38,6 +38,7 @@ def tf_proto_library(name, srcs = [], has_services = False,
                    deps=deps + ["//google/protobuf:cc_wkt_protos"],
                    cc_libs = ["//google/protobuf:protobuf"],
                    testonly=testonly,
+		   copts = copts,
                    visibility=visibility,)
 
   py_proto_library(name=name + "_py",

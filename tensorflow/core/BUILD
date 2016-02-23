@@ -74,6 +74,37 @@ load(
 # -----------------------------------------------------------------------------
 # Public targets
 
+config_setting(
+    name = "ios_armv7",
+    values = {
+        "ios_cpu": "armv7",
+    },
+)
+
+config_setting(
+    name = "ios_armv7s",
+    values = {
+        "ios_cpu": "armv7s",
+    },
+)
+
+config_setting(
+    name = "ios_arm64",
+    values = {
+        "ios_cpu": "arm64",
+    },
+)
+
+IOS_ARM_TF_COPTS = [
+    "-DOS_IOS",
+    "-miphoneos-version-min=7.0",
+    "-arch armv7",
+    "-arch armv7s",
+    "-arch arm64",
+    "-D__thread=",
+    "-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.2.sdk/",
+]
+
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
@@ -81,6 +112,12 @@ tf_proto_library(
     go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,
+    copts = select({
+        ":ios_armv7": IOS_ARM_TF_COPTS,
+        ":ios_armv7s": IOS_ARM_TF_COPTS,
+        ":ios_arm64": IOS_ARM_TF_COPTS,
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -738,6 +775,9 @@ cc_library(
         ":android": ["//tensorflow/core:android_srcs"],
         ":android_32": ["//tensorflow/core:android_srcs"],
         ":android_64": ["//tensorflow/core:android_srcs"],
+	":ios_armv7": ["//tensorflow/core:android_srcs"],
+	":ios_armv7s": ["//tensorflow/core:android_srcs"],
+	":ios_arm64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -753,6 +793,9 @@ cc_library(
         ":android": ANDROID_TF_COPTS,
         ":android_32": ANDROID_TF_COPTS,
         ":android_64": ANDROID_TF_COPTS,
+	":ios_armv7": IOS_ARM_TF_COPTS,
+	":ios_armv7s": IOS_ARM_TF_COPTS,
+	":ios_arm64": IOS_ARM_TF_COPTS,
         "//conditions:default": [],
     }),
     tags = [
