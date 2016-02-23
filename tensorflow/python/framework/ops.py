@@ -1038,7 +1038,7 @@ class Operation(object):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
     if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
       raise ValueError(
-          "Cannot create an Operation with a NodeDef larger than 2GB.")
+          "Cannot create a tensor proto whose content is larger than 2GB.")
     if not _VALID_OP_NAME_REGEX.match(node_def.name):
       raise ValueError("'%s' is not a valid node name" % node_def.name)
     if not isinstance(g, Graph):
