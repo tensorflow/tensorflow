@@ -49,6 +49,10 @@
 #                      (i.e., bazel test --job=1), potentially useful for
 #                      builds where the tests cannot be run in parallel due to
 #                      resource contention (e.g., for GPU builds)
+#   TF_BUILD_TEST_TUTORIALS:
+#                      Perform tutorials test (Applicable only if
+#                      TF_BUILD_IS_PIP is PIP or BOTH).
+#                      See build/test_tutorials.sh
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -88,7 +92,8 @@ ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BAZEL_TARGET="//tensorflow/..."
 
-
+TUTORIAL_TEST_CMD="${CI_BUILD_DIR}/builds/test_tutorials.sh"
+TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
 ##########################################################
 
@@ -116,6 +121,7 @@ echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
+echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
@@ -213,6 +219,20 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
   PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
 "${TF_BUILD_APPEND_ARGUMENTS}"
 
+  # Add command for tutorial test
+  if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
+     [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} && ${MAIN_CMD} ${TUTORIAL_TEST_CMD}"
+
+    # Prepare data directory for tutorial tests
+    mkdir -p "${TUT_TEST_DATA_DIR}" ||
+    die "FAILED to create data directory for tutorial tests: "\
+        "${TUT_TEST_DATA_DIR}"
+
+    if [[ "${DO_DOCKER}" == "1" ]]; then
+      EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TUT_TEST_DATA_DIR}:${TUT_TEST_DATA_DIR}"
+    fi
+  fi
 fi
 
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
