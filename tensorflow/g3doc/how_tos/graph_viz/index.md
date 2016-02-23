@@ -82,6 +82,8 @@ To reduce clutter, the visualization separates out all high-degree nodes to an
 Instead of lines, we draw small *node icons* to indicate the connections.
 Separating out the auxiliary nodes typically doesn't remove critical
 information since these nodes are usually related to bookkeeping functions.
+See [Interaction](#interaction) for how to move nodes between the main graph
+and the auxiliary area.
 
 <table width="100%;">
   <tr>
@@ -106,7 +108,9 @@ One last structural simplification is *series collapsing*. Sequential
 motifs--that is, nodes whose names differ by a number at the end and have
 isomorphic structures--are collapsed into a single *stack* of nodes, as shown
 below. For networks with long sequences, this greatly simplifies the view. As
-with hierarchical nodes, double-clicking expands the series.
+with hierarchical nodes, double-clicking expands the series. See
+[Interaction](#interaction) for how to disable/enable series collapsing for a
+specific set of nodes.
 
 <table width="100%;">
   <tr>
@@ -142,7 +146,7 @@ Symbol | Meaning
 ![Control dependency edge](../../images/control_edge.png "Control dependency edge") | Edge showing the control dependency between operations.
 ![Reference edge](../../images/reference_edge.png "Reference edge") | A reference edge showing that the outgoing operation node can mutate the incoming tensor.
 
-## Interaction
+## Interaction {#interaction}
 
 Navigate the graph by panning and zooming. Click and drag to pan, and use a
 scroll gesture to zoom. Double-click on a node, or click on its `+` button, to
@@ -173,6 +177,16 @@ right corner of the visualization.
     </td>
   </tr>
 </table>
+
+TensorBoard provides several ways to change the visual layout of the graph. This
+doesn't change the graph's computational semantics, but it can bring some
+clarity to the network's structure. By right clicking on a node or pressing
+buttons on the bottom of that node's info card, you can make the following
+changes to its layout:
+
+* Nodes can be moved between the main graph and the auxiliary area.
+* A series of nodes can be ungrouped so that the nodes in the series do not
+appear grouped together. Ungrouped series can likewise be regrouped.
 
 Selection can also be helpful in understanding high-degree nodes. Select any
 high-degree node, and the corresponding node icons for its other connections
