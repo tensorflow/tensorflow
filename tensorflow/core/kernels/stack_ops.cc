@@ -141,8 +141,33 @@ class StackPushOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("StackPush").Device(DEVICE_CPU), StackPushOp);
-REGISTER_KERNEL_BUILDER(
-    Name("StackPush").Device(DEVICE_GPU).HostMemory("handle"), StackPushOp);
+
+#define REGISTER_GPU_KERNEL(type)                         \
+  REGISTER_KERNEL_BUILDER(Name("StackPush")               \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("handle")       \
+                              .TypeConstraint<type>("T"), \
+                          StackPushOp);
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+
+// Special GPU kernels for int32 and bool.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("StackPush")               \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("handle")       \
+                              .HostMemory("elem")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          StackPushOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(bool);
+
+#undef REGISTER_GPU_HOST_KERNEL
 
 class StackPopOp : public OpKernel {
  public:
@@ -172,8 +197,32 @@ class StackPopOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("StackPop").Device(DEVICE_CPU), StackPopOp);
-REGISTER_KERNEL_BUILDER(
-    Name("StackPop").Device(DEVICE_GPU).HostMemory("handle"), StackPopOp);
+
+#define REGISTER_GPU_KERNEL(type)                                 \
+  REGISTER_KERNEL_BUILDER(Name("StackPop")                        \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("handle")               \
+                              .TypeConstraint<type>("elem_type"), \
+                          StackPopOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
+
+// Special GPU kernels for int32 and bool.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+#define REGISTER_GPU_HOST_KERNEL(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("StackPop")                        \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("handle")               \
+                              .HostMemory("elem")                 \
+                              .TypeConstraint<type>("elem_type"), \
+                          StackPopOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(bool);
+
+#undef REGISTER_GPU_HOST_KERNEL
 
 class StackCloseOp : public OpKernel {
  public:

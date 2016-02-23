@@ -32,7 +32,7 @@ from six.moves import socketserver
 
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
-from tensorflow.tensorboard.backend import tensorboard_handler
+from tensorflow.tensorboard.backend import handler
 
 # How many elements to store per tag, by tag type
 TENSORBOARD_SIZE_GUIDANCE = {
@@ -102,7 +102,8 @@ def ReloadMultiplexer(multiplexer, path_to_run):
   logging.info('Multiplexer done loading. Load took %0.1f secs', duration)
 
 
-def StartMultiplexerReloadingThread(multiplexer, path_to_run,
+def StartMultiplexerReloadingThread(multiplexer,
+                                    path_to_run,
                                     load_interval=LOAD_INTERVAL):
   """Starts a thread to automatically reload the given multiplexer.
 
@@ -137,7 +138,6 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run,
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
-
   """A threaded HTTP server."""
   daemon = True
 
@@ -154,6 +154,5 @@ def BuildServer(multiplexer, host, port):
   Returns:
     A `BaseHTTPServer.HTTPServer`.
   """
-  factory = functools.partial(tensorboard_handler.TensorboardHandler,
-                              multiplexer)
+  factory = functools.partial(handler.TensorboardHandler, multiplexer)
   return ThreadedHTTPServer((host, port), factory)

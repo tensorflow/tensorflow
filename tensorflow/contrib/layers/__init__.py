@@ -45,7 +45,7 @@ size, data type, and purpose.
 ## Summaries
 
 Helper functions to summarize specific variables or ops.
-           
+
 @@summarize_activation
 @@summarize_tensor
 @@summarize_tensors

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
 import shutil
 import time
@@ -148,6 +149,22 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     gfile.DeleteRecursively(self.tmp + "test_dir")
     self.assertFalse(gfile.Exists(self.tmp + "test_dir"))
 
+  @contextlib.contextmanager
+  def _working_directory(self, wd):
+    original_cwd = os.getcwd()
+    os.chdir(wd)
+    try:
+      yield
+    finally:
+      os.chdir(original_cwd)
+
+  def testMakeDirsWithEmptyString(self):
+    gfile.MakeDirs(self.tmp + "test_dir")
+    with self._working_directory(self.tmp + "test_dir"):
+      gfile.MakeDirs("")
+    # Should succeed because MakeDirs("") is a no-op.
+    gfile.RmDir(self.tmp + "test_dir")
+
   def testErrors(self):
     self.assertRaises(
         OSError, lambda: gfile.RmDir(self.tmp + "dir_doesnt_exist"))
@@ -222,10 +239,10 @@ class FunctionTests(_BaseTest, googletest.TestCase):
 
   def testOpen(self):
     with gfile.Open(self.tmp + "test_open", "wb") as f:
-      f.write("foo")
+      f.write(b"foo")
     with gfile.Open(self.tmp + "test_open") as f:
       result = f.readlines()
-    self.assertEqual([b"foo"], result)
+    self.assertEqual(["foo"], result)
 
 if __name__ == "__main__":
   googletest.main()

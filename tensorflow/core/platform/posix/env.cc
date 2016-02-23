@@ -391,13 +391,21 @@ class PosixEnv : public Env {
   }
 
   void SchedClosure(std::function<void()> closure) override {
-    // TODO(mrry): Replace with a threadpool.
-    CHECK(false) << "PosixEnv::SchedClosure not implemented.";
+    // TODO(b/27290852): Spawning a new thread here is wasteful, but
+    // needed to deal with the fact that many `closure` functions are
+    // blocking in the current codebase.
+    std::thread closure_thread(closure);
+    closure_thread.detach();
   }
 
   void SchedClosureAfter(int micros, std::function<void()> closure) override {
-    // TODO(mrry): Replace with a non-blocking timer mechanism and threadpool.
-    CHECK(false) << "PosixEnv::SchedClosureAfter not implemented.";
+    // TODO(b/27290852): Consuming a thread here is wasteful, but this
+    // code is (currently) only used in the case where a step fails
+    // (AbortStep). This could be replaced by a timer thread
+    SchedClosure([this, micros, closure]() {
+      SleepForMicroseconds(micros);
+      closure();
+    });
   }
 
   Status LoadLibrary(const char* library_filename, void** handle) override {

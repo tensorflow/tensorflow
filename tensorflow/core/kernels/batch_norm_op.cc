@@ -33,6 +33,7 @@ template <typename Device, typename T>
 class BatchNormOp : public OpKernel {
  public:
   explicit BatchNormOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_DEPRECATED(context, 9, "Use tf.nn.batch_normalization()");
     OP_REQUIRES_OK(context,
                    context->GetAttr("variance_epsilon", &variance_epsilon_));
     OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
@@ -81,6 +82,7 @@ template <typename Device, typename T>
 class BatchNormGradOp : public OpKernel {
  public:
   explicit BatchNormGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_DEPRECATED(context, 9, "Use tf.nn.batch_normalization()");
     OP_REQUIRES_OK(context,
                    context->GetAttr("variance_epsilon", &variance_epsilon_));
     OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",

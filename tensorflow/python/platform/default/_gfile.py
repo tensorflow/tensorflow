@@ -248,7 +248,7 @@ class _Nulllocker(object):
 
 
 def Exists(path):   # pylint: disable=invalid-name
-  """Retruns True iff "path" exists (as a dir, file, non-broken symlink)."""
+  """Returns True iff "path" exists (as a dir, file, non-broken symlink)."""
   return os.path.exists(path)
 
 
@@ -282,17 +282,16 @@ def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
   """Recursively create the directory "path" with the given mode.
 
   Args:
-    path: The directory path
+    path: The directory path.
     mode: The file mode for the created directories
-
-  Returns:
-    None
-
 
   Raises:
     OSError: if the path already exists
   """
-  os.makedirs(path, mode)
+  # NOTE(mrry): MakeDirs("") should be a no-op to match other
+  # implementations of tf.gfile.
+  if path:
+    os.makedirs(path, mode)
 
 
 def RmDir(directory):   # pylint: disable=invalid-name

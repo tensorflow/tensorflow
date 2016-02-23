@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/public/session.h"
 
+#include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -26,6 +27,50 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
   options.target = "invalid target";
 
   EXPECT_EQ(nullptr, tensorflow::NewSession(options));
+
+  Session* session;
+  Status s = tensorflow::NewSession(options, &session);
+  EXPECT_EQ(s.code(), error::NOT_FOUND);
+  EXPECT_TRUE(
+      StringPiece(s.error_message())
+          .contains(
+              "No session factory registered for the given session options."));
+}
+
+// Register a fake session factory to test error handling paths in
+// NewSession().
+class FakeSessionFactory : public SessionFactory {
+ public:
+  FakeSessionFactory() {}
+
+  bool AcceptsOptions(const SessionOptions& options) override {
+    return StringPiece(options.target).starts_with("fake");
+  }
+
+  Session* NewSession(const SessionOptions& options) override {
+    return nullptr;
+  }
+};
+class FakeSessionRegistrar {
+ public:
+  FakeSessionRegistrar() {
+    SessionFactory::Register("FAKE_SESSION_1", new FakeSessionFactory());
+    SessionFactory::Register("FAKE_SESSION_2", new FakeSessionFactory());
+  }
+};
+static FakeSessionRegistrar registrar;
+
+TEST(SessionTest, MultipleFactoriesForTarget) {
+  SessionOptions options;
+  options.target = "fakesession";
+
+  Session* session;
+  Status s = tensorflow::NewSession(options, &session);
+  EXPECT_EQ(s.code(), error::INTERNAL);
+  EXPECT_TRUE(
+      StringPiece(s.error_message()).contains("Multiple session factories"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("FAKE_SESSION_1"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("FAKE_SESSION_2"));
 }
 
 }  // namespace

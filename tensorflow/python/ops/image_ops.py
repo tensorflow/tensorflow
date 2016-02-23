@@ -68,6 +68,7 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 @@resize_image_with_crop_or_pad
 
+@@central_crop
 @@pad_to_bounding_box
 @@crop_to_bounding_box
 @@extract_glimpse
@@ -109,9 +110,9 @@ Example:
 
 ```python
 # Decode an image and convert it to HSV.
-rgb_image = tf.decode_png(...,  channels=3)
-rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.rgb_to_hsv(rgb_image)
+rgb_image = tf.image.decode_png(...,  channels=3)
+rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.image.rgb_to_hsv(rgb_image)
 ```
 
 @@rgb_to_grayscale
@@ -342,6 +343,54 @@ def transpose_image(image):
   """
   _Check3DImage(image, require_static=False)
   return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+
+
+def central_crop(image, central_fraction):
+  """Crop the central region of the image.
+
+  Remove the outer parts of an image but retain the central region of the image
+  along each dimension. If we specify central_fraction = 0.5, this function
+  returns the region marked with "X" in the below diagram.
+
+       --------
+      |        |
+      |  XXXX  |
+      |  XXXX  |
+      |        |   where "X" is the central 50% of the image.
+       --------
+
+  Args:
+    image: 3-D float Tensor of shape [height, width, depth]
+    central_fraction: float (0, 1], fraction of size to crop
+
+  Raises:
+    ValueError: if central_crop_fraction is not within (0, 1].
+
+  Returns:
+    3-D float Tensor
+  """
+  _Check3DImage(image, require_static=False)
+  if central_fraction <= 0.0 or central_fraction > 1.0:
+    raise ValueError('central_fraction must be within (0, 1]')
+  if central_fraction == 1.0:
+    return image
+
+  img_shape = array_ops.shape(image)
+  depth = image.get_shape()[2]
+  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
+  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
+  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+
+  bbox_h_size = img_shape[0] - bbox_h_start * 2
+  bbox_w_size = img_shape[1] - bbox_w_start * 2
+
+  bbox_begin = array_ops.pack([bbox_h_start, bbox_w_start, 0])
+  bbox_size = array_ops.pack([bbox_h_size, bbox_w_size, -1])
+  image = array_ops.slice(image, bbox_begin, bbox_size)
+
+  # The first two dimensions are dynamic and unknown.
+  image.set_shape([None, None, depth])
+  return image
 
 
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
@@ -776,7 +825,7 @@ def adjust_contrast(images, contrast_factor):
     contrast_factor: A float multiplier for adjusting contrast.
 
   Returns:
-    The constrast-adjusted image or images.
+    The contrast-adjusted image or images.
   """
   with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
     # Remember original dtype to so we can convert back if needed
@@ -1135,3 +1184,24 @@ def adjust_saturation(image, saturation_factor, name=None):
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
+
+
+# TODO(irving): Remove once the C++ RandomCrop op is deprecated.
+@ops.RegisterShape('RandomCrop')
+def _random_crop_shape(op):
+  """Shape function for RandomCrop op."""
+  image_shape = op.inputs[0].get_shape().with_rank(3)
+  if image_shape.ndims is not None:
+    channels = image_shape[-1].value
+  else:
+    channels = None
+
+  size = tensor_util.constant_value(op.inputs[1])
+  if size is None:
+    output_shape = [None, None, channels]
+  elif size.shape == (2,):
+    output_shape = [size[0], size[1], channels]
+  else:
+    raise ValueError('Input "size" must be a vector of two elements.')
+
+  return [tensor_shape.TensorShape(output_shape)]

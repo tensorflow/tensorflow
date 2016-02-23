@@ -176,6 +176,16 @@ def conv2d_shape(op):
   input_shape = op.inputs[0].get_shape().with_rank(4)
   filter_shape = op.inputs[1].get_shape().with_rank(4)
 
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  if data_format == "NCHW":
+    # Convert input shape to the dfeault NHWC for inference.
+    input_shape = [input_shape[0], input_shape[2], input_shape[3],
+                   input_shape[1]]
+
   batch_size = input_shape[0]
   in_rows = input_shape[1]
   in_cols = input_shape[2]
@@ -186,7 +196,11 @@ def conv2d_shape(op):
   # Check that the input depths are compatible.
   input_shape[3].assert_is_compatible_with(filter_shape[2])
 
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  if data_format == "NCHW":
+    stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
+  else:
+    stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+
   if stride_b != 1 or stride_d != 1:
     raise ValueError("Current implementation does not yet support "
                      "strides in the batch and depth dimensions.")
@@ -203,7 +217,12 @@ def conv2d_shape(op):
   out_rows, out_cols = get2d_conv_output_size(
       in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
 
-  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
+  output_shape = [batch_size, out_rows, out_cols, depth_out]
+  if data_format == "NCHW":
+    # Convert output shape back to NCHW.
+    output_shape = [output_shape[0], output_shape[3], output_shape[1],
+                    output_shape[2]]
+  return [tensor_shape.TensorShape(output_shape)]
 
 
 def separable_conv2d_shape(op):

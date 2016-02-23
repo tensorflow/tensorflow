@@ -36,17 +36,25 @@ class GPUAllocatorRetry {
   // set to true.  The value returned is either the first good pointer
   // obtained from 'alloc_func' or nullptr.
   void* AllocateRaw(std::function<void*(size_t alignment, size_t num_bytes,
-                                        bool verbose_failure)> alloc_func,
+                                        bool verbose_failure)>
+                        alloc_func,
                     int max_millis_to_wait, size_t alignment, size_t bytes);
 
-  // Calls dealloc_func(ptr) and then notifies any threads blocked in
-  // AllocateRaw() that would like to retry.
-  void DeallocateRaw(std::function<void(void* ptr)> dealloc_func, void* ptr);
+  // Called to notify clients that some memory was returned.
+  void NotifyDealloc();
 
  private:
   Env* env_;
   mutex mu_;
   condition_variable memory_returned_;
 };
+
+// Implementation details below
+inline void GPUAllocatorRetry::NotifyDealloc() {
+  mutex_lock l(mu_);
+  memory_returned_.notify_all();
+}
+
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ALLOCATOR_RETRY_H_

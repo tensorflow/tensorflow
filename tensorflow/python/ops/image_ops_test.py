@@ -513,6 +513,41 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y_tf.flatten(), y_np.flatten())
 
 
+class CentralCropTest(test_util.TensorFlowTestCase):
+
+  def testNoOp(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.central_crop(x, 1.0)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, x_np)
+      self.assertEqual(y.op.name, x.op.name)
+
+  def testCropping(self):
+    x_shape = [4, 8, 1]
+    x_np = np.array([[1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8],
+                     [1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8]],
+                    dtype=np.int32).reshape(x_shape)
+    y_np = np.array([[3, 4, 5, 6], [3, 4, 5, 6]]).reshape([2, 4, 1])
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.central_crop(x, 0.5)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testError(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      with self.assertRaises(ValueError):
+        _ = image_ops.central_crop(x, 0.0)
+      with self.assertRaises(ValueError):
+        _ = image_ops.central_crop(x, 1.01)
+
+
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
   def testNoOp(self):

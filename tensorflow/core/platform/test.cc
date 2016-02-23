@@ -25,6 +25,7 @@ namespace testing {
 
 #if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
 string TmpDir() { return FLAGS_test_tmpdir; }
+string SrcDir() { return FLAGS_test_srcdir; }
 int RandomSeed() { return FLAGS_test_random_seed; }
 #else
 string TmpDir() {
@@ -38,6 +39,10 @@ string TmpDir() {
     return env;
   }
   return "/tmp";
+}
+string SrcDir() {
+  // Bazel makes data dependencies available via a relative path.
+  return "";
 }
 int RandomSeed() {
   const char* env = getenv("TEST_RANDOM_SEED");

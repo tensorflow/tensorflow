@@ -43,6 +43,7 @@ class GPUDebugAllocator : public VisitableAllocator {
   size_t RequestedSize(void* ptr) override;
   size_t AllocatedSize(void* ptr) override;
   int64 AllocationId(void* ptr) override;
+  void GetStats(AllocatorStats* stats) override;
 
   // For testing.
   bool CheckHeader(void* ptr);
@@ -70,6 +71,7 @@ class GPUNanResetAllocator : public VisitableAllocator {
   void AddFreeVisitor(Visitor visitor) override;
   size_t RequestedSize(void* ptr) override;
   size_t AllocatedSize(void* ptr) override;
+  void GetStats(AllocatorStats* stats) override;
 
  private:
   VisitableAllocator* base_allocator_ = nullptr;  // owned

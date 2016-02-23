@@ -963,10 +963,10 @@ def main(_):
         "vs. Dynamic Unroll LSTM")
   print("batch \t max_t \t units \t gpu \t dt(static) \t dt(dynamic) "
         "\t dt(dynamic)/dt(static)")
-  for batch_size in (256, 512):
-    for max_time in (50, 100):
-      for num_units in (512, 256, 128):
-        for use_gpu in (False, True):
+  for use_gpu in (False, True):
+    for batch_size in (256, 512):
+      for max_time in (50, 100):
+        for num_units in (512, 256, 128):
           static_vs_dynamic_rnn_benchmark(
               batch_size, max_time, num_units, use_gpu)
 

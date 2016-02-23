@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 #define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 
@@ -27,6 +28,13 @@ namespace tensorflow {
 // and replaces those nodes with the result of the evaluation.
 // Returns true if and only if "graph" has been mutated.
 bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph);
+
+typedef std::pair<Node*, int> NodeAndOutput;
+
+// Replaces the identified Tensor in 'graph' by a 'Const' node with
+// the value supplied in 'constant'.
+void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
+                               const Tensor& constant);
 
 }  // namespace tensorflow
 

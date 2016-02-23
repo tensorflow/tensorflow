@@ -65,24 +65,13 @@ class MatrixInverseOp
       // By definition, an empty matrix's inverse is an empty matrix.
       return;
     }
-    if (input.isApprox(input.transpose())) {
-      // Matrix is symmetric, compute Cholesky factorization
-      // input = L * L^T.
-      Eigen::LLT<Matrix, Eigen::Lower> cholesky_decomposition(input);
-      if (cholesky_decomposition.info() == Eigen::Success) {
-        // Cholesky succeeded => Matrix was SPD.
-        output->noalias() = cholesky_decomposition.solve(
-            Matrix::Identity(input.rows(), input.cols()));
-        return;
-      }
-    }
     Eigen::PartialPivLU<Matrix> lu_decomposition(input);
-    // While PartialPivLU cannot give strong guarantees on invertibility,
+    // TODO(rmlarsen): Add check based on condition number estimation.
+    // PartialPivLU cannot give strong guarantees on invertibility, but
     // we can at least guard against exact zero pivots. This can occur as
     // a result of basic user mistakes, such as providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    // TODO(rmlarsen): Add check based on condition number estimation.
     const Scalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > Scalar(0),

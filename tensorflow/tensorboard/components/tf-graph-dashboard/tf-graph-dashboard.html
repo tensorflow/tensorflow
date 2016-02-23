@@ -63,6 +63,7 @@ by default. The user can select a different run from a dropdown menu.
           out-graph-name="{{_graphName}}"
           has-stats="{{_hasStats}}"
           progress="{{_progress}}"
+          out-hierarchy-params="{{_hierarchyParams}}"
   ></tf-graph-loader>
 </div>
 <div class="center">
@@ -73,7 +74,8 @@ by default. The user can select a different run from a dropdown menu.
                 graph-name="[[_graphName]]"
                 progress="[[_progress]]"
                 color-by="[[_colorBy]]"
-                color-by-params="{{_colorByParams}}">
+                color-by-params="{{_colorByParams}}"
+                hierarchy-params="[[_hierarchyParams]]">
     </tf-graph-board>
 </div>
 </tf-dashboard-layout>

@@ -92,7 +92,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 initial_state = state = tf.zeros([batch_size, lstm.state_size])
 
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = lstm(words[:, i], state)
 
@@ -159,7 +159,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = stacked_lstm(words[:, i], state)
 

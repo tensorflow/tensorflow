@@ -917,7 +917,8 @@ class OpKernelContext {
           return wrapped.second;
         }
       }
-      TrackingAllocator* wrapped_allocator = new TrackingAllocator(allocator);
+      TrackingAllocator* wrapped_allocator =
+          new TrackingAllocator(allocator, attr.track_sizes());
       wrapped_allocators_.push_back(
           std::make_pair(allocator, wrapped_allocator));
       return wrapped_allocator;
@@ -1037,7 +1038,7 @@ typedef ::tensorflow::KernelDefBuilder Name;
   static ::tensorflow::kernel_factory::OpKernelRegistrar         \
       registrar__body__##ctr##__object(                          \
           ::tensorflow::register_kernel::kernel_builder.Build(), \
-          +[](::tensorflow::OpKernelConstruction* context)       \
+          [](::tensorflow::OpKernelConstruction* context)        \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();

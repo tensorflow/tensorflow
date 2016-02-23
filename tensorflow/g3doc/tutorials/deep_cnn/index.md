@@ -117,7 +117,7 @@ learn more about how the `Reader` class works.
 The images are processed as follows:
 
 *  They are cropped to 24 x 24 pixels, centrally for evaluation or
-   [randomly](../../api_docs/python/image.md#random_crop) for training.
+   [randomly](../../api_docs/python/constant_op.md#random_crop) for training.
 *  They are [approximately whitened](../../api_docs/python/image.md#per_image_whitening)
    to make the model insensitive to dynamic range.
 
