@@ -63,6 +63,7 @@ load(
     "tf_proto_library",
     "tf_additional_lib_srcs",
     "tf_additional_stream_executor_srcs",
+    "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
 )
@@ -157,7 +158,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:gtest",
-    ],
+    ] + tf_additional_test_deps(),
 )
 
 tf_cuda_library(
