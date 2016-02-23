@@ -42,11 +42,11 @@ backend.
 
 If you just want to use TensorBoard, there is no need to read any further.
 
-### Install Node, npm, gulp, bower, and tsd in your machine
+### Install Node, npm, gulp, and bower in your machine
 Get nodejs and npm through whatever package distribution system is appropriate
 for your machine. For example, on Ubuntu 14.04, run
 `sudo apt-get install nodejs nodejs-legacy npm`. Then, run
-`sudo npm install -g gulp bower tsd`.
+`sudo npm install -g gulp bower`.
 
 ### Install project dependencies
 
@@ -55,7 +55,6 @@ run the following commands.
 
     npm install
     bower install
-    tsd install
 
 ### Run Gulp
 

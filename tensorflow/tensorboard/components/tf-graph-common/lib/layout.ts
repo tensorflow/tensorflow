@@ -216,8 +216,7 @@ export const PARAMS = {
 };
 
 /** Calculate layout for a scene of a group node. */
-export function layoutScene(renderNodeInfo: render.RenderGroupNodeInfo)
-    : void {
+export function layoutScene(renderNodeInfo: render.RenderGroupNodeInfo): void {
   // Update layout, size, and annotations of its children nodes and edges.
   if (renderNodeInfo.node.isGroupNode) {
     layoutChildren(renderNodeInfo);
@@ -257,8 +256,7 @@ function updateTotalWidthOfNode(renderInfo: render.RenderNodeInfo): void {
 /**
  * Update layout, size, and annotations of its children nodes and edges.
  */
-function layoutChildren(renderNodeInfo: render.RenderGroupNodeInfo)
-    : void {
+function layoutChildren(renderNodeInfo: render.RenderGroupNodeInfo): void {
   let children = renderNodeInfo.coreGraph.nodes().map(n => {
     return renderNodeInfo.coreGraph.node(n);
   }).concat(renderNodeInfo.isolatedInExtract,

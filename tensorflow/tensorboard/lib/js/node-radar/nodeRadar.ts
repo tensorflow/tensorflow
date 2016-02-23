@@ -102,7 +102,7 @@ module TF {
         var visible = (box.bottom > containerBox.top
           && box.top < containerBox.bottom);
         var almost = (box.bottom > (containerBox.top - containerBox.height)
-          && box.top < (containerBox.bottom + containerBox.height))
+          && box.top < (containerBox.bottom + containerBox.height));
         var target = visible ? visibleC : almost ? almostC : hiddenC;
         target.push(n.value);
       });

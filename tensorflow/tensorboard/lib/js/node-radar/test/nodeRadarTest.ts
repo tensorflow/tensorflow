@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// <reference path="../../../../typings/tsd.d.ts" />
 
 module TF {
   let assert = chai.assert;
@@ -82,7 +81,7 @@ module TF {
       assert.throws(function() {
         r.add(node, 1);
       }, "Values in NodeRadar must be unique");
-      let f = function() {return 3;};
+      let f = function() { return 3; };
       let r2 = new NodeRadar<Function>(container);
       r2.add(node, f);
       assert.throws(function() {
@@ -97,8 +96,8 @@ module TF {
 
       let actual = r.scan();
       let expected = {
-        visible: [4,5,6,7],
-        almost: [0,1,2,3,8,9,10,11],
+        visible: [4, 5, 6, 7],
+        almost: [0, 1, 2, 3, 8, 9, 10, 11],
         hidden: _.range(12, 100),
       };
       assertScansEqual(expected, actual);
@@ -109,8 +108,8 @@ module TF {
       window.scrollTo(0, 45);
       let actual = r.scan();
       let expected = {
-        visible: [5,6,7,8],
-        almost: [1,2,3,4,9,10,11,12],
+        visible: [5, 6, 7, 8],
+        almost: [1, 2, 3, 4, 9, 10, 11, 12],
         hidden: [0].concat(_.range(13, 100)),
       };
       assertScansEqual(expected, actual);
@@ -122,7 +121,7 @@ module TF {
       container.style.height = "400px";
       let actual = r.scan();
       let expected = {
-        visible: _.range(0,8),
+        visible: _.range(0, 8),
         almost: _.range(8, 15),
         hidden: _.range(15, 100),
       };

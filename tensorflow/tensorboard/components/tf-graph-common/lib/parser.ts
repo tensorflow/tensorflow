@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../../typings/tsd.d.ts" />
 /// <reference path="common.ts" />
 module tf.graph.parser {
 
@@ -129,7 +128,7 @@ export function parsePbtxt(input: string): TFNode[] {
    * attributes into arrays even when the attribute only shows up once in the
    * object.
    */
-  let ARRAY_ATTRIBUTES: {[attrPath: string] : boolean} = {
+  let ARRAY_ATTRIBUTES: {[attrPath: string]: boolean} = {
     "node": true,
     "node.input": true,
     "node.attr": true,
