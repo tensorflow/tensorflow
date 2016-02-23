@@ -129,8 +129,10 @@ Polymer({
       this._setHasStats(statsJson != null);
       this._setOutGraphHierarchy(graphHierarchy);
     }.bind(this))
-    .catch(function(reason) {
-      tracker.reportError("Graph visualization failed: " + reason);
+    .catch(function(e) {
+      // Generic error catch, for errors that happened outside
+      // asynchronous tasks.
+      tracker.reportError("Graph visualization failed: " + e, e);
     });
   },
   _selectedDatasetChanged: function(datasetIndex, datasets) {

@@ -243,12 +243,12 @@ export function selectChild(container, tagName: string, className?: string) {
  *
  * @param container D3 selection of the parent.
  * @param renderNode render node of a metanode or series node.
- * @param sceneBehavior Parent scene module.
+ * @param sceneElement <tf-graph-scene> polymer element.
  * @param sceneClass class attribute of the scene (default="scene").
  */
 export function buildGroup(container,
     renderNode: render.RenderGroupNodeInfo,
-    sceneBehavior,
+    sceneElement,
     sceneClass: string) {
   sceneClass = sceneClass || Class.Scene.GROUP;
   let isNewSceneGroup = selectChild(container, "g", sceneClass).empty();
@@ -272,17 +272,17 @@ export function buildGroup(container,
   }
 
   // Create the layer of edges for this scene (paths).
-  edge.buildGroup(coreGroup, renderNode.coreGraph, sceneBehavior);
+  edge.buildGroup(coreGroup, renderNode.coreGraph, sceneElement);
 
   // Create the layer of nodes for this scene (ellipses, rects etc).
-  node.buildGroup(coreGroup, coreNodes, sceneBehavior);
+  node.buildGroup(coreGroup, coreNodes, sceneElement);
 
   // In-extract
   if (renderNode.isolatedInExtract.length > 0) {
     let inExtractGroup = selectOrCreateChild(sceneGroup, "g",
       Class.Scene.INEXTRACT);
     node.buildGroup(inExtractGroup, renderNode.isolatedInExtract,
-        sceneBehavior);
+        sceneElement);
   } else {
     selectChild(sceneGroup, "g", Class.Scene.INEXTRACT).remove();
   }
@@ -292,7 +292,7 @@ export function buildGroup(container,
     let outExtractGroup = selectOrCreateChild(sceneGroup, "g",
       Class.Scene.OUTEXTRACT);
     node.buildGroup(outExtractGroup, renderNode.isolatedOutExtract,
-        sceneBehavior);
+        sceneElement);
   } else {
     selectChild(sceneGroup, "g", Class.Scene.OUTEXTRACT).remove();
   }
@@ -345,9 +345,9 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInfo) {
 };
 
 /** Adds a click listener to a group that fires a graph-select event */
-export function addGraphClickListener(graphGroup, sceneBehavior) {
+export function addGraphClickListener(graphGroup, sceneElement) {
   d3.select(graphGroup).on("click", () => {
-    sceneBehavior.fire("graph-select");
+    sceneElement.fire("graph-select");
   });
 };
 

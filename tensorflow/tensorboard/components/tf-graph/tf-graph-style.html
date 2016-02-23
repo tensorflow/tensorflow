@@ -278,7 +278,6 @@
 
 ::content .edge > path.edgeline {
   fill: none;
-  marker-end: url(#arrowhead);
   stroke: #bbb;
   stroke-linecap: round;
   stroke-width: 0.75;
@@ -286,6 +285,12 @@
 
 ::content .edge > path.edgeline.refline {
   marker-start: url(#ref-arrowhead);
+}
+
+/* Labels showing tensor shapes on edges */
+::content .edge > text {
+  font-size: 3.5px;
+  fill: #666;
 }
 
 ::content #arrowhead {

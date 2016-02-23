@@ -176,6 +176,7 @@
                   class="non-control-list-item"
                   card-node="[[_node]]"
                   item-node="[[_getNode(item, graphHierarchy)]]"
+                  edge-label="[[_getPredEdgeLabel(item)]]"
                   item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
                   name="[[item]]"
                   item-type="predecessors"
@@ -226,6 +227,7 @@
                   class="non-control-list-item"
                   card-node="[[_node]]"
                   item-node="[[_getNode(item, graphHierarchy)]]"
+                  edge-label="[[_getSuccEdgeLabel(item)]]"
                   item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
                   name="[[item]]"
                   item-type="successor"
@@ -363,6 +365,31 @@
           // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
           return (nodeName || '').replace(/\//g, '<wbr>/');
+        },
+        _getPredEdgeLabel: function(sourceName) {
+          return this._getEdgeLabel(sourceName, this.nodeName);
+        },
+        _getSuccEdgeLabel: function(destName) {
+          return this._getEdgeLabel(this.nodeName, destName);
+        },
+        _getEdgeLabel: function(sourceName, destName) {
+          if (!this._node) {
+            // The user clicked outside, thus no node is selected and
+            // the info card should be hidden.
+            return;
+          }
+          var parent = this._node.parentNode;
+          var sourceNode = this.graphHierarchy.node(sourceName);
+          if (!sourceNode.isGroupNode) {
+            // Show the tensor shape directly.
+            return tf.graph.scene.edge.getShapeLabelFromNode(sourceNode);
+          }
+          sourceName = this.renderHierarchy.getNearestVisibleAncestor(sourceName);
+          destName = this.renderHierarchy.getNearestVisibleAncestor(destName);
+          var metaedge = parent.metagraph.edge(sourceName, destName) ||
+              parent.bridgegraph.edge(sourceName, destName);
+          return tf.graph.scene.edge.getLabelForEdge(metaedge,
+              this.renderHierarchy);
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
