@@ -90,7 +90,7 @@ class TensorFlowTrainer(object):
             self._optimizer = OPTIMIZER_CLS_NAMES[
                 optimizer](self._learning_rate)
         else:
-            self._optimizer = optimizer(self.learning_rate)
+            self._optimizer = optimizer(self._learning_rate)
         self.trainer = self._optimizer.apply_gradients(grads_and_vars,
                                                        global_step=global_step,
                                                        name="train")
