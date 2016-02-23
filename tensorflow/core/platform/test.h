@@ -70,6 +70,10 @@ class SubProcess {
 // returned object.
 std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
 
+// Returns an unused port number, for use in multi-process testing.
+// NOTE: This function is not thread-safe.
+int PickUnusedPortOrDie();
+
 }  // namespace testing
 }  // namespace tensorflow
 
