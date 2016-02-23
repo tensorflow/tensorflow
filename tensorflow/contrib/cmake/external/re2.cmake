@@ -3,10 +3,11 @@ include (ExternalProject)
 set(re2_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/re2/re2)
 set(re2_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/re2/src)
 set(re2_URL https://github.com/google/re2.git)
-set(re2_TAG 791beff)
+#set(re2_TAG 791beff)
+set(re2_TAG ce40fd6)
 set(re2_BUILD ${CMAKE_BINARY_DIR}/re2/src/re2)
 set(re2_LIBRARIES ${re2_BUILD}/obj/so/libre2.so)
-get_filename_component(re2_STATIC_LIBRARIES ${re2_BUILD}/libre2.a ABSOLUTE)
+get_filename_component(re2_STATIC_LIBRARIES ${re2_BUILD}/obj/libre2.a ABSOLUTE)
 set(re2_INCLUDES ${re2_BUILD})
 
 # We only need re2.h in external/re2/re2/re2.h
@@ -15,12 +16,15 @@ set(re2_HEADERS
     "${re2_BUILD}/re2/re2.h"
 )
 
+#BUILD_COMMAND echo "export LDFLAGS=-lrt" > run.sh && echo "echo $LDFLAGS" >> run.sh && echo "make all" >> run.sh && bash run.sh
 ExternalProject_Add(re2
     PREFIX re2
     GIT_REPOSITORY ${re2_URL}
     GIT_TAG ${re2_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make 
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release

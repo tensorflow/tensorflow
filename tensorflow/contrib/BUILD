@@ -13,6 +13,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/util:util_py",
     ],
 )

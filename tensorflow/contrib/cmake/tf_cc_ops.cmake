@@ -123,6 +123,8 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
         ${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}
         ${ZLIB_LIBRARIES}
+        ${re2_STATIC_LIBRARIES}
+        ${dl_LIBRARIES}
     )
 
     target_compile_options(${tf_cc_op_lib_name}_gen_cc PRIVATE

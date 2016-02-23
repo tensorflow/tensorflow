@@ -60,6 +60,7 @@ or join multiple tensors together.
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
+@@one_hot
 
 """
 from __future__ import absolute_import
@@ -1442,3 +1443,34 @@ def _DepthToSpaceShape(op):
   new_depth = input_depth // (block_size * block_size)
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, new_depth])]
+
+
+@ops.RegisterShape("OneHot")
+def _OneHotShape(op):
+  """Shape function for the OneHot op.
+
+  It closely follows the code in the .cc implementation.
+
+  Args:
+    op: A OneHot Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: if axis < -1.
+  """
+  indices_shape = op.inputs[0].get_shape()
+  indices_dims = indices_shape.ndims
+  depth = tensor_util.constant_value(op.inputs[1])
+  axis = op.get_attr("axis")
+
+  if axis < -1:
+    raise ValueError("axis must be >= -1")
+
+  new_shape = None
+  if indices_dims is not None:
+    new_shape = indices_shape.as_list()
+    new_shape.insert(axis % (indices_dims + 1), depth)
+
+  return [tensor_shape.TensorShape(new_shape)]

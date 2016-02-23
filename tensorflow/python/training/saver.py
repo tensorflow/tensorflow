@@ -418,8 +418,10 @@ class BaseSaverBuilder(object):
         Variable nodes.
       max_to_keep: Maximum number of checkpoints to keep.  As new checkpoints
         are created, old ones are deleted.  If None or 0, no checkpoints are
-        deleted.  Presently the number is only roughly enforced.  For example
-        in case of restarts more than max_to_keep checkpoints may be kept.
+        deleted from the filesystem but only the last one is kept in the
+        `checkpoint` file.  Presently the number is only roughly enforced.  For
+        example in case of restarts more than max_to_keep checkpoints may be
+        kept.
       keep_checkpoint_every_n_hours: How often checkpoints should be kept.
         Defaults to 10,000 hours.
       name: String.  Optional name to use as a prefix when adding operations.

@@ -247,7 +247,7 @@ def _SoftmaxCrossEntropyWithLogitsShape(op):
   return [tensor_shape.vector(batch_size.value), input_shape]
 
 
-def avg_pool(value, ksize, strides, padding, name=None):
+def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the average pooling on the input.
 
   Each entry in `output` is the mean of the corresponding size `ksize`
@@ -262,6 +262,7 @@ def avg_pool(value, ksize, strides, padding, name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -271,10 +272,11 @@ def avg_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._avg_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 
-def max_pool(value, ksize, strides, padding, name=None):
+def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
   Args:
@@ -285,6 +287,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -294,6 +297,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._max_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 

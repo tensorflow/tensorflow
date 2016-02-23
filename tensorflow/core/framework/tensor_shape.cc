@@ -109,6 +109,18 @@ void TensorShape::SlowCopyFrom(const TensorShape& b) {
   }
 }
 
+int64 TensorShape::dim_size(int d) const {
+  DCHECK_GE(d, 0);
+  DCHECK_LT(d, dims());
+  if (tag() == REP16) {
+    return as16()->dims_[d];
+  } else if (tag() == REP32) {
+    return as32()->dims_[d];
+  } else {
+    return (*as64()->dims_)[d];
+  }
+}
+
 void TensorShape::Clear() {
   ClearAllButDataType();
   set_data_type(DT_INVALID);

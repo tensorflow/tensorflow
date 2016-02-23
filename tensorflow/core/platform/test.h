@@ -35,8 +35,9 @@ namespace testing {
 // Return a temporary directory suitable for temporary testing files.
 string TmpDir();
 
-// Returns the source directory containing data dependencies.
-string SrcDir();
+// Returns the path to TensorFlow in the directory containing data
+// dependencies.
+string TensorFlowSrcRoot();
 
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.

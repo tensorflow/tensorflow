@@ -48,7 +48,6 @@ Session* CreateSession() {
 class DirectSessionMinusAXTest : public ::testing::Test {
  public:
   void Initialize(std::initializer_list<float> a_values) {
-    RequireDefaultOps();
     Graph graph(OpRegistry::Global());
 
     Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));

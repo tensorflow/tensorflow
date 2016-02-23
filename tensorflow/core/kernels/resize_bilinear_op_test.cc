@@ -32,7 +32,6 @@ namespace tensorflow {
 class ResizeBilinearOpTest : public OpsTestBase {
  protected:
   ResizeBilinearOpTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
@@ -45,7 +44,6 @@ class ResizeBilinearOpTest : public OpsTestBase {
 class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
  protected:
   ResizeBilinearOpAlignCornersTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))

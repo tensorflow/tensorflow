@@ -47,6 +47,12 @@ bool IsConstantFoldable(const Node* n,
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
     return false;
   }
+  if (n->IsSource()) {
+    return false;
+  }
+  if (n->IsSink()) {
+    return false;
+  }
   return true;
 }
 
@@ -72,9 +78,9 @@ void FindConstantFoldableNodes(const Graph* graph, ConstantFoldingOptions opts,
                  // Check whether the set of this node's in_nodes is completely
                  // included in the set of constant foldable nodes. If true,
                  // then this node is also constant foldable.
-                 bool all_parents_constant = n->num_inputs() > 0;
+                 bool all_parents_constant = true;
                  for (const Node* parent : n->in_nodes()) {
-                   if (node_set.count(parent) == 0) {
+                   if (node_set.count(parent) == 0 && !parent->IsSource()) {
                      all_parents_constant = false;
                      break;
                    }

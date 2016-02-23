@@ -34,7 +34,6 @@ namespace {
 
 static void BM_Unique(int iters, int dim) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_INT32, TensorShape({dim}));

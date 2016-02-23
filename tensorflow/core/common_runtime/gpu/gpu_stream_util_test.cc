@@ -32,7 +32,6 @@ namespace {
 
 class GpuStreamUtilTest : public OpsTestBase {
  protected:
-  void SetUp() override { RequireDefaultOps(); }
 };
 
 TEST_F(GpuStreamUtilTest, BogusOpts) {

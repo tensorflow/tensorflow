@@ -96,6 +96,7 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":word2vec_ops",
         "//tensorflow/core",
     ],
     alwayslink = 1,
