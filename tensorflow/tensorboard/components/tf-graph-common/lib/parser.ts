@@ -97,9 +97,6 @@ export function readAndParseData(dataset: {path: string, statsPath: string},
       nodes: nodes,
       statsJson: statsJson
     };
-    })
-  .catch(function(reason) {
-    throw new Error("Failure parsing graph definition");
   });
 }
 
@@ -139,7 +136,9 @@ export function parsePbtxt(input: string): TFNode[] {
     "node.attr.value.list.type": true,
     "node.attr.value.shape.dim": true,
     "node.attr.value.tensor.string_val": true,
-    "node.attr.value.tensor.tensor_shape.dim": true
+    "node.attr.value.tensor.tensor_shape.dim": true,
+    "node.attr.value.list.shape": true,
+    "node.attr.value.list.shape.dim": true
   };
 
   /**

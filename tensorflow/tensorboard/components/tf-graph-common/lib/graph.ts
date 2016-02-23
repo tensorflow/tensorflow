@@ -34,6 +34,9 @@ export enum InclusionType {INCLUDE, EXCLUDE, UNSPECIFIED};
 /** Indicates if a series is to be grouped in the graph when rendered. */
 export enum SeriesGroupingType {GROUP, UNGROUP};
 
+/** Attribute key reserved for the shapes of the output tensors. */
+const OUTPUT_SHAPES_KEY = "_output_shapes";
+
 /**
  * A BaseEdge is the label object (in the graphlib sense) for an edge in the
  * original, full graph produced after parsing. Subsequent graphs, like those
@@ -111,16 +114,31 @@ export interface Node {
   include: InclusionType;
 }
 
+export type TensorShape = number[];
+
 export interface OpNode extends Node {
   op: string;
   device: string;
-  attr: {key: string, value: Object}[];
+  attr: {key: string, value: any}[];
   inputs: NormalizedInput[];
   inEmbeddings: OpNode[];
   outEmbeddings: OpNode[];
   // The name of the SeriesNode that can contain this node in its series.
   // If there is no such node, then this is null.
   owningSeries: string;
+  /**
+   * Array of tensor shapes. Null if the number of output tensors is unknown,
+   * otherwise the length will equal the number of output tensors.
+   *
+   * Each tensor shape is an array of numbers, or null. Details:
+   * - null means unknown rank, and therefore entire shape is unknown.
+   * - [4, 2, 1] means rank-3 tensor of size 4x2x1.
+   * - [] means a scalar (rank-0 tensor).
+   * - [1] means rank-1 tensor of size 1 (not the same as scalar).
+   * - [5, -1, 3] means rank-3 tensor of shape is 5x?x3. The size
+   *       of the middle dimension is unknown (encoded as -1).
+   */
+  outputShapes: TensorShape[];
 }
 
 export interface BridgeNode extends Node {
@@ -304,7 +322,7 @@ class OpNodeImpl implements OpNode {
   op: string;
   device: string;
   stats: NodeStats;
-  attr: {key: string, value: Object}[];
+  attr: {key: string, value: any}[];
   inputs: NormalizedInput[];
   type: NodeType;
   isGroupNode: boolean;
@@ -314,22 +332,24 @@ class OpNodeImpl implements OpNode {
   parentNode: Node;
   include: InclusionType;
   owningSeries: string;
+  outputShapes: TensorShape[];
 
   /**
    * Constructs a new Op node.
    *
    * @param rawNode The raw node.
-   * @param normalizedInputs An array of normalized
-   *     inputs that denote the incoming edges to the current node. Each input
-   *     contains the normalized name of the source node, whether it has a
-   *     number part and whether it is a control dependency.
    */
-  constructor(rawNode: tf.TFNode, normalizedInputs: NormalizedInput[]) {
+  constructor(rawNode: tf.TFNode) {
     this.op = rawNode.op;
     this.name = rawNode.name;
     this.device = rawNode.device;
     this.attr = rawNode.attr;
-    this.inputs = normalizedInputs;
+    // An array of normalized inputs that denote the incoming edges to
+    // the current node. Each input contains the normalized name of the
+    // source node, whether it has a number part and whether it is a
+    // control dependency.
+    this.inputs = normalizeInputs(rawNode.input);
+    this.outputShapes = extractOutputShapes(rawNode.attr);
     // additional properties
     this.type = NodeType.OP;
     this.isGroupNode = false;
@@ -548,7 +568,12 @@ export interface Metaedge extends graphlib.EdgeObject {
    */
   numRefEdges: number;
 
-  addBaseEdge(edge: BaseEdge): void;
+  /**
+   * Total size (number of units) of all the tensors flowing through this edge.
+   */
+  totalSize: number;
+
+  addBaseEdge(edge: BaseEdge, h: hierarchy.Hierarchy): void;
 }
 
 export function createMetaedge(v: string, w: string): Metaedge {
@@ -566,6 +591,7 @@ class MetaedgeImpl implements Metaedge {
   numRegularEdges: number;
   numControlEdges: number;
   numRefEdges: number;
+  totalSize: number;
 
   constructor(v: string, w: string) {
     this.v = v;
@@ -575,9 +601,10 @@ class MetaedgeImpl implements Metaedge {
     this.numRegularEdges = 0;
     this.numControlEdges = 0;
     this.numRefEdges = 0;
+    this.totalSize = 0;
   }
 
-  addBaseEdge(edge: BaseEdge): void {
+  addBaseEdge(edge: BaseEdge, h: hierarchy.Hierarchy): void {
     this.baseEdgeList.push(edge);
     if (edge.isControlDependency) {
       this.numControlEdges += 1;
@@ -587,6 +614,38 @@ class MetaedgeImpl implements Metaedge {
     if (edge.isReferenceEdge) {
       this.numRefEdges += 1;
     }
+    // Compute the size of the tensor flowing through this
+    // base edge.
+    this.totalSize += MetaedgeImpl.computeSizeOfEdge(edge, h);
+  }
+
+  private static computeSizeOfEdge(edge: BaseEdge, h: hierarchy.Hierarchy)
+      : number {
+    let opNode = <OpNode> h.node(edge.v);
+    if (opNode.outputShapes == null) {
+      // No shape information. Asssume a single number. This gives
+      // a lower bound for the total size.
+      return 1;
+    }
+    // Sum the sizes of all output tensors.
+    return _(opNode.outputShapes).map(shape => {
+      // If the shape is unknown, treat it as 1 when computing
+      // total size. This gives a lower bound for the total size.
+      if (shape == null) {
+        return 1;
+      }
+      // Multiply all shapes to get the total size of the tensor.
+      // E.g. The total size of [4, 2, 1] is 4 * 2 * 1.
+      return _(shape).reduce((accumulated, currSize) => {
+        // If this particular dimension is unknown, treat
+        // it as 1 when computing total size. This gives a lower bound
+        // for the total size.
+        if (currSize === -1) {
+          currSize = 1;
+        }
+        return accumulated * currSize;
+      }, 1);
+    }).sum();
   }
 }
 
@@ -644,6 +703,49 @@ class SeriesNodeImpl implements SeriesNode {
     this.stats = new NodeStats(0, 0, null);
     this.include = InclusionType.UNSPECIFIED;
   }
+}
+
+/**
+ * Extracts the shapes of the output tensors from the attr property in the
+ * node proto.
+ */
+function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
+  let result = null;
+  // We don't know anything about the output tensors.
+  if (!attr) {
+    return null;
+  }
+  for (let i = 0; i < attr.length; i++) {
+    let {key, value} = attr[i];
+    if (key === OUTPUT_SHAPES_KEY) {
+     // Map all output tensors into array of numbers denoting their shape.
+     let result = value.list.shape.map(shape => {
+       if (shape.unknown_rank) {
+         // This output tensor is of unknown rank. We don't know if it is a
+         // scalar, or a tensor, or of what shape it is.
+         return null;
+       }
+       if (shape.dim == null ||
+           (shape.dim.length === 1 && shape.dim[0].size == null)) {
+         // This output tensor is a scalar.
+         return [];
+       }
+       // This output tensor has a known rank. Map each dimension size
+       // into a number.
+       return shape.dim.map(dim => {
+         // Size can be -1 if this particular dimension is unknown.
+         return dim.size;
+       });
+     });
+     // Since we already processed it, remove the entry from the attribute
+     // list (saves memory).
+     attr.splice(i, 1);
+     return result;
+    }
+  }
+  // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
+  // about the output tensors.
+  return result;
 }
 
 /**
@@ -729,8 +831,7 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
     let opNodes = new Array<OpNode>(rawNodes.length);
     let index = 0;
     _.each(rawNodes, rawNode => {
-      let normalizedInputs = normalizeInputs(rawNode.input);
-      let opNode = new OpNodeImpl(rawNode, normalizedInputs);
+      let opNode = new OpNodeImpl(rawNode);
       if (isInEmbeddedPred(opNode)) {
         embeddingNodeNames.push(opNode.name);
         inEmbedding[opNode.name] = opNode;
@@ -819,9 +920,6 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
 
       return graph;
     }, tracker);
-  })
-  .catch(function(reason) {
-    throw new Error("Failure creating graph");
   });
 };
 

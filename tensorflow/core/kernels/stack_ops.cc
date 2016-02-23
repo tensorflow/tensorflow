@@ -18,6 +18,8 @@ limitations under the License.
 #include <limits.h>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -34,31 +36,52 @@ limitations under the License.
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
 class Stack : public ResourceBase {
  public:
-  Stack(const DataType& elem_type, const Tensor& handle)
-      : elem_type_(elem_type), handle_(handle) {}
+  struct TensorAndAllocation {
+    PersistentTensor tensor;
+    AllocatorAttributes alloc_attrs;
+    bool swapped_to_cpu;
+  };
 
-  void Push(const PersistentTensor& value) {
+  Stack(const DataType& elem_type, const Tensor& handle)
+      : elem_type_(elem_type), handle_(handle), closed_(false) {}
+
+  Status Push(const TensorAndAllocation& value) {
     mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(CheckNotClosed());
     stack_.push_back(value);
+    return Status::OK();
   }
 
-  bool Pop(PersistentTensor* value) {
+  Status Pop(TensorAndAllocation* value) {
     mutex_lock l(mu_);
-    if (!stack_.empty()) {
-      *value = stack_.back();
-      stack_.pop_back();
-      return true;
+    TF_RETURN_IF_ERROR(CheckNotClosed());
+    if (stack_.empty()) {
+      const string& stack_name = handle_.vec<string>()(1);
+      return errors::InvalidArgument("Stack[", stack_name,
+                                     "] is empty when calling Pop().");
     }
-    return false;
+    *value = stack_.back();
+    stack_.pop_back();
+    return Status::OK();
+  }
+
+  void Close() {
+    mutex_lock l(mu_);
+    stack_.clear();
+    closed_ = true;
   }
 
   DataType ElemType() { return elem_type_; }
 
   string DebugString() override {
     mutex_lock l(mu_);
-    return strings::StrCat("#elem:", stack_.size());
+    const string& stack_name = handle_.vec<string>()(1);
+    return strings::StrCat("Stack[", stack_name, "]");
   }
 
  private:
@@ -69,8 +92,35 @@ class Stack : public ResourceBase {
   mutex mu_;
   DataType elem_type_;
   Tensor handle_;
-  std::vector<PersistentTensor> stack_ GUARDED_BY(mu_);
+  bool closed_ GUARDED_BY(mu_);
+  std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+
+  Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (closed_) {
+      const string& stack_name = handle_.vec<string>()(1);
+      return errors::InvalidArgument("Stack[", stack_name,
+                                     "] has already been closed.");
+    }
+    return Status::OK();
+  }
 };
+
+Status GetStack(OpKernelContext* ctx, Stack** stack) {
+  Tensor Tstack_handle = ctx->mutable_input(0, false);
+  if (Tstack_handle.NumElements() != 2) {
+    return errors::InvalidArgument(
+        "Stack handle must have two elements, but had shape: ",
+        Tstack_handle.shape().DebugString());
+  }
+  const string& container = Tstack_handle.flat<string>()(0);
+  const string& stack_name = Tstack_handle.flat<string>()(1);
+  ResourceMgr* rm = ctx->step_resource_manager();
+  if (rm == nullptr) {
+    return errors::Internal("No per-step resource manager.");
+  }
+  TF_RETURN_IF_ERROR(rm->Lookup(container, stack_name, stack));
+  return Status::OK();
+}
 
 // A per-run local stack. The stack uses a "per-step" resource manager which
 // ensures that correct garbage collection on error or successful completion.
@@ -113,41 +163,77 @@ REGISTER_KERNEL_BUILDER(Name("Stack").Device(DEVICE_CPU), StackOp);
 REGISTER_KERNEL_BUILDER(Name("Stack").Device(DEVICE_GPU).HostMemory("handle"),
                         StackOp);
 
-class StackPushOp : public OpKernel {
+template <typename Device>
+class StackPushOp : public AsyncOpKernel {
  public:
-  explicit StackPushOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit StackPushOp(OpKernelConstruction* context) : AsyncOpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("swap_memory", &swap_memory_));
+  }
 
-  void Compute(OpKernelContext* ctx) override {
-    Tensor Tstack_handle = ctx->mutable_input(0, false);
-    OP_REQUIRES(ctx, Tstack_handle.NumElements() == 2,
-                errors::InvalidArgument(
-                    "Stack handle must have two elements, but had shape: ",
-                    Tstack_handle.shape().DebugString()));
-    const string& container = Tstack_handle.flat<string>()(0);
-    const string& stack_name = Tstack_handle.flat<string>()(1);
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+    // Get the stack from the handle.
     Stack* stack = nullptr;
-    OP_REQUIRES_OK(ctx, rm->Lookup(container, stack_name, &stack));
+    OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
     OP_REQUIRES(ctx, ctx->input_dtype(1) == stack->ElemType(),
                 errors::InvalidArgument("Must have type ", stack->ElemType(),
                                         " but got ", ctx->input_dtype(1)));
-    stack->Push(PersistentTensor(ctx->input(1)));
-    ctx->set_output(0, ctx->input(1));
+
+    // Push the tensor onto the stack. Swap the tensor to CPU if instructed.
+    const Tensor& tensor = ctx->input(1);
+    AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
+    static constexpr int copy_threshold = 2048;
+    if (swap_memory_ && !alloc_attrs.on_host() &&
+        std::is_same<Device, GPUDevice>::value &&
+        tensor.TotalBytes() > copy_threshold) {
+      // Asynchronously copy the tensor from GPU to CPU memory.
+      // TODO(yuanbyu): Swap only when there is mmeory pressure.
+      DeviceContext* device_ctxt = ctx->op_device_context();
+      auto device = static_cast<tensorflow::Device*>(ctx->device());
+      AllocatorAttributes host_alloc_attrs;
+      host_alloc_attrs.set_gpu_compatible(true);
+      host_alloc_attrs.set_on_host(true);
+      Allocator* cpu_allocator = device->GetAllocator(host_alloc_attrs);
+      Tensor* cpu_tensor =
+          new Tensor(cpu_allocator, tensor.dtype(), tensor.shape());
+      device_ctxt->CopyDeviceTensorToCPU(
+          &tensor, "StackPush", device, cpu_tensor,
+          [cpu_tensor, stack, ctx, done](const Status& s) {
+            ctx->SetStatus(s);
+            if (s.ok()) {
+              AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
+              ctx->SetStatus(stack->Push(
+                  {PersistentTensor(*cpu_tensor), alloc_attrs, true}));
+            }
+            if (ctx->status().ok()) {
+              ctx->set_output(0, *cpu_tensor);
+            }
+            done();
+            delete cpu_tensor;
+          });
+    } else {
+      // Execute synchronously if not swapped.
+      OP_REQUIRES_OK(
+          ctx, stack->Push({PersistentTensor(tensor), alloc_attrs, false}));
+      ctx->set_output(0, tensor);
+      done();
+    }
   }
 
   bool IsExpensive() override { return false; }
+
+ private:
+  bool swap_memory_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("StackPush").Device(DEVICE_CPU), StackPushOp);
+REGISTER_KERNEL_BUILDER(Name("StackPush").Device(DEVICE_CPU),
+                        StackPushOp<CPUDevice>);
 
 #define REGISTER_GPU_KERNEL(type)                         \
   REGISTER_KERNEL_BUILDER(Name("StackPush")               \
                               .Device(DEVICE_GPU)         \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
-                          StackPushOp);
+                          StackPushOp<GPUDevice>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -162,35 +248,49 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
                               .HostMemory("elem")         \
                               .HostMemory("output")       \
                               .TypeConstraint<type>("T"), \
-                          StackPushOp)
+                          StackPushOp<GPUDevice>)
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(bool);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
-class StackPopOp : public OpKernel {
+class StackPopOp : public AsyncOpKernel {
  public:
-  explicit StackPopOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit StackPopOp(OpKernelConstruction* context) : AsyncOpKernel(context) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    Tensor Tstack_handle = ctx->mutable_input(0, false);
-    OP_REQUIRES(ctx, Tstack_handle.NumElements() == 2,
-                errors::InvalidArgument(
-                    "Stack handle must have two elements, but had shape: ",
-                    Tstack_handle.shape().DebugString()));
-    const string& container = Tstack_handle.flat<string>()(0);
-    const string& stack_name = Tstack_handle.flat<string>()(1);
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+    // Get the stack from the handle.
     Stack* stack = nullptr;
-    OP_REQUIRES_OK(ctx, rm->Lookup(container, stack_name, &stack));
-    PersistentTensor value;
-    bool has_value = stack->Pop(&value);
-    OP_REQUIRES(ctx, has_value, errors::InvalidArgument(
-                                    "Calling Pop() when the stack is empty."));
-    ctx->set_output(0, *value.AccessTensor(ctx));
+    OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+
+    // Pop the tensor. Transfer the tensor back to device if it was
+    // swapped out to CPU.
+    Stack::TensorAndAllocation value;
+    OP_REQUIRES_OK(ctx, stack->Pop(&value));
+    if (value.swapped_to_cpu) {
+      // Asynchronously copy the tensor back from CPU to GPU memory.
+      DeviceContext* device_ctxt = ctx->op_device_context();
+      Device* device = static_cast<Device*>(ctx->device());
+      Tensor* cpu_tensor = value.tensor.AccessTensor(ctx);
+      Allocator* gpu_allocator = device->GetAllocator(value.alloc_attrs);
+      Tensor* device_tensor =
+          new Tensor(gpu_allocator, cpu_tensor->dtype(), cpu_tensor->shape());
+      device_ctxt->CopyCPUTensorToDevice(
+          cpu_tensor, device, device_tensor,
+          [device_tensor, ctx, done](const Status& s) {
+            ctx->SetStatus(s);
+            if (s.ok()) {
+              ctx->set_output(0, *device_tensor);
+            }
+            done();
+            delete device_tensor;
+          });
+    } else {
+      // Execute synchronously if not swapped.
+      ctx->set_output(0, *value.tensor.AccessTensor(ctx));
+      done();
+    }
   }
 
   bool IsExpensive() override { return false; }
@@ -229,18 +329,12 @@ class StackCloseOp : public OpKernel {
   explicit StackCloseOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor Tstack_handle = ctx->mutable_input(0, false);
-    OP_REQUIRES(ctx, Tstack_handle.NumElements() == 2,
-                errors::InvalidArgument(
-                    "Stack handle must have two elements, but had shape: ",
-                    Tstack_handle.shape().DebugString()));
-    const string& container = Tstack_handle.flat<string>()(0);
-    const string& stack_name = Tstack_handle.flat<string>()(1);
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
-    OP_REQUIRES_OK(ctx, rm->Delete<Stack>(container, stack_name));
+    Stack* stack = nullptr;
+    OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    stack->Close();
   }
+
+  bool IsExpensive() override { return false; }
 };
 
 REGISTER_KERNEL_BUILDER(Name("StackClose").Device(DEVICE_CPU), StackCloseOp);

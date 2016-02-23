@@ -77,10 +77,27 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 //       graph_def, consumer_op_registry));
 // // Consumer can use 'graph_def', and 'op_attr_removed' summarizes
 // // what changes had to be made to 'graph_def' for it to work.
+//
+// TODO(josh11b): Describe how to use this function on the consumer using the
+// stripped_op_list field from a producer.
 Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed);
+
+// Collect the ops used by a graph.
+//
+// This function computes the stripped_op_list field of MetaGraphDef and similar
+// protos.  The op_registry should contain the ops used to produce graph_def,
+// and stripped_op_list can be used as the producer_op_registry argument to
+// RemoveNewDefaultAttrsFromGraphDef to improve forwards compatibility
+// (using OpListOpRegistry to turn the OpList into an OpRegistryInterface).
+//
+// Most users will pass OpRegistry::Global() for op_registry to strip against
+// the list of ops registered in this process.
+Status StrippedOpListForGraph(const GraphDef& graph_def,
+                              const OpRegistryInterface& op_registry,
+                              OpList* stripped_op_list);
 
 }  // namespace tensorflow
 

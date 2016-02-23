@@ -19,10 +19,13 @@ limitations under the License.
 
 module tf.graph.scene.edge {
 
+/** Delimiter between dimensions when showing sizes of tensors. */
+const TENSOR_SHAPE_DELIM = "×";
+
 export type EdgeData = {v: string, w: string, label: render.RenderMetaedgeInfo};
 
 export function getEdgeKey(edgeObj: EdgeData) {
-  return edgeObj.v + tf.graph.EDGE_KEY_DELIM + edgeObj.w;
+  return edgeObj.v + EDGE_KEY_DELIM + edgeObj.w;
 }
 
 /**
@@ -41,14 +44,14 @@ export function getEdgeKey(edgeObj: EdgeData) {
  *
  * @param sceneGroup container
  * @param graph
- * @param sceneBehavior Parent scene module.
+ * @param sceneElement <tf-graph-scene> polymer element.
  * @return selection of the created nodeGroups
  */
 export function buildGroup(sceneGroup,
-  graph: graphlib.Graph<tf.graph.render.RenderNodeInfo,
-    tf.graph.render.RenderMetaedgeInfo>, sceneBehavior) {
+    graph: graphlib.Graph<render.RenderNodeInfo, render.RenderMetaedgeInfo>,
+    sceneElement) {
   let edges: EdgeData[] = [];
-  let edgeData = _.reduce(graph.edges(), (edges, edgeObj) => {
+  edges = _.reduce(graph.edges(), (edges, edgeObj) => {
     let edgeLabel = graph.edge(edgeObj);
     edges.push({
       v: edgeObj.v,
@@ -68,8 +71,7 @@ export function buildGroup(sceneGroup,
     // See https://github.com/mbostock/d3/releases/tag/v2.0.0
     // (It's not listed in the d3 wiki.)
     return this.childNodes;
-  })
-    .data(edgeData, getEdgeKey);
+  }).data(edges, getEdgeKey);
 
   // Make edges a group to support rendering multiple lines for metaedge
   edgeGroups.enter()
@@ -80,7 +82,7 @@ export function buildGroup(sceneGroup,
       let edgeGroup = d3.select(this);
       d.label.edgeGroup = edgeGroup;
       // index node group for quick highlighting
-      sceneBehavior._edgeGroupIndex[getEdgeKey(d)] = edgeGroup;
+      sceneElement._edgeGroupIndex[getEdgeKey(d)] = edgeGroup;
 
       // If any edges are reference edges, add the reference edge class.
       let extraEdgeClass = d.label.metaedge && d.label.metaedge.numRefEdges
@@ -88,21 +90,56 @@ export function buildGroup(sceneGroup,
         : undefined;
       // Add line during enter because we're assuming that type of line
       // normally does not change.
-      appendEdge(edgeGroup, d, scene, extraEdgeClass);
+      appendEdge(edgeGroup, d, sceneElement, extraEdgeClass);
     });
 
   edgeGroups.each(position);
   edgeGroups.each(function(d) {
-    stylize(d3.select(this), d, sceneBehavior);
+    stylize(d3.select(this), d, sceneElement);
   });
 
   edgeGroups.exit()
     .each(d => {
-      delete sceneBehavior._edgeGroupIndex[getEdgeKey(d)];
+      delete sceneElement._edgeGroupIndex[getEdgeKey(d)];
     })
     .remove();
   return edgeGroups;
 };
+
+export function getShapeLabelFromNode(node: OpNode,
+    renderInfo: render.RenderGraphInfo) {
+  if (node.outputShapes == null || node.outputShapes.length === 0) {
+    return null;
+  }
+  // TODO(smilkov): Figure out exactly which output tensor this
+  // edge is from.
+  let shape = node.outputShapes[0];
+  if (shape == null) {
+    return null;
+  }
+  if (shape.length === 0) {
+    return "scalar";
+  }
+  return shape.map(size => {
+    return size === -1 ? "?" : size;
+  }).join(TENSOR_SHAPE_DELIM);
+}
+
+/**
+ * Creates the label for the given metaedge. If the metaedge consists
+ * of only 1 tensor, and it's shape is known, the label will contain that
+ * shape. Otherwise, the label will say the number of tensors in the metaedge.
+ */
+export function getLabelForEdge(metaedge: Metaedge,
+    renderInfo: render.RenderGraphInfo): string {
+  let isMultiEdge = metaedge.baseEdgeList.length > 1;
+  if (isMultiEdge) {
+    return metaedge.baseEdgeList.length + " tensors";
+  } else {
+    let node = <OpNode> renderInfo.getNodeByName(metaedge.baseEdgeList[0].v);
+    return getShapeLabelFromNode(node, renderInfo);
+  }
+}
 
 /**
  * For a given d3 selection and data object, create a path to represent the
@@ -112,15 +149,49 @@ export function buildGroup(sceneGroup,
  * will sometimes be undefined, for example for some Annotation edges for which
  * there is no underlying Metaedge in the hierarchical graph.
  */
-export function appendEdge(edgeGroup, d: EdgeData, sceneBehavior, edgeClass?) {
+export function appendEdge(edgeGroup, d: EdgeData,
+    sceneElement: {renderHierarchy: render.RenderGraphInfo},
+    edgeClass: string) {
+  let size = 1;
+  if (d.label != null && d.label.metaedge != null) {
+    // There is an underlying Metaedge.
+    size = d.label.metaedge.totalSize;
+  }
   edgeClass = edgeClass || Class.Edge.LINE; // set default type
 
   if (d.label && d.label.structural) {
     edgeClass += " " + Class.Edge.STRUCTURAL;
   }
+  // Give the path a unique id, which will be used to link
+  // the textPath (edge label) to this path.
+  let pathId = "path_" + getEdgeKey(d);
+  let strokeWidth = sceneElement.renderHierarchy.edgeWidthScale(size);
 
   edgeGroup.append("path")
-    .attr("class", edgeClass);
+    .attr({
+      "id": pathId,
+      "class": edgeClass,
+    }).style({
+      "stroke-width": strokeWidth + "px"
+    });
+
+  if (d.label == null || d.label.metaedge == null) {
+    // There is no associated metaedge, thus no text.
+    // This happens for annotation edges.
+    return;
+  }
+  let labelForEdge = getLabelForEdge(d.label.metaedge,
+      sceneElement.renderHierarchy);
+  if (labelForEdge == null) {
+    // We have no information to show on this edge.
+    return;
+  }
+  edgeGroup.append("text").append("textPath").attr({
+      "xlink:href": "#" + pathId,
+      "startOffset": "50%",
+      "text-anchor": "middle",
+      "dominant-baseline": "central"
+  }).text(labelForEdge);
 };
 
 export let interpolate = d3.svg.line<{x: number, y: number}>()
@@ -134,8 +205,9 @@ export let interpolate = d3.svg.line<{x: number, y: number}>()
 function getEdgePathInterpolator(d: EdgeData, i: number, a: string) {
   let renderMetaedgeInfo = <render.RenderMetaedgeInfo> d.label;
   let adjoiningMetaedge = renderMetaedgeInfo.adjoiningMetaedge;
+  let points = renderMetaedgeInfo.points;
   if (!adjoiningMetaedge) {
-    return d3.interpolate(a, interpolate(renderMetaedgeInfo.points));
+    return d3.interpolate(a, interpolate(points));
   }
 
   let renderPath = this;
@@ -158,7 +230,6 @@ function getEdgePathInterpolator(d: EdgeData, i: number, a: string) {
 
     // Update the relevant point in the renderMetaedgeInfo's points list, then
     // re-interpolate the path.
-    let points = renderMetaedgeInfo.points;
     let index = inbound ? 0 : points.length - 1;
     points[index].x = adjoiningPoint.x;
     points[index].y = adjoiningPoint.y;
@@ -169,10 +240,8 @@ function getEdgePathInterpolator(d: EdgeData, i: number, a: string) {
 
 function position(d) {
   d3.select(this).select("path." + Class.Edge.LINE)
-    .each(function(d) {
-      let path = d3.select(this);
-      path.transition().attrTween("d", getEdgePathInterpolator);
-    });
+    .transition()
+    .attrTween("d", getEdgePathInterpolator);
 };
 
 /**

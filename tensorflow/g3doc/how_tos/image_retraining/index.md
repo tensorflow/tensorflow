@@ -117,13 +117,31 @@ to run since there's randomness in the training process. This number is based on
 how many of the images in the test set are given the correct label after the
 model is fully trained.
 
+## Using the Retrained Model
+
 The script will write out a version of the Inception v3 network with a final
 layer retrained to your categories to /tmp/output_graph.pb, and a text file
 containing the labels to /tmp/output_labels.txt. These are both in a format that
 the [C++ and Python image classification examples](https://www.tensorflow.org/versions/master/tutorials/image_recognition/index.html)
 can read in, so you can start using your new model immediately. Since you've
 replaced the top layer, you will need to specify the new name in the script, for
-example with the flag `--output_layer=final_output` if you're using label_image.
+example with the flag `--output_layer=final_result` if you're using label_image.
+
+Here's an example of how to build and run the label_image example with your
+retrained graphs:
+
+```sh
+bazel build tensorflow/examples/label_image:label_image && \
+bazel-bin/tensorflow/examples/label_image/label_image \
+--graph=/tmp/output_graph.pb --labels=/tmp/output_labels.txt \
+--output_layer=final_result \
+--image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
+```
+
+You should see a list of flower labels, in most cases with daisy on top
+(though each retrained model may be slightly different). You can replace the
+`--image` parameter with your own images to try those out, and use the C++ code
+as a template to integrate with your own applications.
 
 ## Training on Your Own Categories
 

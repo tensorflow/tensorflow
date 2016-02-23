@@ -9452,6 +9452,14 @@ op {
     name: "T"
     type: "type"
   }
+  attr {
+    name: "swap_memory"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Swap `elem` to CPU. Default to false."
+  }
   summary: "Push an element onto the stack."
 }
 op {
