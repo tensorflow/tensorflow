@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package test;
+
+option java_package = "com.google.test";
+
+message KeyVal {
+  optional string key = 1;
+  optional string val = 2;
+}
