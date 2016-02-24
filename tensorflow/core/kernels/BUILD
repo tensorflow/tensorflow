@@ -30,6 +30,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "bounds_check",
+    hdrs = ["bounds_check.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
@@ -226,6 +235,7 @@ tf_kernel_libraries(
         "where_op",
     ],
     deps = [
+        ":bounds_check",
         ":concat_lib",
         ":fill_functor",
         ":ops_util",
@@ -874,6 +884,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":assign_op",
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:state_ops_op_lib",
@@ -955,6 +966,7 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
+        "bounds_check.h",
         "cast_op.cc",
         "cast_op.h",
         "concat_lib.h",
