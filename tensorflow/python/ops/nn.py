@@ -593,8 +593,8 @@ def batch_normalization(x,
     x: Input `Tensor` of arbitrary dimensionality.
     mean: A mean `Tensor`.
     variance: A variance `Tensor`.
-    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, to
-      be applied to the normalized tensor.
+    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, or
+      None. If present, will be added to the normalized tensor.
     scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
       `None`. If present, the scale is applied to the normalized tensor.
     variance_epsilon: A small float number to avoid dividing by 0.
@@ -607,7 +607,7 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (offset - mean * inv)
+    return x * inv + (offset - mean * inv if offset else -mean * inv)
 
 
 def batch_norm_with_global_normalization(t,
