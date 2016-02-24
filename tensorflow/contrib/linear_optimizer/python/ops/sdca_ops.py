@@ -17,9 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 # pylint: disable=wildcard-import
 from tensorflow.contrib.linear_optimizer.gen_sdca_ops import *
+from tensorflow.python.framework import ops
+from tensorflow.python.framework.ops import convert_to_tensor
+from tensorflow.python.framework.ops import name_scope
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
+
+__all__ = ['SdcaModel']
 
 
 class SdcaModel(object):
@@ -103,7 +110,7 @@ class SdcaModel(object):
     self._examples = examples
     self._variables = variables
     self._options = options
-    self._training_log_loss = tf.convert_to_tensor(
+    self._training_log_loss = convert_to_tensor(
         self._variables['training_log_loss'],
         as_ref=True)
 
@@ -119,7 +126,7 @@ class SdcaModel(object):
 
   def _l1_loss(self):
     """"Computes the l1 loss of the model."""
-    with tf.name_scope('l1_loss'):
+    with name_scope('l1_loss'):
       sparse_weights = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
       dense_weights = self._convert_n_to_tensor(self._variables[
@@ -127,14 +134,14 @@ class SdcaModel(object):
       l1 = self._options['symmetric_l1_regularization']
       loss = 0
       for w in sparse_weights:
-        loss += l1 * tf.reduce_sum(tf.abs(w))
+        loss += l1 * math_ops.reduce_sum(abs(w))
       for w in dense_weights:
-        loss += l1 * tf.reduce_sum(tf.abs(w))
+        loss += l1 * math_ops.reduce_sum(abs(w))
       return loss
 
   def _l2_loss(self):
     """"Computes the l1 loss of the model."""
-    with tf.name_scope('l2_loss'):
+    with name_scope('l2_loss'):
       sparse_weights = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
       dense_weights = self._convert_n_to_tensor(self._variables[
@@ -142,27 +149,27 @@ class SdcaModel(object):
       l2 = self._options['symmetric_l2_regularization']
       loss = 0
       for w in sparse_weights:
-        loss += l2 * tf.reduce_sum(tf.square(w))
+        loss += l2 * math_ops.reduce_sum(math_ops.square(w))
       for w in dense_weights:
-        loss += l2 * tf.reduce_sum(tf.square(w))
+        loss += l2 * math_ops.reduce_sum(math_ops.square(w))
       return loss
 
   def _logits(self, examples):
     """Compute logits for each example."""
-    with tf.name_scope('logits'):
+    with name_scope('logits'):
       sparse_variables = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
       logits = 0
       for st_i, sv in zip(examples['sparse_features'], sparse_variables):
-        ei, fi = tf.split(1, 2, st_i.indices)
-        ei = tf.reshape(ei, [-1])
-        fi = tf.reshape(fi, [-1])
-        fv = tf.reshape(st_i.values, [-1])
+        ei, fi = array_ops.split(1, 2, st_i.indices)
+        ei = array_ops.reshape(ei, [-1])
+        fi = array_ops.reshape(fi, [-1])
+        fv = array_ops.reshape(st_i.values, [-1])
         # TODO(rohananil): This does not work if examples have empty
         # features.
-        logits += tf.segment_sum(
-            tf.mul(
-                tf.gather(sv, fi), fv), tf.reshape(ei, [-1]))
+        logits += math_ops.segment_sum(
+            math_ops.mul(
+                array_ops.gather(sv, fi), fv), array_ops.reshape(ei, [-1]))
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
@@ -172,7 +179,7 @@ class SdcaModel(object):
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
-    return [tf.convert_to_tensor(x, as_ref=as_ref) for x in input_list]
+    return [convert_to_tensor(x, as_ref=as_ref) for x in input_list]
 
   def predictions(self, examples):
     """Add operations to compute predictions by the model.
@@ -190,11 +197,11 @@ class SdcaModel(object):
     self._assertSpecified(
         ['example_weights', 'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
-    with tf.name_scope('sdca/prediction'):
+    with name_scope('sdca/prediction'):
       logits = self._logits(examples)
       # TODO(rohananil): Change prediction when supporting linear
       # regression.
-      return tf.sigmoid(logits)
+      return math_ops.sigmoid(logits)
 
   def minimize(self):
     """Add operations to train a linear model by minimizing the loss function.
@@ -202,7 +209,7 @@ class SdcaModel(object):
         Returns:
           An Operation that updates the variables passed in the constructor.
         """
-    with tf.name_scope('sdca/minimize'):
+    with name_scope('sdca/minimize'):
       sparse_features_indices = []
       sparse_features_weights = []
       for sf in self._examples['sparse_features']:
@@ -213,10 +220,10 @@ class SdcaModel(object):
           sparse_features_indices,
           sparse_features_weights,
           self._convert_n_to_tensor(self._examples['dense_features']),
-          tf.convert_to_tensor(self._examples['example_weights']),
-          tf.convert_to_tensor(self._examples['example_labels']),
-          tf.convert_to_tensor(self._variables['dual'],
-                               as_ref=True),
+          convert_to_tensor(self._examples['example_weights']),
+          convert_to_tensor(self._examples['example_labels']),
+          convert_to_tensor(self._variables['dual'],
+                            as_ref=True),
           self._convert_n_to_tensor(self._variables[
               'sparse_features_weights'],
                                     as_ref=True),
@@ -243,14 +250,14 @@ class SdcaModel(object):
         ['example_labels', 'example_weights', 'sparse_features',
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
-    with tf.name_scope('sdca/unregularized_loss'):
+    with name_scope('sdca/unregularized_loss'):
       logits = self._logits(examples)
       # TODO(rohananil): Change loss when supporting linear regression.
-      return tf.reduce_sum(tf.mul(
-          tf.nn.sigmoid_cross_entropy_with_logits(logits, tf.convert_to_tensor(
-              examples['example_labels'])), tf.convert_to_tensor(examples[
-                  'example_weights']))) / tf.reduce_sum(ops.convert_to_tensor(
-                      examples['example_weights']))
+      return math_ops.reduce_sum(math_ops.mul(
+          sigmoid_cross_entropy_with_logits(logits, convert_to_tensor(examples[
+              'example_labels'])), convert_to_tensor(examples[
+                  'example_weights']))) / math_ops.reduce_sum(
+                      ops.convert_to_tensor(examples['example_weights']))
 
   def regularized_loss(self, examples):
     """Add operations to compute the loss with regularization loss included.
@@ -268,7 +275,7 @@ class SdcaModel(object):
         ['example_labels', 'example_weights', 'sparse_features',
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
-    with tf.name_scope('sdca/regularized_loss'):
+    with name_scope('sdca/regularized_loss'):
       logits = self._logits(examples)
       # TODO(rohananil): Change loss when supporting linear regression.
       return self._l1_loss() + self._l2_loss() + self.unregularized_loss(
