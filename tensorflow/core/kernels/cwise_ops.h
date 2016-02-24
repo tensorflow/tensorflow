@@ -29,42 +29,6 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-// TODO(zhifengc): Eigen::internal::pow_impl does not have proper
-// EIGEN host/device decoration. We duplicate code here for now.
-template <typename T, bool IsInteger>
-struct pow {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
-                                                     const T& y) const {
-    return std::pow(x, y);
-  }
-};
-
-template <typename T>
-struct pow<T, true> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x, T y) const {
-    T res(1);
-    if (y & 1) res *= x;
-    y >>= 1;
-    while (y) {
-      x *= x;
-      if (y & 1) res *= x;
-      y >>= 1;
-    }
-    return res;
-  }
-};
-
-template <typename T>
-struct scalar_pow2_op : pow<T, NumTraits<T>::IsInteger> {};
-
-template <typename T>
-struct functor_traits<scalar_pow2_op<T> > {
-  enum {
-    Cost = 5 * NumTraits<T>::MulCost,
-    PacketAccess = false,
-  };
-};
-
 template <typename T>
 struct scalar_fmod2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
@@ -235,6 +199,30 @@ struct less_equal : std::binary_function<T, T, bool> {
   }
 };
 
+// Functor that enables composition of multiple Eigen functors.
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct scalar_compose_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return UnaryFunctor()(BinaryFunctor()(a, b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& a, const Packet& b) const {
+    return UnaryFunctor().packetOp(BinaryFunctor().packetOp(a, b));
+  }
+};
+
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
+  enum {
+    Cost = functor_traits<UnaryFunctor>::Cost +
+           functor_traits<BinaryFunctor>::Cost,
+    PacketAccess = functor_traits<UnaryFunctor>::PacketAccess &&
+                   functor_traits<BinaryFunctor>::PacketAccess
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -343,6 +331,9 @@ struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
+
+template <typename T>
+struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
@@ -493,6 +484,7 @@ struct ceil : base<T, ceil_func<T> > {};
 // pow(x, y) = x ^ y
 // maximum(x, y) = x > y ? x : y
 // minimum(x, y) = x < y ? x : y
+// squared_difference(x, y) = (x - y) * (x - y)
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T> > {
@@ -517,13 +509,19 @@ template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T> > {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow2_op<T> > {};
+struct pow : base<T, Eigen::internal::scalar_binary_pow_op<T, T> > {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};
 
 template <typename T>
 struct minimum : base<T, Eigen::internal::scalar_min_op<T> > {};
+
+template <typename T>
+struct squared_difference
+    : base<T, Eigen::internal::scalar_compose_op<
+                  T, Eigen::internal::scalar_square_op<T>,
+                  Eigen::internal::scalar_difference_op<T>>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

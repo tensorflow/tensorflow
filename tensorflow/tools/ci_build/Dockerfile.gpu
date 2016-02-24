@@ -1,4 +1,4 @@
-FROM nvidia/cuda:7.0-cudnn2-devel
+FROM nvidia/cuda:7.5-cudnn4-devel
 
 MAINTAINER Jan Prach <jendap@google.com>
 

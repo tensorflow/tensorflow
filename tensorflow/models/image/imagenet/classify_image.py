@@ -40,12 +40,9 @@ import re
 import sys
 import tarfile
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-from six.moves import urllib
 import numpy as np
+from six.moves import urllib
 import tensorflow as tf
-# pylint: enable=unused-import,g-bad-import-order
 
 FLAGS = tf.app.flags.FLAGS
 

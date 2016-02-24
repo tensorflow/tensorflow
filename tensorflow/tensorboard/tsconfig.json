@@ -4,5 +4,10 @@
     "noEmitOnError": true,
     "target": "ES5"
   },
-  "compileOnSave": false
+  "compileOnSave": false,
+  "exclude": [
+    "node_modules",
+    "typings/main.d.ts",
+    "typings/main"
+  ]
 }

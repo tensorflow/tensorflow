@@ -51,8 +51,10 @@ mathematical functions to your graph.
 @@cos
 @@sin
 @@lgamma
+@@digamma
 @@erf
 @@erfc
+@@squared_difference
 
 ## Matrix Math Functions
 
@@ -170,8 +172,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import six.moves
 
@@ -256,7 +256,7 @@ def pow(x, y, name=None):
   corresponding elements in `x` and `y`. For example:
 
   ```
-  # tensor 'x' is [[2, 2]], [3, 3]]
+  # tensor 'x' is [[2, 2], [3, 3]]
   # tensor 'y' is [[8, 16], [2, 3]]
   tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   ```
@@ -365,6 +365,35 @@ def cast(x, dtype, name=None):
       if x.dtype.base_dtype == dtype:
         return x
       return gen_math_ops.cast(x, dtype, name=name)
+
+
+def saturate_cast(value, dtype, name=None):
+  """Performs a safe saturating cast of `value` to `dtype`.
+
+  This function casts the input to `dtype` without applying any scaling.  If
+  there is a danger that values would over or underflow in the cast, this op
+  applies the appropriate clamping before the cast.
+
+  Args:
+    value: A `Tensor`.
+    dtype: The desired output `DType`.
+    name: A name for the operation (optional).
+
+  Returns:
+    `value` safely cast to `dtype`.
+  """
+  # When casting to a type with smaller representable range, clamp.
+  # Note that this covers casting to unsigned types as well.
+  with ops.op_scope([value], name, "saturate_cast") as name:
+    value = ops.convert_to_tensor(value, name="value")
+    dtype = dtypes.as_dtype(dtype).base_dtype
+    if value.dtype.min < dtype.min:
+      value = maximum(value, ops.convert_to_tensor(
+          dtype.min, dtype=value.dtype, name="min"))
+    if value.dtype.max > dtype.max:
+      value = minimum(value, ops.convert_to_tensor(
+          dtype.max, dtype=value.dtype, name="max"))
+    return cast(value, dtype, name=name)
 
 
 def to_float(x, name="ToFloat"):
@@ -1053,7 +1082,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   For example:
 
   ```python
-  # tensor 'a' is [[1, 2], [3, 4]
+  # tensor 'a' is [[1, 2], [3, 4]]
   # tensor `b` is [[5, 0], [0, 6]]
   tf.accumulate_n([a, b, a]) ==> [[7, 4], [6, 14]]
 
@@ -1186,6 +1215,23 @@ def lgamma(x, name=None):
     return gen_math_ops._lgamma(x, name=name)
 
 
+def digamma(x, name=None):
+  """Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
+
+  Args:
+    x: A Tensor with type `float`, `double`, `int32`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
+      the return type is `quint8`.
+  """
+  with ops.op_scope([x], name, "Digamma") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._digamma(x, name=name)
+
+
 def erf(x, name=None):
   """Computes Gauss error function of `x` element-wise.
 
@@ -1244,6 +1290,7 @@ ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
 ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
+ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
@@ -1269,6 +1316,7 @@ ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("NotEqual")
 @ops.RegisterShape("Pow")
 @ops.RegisterShape("Sub")
+@ops.RegisterShape("SquaredDifference")
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   shape_x = op.inputs[0].get_shape()

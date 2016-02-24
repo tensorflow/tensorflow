@@ -31,6 +31,11 @@ something amazing with TensorFlow, we'd like to hear about it!
 
 ## Community
 
+The TensorFlow community has created many great projects around TensorFlow, including:
+
+* [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
+* [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/skflow)
+
 ### Development
 
 The source code for TensorFlow is hosted on GitHub:

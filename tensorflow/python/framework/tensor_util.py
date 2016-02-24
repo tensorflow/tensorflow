@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 import six
 
@@ -362,6 +361,9 @@ def make_tensor_proto(values, dtype=None, shape=None):
       tensor_shape=tensor_shape.as_shape(shape).as_proto())
 
   if is_same_size and numpy_dtype in _TENSOR_CONTENT_TYPES and shape_size > 1:
+    if nparray.size * nparray.itemsize >= (1 << 31):
+      raise ValueError(
+          "Cannot create a tensor proto whose content is larger than 2GB.")
     tensor_proto.tensor_content = nparray.tostring()
     return tensor_proto
 

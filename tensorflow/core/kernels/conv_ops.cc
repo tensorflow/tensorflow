@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
@@ -49,7 +50,10 @@ template <typename Device, typename T>
 struct LaunchGeneric {
   static void launch(OpKernelContext* ctx, const Tensor& input,
                      const Tensor& filter, int stride,
-                     const Eigen::PaddingType& padding, Tensor* output) {
+                     const Eigen::PaddingType& padding, Tensor* output,
+                     TensorFormat data_format) {
+    CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
+                                         "supports NHWC tensor format for now.";
     if (filter.dim_size(1) == filter.dim_size(0) && filter.dim_size(0) == 1 &&
         stride == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
@@ -86,9 +90,10 @@ template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool use_cudnn, const Tensor& input,
                      const Tensor& filter, int stride,
-                     const Eigen::PaddingType& padding, Tensor* output) {
+                     const Eigen::PaddingType& padding, Tensor* output,
+                     TensorFormat data_format) {
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, stride, padding,
-                                        output);
+                                        output, data_format);
   }
 };
 
@@ -97,17 +102,25 @@ class Conv2DOp : public BinaryOp<T> {
  public:
   explicit Conv2DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
+    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64 stride_h = GetTensorDim(strides_, data_format_, 'H');
+    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
+    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+    OP_REQUIRES(context, stride_h == stride_w,
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
     OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
+        context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
@@ -133,7 +146,7 @@ class Conv2DOp : public BinaryOp<T> {
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
-    const int64 in_depth = input.dim_size(3);
+    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
     OP_REQUIRES(
         context, in_depth == filter.dim_size(2),
         errors::InvalidArgument("input and filter must have the same depth: ",
@@ -144,21 +157,21 @@ class Conv2DOp : public BinaryOp<T> {
 
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
-    const int64 input_rows = input.dim_size(1);
+    const int64 input_rows = GetTensorDim(input, data_format_, 'H');
     const int64 filter_rows = filter.dim_size(0);
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
-    const int64 input_cols = input.dim_size(2);
+    const int64 input_cols = GetTensorDim(input, data_format_, 'W');
     const int64 filter_cols = filter.dim_size(1);
 
     // The first dimension for input is batch.
-    const int64 batch = input.dim_size(0);
+    const int64 batch = GetTensorDim(input, data_format_, 'N');
 
     // For now we take the stride from the second dimension only (we
     // assume row = col stride, and do not support striding on the
     // batch or depth dimension).
-    const int stride = strides_[1];
+    const int stride = GetTensorDim(strides_, data_format_, 'H');
 
     int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
     if (filter_cols == filter_rows && filter_rows == 1 && stride == 1) {
@@ -172,7 +185,8 @@ class Conv2DOp : public BinaryOp<T> {
                                    filter_cols, stride, stride, padding_,
                                    &out_rows, &out_cols, &pad_rows, &pad_cols));
     }
-    TensorShape out_shape({batch, out_rows, out_cols, out_depth});
+    TensorShape out_shape =
+        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]
@@ -191,14 +205,15 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
     LaunchConvOp<Device, T>::launch(context, use_cudnn_, input, filter, stride,
-                                    BrainPadding2EigenPadding(padding_),
-                                    output);
+                                    BrainPadding2EigenPadding(padding_), output,
+                                    data_format_);
   }
 
  private:
   std::vector<int32> strides_;
   bool use_cudnn_;
   Padding padding_;
+  TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
 };
@@ -232,13 +247,14 @@ struct LaunchConvOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool use_cudnn,
                      const Tensor& input_param, const Tensor& filter,
                      int stride, const Eigen::PaddingType& padding,
-                     Tensor* output) {
+                     Tensor* output, TensorFormat data_format) {
     auto* stream = ctx->op_device_context<GPUDeviceContext>()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn) {
       Tensor input = input_param;
-      if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1) {
+      if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 &&
+          data_format == FORMAT_NHWC) {
         // 1x1 filter, so call cublas directly.
         const uint64 m =
             input.dim_size(0) * input.dim_size(1) * input.dim_size(2);
@@ -265,13 +281,17 @@ struct LaunchConvOp<GPUDevice, T> {
       }
       int padding_rows = 0;
       int padding_cols = 0;
+      const int64 in_batch = GetTensorDim(input, data_format, 'N');
+      int64 in_rows = GetTensorDim(input, data_format, 'H');
+      int64 in_cols = GetTensorDim(input, data_format, 'W');
+      const int64 in_depths = GetTensorDim(input, data_format, 'C');
+      const int64 out_batch = GetTensorDim(*output, data_format, 'N');
+      const int64 out_rows = GetTensorDim(*output, data_format, 'H');
+      const int64 out_cols = GetTensorDim(*output, data_format, 'W');
+      const int64 out_depths = GetTensorDim(*output, data_format, 'C');
+      const int64 patch_rows = filter.dim_size(0);
+      const int64 patch_cols = filter.dim_size(1);
       if (padding == Eigen::PADDING_SAME) {
-        const int64 out_rows = output->dim_size(1);
-        const int64 out_cols = output->dim_size(2);
-        const int64 in_rows = input.dim_size(1);
-        const int64 in_cols = input.dim_size(2);
-        const int64 patch_rows = filter.dim_size(0);
-        const int64 patch_cols = filter.dim_size(1);
         // Total padding on rows and cols is
         // Pr = (R' - 1) * S + Kr - R
         // Pc = (C' - 1) * S + Kc - C
@@ -286,31 +306,33 @@ struct LaunchConvOp<GPUDevice, T> {
         const bool cols_odd = (padding_cols % 2 != 0);
         if (rows_odd || cols_odd) {
           Tensor transformed_input;
-          OP_REQUIRES_OK(
-              ctx, ctx->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       TensorShape(
-                           {input.dim_size(0), input.dim_size(1) + rows_odd,
-                            input.dim_size(2) + cols_odd, input.dim_size(3)}),
-                       &transformed_input));
+          int64 new_in_rows = in_rows + rows_odd;
+          int64 new_in_cols = in_cols + cols_odd;
+          OP_REQUIRES_OK(ctx,
+                         ctx->allocate_temp(
+                             DataTypeToEnum<T>::value,
+                             ShapeFromFormat(data_format, in_batch, new_in_rows,
+                                             new_in_cols, in_depths),
+                             &transformed_input));
 
           functor::PadInput<GPUDevice, T, int>()(
               ctx->eigen_device<GPUDevice>(),
               To32Bit(input_param.tensor<T, 4>()), 0, rows_odd, 0, cols_odd,
-              To32Bit(transformed_input.tensor<T, 4>()));
+              To32Bit(transformed_input.tensor<T, 4>()), data_format);
           input = transformed_input;
+          in_rows = new_in_rows;
+          in_cols = new_in_cols;
         }
       }
 
-      {
+      if (data_format == FORMAT_NHWC) {
         // Convert the input tensor from NHWC to NCHW.
         Tensor transformed_input;
-        OP_REQUIRES_OK(ctx,
-                       ctx->allocate_temp(
-                           DataTypeToEnum<T>::value,
-                           TensorShape({input.dim_size(0), input.dim_size(3),
-                                        input.dim_size(1), input.dim_size(2)}),
-                           &transformed_input));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(
+                                DataTypeToEnum<T>::value,
+                                ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows,
+                                                in_cols, in_depths),
+                                &transformed_input));
         functor::NHWCToNCHW<GPUDevice, T>()(
             ctx->eigen_device<GPUDevice>(),
             const_cast<const Tensor&>(input).tensor<T, 4>(),
@@ -319,16 +341,16 @@ struct LaunchConvOp<GPUDevice, T> {
       }
 
       perftools::gputools::dnn::BatchDescriptor input_desc;
-      input_desc.set_count(input.dim_size(0))
-          .set_feature_map_count(input.dim_size(1))
-          .set_height(input.dim_size(2))
-          .set_width(input.dim_size(3))
+      input_desc.set_count(in_batch)
+          .set_feature_map_count(in_depths)
+          .set_height(in_rows)
+          .set_width(in_cols)
           .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
       perftools::gputools::dnn::BatchDescriptor output_desc;
-      output_desc.set_count(output->dim_size(0))
-          .set_height(output->dim_size(1))
-          .set_width(output->dim_size(2))
-          .set_feature_map_count(output->dim_size(3))
+      output_desc.set_count(out_batch)
+          .set_height(out_rows)
+          .set_width(out_cols)
+          .set_feature_map_count(out_depths)
           .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
       perftools::gputools::dnn::FilterDescriptor filter_desc;
       filter_desc.set_input_filter_height(filter.dim_size(0))
@@ -354,12 +376,11 @@ struct LaunchConvOp<GPUDevice, T> {
           To32Bit(transformed_filter.tensor<T, 4>()));
 
       Tensor transformed_output;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(
-                   DataTypeToEnum<T>::value,
-                   TensorShape({output->dim_size(0), output->dim_size(3),
-                                output->dim_size(1), output->dim_size(2)}),
-                   &transformed_output));
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(
+                              DataTypeToEnum<T>::value,
+                              ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
+                                              out_cols, out_depths),
+                              &transformed_output));
 
       auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                       input.template flat<T>().size());
@@ -387,13 +408,17 @@ struct LaunchConvOp<GPUDevice, T> {
       }
 
       // Convert the output tensor back from NHWC to NCHW.
-      functor::NCHWToNHWC<GPUDevice, T>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
-          output->tensor<T, 4>());
+      if (data_format == FORMAT_NHWC) {
+        functor::NCHWToNHWC<GPUDevice, T>()(
+            ctx->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
+            output->tensor<T, 4>());
+      } else {
+        *output = transformed_output;
+      }
     } else {
       LaunchGeneric<GPUDevice, T>::launch(ctx, input_param, filter, stride,
-                                          padding, output);
+                                          padding, output, data_format);
     }
   }
 };
@@ -427,7 +452,8 @@ namespace functor {
   void PadInput<GPUDevice, T, int>::operator()(                              \
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
       int padding_rows_left, int padding_rows_right, int padding_cols_left,  \
-      int padding_cols_right, typename TTypes<T, 4, int>::Tensor out);       \
+      int padding_cols_right, typename TTypes<T, 4, int>::Tensor out,        \
+      TensorFormat data_format);                                             \
   extern template struct PadInput<GPUDevice, T, int>
 
 DECLARE_GPU_SPEC(float);

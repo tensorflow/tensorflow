@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -122,7 +120,7 @@ class MatMulTest(tf.test.TestCase):
       self._testCpuMatmul(x, y, True, True)
       self._testGpuMatmul(x, y, True, True)
 
-  def testDoubleRandomTranposeBoth(self):
+  def testDoubleRandomTransposeBoth(self):
     for _ in range(10):
       n, k, m = np.random.randint(1, 100, size=3)
       x = self._randMatrix(k, n, np.float64)

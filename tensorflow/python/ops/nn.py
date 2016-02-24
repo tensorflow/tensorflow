@@ -208,6 +208,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -501,9 +502,11 @@ def moments(x, axes, name=None, keep_dims=False):
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  For so-called "global normalization" needed for convolutional filters pass
-  `axes=[0, 1, 2]` (batch, height, width).  For batch normalization pass
-  `axes=[0]` (batch).
+  When using these moments for batch normalization (see
+  `tf.nn.batch_normalization`):
+    * for so-called "global normalization", used with convolutional filters with
+      shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+    * for simple batch normalization pass `axes=[0]` (batch only).
 
   Args:
     x: A `Tensor`.
@@ -533,25 +536,15 @@ def moments(x, axes, name=None, keep_dims=False):
       divisor = math_ops.inv(divisor, name="divisor")
     constant_axes = constant_op.constant(axes, name="axes")
     # Note: We do not use Mean here because it is very slow on GPU.
-    # Note 2: The expression below is potentially more stable.
-    # It is however a bit slower and stability doesn't appear to be an issue.
-    # mean = math_ops.reduce_sum(math_ops.mul(x, divisor), axes, name="mean")
-    # var = math_ops.reduce_sum(math_ops.mul(math_ops.square(x - mean),
-    #                                        divisor), axes,
-    #                    name="variance")
     mean = math_ops.mul(
         math_ops.reduce_sum(x,
                             constant_axes,
                             keep_dims=True),
         divisor,
         name="mean")
-    # Give x-mean a specific name, so the caller might take advantage of it.
-    # The caller should have a fallback plan, however: this tensor may not be
-    # available if this function implementation changes.
-    x_centered = math_ops.sub(x, mean, name="x_centered")
     var = math_ops.mul(
         math_ops.reduce_sum(
-            math_ops.square(x_centered),
+            math_ops.squared_difference(x, mean),
             constant_axes,
             keep_dims=keep_dims),
         divisor,
@@ -560,6 +553,98 @@ def moments(x, axes, name=None, keep_dims=False):
       return mean, var
     else:
       return array_ops.squeeze(mean, squeeze_dims=axes), var
+
+
+def batch_normalization(x,
+                        mean,
+                        variance,
+                        offset,
+                        scale,
+                        variance_epsilon,
+                        name=None):
+  """Batch normalization.
+
+  As described in http://arxiv.org/abs/1502.03167.
+  Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
+  `scale` \\\\(\gamma\\\\) to it, as well as an `offest` \\\\(\beta\\\\):
+
+  \\\\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\\\)
+
+  `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
+  shapes:
+    * In all generality, they can have the same number of dimensions as the
+      input `x`, with identical sizes as `x` for the dimensions that are not
+      normalized over (the 'depth' dimension(s)), and dimension 1 for the
+      others which are being normalized over.
+      `mean` and `variance` in this case would typically be the outputs of
+      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      thereof during inference.
+    * In the common case where the 'depth' dimension is the last dimension in
+      the input tensor `x`, they may be one dimensional tensors of the same
+      size as the 'depth' dimension.
+      This is the case for example for the common `[batch, depth]` layout of
+      fully-connected layers, and `[batch, height, width, depth]` for
+      convolutions.
+      `mean` and `variance` in this case would typically be the outputs of
+      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      thereof during inference.
+
+  Args:
+    x: Input `Tensor` of arbitrary dimensionality.
+    mean: A mean `Tensor`.
+    variance: A variance `Tensor`.
+    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, to
+      be applied to the normalized tensor.
+    scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
+      `None`. If present, the scale is applied to the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    name: A name for this operation (optional).
+
+  Returns:
+    the normalized, scaled, offset tensor.
+  """
+  with ops.op_scope([x, mean, variance, scale, offset], name, "batchnorm"):
+    inv = math_ops.rsqrt(variance + variance_epsilon)
+    if scale is not None:
+      inv *= scale
+    return x * inv + (offset - mean * inv)
+
+
+def batch_norm_with_global_normalization(t,
+                                         m,
+                                         v,
+                                         beta,
+                                         gamma,
+                                         variance_epsilon,
+                                         scale_after_normalization,
+                                         name=None):
+  """Batch normalization.
+
+  This op is deprecated. See `tf.nn.batch_normalization`.
+
+  Args:
+    t: A 4D input Tensor.
+    m: A 1D mean Tensor with size matching the last dimension of t.
+      This is the first output from tf.nn.moments,
+      or a saved moving average thereof.
+    v: A 1D variance Tensor with size matching the last dimension of t.
+      This is the second output from tf.nn.moments,
+      or a saved moving average thereof.
+    beta: A 1D beta Tensor with size matching the last dimension of t.
+      An offset to be added to the normalized tensor.
+    gamma: A 1D gamma Tensor with size matching the last dimension of t.
+      If "scale_after_normalization" is true, this tensor will be multiplied
+      with the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    scale_after_normalization: A bool indicating whether the resulted tensor
+      needs to be multiplied with gamma.
+    name: A name for this operation (optional).
+
+   Returns:
+     A batch-normalized `t`.
+  """
+  return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
+                             else None, variance_epsilon, name)
 
 
 def _sum_rows(x):
@@ -823,7 +908,8 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)
 
-  Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`

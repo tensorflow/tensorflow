@@ -20,5 +20,15 @@ REGISTER5(UnaryOp, CPU, "Square", functor::square, float, double, int32,
           complex64, int64);
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Square", functor::square, float, double, int64);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Square")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::square<int32>>);
 #endif
 }  // namespace tensorflow

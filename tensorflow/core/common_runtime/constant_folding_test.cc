@@ -75,11 +75,13 @@ class ConstantFoldingTest : public ::testing::Test {
   }
 
 // Construct the following graph
-//    s1  s2
-//    |    |
-//    m1   m2
-//    / \ / \
-//   a   b   c
+/*
+      s1  s2
+      |    |
+      m1   m2
+      / \ / \
+     a   b   c
+*/
 #define SIMPLE_GRAPH                                                  \
   Reset();                                                            \
   Graph* g = g_.get();                                                \

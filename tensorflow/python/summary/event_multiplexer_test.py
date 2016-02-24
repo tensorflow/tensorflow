@@ -20,8 +20,6 @@ from __future__ import print_function
 import os
 import os.path
 
-import tensorflow.python.platform
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest

@@ -29,7 +29,13 @@ namespace tensorflow {
 
 class TEST_EventMgrHelper {
  public:
-  explicit TEST_EventMgrHelper(EventMgr* em) : em_(em) {}
+  explicit TEST_EventMgrHelper(EventMgr* em) : em_(em) {
+    // The polling loop can interfere with the measurements made here, and
+    // isn't needed since the member PollEvents() always clears the queue.
+    // The tested behavior is slightly different from what may occur in
+    // ordinary execution.
+    StopPollingLoop();
+  }
 
   int queue_size() {
     mutex_lock l(em_->mu_);
@@ -113,9 +119,6 @@ TEST(EventMgr, DelayedPolling) {
   auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
-  // The polling loop interferes with the measurements made here, and
-  // isn't needed to clear the queue.
-  th.StopPollingLoop();
   EXPECT_EQ(0, th.queue_size());
   TensorReferenceVector* v = nullptr;
   std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
@@ -229,7 +232,6 @@ TEST(EventMgr, LongDelayedPolling) {
   auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
-  th.StopPollingLoop();
   EXPECT_EQ(0, th.queue_size());
   EXPECT_EQ(0, th.free_size());
   std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
@@ -254,7 +256,6 @@ TEST(EventMgr, NonEmptyShutdown) {
   auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
-  th.StopPollingLoop();
   EXPECT_EQ(0, th.queue_size());
   EXPECT_EQ(0, th.free_size());
   std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));

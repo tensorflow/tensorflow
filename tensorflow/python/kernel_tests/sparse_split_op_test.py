@@ -18,13 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
-
-# pylint: enable=unused-import,g-bad-import-order
 
 
 class SparseSplitOpTest(tf.test.TestCase):

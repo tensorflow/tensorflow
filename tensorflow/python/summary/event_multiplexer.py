@@ -22,10 +22,11 @@ from __future__ import print_function
 import os
 import threading
 
+import six
+
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
-import six
 
 
 class EventMultiplexer(object):

@@ -14,15 +14,14 @@
 # ==============================================================================
 """DType tests."""
 
-# pylint: disable=unused-import,g-bad-import-order
+# pylint: disable=unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
 import tensorflow as tf
+
+import tensorflow.python.framework
 
 
 class FloatDTypeTest(tf.test.TestCase):
@@ -80,6 +79,14 @@ class FloatDTypeTest(tf.test.TestCase):
                       [sparse_float, const_int], tf.float32)
     self.assertRaises(
         ValueError, tf.contrib.layers.assert_same_float_dtype, [const_int])
+
+  def test_assert_scalar_int(self):
+    tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.int32))
+    tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.int64))
+    with self.assertRaisesRegexp(ValueError, "Unexpected type"):
+      tf.contrib.layers.assert_scalar_int(tf.constant(3, dtype=tf.float32))
+    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
+      tf.contrib.layers.assert_scalar_int(tf.constant([3, 4], dtype=tf.int32))
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -118,6 +119,7 @@ class TensorShape {
   /// dimension names.
   bool IsSameSize(const TensorShape& b) const;
   bool operator==(const TensorShape& b) const { return IsSameSize(b); }
+  bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
@@ -144,6 +146,7 @@ class TensorShape {
 
   void DumpRep() const;  // XXX
  private:
+  void ClearAllButDataType();
   void SlowCopyFrom(const TensorShape& b);
 
   void RecomputeNumElements();
@@ -153,12 +156,12 @@ class TensorShape {
   // number of dimensions for a Tensor, but most tensor dimensions are
   // significantly smaller than 64 bits and most tensors are 1, 2, or 3
   // dimensions, we have several representations.
-  // Rep16: Supports up to 7 dimensions where each dimension is < 2^16
+  // Rep16: Supports up to 6 dimensions where each dimension is < 2^16
   // Rep32: Supports up to 3 dimensions where each dimension is < 2^32
   // Rep64: Supports arbitrary dimensionality, 64-bit dimensions using
   //        an out of line vector.
   struct Rep16 {
-    int16 dims_[7];
+    int16 dims_[6];
   };
   struct Rep32 {
     int32 dims_[3];
@@ -182,6 +185,20 @@ class TensorShape {
   const Rep64* as64() const { return reinterpret_cast<const Rep64*>(buf()); }
 
   enum RepTag { REP16 = 0, REP32 = 1, REP_OUT_OF_LINE = 2 };
+
+  // Since we have a convenient extra byte available, we allow the
+  // Tensor class to store an 8-bit value in this extra storage.  This
+  // allows it to store the Tensor's datatype enum value here and avoid
+  // an extra word of storage.
+  friend class Tensor;
+  friend class TensorShapeTestHelper;
+  friend class BitcastOp;
+  DataType data_type() const { return static_cast<DataType>(buf()[13]); }
+  void set_data_type(DataType dt) {
+    // We only have 8 bits available to store DataType, so make sure it fits
+    DCHECK_LT(static_cast<uint32>(dt), 256);
+    buf()[13] = static_cast<uint8>(dt);
+  }
 
   // We store the number of dimensions in byte 14, and the RepTag in byte 15.
   // Bytes [0..13] vary depending on the representation

@@ -150,7 +150,7 @@ class HierarchyImpl implements Hierarchy {
 
             // Copy the BaseEdge from the parent's Metaedge into this
             // bridgegraph Metaedge.
-            bridgeMetaedge.addBaseEdge(baseEdge);
+            bridgeMetaedge.addBaseEdge(baseEdge, this);
           });
         })
         .value(); // force lodash chain execution.
@@ -250,16 +250,14 @@ class HierarchyImpl implements Hierarchy {
   getOneWayEdges(node: GroupNode|OpNode, inEdges: boolean) {
     let edges = { control: [], regular: [] };
     // A node with no parent cannot have any edges.
-    if (!node.parentNode) {
-    return edges;
+    if (!node.parentNode || !node.parentNode.isGroupNode) {
+      return edges;
     }
-    if (node.parentNode.isGroupNode) {
-      let parentNode = <GroupNode>node.parentNode;
-      let metagraph = parentNode.metagraph;
-      let bridgegraph = this.getBridgegraph(parentNode.name);
-      findEdgeTargetsInGraph(metagraph, node, inEdges, edges);
-      findEdgeTargetsInGraph(bridgegraph, node, inEdges, edges);
-    }
+    let parentNode = <GroupNode> node.parentNode;
+    let metagraph = parentNode.metagraph;
+    let bridgegraph = this.getBridgegraph(parentNode.name);
+    findEdgeTargetsInGraph(metagraph, node, inEdges, edges);
+    findEdgeTargetsInGraph(bridgegraph, node, inEdges, edges);
     return edges;
   }
 
@@ -365,20 +363,23 @@ class HierarchyImpl implements Hierarchy {
 function findEdgeTargetsInGraph(
     graph: graphlib.Graph<GroupNode|OpNode, Metaedge>,
     node: Node, inbound: boolean, targets: Edges): void {
-  _.each(<Metaedge[]> graph.edges(), e => {
-    let [selfName, otherName] = inbound ? [e.w, e.v] : [e.v, e.w];
-    if (selfName === node.name) {
-      if (node.isGroupNode) {
-        let targetList = graph.edge(e).numRegularEdges
-          ? targets.regular : targets.control;
-        targetList.push(otherName);
-      } else {
-        _.each(graph.edge(e).baseEdgeList, baseEdge => {
-          let targetList = baseEdge.isControlDependency
-            ? targets.control : targets.regular;
-          targetList.push(inbound ? baseEdge.v : baseEdge.w);
-        });
-      }
+  let edges = inbound ? graph.inEdges(node.name) : graph.outEdges(node.name);
+  _.each(edges, e => {
+    let otherName = inbound ? e.v : e.w;
+    let metaedge = graph.edge(e);
+
+    if (node.isGroupNode && metaedge.baseEdgeList.length > 1) {
+      let targetList = metaedge.numRegularEdges
+        ? targets.regular : targets.control;
+      targetList.push(otherName);
+    } else {
+      // Enumerate all the base edges if the node is an OpNode, or the
+      // metaedge has only 1 edge in it.
+      _.each(metaedge.baseEdgeList, (baseEdge: BaseEdge) => {
+        let targetList = baseEdge.isControlDependency
+          ? targets.control : targets.regular;
+        targetList.push(inbound ? baseEdge.v : baseEdge.w);
+      });
     }
   });
 }
@@ -386,6 +387,7 @@ function findEdgeTargetsInGraph(
 export interface HierarchyParams {
   verifyTemplate: boolean;
   seriesNodeMinSize: number;
+  seriesMap: { [name: string]: tf.graph.SeriesGroupingType };
 }
 
 /**
@@ -410,7 +412,8 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   .then(() => {
     return runAsyncTask("Detect series", 20, () => {
       if (params.seriesNodeMinSize > 0) {
-        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize);
+        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize,
+          params.seriesMap);
       }
     }, tracker);
   })
@@ -426,8 +429,6 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   })
   .then(() => {
     return h;
-  }).catch(function(reason) {
-    throw new Error("Failure creating graph hierarchy");
   });
 };
 
@@ -550,10 +551,8 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
         !baseEdge.isControlDependency) {
       sharedAncestorNode.hasNonControlEdges = true;
     }
-    metaedge.addBaseEdge(baseEdge);
-
+    metaedge.addBaseEdge(baseEdge, h);
   });
-
 };
 
 /**
@@ -564,18 +563,23 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
  *
  * @param metanode
  * @param hierarchy
+ * @param seriesNames Map of node names to their series they are contained in.
+ *     This should be provided empty and is populated by this method.
  * @param threshold If the series has this many nodes or more, then group them
  *     into a series.
+ * @param map Map of series names to their series grouping type, if one has
+ *     been set.
  * @return A dictionary from node name to series node name that contains the
  *     node.
  */
 function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
-    seriesNames: { [name: string]: string }, threshold: number) {
+    seriesNames: { [name: string]: string }, threshold: number,
+    map: { [name: string]: tf.graph.SeriesGroupingType }) {
   let metagraph = metanode.metagraph;
   _.each(metagraph.nodes(), n => {
     let child = metagraph.node(n);
     if (child.type === tf.graph.NodeType.META) {
-      groupSeries(<Metanode>child, hierarchy, seriesNames, threshold);
+      groupSeries(<Metanode>child, hierarchy, seriesNames, threshold, map);
     }
   });
 
@@ -586,7 +590,21 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
   // metagraph.
   _.each(seriesDict, function(seriesNode: SeriesNode, seriesName: string) {
     let nodeMemberNames = seriesNode.metagraph.nodes();
-    if (nodeMemberNames.length < threshold) {
+    _.each(nodeMemberNames, n => {
+      let child = <OpNode>metagraph.node(n);
+      if (!child.owningSeries) {
+        child.owningSeries = seriesName;
+      }
+    });
+    // If the series contains less than the threshold number of nodes and
+    // this series has not been adding to the series map, then set this
+    // series to be shown ungrouped in the map.
+    if (nodeMemberNames.length < threshold && !(seriesNode.name in map)) {
+      map[seriesNode.name] = tf.graph.SeriesGroupingType.UNGROUP;
+    }
+    // If the series is in the map as ungrouped then do not group the series.
+    if (seriesNode.name in map
+      && map[seriesNode.name] === tf.graph.SeriesGroupingType.UNGROUP) {
       return;
     }
     hierarchy.setNode(seriesName, seriesNode); // add to the index
@@ -724,7 +742,7 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
  * @param metagraph
  */
 function addSeriesToDict(seriesNodes: SeriesNode[],
-    seriesDict: {[seriesName: string] : SeriesNode},
+    seriesDict: {[seriesName: string]: SeriesNode},
     clusterId: number,
     metagraph: graphlib.Graph<GroupNode|OpNode, Metaedge>) {
   if (seriesNodes.length > 1) {

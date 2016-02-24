@@ -18,19 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import time
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import function
-# pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops
-# pylint: enable=unused-import
 
 
 class FunctionTest(tf.test.TestCase):
@@ -132,6 +127,27 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
         self.assertAllClose([0.4], sess.run(call_g))
+
+  def testTanhSymGrad(self):
+    g = tf.Graph()
+    with g.as_default():
+      @function.Defun(x=tf.float32)
+      def Forward(x):
+        return tf.reduce_sum(tf.tanh(x))
+      x = tf.placeholder(tf.float32)
+      y = Forward(x)
+      dx = tf.gradients([y], [x])
+
+    inp = np.array([-1, 1, 2, -2], dtype=np.float32)
+    feed = {x: inp}
+    cfg = tf.ConfigProto(
+        graph_options=tf.GraphOptions(
+            optimizer_options=tf.OptimizerOptions(
+                opt_level=tf.OptimizerOptions.L1,
+                do_function_inlining=True)))
+    with tf.Session(graph=g, config=cfg) as sess:
+      out, = sess.run(dx, feed)
+    self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
   def testSymGradShape(self):
     g = tf.Graph()

@@ -1,20 +1,10 @@
-# Struct `tensorflow::SessionOptions`
+# `struct tensorflow::SessionOptions`
 
 Configuration information for a Session .
 
 
 
-##Member Summary
-
-* [`Env* tensorflow::SessionOptions::env`](#Env_tensorflow_SessionOptions_env)
-  * The environment to use.
-* [`string tensorflow::SessionOptions::target`](#string_tensorflow_SessionOptions_target)
-  * The TensorFlow runtime to connect to.
-* [`ConfigProto tensorflow::SessionOptions::config`](#ConfigProto_tensorflow_SessionOptions_config)
-  * Configuration options.
-* [`tensorflow::SessionOptions::SessionOptions()`](#tensorflow_SessionOptions_SessionOptions)
-
-##Member Details
+###Member Details
 
 #### `Env* tensorflow::SessionOptions::env` {#Env_tensorflow_SessionOptions_env}
 

@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import threading
 
-import tensorflow.python.platform
-
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -294,6 +292,7 @@ class QueueRunner(object):
 
   @staticmethod
   def from_proto(queue_runner_def):
+    """Returns a `QueueRunner` object created from `queue_runner_def`."""
     return QueueRunner(queue_runner_def=queue_runner_def)
 
 

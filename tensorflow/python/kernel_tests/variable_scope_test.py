@@ -18,12 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variable_scope
 
 
 class VariableStoreTest(tf.test.TestCase):
@@ -57,43 +55,109 @@ class VariableStoreTest(tf.test.TestCase):
     self.assertEqual(set(expected_names),
                      set([v.name for v in vs._vars.values()]))
 
-  def testVarScopeIntializer(self):
+  def testVarScopeInitializer(self):
     with self.test_session() as sess:
       init = tf.constant_initializer(0.3)
-      with variable_scope.variable_scope("tower") as tower:
-        with variable_scope.variable_scope("foo", initializer=init):
-          v = variable_scope.get_variable("v", [])
+      with tf.variable_scope("tower") as tower:
+        with tf.variable_scope("foo", initializer=init):
+          v = tf.get_variable("v", [])
           sess.run(tf.initialize_variables([v]))
           self.assertAllClose(v.eval(), 0.3)
-        with variable_scope.variable_scope(tower, initializer=init):
-          w = variable_scope.get_variable("w", [])
+        with tf.variable_scope(tower, initializer=init):
+          w = tf.get_variable("w", [])
           sess.run(tf.initialize_variables([w]))
           self.assertAllClose(w.eval(), 0.3)
+
+  def testVarScopeCachingDevice(self):
+    with self.test_session():
+      caching_device = "/job:moo"
+      with tf.variable_scope("tower"):
+        with tf.variable_scope("caching", caching_device=caching_device):
+          v = tf.get_variable("v", [])
+          self.assertTrue(v.value().device.startswith(caching_device))
+
+          with tf.variable_scope("child"):
+            v2 = tf.get_variable("v", [])
+            self.assertTrue(v2.value().device.startswith(caching_device))
+
+          with tf.variable_scope("not_cached", caching_device=""):
+            v2_not_cached = tf.get_variable("v", [])
+            self.assertFalse(
+                v2_not_cached.value().device.startswith(caching_device))
+
+          with tf.variable_scope(
+              "not_cached_identity_device",
+              caching_device=lambda op: op.device):
+            v2_identity_device = tf.get_variable("v", [])
+            self.assertFalse(
+                v2_identity_device.value().device.startswith(caching_device))
+
+          with tf.variable_scope("we_will_do_it_live") as vs_live:
+            vs_live.set_caching_device("/job:live")
+            v_live = tf.get_variable("v", [])
+            self.assertTrue(v_live.value().device.startswith("/job:live"))
+
+        v_tower = tf.get_variable("v", [])
+        self.assertFalse(v_tower.value().device.startswith(caching_device))
+
+  def testVarScopeRegularizer(self):
+    with self.test_session() as sess:
+      init = tf.constant_initializer(0.3)
+      def regularizer1(v):
+        return tf.reduce_mean(v) + 0.1
+      def regularizer2(v):
+        return tf.reduce_mean(v) + 0.2
+      with tf.variable_scope("tower", regularizer=regularizer1) as tower:
+        with tf.variable_scope("foo", initializer=init):
+          v = tf.get_variable("v", [])
+          sess.run(tf.initialize_variables([v]))
+          losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+          self.assertEqual(1, len(losses))
+          self.assertAllClose(losses[0].eval(), 0.4)
+        with tf.variable_scope(tower, initializer=init) as vs:
+          u = tf.get_variable("u", [])
+          vs.set_regularizer(regularizer2)
+          w = tf.get_variable("w", [])
+          # Next 3 variable not regularized to test disabling regularization.
+          x = tf.get_variable("x", [], regularizer=tf.no_regularizer)
+          with tf.variable_scope("baz", regularizer=tf.no_regularizer):
+            y = tf.get_variable("y", [])
+          vs.set_regularizer(tf.no_regularizer)
+          z = tf.get_variable("z", [])
+          # Check results.
+          losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+          self.assertEqual(3, len(losses))
+          sess.run(tf.initialize_variables([u, w, x, y, z]))
+          self.assertAllClose(losses[0].eval(), 0.4)
+          self.assertAllClose(losses[1].eval(), 0.4)
+          self.assertAllClose(losses[2].eval(), 0.5)
+        with tf.variable_scope("foo", reuse=True):
+          v = tf.get_variable("v", [])  # "v" is alredy there, reused
+          losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+          self.assertEqual(3, len(losses))  # No new loss added.
 
   def testIntializeFromValue(self):
     with self.test_session() as sess:
       init = tf.constant(0.1)
-      w = variable_scope.get_variable("v", initializer=init)
+      w = tf.get_variable("v", initializer=init)
       sess.run(tf.initialize_variables([w]))
       self.assertAllClose(w.eval(), 0.1)
 
       with self.assertRaisesRegexp(ValueError, "shape"):
         # We disallow explicit shape specification when initializer is constant.
-        variable_scope.get_variable("u", [1], initializer=init)
+        tf.get_variable("u", [1], initializer=init)
 
-      with variable_scope.variable_scope("foo", initializer=init):
+      with tf.variable_scope("foo", initializer=init):
         # Constant initializer can be passed through scopes if needed.
-        v = variable_scope.get_variable("v")
+        v = tf.get_variable("v")
         sess.run(tf.initialize_variables([v]))
         self.assertAllClose(v.eval(), 0.1)
 
   def testControlDeps(self):
     with self.test_session() as sess:
-      v0 = variable_scope.get_variable("v0", [1],
-                                       initializer=tf.constant_initializer(0))
+      v0 = tf.get_variable("v0", [1], initializer=tf.constant_initializer(0))
       with tf.control_dependencies([v0.value()]):
-        v1 = variable_scope.get_variable("v1", [1],
-                                         initializer=tf.constant_initializer(1))
+        v1 = tf.get_variable("v1", [1], initializer=tf.constant_initializer(1))
         add = v1 + v0
       # v0 should be uninitialized.
       with self.assertRaisesRegexp(tf.OpError, "uninitialized"):
@@ -113,18 +177,15 @@ class VariableStoreTest(tf.test.TestCase):
 
   def testControlFlow(self):
     with self.test_session() as sess:
-      v0 = variable_scope.get_variable("v0", [],
-                                       initializer=tf.constant_initializer(0))
+      v0 = tf.get_variable("v0", [], initializer=tf.constant_initializer(0))
       var_dict = {}
       # Call get_variable in each of the cond clauses.
       def var_in_then_clause():
-        v1 = variable_scope.get_variable("v1", [1],
-                                         initializer=tf.constant_initializer(1))
+        v1 = tf.get_variable("v1", [1], initializer=tf.constant_initializer(1))
         var_dict["v1"] = v1
         return v1 + v0
       def var_in_else_clause():
-        v2 = variable_scope.get_variable("v2", [1],
-                                         initializer=tf.constant_initializer(2))
+        v2 = tf.get_variable("v2", [1], initializer=tf.constant_initializer(2))
         var_dict["v2"] = v2
         return v2 + v0
       add = control_flow_ops.cond(tf.less(v0, 10),
@@ -152,37 +213,37 @@ class VariableStoreTest(tf.test.TestCase):
     # Test the get_variable_scope() function and setting properties of result.
     with self.test_session() as sess:
       init = tf.constant_initializer(0.3)
-      with variable_scope.variable_scope("foo"):
-        new_init1 = variable_scope.get_variable_scope().initializer
+      with tf.variable_scope("foo"):
+        new_init1 = tf.get_variable_scope().initializer
         self.assertEqual(new_init1, None)
         # Check that we can set initializer like this.
-        variable_scope.get_variable_scope().set_initializer(init)
-        v = variable_scope.get_variable("v", [])
+        tf.get_variable_scope().set_initializer(init)
+        v = tf.get_variable("v", [])
         sess.run(tf.initialize_variables([v]))
         self.assertAllClose(v.eval(), 0.3)
         # Check that we can set reuse.
-        variable_scope.get_variable_scope().reuse_variables()
+        tf.get_variable_scope().reuse_variables()
         with self.assertRaises(ValueError):  # Fail, w does not exist yet.
-          variable_scope.get_variable("w", [1])
+          tf.get_variable("w", [1])
       # Check that the set initializer goes away.
-      new_init = variable_scope.get_variable_scope().initializer
+      new_init = tf.get_variable_scope().initializer
       self.assertEqual(new_init, None)
 
   def testVarScope(self):
     with self.test_session():
-      with variable_scope.variable_scope("tower") as tower:
+      with tf.variable_scope("tower") as tower:
         self.assertEqual(tower.name, "tower")
         with tf.name_scope("scope") as sc:
           self.assertEqual(sc, "tower/scope/")
 
-      with variable_scope.variable_scope("foo"):
-        with variable_scope.variable_scope("bar") as bar:
+      with tf.variable_scope("foo"):
+        with tf.variable_scope("bar") as bar:
           self.assertEqual(bar.name, "foo/bar")
           with tf.name_scope("scope") as sc:
             self.assertEqual(sc, "foo/bar/scope/")
 
-      with variable_scope.variable_scope("foo"):
-        with variable_scope.variable_scope(tower, reuse=True) as tower_shared:
+      with tf.variable_scope("foo"):
+        with tf.variable_scope(tower, reuse=True) as tower_shared:
           self.assertEqual(tower_shared.name, "tower")
           with tf.name_scope("scope") as sc:
             self.assertEqual(sc, "foo_1/tower/scope/")
@@ -190,49 +251,49 @@ class VariableStoreTest(tf.test.TestCase):
   def testVarScopeNameScope(self):
     with self.test_session():
       with tf.name_scope("scope1"):
-        with variable_scope.variable_scope("tower") as tower:
+        with tf.variable_scope("tower") as tower:
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower/scope2/")
-        with variable_scope.variable_scope("tower"):  # Re-enter adds suffix.
+        with tf.variable_scope("tower"):  # Re-enter adds suffix.
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower_1/scope2/")
 
       with tf.name_scope("scope3"):
-        with variable_scope.variable_scope("tower"):
+        with tf.variable_scope("tower"):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope3/tower/scope2/")
-        with variable_scope.variable_scope(tower):
+        with tf.variable_scope(tower):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope3/tower_1/scope2/")
 
-      root_var_scope = variable_scope.get_variable_scope()
+      root_var_scope = tf.get_variable_scope()
       with tf.name_scope("scope4"):
-        with variable_scope.variable_scope(root_var_scope):
+        with tf.variable_scope(root_var_scope):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope4/scope2/")
 
   def testVarOpScope(self):
     with self.test_session():
       with tf.name_scope("scope1"):
-        with variable_scope.variable_op_scope([], "tower", "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], "tower", "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower/scope2/")
-        with variable_scope.variable_op_scope([], "tower", "default"):
+        with tf.variable_op_scope([], "tower", "default"):
           with self.assertRaises(ValueError):
-            variable_scope.get_variable("w", [])
+            tf.get_variable("w", [])
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower_1/scope2/")
 
       with tf.name_scope("scope2"):
-        with variable_scope.variable_op_scope([], None, "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], None, "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope2/default/scope2/")
-        with variable_scope.variable_op_scope([], None, "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], None, "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "default_1/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope2/default_1/scope2/")
@@ -240,75 +301,73 @@ class VariableStoreTest(tf.test.TestCase):
   def testVarOpScopeReuse(self):
     with self.test_session():
       with tf.variable_scope("outer") as outer:
-        with variable_scope.variable_op_scope([], "tower", "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], "tower", "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/tower/scope2/")
-        with variable_scope.variable_op_scope([], None, "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], None, "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/default/scope2/")
 
       with tf.variable_scope(outer, reuse=True) as outer:
-        with variable_scope.variable_op_scope([], "tower", "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], "tower", "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/tower/scope2/")
-        with variable_scope.variable_op_scope([], None, "default"):
-          self.assertEqual(variable_scope.get_variable("w", []).name,
+        with tf.variable_op_scope([], None, "default"):
+          self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
   def testVarScopeGetVar(self):
     with self.test_session():
-      with variable_scope.variable_scope("root"):
-        with variable_scope.variable_scope("towerA") as tower_a:
-          va = variable_scope.get_variable("v", [1])
+      with tf.variable_scope("root"):
+        with tf.variable_scope("towerA") as tower_a:
+          va = tf.get_variable("v", [1])
           self.assertEqual(va.name, "root/towerA/v:0")
 
-        with variable_scope.variable_scope(tower_a, reuse=True):
-          va2 = variable_scope.get_variable("v", [1])
+        with tf.variable_scope(tower_a, reuse=True):
+          va2 = tf.get_variable("v", [1])
           self.assertEqual(va2, va)
 
-        with variable_scope.variable_scope("towerB"):
-          vb = variable_scope.get_variable("v", [1])
+        with tf.variable_scope("towerB"):
+          vb = tf.get_variable("v", [1])
           self.assertEqual(vb.name, "root/towerB/v:0")
 
-        with self.assertRaises(ValueError) as exc:
-          with variable_scope.variable_scope("towerA"):
-            va2 = variable_scope.get_variable("v", [1])
-        self.assertEqual(str(exc.exception)[:12], "Over-sharing")
+        with self.assertRaises(ValueError):
+          with tf.variable_scope("towerA"):
+            va2 = tf.get_variable("v", [1])
 
-        with variable_scope.variable_scope("towerA", reuse=True):
-          va2 = variable_scope.get_variable("v", [1])
+        with tf.variable_scope("towerA", reuse=True):
+          va2 = tf.get_variable("v", [1])
           self.assertEqual(va2, va)
 
-        with variable_scope.variable_scope("foo"):
-          with variable_scope.variable_scope("bar"):
-            v = variable_scope.get_variable("v", [1])
+        with tf.variable_scope("foo"):
+          with tf.variable_scope("bar"):
+            v = tf.get_variable("v", [1])
             self.assertEqual(v.name, "root/foo/bar/v:0")
-            with variable_scope.variable_scope(tower_a, reuse=True):
-              va3 = variable_scope.get_variable("v", [1])
+            with tf.variable_scope(tower_a, reuse=True):
+              va3 = tf.get_variable("v", [1])
               self.assertEqual(va, va3)
 
-        with self.assertRaises(ValueError) as exc:
-          with variable_scope.variable_scope(tower_a, reuse=True):
-            with variable_scope.variable_scope("baz"):
-              variable_scope.get_variable("v", [1])
-        self.assertEqual(str(exc.exception)[:13], "Under-sharing")
+        with self.assertRaises(ValueError):
+          with tf.variable_scope(tower_a, reuse=True):
+            with tf.variable_scope("baz"):
+              tf.get_variable("v", [1])
 
         with self.assertRaises(ValueError) as exc:
-          with variable_scope.variable_scope(tower_a, reuse=True):
-            variable_scope.get_variable("v", [2])  # Different shape.
+          with tf.variable_scope(tower_a, reuse=True):
+            tf.get_variable("v", [2])  # Different shape.
         self.assertEqual("shape" in str(exc.exception), True)
 
         with self.assertRaises(ValueError) as exc:
-          with variable_scope.variable_scope(tower_a, reuse=True):
-            variable_scope.get_variable("v", [1], dtype=tf.int32)
+          with tf.variable_scope(tower_a, reuse=True):
+            tf.get_variable("v", [1], dtype=tf.int32)
         self.assertEqual("dtype" in str(exc.exception), True)
 
 

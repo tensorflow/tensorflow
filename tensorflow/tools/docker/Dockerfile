@@ -28,12 +28,15 @@ RUN pip --no-cache-dir install \
     python -m ipykernel.kernelspec
 
 # Install TensorFlow CPU version.
-ENV TENSORFLOW_VERSION 0.6.0
+ENV TENSORFLOW_VERSION 0.7.1
 RUN pip --no-cache-dir install \
-    https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
+
+# Copy sample notebooks.
+COPY notebooks /notebooks
 
 # Jupyter has issues with being run directly:
 #   https://github.com/ipython/ipython/issues/7062
@@ -45,6 +48,6 @@ EXPOSE 6006
 # IPython
 EXPOSE 8888
 
-WORKDIR "/root"
+WORKDIR "/notebooks"
 
-CMD ["/bin/bash"]
+CMD ["/run_jupyter.sh"]

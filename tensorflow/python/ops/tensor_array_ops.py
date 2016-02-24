@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import math_ops
 
 
 # pylint: disable=protected-access
@@ -39,9 +40,11 @@ class TensorArray(object):
 
   @@read
   @@unpack
+  @@split
 
   @@write
   @@pack
+  @@concat
 
   @@grad
   """
@@ -146,8 +149,15 @@ class TensorArray(object):
 
     return value
 
+  def concat(self, name=None):
+    """Return the values in the TensorArray as a concatenated `Tensor`."""
+    value, _ = gen_data_flow_ops._tensor_array_concat(
+        handle=self._handle, flow_in=self._flow, dtype=self._dtype,
+        name=name)
+    return value
+
   def unpack(self, value, name=None):
-    """Packs the values of a `Tensor` in the TensorArray."""
+    """Pack the values of a `Tensor` in the TensorArray."""
     flow_out = gen_data_flow_ops._tensor_array_unpack(
         handle=self._handle, value=value, flow_in=self._flow,
         name=name)
@@ -155,8 +165,20 @@ class TensorArray(object):
     ta._flow = flow_out
     return ta
 
+  def split(self, value, lengths, name=None):
+    """Split the values of a `Tensor` into the TensorArray."""
+    with ops.op_scope(
+        [self._handle, value, lengths], name, "TensorArraySplit"):
+      lengths = math_ops.to_int64(lengths)
+    flow_out = gen_data_flow_ops._tensor_array_split(
+        handle=self._handle, value=value, lengths=lengths, flow_in=self._flow,
+        name=name)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle)
+    ta._flow = flow_out
+    return ta
+
   def size(self, name=None):
-    """Returns the size of the TensorArray."""
+    """Return the size of the TensorArray."""
     return gen_data_flow_ops._tensor_array_size(
         handle=self._handle, flow_in=self.flow, name=name)
 
@@ -220,6 +242,25 @@ def _TensorArrayPackShape(op):
   op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   # value
   return [tensor_shape.unknown_shape()]
+
+
+@ops.RegisterShape("TensorArrayConcat")
+def _TensorArrayConcatShape(op):
+  # handle, flow_in
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
+  # value, lengths
+  return [tensor_shape.unknown_shape(), tensor_shape.vector(None)]
+
+
+@ops.RegisterShape("TensorArraySplit")
+def _TensorArraySplitShape(op):
+  # handle, value, lengths, flow_in
+  op.inputs[0].get_shape().merge_with(tensor_shape.vector(2))
+  op.inputs[2].get_shape().merge_with(tensor_shape.vector(None))
+  op.inputs[3].get_shape().merge_with(tensor_shape.scalar())
+  # flow_out
+  return [tensor_shape.scalar()]
 
 
 @ops.RegisterShape("TensorArrayUnpack")

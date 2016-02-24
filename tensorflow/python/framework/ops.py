@@ -28,8 +28,6 @@ import sys
 import threading
 import weakref
 
-import tensorflow.python.platform
-
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
@@ -440,7 +438,7 @@ class Tensor(object):
     Raises:
       TypeError: when invoked.
     """
-    raise TypeError("'Tensor' object is not iterable")
+    raise TypeError("'Tensor' object is not iterable.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
@@ -1040,7 +1038,7 @@ class Operation(object):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
     if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
       raise ValueError(
-          "Cannot create an Operation with a NodeDef larger than 2GB.")
+          "Cannot create a tensor proto whose content is larger than 2GB.")
     if not _VALID_OP_NAME_REGEX.match(node_def.name):
       raise ValueError("'%s' is not a valid node name" % node_def.name)
     if not isinstance(g, Graph):
@@ -1752,8 +1750,8 @@ class Graph(object):
     self._next_node_id = [dict()]
     self._next_id_counter = 0
     self._nodes_by_name = dict()
-    # Current name stack: a pair of uniquified names and plain names.
-    self._name_stack = ("", "")
+    # Current name stack: uniquified names
+    self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
     # Functions that will be applied to choose a device if none is specified.
@@ -2429,18 +2427,18 @@ class Graph(object):
     try:
       old_stack = self._name_stack
       if not name:  # Both for name=None and name="" we re-set to empty scope.
-        new_stack = (None, None)
+        new_stack = None
       elif name and name[-1] == "/":
-        new_stack = (name[:-1], name[:-1])
+        new_stack = name[:-1]
       else:
-        new_stack = (self.unique_name(name), self._plain_name(name))
+        new_stack = self.unique_name(name)
       self._name_stack = new_stack
-      yield "" if new_stack[0] is None else new_stack[0] + "/"
+      yield "" if new_stack is None else new_stack + "/"
     finally:
       self._name_stack = old_stack
   # pylint: enable=g-doc-return-or-yield
 
-  def unique_name(self, name):
+  def unique_name(self, name, mark_as_used=True):
     """Return a unique operation name for `name`.
 
     Note: You rarely need to call `unique_name()` directly.  Most of
@@ -2453,18 +2451,26 @@ class Graph(object):
     TensorFlow runtime, and in various visualization tools such as
     TensorBoard.
 
+    If `mark_as_used` is set to `True`, which is the default, a new
+    unique name is created and marked as in use. If it's set to `False`,
+    the unique name is returned without actually being marked as used.
+    This is useful when the caller simply wants to know what the name
+    to be created will be.
+
     Args:
       name: The name for an operation.
+      mark_as_used: Whether to mark this name as being used.
 
     Returns:
       A string to be passed to `create_op()` that will be used
       to name the operation being created.
     """
-    if self._name_stack[0]:
-      name = self._name_stack[0] + "/" + name
+    if self._name_stack:
+      name = self._name_stack + "/" + name
     i = self._names_in_use.get(name, 0)
     # Increment the number for "name".
-    self._names_in_use[name] = i + 1
+    if mark_as_used:
+      self._names_in_use[name] = i + 1
     if i > 0:
       base_name = name
       # Make sure the composed name is not already used.
@@ -2473,24 +2479,9 @@ class Graph(object):
         i += 1
       # Mark the composed name as used in case someone wants
       # to call unique_name("name_1").
-      self._names_in_use[name] = 1
+      if mark_as_used:
+        self._names_in_use[name] = 1
     return name
-
-  # TODO(touts): remove
-  def _plain_name(self, name):
-    """Return the fully scoped 'name'.
-
-    Args:
-      name: a string.
-
-    Returns:
-      'name' scoped in the current name stack, without any uniquified
-      elements.
-    """
-    if self._name_stack[1]:
-      return self._name_stack[1] + "/" + name
-    else:
-      return name
 
   @contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -2903,7 +2894,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
 
-def device(dev):
+def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
@@ -2918,7 +2909,7 @@ def device(dev):
     A context manager that specifies the default device to use for newly
     created ops.
   """
-  return get_default_graph().device(dev)
+  return get_default_graph().device(device_name_or_function)
 
 
 def name_scope(name):
@@ -3342,6 +3333,7 @@ class GraphKeys(object):
   # Key to indicate various ops.
   INIT_OP = "init_op"
   READY_OP = "ready_op"
+  SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
 

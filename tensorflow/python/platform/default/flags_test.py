@@ -34,7 +34,7 @@ flags.DEFINE_boolean("bool_negation", True, "HelpString")
 flags.DEFINE_boolean("bool_a", False, "HelpString")
 flags.DEFINE_boolean("bool_c", False, "HelpString")
 flags.DEFINE_boolean("bool_d", True, "HelpString")
-flags.DEFINE_boolean("bool_e", True, "HelpString")
+flags.DEFINE_bool("bool_e", True, "HelpString")
 
 FLAGS = flags.FLAGS
 

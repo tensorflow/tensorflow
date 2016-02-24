@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for linear algebra."""
 
 from __future__ import absolute_import
@@ -87,7 +86,7 @@ def _SelfAdjointEigShape(op):
   # The matrix must be square.
   input_shape[0].assert_is_compatible_with(input_shape[1])
   d = input_shape.dims[0]
-  out_shape = tensor_shape.TensorShape([d+1, d])
+  out_shape = tensor_shape.TensorShape([d + 1, d])
   return [out_shape]
 
 
@@ -122,7 +121,7 @@ def _BatchMatrixSolveShape(op):
   # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
-  return [lhs_shape[:-2].concatenate(rhs_shape[-1])]
+  return [lhs_shape[:-1].concatenate(rhs_shape[-1])]
 
 
 @ops.RegisterShape("MatrixTriangularSolve")
@@ -164,7 +163,7 @@ def _BatchMatrixSolveLsShape(op):
   # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
-  return [lhs_shape[:-3].concatenate([lhs_shape[-1], rhs_shape[-1]])]
+  return [lhs_shape[:-2].concatenate([lhs_shape[-1], rhs_shape[-1]])]
 
 
 # pylint: disable=invalid-name
@@ -253,11 +252,10 @@ def batch_matrix_solve_ls(matrix,
   \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\) or\\(\lambda\\)
   is sufficiently large.
 
-  If `fast` is `False` then the solution is computed using the rank revealing
-  QR decomposition with column pivoting. This will always compute a
-  least-squares solution that minimizes the residual norm \\(||A X - B||_F^2\\),
-  even when \\(A\\) is rank deficient or ill-conditioned. Notice: The current
-  version does not compute a minimum norm solution. If `fast` is `False` then
+  If `fast` is `False` an algorithm based on the numerically robust complete
+  orthogonal decomposition is used. This computes the minimum-norm
+  least-squares solution, even when \\(A\\) is rank deficient. This path is
+  typically 6-7 times slower than the fast path. If `fast` is `False` then
   `l2_regularizer` is ignored.
 
   Args:
@@ -278,6 +276,5 @@ def batch_matrix_solve_ls(matrix,
                                               l2_regularizer,
                                               fast=fast,
                                               name=name)
-
 
 # pylint: enable=invalid-name

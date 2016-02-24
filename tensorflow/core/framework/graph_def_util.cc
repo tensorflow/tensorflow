@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_def_util.h"
 
+#include <set>
 #include <vector>
 
 #include "tensorflow/core/framework/node_def_util.h"
@@ -113,6 +114,29 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   }
 
   return s;
+}
+
+Status StrippedOpListForGraph(const GraphDef& graph_def,
+                              const OpRegistryInterface& op_registry,
+                              OpList* stripped_op_list) {
+  stripped_op_list->clear_op();
+
+  // Collect the sorted list of op names
+  std::set<string> used_ops;
+  for (const auto& node : graph_def.node()) {
+    used_ops.insert(node.op());
+  }
+
+  // Build the stripped op list in sorted order.
+  Status status;
+  for (const string& op_name : used_ops) {
+    const OpDef* op = op_registry.LookUp(op_name, &status);
+    if (!op) return status;
+    OpDef* stripped_op = stripped_op_list->add_op();
+    stripped_op->CopyFrom(*op);
+    RemoveDescriptionsFromOpDef(stripped_op);
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

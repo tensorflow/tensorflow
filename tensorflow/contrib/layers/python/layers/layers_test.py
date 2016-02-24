@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-bad-import-order,unused-import
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -174,6 +171,41 @@ class FullyConnectedTest(tf.test.TestCase):
       return tensor
 
     tf.contrib.layers.fully_connected(self.input, 2, weight_regularizer=test_fn)
+
+    self.assertEqual([tensor],
+                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    self.assertEqual(1, cnt[0])
+
+  def test_regularizer_with_multiple_variables(self):
+    cnt = [0]
+    tensor = tf.constant(5.0)
+    def test_fn(_):
+      cnt[0] += 1
+      return tensor
+
+    tf.contrib.layers.fully_connected(self.input, 2,
+                                      weight_regularizer=test_fn)
+    tf.contrib.layers.fully_connected(self.input, 2,
+                                      weight_regularizer=test_fn)
+
+    self.assertEqual([tensor, tensor],
+                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    self.assertEqual(2, cnt[0])
+
+  def test_regularizer_with_variable_reuse(self):
+    cnt = [0]
+    tensor = tf.constant(5.0)
+    def test_fn(_):
+      cnt[0] += 1
+      return tensor
+
+    with tf.variable_scope('test') as vs:
+      tf.contrib.layers.fully_connected(self.input, 2,
+                                        weight_regularizer=test_fn)
+
+    with tf.variable_scope(vs, reuse=True):
+      tf.contrib.layers.fully_connected(self.input, 2,
+                                        weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))

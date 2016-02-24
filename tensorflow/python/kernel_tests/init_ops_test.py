@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -27,7 +25,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import init_ops
 
 
-# Returns true iff the two initalizers produce the same tensor to
+# Returns true iff the two initializers produce the same tensor to
 # within a tiny tolerance.
 def identicaltest(tc, init1, init2, use_gpu):
   """Tests if two initializations are identical to within tiny tolerances.

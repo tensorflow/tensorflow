@@ -64,6 +64,7 @@
   * [`latest_checkpoint`](../../api_docs/python/state_ops.md#latest_checkpoint)
   * [`make_template`](../../api_docs/python/state_ops.md#make_template)
   * [`moving_average_variables`](../../api_docs/python/state_ops.md#moving_average_variables)
+  * [`no_regularizer`](../../api_docs/python/state_ops.md#no_regularizer)
   * [`random_normal_initializer`](../../api_docs/python/state_ops.md#random_normal_initializer)
   * [`random_uniform_initializer`](../../api_docs/python/state_ops.md#random_uniform_initializer)
   * [`Saver`](../../api_docs/python/state_ops.md#Saver)
@@ -78,9 +79,11 @@
   * [`Variable`](../../api_docs/python/state_ops.md#Variable)
   * [`variable_op_scope`](../../api_docs/python/state_ops.md#variable_op_scope)
   * [`variable_scope`](../../api_docs/python/state_ops.md#variable_scope)
+  * [`VariableScope`](../../api_docs/python/state_ops.md#VariableScope)
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`bitcast`](../../api_docs/python/array_ops.md#bitcast)
   * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
@@ -95,6 +98,7 @@
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
+  * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
   * [`shape`](../../api_docs/python/array_ops.md#shape)
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
@@ -136,6 +140,7 @@
   * [`cos`](../../api_docs/python/math_ops.md#cos)
   * [`cross`](../../api_docs/python/math_ops.md#cross)
   * [`diag`](../../api_docs/python/math_ops.md#diag)
+  * [`digamma`](../../api_docs/python/math_ops.md#digamma)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
   * [`erf`](../../api_docs/python/math_ops.md#erf)
@@ -232,6 +237,7 @@
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
+  * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
   * [`encode_jpeg`](../../api_docs/python/image.md#encode_jpeg)
   * [`encode_png`](../../api_docs/python/image.md#encode_png)
   * [`extract_glimpse`](../../api_docs/python/image.md#extract_glimpse)
@@ -255,7 +261,7 @@
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
-  * [`saturate_cast`](../../api_docs/python/image.md#saturate_cast)
+  * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
@@ -265,6 +271,7 @@
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
+  * [`sparse_tensor_dense_matmul`](../../api_docs/python/sparse_ops.md#sparse_tensor_dense_matmul)
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
   * [`sparse_to_dense`](../../api_docs/python/sparse_ops.md#sparse_to_dense)
   * [`sparse_to_indicator`](../../api_docs/python/sparse_ops.md#sparse_to_indicator)
@@ -404,4 +411,30 @@
 
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
+
+* **[Testing](../../api_docs/python/test.md)**:
+  * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
+  * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
+  * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
+  * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
+  * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
+  * [`main`](../../api_docs/python/test.md#main)
+
+* **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
+  * [`assert_same_float_dtype`](../../api_docs/python/contrib.layers.md#assert_same_float_dtype)
+  * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)
+  * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
+  * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
+  * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
+  * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)
+  * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
+  * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
+  * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
+  * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
+  * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
+
+* **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
+  * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
+  * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
 

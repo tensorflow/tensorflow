@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import contextlib
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry

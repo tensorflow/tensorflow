@@ -70,7 +70,7 @@ class Tensor {
   ~Tensor();
 
   /// Returns the data type.
-  DataType dtype() const { return type_; }
+  DataType dtype() const { return shape_.data_type(); }
 
   /// Returns the shape of the tensor.
   const TensorShape& shape() const { return shape_; }
@@ -103,6 +103,16 @@ class Tensor {
 
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
+
+  /// Returns true iff this tensor is aligned.
+  bool IsAligned() const {
+#if EIGEN_ALIGN == 1
+    void* ptr = base<void>();
+    return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+#else
+    return true;
+#endif
+  }
 
   /// Assign operator. This tensor shares other's underlying storage.
   Tensor& operator=(const Tensor& other) {
@@ -350,8 +360,14 @@ class Tensor {
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
 
+  /// Copy the other tensor into this tensor and reshape it and reinterpret the
+  /// buffer's datatype.
+  ///
+  /// This tensor shares other's underlying storage.
+  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+
  private:
-  DataType type_;
+  void set_dtype(DataType t) { shape_.set_data_type(t); }
   TensorShape shape_;
   TensorBuffer* buf_;
 
@@ -372,7 +388,11 @@ class Tensor {
   // Tensor.
   // TODO: Remove this when we have a better story for detecting
   // uninitialized tensors.
-  void set_shape(const TensorShape& shape) { shape_ = shape; }
+  void set_shape(const TensorShape& shape) {
+    DataType dt = dtype();
+    shape_ = shape;
+    set_dtype(dt);
+  }
 
   void CopyFromInternal(const Tensor& other, const TensorShape& shape);
 
@@ -405,12 +425,6 @@ class TensorBuffer : public core::RefCounted {
   }
 };
 
-inline void CheckEigenAlignment(const void* ptr) {
-#if EIGEN_ALIGN == 1
-  CHECK_EQ(reinterpret_cast<intptr_t>(ptr) % EIGEN_ALIGN_BYTES, 0);
-#endif
-}
-
 template <typename T>
 T* Tensor::base() const {
   return buf_ == nullptr ? nullptr : buf_->base<T>();
@@ -419,14 +433,14 @@ T* Tensor::base() const {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   return typename TTypes<T, NDIMS>::Tensor(base<T>(),
                                            shape().AsEigenDSizes<NDIMS>());
 }
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
   return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
                                                 shape().AsEigenDSizes<NDIMS>());
@@ -435,7 +449,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) {
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
   CHECK_EQ(NDIMS, new_sizes.size());
   int64 new_num_elements = 1;
@@ -466,7 +480,7 @@ typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
   CHECK_EQ(NDIMS, new_sizes.size());
   int64 new_num_elements = 1;
@@ -496,14 +510,14 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
   return typename TTypes<T>::Scalar(base<T>());
 }
 
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
-  CheckEigenAlignment(base<T>());
+  CHECK(IsAligned());
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
   return typename TTypes<T>::ConstScalar(base<T>());
 }

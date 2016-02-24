@@ -174,6 +174,8 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
       sync_every_op_(sync_every_op) {
+  ProcessState::singleton()->EnableGPUDevice();
+
   gpu::StreamExecutor* executor =
       GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
   if (!executor) {
@@ -371,7 +373,9 @@ void BaseGPUDevice::ConsumeListOfAccessedTensors(
   em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
-Status BaseGPUDevice::Sync() { return GPUUtil::Sync(this); }
+// Based on the semantics of Device::Sync this call should wait for
+// all streams not just the current one.
+Status BaseGPUDevice::Sync() { return GPUUtil::SyncAll(this); }
 
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                  OpKernelContext* context,
@@ -430,6 +434,7 @@ namespace {
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
+  ConcretePerOpGpuDevice() : device_(nullptr) {}
   void Reinitialize(gpu::Stream* stream, Allocator* base_allocator,
                     ::tensorflow::EventMgr* em) {
     allocator_.Reinitialize(stream, base_allocator, em);

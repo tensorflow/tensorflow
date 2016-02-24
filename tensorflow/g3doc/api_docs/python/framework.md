@@ -1336,6 +1336,13 @@ Returns the minimum representable value in this data type.
 *  <b>`TypeError`</b>: if this is a non-numeric, unordered, or quantized type.
 
 
+- - -
+
+#### `tf.DType.size` {#DType.size}
+
+
+
+
 
 - - -
 
@@ -1366,7 +1373,7 @@ Converts the given `type_value` to a `DType`.
 
 - - -
 
-### `tf.device(dev)` {#device}
+### `tf.device(device_name_or_function)` {#device}
 
 Wrapper for `Graph.device()` using the default graph.
 
@@ -1700,6 +1707,9 @@ The following standard keys are defined:
   for more details.
 * `REGULARIZATION_LOSSES`: regularization losses collected during graph
   construction.
+* `WEIGHTS`: weights inside neural network layers
+* `BIASES`: biases inside neural network layers
+* `ACTIVATIONS`: activations of neural network layers
 
 
 ## Defining new operations

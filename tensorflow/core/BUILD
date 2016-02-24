@@ -40,6 +40,8 @@
 # filegroup ":android_srcs" - Core sources
 # filegroup ":android_core_ops" - Essential kernels
 # filegroup ":android_extended_ops" - Optional kernels
+# filegroup ":android_extended_ops_group1" - Optional kernels, first batch
+# filegroup ":android_extended_ops_group2" - Optional kernels, second batch
 # cc_library ":android_tensorflow_lib" - Native library
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
@@ -61,6 +63,7 @@ load(
     "tf_proto_library",
     "tf_additional_lib_srcs",
     "tf_additional_stream_executor_srcs",
+    "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
 )
@@ -155,7 +158,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:gtest",
-    ],
+    ] + tf_additional_test_deps(),
 )
 
 tf_cuda_library(
@@ -170,6 +173,7 @@ tf_cuda_library(
         "framework/function.h",
         "framework/kernel_def_builder.h",
         "framework/lookup_interface.h",
+        "framework/memory_types.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
@@ -204,6 +208,7 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
+        "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
@@ -562,7 +567,9 @@ filegroup(
         "//tensorflow/core:kernels/matmul_op.h",
         "//tensorflow/core:kernels/no_op.cc",
         "//tensorflow/core:kernels/no_op.h",
+        "//tensorflow/core:kernels/ops_util.h",
         "//tensorflow/core:kernels/pack_op.cc",
+        "//tensorflow/core:kernels/pooling_ops_common.h",
         "//tensorflow/core:kernels/reshape_op.cc",
         "//tensorflow/core:kernels/reshape_op.h",
         "//tensorflow/core:kernels/reverse_sequence_op.cc",
@@ -586,18 +593,57 @@ filegroup(
 )
 
 # Other kernels we may want on Android.
+#
+# The kernels can be consumed as a whole or in two groups for
+# supporting separate compilation. Note that the split into groups
+# is entirely for improving compilation time, and not for
+# organizational reasons; you should not depend on any
+# of those groups independently.
 filegroup(
     name = "android_extended_ops",
     srcs = [
-        "//tensorflow/core:kernels/avgpooling_op.cc",
+        ":android_extended_ops_group1",
+        ":android_extended_ops_group2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_headers",
+    srcs = [
+        "//tensorflow/core:kernels/argmax_op.h",
         "//tensorflow/core:kernels/avgpooling_op.h",
+        "//tensorflow/core:kernels/control_flow_ops.h",
+        "//tensorflow/core:kernels/conv_2d.h",
+        "//tensorflow/core:kernels/io.h",
+        "//tensorflow/core:kernels/maxpooling_op.h",
+        "//tensorflow/core:kernels/reduction_ops.h",
+        "//tensorflow/core:kernels/reduction_ops_common.h",
+        "//tensorflow/core:kernels/relu_op.h",
+        "//tensorflow/core:kernels/softplus_op.h",
+        "//tensorflow/core:kernels/softsign_op.h",
+        "//tensorflow/core:kernels/tile_ops.h",
+        "//tensorflow/core:kernels/training_ops.h",
+        "//tensorflow/core:kernels/transpose_op.h",
+        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/where_op.h",
+        "//tensorflow/core:kernels/xent_op.h",
+    ],
+)
+
+filegroup(
+    name = "android_extended_ops_group1",
+    srcs = [
+        ":android_extended_ops_headers",
+        "//tensorflow/core:kernels/argmax_op.cc",
+        "//tensorflow/core:kernels/avgpooling_op.cc",
         "//tensorflow/core:kernels/bcast_ops.cc",
         "//tensorflow/core:kernels/control_flow_ops.cc",
-        "//tensorflow/core:kernels/control_flow_ops.h",
         "//tensorflow/core:kernels/conv_2d.h",
         "//tensorflow/core:kernels/conv_ops.cc",
         "//tensorflow/core:kernels/cwise_op_add.cc",
         "//tensorflow/core:kernels/cwise_op_div.cc",
+        "//tensorflow/core:kernels/cwise_op_equal_to.cc",
         "//tensorflow/core:kernels/cwise_op_exp.cc",
         "//tensorflow/core:kernels/cwise_op_greater.cc",
         "//tensorflow/core:kernels/cwise_op_isfinite.cc",
@@ -614,42 +660,38 @@ filegroup(
         "//tensorflow/core:kernels/cwise_op_sub.cc",
         "//tensorflow/core:kernels/cwise_op_tanh.cc",
         "//tensorflow/core:kernels/dynamic_partition_op.cc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_extended_ops_group2",
+    srcs = [
+        ":android_extended_ops_headers",
         "//tensorflow/core:kernels/dynamic_stitch_op.cc",
         "//tensorflow/core:kernels/in_topk_op.cc",
         "//tensorflow/core:kernels/io.cc",
-        "//tensorflow/core:kernels/io.h",
         "//tensorflow/core:kernels/lrn_op.cc",
         "//tensorflow/core:kernels/maxpooling_op.cc",
-        "//tensorflow/core:kernels/maxpooling_op.h",
-        "//tensorflow/core:kernels/reduction_ops.h",
-        "//tensorflow/core:kernels/reduction_ops_common.h",
         "//tensorflow/core:kernels/reduction_ops_max.cc",
         "//tensorflow/core:kernels/reduction_ops_mean.cc",
         "//tensorflow/core:kernels/reduction_ops_min.cc",
         "//tensorflow/core:kernels/reduction_ops_prod.cc",
         "//tensorflow/core:kernels/reduction_ops_sum.cc",
         "//tensorflow/core:kernels/relu_op.cc",
-        "//tensorflow/core:kernels/relu_op.h",
         "//tensorflow/core:kernels/restore_op.cc",
         "//tensorflow/core:kernels/save_op.cc",
         "//tensorflow/core:kernels/softplus_op.cc",
-        "//tensorflow/core:kernels/softplus_op.h",
         "//tensorflow/core:kernels/softsign_op.cc",
-        "//tensorflow/core:kernels/softsign_op.h",
         "//tensorflow/core:kernels/sparse_to_dense_op.cc",
         "//tensorflow/core:kernels/stack_ops.cc",
         "//tensorflow/core:kernels/tile_ops.cc",
-        "//tensorflow/core:kernels/tile_ops.h",
         "//tensorflow/core:kernels/topk_op.cc",
         "//tensorflow/core:kernels/training_ops.cc",
-        "//tensorflow/core:kernels/training_ops.h",
         "//tensorflow/core:kernels/transpose_op.cc",
-        "//tensorflow/core:kernels/transpose_op.h",
-        "//tensorflow/core:kernels/transpose_op_functor.h",
+        "//tensorflow/core:kernels/transpose_op_cpu.cc",
         "//tensorflow/core:kernels/where_op.cc",
-        "//tensorflow/core:kernels/where_op.h",
         "//tensorflow/core:kernels/xent_op.cc",
-        "//tensorflow/core:kernels/xent_op.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -679,12 +721,6 @@ config_setting(
     },
 )
 
-ANDROID_TF_SOURCES = [
-    "//tensorflow/core:android_core_ops",
-    "//tensorflow/core:android_extended_ops",
-    "//tensorflow/core:android_srcs",
-]
-
 ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
@@ -693,13 +729,16 @@ ANDROID_TF_COPTS = [
 ]
 
 # Native library support for Android applications.
-# Compiles to a trivial library on non-android.
+# Does not contain operators, use :android_tensorflow_lib if you want full
+# operator support.
+# Compiles to a trivial library on non-android to prevent irrelevant
+# build errors.
 cc_library(
-    name = "android_tensorflow_lib",
+    name = "android_tensorflow_lib_lite",
     srcs = select({
-        ":android": ANDROID_TF_SOURCES,
-        ":android_32": ANDROID_TF_SOURCES,
-        ":android_64": ANDROID_TF_SOURCES,
+        ":android": ["//tensorflow/core:android_srcs"],
+        ":android_32": ["//tensorflow/core:android_srcs"],
+        ":android_64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -726,6 +765,47 @@ cc_library(
         "@re2//:re2",
         ":protos_cc",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "android_tensorflow_operators",
+    srcs = [
+        "//tensorflow/core:android_core_ops",
+        "//tensorflow/core:android_extended_ops",
+    ],
+    copts = select({
+        ":android": ANDROID_TF_COPTS,
+        ":android_32": ANDROID_TF_COPTS,
+        ":android_64": ANDROID_TF_COPTS,
+        "//conditions:default": [],
+    }),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@re2//:re2",
+        ":android_tensorflow_lib_lite",
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+)
+
+# Full Tensorflow library with operator support. Use this unless reducing
+# binary size (by packaging a reduced operator set) is a concern.
+cc_library(
+    name = "android_tensorflow_lib",
+    srcs = [],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_tensorflow_lib_lite",
+        ":android_tensorflow_operators",
     ],
 )
 
@@ -763,6 +843,7 @@ cc_library(
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
         "lib/strings/regexp.h",
+        "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
         "platform/tracing.h",
@@ -781,6 +862,7 @@ tf_cuda_library(
         [
             "framework/**/*.h",
             "framework/**/*.cc",
+            "public/version.h",
             "util/**/*.h",
             "util/**/*.cc",
         ],
@@ -797,11 +879,15 @@ tf_cuda_library(
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = [
+        "-ldl",
+        "-lm",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -897,6 +983,7 @@ tf_cuda_library(
             "client/**/*.cc",
             "common_runtime/*.h",
             "common_runtime/*.cc",
+            "framework/versions.h",
             "graph/**/*.h",
             "graph/**/*.cc",
             "public/session.h",

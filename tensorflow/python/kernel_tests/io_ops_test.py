@@ -22,8 +22,6 @@ from __future__ import print_function
 
 import tempfile
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 

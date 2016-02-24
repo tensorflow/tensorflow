@@ -25,8 +25,6 @@ import contextlib
 import shutil
 import tempfile
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 import numpy as np
 import six
@@ -218,7 +216,7 @@ class SaverTest(tf.test.TestCase):
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
   def testGPU(self):
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
@@ -292,6 +290,8 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       val = save.save(sess, save_path)
       self.assertEqual(save_path + "-?????-of-00002", val)
+      meta_graph_filename = save._MetaGraphFilename(val)
+      self.assertEqual(save_path + ".meta", meta_graph_filename)
 
     # Restore a different "v0" from shard 0 of the saved files.
     with tf.Session(
@@ -391,15 +391,21 @@ class MaxToKeepTest(tf.test.TestCase):
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save.last_checkpoints)
       self.assertFalse(gfile.Exists(s1))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
       self.assertTrue(gfile.Exists(s3))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save.last_checkpoints)
       self.assertFalse(gfile.Exists(s3))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
       self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
       # Exercise the second helper.
 
@@ -408,16 +414,22 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([s3, s2], save2.last_checkpoints)
       # Created by the first helper.
       self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
       self.assertFalse(gfile.Exists(s3))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save2.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save2.last_checkpoints)
       self.assertFalse(gfile.Exists(s3))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
       self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
       # Exercise the third helper.
 
@@ -426,16 +438,22 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([s2], save3.last_checkpoints)
       # Created by the first helper.
       self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
       # Deleted by the first helper.
       self.assertFalse(gfile.Exists(s3))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       # Adding s1 (s3 should not be deleted because helper is unaware of it)
       s1 = save3.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save3.last_checkpoints)
       self.assertFalse(gfile.Exists(s3))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s3)))
       self.assertTrue(gfile.Exists(s2))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
       self.assertTrue(gfile.Exists(s1))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
   def testSharded(self):
     save_dir = os.path.join(self.get_temp_dir(), "max_to_keep_sharded")
@@ -459,17 +477,23 @@ class MaxToKeepTest(tf.test.TestCase):
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
       self.assertEqual(2, len(gfile.Glob(s1)))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
       self.assertEqual(2, len(gfile.Glob(s1)))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
       self.assertEqual(2, len(gfile.Glob(s2)))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
       self.assertEqual(0, len(gfile.Glob(s1)))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
       self.assertEqual(2, len(gfile.Glob(s2)))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
       self.assertEqual(2, len(gfile.Glob(s3)))
+      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
 
 
 class KeepCheckpointEveryNHoursTest(tf.test.TestCase):

@@ -3,7 +3,7 @@
 # Tensor Transformations
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -176,6 +176,28 @@ tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
 
 
 *  <b>`TypeError`</b>: If `x` cannot be cast to the `dtype`.
+
+
+- - -
+
+### `tf.saturate_cast(value, dtype, name=None)` {#saturate_cast}
+
+Performs a safe saturating cast of `value` to `dtype`.
+
+This function casts the input to `dtype` without applying any scaling.  If
+there is a danger that values would over or underflow in the cast, this op
+applies the appropriate clamping before the cast.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`.
+*  <b>`dtype`</b>: The desired output `DType`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `value` safely cast to `dtype`.
 
 
 
@@ -1265,6 +1287,34 @@ boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
 
 
 ## Other Functions and Classes
+- - -
+
+### `tf.bitcast(input, type, name=None)` {#bitcast}
+
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.qint8, tf.quint8, tf.qint32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `type`.
+
+
 - - -
 
 ### `tf.shape_n(input, name=None)` {#shape_n}

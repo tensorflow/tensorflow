@@ -53,14 +53,17 @@ class ProcessState {
     string DebugString();
   };
 
-  // Records the number of GPUs available in the local process.
-  // It is a fatal error to call this with a value != to the value
-  // in a prior call.
-  void SetGPUCount(int c);
+  // Query whether any GPU device has been created so far.
+  // Disable thread safety analysis since a race is benign here.
+  bool HasGPUDevice() const NO_THREAD_SAFETY_ANALYSIS {
+    return gpu_device_enabled_;
+  }
 
-  // Returns number of GPUs available in local process, as set by
-  // SetGPUCount();  Returns 0 if SetGPUCount has not been called.
-  int GPUCount() const;
+  // Set the flag to indicate a GPU device has been created.
+  // Disable thread safety analysis since a race is benign here.
+  void EnableGPUDevice() NO_THREAD_SAFETY_ANALYSIS {
+    gpu_device_enabled_ = true;
+  }
 
   // Returns what we know about the memory at ptr.
   // If we know nothing, it's called CPU 0 with no other attributes.
@@ -109,9 +112,9 @@ class ProcessState {
   ProcessState();
 
   static ProcessState* instance_;
+  bool gpu_device_enabled_;
 
   mutex mu_;
-  int gpu_count_;
 
   std::vector<PoolAllocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
@@ -151,6 +154,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(void* p) override { return a_->AllocatedSize(p); }
+  void GetStats(AllocatorStats* stats) override { return a_->GetStats(stats); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

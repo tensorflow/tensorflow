@@ -109,7 +109,7 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding);
 
 // Given a shape 's' of a tensor of type T. Returns true iff the
 // number of bytes occupied by each dim 0 (i.e., &tensor(i + 1, ...) -
-// &tensor(i, ...)) is multiple of EIGEN_ALIGN_BYTES.
+// &tensor(i, ...)) is multiple of EIGEN_MAX_ALIGN_BYTES.
 template <typename T>
 bool IsInnerDimsSizeAligned(const TensorShape& s) {
   if (s.dims() == 0) return false;

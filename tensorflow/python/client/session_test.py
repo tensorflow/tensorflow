@@ -21,8 +21,6 @@ from __future__ import print_function
 import threading
 import time
 
-import tensorflow.python.platform
-
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -752,7 +750,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(c_list[1], out[1].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaises(RuntimeError):
+    with self.assertRaisesRegexp(RuntimeError,
+                                 'Registered factories are {DIRECT_SESSION}'):
       session.Session('INVALID_TARGET')
 
   def testFetchByNameDifferentStringTypes(self):
@@ -826,6 +825,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.partial_run(h, r2, feed_dict={c: temp})
       self.assertEqual(153, res)
 
+      # Call again on the same graph.
+      h2 = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+      temp = res * 18
+      res = sess.partial_run(h2, r2, feed_dict={c: temp})
+      self.assertEqual(162, res)
+
   def testPartialRunIncomplete(self):
     with session.Session() as sess:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -856,11 +863,34 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.partial_run(h2, r2, feed_dict={c: 7})
       self.assertEqual(462, res)
 
+  def testManyPartialRun(self):
+    with session.Session() as sess:
+      steps = 200
+      inputs = []
+      outputs = []
+      a = constant_op.constant(2.0, dtypes.float32)
+      for i in xrange(steps):
+        inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
+        a = math_ops.mul(a, inputs[i])
+        outputs.append(a)
+
+      h = sess.partial_run_setup(outputs, inputs)
+      for i in xrange(steps):
+        res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
+      self.assertEqual(2.0, res)
+
+      feed_dict = {}
+      for i in xrange(steps):
+        feed_dict[inputs[i]] = 1.0
+      res = sess.run(outputs, feed_dict)
+      self.assertEqual(steps, len(res))
+      self.assertEqual(2.0, res[-1])
+
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
       with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
         sess.run(a, feed_dict={'a': [2.0]})
-    
+
 if __name__ == '__main__':
   googletest.main()

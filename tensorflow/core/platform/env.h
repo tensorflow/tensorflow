@@ -137,7 +137,7 @@ class Env {
 
   // \brief Schedules the given closure on a thread-pool.
   //
-  // NOTE(mrry): This closure must not block.
+  // NOTE(mrry): This closure may block.
   virtual void SchedClosure(std::function<void()> closure) = 0;
 
   // \brief Schedules the given closure on a thread-pool after the given number

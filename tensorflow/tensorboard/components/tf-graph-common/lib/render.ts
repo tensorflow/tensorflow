@@ -53,7 +53,7 @@ export let MetanodeColors = {
    * Standard hue values for node color palette.
    */
   HUES: [220, 100, 180, 40, 20, 340, 260, 300, 140, 60],
-  STRUCTURE_PALETTE: function(id: number, lightened? : boolean) {
+  STRUCTURE_PALETTE: function(id: number, lightened?: boolean) {
     // The code below is a flexible way to computationally create a set
     // of colors that go well together.
     let hues = MetanodeColors.HUES;
@@ -78,6 +78,18 @@ export let SeriesNodeColors = {
   DEFAULT_FILL: "white",
   DEFAULT_STROKE: "#b2b2b2"
 };
+
+/** The minimum stroke width of an edge. */
+const MIN_EDGE_WIDTH = 0.75;
+
+/** The maximum stroke width of an edge. */
+const MAX_EDGE_WIDTH = 12;
+
+/** The exponent used in the power scale for edge thickness. */
+const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
+
+/** The domain (min and max value) for the edge width. */
+const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
 
 /**
  * Parameters that affect how the graph is rendered on the screen.
@@ -158,6 +170,7 @@ export class RenderGraphInfo {
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
+  edgeWidthScale: d3.scale.Pow<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -172,6 +185,12 @@ export class RenderGraphInfo {
         .domain(hierarchy.devices)
         .range(_.map(d3.range(hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
+
+    this.edgeWidthScale = d3.scale.pow()
+      .exponent(EDGE_WIDTH_SCALE_EXPONENT)
+      .domain(DOMAIN_EDGE_WIDTH_SCALE)
+      .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
+      .clamp(true);
 
     let topLevelGraph = hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
@@ -218,6 +237,13 @@ export class RenderGraphInfo {
   }
 
   /**
+   * Get the underlying node in the hierarchical graph by its name.
+   */
+  getNodeByName(nodeName: string): Node {
+    return this.hierarchy.node(nodeName);
+  }
+
+  /**
    * Get a previously created RenderNodeInfo for the specified node name,
    * or create one if it hasn't been created yet.
    */
@@ -232,6 +258,12 @@ export class RenderGraphInfo {
     }
 
     let node = this.hierarchy.node(nodeName);
+    // Exit early if the node does not exist in the hierarchy. This can happen
+    // when a graph is reloaded while the infocard points to a node not visible
+    // at the top-level.
+    if (!node) {
+      return null;
+    }
     let renderInfo = node.isGroupNode ?
         new RenderGroupNodeInfo(<GroupNode>node) :
         new RenderNodeInfo(node);
@@ -521,7 +553,7 @@ export class RenderGraphInfo {
       // (which ignores control edges) and seeing that Z comes AFTER A.
       //
       // The property of being backwards is independent of whether the edge
-      // is inbound or outbound. In the preceeding example, if we were building
+      // is inbound or outbound. In the preceding example, if we were building
       // the subhierarchy for Z, we'd find bridge edge Z/Y=>A, walk to its
       // topmost adjoining metaedge Z=>A and discover that it's backwards.
       let backwards = false;
@@ -629,7 +661,7 @@ export class RenderGraphInfo {
     // one edge in the bridgegraph from Z->A/C.
     //
     // At this point, we've added a container bridge node IN to house all
-    // incoming bridge nodes. We'v alse added a bridge node Z' (with parent IN)
+    // incoming bridge nodes. We've also added a bridge node Z' (with parent IN)
     // to A, and a bridge edge from Z'->C.
     //
     //     +----------------------+
@@ -1032,7 +1064,7 @@ export class RenderMetaedgeInfo {
   metaedge: Metaedge;
 
   /**
-   * Reference to the adjoining RenderMeteaedgeInfo from the parent's
+   * Reference to the adjoining RenderMetaedgeInfo from the parent's
    * coreGraph. This is used during layout to determine the point at which this
    * edge should touch the node's bounding box. This property will be null for
    * edges which terminate at a node on both ends (all non-bridge edges).
@@ -1042,7 +1074,7 @@ export class RenderMetaedgeInfo {
   /**
    * Most of the time, a RenderMetaedgeInfo object represents a real
    * edge between nodes in the underlying graph structure. But sometimes, an
-   * edge only exsts for layout purposes. These structural edges are added
+   * edge only exists for layout purposes. These structural edges are added
    * during buildSubhierarchy() to force dagre.layout() to put bridge nodes
    * at the ends of the flow.
    * @see buildSubhierarchy()
@@ -1264,7 +1296,7 @@ function hasTypeIn(node: Node, types: string[]): boolean {
   return false;
 }
 
-/** Move nodes that are speficied to be excluded out of the core graph. */
+/** Move nodes that are specified to be excluded out of the core graph. */
 function extractSpecifiedNodes(renderNode: RenderGroupNodeInfo,
     params: RenderGraphParams) {
   let graph = renderNode.coreGraph;

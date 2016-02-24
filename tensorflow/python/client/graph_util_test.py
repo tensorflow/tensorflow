@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from tensorflow.python.client import graph_util
@@ -27,9 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
-# pylint: disable=unused-import
-from tensorflow.python.ops import math_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 
 
@@ -183,6 +179,30 @@ class DeviceFunctionsTest(tf.test.TestCase):
     self.assertEqual("n2", sub_graph.node[1].name)
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
+
+  def testConvertVariablesToConsts(self):
+    with tf.Graph().as_default():
+      variable_node = tf.Variable(1.0, name="variable_node")
+      output_node = tf.mul(variable_node, 2.0, name="output_node")
+      with tf.Session() as sess:
+        init = tf.initialize_all_variables()
+        sess.run(init)
+        output = sess.run(output_node)
+        self.assertNear(2.0, output, 0.00001)
+        variable_graph_def = sess.graph.as_graph_def()
+        constant_graph_def = graph_util.convert_variables_to_constants(
+            sess, variable_graph_def, ["output_node"])
+    # Now we make sure the variable is now a constant, and that the graph still
+    # produces the expected result.
+    with tf.Graph().as_default():
+      _ = tf.import_graph_def(constant_graph_def, name="")
+      self.assertEqual(4, len(constant_graph_def.node))
+      for node in constant_graph_def.node:
+        self.assertNotEqual("Variable", node.op)
+      with tf.Session() as sess:
+        output_node = sess.graph.get_tensor_by_name("output_node:0")
+        output = sess.run(output_node)
+        self.assertNear(2.0, output, 0.00001)
 
 
 if __name__ == "__main__":

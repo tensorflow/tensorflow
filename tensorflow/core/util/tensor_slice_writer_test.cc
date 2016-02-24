@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
@@ -148,6 +149,11 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     // We also expect two entries for the tensors
     EXPECT_TRUE(sts.has_meta());
     EXPECT_EQ(4, sts.meta().tensor_size());
+    // We should have written nontrivial version information
+    EXPECT_LT(0, TF_CHECKPOINT_VERSION);
+    EXPECT_EQ(TF_CHECKPOINT_VERSION, sts.meta().versions().producer());
+    EXPECT_EQ(TF_CHECKPOINT_VERSION_MIN_CONSUMER,
+              sts.meta().versions().min_consumer());
     // We don't expect any data in the first block.
     EXPECT_FALSE(sts.has_data());
     // The two tensors should be stored in the same order as they are first

@@ -27,6 +27,9 @@
     "typescript": "^1.6.2",
     "vulcanize": "^1.14.0",
     "web-component-tester": "~3.4.2",
-    "gulp-header": "~1.7.1"
+    "gulp-header": "~1.7.1",
+    "gulp-rename": "~1.2.2",
+    "gulp-typings": "~1.1.0",
+    "gulp-bower": "0.0.13"
   }
 }

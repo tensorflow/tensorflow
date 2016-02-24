@@ -18,8 +18,6 @@ from __future__ import absolute_import
 # from __future__ import division  # Intentionally skip this import
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import six
 
 from tensorflow.python.framework import tensor_shape

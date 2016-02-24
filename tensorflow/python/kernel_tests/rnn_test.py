@@ -15,22 +15,19 @@
 
 """Tests for rnn module."""
 
-# pylint: disable=g-bad-import-order,unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform as platform
-
-import numpy as np
 import sys
-import tensorflow as tf
 import time
 import timeit
 
-from tensorflow.python.client import graph_util
-
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
+
+from tensorflow.python.client import graph_util
 
 
 def _flatten(list_of_lists):
@@ -966,10 +963,10 @@ def main(_):
         "vs. Dynamic Unroll LSTM")
   print("batch \t max_t \t units \t gpu \t dt(static) \t dt(dynamic) "
         "\t dt(dynamic)/dt(static)")
-  for batch_size in (256, 512):
-    for max_time in (50, 100):
-      for num_units in (512, 256, 128):
-        for use_gpu in (False, True):
+  for use_gpu in (False, True):
+    for batch_size in (256, 512):
+      for max_time in (50, 100):
+        for num_units in (512, 256, 128):
           static_vs_dynamic_rnn_benchmark(
               batch_size, max_time, num_units, use_gpu)
 

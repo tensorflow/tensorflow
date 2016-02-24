@@ -24,6 +24,7 @@ from __future__ import print_function
 from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 
@@ -44,6 +45,7 @@ from tensorflow.python.ops.logging_ops import *
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
+from tensorflow.python.ops.partitioned_variables import *
 from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.sparse_ops import *

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import fnmatch
 import os
+import platform
 import re
 import sys
 
@@ -26,12 +27,19 @@ from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.6.0'
+_VERSION = '0.7.1'
+
+numpy_version = "1.8.2"
+if platform.system() == "Darwin":
+  # There are bugs with numpy pip installation on OS X prior to
+  # 1.10.1, so on mac we require a higher version than on other
+  # platforms.
+  numpy_version = "1.10.1"
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.8.2',
+    'numpy >= %s' % numpy_version,
     'six >= 1.10.0',
-    'protobuf == 3.0.0a3',
+    'protobuf == 3.0.0b2',
 ]
 
 # python3 requires wheel 0.26
@@ -43,7 +51,7 @@ else:
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'tensorboard = tensorflow.tensorboard.backend.tensorboard:main',
+    'tensorboard = tensorflow.tensorboard.tensorboard:main',
 ]
 # pylint: enable=line-too-long
 
@@ -157,7 +165,7 @@ setup(
     version=_VERSION,
     description='TensorFlow helps the tensors flow',
     long_description='',
-    url='http://tensorflow.com/',
+    url='http://tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',
     # Contained modules and scripts.

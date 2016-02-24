@@ -38,8 +38,6 @@ from datetime import datetime
 import math
 import time
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 

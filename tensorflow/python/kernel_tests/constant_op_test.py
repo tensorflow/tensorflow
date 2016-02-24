@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -157,7 +155,7 @@ class ConstantTest(tf.test.TestCase):
       large_array = np.zeros((512, 1024, 1024), dtype=np.float32)
       with self.assertRaisesRegexp(
           ValueError,
-          "Cannot create an Operation with a NodeDef larger than 2GB."):
+          "Cannot create a tensor proto whose content is larger than 2GB."):
         c = tf.constant(large_array)
 
   def testTooLargeGraph(self):

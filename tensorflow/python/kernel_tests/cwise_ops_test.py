@@ -21,8 +21,6 @@ from __future__ import print_function
 
 import math
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -59,8 +57,8 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertShapeEqual(np_ans, y)
       self.assertAllClose(np_ans, tf_cpu)
 
-      # TODO(ebrevdo): add gradient for lgamma (digamma) and remove lgamma here.
-      if tf_func in (tf.lgamma,):
+      # TODO(ebrevdo): consider adding polygamma function
+      if tf_func in (tf.digamma,):
         return  # Return early
 
       if x.dtype == np.float32:
@@ -133,7 +131,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
     self._compareBoth(
-        x,
+        y,
         np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
         tf.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), tf.erf)
@@ -162,6 +160,10 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.sign, tf.sign)
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
+    # Can't use vectorize below, so just use some arbitrary function
+    self._compareBoth(x, np.sign, tf.lgamma)
+    self._compareBoth(x, np.sign, tf.erf)
+    self._compareBoth(x, np.sign, tf.erfc)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
@@ -182,14 +184,20 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(y, np.sign, tf.sign)
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
+    self._compareBoth(
+        y,
+        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
+        tf.lgamma)
+    self._compareBoth(x, np.vectorize(math.erf), tf.erf)
+    self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
     self._compareCpu(x, np.abs, tf.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, tf.neg)
-    self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(x, np.square, tf.square)
+    self._compareBoth(x, np.negative, tf.neg)
+    self._compareBoth(x, np.negative, _NEG)
+    self._compareBoth(x, np.square, tf.square)
     self._compareCpu(x, np.sign, tf.sign)
 
   def testInt64Basic(self):

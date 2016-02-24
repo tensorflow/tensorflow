@@ -3,7 +3,7 @@
 # Neural Network
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -752,7 +752,7 @@ classes are mutually exclusive (each entry is in exactly one class).  For
 example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
-**NOTE:**:  While the classes are mutually exclusive, their probabilities
+**NOTE:**  While the classes are mutually exclusive, their probabilities
 need not be.  All that is required is that each row of `labels` is
 a valid probability distribution.  If using exclusive `labels`
 (wherein one and only one class is true at a time), see
@@ -789,7 +789,7 @@ classes are mutually exclusive (each entry is in exactly one class).  For
 example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
-**NOTE:**:  For this operation, the probability of a given label is considered
+**NOTE:**  For this operation, the probability of a given label is considered
 exclusive.  That is, soft classes are not allowed, and the `labels` vector
 must provide a single specific index for the true class for each row of
 `logits` (each minibatch entry).  For soft softmax classification with
@@ -1045,7 +1045,8 @@ expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
 
-Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
 ##### Args:
 

@@ -38,10 +38,10 @@ File | What's in it?
 ## Sequence-to-Sequence Basics
 
 A basic sequence-to-sequence model, as introduced in
-[Cho et al., 2014](http://arxiv.org/pdf/1406.1078v3.pdf),
-consists of two recurrent neural networks (RNNs): an *encoder* that
-processes the input and a *decoder* that generates the output.
-This basic architecture is depicted below.
+[Cho et al., 2014](http://arxiv.org/abs/1406.1078)
+([pdf](http://arxiv.org/pdf/1406.1078.pdf)), consists of two recurrent neural
+networks (RNNs): an *encoder* that processes the input and a *decoder* that
+generates the output. This basic architecture is depicted below.
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/basic_seq2seq.png" />
@@ -52,12 +52,14 @@ a GRU cell or an LSTM cell (see the [RNN Tutorial](../../tutorials/recurrent/ind
 for an explanation of those). Encoder and decoder can share weights or,
 as is more common, use a different set of parameters. Multi-layer cells
 have been successfully used in sequence-to-sequence models too, e.g. for
-translation [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215).
+translation [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215)
+([pdf](http://arxiv.org/pdf/1409.3215.pdf)).
 
 In the basic model depicted above, every input has to be encoded into
 a fixed-size state vector, as that is the only thing passed to the decoder.
 To allow the decoder more direct access to the input, an *attention* mechanism
-was introduced in [Bahdanu et al., 2014](http://arxiv.org/abs/1409.0473).
+was introduced in [Bahdanau et al., 2014](http://arxiv.org/abs/1409.0473)
+([pdf](http://arxiv.org/pdf/1409.0473.pdf)).
 We will not go into the details of the attention mechanism (see the paper),
 suffice it to say that it allows the decoder to peek into the input at every
 decoding step. A multi-layer sequence-to-sequence network with LSTM cells and
@@ -127,7 +129,8 @@ All other tensors from this list would be ignored, and instead the previous
 output of the encoder would be used. This is used for decoding translations
 in our translation model, but it can also be used during training, to make
 the model more robust to its own mistakes, similar
-to [Bengio et al., 2015](http://arxiv.org/pdf/1506.03099v2.pdf).
+to [Bengio et al., 2015](http://arxiv.org/abs/1506.03099)
+([pdf](http://arxiv.org/pdf/1506.03099.pdf)).
 
 One more important argument used above is `output_projection`. If not specified,
 the outputs of the embedding model will be tensors of shape batch-size by
@@ -137,7 +140,8 @@ When training models with large output vocabularies, i.e., when
 tensors. Instead, it is better to return smaller output tensors, which will
 later be projected onto a large output tensor using `output_projection`.
 This allows to use our seq2seq models with a sampled softmax loss, as described
-in [Jean et. al., 2015](http://arxiv.org/pdf/1412.2007v2.pdf).
+in [Jean et. al., 2014](http://arxiv.org/abs/1412.2007)
+([pdf](http://arxiv.org/pdf/1412.2007.pdf)).
 
 In addition to `basic_rnn_seq2seq` and `embedding_rnn_seq2seq` there are a few
 more sequence-to-sequence models in `seq2seq.py`, take a look there. They all
@@ -225,7 +229,8 @@ Remember that when constructing decoder inputs we prepend the special `GO`
 symbol to the input data. This is done in the `get_batch()` function in
 `seq2seq_model.py`, which also reverses the input English sentence.
 Reversing the inputs was shown to improve results for the neural translation
-model in [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215).
+model in [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215)
+([pdf](http://arxiv.org/pdf/1409.3215.pdf)).
 To put it all together, imagine we have the sentence "I go.", tokenized
 as `["I", "go", "."]` as input and the sentence "Je vais." as output,
 tokenized `["Je", "vais", "."]`. It will be put in the (5, 10) bucket,
@@ -233,7 +238,7 @@ with encoder inputs representing `[PAD PAD "." "go" "I"]` and decoder
 inputs `[GO "Je" "vais" "." EOS PAD PAD PAD PAD PAD]`.
 
 
-## Let's Run It 
+## Let's Run It
 
 To train the model described above, we need to a large English-French corpus.
 We will use the *10^9-French-English corpus* from the
@@ -329,6 +334,7 @@ Finally, the model presented above can be used for any sequence-to-sequence
 task, not only for translation. Even if you want to transform a sequence to
 a tree, for example to generate a parsing tree, the same model as above can
 give state-of-the-art results, as demonstrated in
-[Vinyals & Kaiser et al., 2015](http://arxiv.org/abs/1412.7449).
+[Vinyals & Kaiser et al., 2014](http://arxiv.org/abs/1412.7449)
+([pdf](http://arxiv.org/pdf/1412.7449.pdf)).
 So you can not only build your own translator, you can also build a parser,
 a chat-bot, or any program that comes to your mind. Experiment!

@@ -62,6 +62,20 @@ py_binary(
     ],
 )
 
+py_test(
+    name = "graph_metrics_test",
+    size = "small",
+    srcs = [
+        "graph_metrics_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":graph_metrics_lib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

@@ -100,12 +100,13 @@ class RNNCell(object):
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
-  def __init__(self, num_units):
+  def __init__(self, num_units, input_size=None):
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
@@ -158,7 +159,7 @@ class GRUCell(RNNCell):
 class BasicLSTMCell(RNNCell):
   """Basic LSTM recurrent network cell.
 
-  The implementation is based on: http://arxiv.org/pdf/1409.2329v5.pdf.
+  The implementation is based on: http://arxiv.org/abs/1409.2329.
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
@@ -261,7 +262,7 @@ class LSTMCell(RNNCell):
   projection layer.
   """
 
-  def __init__(self, num_units, input_size,
+  def __init__(self, num_units, input_size=None,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None,
                num_unit_shards=1, num_proj_shards=1):
@@ -283,7 +284,7 @@ class LSTMCell(RNNCell):
         projection matrix is stored across num_proj_shards.
     """
     self._num_units = num_units
-    self._input_size = input_size
+    self._input_size = num_units if input_size is None else input_size
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
     self._initializer = initializer
@@ -310,30 +311,30 @@ class LSTMCell(RNNCell):
   def state_size(self):
     return self._state_size
 
-  def __call__(self, input_, state, scope=None):
+  def __call__(self, inputs, state, scope=None):
     """Run one step of LSTM.
 
     Args:
-      input_: input Tensor, 2D, batch x num_units.
+      inputs: input Tensor, 2D, batch x num_units.
       state: state Tensor, 2D, batch x state_size.
       scope: VariableScope for the created subgraph; defaults to "LSTMCell".
 
     Returns:
       A tuple containing:
       - A 2D, batch x output_dim, Tensor representing the output of the LSTM
-        after reading "input_" when previous state was "state".
+        after reading "inputs" when previous state was "state".
         Here output_dim is:
            num_proj if num_proj was set,
            num_units otherwise.
       - A 2D, batch x state_size, Tensor representing the new state of LSTM
-        after reading "input_" when previous state was "state".
+        after reading "inputs" when previous state was "state".
     """
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
     c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
     m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    dtype = input_.dtype
+    dtype = inputs.dtype
 
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "LSTMCell"
@@ -346,7 +347,7 @@ class LSTMCell(RNNCell):
           initializer=array_ops.zeros_initializer, dtype=dtype)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [input_, m_prev])
+      cell_inputs = array_ops.concat(1, [inputs, m_prev])
       lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
       i, j, f, o = array_ops.split(1, 4, lstm_matrix)
 

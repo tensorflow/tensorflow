@@ -22,8 +22,6 @@ import sys
 import threading
 import time
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 

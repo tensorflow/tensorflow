@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@saturate_cast
 
 ## Shapes and Shaping
 
@@ -66,7 +67,6 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -922,6 +922,32 @@ def _SqueezeShape(op):
   return [tensor_shape.TensorShape(result_shape)]
 
 
+@ops.RegisterShape("Bitcast")
+def _BitcastShape(op):
+  """Shape function for Bitcast op."""
+  input_shape = op.inputs[0].get_shape()
+  input_type = op.inputs[0].dtype
+  size_of_input = input_type.size
+  output = dtypes.as_dtype(op.get_attr("type"))
+  size_of_output = output.size
+  if size_of_input == size_of_output:
+    return [tensor_shape.TensorShape(input_shape)]
+  else:
+    if size_of_output > size_of_input:
+      new_shape = input_shape.as_list()
+      last_val = new_shape[-1]
+      if last_val == (size_of_output // size_of_input):
+        new_shape = new_shape[:-1]
+      else:
+        raise ValueError(
+            "Cannot bitcast due to shape. %d is not evenly divisible by %d." %
+            (new_shape[-1], size_of_input // size_of_output))
+    else:
+      new_shape = input_shape
+      new_shape = new_shape.concatenate([size_of_input // size_of_output])
+    return [tensor_shape.TensorShape(new_shape)]
+
+
 @ops.RegisterShape("Reshape")
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
@@ -1329,7 +1355,7 @@ def _SpaceToDepthShape(op):
   * input: a tensor of shape like that [B, H, W, D]
   * block_size: an int.
 
-  Its output is the the same-rank tensor but with changed
+  Its output is the same-rank tensor but with changed
   dimensions like that: [B, H/block_size, W/block_size, D*block_size*block_size]
 
   Args:
@@ -1377,7 +1403,7 @@ def _DepthToSpaceShape(op):
   * input: a tensor of shape like that [B, H, W, D]
   * block_size: an int.
 
-  Its output is the the same-rank tensor but with changed
+  Its output is the same-rank tensor but with changed
   dimensions like that:
       [B, H*block_size, W*block_size, D/(block_size*block_size)]
 

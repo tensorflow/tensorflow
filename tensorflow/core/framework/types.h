@@ -189,6 +189,9 @@ bool DataTypeCanUseMemcpy(DataType dt);
 
 bool DataTypeIsQuantized(DataType dt);
 
+// Returns a 0 on failure
+int DataTypeSize(DataType dt);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_TYPES_H_

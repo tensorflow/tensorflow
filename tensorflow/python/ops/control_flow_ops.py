@@ -69,6 +69,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -130,9 +131,9 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
   """Creates or finds a child frame, and makes `data` available to it.
 
   The unique `frame_name` is used by the `Executor` to identify frames. If
-  `is_constant` is true, `output` is a constant in the child frame; otherwise
-  it may be changed in the child frame. At most `parallel_iterations` iterations
-  are run in parallel in the child frame.
+  `is_constant` is true, `data` is a constant in the child frame; otherwise
+  it may be changed in the child frame. At most `parallel_iterations`
+  iterations are run in parallel in the child frame.
 
   Args:
     data: The tensor to be made available to the child frame.
@@ -276,7 +277,23 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     TypeError: if data is not a Tensor or IndexedSlices
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, name="data")
-  with ops.device(data.device):
+  # NOTE(mrry): ops.device(None) below addresses the following scenario.
+  #
+  # Assume you execute Optimizer.apply_gradients() in a branch of a cond().
+  #
+  # 1. The update op is created inside a `with tf.device(var.device):` block
+  #    say var.device = "/job:ps/task:1".
+  #
+  # 2. Some tensor `data` is captured and a switch is created in a
+  #    `with tf.device(data.device):` block (data.device = "/job:worker_train").
+  #
+  # with tf.device("/job:ps/task:1"):
+  #  with tf.device("/job:worker_train"):
+  #    op = ...
+  #
+  # But then calling `print op.device` returns:
+  # ==> "/job:worker_train/task:1" -- a device that doesn't exist in this case!
+  with ops.device(None), ops.device(data.device):
     if isinstance(data, ops.Tensor):
       if not data.dtype.is_ref_dtype:
         return switch(data, pred, name=name)
@@ -752,16 +769,25 @@ class ControlFlowState(object):
     self._map = {}   # maps forward loop context to GradLoopState
 
   def _GetGradState(self, op):
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt is None:
-      return None
-    return self._map.get(forward_ctxt)
+    """Get the gradient loop state for this op if any."""
+    if _IsLoopExit(op):
+      forward_ctxt = op._get_control_flow_context()
+      forward_ctxt = forward_ctxt.outer_context
+      if forward_ctxt:
+        forward_ctxt = forward_ctxt.GetWhileContext()
+    else:
+      forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt:
+      return self._map.get(forward_ctxt)
+    return None
 
   def MakeWrapper(self, op):
     """Make a wrapper for op if it is in a WhileContext."""
-    grad_state = self._GetGradState(op)
-    if grad_state:
-      return ControlFlowOpWrapper(op, grad_state)
+    forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt:
+      grad_state = self._map.get(forward_ctxt)
+      if grad_state:
+        return ControlFlowOpWrapper(op, grad_state)
     return op
 
   def GetAllLoopExits(self):
@@ -1150,14 +1176,17 @@ def cond(pred, fn1, fn2, name=None):
                 return tensors of different types.
 
   Example:
+
   ```python
-    x = constant(2)
-    y = constant(5)
-    def f1(): return constant(17)
-    def f2(): return constant(23)
+    x = tf.constant(2)
+    y = tf.constant(5)
+    def f1(): return tf.mul(x, 17)
+    def f2(): return tf.add(y, 23)
     r = cond(math_ops.less(x, y), f1, f2)
-    # r is set to f1()
+    # r is set to f1().
+    # Operations in f2 (e.g., tf.add) are not executed.
   ```
+
   """
   with ops.op_scope([pred], name, "cond") as name:
     if not callable(fn1):
@@ -1408,9 +1437,15 @@ class WhileContext(ControlFlowContext):
       The gradient for a loop invariant.
     """
     self.Exit()
+    shape = value.get_shape()
+    if not shape.is_fully_defined():
+      shape = None
     if self.outer_context: self.outer_context.Enter()
-    acc = constant_op.constant(0, value.dtype, name="b_acc")
+    acc = constant_op.constant(0, value.dtype, shape=shape, name="b_acc")
+    if not shape:
+      acc._shape = value.get_shape()  # pylint: disable=protected-access
     if self.outer_context: self.outer_context.Exit()
+
     self.Enter()
     self.AddName(acc.name)
     enter_acc = _Enter(acc, self._name, is_constant=False,
@@ -1534,7 +1569,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Example:
     ```python
-    i =  Constant(0)
+    i = constant(0)
     c = lambda i: math_ops.less(i, 10)
     b = lambda i: math_ops.add(i, 1)
     r = While(c, b, [i])
@@ -1746,51 +1781,155 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-# TODO(yuanbyu): It would be nicer if we could have the distributed list
-# support that Derek has been proposing.
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
-def fold(fn, elems, elem_shape, name=None):
-  """The fold operator on slices of a tensor.
+def foldl(fn, elems, initializer=None, name=None):
+  """The foldl operator on the unpacked tensors of a tensor.
 
-  This fold operator applies the function `fn` to slices of `elems` on
-  dimension 0. The shape of the slices is specified by `elem_shape`. `elems`
-  must contain at least one slice (`shape(elems)[0] / elem_shape[0] > 0`).
+  This foldl operator applies the function `fn` to a sequence of elements
+  from left to right. The elements are made of the tensors unpacked from
+  `elems`. If `initializer` is None, `elems` must contain at least one
+  element.
 
   Args:
-    fn: The function to be performed on each slice of the tensor.
-    elems: The tensor to whose slices we want to apply `fn`.
-    elem_shape: The shape definition for the slices.
-    name: Optional name prefix for the returned tensors.
+    fn: The function to be performed.
+    elems: A tensor to be unpacked.
+    initializer: (optional) The initial value for the accumulator.
+    name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each slice of
-    `elems`.
+    A tensor resulting from applying `fn` consecutively on each
+    element/slice of `elems`, from left to right.
 
   Raises:
     TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    sum = foldl(lambda a, x: a + x, elems)
+    ```
   """
-  with ops.op_scope([elems], name, "fold") as name:
+  with ops.op_scope([elems], name, "foldl") as name:
     if not callable(fn):
       raise TypeError("fn must be callable.")
 
-    s0 = array_ops.shape(elems)[0]
-    d0 = elem_shape[0]
-    n = math_ops.div(s0, d0)
-    b1 = array_ops.zeros(array_ops.expand_dims(array_ops.rank(elems) - 1, 0),
-                         dtype=dtypes.int32)
-    # Initialize the output with slice 0
-    b = array_ops.concat(0, [[0], b1])
-    o = array_ops.slice(elems, b, elem_shape)
-    i = ops.convert_to_tensor(d0)
+    # Convert elems to tensor array.
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
+    elems_ta = elems_ta.unpack(elems)
 
-    def Compute(i, o):
-      b = array_ops.concat(0, [array_ops.expand_dims(i, 0), b1])
-      x = array_ops.slice(elems, b, elem_shape)
-      o = fn(o, x)
-      i = math_ops.add(i, d0)
-      return [i, o]
-    r = While(lambda i, o: math_ops.less(i, n), Compute, [i, o])
-    return r[1]
+    if initializer is None:
+      a = elems_ta.read(0)
+      i = constant_op.constant(1)
+    else:
+      a = ops.convert_to_tensor(initializer)
+      i = constant_op.constant(0)
+
+    def compute(i, a):
+      a = fn(a, elems_ta.read(i))
+      return [i + 1, a]
+    _, r_a = While(lambda i, a: i < n, compute, [i, a])
+    return r_a
+
+
+def foldr(fn, elems, initializer=None, name=None):
+  """The foldr operator operator on the unpacked tensors of a tensor.
+
+  This foldr operator applies the function `fn` to a sequence of elements
+  from right to left. The elements are made of the tensors unpacked from
+  `elems`. If `initializer` is None, `elems` must contain at least one
+  element.
+
+  Args:
+    fn: The function to be performed.
+    elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
+    initializer: (optional) The initial value for the accumulator.
+    use_tensor_array: (optional) use tensor_array if true.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor resulting from applying `fn` consecutively on each
+    element/slice of `elems`, from right to left.
+
+  Raises:
+    TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    sum = foldr(lambda a, x: a + x, elems)
+    ```
+  """
+  with ops.op_scope([elems], name, "foldr") as name:
+    if not callable(fn):
+      raise TypeError("fn must be callable.")
+
+    # Convert elems to tensor array.
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
+    elems_ta = elems_ta.unpack(elems)
+
+    if initializer is None:
+      i = n - 1
+      a = elems_ta.read(i)
+    else:
+      i = n
+      a = ops.convert_to_tensor(initializer)
+    def compute(i, a):
+      i -= 1
+      a = fn(a, elems_ta.read(i))
+      return [i, a]
+    _, r_a = While(lambda i, a: i > 0, compute, [i, a])
+    return r_a
+
+
+def map(fn, elems, dtype=None, name=None):
+  """The map operator on on the unpacked tensors of a tensor.
+
+  This map operator applies the function `fn` to a sequence of elements
+  from right to left. The elements are made of the tensors unpacked from
+  `elems`.
+
+  Args:
+    fn: The function to be performed.
+    elems: A tensor to be unpacked to apply `fn`.
+    dtype: (optional) The output type of `fn`.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor that packs the results of applying `fn` on each element
+    of `elems`.
+
+  Raises:
+    TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    squares = map(lambda x: x * x, elems)
+    ```
+  """
+  with ops.op_scope([elems], name, "map") as name:
+    if not callable(fn):
+      raise TypeError("fn must be callable.")
+    dtype = dtype if dtype else elems.dtype
+
+    # Convert elems to tensor array.
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=0,
+                                            dynamic_size=True)
+    elems_ta = elems_ta.unpack(elems)
+
+    n = elems_ta.size()
+    i = constant_op.constant(0)
+    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n)
+    def compute(i, a):
+      a = a.write(i, fn(elems_ta.read(i)))
+      i = math_ops.add(i, 1)
+      return [i, a]
+    _, r_a = While(lambda i, a: math_ops.less(i, n), compute, [i, acc_ta])
+    return r_a.pack()
 
 
 def case(pred_fn_pairs, default, exclusive=False, name="case"):
@@ -1943,10 +2082,10 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
 
 ops.RegisterShape("Enter")(common_shapes.unchanged_shape)
-ops.RegisterShape("Exit")(common_shapes.unknown_shape)
+ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
 ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefExit")(common_shapes.unknown_shape)
+ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)

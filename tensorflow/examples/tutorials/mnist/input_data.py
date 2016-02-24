@@ -20,8 +20,7 @@ from __future__ import print_function
 
 import gzip
 import os
-
-import tensorflow.python.platform
+import tempfile
 
 import numpy
 from six.moves import urllib
@@ -37,10 +36,13 @@ def maybe_download(filename, work_directory):
     tf.gfile.MakeDirs(work_directory)
   filepath = os.path.join(work_directory, filename)
   if not tf.gfile.Exists(filepath):
-    filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
-    with tf.gfile.GFile(filepath) as f:
-      size = f.Size()
-    print('Successfully downloaded', filename, size, 'bytes.')
+    with tempfile.NamedTemporaryFile() as tmpfile:
+      temp_file_name = tmpfile.name
+      urllib.request.urlretrieve(SOURCE_URL + filename, temp_file_name)
+      tf.gfile.Copy(temp_file_name, filepath)
+      with tf.gfile.GFile(filepath) as f:
+        size = f.Size()
+      print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
 
 
@@ -52,7 +54,7 @@ def _read32(bytestream):
 def extract_images(filename):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   print('Extracting', filename)
-  with gzip.open(filename) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2051:
       raise ValueError(
@@ -67,7 +69,7 @@ def extract_images(filename):
     return data
 
 
-def dense_to_one_hot(labels_dense, num_classes=10):
+def dense_to_one_hot(labels_dense, num_classes):
   """Convert class labels from scalars to one-hot vectors."""
   num_labels = labels_dense.shape[0]
   index_offset = numpy.arange(num_labels) * num_classes
@@ -76,10 +78,10 @@ def dense_to_one_hot(labels_dense, num_classes=10):
   return labels_one_hot
 
 
-def extract_labels(filename, one_hot=False):
+def extract_labels(filename, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
-  with gzip.open(filename) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2049:
       raise ValueError(
@@ -89,7 +91,7 @@ def extract_labels(filename, one_hot=False):
     buf = bytestream.read(num_items)
     labels = numpy.frombuffer(buf, dtype=numpy.uint8)
     if one_hot:
-      return dense_to_one_hot(labels)
+      return dense_to_one_hot(labels, num_classes)
     return labels
 
 

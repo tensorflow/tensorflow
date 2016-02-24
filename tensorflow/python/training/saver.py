@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import os.path
+import re
 import time
 
 import numpy as np
@@ -797,11 +798,6 @@ class Saver(object):
     self._next_checkpoint_time = (
         time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
     self._last_checkpoints = []
-    self._graph_def = ops.get_default_graph().as_graph_def()
-
-  @property
-  def graph_def(self):
-    return self._graph_def
 
   def _CheckpointFilename(self, p):
     """Returns the checkpoint filename given a `(filename, time)` pair.
@@ -815,6 +811,23 @@ class Saver(object):
     name, _ = p
     return name
 
+  def _MetaGraphFilename(self, checkpoint_filename, meta_graph_suffix="meta"):
+    """Returns the meta graph filename.
+
+    Args:
+      checkpoint_filename: Name of the checkpoint file.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+
+    Returns:
+      MetaGraph file name.
+    """
+    # If the checkpoint_filename is sharded, the checkpoint_filename could
+    # be of format model.ckpt-step#-?????-of-shard#. For example,
+    # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
+    basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
+    meta_graph_filename = ".".join([basename, meta_graph_suffix])
+    return meta_graph_filename
+
   def _MaybeDeleteOldCheckpoints(self, latest_save_path,
                                  meta_graph_suffix="meta"):
     """Deletes old checkpoints if necessary.
@@ -827,7 +840,7 @@ class Saver(object):
 
     Args:
       latest_save_path: Name including path of checkpoint file to save.
-      meta_graph_suffix: Suffix for MetaGraphDef file. Defaults to 'meta'.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
     """
     if not self.saver_def.max_to_keep:
       return
@@ -851,7 +864,10 @@ class Saver(object):
       for f in gfile.Glob(self._CheckpointFilename(p)):
         try:
           gfile.Remove(f)
-          gfile.Remove(".".join([f, meta_graph_suffix]))
+          meta_graph_filename = self._MetaGraphFilename(
+              f, meta_graph_suffix=meta_graph_suffix)
+          if gfile.Exists(meta_graph_filename):
+            gfile.Remove(meta_graph_filename)
         except OSError as e:
           logging.warning("Ignoring: %s", str(e))
 
@@ -864,11 +880,16 @@ class Saver(object):
     return self.saver_def
 
   def to_proto(self):
-    """Returns a `SaverDef` protocol buffer."""
+    """Converts this `Saver` to a `SaverDef` protocol buffer.
+
+    Returns:
+      A `SaverDef` protocol buffer.
+    """
     return self.saver_def
 
   @staticmethod
   def from_proto(saver_def):
+    """Returns a `Saver` object created from `saver_def`."""
     return Saver(saver_def=saver_def)
 
   @property
@@ -935,7 +956,7 @@ class Saver(object):
         kept in the same directory as the checkpoint files, is automatically
         managed by the saver to keep track of recent checkpoints.  Defaults to
         'checkpoint'.
-      meta_graph_suffix: Suffix for MetaGraphDef file. Defaults to 'meta'.
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
 
     Returns:
       A string: path at which the variables were saved.  If the saver is
@@ -970,9 +991,10 @@ class Saver(object):
                                     meta_graph_suffix=meta_graph_suffix)
     update_checkpoint_state(save_path, model_checkpoint_path,
                             self.last_checkpoints, latest_filename)
-    meta_graph_file_name = ".".join([checkpoint_file, meta_graph_suffix])
+    meta_graph_filename = self._MetaGraphFilename(
+        checkpoint_file, meta_graph_suffix=meta_graph_suffix)
     with sess.graph.as_default():
-      self.export_meta_graph(meta_graph_file_name)
+      self.export_meta_graph(meta_graph_filename)
 
     return model_checkpoint_path
 
@@ -988,7 +1010,8 @@ class Saver(object):
     Returns:
       A `MetaGraphDef` proto.
     """
-    return export_meta_graph(filename=filename, graph_def=self.graph_def,
+    return export_meta_graph(filename=filename,
+                             graph_def=ops.get_default_graph().as_graph_def(),
                              saver_def=self.saver_def,
                              collection_list=collection_list,
                              as_text=as_text)
@@ -1052,9 +1075,9 @@ def _get_kind_name(item):
   Returns:
     The string representation of the kind in CollectionDef.
   """
-  if isinstance(item, six.string_types) or isinstance(item, bytes):
+  if isinstance(item, (six.string_types, six.binary_type)):
     kind = "bytes_list"
-  elif isinstance(item, (int, long)):
+  elif isinstance(item, six.integer_types):
     kind = "int64_list"
   elif isinstance(item, float):
     kind = "float_list"
@@ -1095,11 +1118,17 @@ def _add_collection_def(meta_graph_def, key):
       kind = _get_kind_name(collection_list[0])
       if kind == "node_list":
         getattr(col_def, kind).value.extend([x.name for x in collection_list])
+      elif kind == "bytes_list":
+        # NOTE(opensource): This force conversion is to work around the fact
+        # that Python3 distinguishes between bytes and strings.
+        getattr(col_def, kind).value.extend(
+            [compat.as_bytes(x) for x in collection_list])
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
   except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s" % str(e))
+    logging.warning("Error encountered when serializing %s.\n"
+                    "Type is unsupported, or the types of the items don't "
+                    "match field type in CollectionDef.\n%s" % (key, str(e)))
     if key in meta_graph_def.collection_def:
       del meta_graph_def.collection_def[key]
     return
@@ -1179,20 +1208,27 @@ def _read_meta_graph_file(filename):
     IOError: If the file doesn't exist, or cannot be successfully parsed.
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  # First try to read it as a binary file.
   if not gfile.Exists(filename):
     raise IOError("File %s does not exist." % filename)
+  # First try to read it as a binary file.
   with gfile.FastGFile(filename, "rb") as f:
     file_content = f.read()
     try:
       meta_graph_def.ParseFromString(file_content)
+      return meta_graph_def
     except Exception:  # pylint: disable=broad-except
-      try:
-        # Next try to read it as a text file.
-        text_format.Merge(file_content, meta_graph_def)
-      except text_format.ParseError as e:
-        raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
-  return meta_graph_def
+      pass
+
+  # Next try to read it as a text file.
+  with gfile.FastGFile(filename, "r") as f:
+    file_content = f.read()
+    try:
+      text_format.Merge(file_content, meta_graph_def)
+      return meta_graph_def
+    except text_format.ParseError as e:
+      raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+
+  return None
 
 
 def _import_meta_graph_def(meta_graph_def):
@@ -1231,6 +1267,12 @@ def _import_meta_graph_def(meta_graph_def):
         for value in field.value:
           col_op = ops.get_default_graph().as_graph_element(value)
           ops.add_to_collection(key, col_op)
+      elif kind == "int64_list":
+        # NOTE(opensource): This force conversion is to work around the fact
+        # that Python2 distinguishes between int and long, while Python3 has
+        # only int.
+        for value in field.value:
+          ops.add_to_collection(key, int(value))
       else:
         for value in field.value:
           ops.add_to_collection(key, value)
@@ -1244,9 +1286,12 @@ def _import_meta_graph_def(meta_graph_def):
 def import_meta_graph(meta_graph_or_file):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
-  This function reads from a file containing a `MetaGraphDef` proto,
-  adds all the nodes from the graph_def proto to the current graph,
-  recreates all the collections, and returns a saver from saver_def.
+  This function takes a `MetaGraphDef` protocol buffer as input. If
+  the argument is a file containing a `MetaGraphDef` protocol buffer ,
+  it constructs a protocol buffer from the file content. The function
+  then adds all the nodes from the `graph_def` field to the
+  current graph, recreates all the collections, and returns a saver
+  constructed from the `saver_def` field.
 
   In combination with `export_meta_graph()`, this function can be used to
 
@@ -1256,6 +1301,38 @@ def import_meta_graph(meta_graph_or_file):
   * Restart training from a saved graph and checkpoints.
 
   * Run inference from a saved graph and checkpoints.
+
+  ```Python
+  ...
+  # Create a saver.
+  saver = tf.train.Saver(...variables...)
+  # Remember the training_op we want to run by adding it to a collection.
+  tf.add_to_collection('train_op', train_op)
+  sess = tf.Session()
+  for step in xrange(1000000):
+      sess.run(train_op)
+      if step % 1000 == 0:
+          # Saves checkpoint, which by default also exports a meta_graph
+          # named 'my-model-global_step.meta'.
+          saver.save(sess, 'my-model', global_step=step)
+  ```
+
+  Later we can continue training from this saved `meta_graph` without building
+  the model from scratch.
+
+  ```Python
+  with tf.Session() as sess:
+    new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+    new_saver.restore(sess, 'my-save-dir/my-model-10000')
+    # tf.get_collection() retrurns a list. In this example we only want the
+    # first one.
+    train_op = tf.get_collection('train_op')[0]
+    for step in xrange(1000000):
+      sess.run(train_op)
+  ```
+
+  NOTE: Restarting training from saved `meta_graph` only works if the
+  device assignments have not changed.
 
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including

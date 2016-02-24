@@ -110,18 +110,18 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
   CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
-  CheckAndLinkToSrcTree CudaError lib64/libcublas.so.$TF_CUDA_VERSION
-  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.$TF_CUDNN_VERSION
-  CheckAndLinkToSrcTree CudaError lib64/libcudart.so.$TF_CUDA_VERSION
-  CheckAndLinkToSrcTree CudaError lib64/libcufft.so.$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudaError lib64/libcublas.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so$TF_CUDNN_VERSION
+  CheckAndLinkToSrcTree CudaError lib64/libcudart.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudaError lib64/libcufft.so$TF_CUDA_VERSION
   exit 0
 fi
 
 # Actually configure the source tree for TensorFlow's canonical view of Cuda
 # libraries.
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.$TF_CUDA_VERSION; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.$TF_CUDA_VERSION"
+if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -133,14 +133,16 @@ if test -e ${CUDNN_INSTALL_PATH}/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}
 elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}/include
+elif test -e /usr/include/cudnn.h; then
+  CUDNN_HEADER_PATH=/usr/include
 else
-  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH} or /usr/include"
 fi
 
 # Locate libcudnn.so.${$TF_CUDNN_VERSION}
-if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so.$TF_CUDNN_VERSION; then
+if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so$TF_CUDNN_VERSION; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so.$TF_CUDNN_VERSION; then
+elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so$TF_CUDNN_VERSION; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/lib64
 else
   CudnnError "cannot find libcudnn.so.$TF_CUDNN_VERSION under: ${CUDNN_INSTALL_PATH}"
@@ -182,4 +184,4 @@ LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || 
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/libcudnn.so.$TF_CUDNN_VERSION $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so.$TF_CUDNN_VERSION || exit -1
+ln -sf $CUDNN_LIB_PATH/libcudnn.so$TF_CUDNN_VERSION $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so$TF_CUDNN_VERSION || exit -1

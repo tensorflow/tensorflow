@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
-class GpuDevice;
+struct ThreadPoolDevice;
+struct GpuDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -523,6 +523,7 @@ class OpKernelContext {
 
   // params must outlive the OpKernelContext.
   explicit OpKernelContext(Params* params);
+  OpKernelContext(Params* params, int noutputs);
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
@@ -916,7 +917,8 @@ class OpKernelContext {
           return wrapped.second;
         }
       }
-      TrackingAllocator* wrapped_allocator = new TrackingAllocator(allocator);
+      TrackingAllocator* wrapped_allocator =
+          new TrackingAllocator(allocator, attr.track_sizes());
       wrapped_allocators_.push_back(
           std::make_pair(allocator, wrapped_allocator));
       return wrapped_allocator;
@@ -958,6 +960,7 @@ class OpKernelContext {
   gtl::InlinedVector<TensorValue, 4> outputs_;
   UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
   bool is_output_dead_ = false;
+  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1014,23 +1017,6 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
-// Returns into *{input,output}_memory_types the memory type of each
-// {input,output} tensor.
-//
-// REQUIRES: * '*_memory_types' is not nullptr.
-//           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
-Status MemoryTypesForNode(const OpRegistryInterface& op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
@@ -1052,10 +1038,15 @@ typedef ::tensorflow::KernelDefBuilder Name;
   static ::tensorflow::kernel_factory::OpKernelRegistrar         \
       registrar__body__##ctr##__object(                          \
           ::tensorflow::register_kernel::kernel_builder.Build(), \
-          +[](::tensorflow::OpKernelConstruction* context)       \
+          [](::tensorflow::OpKernelConstruction* context)        \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
+
+// If node_def has a corresponding kernel registered on device_type,
+// returns OK and fill in the kernel def.
+Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+                     const KernelDef** def);
 
 // Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
 // registered with the current library's global kernel registry (obtained by
@@ -1093,7 +1084,9 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  if (params_->device->RequiresRecordingAccessedTensors()) {
+  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
+         record_tensor_accesses_);
+  if (record_tensor_accesses_) {
     mutex_lock l(mu_);
     // Keep a reference to the underlying memory around.
     referenced_tensors_.Add(tensor);
@@ -1102,8 +1095,10 @@ inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
 
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
-  mutex_lock l(mu_);
-  referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  if (record_tensor_accesses_) {
+    mutex_lock l(mu_);
+    referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  }
 }
 
 inline const Tensor& OpKernelContext::input(int index) {

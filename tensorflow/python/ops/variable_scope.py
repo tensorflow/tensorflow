@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+
 import six
 
 from tensorflow.python.framework import dtypes
@@ -28,6 +29,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import logging
+
+__all__ = ["VariableScope", "get_variable_scope", "get_variable",
+           "variable_scope", "variable_op_scope", "no_regularizer"]
 
 
 class _VariableStore(object):
@@ -46,8 +50,8 @@ class _VariableStore(object):
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
-                   initializer=None, reuse=None, trainable=True,
-                   collections=None):
+                   initializer=None, regularizer=None, reuse=None,
+                   trainable=True, collections=None, caching_device=None):
     """Gets an existing variable with these parameters or create a new one.
 
     If a variable with the given name is already stored, we return the stored
@@ -68,11 +72,19 @@ class _VariableStore(object):
       shape: shape of the new or existing variable.
       dtype: type of the new or existing variable (defaults to `DT_FLOAT`).
       initializer: initializer for the variable.
+      regularizer: a (Tensor -> Tensor or None) function; the result of
+        applying it on a newly created variable will be added to the collection
+        GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
       collections: List of graph collections keys to add the Variable to.
         Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+      caching_device: Optional device string or function describing where the
+        Variable should be cached for reading.  Defaults to the Variable's
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
 
     Returns:
       The created or existing variable.
@@ -96,7 +108,7 @@ class _VariableStore(object):
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if should_check and not reuse:
-        raise ValueError("Over-sharing: Variable %s already exists, disallowed."
+        raise ValueError("Variable %s already exists, disallowed."
                          " Did you mean to set reuse=True in VarScope?" % name)
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
@@ -113,29 +125,50 @@ class _VariableStore(object):
 
     # The code below handles only the case of creating a new variable.
     if should_check and reuse:
-      raise ValueError("Under-sharing: Variable %s does not exist, disallowed."
+      raise ValueError("Variable %s does not exist, disallowed."
                        " Did you mean to set reuse=None in VarScope?" % name)
     if not shape.is_fully_defined() and not initializing_from_value:
       raise ValueError("Shape of a new variable (%s) must be fully defined, "
                        "but instead was %s." % (name, shape))
+
+    # Create the tensor to initialize the variable.
     if initializer is None:
       initializer = init_ops.uniform_unit_scaling_initializer()
-    # Clear control dependencies while creating the initializer ops.
+    # Clear control dependencies while creating the initializer.
     with ops.control_dependencies(None):
       if initializing_from_value:
         init_val = initializer
       else:
         with ops.name_scope(name + "/Initializer/"):
           init_val = initializer(shape.as_list(), dtype=dtype)
-      v = variables.Variable(init_val, name=name, trainable=trainable,
-                             collections=collections)
+
+    # Create the variable.
+    v = variables.Variable(init_val, name=name, trainable=trainable,
+                           collections=collections,
+                           caching_device=caching_device)
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
+
+    # Run the regularizer if requested and save the resulting loss.
+    if regularizer:
+      with ops.name_scope(name + "/Regularizer/"):
+        loss = regularizer(v)
+      if loss:
+        logging.info("Applied regularizer to %s and added the result %s to "
+                     "REGULARIZATION_LOSSES.", v.name, loss.name)
+        ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
+
     return v
 
 
-class _VariableScope(object):
+# To stop regularization, use this regularizer
+def no_regularizer(_):
+  """Use this function to prevent regularization of variables."""
+  return None
+
+
+class VariableScope(object):
   """Variable scope object to carry defaults to provide to get_variable.
 
   Many of the arguments we need for get_variable in a variable store are most
@@ -144,14 +177,21 @@ class _VariableScope(object):
   Attributes:
     name: name of the current scope, used as prefix in get_variable.
     initializer: default initializer passed to get_variable.
+    regularizer: default regularizer passed to get_variable.
     reuse: Boolean or None, setting the reuse in get_variable.
+    caching_device: string, callable, or None: the caching device passed to
+      get_variable.
     name_scope: The name passed to tf.name_scope.
   """
 
-  def __init__(self, reuse, name="", initializer=None, name_scope=""):
+  def __init__(self, reuse, name="", initializer=None, regularizer=None,
+               caching_device=None, name_scope=""):
+    """Creates a new VariableScope with the given properties."""
     self._name = name
     self._initializer = initializer
+    self._regularizer = regularizer
     self._reuse = reuse
+    self._caching_device = caching_device
     self._name_scope = name_scope
 
   @property
@@ -166,6 +206,14 @@ class _VariableScope(object):
   def initializer(self):
     return self._initializer
 
+  @property
+  def regularizer(self):
+    return self._regularizer
+
+  @property
+  def caching_device(self):
+    return self._caching_device
+
   def reuse_variables(self):
     """Reuse variables in this scope."""
     self._reuse = True
@@ -174,17 +222,33 @@ class _VariableScope(object):
     """Set initializer for this scope."""
     self._initializer = initializer
 
+  def set_regularizer(self, regularizer):
+    """Set regularizer for this scope."""
+    self._regularizer = regularizer
+
+  def set_caching_device(self, caching_device):
+    """Set caching_device for this scope."""
+    self._caching_device = caching_device
+
   def get_variable(self, var_store, name, shape=None, dtype=dtypes.float32,
-                   initializer=None, trainable=True, collections=None):
+                   initializer=None, regularizer=None,
+                   trainable=True, collections=None, caching_device=None):
     """Gets an existing variable with this name or create a new one."""
-    if initializer is None and self._initializer:
+    if initializer is None:
       initializer = self._initializer
+    if regularizer is None:
+      regularizer = self._regularizer
+    if caching_device is None:
+      caching_device = self._caching_device
+
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
     # not name_scope, so we reset it below for the time of variable creation.
     with ops.name_scope(None):
-      return var_store.get_variable(full_name, shape, dtype, initializer,
-                                    self.reuse, trainable, collections)
+      return var_store.get_variable(
+          full_name, shape=shape, dtype=dtype, initializer=initializer,
+          regularizer=regularizer, reuse=self.reuse, trainable=trainable,
+          collections=collections, caching_device=caching_device)
 
 
 _VARSTORE_KEY = ("__variable_store",)
@@ -196,7 +260,7 @@ def get_variable_scope():
   scope = ops.get_collection(_VARSCOPE_KEY)
   if scope:  # This collection has at most 1 element, the default scope at [0].
     return scope[0]
-  scope = _VariableScope(False)
+  scope = VariableScope(False)
   ops.add_to_collection(_VARSCOPE_KEY, scope)
   return scope
 
@@ -211,7 +275,8 @@ def _get_default_variable_store():
 
 
 def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
-                 trainable=True, collections=None):
+                 regularizer=None, trainable=True,
+                 collections=None):
   """Gets an existing variable with these parameters or create a new one.
 
   This function prefixes the name with the current variable scope
@@ -228,15 +293,22 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
   ```
 
   If initializer is `None` (the default), the default initializer passed in
-  the constructor is used. If that one is `None` too, a
+  the variable scope will be used. If that one is `None` too, a
   `UniformUnitScalingInitializer` will be used. The initializer can also be
   a Tensor, in which case the variable is initialized to this value and shape.
+
+  Similarly, if the regularizer is `None` (the default), the default regularizer
+  passed in the variable scope will be used (if that is `None` too,
+  then by default no regularization is performed).
 
   Args:
     name: the name of the new or existing variable.
     shape: shape of the new or existing variable.
     dtype: type of the new or existing variable (defaults to `DT_FLOAT`).
     initializer: initializer for the variable if one is created.
+    regularizer: a (Tensor -> Tensor or None) function; the result of
+      applying it on a newly created variable will be added to the collection
+      GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: List of graph collections keys to add the Variable to.
@@ -250,13 +322,15 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       or when violating reuse during variable creation. Reuse is set inside
       `variable_scope`.
   """
-  return get_variable_scope().get_variable(_get_default_variable_store(), name,
-                                           shape, dtype, initializer,
-                                           trainable, collections)
+  return get_variable_scope().get_variable(
+      _get_default_variable_store(), name, shape=shape, dtype=dtype,
+      initializer=initializer, regularizer=regularizer, trainable=trainable,
+      collections=collections)
 
 
 @contextlib.contextmanager
-def _pure_variable_scope(name_or_scope, reuse=None, initializer=None):
+def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
+                         regularizer=None, caching_device=None):
   """Creates a context for the variable_scope, see `variable_scope` for docs.
 
   Note: this does not create a name scope.
@@ -266,6 +340,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None):
     reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
       well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
     initializer: default initializer for variables within this scope.
+    regularizer: default regularizer for variables within this scope.
+    caching_device: default caching device for variables within this scope.
 
   Yields:
     A scope that can be to captured and reused.
@@ -281,28 +357,42 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None):
   try:
     old = default_varscope[0]
     reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
-    if isinstance(name_or_scope, _VariableScope):
+    if isinstance(name_or_scope, VariableScope):
       name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.
       #   We create a new VariableScope (default_varscope[0]) that contains
       #   a copy of the provided shared scope, possibly with changed reuse
       #   and initializer, if the user requested this.
-      default_varscope[0] = _VariableScope(reuse, name_or_scope.name,
-                                           name_or_scope.initializer,
-                                           name_scope)
-      if initializer:
+      default_varscope[0] = VariableScope(
+          reuse, name=name_or_scope.name,
+          initializer=name_or_scope.initializer,
+          regularizer=name_or_scope.regularizer,
+          caching_device=name_or_scope.caching_device,
+          name_scope=name_scope)
+      if initializer is not None:
         default_varscope[0].set_initializer(initializer)
+      if regularizer is not None:
+        default_varscope[0].set_regularizer(regularizer)
+      if caching_device is not None:
+        default_varscope[0].set_caching_device(caching_device)
       yield default_varscope[0]
     else:
       # Handler for the case when we just prolong current variable scope.
       #   VariableScope with name extended by the provided one, and inherited
       #   reuse and initializer (except if the user provided values to set).
       new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
-      default_varscope[0] = _VariableScope(reuse, name=new_name,
-                                           initializer=old.initializer,
-                                           name_scope=name_or_scope)
-      if initializer:
+      default_varscope[0] = VariableScope(
+          reuse, name=new_name,
+          initializer=old.initializer,
+          regularizer=old.regularizer,
+          caching_device=old.caching_device,
+          name_scope=name_or_scope)
+      if initializer is not None:
         default_varscope[0].set_initializer(initializer)
+      if regularizer is not None:
+        default_varscope[0].set_regularizer(regularizer)
+      if caching_device is not None:
+        default_varscope[0].set_caching_device(caching_device)
       yield default_varscope[0]
   finally:
     default_varscope[0] = old
@@ -310,7 +400,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None):
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_scope(name_or_scope, reuse=None, initializer=None):
+def variable_scope(name_or_scope, reuse=None, initializer=None,
+                   regularizer=None, caching_device=None):
   """Returns a context for variable scope.
 
   Variable scope allows to create new variables and to share already created
@@ -374,6 +465,8 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
     reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
       well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
     initializer: default initializer for variables within this scope.
+    regularizer: default regularizer for variables within this scope.
+    caching_device: default caching device for variables within this scope.
 
   Returns:
     A scope that can be to captured and reused.
@@ -383,7 +476,7 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if not isinstance(name_or_scope, (_VariableScope,) + six.string_types):
+  if not isinstance(name_or_scope, (VariableScope,) + six.string_types):
     raise TypeError("VariableScope: name_scope must be a string or "
                     "VariableScope.")
   if isinstance(name_or_scope, six.string_types):
@@ -392,17 +485,21 @@ def variable_scope(name_or_scope, reuse=None, initializer=None):
     name = name_or_scope._name_scope  # pylint: disable=protected-access
   if name:
     with ops.name_scope(name), _pure_variable_scope(
-        name_or_scope, reuse, initializer) as vs:
+        name_or_scope, reuse=reuse, initializer=initializer,
+        regularizer=regularizer, caching_device=caching_device) as vs:
       yield vs
   else:
     # This can only happen if someone is entering the root variable scope.
-    with _pure_variable_scope(name_or_scope, reuse, initializer) as vs:
+    with _pure_variable_scope(
+        name_or_scope, reuse=reuse, initializer=initializer,
+        regularizer=regularizer, caching_device=caching_device) as vs:
       yield vs
 
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_op_scope(values, name, default_name, initializer=None):
+def variable_op_scope(values, name, default_name, initializer=None,
+                      regularizer=None, caching_device=None):
   """Returns a context manager for defining an op that creates variables.
 
   This context manager validates that the given `values` are from the
@@ -435,7 +532,10 @@ def variable_op_scope(values, name, default_name, initializer=None):
       uniquified in the variable scope.
     default_name: The default name to use if the `name` argument is `None`, this
       name will be uniquified.
-    initializer: A default initializer to pass to variable scope.
+    initializer: The  default initializer to pass to variable scope.
+    regularizer: The default regularizer for variables within this scope.
+    caching_device: The default caching device for variables within this scope.
+
 
   Returns:
     A context manager for use in defining a Python op.
@@ -450,12 +550,15 @@ def variable_op_scope(values, name, default_name, initializer=None):
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
   with g.as_default():
     if name:
-      with variable_scope(name, initializer=initializer) as vs:
+      with variable_scope(name, initializer=initializer,
+                          regularizer=regularizer,
+                          caching_device=caching_device) as vs:
         yield vs
     else:
       with ops.name_scope(default_name) as scope:
         count = len(default_name.split("/"))
         scoped_name = "/".join(scope.split("/")[-count - 1:-1])
-        with _pure_variable_scope(scoped_name,
-                                  initializer=initializer) as vs:
+        with _pure_variable_scope(
+            scoped_name, initializer=initializer,
+            regularizer=regularizer, caching_device=caching_device) as vs:
           yield vs

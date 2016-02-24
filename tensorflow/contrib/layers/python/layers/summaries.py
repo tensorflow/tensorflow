@@ -35,7 +35,7 @@ __all__ = ['summarize_tensor', 'summarize_activation', 'summarize_tensors',
 def _assert_summary_tag_unique(tag):
   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES):
     old_tag = tensor_util.constant_value(summary.op.inputs[0])
-    if tag == str(old_tag):
+    if tag.encode() == old_tag:
       raise ValueError('Conflict with summary tag: %s exists on summary %s %s' %
                        (tag, summary, old_tag))
 
@@ -102,7 +102,7 @@ def summarize_activation(op):
   return _add_histogram_summary(op, '%s/activation' % op.op.name)
 
 
-def summarize_tensor(tensor):
+def summarize_tensor(tensor, tag=None):
   """Summarize a tensor using a suitable summary type.
 
   This function adds a summary op for `tensor`. The type of summary depends on
@@ -111,6 +111,7 @@ def summarize_tensor(tensor):
 
   Args:
     tensor: The tensor to summarize
+    tag: The tag to use, if None then use tensor's op's name.
 
   Returns:
     The summary op created.
@@ -118,11 +119,11 @@ def summarize_tensor(tensor):
 
   if tensor.get_shape().ndims == 0:
     # For scalars, use a scalar summary.
-    return _add_scalar_summary(tensor)
+    return _add_scalar_summary(tensor, tag)
   else:
     # We may land in here if the rank is still unknown. The histogram won't
     # hurt if this ends up being a scalar.
-    return _add_histogram_summary(tensor)
+    return _add_histogram_summary(tensor, tag)
 
 
 def summarize_tensors(tensors, summarizer=summarize_tensor):

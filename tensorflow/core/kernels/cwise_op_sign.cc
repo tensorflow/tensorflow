@@ -19,7 +19,6 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64);
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Sign", functor::sign, float, double, int64);
-#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -30,5 +29,6 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::sign<int32>>);
+#endif
 
 }  // namespace tensorflow

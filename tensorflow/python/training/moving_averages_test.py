@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
@@ -88,6 +86,8 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     avg0 = ema.average(var0)
     avg1 = ema.average(var1)
     avg2 = ema.average(tensor2)
+
+    self.assertItemsEqual([var0, var1], tf.moving_average_variables())
 
     self.assertFalse(avg0 in tf.trainable_variables())
     self.assertFalse(avg1 in tf.trainable_variables())

@@ -25,8 +25,6 @@ import re
 import sys
 import threading
 
-import tensorflow.python.platform
-
 import numpy as np
 import six
 
@@ -107,7 +105,7 @@ def IsGoogleCudaEnabled():
 
 
 class TensorFlowTestCase(googletest.TestCase):
-  """Root class for tests that need to test tensor flow.
+  """Base class for tests that need to test TensorFlow.
   """
 
   def __init__(self, methodName="runTest"):

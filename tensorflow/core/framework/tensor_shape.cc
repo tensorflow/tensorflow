@@ -61,6 +61,7 @@ Status TensorShape::IsValidShape(const TensorShapeProto& proto) {
 TensorShape::TensorShape(const TensorShapeProto& proto) {
   set_tag(REP16);
   set_ndims_byte(0);
+  set_data_type(DT_INVALID);
   num_elements_ = 1;
   for (const auto& d : proto.dim()) {
     AddDim(d.size());
@@ -70,6 +71,7 @@ TensorShape::TensorShape(const TensorShapeProto& proto) {
 TensorShape::TensorShape(gtl::ArraySlice<int64> dim_sizes) {
   set_tag(REP16);
   set_ndims_byte(0);
+  set_data_type(DT_INVALID);
   num_elements_ = 1;
   for (auto s : dim_sizes) {
     AddDim(s);
@@ -79,6 +81,7 @@ TensorShape::TensorShape(gtl::ArraySlice<int64> dim_sizes) {
 TensorShape::TensorShape() {
   set_tag(REP16);
   set_ndims_byte(0);
+  set_data_type(DT_INVALID);
   num_elements_ = 1;
 }
 
@@ -91,9 +94,11 @@ void TensorShape::SlowCopyFrom(const TensorShape& b) {
     // memcpy above implicitly also does:
     //   set_tag(b.tag());
     //   set_ndims_byte(b.ndims_byte());
+    //   set_data_type(b.data_type());
   } else {
     DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
+    set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {
       // vector already allocated
       *(as64()->dims_) = *(b.as64()->dims_);
@@ -105,11 +110,17 @@ void TensorShape::SlowCopyFrom(const TensorShape& b) {
 }
 
 void TensorShape::Clear() {
+  ClearAllButDataType();
+  set_data_type(DT_INVALID);
+}
+
+void TensorShape::ClearAllButDataType() {
   if (tag() == REP_OUT_OF_LINE) {
     delete as64()->dims_;
   }
   set_tag(REP16);
   set_ndims_byte(0);
+  // Leaves data_type alone
   num_elements_ = 1;
 }
 
@@ -127,7 +138,7 @@ void TensorShape::AddDim(int64 size) {
   CHECK_GE(size, 0);
   const int nd = ndims_byte();
   CHECK_LT(nd, 255) << "Too many dimensions in tensor";
-  if (tag() == REP16 && nd < 7 && size < kMaxRep16) {
+  if (tag() == REP16 && nd < 6 && size < kMaxRep16) {
     as16()->dims_[nd] = static_cast<int16>(size);
   } else if (tag() == REP32 && nd < 3 && size < kMaxRep32) {
     as32()->dims_[nd] = static_cast<int32>(size);
@@ -178,7 +189,7 @@ void TensorShape::InsertDim(int d, int64 size) {
   gtl::InlinedVector<int64, 8> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
-  Clear();
+  ClearAllButDataType();
   for (auto dval : vals) {
     AddDim(dval);
   }
@@ -207,7 +218,7 @@ void TensorShape::set_dim(int d, int64 size) {
     gtl::InlinedVector<int64, 8> vals;
     AppendTo(*this, &vals);
     vals[d] = size;
-    Clear();
+    ClearAllButDataType();
     for (auto dval : vals) {
       AddDim(dval);
     }
@@ -221,7 +232,7 @@ void TensorShape::RemoveDim(int d) {
   gtl::InlinedVector<int64, 8> vals;
   AppendTo(*this, &vals);
   vals.erase(vals.begin() + d);
-  Clear();
+  ClearAllButDataType();
   for (auto dval : vals) {
     AddDim(dval);
   }

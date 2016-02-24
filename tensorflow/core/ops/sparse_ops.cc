@@ -17,6 +17,38 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("SparseTensorDenseMatMul")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("T: type")
+    .Attr("adjoint_a: bool = false")
+    .Attr("adjoint_b: bool = false")
+    .Doc(R"doc(
+Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+
+No validity checking is performed on the indices of A.  However, the following
+input format is recommended for optimal behavior:
+
+if adjoint_a == false:
+  A should be sorted in lexicographically increasing order.  Use SparseReorder
+  if you're not sure.
+if adjoint_a == true:
+  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  order instead of "row major" order).
+
+a_indices: 2-D.  The `indices` of the `SparseTensor`, size [nnz x 2] Matrix.
+a_values: 1-D.  The `values` of the `SparseTensor`, size [nnz] Vector.
+a_shape: 1-D.  The `shape` of the `SparseTensor`, size [2] Vector.
+b: 2-D.  A dense Matrix.
+adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex, this
+  is transpose(conj(A)).  Otherwise it's transpose(A).
+adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex, this
+  is transpose(conj(B)).  Otherwise it's transpose(B).
+)doc");
+
 REGISTER_OP("SerializeSparse")
     .Input("sparse_indices: int64")
     .Input("sparse_values: T")
