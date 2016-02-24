@@ -46,7 +46,7 @@ def conv_model(X, y):
     features = tf.reshape(features, [-1, 12])
     return skflow.models.logistic_regression(features, y)
 
-val_monitor = monitors.ValidationMonitor(X_val, y_val, n_classes=10)
+val_monitor = monitors.ValidationMonitor(X_val, y_val, n_classes=10, print_steps=50)
 # Create a classifier, train and predict.
 classifier = skflow.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
                                         steps=1000, learning_rate=0.05,

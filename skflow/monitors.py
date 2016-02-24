@@ -26,16 +26,21 @@ from skflow.io.data_feeder import setup_train_data_feeder
 # pylint: disable=unused-argument
 # pylint: disable=attribute-defined-outside-init
 
+def default_monitor():
+    return(BaseMonitor())
+
+
 class BaseMonitor(object):
     """ Base class for all learning monitors. Stores and reports training loss throughout learning
 
+        Parameters:
         print_steps: Number of steps in between printing cost.
         early_stopping_rounds:  Activates early stopping if this is not None.
                                 Loss needs to decrease at least every every <early_stopping_rounds>
                                 round(s) to continue training. (default: None)
 
     """
-    def __init__(self, print_steps=100, early_stopping_rounds=500, verbose=1):
+    def __init__(self, print_steps=100, early_stopping_rounds=250, verbose=1):
         self.print_steps = print_steps
         self.early_stopping_rounds = early_stopping_rounds
 
@@ -127,10 +132,15 @@ class ValidationMonitor(BaseMonitor):
         val_X: Validation features
         val_y: Validation labels
         n_classes: Number of labels in output. 0 for regression
-        See BaseMonitor for arguments
+        print_steps: Number of steps in between printing cost.
+        early_stopping_rounds:  Activates early stopping if this is not None.
+                                Loss needs to decrease at least every every <early_stopping_rounds>
+                                round(s) to continue training. (default: None)
+
     """
-    def __init__(self, val_X, val_y, n_classes=0, *args, **kwargs):
-        super(ValidationMonitor, self).__init__()
+    def __init__(self, val_X, val_y, n_classes=0, print_steps=100, early_stopping_rounds=250):
+        super(ValidationMonitor, self).__init__(print_steps=print_steps,
+                                                early_stopping_rounds=early_stopping_rounds)
         self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
         self.print_val_loss_buffer = []
         self.all_val_loss_buffer = []
