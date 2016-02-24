@@ -617,8 +617,19 @@ Status DirectSession::GetOrCreateExecutors(
   if (run_state_args->is_partial_run) {
     ek->graph = run_state_args->graph;
     ek->name_to_node = new NameNodeMap;
+    std::unordered_set<StringPiece, StringPiece::Hasher> names;
+    for (const string& input : inputs) {
+      TensorId id(ParseTensorName(input));
+      names.emplace(id.first);
+    }
+    for (const string& output : outputs) {
+      TensorId id(ParseTensorName(output));
+      names.emplace(id.first);
+    }
     for (Node* n : run_state_args->graph->nodes()) {
-      ek->name_to_node->insert({n->name(), n});
+      if (names.count(n->name()) > 0) {
+        ek->name_to_node->insert({n->name(), n});
+      }
     }
   }
   ek->items.reserve(graphs.size());
