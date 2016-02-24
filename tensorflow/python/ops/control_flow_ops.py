@@ -1885,8 +1885,8 @@ def foldr(fn, elems, initializer=None, name=None):
     return r_a
 
 
-def map(fn, elems, dtype=None, name=None):
-  """The map operator on on the unpacked tensors of a tensor.
+def map_fn(fn, elems, dtype=None, name=None):
+  """The map operator on the unpacked tensors of a tensor.
 
   This map operator applies the function `fn` to a sequence of elements
   from right to left. The elements are made of the tensors unpacked from
@@ -1908,7 +1908,7 @@ def map(fn, elems, dtype=None, name=None):
   Example:
     ```python
     elems = [1, 2, 3, 4, 5, 6]
-    squares = map(lambda x: x * x, elems)
+    squares = map_fn(lambda x: x * x, elems)
     ```
   """
   with ops.op_scope([elems], name, "map") as name:

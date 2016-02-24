@@ -1198,7 +1198,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
       elems = tf.constant(nums, name="data")
-      r = control_flow_ops.map(
+      r = control_flow_ops.map_fn(
           lambda x: tf.mul(tf.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
