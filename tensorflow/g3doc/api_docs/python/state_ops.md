@@ -104,7 +104,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, name=None, variable_def=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -131,6 +131,11 @@ variable to its initial value.
 *  <b>`validate_shape`</b>: If `False`, allows the variable to be initialized with a
     value of unknown shape. If `True`, the default, the shape of
     `initial_value` must be known.
+*  <b>`caching_device`</b>: Optional device string describing where the Variable
+    should be cached for reading.  Defaults to the Variable's device.
+    If not `None`, caches on another device.  Typical use is to cache
+    on the device where the Ops using the Variable reside, to deduplicate
+    copying through `Switch` and other conditional statements.
 *  <b>`name`</b>: Optional name for the variable. Defaults to `'Variable'` and gets
     uniquified automatically.
 *  <b>`variable_def`</b>: `VariableDef` protocol buffer. If not `None`, recreates
@@ -389,7 +394,7 @@ The `Operation` of this variable.
 
 #### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
 
-
+Returns a `Variable` object created from `variable_def`.
 
 
 - - -
@@ -742,7 +747,7 @@ path can be passed directly to a call to `restore()`.
     kept in the same directory as the checkpoint files, is automatically
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
-*  <b>`meta_graph_suffix`</b>: Suffix for MetaGraphDef file. Defaults to 'meta'.
+*  <b>`meta_graph_suffix`</b>: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
 
 ##### Returns:
 
@@ -848,7 +853,7 @@ Writes `MetaGraphDef` to save_path/filename.
 
 #### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
 
-
+Returns a `Saver` object created from `saver_def`.
 
 
 - - -
@@ -873,7 +878,11 @@ Sets the list of old checkpoint filenames and timestamps.
 
 #### `tf.train.Saver.to_proto()` {#Saver.to_proto}
 
-Returns a `SaverDef` protocol buffer.
+Converts this `Saver` to a `SaverDef` protocol buffer.
+
+##### Returns:
+
+  A `SaverDef` protocol buffer.
 
 
 
@@ -1022,17 +1031,26 @@ Attributes:
   initializer: default initializer passed to get_variable.
   regularizer: default regularizer passed to get_variable.
   reuse: Boolean or None, setting the reuse in get_variable.
+  caching_device: string, callable, or None: the caching device passed to
+    get_variable.
   name_scope: The name passed to tf.name_scope.
 - - -
 
-#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, name_scope='')` {#VariableScope.__init__}
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, name_scope='')` {#VariableScope.__init__}
 
 Creates a new VariableScope with the given properties.
 
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.caching_device` {#VariableScope.caching_device}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -1074,6 +1092,13 @@ Reuse variables in this scope.
 
 - - -
 
+#### `tf.VariableScope.set_caching_device(caching_device)` {#VariableScope.set_caching_device}
+
+Set caching_device for this scope.
+
+
+- - -
+
 #### `tf.VariableScope.set_initializer(initializer)` {#VariableScope.set_initializer}
 
 Set initializer for this scope.
@@ -1089,7 +1114,7 @@ Set regularizer for this scope.
 
 - - -
 
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None)` {#variable_scope}
+### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None)` {#variable_scope}
 
 Returns a context for variable scope.
 
@@ -1157,6 +1182,7 @@ then all its sub-scopes become reusing as well.
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`initializer`</b>: default initializer for variables within this scope.
 *  <b>`regularizer`</b>: default regularizer for variables within this scope.
+*  <b>`caching_device`</b>: default caching device for variables within this scope.
 
 ##### Returns:
 
@@ -1172,7 +1198,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name, default_name, initializer=None, regularizer=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name, default_name, initializer=None, regularizer=None, caching_device=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -1208,8 +1234,10 @@ def my_op_with_vars(a, b, name=None):
     uniquified in the variable scope.
 *  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
     name will be uniquified.
-*  <b>`initializer`</b>: A default initializer to pass to variable scope.
-*  <b>`regularizer`</b>: default regularizer for variables within this scope.
+*  <b>`initializer`</b>: The  default initializer to pass to variable scope.
+*  <b>`regularizer`</b>: The default regularizer for variables within this scope.
+*  <b>`caching_device`</b>: The default caching device for variables within this scope.
+
 
 ##### Returns:
 

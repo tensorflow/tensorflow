@@ -301,7 +301,7 @@ activation.
 
 - - -
 
-### `tf.contrib.layers.summarize_tensor(tensor)` {#summarize_tensor}
+### `tf.contrib.layers.summarize_tensor(tensor, tag=None)` {#summarize_tensor}
 
 Summarize a tensor using a suitable summary type.
 
@@ -313,6 +313,7 @@ other tensors, `histogram_summary` is used.
 
 
 *  <b>`tensor`</b>: The tensor to summarize
+*  <b>`tag`</b>: The tag to use, if None then use tensor's op's name.
 
 ##### Returns:
 
@@ -375,5 +376,33 @@ be `dtypes.float32` or `dtypes.float64`. If neither `tensors` nor
 
 *  <b>`ValueError`</b>: if neither `tensors` nor `dtype` is supplied, or result is not
       float.
+
+
+- - -
+
+### `tf.contrib.layers.assert_scalar_int(tensor)` {#assert_scalar_int}
+
+Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: Tensor to test.
+
+##### Returns:
+
+  `tensor`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
+
+
+- - -
+
+### `tf.contrib.layers.is_numeric_tensor(tensor)` {#is_numeric_tensor}
+
+
 
 

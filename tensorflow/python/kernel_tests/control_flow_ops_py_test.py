@@ -1232,6 +1232,50 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertAllClose(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
 
+  def testCase(self):
+    with self.test_session():
+      x = tf.constant(1)
+      y = tf.constant(2)
+      z = tf.constant(3)
+      f1 = lambda: tf.constant(17)
+      f2 = lambda: tf.constant(23)
+      f3 = lambda: tf.constant(-1)
+
+      r1 = tf.case({x < y: f1, x > z: f2}, default=f3, exclusive=True)
+      self.assertAllEqual(r1.eval(), 17)
+
+      r2 = tf.case([(y > z, f1), (y > x, f2)], default=f3)
+      self.assertAllEqual(r2.eval(), 23)
+
+      # Duplicate events can happen, first one is selected
+      r3 = tf.case([(x < y, f1), (x < y, f2)], default=f3)
+      self.assertAllEqual(r3.eval(), 17)
+
+      # Duplicate events cause an error if exclusive = True
+      r4 = tf.case([(x < y, f1), (x < y, f2)], default=f3, exclusive=True)
+      with self.assertRaisesOpError(
+          "More than one condition evaluated as True but exclusive=True."):
+        r4.eval()
+
+      # Check that the default is called if none of the others are
+      r5 = tf.case({x > y: f1}, default=f3)
+      self.assertAllEqual(r5.eval(), -1)
+
+      ran_once = [False, False, False]
+
+      def break_run_twice(ix):
+        def _break():
+          assert not ran_once[ix]
+          ran_once[ix] = True
+          return tf.constant(ix)
+        return _break
+
+      # Should not fail - each conditional gets called exactly once
+      r6 = tf.case([(x < y, break_run_twice(0)), (x > y, break_run_twice(1))],
+                   default=break_run_twice(2))
+
+      self.assertAllEqual(r6.eval(), 0)
+
   def testOneOpCond(self):
     with self.test_session():
       v = tf.Variable(0)
