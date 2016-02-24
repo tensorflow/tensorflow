@@ -82,7 +82,8 @@ def main(_):
 
   # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.merge_all_summaries()
-  writer = tf.train.SummaryWriter(FLAGS.summaries_dir, sess.graph_def)
+  writer = tf.train.SummaryWriter(FLAGS.summaries_dir,
+                                  sess.graph.as_graph_def(add_shapes=True))
   tf.initialize_all_variables().run()
 
   # Train the model, and feed in test data and record summaries every 10 steps
