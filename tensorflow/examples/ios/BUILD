@@ -55,6 +55,11 @@ objc_binary(
 	"//google/protobuf:protobuf",
 	"//google/protobuf:protobuf_lite",
     ],
+    resources = [
+        "data/grace_hopper.jpg",
+        "data/imagenet_comp_graph_label_strings.txt",
+        "data/tensorflow_inception_graph.pb",
+    ],
 )
 
 config_setting(

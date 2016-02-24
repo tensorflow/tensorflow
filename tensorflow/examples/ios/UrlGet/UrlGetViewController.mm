@@ -26,7 +26,7 @@
 
 #include <iostream>
 
-void TestFunction();
+NSString* TestFunction();
 
 @interface UrlGetViewController ()
 @end
@@ -38,9 +38,9 @@ void TestFunction();
   test::KeyVal keyval;
   std::cerr << keyval.DebugString() << std::endl;
 
-  TestFunction();
+  NSString* networkPath = TestFunction();
 
-  self.urlContentTextView.text = @"Hello, TensorFlow Graph!";
+  self.urlContentTextView.text = networkPath;
 }
 
 @end
@@ -328,7 +328,7 @@ TENSORFLOW_METHOD(classifyImageBmp)(
 #endif
 }
 
-void TestFunction() {
+NSString* TestFunction() {
 //    initializeTensorflow(nullptr, nullptr, nullptr, "model", "labels", 0, 0, 0);
 
   tensorflow::SessionOptions options;
@@ -340,4 +340,12 @@ void TestFunction() {
 
   tensorflow::GraphDef tensorflow_graph;
   LOG(INFO) << "Graph created.";
+
+  NSString* networkPath = [[NSBundle mainBundle] pathForResource:@"tensorflow_inception_graph" ofType:@"pb"];
+  if (networkPath == NULL) {
+    fprintf(stderr, "Couldn't find the neural network parameters file - did you add it as a resource to your application?\n");
+    assert(false);
+  }
+
+  return networkPath;
 }
