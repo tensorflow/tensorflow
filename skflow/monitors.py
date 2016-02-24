@@ -23,11 +23,11 @@ from skflow.io.data_feeder import setup_train_data_feeder
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-few-public-methods
 # pylint: disable=too-many-arguments
-# pylint: disable=unused-argument
 # pylint: disable=attribute-defined-outside-init
 
 def default_monitor():
-    return(BaseMonitor())
+    """returns very simple monitor object to summarize training progress"""
+    return BaseMonitor()
 
 
 class BaseMonitor(object):
