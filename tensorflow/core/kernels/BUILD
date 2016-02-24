@@ -208,6 +208,7 @@ tf_kernel_libraries(
         "gather_op",
         "identity_op",
         "listdiff_op",
+        "one_hot_op",
         "pack_op",
         "pad_op",
         "random_shuffle_op",
