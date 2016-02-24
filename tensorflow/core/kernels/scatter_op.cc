@@ -22,8 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/bounds_check.h"
-#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -101,54 +99,36 @@ class ScatterUpdateOp : public OpKernel {
   }
 
   void DoCompute(OpKernelContext* c) {
-    Tensor params = c->mutable_input(0, use_exclusive_lock_);
-    OP_REQUIRES(c, params.IsInitialized(),
+    Tensor Tparams = c->mutable_input(0, use_exclusive_lock_);
+    OP_REQUIRES(c, Tparams.IsInitialized(),
                 errors::FailedPrecondition("Null ref for params"));
-    const Tensor& indices = c->input(1);
-    const Tensor& updates = c->input(2);
+    const Tensor& Tindices = c->input(1);
+    const Tensor& Tupdates = c->input(2);
     OP_REQUIRES(
-        c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
+        c, TensorShapeUtils::IsVectorOrHigher(Tparams.shape()),
         errors::InvalidArgument("params must be at least 1-D, got shape ",
-                                params.shape().DebugString()));
+                                Tparams.shape().DebugString()));
     OP_REQUIRES(
-        c, ValidShapes(params, updates, indices),
+        c, ValidShapes(Tparams, Tupdates, Tindices),
         errors::InvalidArgument(
             "Must have updates.shape = indices.shape + params.shape[1:], got ",
-            "updates.shape ", updates.shape().DebugString(), ", indices.shape ",
-            indices.shape().DebugString(), ", params.shape ",
-            params.shape().DebugString()));
-
-    // Check that we have enough index space
-    const int64 N_big = indices.NumElements();
-    OP_REQUIRES(c, N_big <= std::numeric_limits<Index>::max(),
-                errors::InvalidArgument(
-                    "indices has too many elements for ",
-                    DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
-                    N_big, " > ", std::numeric_limits<Index>::max()));
-    const Index N = indices.NumElements();
-    OP_REQUIRES(
-        c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
-        errors::InvalidArgument("params.shape[0] too large for ",
-                                DataTypeString(DataTypeToEnum<Index>::v()),
-                                " indexing: ", params.dim_size(0), " > ",
-                                std::numeric_limits<Index>::max()));
+            "updates.shape ", Tupdates.shape().DebugString(),
+            ", indices.shape ", Tindices.shape().DebugString(),
+            ", params.shape ", Tparams.shape().DebugString()));
 
     // We always return the input ref.
     c->forward_ref_input_to_ref_output(0, 0);
 
+    const Index N = Tindices.NumElements();
     if (N > 0) {
-      auto indices_flat = indices.flat<Index>();
-      auto params_flat = params.flat_outer_dims<T>();
-      auto updates_flat = updates.shaped<T, 2>({N, updates.NumElements() / N});
+      auto Tindices_flat = Tindices.flat<Index>();
+      auto Tparams_flat = Tparams.flat_outer_dims<T>();
+      auto Tupdates_flat =
+          Tupdates.shaped<T, 2>({N, Tupdates.NumElements() / N});
 
       functor::ScatterFunctor<Device, T, Index, op> functor;
-      const Index bad_i = functor(c, c->template eigen_device<Device>(),
-                                  params_flat, updates_flat, indices_flat);
-      OP_REQUIRES(
-          c, bad_i < 0,
-          errors::InvalidArgument(
-              "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-              indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
+      functor(c, c->template eigen_device<Device>(),
+              Tparams_flat, Tupdates_flat, Tindices_flat);
     }
   }
 };
@@ -157,23 +137,26 @@ namespace functor {
 // Implementation of update functor for CPU.
 template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor<CPUDevice, T, Index, op> {
-  Index operator()(OpKernelContext* c, const CPUDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    const Index N = indices.size();
-    const Index limit = params.dimension(0);
+  void operator()(OpKernelContext* c, const CPUDevice& d,
+                  typename TTypes<T>::Matrix params,
+                  typename TTypes<T>::ConstMatrix updates,
+                  typename TTypes<Index>::ConstFlat indices) {
+    Index N = indices.size();
+    // Validate all the indices are in range
+    Index first_dim_size = params.dimension(0);
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
       const Index index = indices(i);
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      Assign<op>::Run(params.template chip<0>(index),
+      OP_REQUIRES(c, index >= 0 && index < first_dim_size,
+                  errors::InvalidArgument(
+                      strings::StrCat("Index ", index, " at offset ", i,
+                                      " in indices is out of range")));
+    }
+    for (Index i = 0; i < N; i++) {
+      // Copy last Ndim-1 dimensions of Tupdates[i] to
+      // Tparams[Tindices[i]]
+      Assign<op>::Run(params.template chip<0>(indices(i)),
                       updates.template chip<0>(i));
     }
-    return -1;
   }
 };
 }  // namespace functor
@@ -237,13 +220,13 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 
-#define DECLARE_GPU_SPECS_OP(T, Index, op)                   \
-  template <>                                                \
-  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()( \
-      OpKernelContext* c, const GPUDevice& d,                \
-      typename TTypes<T>::Matrix params,                     \
-      typename TTypes<T>::ConstMatrix updates,               \
-      typename TTypes<Index>::ConstFlat indices);            \
+#define DECLARE_GPU_SPECS_OP(T, Index, op)                              \
+  template <>                                                           \
+  void ScatterFunctor<GPUDevice, T, Index, op>::operator()(             \
+      OpKernelContext* c, const GPUDevice& d,                           \
+      typename TTypes<T>::Matrix params,                                \
+      typename TTypes<T>::ConstMatrix updates,                          \
+      typename TTypes<Index>::ConstFlat indices);                       \
   extern template struct ScatterFunctor<GPUDevice, T, Index, op>;
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                       \

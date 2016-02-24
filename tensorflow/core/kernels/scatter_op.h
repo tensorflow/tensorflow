@@ -36,11 +36,10 @@ namespace functor {
 // Functor used by ScatterOp to do the computations.
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor {
-  // Returns -1 on success or a nonnegative i s.t. indices[i] is a bad index.
-  Index operator()(OpKernelContext* c, const Device& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices);
+  void operator()(OpKernelContext* c, const Device& d,
+                  typename TTypes<T>::Matrix params,
+                  typename TTypes<T>::ConstMatrix updates,
+                  typename TTypes<Index>::ConstFlat indices);
 };
 
 }  // namespace functor
