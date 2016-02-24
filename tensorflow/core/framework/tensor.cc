@@ -27,7 +27,7 @@ limitations under the License.
 //   includes running the constructor and destructor of T[], encoding
 //   an decoding T[] into/from a Cord, etc.
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -63,6 +63,13 @@ class Buffer : public TensorBuffer {
     if (alloc_->TracksAllocationSizes()) {
       int64 ab = alloc_->AllocatedSize(data_);
       proto->set_allocated_bytes(ab);
+      int64 id = alloc_->AllocationId(data_);
+      if (id > 0) {
+        proto->set_allocation_id(id);
+      }
+      if (RefCountIsOne()) {
+        proto->set_has_single_reference(true);
+      }
     }
   }
 
@@ -178,6 +185,7 @@ PROTO_TRAITS(float, float, float);
 PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
 PROTO_TRAITS(uint8, int32, int);
+PROTO_TRAITS(uint16, int32, int);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(int64, int64, int64);
@@ -305,15 +313,16 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : type_(type), shape_({0}), buf_(nullptr) {}
+Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
 
-Tensor::Tensor(const Tensor& other)
-    : type_(other.dtype()), shape_(other.shape()), buf_(other.buf_) {
+Tensor::Tensor(const Tensor& other) : shape_(other.shape()), buf_(other.buf_) {
+  set_dtype(other.dtype());
   RefIfNonNull(buf_);
 }
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
-    : type_(type), shape_(shape), buf_(buf) {
+    : shape_(shape), buf_(buf) {
+  set_dtype(type);
   RefIfNonNull(buf);
 }
 
@@ -325,7 +334,23 @@ Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   CHECK_EQ(shape.num_elements(), other.NumElements());
-  type_ = other.dtype();
+  shape_ = shape;
+  set_dtype(other.dtype());
+  if (buf_ != other.buf_) {
+    UnrefIfNonNull(buf_);
+    buf_ = other.buf_;
+    RefIfNonNull(buf_);
+  }
+}
+
+void Tensor::UnsafeCopyFromInternal(const Tensor& other,
+                                    const TensorShape& shape) {
+  int in_size = DataTypeSize(other.dtype());
+  int out_size = DataTypeSize(shape.data_type());
+  CHECK_NE(in_size, 0);
+  CHECK_NE(out_size, 0);
+  CHECK_EQ(shape.num_elements() * out_size,
+           other.shape().num_elements() * in_size);
   shape_ = shape;
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
@@ -349,6 +374,7 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(double, SINGLE_ARG(STMTS))                   \
     CASE(int32, SINGLE_ARG(STMTS))                    \
     CASE(uint8, SINGLE_ARG(STMTS))                    \
+    CASE(uint16, SINGLE_ARG(STMTS))                   \
     CASE(int16, SINGLE_ARG(STMTS))                    \
     CASE(int8, SINGLE_ARG(STMTS))                     \
     CASE(string, SINGLE_ARG(STMTS))                   \
@@ -370,18 +396,20 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
 }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
                const AllocationAttributes& allocation_attr)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
 }
@@ -432,8 +460,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     return *this;
   }
   Tensor ret;
-  ret.type_ = type_;
   ret.shape_ = shape_;
+  ret.set_dtype(dtype());
   ret.buf_ = nullptr;
   if (dim0_size > 0) {
     const int64 elems_per_dim0 = NumElements() / dim0_size;
@@ -442,7 +470,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     ret.shape_.set_dim(0, dim0_size);
     const int64 num_elems = dim0_size * elems_per_dim0;
     if (buf_) {
-      CASES(type_, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
+      DataType dt = dtype();
+      CASES(dt, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
     }
   }
   return ret;
@@ -468,8 +497,8 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
     }
     if (p == nullptr) return false;
   }
-  type_ = proto.dtype();
   shape_ = shape;
+  set_dtype(proto.dtype());
   UnrefIfNonNull(buf_);
   buf_ = p;
   return true;
@@ -477,8 +506,8 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
 
 void Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
+  proto->set_dtype(dtype());
   if (buf_) {
     CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }
@@ -486,7 +515,7 @@ void Tensor::AsProtoField(TensorProto* proto) const {
 
 void Tensor::AsProtoTensorContent(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(type_);
+  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
   if (buf_) {
     CASES(dtype(), Helper<T>::Encode(buf_, shape_.num_elements(),
@@ -530,6 +559,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
         CASE(DT_DOUBLE);
         CASE(DT_INT32);
         CASE(DT_UINT8);
+        CASE(DT_UINT16);
         CASE(DT_INT16);
         CASE(DT_INT8);
         CASE(DT_INT64);
@@ -551,17 +581,30 @@ StringPiece Tensor::tensor_data() const {
   return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
 }
 
+bool Tensor::SharesBufferWith(const Tensor& b) const {
+  CHECK_NE(nullptr, buf_);
+  CHECK_NE(nullptr, b.buf_);
+  return buf_->root_buffer() == b.buf_->root_buffer();
+}
+
+size_t Tensor::BufferHash() const {
+  CHECK_NE(nullptr, buf_);
+  return std::hash<TensorBuffer*>()(buf_->root_buffer());
+}
+
 string Tensor::DebugString() const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
-                         shape().ShortDebugString(), " values: ",
-                         SummarizeValue(3), ">");
+                         shape().DebugString(), " values: ", SummarizeValue(3),
+                         ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {
   description->set_dtype(dtype());
   shape().AsProto(description->mutable_shape());
-  buf_->FillAllocationDescription(
-      description->mutable_allocation_description());
+  if (IsInitialized()) {
+    buf_->FillAllocationDescription(
+        description->mutable_allocation_description());
+  }
 }
 
 }  // namespace tensorflow

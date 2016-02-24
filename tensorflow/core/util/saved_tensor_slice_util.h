@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"  // for Status
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/public/status.h"  // for Status
 
 namespace tensorflow {
 

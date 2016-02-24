@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/version.h"
 
 %}
@@ -36,8 +36,8 @@ tensorflow::ImportNumpy();
 // TensorFlow version and GraphDef versions
 %constant const char* __version__ = TF_VERSION_STRING;
 %constant int GRAPH_DEF_VERSION = TF_GRAPH_DEF_VERSION;
-%constant int GRAPH_DEF_VERSION_MIN = TF_GRAPH_DEF_VERSION_MIN;
-%constant int GRAPH_DEF_VERSION_MAX = TF_GRAPH_DEF_VERSION_MAX;
+%constant int GRAPH_DEF_VERSION_MIN_CONSUMER = TF_GRAPH_DEF_VERSION_MIN_CONSUMER;
+%constant int GRAPH_DEF_VERSION_MIN_PRODUCER = TF_GRAPH_DEF_VERSION_MIN_PRODUCER;
 
 // Release the Python GIL for the duration of most methods.
 %exception {
@@ -170,6 +170,10 @@ tensorflow::ImportNumpy();
     tensorflow::PyObjectVector temp) {
   $1 = &temp;
 }
+%typemap(in, numinputs=0) char** out_handle (
+    char* temp) {
+  $1 = &temp;
+}
 
 // Raise a StatusNotOK exception if the out_status is not OK;
 // otherwise build a Python list of outputs and return it.
@@ -193,6 +197,24 @@ tensorflow::ImportNumpy();
       PyList_SET_ITEM($result, i, $2->at(i));
       out_values_safe[i].release();
     }
+  }
+}
+
+// Raise a StatusNotOK exception if the out_status is not OK;
+// otherwise return the handle as a python string object.
+%typemap(argout, fragment="StatusNotOK") (
+    tensorflow::Status* out_status, char** out_handle) {
+  if (!$1->ok()) {
+    RaiseStatusNotOK(*$1, $descriptor(tensorflow::Status*));
+    SWIG_fail;
+  } else {
+%#if PY_MAJOR_VERSION < 3
+    $result = PyString_FromStringAndSize(
+%#else
+    $result = PyUnicode_FromStringAndSize(
+%#endif
+      *$2, strlen(*$2));
+    delete *$2;
   }
 }
 
@@ -262,6 +284,27 @@ tensorflow::ImportNumpy();
 %rename(TF_Run) tensorflow::TF_Run_wrapper;
 %unignore tensorflow;
 %unignore TF_Run;
+%unignore EqualGraphDefWrapper;
+
+// Include the wrapper for TF_PRunSetup from tf_session_helper.h.
+
+// The %exception block above releases the Python GIL for the length
+// of each wrapped method. We disable this behavior for TF_PRunSetup
+// because it uses the Python allocator.
+%noexception tensorflow::TF_PRunSetup_wrapper;
+%rename(TF_PRunSetup) tensorflow::TF_PRunSetup_wrapper;
+%unignore tensorflow;
+%unignore TF_PRunSetup;
+
+// Include the wrapper for TF_PRun from tf_session_helper.h.
+
+// The %exception block above releases the Python GIL for the length
+// of each wrapped method. We disable this behavior for TF_PRun
+// because it uses the Python allocator.
+%noexception tensorflow::TF_PRun_wrapper;
+%rename(TF_PRun) tensorflow::TF_PRun_wrapper;
+%unignore tensorflow;
+%unignore TF_PRun;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

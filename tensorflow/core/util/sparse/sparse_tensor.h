@@ -18,15 +18,16 @@ limitations under the License.
 
 #include <limits>
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
 
@@ -211,7 +212,7 @@ class SparseTensor {
     }
   }
 
-  // Helper for Split() that retuerns the shape given a slice index.
+  // Helper for Split() that returns the shape given a slice index.
   static inline int GetSliceShape(const int slice_index, const int split_size,
                                   const int residual) {
     CHECK_GT(split_size, 0);
@@ -320,7 +321,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     strides[d] = strides[d + 1] * out_shape.dim_size(d + 1);
   }
 
-  for (std::size_t n = 0; n < vals_t.dimension(0); ++n) {
+  for (int n = 0; n < vals_t.dimension(0); ++n) {
     bool invalid_dims = false;
     int64 ix = 0;
     for (int d = 0; d < dims_; ++d) {
@@ -339,7 +340,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 template <typename T>
 SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
-  CHECK_GE(tensors.size(), 1) << "Cannot concat 0 SparseTensors";
+  CHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   CHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
   auto order_0 = tensors[0].order();

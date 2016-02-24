@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/status.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
 TEST(Status, OK) {
   EXPECT_EQ(Status::OK().code(), error::OK);
   EXPECT_EQ(Status::OK().error_message(), "");
-  EXPECT_OK(Status::OK());
-  ASSERT_OK(Status::OK());
+  TF_EXPECT_OK(Status::OK());
+  TF_ASSERT_OK(Status::OK());
   EXPECT_EQ(Status::OK(), Status());
   Status s;
   EXPECT_TRUE(s.ok());

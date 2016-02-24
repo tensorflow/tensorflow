@@ -19,7 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace gpu_stream_util {

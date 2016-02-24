@@ -16,17 +16,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import collections
 import math
-import numpy as np
 import os
 import random
+import zipfile
+
+import numpy as np
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import zipfile
 
 # Step 1: Download the data.
 url = 'http://mattmahoney.net/dc/'
@@ -73,7 +72,7 @@ def build_dataset(words):
       index = dictionary[word]
     else:
       index = 0  # dictionary['UNK']
-      unk_count = unk_count + 1
+      unk_count += 1
     data.append(index)
   count[0][1] = unk_count
   reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
@@ -87,7 +86,7 @@ print('Sample data', data[:10])
 data_index = 0
 
 
-# Step 4: Function to generate a training batch for the skip-gram model.
+# Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
   global data_index
   assert batch_size % num_skips == 0
@@ -117,7 +116,7 @@ for i in range(8):
   print(batch[i], '->', labels[i, 0])
   print(reverse_dictionary[batch[i]], '->', reverse_dictionary[labels[i, 0]])
 
-# Step 5: Build and train a skip-gram model.
+# Step 4: Build and train a skip-gram model.
 
 batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
@@ -172,7 +171,7 @@ with graph.as_default():
   similarity = tf.matmul(
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
-# Step 6: Begin training
+# Step 5: Begin training.
 num_steps = 100001
 
 with tf.Session(graph=graph) as session:
@@ -193,12 +192,12 @@ with tf.Session(graph=graph) as session:
 
     if step % 2000 == 0:
       if step > 0:
-        average_loss = average_loss / 2000
+        average_loss /= 2000
       # The average loss is an estimate of the loss over the last 2000 batches.
       print("Average loss at step ", step, ": ", average_loss)
       average_loss = 0
 
-    # note that this is expensive (~20% slowdown if computed every 500 steps)
+    # Note that this is expensive (~20% slowdown if computed every 500 steps)
     if step % 10000 == 0:
       sim = similarity.eval()
       for i in xrange(valid_size):
@@ -212,7 +211,7 @@ with tf.Session(graph=graph) as session:
         print(log_str)
   final_embeddings = normalized_embeddings.eval()
 
-# Step 7: Visualize the embeddings.
+# Step 6: Visualize the embeddings.
 
 def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
   assert low_dim_embs.shape[0] >= len(labels), "More labels than embeddings"

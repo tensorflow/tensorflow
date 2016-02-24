@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include <vector>
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace gpu = ::perftools::gputools;
 
@@ -130,6 +130,14 @@ size_t GPUDebugAllocator::AllocatedSize(void* ptr) {
   return base_allocator_->AllocatedSize(static_cast<char*>(ptr) - MASK_BYTES);
 }
 
+int64 GPUDebugAllocator::AllocationId(void* ptr) {
+  return base_allocator_->AllocationId(static_cast<char*>(ptr) - MASK_BYTES);
+}
+
+void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
+  base_allocator_->GetStats(stats);
+}
+
 bool GPUDebugAllocator::CheckHeader(void* ptr) {
   return CheckMask(stream_exec_, static_cast<char*>(ptr) - MASK_BYTES,
                    before_mask);
@@ -196,6 +204,10 @@ size_t GPUNanResetAllocator::RequestedSize(void* ptr) {
 
 size_t GPUNanResetAllocator::AllocatedSize(void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
+}
+
+void GPUNanResetAllocator::GetStats(AllocatorStats* stats) {
+  base_allocator_->GetStats(stats);
 }
 
 }  // namespace tensorflow

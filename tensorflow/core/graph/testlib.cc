@@ -15,16 +15,38 @@ limitations under the License.
 
 #include "tensorflow/core/graph/testlib.h"
 
+#include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/kernels/constant_op.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
+
+// HostConst: forced to generate output on the host.
+// Only used by testlib; no op is registered for this kernel
+// externally (i.e., in array_ops.cc)
+REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
+REGISTER_KERNEL_BUILDER(
+    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
+
+// Register the HostConst Op
+// Returns a constant tensor on the host.  Useful for writing C++ tests
+// and benchmarks which run on GPU but require arguments pinned to the host.
+// Used by test::graph::HostConstant.
+// value: Attr `value` is the tensor to return.
+REGISTER_OP("HostConst")
+    .Output("output: dtype")
+    .Attr("value: tensor")
+    .Attr("dtype: type");
+
 namespace test {
 namespace graph {
 
@@ -71,6 +93,19 @@ Node* Constant(Graph* g, const Tensor& tensor) {
 Node* Constant(Graph* g, const Tensor& tensor, const string& name) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(name, "Const")
+                  .Attr("dtype", tensor.dtype())
+                  .Attr("value", tensor)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* HostConstant(Graph* g, const Tensor& tensor) {
+  return HostConstant(g, tensor, g->NewName("n"));
+}
+
+Node* HostConstant(Graph* g, const Tensor& tensor, const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "HostConst")
                   .Attr("dtype", tensor.dtype())
                   .Attr("value", tensor)
                   .Finalize(g, &ret));
@@ -149,8 +184,8 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("RandomStandardNormal", g, input, dtype);
 }
 
-Node* RandomParameters(Graph* g, Node* input, DataType dtype) {
-  return RandomNumberGenerator("RandomParameters", g, input, dtype);
+Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
+  return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
 }
 
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
@@ -303,6 +338,15 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastGradientArgs")
+                  .Input(s0)
+                  .Input(s1)
                   .Finalize(g, &ret));
   return ret;
 }

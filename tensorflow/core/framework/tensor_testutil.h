@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace test {
@@ -84,7 +84,7 @@ template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y);
 
 // Expects "x" and "y" are tensors of the same type, same shape, and
-// approxmiate equal values, each within "abs_err".
+// approximate equal values, each within "abs_err".
 template <typename T>
 void ExpectTensorNear(const Tensor& x, const Tensor& y, const T& abs_err);
 

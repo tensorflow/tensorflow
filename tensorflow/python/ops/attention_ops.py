@@ -19,14 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_attention_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_attention_ops import *
+# pylint: enable=wildcard-import
 
 
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
@@ -42,7 +41,7 @@ def _ExtractGlimpseShape(op):
   offsets_shape = op.inputs[2].get_shape().merge_with(
       input_shape[:1].concatenate([2]))
   offsets_shape = offsets_shape
-  size_value = tensor_util.ConstantValue(op.inputs[1])
+  size_value = tensor_util.constant_value(op.inputs[1])
   if size_value is not None:
     height = size_value[0]
     width = size_value[1]

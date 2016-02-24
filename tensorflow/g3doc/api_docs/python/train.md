@@ -88,13 +88,13 @@ This must be called by the constructors of subclasses.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if name is malformed.
+*  <b>`ValueError`</b>: If name is malformed.
 
 
 
 - - -
 
-#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, name=None)` {#Optimizer.minimize}
+#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None)` {#Optimizer.minimize}
 
 Add operations to minimize `loss` by updating `var_list`.
 
@@ -116,6 +116,8 @@ of using this function.
     `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
 
 ##### Returns:
@@ -126,12 +128,12 @@ of using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if some of the variables are not `Variable` objects.
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 - - -
 
-#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None)` {#Optimizer.compute_gradients}
+#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False)` {#Optimizer.compute_gradients}
 
 Compute gradients of `loss` for the variables in `var_list`.
 
@@ -152,6 +154,8 @@ given variable.
     `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 
 ##### Returns:
 
@@ -191,8 +195,8 @@ applies gradients.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `grads_and_vars` is malformed.
-*  <b>`ValueError`</b>: if none of the variables have gradients.
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
 
 
 
@@ -298,7 +302,7 @@ Construct a new gradient descent optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
-See http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
 
 - - -
 
@@ -352,7 +356,8 @@ Construct a new Momentum optimizer.
 
 Optimizer that implements the Adam algorithm.
 
-See http://arxiv.org/pdf/1412.6980v7.pdf.
+See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
 
 - - -
 
@@ -453,7 +458,7 @@ using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if one of the arguments is invalid.
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 
@@ -463,7 +468,8 @@ using this function.
 
 Optimizer that implements the RMSProp algorithm.
 
-See http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf.
+See the [paper]
+(http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
 
 - - -
 
@@ -475,11 +481,11 @@ Construct a new RMSProp optimizer.
 
 
 *  <b>`learning_rate`</b>: A Tensor or a floating point value.  The learning rate.
-*  <b>`decay`</b>: discounting factor for the history/coming gradient
-*  <b>`momentum`</b>: a scalar tensor.
-*  <b>`epsilon`</b>: small value to avoid zero denominator.
+*  <b>`decay`</b>: Discounting factor for the history/coming gradient
+*  <b>`momentum`</b>: A scalar tensor.
+*  <b>`epsilon`</b>: Small value to avoid zero denominator.
 *  <b>`use_locking`</b>: If True use locks for update operation.
-*  <b>`name`</b>: Optional name prefic for the operations created when applying
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients. Defaults to "RMSProp".
 
 
@@ -720,8 +726,8 @@ otherwise they're all shrunk by the global ratio.
 Any of the entries of `t_list` that are of type `None` are ignored.
 
 This is the correct way to perform gradient clipping (for example, see
-R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
-Recurrent Neural Networks".  http://arxiv.org/abs/1211.5063)
+[Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
+([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
 However, it is slower than `clip_by_norm()` because all the parameters must be
 ready before the clipping operation can be performed.
@@ -826,7 +832,7 @@ optimizer.minimize(...my loss..., global_step=global_step)
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals.
-*  <b>`name`</b>: string.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
 
 ##### Returns:
 
@@ -1014,7 +1020,7 @@ to restore the variable from the moving average value with:
 
 ##### Returns:
 
-  A string: the name of the variable that will be used or was used
+  A string: The name of the variable that will be used or was used
   by the `ExponentialMovingAverage class` to hold the moving average of
   `var`.
 
@@ -1197,7 +1203,7 @@ Wait for threads to terminate.
 Blocks until all `threads` have terminated or `request_stop()` is called.
 
 After the threads stop, if an `exc_info` was passed to `request_stop`, that
-exception is re-reaised.
+exception is re-raised.
 
 Grace period handling: When `request_stop()` is called, threads are given
 'stop_grace_period_secs' seconds to terminate.  If any of them is still
@@ -1290,7 +1296,7 @@ Wait till the Coordinator is told to stop.
 ##### Args:
 
 
-*  <b>`timeout`</b>: float.  Sleep for up to that many seconds waiting for
+*  <b>`timeout`</b>: Float.  Sleep for up to that many seconds waiting for
     should_stop() to become True.
 
 ##### Returns:
@@ -1319,7 +1325,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue, enqueue_ops)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_runner_def=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -1337,6 +1343,32 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 *  <b>`queue`</b>: A `Queue`.
 *  <b>`enqueue_ops`</b>: List of enqueue ops to run in threads later.
+*  <b>`close_op`</b>: Op to close the queue. Pending enqueue ops are preserved.
+*  <b>`cancel_op`</b>: Op to close the queue and cancel pending enqueue ops.
+*  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
+    recreates the QueueRunner from its contents. `queue_runner_def` and the
+    other arguments are mutually exclusive.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `queue_runner_def` and `queue` are both specified.
+*  <b>`ValueError`</b>: If `queue` or `enqueue_ops` are not provided when not
+    restoring from `queue_runner_def`.
+
+
+- - -
+
+#### `tf.train.QueueRunner.cancel_op` {#QueueRunner.cancel_op}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.close_op` {#QueueRunner.close_op}
+
+
 
 
 - - -
@@ -1380,6 +1412,13 @@ have stopped.
 
 - - -
 
+#### `tf.train.QueueRunner.enqueue_ops` {#QueueRunner.enqueue_ops}
+
+
+
+
+- - -
+
 #### `tf.train.QueueRunner.exceptions_raised` {#QueueRunner.exceptions_raised}
 
 Exceptions raised but not handled by the `QueueRunner` threads.
@@ -1401,9 +1440,34 @@ depending on whether or not a `Coordinator` was passed to
 
 - - -
 
+#### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
+
+
+
+
+- - -
+
 #### `tf.train.QueueRunner.name` {#QueueRunner.name}
 
 The string name of the underlying Queue.
+
+
+- - -
+
+#### `tf.train.QueueRunner.queue` {#QueueRunner.queue}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.to_proto()` {#QueueRunner.to_proto}
+
+Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
+
+##### Returns:
+
+  A `QueueRunnerDef` protocol buffer.
 
 
 
@@ -1675,8 +1739,8 @@ Creates a `SummaryWriter` and an event file.
 
 On construction the summary writer creates a new event file in `logdir`.
 This event file will contain `Event` protocol buffers constructed when you
-call one of the following functions: `add_summary()`, `add_event()`, or
-`add_graph()`.
+call one of the following functions: `add_summary()`, `add_session_log()`,
+`add_event()`, or `add_graph()`.
 
 If you pass a `graph_def` protocol buffer to the constructor it is added to
 the event file. (This is equivalent to calling `add_graph()` later).
@@ -1718,7 +1782,7 @@ the event file:
 
 Adds a `Summary` protocol buffer to the event file.
 
-This method wraps the provided summary in an `Event` procotol buffer
+This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
@@ -1732,6 +1796,23 @@ commonly done to report evaluation results in event files.
 
 
 *  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+
+Adds a `SessionLog` protocol buffer to the event file.
+
+This method wraps the provided session in an `Event` procotol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
 *  <b>`global_step`</b>: Number. Optional global step value to record with the
     summary.
 
@@ -1798,7 +1879,7 @@ a Python iterator that yields `Event` protocol buffers.
 Example: Print the contents of an events file.
 
 ```python
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     print(e)
 ```
 
@@ -1809,7 +1890,7 @@ Example: Print selected summary values.
 # summary value tag 'loss'.  These could have been added by calling
 # `add_summary()`, passing the output of a scalar summary op created with
 # with: `tf.scalar_summary(['loss'], loss_tensor)`.
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     for v in e.summary.value:
         if v.tag == 'loss':
             print(v.simple_value)
@@ -1916,7 +1997,7 @@ Create a LooperThread.
 ##### Args:
 
 
-*  <b>`coord`</b>: a Coordinator.
+*  <b>`coord`</b>: A Coordinator.
 *  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
     if it should be called back to back.
 *  <b>`target`</b>: Optional callable object that will be executed in the thread.
@@ -2098,5 +2179,85 @@ same thread object.
 
 Called when the thread starts.
 
+
+
+- - -
+
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
+
+Returns `MetaGraphDef` proto. Optionally writes it to filename.
+
+This function exports the graph, saver, and collection objects into
+`MetaGraphDef` protocol buffer with the intension of it being imported
+at a later time or location to restart training, run inference, or be
+a subgraph.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional filename including the path for writing the
+    generated `MetaGraphDef` protocol buffer.
+*  <b>`meta_info_def`</b>: `MetaInfoDef` protocol buffer.
+*  <b>`graph_def`</b>: `GraphDef` protocol buffer.
+*  <b>`saver_def`</b>: `SaverDef` protocol buffer.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+### `tf.train.generate_checkpoint_state_proto(save_dir, model_checkpoint_path, all_model_checkpoint_paths=None)` {#generate_checkpoint_state_proto}
+
+Generates a checkpoint state proto.
+
+##### Args:
+
+
+*  <b>`save_dir`</b>: Directory where the model was saved.
+*  <b>`model_checkpoint_path`</b>: The checkpoint file.
+*  <b>`all_model_checkpoint_paths`</b>: List of strings.  Paths to all not-yet-deleted
+    checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+    the last element must be equal to model_checkpoint_path.  These paths
+    are also saved in the CheckpointState proto.
+
+##### Returns:
+
+  CheckpointState proto with model_checkpoint_path and
+  all_model_checkpoint_paths updated to either absolute paths or
+  relative paths to the current save_dir.
+
+
+- - -
+
+### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
+
+Recreates a Graph saved in a `MetaGraphDef` proto.
+
+This function reads from a file containing a `MetaGraphDef` proto,
+adds all the nodes from the graph_def proto to the current graph,
+recreates all the collections, and returns a saver from saver_def.
+
+In combination with `export_meta_graph()`, this function can be used to
+
+* Serialize a graph along with other Python objects such as `QueueRunner`,
+  `Variable` into a `MetaGraphDef`.
+
+* Restart training from a saved graph and checkpoints.
+
+* Run inference from a saved graph and checkpoints.
+
+##### Args:
+
+
+*  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
+    the path) containing a `MetaGraphDef`.
+
+##### Returns:
+
+  A saver constructed rom `saver_def` in `MetaGraphDef`.
 
 

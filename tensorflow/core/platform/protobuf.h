@@ -16,17 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROTOBUF_H_
 #define TENSORFLOW_PLATFORM_PROTOBUF_H_
 
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
+
 // Import whatever namespace protobuf comes from into the
 // ::tensorflow::protobuf namespace.
 //
 // TensorFlow code should use the ::tensorflow::protobuf namespace to
 // refer to all protobuf APIs.
 
-#include "tensorflow/core/platform/port.h"
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/protobuf.h"
+#include "tensorflow/core/platform/google/build_config/protobuf.h"
 #elif defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/google/protobuf_android.h"
+#include "tensorflow/core/platform/google/build_config/protobuf_android.h"
 #else
 #include "tensorflow/core/platform/default/protobuf.h"
 #endif

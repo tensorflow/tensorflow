@@ -36,8 +36,6 @@ import sys
 import threading
 import time
 
-import tensorflow.python.platform
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
@@ -414,7 +412,8 @@ def main(_):
     sys.exit(1)
   opts = Options()
   with tf.Graph().as_default(), tf.Session() as session:
-    model = Word2Vec(opts, session)
+    with tf.device("/cpu:0"):
+      model = Word2Vec(opts, session)
     for _ in xrange(opts.epochs_to_train):
       model.train()  # Process one epoch
       model.eval()  # Eval analogies.

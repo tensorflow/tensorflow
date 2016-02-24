@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A very simple MNIST classifer.
+"""A very simple MNIST classifier.
 
 See extensive documentation at
 http://tensorflow.org/tutorials/mnist/beginners/index.md
@@ -27,18 +27,22 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
 
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string('data_dir', '/tmp/data/', 'Directory for storing data')
+
+mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
 sess = tf.InteractiveSession()
 
 # Create the model
-x = tf.placeholder("float", [None, 784])
+x = tf.placeholder(tf.float32, [None, 784])
 W = tf.Variable(tf.zeros([784, 10]))
 b = tf.Variable(tf.zeros([10]))
 y = tf.nn.softmax(tf.matmul(x, W) + b)
 
 # Define loss and optimizer
-y_ = tf.placeholder("float", [None, 10])
+y_ = tf.placeholder(tf.float32, [None, 10])
 cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
 train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
 
@@ -50,5 +54,5 @@ for i in range(1000):
 
 # Test trained model
 correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 print(accuracy.eval({x: mnist.test.images, y_: mnist.test.labels}))

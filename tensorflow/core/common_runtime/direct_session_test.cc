@@ -20,19 +20,20 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -83,7 +84,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   Initialize({3, 2, -1, 0});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
@@ -91,10 +92,10 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   std::vector<string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
   Status s = session->Run(inputs, output_names, target_nodes, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
-  // The first output should be initiailzed and have the correct
+  // The first output should be initialized and have the correct
   // output.
   auto mat = outputs[0].matrix<float>();
   ASSERT_TRUE(outputs[0].IsInitialized());
@@ -106,7 +107,7 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
 
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   //
@@ -120,7 +121,7 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
 
   // Run the graph
   Status s = session->Run(inputs, output_names, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
   auto mat = outputs[0].matrix<float>();
@@ -134,7 +135,7 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
@@ -171,7 +172,7 @@ TEST_F(DirectSessionMinusAXTest, TestPerSessionThreads) {
   std::unique_ptr<Session> session(NewSession(options));
 
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Fill in the input and ask for the output
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
@@ -203,7 +204,7 @@ TEST_F(DirectSessionMinusAXTest, TwoCreateCallsFails) {
   Initialize({1, 2, 3, 4});
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def_));
+  TF_ASSERT_OK(session->Create(def_));
 
   // Second is not.
   ASSERT_FALSE(session->Create(def_).ok());
@@ -238,7 +239,7 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<Tensor> outputs;
@@ -251,8 +252,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
   test::graph::ToGraphDef(&graph, &def);
   session.reset(CreateSession());
-  ASSERT_OK(session->Create(def));
-  ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
+  TF_ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
 }
 
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
@@ -277,18 +278,18 @@ TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
   // Initialize the variable
   Status s = session->Run(inputs, {init->name()}, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
 
   // Get the variable's data
   s = session->Run(inputs, {var->name() + ":0"}, {}, &outputs);
-  ASSERT_OK(s);
+  TF_ASSERT_OK(s);
   ASSERT_EQ(1, outputs.size());
   ASSERT_TRUE(outputs[0].IsInitialized());
   EXPECT_EQ(20.0, outputs[0].flat<float>()(0));
@@ -297,8 +298,6 @@ TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
 TEST(DirectSessionTest, MultipleFeedTest) {
   GraphDef def;
   Graph g(OpRegistry::Global());
-  Node* var = test::graph::Var(&g, DT_FLOAT, TensorShape({10}));
-  var->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
 
   Tensor first_value(DT_FLOAT, TensorShape({}));
   first_value.scalar<float>()() = 1.0;
@@ -314,7 +313,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
 
   std::unique_ptr<Session> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
-  ASSERT_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   std::vector<Tensor> outputs;
 
@@ -361,6 +360,172 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
 }
 
-}  // namespace
+REGISTER_OP("Darth")
+    .Input("x: float")
+    .Output("y: float")
+    .Doc(R"doc(
+Darth promises one return value.
 
+x: float
+y: float
+)doc");
+
+// The DarthOp kernel violates its promise to return one-value.
+class DarthOp : public OpKernel {
+ public:
+  explicit DarthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {}
+};
+REGISTER_KERNEL_BUILDER(Name("Darth").Device(DEVICE_CPU), DarthOp);
+
+TEST(DirectSessionTest, DarthKernel) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_FLOAT, TensorShape({}));
+  vx.scalar<float>()() = 1.0;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "Darth", x);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
+  EXPECT_TRUE(errors::IsInternal(s));
+  delete sess;
+}
+
+TEST(DirectSessionTest, PartialRunTest) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  Node* third = test::graph::Add(&g, first_identity, second_identity);
+  Node* third_identity = test::graph::Identity(&g, third);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  string handle;
+  Status s = session->PRunSetup(
+      {first_const->name(), second_const->name()},
+      {first_identity->name() + ":0", second_identity->name() + ":0",
+       third_identity->name() + ":0"},
+      {}, &handle);
+  ASSERT_TRUE(s.ok());
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Feed first_const, fetch first_identity
+  s = session->PRun(handle, {{first_const->name(), value_11}},
+                    {first_identity->name() + ":0"}, &outputs);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+
+  // Feed second_const, fetch second_identity and third_identity
+  s = session->PRun(
+      handle, {{second_const->name(), value_22}},
+      {second_identity->name() + ":0", third_identity->name() + ":0"},
+      &outputs);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(22.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(11.0 + 22.0, outputs[1].flat<float>()(0));
+}
+
+TEST(DirectSessionTest, PartialRunMissingFeed) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  Node* third = test::graph::Add(&g, first_identity, second_identity);
+  Node* third_identity = test::graph::Identity(&g, third);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  string handle;
+  Status s = session->PRunSetup({first_const->name(), second_const->name()},
+                                {third_identity->name() + ":0"}, {}, &handle);
+  ASSERT_TRUE(s.ok());
+
+  // Feed first_const, fetch third_identity
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  s = session->PRun(handle, {{first_const->name(), value_11}},
+                    {third_identity->name() + ":0"}, &outputs);
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(StringPiece(s.error_message())
+                  .contains("can't be computed from the feeds"));
+}
+
+TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor bool_value(DT_BOOL, TensorShape({}));
+  bool_value.scalar<bool>()() = true;
+  Node* bool_const = test::graph::Constant(&g, bool_value);
+  Node* switch_node = test::graph::Switch(&g, bool_const, bool_const);
+  Node* fourth_identity = test::graph::Identity(&g, switch_node, 1);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  string handle;
+  Status s = session->PRunSetup({switch_node->name() + ":1"},
+                                {fourth_identity->name() + ":0"}, {}, &handle);
+  ASSERT_TRUE(s.ok());
+
+  // Fetch fourth_identity without feeds.
+  s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(StringPiece(s.error_message())
+                  .contains("can't be computed from the feeds"));
+
+  // Feed switch_node:1 and fetch fourth_identity.
+  s = session->PRun(handle, {{switch_node->name() + ":1", bool_value}},
+                    {fourth_identity->name() + ":0"}, &outputs);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs.size());
+  ASSERT_EQ(true, outputs[0].flat<bool>()(0));
+}
+
+}  // namespace
 }  // namespace tensorflow

@@ -22,8 +22,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -64,7 +64,7 @@ class OpDefBuilder {
   // Perhaps by linking the type of the tensor to a type attr?
   OpDefBuilder& Attr(StringPiece spec);
 
-  // Adds an input or ouput to this OpDefBuilder (and returns *this).
+  // Adds an input or output to this OpDefBuilder (and returns *this).
   // The spec has form "<name>:<type-expr>" or "<name>:Ref(<type-expr>)"
   // where <name> matches regexp [a-z][a-z0-9_]* and <type-expr> can be:
   // * For a single tensor: <type>

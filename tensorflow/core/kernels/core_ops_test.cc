@@ -24,7 +24,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -45,9 +45,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
@@ -119,7 +119,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   if (op == CONV_OP_FORWARD) {
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X IN_DEPTH X PATCH_ROW X PATH_COL X OUT_DEPTH
-    // We multiply by two since there are mutliplications and additions.
+    // We multiply by two since there are multiplications and additions.
     num_ops = static_cast<int64>(batch * in_depth * out_depth) *
               static_cast<int64>(filter_rows * filter_cols) *
               static_cast<int64>(out_rows * out_cols) * 2;
@@ -127,7 +127,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
     // Backward computation: both input and filter backprop take the same
     // amount of computation:
     // BATCH x IN_ROW X IN_COL X IN_DEPTH X PATCH_ROW X PATCH_COL X OUT_DEPTH
-    // We multiply by two since there are mutliplications and additions.
+    // We multiply by two since there are multiplications and additions.
     num_ops = static_cast<int64>(batch * in_depth * out_depth) *
               static_cast<int64>(filter_rows * filter_cols) *
               static_cast<int64>(rows * cols) * 2;
@@ -447,7 +447,7 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> context(new OpKernelContext(&params));
 
   op->Compute(context.get());
   tensorflow::testing::StartTiming();
@@ -527,7 +527,8 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> avgpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
   tensorflow::testing::StartTiming();
@@ -631,7 +632,8 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> avgpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> avgpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
   tensorflow::testing::StartTiming();
@@ -717,7 +719,8 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> maxpool_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> maxpool_context(
+      new OpKernelContext(&params));
 
   op->Compute(maxpool_context.get());
   tensorflow::testing::StartTiming();
@@ -891,7 +894,7 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(&params));
 
   op->Compute(relu_context.get());
   tensorflow::testing::StartTiming();
@@ -959,7 +962,8 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
 
-  std::unique_ptr<OpKernelContext> softmax_context(new OpKernelContext(params));
+  std::unique_ptr<OpKernelContext> softmax_context(
+      new OpKernelContext(&params));
 
   op->Compute(softmax_context.get());
   tensorflow::testing::StartTiming();

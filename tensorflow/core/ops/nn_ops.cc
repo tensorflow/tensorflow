@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 namespace tensorflow {
 
 // --------------------------------------------------------------------------
@@ -75,6 +76,8 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Doc(R"doc(
 Batch normalization.
 
+This op is deprecated. Prefer `tf.nn.batch_normalization`.
+
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
   This is the first output from tf.nn.moments,
@@ -108,6 +111,8 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Attr("scale_after_normalization: bool")
     .Doc(R"doc(
 Gradients for batch normalization.
+
+This op is deprecated. See `tf.nn.batch_normalization`.
 
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
@@ -158,6 +163,7 @@ REGISTER_OP("Conv2D")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
 
@@ -168,13 +174,13 @@ performs the following:
 
 1. Flattens the filter to a 2-D matrix with shape
    `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the the input tensor to form a *virtual*
+2. Extracts image patches from the input tensor to form a *virtual*
    tensor of shape `[batch, out_height, out_width,
    filter_height * filter_width * in_channels]`.
 3. For each patch, right-multiplies the filter matrix and the image patch
    vector.
 
-In detail,
+In detail, with the default NCHW format,
 
     output[b, i, j, k] =
         sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -184,8 +190,13 @@ Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
-  of `input`.
+  of `input`. Must be in the same order as the dimension specified with format.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 REGISTER_OP("Conv2DBackpropInput")
@@ -197,6 +208,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the input.
 
@@ -207,10 +219,16 @@ filter: 4-D with shape
 out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
-  of the convolution.
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
 padding: The type of padding algorithm to use.
 output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
   w.r.t. the input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
@@ -225,6 +243,7 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the filter.
 
@@ -235,11 +254,17 @@ filter_sizes: An integer vector representing the tensor shape of `filter`,
 out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
-  of the convolution.
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
 padding: The type of padding algorithm to use.
 output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------
@@ -551,6 +576,29 @@ loss: Per example loss (batch_size vector).
 backprop: backpropagated gradients (batch_size x num_classes matrix).
 )doc");
 
+REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
+    .Input("features: T")
+    .Input("labels: int64")
+    .Output("loss: T")
+    .Output("backprop: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes softmax cross entropy cost and gradients to backpropagate.
+
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+
+features: batch_size x num_classes matrix
+labels: batch_size vector with values in [0, num_classes).
+  This is the label for the given minibatch entry.
+loss: Per example loss (batch_size vector).
+backprop: backpropagated gradients (batch_size x num_classes matrix).
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("InTopK")
@@ -585,30 +633,67 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 )doc");
 
 REGISTER_OP("TopK")
-    .Attr("k: int >= 1")
-    .Attr("sorted: bool = true")
     .Input("input: T")
     .Output("values: T")
     .Output("indices: int32")
+    .Attr("k: int >= 0")
+    .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Doc(R"doc(
-Returns the values and indices of the `k` largest elements for each row.
+Finds values and indices of the `k` largest elements for the last dimension.
 
-\\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
 
-\\(indices_{i, j}\\) gives the column index of the corresponding element,
-such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
-elements are equal, the lower-index element appears first.
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
 
-k: Number of top elements to look for within each row.
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+If `k` varies dynamically, use `TopKV2` below.
+
+input: 1-D or higher with last dimension at least `k`.
+k: Number of top elements to look for along the last dimension (along each
+  row for matrices).
 sorted: If true the resulting `k` elements will be sorted by the values in
   descending order.
-input: A `batch_size` x `classes` tensor.
-values: A `batch_size` x `k` tensor with the `k` largest elements for
-  each row.
-indices: A `batch_size` x `k` tensor with the index of each value within
-  each row.
+values: The `k` largest elements along each last dimensional slice.
+indices: The indices of `values` within the last dimension of `input`.
+)doc");
 
+REGISTER_OP("TopKV2")
+    .Input("input: T")
+    .Input("k: int32")
+    .Output("values: T")
+    .Output("indices: int32")
+    .Attr("sorted: bool = true")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Finds values and indices of the `k` largest elements for the last dimension.
+
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+This is the same as `TopK`, but takes `k` as in input rather than an attr.
+
+input: 1-D or higher with last dimension at least `k`.
+k: 0-D.  Number of top elements to look for along the last dimension (along each
+  row for matrices).
+sorted: If true the resulting `k` elements will be sorted by the values in
+  descending order.
+values: The `k` largest elements along each last dimensional slice.
+indices: The indices of `values` within the last dimension of `input`.
 )doc");
 
 }  // namespace tensorflow

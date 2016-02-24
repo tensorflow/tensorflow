@@ -38,8 +38,6 @@ from datetime import datetime
 import math
 import time
 
-import tensorflow.python.platform
-from tensorflow.python.platform import gfile
 import numpy as np
 import tensorflow as tf
 
@@ -151,9 +149,9 @@ def evaluate():
 
 def main(argv=None):  # pylint: disable=unused-argument
   cifar10.maybe_download_and_extract()
-  if gfile.Exists(FLAGS.eval_dir):
-    gfile.DeleteRecursively(FLAGS.eval_dir)
-  gfile.MakeDirs(FLAGS.eval_dir)
+  if tf.gfile.Exists(FLAGS.eval_dir):
+    tf.gfile.DeleteRecursively(FLAGS.eval_dir)
+  tf.gfile.MakeDirs(FLAGS.eval_dir)
   evaluate()
 
 

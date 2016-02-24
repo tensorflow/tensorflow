@@ -64,7 +64,7 @@ RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/root/.bazelrc
 ENV BAZELRC /root/.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.1.1
+ENV BAZEL_VERSION 0.1.4
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -79,7 +79,7 @@ RUN mkdir /bazel && \
 
 RUN git clone --recursive https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout 0.6.0
+    git checkout r0.7
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it

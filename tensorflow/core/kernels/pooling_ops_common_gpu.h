@@ -17,18 +17,19 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
 
-#include "tensorflow/stream_executor/dnn.h"
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/avgpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -51,4 +52,4 @@ class DnnPoolingGradOp {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_

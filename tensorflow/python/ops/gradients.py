@@ -21,8 +21,6 @@ from __future__ import print_function
 import collections
 import warnings
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -30,19 +28,19 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-# pylint: disable=unused-import
-from tensorflow.python.ops import array_grad
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import control_flow_grad
+from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import image_grad
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import linalg_grad
-from tensorflow.python.ops import math_grad
-# pylint: enable=unused-import
+from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import functional_ops
+
 from tensorflow.python.platform import logging
 
 # Warn the user if we convert a sparse representation to dense with at
@@ -78,7 +76,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.ConstantValue(value.dense_shape)
+  dense_shape_value = tensor_util.constant_value(value.dense_shape)
   if dense_shape_value is not None:
     num_elements = np.prod(dense_shape_value)
     if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
@@ -156,7 +154,7 @@ def _GetGradsDevice(op, colocate_gradients_with_ops):
   if colocate_gradients_with_ops and op.device:
     return op.device
   else:
-    return op.graph.get_default_device()
+    return ""
 
 
 def _PendingCount(graph, to_ops, from_ops):
@@ -198,9 +196,12 @@ def _PendingCount(graph, to_ops, from_ops):
       for inp in op.inputs:
         queue.append(inp.op)
 
+  # 'loop_state' is None if there are no while loops.
+  loop_state = control_flow_ops.MaybeCreateControlFlowState(between_op_list,
+                                                            between_ops)
+
   # Initialize pending count for between ops.
   pending_count = [0] * (graph._last_id + 1)
-  has_control_flow = False
   for op in between_op_list:
     for x in op.inputs:
       if between_ops[x.op._id]:
@@ -208,9 +209,8 @@ def _PendingCount(graph, to_ops, from_ops):
     for x in op.control_inputs:
       if between_ops[x._id]:
         pending_count[x._id] += 1
-    if op.type == "Exit":
-      has_control_flow = True
-  return pending_count, has_control_flow
+
+  return pending_count, loop_state
 
 
 def _AsList(x):
@@ -242,8 +242,7 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
       with ops.device(_GetGradsDevice(y.op, colocate_gradients_with_ops)):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y),
-            constant_op.constant(1,
-                                 dtype=y.dtype))
+            constant_op.constant(1, dtype=y.dtype))
     else:
       if grad_y.dtype != y.dtype:
         raise ValueError("Y and ys_grad must be of the same type, "
@@ -251,6 +250,11 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
                          (dtypes.as_dtype(y.dtype).name,
                           dtypes.as_dtype(grad_y.dtype).name))
   return grad_ys
+
+
+def _IsFloat(tensor):
+  dtype = dtypes.as_dtype(tensor.dtype)
+  return dtype.base_dtype in (dtypes.float32, dtypes.float64)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -377,8 +381,8 @@ def gradients(ys,
     # to the xs.
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
-    pending_count, has_control_flow = _PendingCount(ops.get_default_graph(),
-                                                    to_ops, from_ops)
+    pending_count, loop_state = _PendingCount(ops.get_default_graph(),
+                                              to_ops, from_ops)
 
     # Iterate over the collected ops.
     #
@@ -400,22 +404,45 @@ def gradients(ys,
     for op in to_ops:
       # 'ready' handles the case where one output gradient relies on
       # another output's gradient.
+      # pylint: disable=protected-access
       ready = (pending_count[op._id] == 0)
-      if ready and op._id not in to_ops_set:  # pylint: disable=protected-access
+      if ready and op._id not in to_ops_set:
         to_ops_set.add(op._id)
         queue.append(op)
+
+    if loop_state:
+      # The "unused" exits of the loops are added to ys. As an example,
+      # people often write:
+      #         v1, _ = While(p, b, [x1, x2])
+      #         result = gradients(v1, x1)
+      # The exit node of x2 is not included by the betweenness analysis.
+      # But we need it if x2 is involved in computing v1. So we add it
+      # back in backprop with a zeros_like gradient.
+      loop_exits = loop_state.GetAllLoopExits()
+      for y in loop_exits:
+        if pending_count[y.op._id] == 0 and y.op._id not in to_ops_set:
+          if _IsFloat(y):
+            # Floating-point outputs get a zero gradient.
+            _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
+          queue.append(y.op)
+
     # The set of 'from_ops'.
     stop_ops = _StopOps(from_ops, pending_count)
     while queue:
       # generate gradient subgraph for op.
       op = queue.popleft()
       with ops.device(_GetGradsDevice(op, colocate_gradients_with_ops)):
-        if has_control_flow:
-          control_flow_ops.EnterGradWhileContext(op)
-        out_grads = _AggregatedGrads(grads, op, has_control_flow,
-                                     aggregation_method)
+        if loop_state:
+          loop_state.EnterGradWhileContext(op)
+        out_grads = _AggregatedGrads(grads, op, loop_state, aggregation_method)
         grad_fn = None
-        if any(out_grads) and op._id not in stop_ops:
+
+        # pylint: disable=protected-access
+        is_func_call = ops.get_default_graph()._is_function(op.type)
+        # pylint: enable=protected-access
+
+        if not is_func_call and any(out_grads) and op._id not in stop_ops:
+        # pylint: enable=protected-access
           # A grad_fn must be defined, either as a function or as None
           # for ops that do not have gradients.
           try:
@@ -424,25 +451,36 @@ def gradients(ys,
             raise LookupError(
                 "No gradient defined for operation '%s' (op type: %s)" %
                 (op.name, op.type))
-        if grad_fn and any(out_grads):
+        if (grad_fn or is_func_call) and any(out_grads):
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if (not out_grad and
-                dtypes.as_dtype(op.outputs[i].dtype).base_dtype in
-                (dtypes.float32, dtypes.float64)):
+            if not out_grad and _IsFloat(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
-              out_grads[i] = array_ops.zeros_like(op.outputs[i])
+              if loop_state:
+                out_grads[i] = loop_state.ZerosLike(op, i)
+              else:
+                out_grads[i] = array_ops.zeros_like(op.outputs[i])
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):
               # pylint: enable=protected-access
-              op_wrapper = op
-              if has_control_flow:
-                op_wrapper = control_flow_ops.MakeWrapper(op)
-              in_grads = _AsList(grad_fn(op_wrapper, *out_grads))
+              wrapped_op = op
+              if loop_state:
+                wrapped_op = loop_state.MakeWrapper(op)
+              if is_func_call:
+                # For function call ops, we add a 'SymbolicGradient'
+                # node to the graph to compute gradients.
+                f_in = [x for x in op.inputs] + out_grads
+                f_types = [x.dtype for x in op.inputs]
+                # pylint: disable=protected-access
+                in_grads = _AsList(functional_ops._symbolic_gradient(
+                    f_in, f_types, op.type))
+                # pylint: enable=protected-access
+              else:
+                in_grads = _AsList(grad_fn(wrapped_op, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
@@ -458,14 +496,15 @@ def gradients(ys,
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad:
             _SetGrad(grads, t_in, in_grad)
-        if has_control_flow:
-          control_flow_ops.ExitGradWhileContext(op)
+        if loop_state:
+          loop_state.ExitGradWhileContext(op)
 
       # update pending count for the inputs of op.
+      # pylint: disable=protected-access
       for x in op.inputs:
         pending_count[x.op._id] -= 1
         ready = (pending_count[x.op._id] == 0)
-        if has_control_flow and not ready:
+        if loop_state and not ready:
           ready = (pending_count[x.op._id] > 0 and
                    control_flow_ops.IsLoopSwitch(x.op))
         if ready:
@@ -474,6 +513,7 @@ def gradients(ys,
         pending_count[x._id] -= 1
         if pending_count[x._id] is 0:
           queue.append(x)
+      # pylint: enable=protected-access
   return [_GetGrad(grads, x) for x in xs]
 
 
@@ -488,7 +528,7 @@ def _SetGrad(grads, t, grad):
   if isinstance(t_grads, list):
     t_grads.append(grad)
   else:
-    assert op.type == "Switch"
+    assert control_flow_ops.IsLoopSwitch(op)
     op_grads[t.value_index] = grad
 
 
@@ -550,13 +590,15 @@ class AggregationMethod(object):
   EXPERIMENTAL_ACCUMULATE_N = 2
 
 
-def _AggregatedGrads(grads, op, has_control_flow, aggregation_method=None):
+def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
   """Get the aggregated gradients for op.
 
   Args:
     grads: The map of memoized gradients.
     op: The op to get gradients for.
-    has_control_flow: True iff the graph contains control flow ops.
+    loop_state: An object for maintaining the state of the while loops in the
+                graph. It is of type ControlFlowState. None if the graph
+                contains no while loops.
     aggregation_method: Specifies the method used to combine gradient terms.
       Accepted values are constants defined in the class `AggregationMethod`.
 
@@ -579,9 +621,9 @@ def _AggregatedGrads(grads, op, has_control_flow, aggregation_method=None):
         "Invalid aggregation_method specified %s." % aggregation_method)
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
-    if has_control_flow:
+    if loop_state:
       if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
-        assert op.type == "Switch"
+        assert control_flow_ops.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))

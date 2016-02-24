@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test_benchmark.h"
 
+#include <vector>
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace testing {

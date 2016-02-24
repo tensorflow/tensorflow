@@ -17,11 +17,10 @@ limitations under the License.
 #define TENSORFLOW_UTIL_BCAST_H_
 
 #include <algorithm>
-#include <vector>
 
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -68,7 +67,7 @@ namespace tensorflow {
 // TODO(zhifengc): Adds support for n-ary (n >= 2).
 class BCast {
  public:
-  // A vector of int32 representing the shape of tensor. The 0-th
+  // A vector of int64 representing the shape of tensor. The 0-th
   // element is the outer-most dimension and the last element is the
   // inner-most dimension. Note that we do not use TensorShape since
   // it's more convenient to manipulate Vec directly for this module.
@@ -105,7 +104,6 @@ class BCast {
   Vec grad_y_reduce_idx_;
 
   static void Reverse(Vec* shape);
-  static bool HasZero(const Vec& shape);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BCast);
 };

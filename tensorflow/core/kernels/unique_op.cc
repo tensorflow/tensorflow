@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -29,10 +29,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename T>
 class UniqueOp : public OpKernel {
  public:
-  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {
-    const DataType dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(context, context->MatchSignature({dt}, {dt, DT_INT32}));
-  }
+  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -63,14 +60,26 @@ class UniqueOp : public OpKernel {
     for (auto it : uniq) {
       output_vec(it.second) = it.first;
     }
+
+    if (num_outputs() > 2) {
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  2, TensorShape({uniq_size}), &output));
+      auto count_output_vec = output->template vec<int32>();
+      count_output_vec.setZero();
+      for (int i = 0; i < N; ++i) {
+        count_output_vec(idx_vec(i))++;
+      }
+    }
   }
 };
 
-#define REGISTER_UNIQUE(type)                                      \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("Unique").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_UNIQUE(type)                                                \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Unique").Device(DEVICE_CPU).TypeConstraint<type>("T"),           \
+      UniqueOp<type>);                                                       \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("UniqueWithCounts").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       UniqueOp<type>)
-
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 #undef REGISTER_UNIQUE
 }  // namespace tensorflow

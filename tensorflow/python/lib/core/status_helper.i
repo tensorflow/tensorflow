@@ -19,7 +19,7 @@ limitations under the License.
 %import(module="tensorflow.python.pywrap_tensorflow") "tensorflow/python/lib/core/status.i"
 
 %inline %{
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 tensorflow::Status NotOkay() {
   return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT, "Testing 1 2 3");

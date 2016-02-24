@@ -2,8 +2,10 @@ syntax = "proto3";
 
 package tensorflow;
 // option cc_enable_arenas = true;
+option java_outer_classname = "EventProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.util";
 
-import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/summary.proto";
 
 // Protocol buffer representing an event that happened during
@@ -18,12 +20,46 @@ message Event {
   oneof what {
     // An event file was started, with the specified version.
     // This is use to identify the contents of the record IO files
-    // easily.  Current version is "tensorflow.Event:1".  All versions
-    // start with "tensorflow.Event:".
+    // easily.  Current version is "brain.Event:2".  All versions
+    // start with "brain.Event:".
     string file_version = 3;
-    // A model was constructed.
-    GraphDef graph_def = 4;
+    // An encoded version of a GraphDef.
+    bytes graph_def = 4;
     // A summary was generated.
     Summary summary = 5;
+    // The user output a log message. Not all messages are logged, only ones
+    // generated via the Python tensorboard_logging module.
+    LogMessage log_message = 6;
+    // The state of the session which can be used for restarting after crashes.
+    SessionLog session_log = 7;
   }
+}
+
+// Protocol buffer used for logging messages to the events file.
+message LogMessage {
+  enum Level {
+    UNKNOWN = 0;
+    DEBUG = 10;
+    INFO = 20;
+    WARN = 30;
+    ERROR = 40;
+    FATAL = 50;
+  }
+  Level level = 1;
+  string message = 2;
+}
+
+// Protocol buffer used for logging session state.
+message SessionLog {
+  enum SessionStatus {
+    STATUS_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    CHECKPOINT = 3;
+  }
+
+  SessionStatus status = 1;
+  // This checkpoint_path contains both the path and filename.
+  string checkpoint_path = 2;
+  string msg = 3;
 }

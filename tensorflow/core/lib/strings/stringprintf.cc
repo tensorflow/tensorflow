@@ -18,7 +18,6 @@ limitations under the License.
 #include <errno.h>
 #include <stdarg.h>  // For va_list and related operations
 #include <stdio.h>   // MSVC requires this for _vsnprintf
-#include <vector>
 
 namespace tensorflow {
 namespace strings {

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -75,9 +75,13 @@ void Partition(const GraphDef& graph_def,
   CHECK(s.ok()) << s;
 
   // Check versions
-  EXPECT_EQ(graph_def.version(), TF_GRAPH_DEF_VERSION);
+  EXPECT_EQ(graph_def.versions().producer(), TF_GRAPH_DEF_VERSION);
+  EXPECT_EQ(graph_def.versions().min_consumer(),
+            TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
   for (auto& it : *partitions) {
-    EXPECT_EQ(graph_def.version(), it.second.version());
+    EXPECT_EQ(graph_def.versions().producer(), it.second.versions().producer());
+    EXPECT_EQ(graph_def.versions().min_consumer(),
+              it.second.versions().min_consumer());
   }
 }
 
@@ -127,7 +131,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
 
 REGISTER_OP("Input").Output("o: float");
 REGISTER_OP("BoolInput").Output("o: bool");
-REGISTER_OP("Cross").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("Combine").Input("a: float").Input("b: float").Output("o: float");
 
 Node* Input(const GraphDefBuilder::Options& opts) {
   return ops::SourceOp("Input", opts);
@@ -137,9 +141,9 @@ Node* BoolInput(const GraphDefBuilder::Options& opts) {
   return ops::SourceOp("BoolInput", opts);
 }
 
-Node* Cross(ops::NodeOut a, ops::NodeOut b,
-            const GraphDefBuilder::Options& opts) {
-  return ops::BinaryOp("Cross", a, b, opts);
+Node* Combine(ops::NodeOut a, ops::NodeOut b,
+              const GraphDefBuilder::Options& opts) {
+  return ops::BinaryOp("Combine", a, b, opts);
 }
 
 class GraphPartitionTest : public ::testing::Test {
@@ -184,13 +188,13 @@ class GraphPartitionTest : public ::testing::Test {
 TEST_F(GraphPartitionTest, SingleDevice) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
-  Cross(a1, a1, in_.opts().WithName("A2"));
+  Combine(a1, a1, in_.opts().WithName("A2"));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(1, partitions_.size());
 
   a1 = Input(a_opts_.WithName("A1"));
-  Cross(a1, a1, a_opts_.WithName("A2"));
+  Combine(a1, a1, a_opts_.WithName("A2"));
   ExpectMatchA();
 }
 
@@ -198,7 +202,7 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
   Node* b1 = Input(in_.opts().WithName("B1"));
-  Cross(a1, b1, in_.opts().WithName("B2"));
+  Combine(a1, b1, in_.opts().WithName("B2"));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
@@ -212,7 +216,7 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
   b1 = Input(b_opts_.WithName("B1"));
   Node* recv =
       _Recv(DT_FLOAT, "edge_1_A1", a, 82, b, b_opts_.WithName("A1/_1"));
-  Cross(recv, b1, b_opts_.WithName("B2"));
+  Combine(recv, b1, b_opts_.WithName("B2"));
   ExpectMatchB();
 }
 
@@ -220,7 +224,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
   Node* b1 = Input(in_.opts().WithName("B1"));
-  Cross(b1, b1, in_.opts().WithName("B2").WithControlInput(a1));
+  Combine(b1, b1, in_.opts().WithName("B2").WithControlInput(a1));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
@@ -236,7 +240,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
       _Recv(DT_FLOAT, "edge_3_A1", a, 82, b, b_opts_.WithName("A1/_2"));
   Node* id = Identity(recv, b_opts_.WithName("A1/_3"));
   b1 = Input(b_opts_.WithName("B1"));
-  Cross(b1, b1, b_opts_.WithName("B2").WithControlInput(id));
+  Combine(b1, b1, b_opts_.WithName("B2").WithControlInput(id));
   ExpectMatchB();
 }
 
@@ -244,8 +248,8 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
   Node* b1 = Input(in_.opts().WithName("B1"));
-  Cross(a1, b1, in_.opts().WithName("B2"));
-  Cross(a1, a1, in_.opts().WithName("B3"));
+  Combine(a1, b1, in_.opts().WithName("B2"));
+  Combine(a1, a1, in_.opts().WithName("B3"));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
@@ -259,8 +263,8 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
   Node* recv =
       _Recv(DT_FLOAT, "edge_1_A1", a, 82, b, b_opts_.WithName("A1/_1"));
   b1 = Input(b_opts_.WithName("B1"));
-  Cross(recv, b1, b_opts_.WithName("B2"));
-  Cross(recv, recv, b_opts_.WithName("B3"));
+  Combine(recv, b1, b_opts_.WithName("B2"));
+  Combine(recv, recv, b_opts_.WithName("B3"));
   ExpectMatchB();
 }
 
@@ -268,7 +272,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
   Node* b1 = Input(in_.opts().WithName("B1"));
-  Cross(b1, b1, in_.opts().WithName("B2").WithControlInput(a1));
+  Combine(b1, b1, in_.opts().WithName("B2").WithControlInput(a1));
   Input(in_.opts().WithName("B3").WithControlInput(a1));
 
   Partition(ToGraphDef(), &partitions_);
@@ -285,7 +289,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
       _Recv(DT_FLOAT, "edge_1_A1", a, 82, b, b_opts_.WithName("A1/_2"));
   Node* id = Identity(recv, b_opts_.WithName("A1/_3"));
   b1 = Input(b_opts_.WithName("B1"));
-  Cross(b1, b1, b_opts_.WithName("B2").WithControlInput(id));
+  Combine(b1, b1, b_opts_.WithName("B2").WithControlInput(id));
   Input(b_opts_.WithName("B3").WithControlInput(id));
   ExpectMatchB();
 }
@@ -294,7 +298,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* a1 = Input(in_.opts().WithName("A1"));
   Node* b1 = Input(in_.opts().WithName("B1"));
-  Cross(a1, b1, in_.opts().WithName("B2"));
+  Combine(a1, b1, in_.opts().WithName("B2"));
   Input(in_.opts().WithName("B3").WithControlInput(a1));
 
   Partition(ToGraphDef(), &partitions_);
@@ -316,7 +320,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   Node* recv2 =
       _Recv(DT_FLOAT, "edge_2_A1", a, 82, b, b_opts_.WithName("A1/_5"));
   b1 = Input(b_opts_.WithName("B1"));
-  Cross(recv2, b1, b_opts_.WithName("B2"));
+  Combine(recv2, b1, b_opts_.WithName("B2"));
   Input(b_opts_.WithName("B3").WithControlInput(id1));
   ExpectMatchB();
 }

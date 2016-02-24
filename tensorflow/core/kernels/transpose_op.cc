@@ -18,17 +18,17 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/transpose_op.h"
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/transpose_op_functor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
-
-typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
 
 // inv = InvertPermutationOp(T<int32> p) takes a permutation of
 // integers 0, 1, ..., n - 1 and returns the inverted
@@ -68,6 +68,12 @@ class InvertPermutationOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation").Device(DEVICE_CPU),
                         InvertPermutationOp);
 
+REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("x")
+                            .HostMemory("y"),
+                        InvertPermutationOp);
+
 // output = TransposeOp(T<any> input, T<int32> perm) takes a tensor
 // of type T and rank N, and a permutation of 0, 1, ..., N-1. It
 // shuffles the dimensions of the input tensor according to permutation.
@@ -83,26 +89,21 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation").Device(DEVICE_CPU),
 // REQUIRES: input.dims() == perm.size().
 // REQUIRES: perm is a permutation.
 
-template <typename Device, typename T>
-TransposeOp<Device, T>::TransposeOp(OpKernelConstruction* context)
-    : OpKernel(context) {}
-
-template <typename Device, typename T>
-void TransposeOp<Device, T>::Compute(OpKernelContext* context) {
-  const Tensor& input = context->input(0);
-  const Tensor& perm = context->input(1);
+void TransposeOp::Compute(OpKernelContext* ctx) {
+  const Tensor& input = ctx->input(0);
+  const Tensor& perm = ctx->input(1);
   // Preliminary validation of sizes.
-  OP_REQUIRES(context, TensorShapeUtils::IsVector(perm.shape()),
+  OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm.shape()),
               errors::InvalidArgument("perm must be a vector, not ",
                                       perm.shape().DebugString()));
   auto Vperm = perm.vec<int32>();
   const int dims = input.dims();
   static const int kMinDims = 0;
   static const int kMaxDims = 10;
-  OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
+  OP_REQUIRES(ctx, kMinDims <= dims && dims <= kMaxDims,
               errors::Unimplemented("Transposing a tensor of rank ", dims,
                                     " is not implemented."));
-  OP_REQUIRES(context, dims == Vperm.size(),
+  OP_REQUIRES(ctx, dims == Vperm.size(),
               errors::InvalidArgument(
                   "transpose expects a vector of size ", input.dims(),
                   ". But input(1) is a vector of size ", Vperm.size()));
@@ -114,118 +115,62 @@ void TransposeOp<Device, T>::Compute(OpKernelContext* context) {
   gtl::InlinedVector<bool, 8> bits(dims);
   for (const int32 d : permutation) {
     OP_REQUIRES(
-        context, 0 <= d && d < dims,
+        ctx, 0 <= d && d < dims,
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
     bits[d] = true;
     shape.AddDim(input.dim_size(d));
   }
   for (int i = 0; i < dims; ++i) {
-    OP_REQUIRES(context, bits[i], errors::InvalidArgument(
-                                      i, " is missing from {",
-                                      str_util::Join(permutation, ","), "}."));
+    OP_REQUIRES(ctx, bits[i], errors::InvalidArgument(
+                                  i, " is missing from {",
+                                  str_util::Join(permutation, ","), "}."));
   }
 
   // 0-D and 1-D transposes do nothing
   if (dims <= 1) {
-    context->set_output(0, input);
+    ctx->set_output(0, input);
     return;
   }
 
   Tensor* output = nullptr;
-  OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
-  TransposeTensor<Device, T>(context->eigen_device<Device>(), input,
-                             input.shape().dim_sizes(), permutation, output);
-}
-
-template <typename Device, typename T>
-void TransposeTensor(const Device& device, const Tensor& input,
-                     const gtl::ArraySlice<int64> input_shape,
-                     gtl::ArraySlice<int32> permutation, Tensor* output) {
-  const int dims = input_shape.size();
-  CHECK(permutation.size() == dims);
-  if (input.NumElements() == 0) {
-    return;
-  }
-  switch (dims) {
-#define EXPAND_DIM(N)                                                     \
-  case N: {                                                               \
-    functor::TransposeFunctor<Device, T, N> func;                         \
-    func(device, output->tensor<T, N>(), input.shaped<T, N>(input_shape), \
-         permutation.data());                                             \
-    break;                                                                \
-  }
-    EXPAND_DIM(2);
-    EXPAND_DIM(3);
-    EXPAND_DIM(4);
-    EXPAND_DIM(5);
-    EXPAND_DIM(6);
-    EXPAND_DIM(7);
-    EXPAND_DIM(8);
-    EXPAND_DIM(9);
-    EXPAND_DIM(10);
-    default:
-      LOG(FATAL) << "Unexpected dims: " << dims;
-  }
-#undef EXPAND_CASE
-}
-
-namespace functor {
-
-template <typename Device, typename T, int NDIMS>
-void TransposeMaybeInline(const Device& d,
-                          typename TTypes<T, NDIMS>::Tensor out,
-                          typename TTypes<T, NDIMS>::ConstTensor in,
-                          const int* perm) {
-  // perm[] is a permutation of 0, 1, ..., NDIMS-1. perm[] is on CPU.
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  if (out.size() * sizeof(T) < 131072) {  // Small transpose on a CPU: do inline
-    out = in.shuffle(p);
-  } else {
-    out.device(d) = in.shuffle(p);
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
+  if (shape.num_elements() > 0) {
+    OP_REQUIRES_OK(ctx, DoTranspose(ctx, input, permutation, output));
   }
 }
 
-template <typename T, int NDIMS>
-struct TransposeFunctor<CPUDevice, T, NDIMS> {
-  void operator()(const CPUDevice& d, typename TTypes<T, NDIMS>::Tensor out,
-                  typename TTypes<T, NDIMS>::ConstTensor in, const int* perm) {
-    TransposeMaybeInline<CPUDevice, T, NDIMS>(d, out, in, perm);
-  }
-};
+Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+  typedef Eigen::ThreadPoolDevice CPUDevice;
+  return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
+                                   out);
+}
 
-}  // namespace functor
-
-#define REGISTER(D, T)                                               \
-  template class TransposeOp<D##Device, T>;                          \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")                          \
-                              .Device(DEVICE_##D)                    \
-                              .TypeConstraint<T>("T")                \
-                              .HostMemory("perm"),                   \
-                          TransposeOp<D##Device, T>);                \
-  template void TransposeTensor<D##Device, T>(                       \
-      const D##Device&, const Tensor&, const gtl::ArraySlice<int64>, \
-      gtl::ArraySlice<int32>, Tensor*);
-REGISTER(CPU, float);
-REGISTER(CPU, double);
-REGISTER(CPU, complex64);
-REGISTER(CPU, uint8);
-REGISTER(CPU, int8);
-REGISTER(CPU, int16);
-REGISTER(CPU, int32);
-REGISTER(CPU, int64);
-REGISTER(CPU, string);
-REGISTER(CPU, bool);
-#if GOOGLE_CUDA
-REGISTER(GPU, uint8);
-REGISTER(GPU, int8);
-REGISTER(GPU, int16);
-REGISTER(GPU, int32);
-REGISTER(GPU, int64);
-REGISTER(GPU, float);
-REGISTER(GPU, double);
-REGISTER(GPU, complex64);
-REGISTER(GPU, bool);
-#endif
+#define REGISTER(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
+                              .Device(DEVICE_CPU)     \
+                              .TypeConstraint<T>("T") \
+                              .HostMemory("perm"),    \
+                          TransposeCpuOp);
+TF_CALL_ALL_TYPES(REGISTER)
 #undef REGISTER
+
+#if GOOGLE_CUDA
+Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+  typedef Eigen::GpuDevice GPUDevice;
+  return ::tensorflow::DoTranspose(ctx->eigen_device<GPUDevice>(), in, perm,
+                                   out);
+}
+
+#define REGISTER(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
+                              .Device(DEVICE_GPU)     \
+                              .TypeConstraint<T>("T") \
+                              .HostMemory("perm"),    \
+                          TransposeGpuOp);
+TF_CALL_NUMBER_TYPES(REGISTER);
+#undef REGISTER
+#endif
+
 }  // namespace tensorflow

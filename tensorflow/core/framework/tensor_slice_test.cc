@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_slice.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -156,16 +156,11 @@ TEST(TensorSliceTest, SliceTensorShape) {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:-:4,1:2,6");
     TensorShape x({2, 4, 5, 8});
     TensorShape y;
-    EXPECT_OK(a.SliceTensorShape(x, &y));
-    EXPECT_EQ(
-        "dim { size: 1 } "
-        "dim { size: 4 } "
-        "dim { size: 1 } "
-        "dim { size: 6 }",
-        y.DebugString());
+    TF_EXPECT_OK(a.SliceTensorShape(x, &y));
+    EXPECT_EQ("[1,4,1,6]", y.DebugString());
   }
 
-  // An invalid application -- dimension 2 is out of bound
+  // An invalid application -- dimension 2 is out of bounds
   {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:1,4:-:-");
     TensorShape x({2, 4, 5, 8});
@@ -173,13 +168,9 @@ TEST(TensorSliceTest, SliceTensorShape) {
     EXPECT_EQ(
         "Internal: "
         "Extent in dimension 1 out of bounds: "
-        "shape = dim { size: 2 } "
-        "dim { size: 4 } "
-        "dim { size: 5 } "
-        "dim { size: 8 }, "
-        "slice = 1,1:1,4:-:-",
+        "shape = [2,4,5,8], slice = 1,1:1,4:-:-",
         a.SliceTensorShape(x, &y).ToString());
-    EXPECT_EQ("", y.DebugString());
+    EXPECT_EQ("[]", y.DebugString());
   }
 }
 
@@ -255,6 +246,17 @@ TEST(TensorSliceTest, Deserialization) {
   // Both serializations should be interpreted the same.
   EXPECT_EQ("0,5:0,10:14,1:-:-", ts2.DebugString());
   EXPECT_EQ("0,5:0,10:14,1:-:-", ts3.DebugString());
+}
+
+TEST(TensorSliceTest, UpdateToCover) {
+  // [2:4, :, 3:]
+  TensorSlice s({{2, 2}, {0, -1}, {3, 7}});
+  // [:, 1:4, 2:4]
+  TensorSlice other({{0, -1}, {1, 3}, {2, 2}});
+
+  s.UpdateToCover(other);
+  // [:, :, 2:]
+  EXPECT_EQ("-:-:2,8", s.DebugString());
 }
 
 }  // namespace

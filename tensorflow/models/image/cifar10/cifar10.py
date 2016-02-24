@@ -18,7 +18,7 @@
 Summary of available functions:
 
  # Compute input images and labels for training. If you would like to run
- # evaluations, use input() instead.
+ # evaluations, use inputs() instead.
  inputs, labels = distorted_inputs()
 
  # Compute inference on the model inputs to make a prediction.
@@ -41,7 +41,6 @@ import re
 import sys
 import tarfile
 
-import tensorflow.python.platform
 from six.moves import urllib
 import tensorflow as tf
 
@@ -230,7 +229,7 @@ def inference(images):
     weights = _variable_with_weight_decay('weights', shape=[dim, 384],
                                           stddev=0.04, wd=0.004)
     biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu_layer(reshape, weights, biases, name=scope.name)
+    local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
     _activation_summary(local3)
 
   # local4
@@ -238,7 +237,7 @@ def inference(images):
     weights = _variable_with_weight_decay('weights', shape=[384, 192],
                                           stddev=0.04, wd=0.004)
     biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu_layer(local3, weights, biases, name=scope.name)
+    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
     _activation_summary(local4)
 
   # softmax, i.e. softmax(WX + b)
@@ -247,7 +246,7 @@ def inference(images):
                                           stddev=1/192.0, wd=0.0)
     biases = _variable_on_cpu('biases', [NUM_CLASSES],
                               tf.constant_initializer(0.0))
-    softmax_linear = tf.nn.xw_plus_b(local4, weights, biases, name=scope.name)
+    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
     _activation_summary(softmax_linear)
 
   return softmax_linear
@@ -265,18 +264,10 @@ def loss(logits, labels):
   Returns:
     Loss tensor of type float.
   """
-  # Reshape the labels into a dense Tensor of
-  # shape [batch_size, NUM_CLASSES].
-  sparse_labels = tf.reshape(labels, [FLAGS.batch_size, 1])
-  indices = tf.reshape(tf.range(FLAGS.batch_size), [FLAGS.batch_size, 1])
-  concated = tf.concat(1, [indices, sparse_labels])
-  dense_labels = tf.sparse_to_dense(concated,
-                                    [FLAGS.batch_size, NUM_CLASSES],
-                                    1.0, 0.0)
-
   # Calculate the average cross entropy loss across the batch.
-  cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-      logits, dense_labels, name='cross_entropy_per_example')
+  labels = tf.cast(labels, tf.int64)
+  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      logits, labels, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 

@@ -32,7 +32,6 @@ from __future__ import print_function
 
 import math
 
-import tensorflow.python.platform
 import tensorflow as tf
 
 # The MNIST dataset has 10 classes, representing the digits 0 through 9.
@@ -94,7 +93,7 @@ def loss(logits, labels):
   Returns:
     loss: Loss tensor of type float.
   """
-  # Convert from sparse integer labels in the range [0, NUM_CLASSSES)
+  # Convert from sparse integer labels in the range [0, NUM_CLASSES)
   # to 1-hot dense float vectors (that is we will have batch_size vectors,
   # each with NUM_CLASSES values, all of which are 0.0 except there will
   # be a 1.0 in the entry corresponding to the label).
@@ -154,7 +153,7 @@ def evaluation(logits, labels):
   """
   # For a classifier model, we can use the in_top_k Op.
   # It returns a bool tensor with shape [batch_size] that is true for
-  # the examples where the label's is was in the top k (here k=1)
+  # the examples where the label is in the top k (here k=1)
   # of all logits for that example.
   correct = tf.nn.in_top_k(logits, labels, 1)
   # Return the number of true entries.

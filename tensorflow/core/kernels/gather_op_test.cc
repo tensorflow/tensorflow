@@ -17,12 +17,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -40,11 +40,11 @@ class GatherOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType index_type) {
     RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Gather")
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(index_type))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "Gather")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(index_type))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -54,7 +54,7 @@ TEST_F(GatherOpTest, ScalarIndices) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({}), {3});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({}));
@@ -69,7 +69,7 @@ TEST_F(GatherOpTest, Simple_TwoD32) {
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 0, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 3}));
@@ -84,7 +84,7 @@ TEST_F(GatherOpTest, Simple_TwoD64) {
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int64>(TensorShape({4}), {0, 4, 0, 2});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 3}));
@@ -98,7 +98,7 @@ TEST_F(GatherOpTest, HighRank) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
   AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 0, 2, 3, 0});
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));

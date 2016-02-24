@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
-#include "testing/base/public/googletest.h"
+#include "tensorflow/core/platform/google/build_config/googletest.h"
 #endif
 
 namespace tensorflow {
@@ -25,6 +25,7 @@ namespace testing {
 
 #if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
 string TmpDir() { return FLAGS_test_tmpdir; }
+string SrcDir() { return FLAGS_test_srcdir; }
 int RandomSeed() { return FLAGS_test_random_seed; }
 #else
 string TmpDir() {
@@ -38,6 +39,10 @@ string TmpDir() {
     return env;
   }
   return "/tmp";
+}
+string SrcDir() {
+  // Bazel makes data dependencies available via a relative path.
+  return "";
 }
 int RandomSeed() {
   const char* env = getenv("TEST_RANDOM_SEED");

@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -238,10 +238,10 @@ TEST_F(SimplePlacerTest, TestNoConstraints) {
     Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
     ops::UnaryOp("TestRelu", ops::NodeOut(input, 0), b.opts().WithName("n1"));
     ops::UnaryOp("TestRelu", ops::NodeOut(input, 1), b.opts().WithName("n2"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   EXPECT_DEVICE_TYPE(g, "in", DEVICE_CPU);
   EXPECT_DEVICE_TYPE(g, "n1", DEVICE_GPU);
   EXPECT_DEVICE_TYPE(g, "n2", DEVICE_GPU);
@@ -259,10 +259,10 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraints) {
     ops::BinaryOp("AssignCPU", var_cpu, input, b.opts().WithName("assign_cpu"));
     Node* var_gpu = ops::SourceOp("VariableGPU", b.opts().WithName("var_gpu"));
     ops::BinaryOp("AssignGPU", var_gpu, input, b.opts().WithName("assign_gpu"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   EXPECT_DEVICE_TYPE(g, "in", DEVICE_CPU);
   EXPECT_DEVICE_TYPE(g, "var_cpu", DEVICE_CPU);
   EXPECT_DEVICE_TYPE(g, "assign_cpu", DEVICE_CPU);
@@ -281,10 +281,10 @@ TEST_F(SimplePlacerTest, TestPartialSpec) {
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("/job:a"));
     ops::SourceOp("TestVariable",
                   b.opts().WithName("var").WithDevice("/job:a"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   EXPECT_DEVICE_TYPE(g, "in", DEVICE_CPU);
   EXPECT_DEVICE_CONTAINS(g, "in", "/job:a");
   EXPECT_DEVICE_TYPE(g, "var", DEVICE_GPU);
@@ -297,13 +297,13 @@ TEST_F(SimplePlacerTest, TestAssignedDevicePreserved) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   GetNodeByName(g, "in")
       ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:7");
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   EXPECT_EQ("/job:a/replica:0/task:0/cpu:7",
             GetNodeByName(g, "in")->assigned_device_name());
 }
@@ -317,12 +317,12 @@ TEST_F(SimplePlacerTest, TestPartialSpecGpuToCpu) {
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("/gpu:0"));
     ops::SourceOp("TestVariable",
                   b.opts().WithName("var").WithDevice("/gpu:0"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
   options.config.set_allow_soft_placement(true);
-  EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, &options));
   EXPECT_DEVICE_TYPE(g, "in", DEVICE_CPU);
   EXPECT_DEVICE_CONTAINS(g, "in", "/cpu");
   EXPECT_DEVICE_TYPE(g, "var", DEVICE_GPU);
@@ -336,7 +336,7 @@ TEST_F(SimplePlacerTest, TestAssignedGpuDeviceToCpuDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   GetNodeByName(g, "in")
@@ -369,7 +369,7 @@ Status SimplePlacerTest::ReferenceTestHelper(const string& variable_op_type,
       ops::BinaryOp(assign_op_type, var, input,
                     b.opts().WithName(strings::StrCat("assign_", i)));
     }
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   TF_RETURN_IF_ERROR(Place(&g));
@@ -388,25 +388,25 @@ Status SimplePlacerTest::ReferenceTestHelper(const string& variable_op_type,
 // (unconstrained, CPU-only, and GPU-only).
 TEST_F(SimplePlacerTest, TestReferenceConnection) {
   Status s;
-  EXPECT_OK(ReferenceTestHelper("TestVariable", "TestAssign", DEVICE_GPU));
-  EXPECT_OK(ReferenceTestHelper("TestVariable", "AssignCPU", DEVICE_CPU));
-  EXPECT_OK(ReferenceTestHelper("TestVariable", "AssignGPU", DEVICE_GPU));
-  EXPECT_OK(ReferenceTestHelper("VariableCPU", "TestAssign", DEVICE_CPU));
-  EXPECT_OK(ReferenceTestHelper("VariableCPU", "AssignCPU", DEVICE_CPU));
+  TF_EXPECT_OK(ReferenceTestHelper("TestVariable", "TestAssign", DEVICE_GPU));
+  TF_EXPECT_OK(ReferenceTestHelper("TestVariable", "AssignCPU", DEVICE_CPU));
+  TF_EXPECT_OK(ReferenceTestHelper("TestVariable", "AssignGPU", DEVICE_GPU));
+  TF_EXPECT_OK(ReferenceTestHelper("VariableCPU", "TestAssign", DEVICE_CPU));
+  TF_EXPECT_OK(ReferenceTestHelper("VariableCPU", "AssignCPU", DEVICE_CPU));
   {
     Status s = ReferenceTestHelper("VariableCPU", "AssignGPU", DEVICE_CPU);
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
     EXPECT_TRUE(StringPiece(s.error_message())
                     .contains("no device type supports both of those nodes"));
   }
-  EXPECT_OK(ReferenceTestHelper("VariableGPU", "TestAssign", DEVICE_GPU));
+  TF_EXPECT_OK(ReferenceTestHelper("VariableGPU", "TestAssign", DEVICE_GPU));
   {
     Status s = ReferenceTestHelper("VariableGPU", "AssignCPU", DEVICE_CPU);
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
     EXPECT_TRUE(StringPiece(s.error_message())
                     .contains("no device type supports both of those nodes"));
   }
-  EXPECT_OK(ReferenceTestHelper("VariableGPU", "AssignGPU", DEVICE_GPU));
+  TF_EXPECT_OK(ReferenceTestHelper("VariableGPU", "AssignGPU", DEVICE_GPU));
 }
 
 // Test the handling of '@node_name' colocation constraints, when
@@ -431,10 +431,10 @@ TEST_F(SimplePlacerTest, TestColocatedChain) {
                              .WithDevice(strings::StrCat("@n_", i - 1)));
       }
     }
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   for (int i = 0; i < 100; ++i) {
     if (i % 10 != 0) {
       EXPECT_COLOCATED(g, strings::StrCat("n_", i - (i % 1)),
@@ -463,10 +463,10 @@ TEST_F(SimplePlacerTest, TestColocatedChainWithLongRangeColocations) {
                                    .WithName(strings::StrCat("n_", i))
                                    .WithDevice(strings::StrCat("@n_", i % 10)));
     }
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   for (int i = 10; i < 100; ++i) {
     EXPECT_COLOCATED(g, strings::StrCat("n_", i % 10),
                      strings::StrCat("n_", i));
@@ -497,10 +497,10 @@ TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
                         .WithName(strings::StrCat("assign_", i))
                         .WithDevice(strings::StrCat("@assign_", i % 3)));
     }
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  EXPECT_OK(Place(&g));
+  TF_EXPECT_OK(Place(&g));
   for (int i = 0; i < 10; ++i) {
     EXPECT_COLOCATED(g, strings::StrCat("var_", i),
                      strings::StrCat("assign_", i));
@@ -521,7 +521,7 @@ TEST_F(SimplePlacerTest, TestEmptyDeviceSet) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   DeviceSet empty;
@@ -541,7 +541,7 @@ TEST_F(SimplePlacerTest, TestHeterogeneousDeviceSetFailure) {
     Node* var = ops::SourceOp("VariableGPU", b.opts().WithName("var"));
     ops::BinaryOp("TestAssign", var, in,
                   b.opts().WithName("assign").WithDevice("/job:b/task:1"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   DeviceSet heterogeneous;
@@ -564,7 +564,7 @@ TEST_F(SimplePlacerTest, TestUnknownDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("/job:foo"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -582,7 +582,7 @@ TEST_F(SimplePlacerTest, TestUnknownMergedDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("/job:foo"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -600,7 +600,7 @@ TEST_F(SimplePlacerTest, TestUnknownAssignedDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   GetNodeByName(g, "in")->set_assigned_device_name("/job:foo");
@@ -619,7 +619,7 @@ TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableNoKernels", b.opts().WithName("var"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -637,7 +637,7 @@ TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableGPU", b.opts().WithName("var"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   DeviceSet cpu_only;
@@ -658,7 +658,7 @@ TEST_F(SimplePlacerTest, TestMalformedDeviceSpecification) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("/foo:bar"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -673,7 +673,7 @@ TEST_F(SimplePlacerTest, TestMalformedAssignedDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   GetNodeByName(g, "in")->set_assigned_device_name("/foo:bar");
@@ -691,7 +691,7 @@ TEST_F(SimplePlacerTest, TestNonUniqueAssignedDevice) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   GetNodeByName(g, "in")->set_assigned_device_name("/job:a");
@@ -710,7 +710,7 @@ TEST_F(SimplePlacerTest, TestUnknownColocatedNode) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("@foo"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -725,7 +725,7 @@ TEST_F(SimplePlacerTest, TestMalformedColocatedNode) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("@"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -741,12 +741,12 @@ TEST_F(SimplePlacerTest, TestNonexistentGpuAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestDevice", b.opts().WithName("in").WithDevice("/gpu:11"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
   options.config.set_allow_soft_placement(true);
-  EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, &options));
   EXPECT_DEVICE_CONTAINS(g, "in", "/gpu:0");
 }
 
@@ -757,7 +757,7 @@ TEST_F(SimplePlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestDevice", b.opts().WithName("in").WithDevice("/gpu:11"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
@@ -776,7 +776,7 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableGPU", b.opts().WithName("var").WithDevice("/cpu:0"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
@@ -793,12 +793,12 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableGPU", b.opts().WithName("var").WithDevice("/cpu:0"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
   options.config.set_allow_soft_placement(true);
-  EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, &options));
 }
 
 // Test that a graph with device type and reference constraints on
@@ -820,12 +820,12 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
     Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
     ops::UnaryOp("TestDeviceEnforce", var_cpu,
                  b.opts().WithName("force_cpu").WithDevice("/gpu:0"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   SessionOptions options;
   options.config.set_allow_soft_placement(true);
-  EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, &options));
   EXPECT_DEVICE_TYPE(g, "var_gpu", DEVICE_GPU);
   EXPECT_DEVICE_TYPE(g, "force_gpu", DEVICE_GPU);
   EXPECT_COLOCATED(g, "var_gpu", "force_gpu");
@@ -843,7 +843,7 @@ TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
     Node* var = ops::SourceOp("VariableGPU", b.opts().WithName("var"));
     Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
     ops::BinaryOp("AssignCPU", var, input, b.opts().WithName("assign"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);
@@ -865,7 +865,7 @@ TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithColocatedNodes) {
                                 b.opts().WithName("relu_1").WithDevice("@in"));
     ops::UnaryOp("ReluGPU", relu_1,
                  b.opts().WithName("relu_2").WithDevice("@relu_1"));
-    EXPECT_OK(BuildGraph(b, &g));
+    TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   Status s = Place(&g);

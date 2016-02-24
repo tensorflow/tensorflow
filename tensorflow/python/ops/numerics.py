@@ -38,7 +38,7 @@ def verify_tensor_all_finite(t, msg, name=None):
   """
   with ops.op_scope([t], name, "VerifyFinite") as name:
     t = ops.convert_to_tensor(t, name="t")
-    with ops.device(t.device or t.graph.get_default_device()):
+    with ops.device(t.device):
       verify_input = array_ops.check_numerics(t, message=msg)
       out = control_flow_ops.with_dependencies([verify_input], t)
   return out

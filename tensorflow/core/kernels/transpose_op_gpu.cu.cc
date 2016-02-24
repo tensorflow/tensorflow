@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,46 +17,123 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/numeric_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/transpose_op_functor.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
-namespace functor {
+namespace internal {
 
-template <typename T, int NDIMS>
-struct TransposeFunctor<Eigen::GpuDevice, T, NDIMS> {
-  void operator()(const Eigen::GpuDevice& d,
-                  typename TTypes<T, NDIMS>::Tensor out,
-                  typename TTypes<T, NDIMS>::ConstTensor in, const int* perm) {
-    Transpose<Eigen::GpuDevice, T, NDIMS>(d, out, in, perm);
+template <typename T>
+__global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
+                                const int32 ndims, T* dst) {
+  const int32* in_strides = buf;
+  const int32* out_strides = buf + ndims;
+  const int32* perm = buf + ndims * 2;
+  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+    int32 i_idx = 0;
+    int32 t = o_idx;
+    for (int i = 0; i < ndims; ++i) {
+      i_idx += (t / out_strides[i]) * in_strides[perm[i]];
+      t = t % out_strides[i];
+    }
+    dst[o_idx] = ldg(src + i_idx);
   }
-};
+}
 
-#define DEFINE(T, N) template struct TransposeFunctor<Eigen::GpuDevice, T, N>;
-#define DEFINE_DIM(T) \
-  DEFINE(T, 2);       \
-  DEFINE(T, 3);       \
-  DEFINE(T, 4);       \
-  DEFINE(T, 5);       \
-  DEFINE(T, 6);       \
-  DEFINE(T, 7);       \
-  DEFINE(T, 8);       \
-  DEFINE(T, 9);       \
-  DEFINE(T, 10);
-DEFINE_DIM(uint8);
-DEFINE_DIM(int8);
-DEFINE_DIM(int16);
-DEFINE_DIM(int32);
-DEFINE_DIM(int64);
-DEFINE_DIM(float);
-DEFINE_DIM(double);
-DEFINE_DIM(complex64);
-DEFINE_DIM(bool);
-#undef DEFINE_DIM
-#undef DEFINE
+template <typename Device, typename T>
+void TransposeSimple(const Device& d, const Tensor& in,
+                     const gtl::ArraySlice<int32> perm, Tensor* out) {
+  // Ensures we can use 32-bit index.
+  const int64 nelem = in.NumElements();
+  CHECK_LT(nelem, kint32max) << "Tensor too large to transpose on GPU";
+  // Pack strides and permutation into one buffer.
+  const int32 ndims = in.dims();
+  gtl::InlinedVector<int32, 16> host_buf(ndims * 3);
+  // Input strides.
+  ComputeStride(in.shape(), &host_buf[0]);
+  // Output strides.
+  ComputeStride(out->shape(), &host_buf[ndims]);
+  // Dimension permutation.
+  for (int i = 0; i < ndims; ++i) {
+    host_buf[ndims * 2 + i] = perm[i];
+  }
+  // Copies the input strides, output strides and permutation to the device.
+  auto num_bytes = sizeof(int64) * host_buf.size();
+  auto dev_buf = d.allocate(num_bytes);
+  // NOTE: host_buf is not allocated by CudaHostAllocator, and
+  // therefore we are doing a sync copy effectively.
+  d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
+  // Launch kernel to q[...] = p[...].
+  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
+  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
+  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  TransposeKernel<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
+      cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
+      ndims, q);
+  // Safe to deallocate immediately after the kernel launch.
+  d.deallocate(dev_buf);
+}
 
-}  // end namespace functor
-}  // end namespace tensorflow
+template <typename Device, typename T, int NDIMS>
+void TransposeUsingEigen(const Device& d, const Tensor& in,
+                         const gtl::ArraySlice<int32> perm, Tensor* out) {
+  Eigen::array<int, NDIMS> p;
+  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
+  auto x = typename TTypes<T, NDIMS>::ConstTensor(
+      reinterpret_cast<const T*>(in.tensor_data().data()),
+      in.shape().AsEigenDSizes<NDIMS>());
+  auto y = typename TTypes<T, NDIMS>::Tensor(
+      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
+      out->shape().AsEigenDSizes<NDIMS>());
+  y.device(d) = x.shuffle(p);
+}
 
+}  // end namespace internal
+
+typedef Eigen::GpuDevice Device;
+
+template <>
+Status DoTranspose<Device>(const Device& d, const Tensor& in,
+                           const gtl::ArraySlice<int32> perm, Tensor* out) {
+  CHECK_GE(in.dims(), 2);
+  CHECK_EQ(in.dims(), out->dims());
+  CHECK_EQ(in.dims(), perm.size());
+  CHECK_EQ(in.dtype(), out->dtype());
+  switch (in.dtype()) {
+    case DT_BOOL:
+    case DT_INT8:
+    case DT_QINT8:
+    case DT_QUINT8:
+    case DT_UINT8:
+      internal::Transpose<Device, uint8>(d, in, perm, out);
+      break;
+
+    case DT_BFLOAT16:
+    case DT_INT16:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+      internal::Transpose<Device, uint16>(d, in, perm, out);
+      break;
+
+    case DT_FLOAT:
+    case DT_INT32:
+    case DT_QINT32:
+      internal::Transpose<Device, uint32>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX64:
+    case DT_DOUBLE:
+    case DT_INT64:
+      internal::Transpose<Device, uint64>(d, in, perm, out);
+      break;
+
+    default:
+      return errors::Unimplemented("Unsupported dtype on GPU: ", in.dtype());
+  }
+  return Status::OK();
+}
+
+}  // namespace tensorflow
 #endif  // GOOGLE_CUDA

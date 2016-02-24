@@ -23,6 +23,7 @@ REGISTER_OP("ResizeArea")
     .Input("size: int32")
     .Output("resized_images: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using area interpolation.
 
@@ -31,6 +32,9 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -41,6 +45,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("size: int32")
     .Output("resized_images: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using bicubic interpolation.
 
@@ -49,6 +54,9 @@ Input images can be of different types but output images are always float.
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -102,12 +110,16 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("size: int32")
     .Output("resized_images: T")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using nearest neighbor interpolation.
 
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
 )doc");
@@ -118,12 +130,16 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Input("size: int32")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Computes the gradient of nearest neighbor interpolation.
 
 grads: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
   original input size.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
 output: 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
   with respect to the input image.
 )doc");
@@ -282,9 +298,10 @@ output: The contrast-adjusted image or images.
 REGISTER_OP("DecodePng")
     .Input("contents: string")
     .Attr("channels: int = 0")
-    .Output("image: uint8")
+    .Attr("dtype: {uint8, uint16} = DT_UINT8")
+    .Output("image: dtype")
     .Doc(R"doc(
-Decode a PNG-encoded image to a uint8 tensor.
+Decode a PNG-encoded image to a uint8 or uint16 tensor.
 
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
@@ -306,16 +323,18 @@ image: 3-D with shape `[height, width, channels]`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("EncodePng")
-    .Input("image: uint8")
     .Attr("compression: int = -1")
+    .Attr("T: {uint8, uint16} = DT_UINT8")
+    .Input("image: T")
     .Output("contents: string")
     .Doc(R"doc(
 PNG-encode an image.
 
-`image` is a 3-D uint8 Tensor of shape `[height, width, channels]` where
-`channels` is:
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
 
 *   1: for grayscale.
+*   2: for grayscale + alpha.
 *   3: for RGB.
 *   4: for RGBA.
 
@@ -364,4 +383,113 @@ images: 1-D or higher rank. HSV data to convert. Last dimension must be size 3.
 output: `images` converted to RGB.
 )doc");
 
+// --------------------------------------------------------------------------
+REGISTER_OP("DrawBoundingBoxes")
+    .Input("images: float")
+    .Input("boxes: float")
+    .Output("output: float")
+    .Doc(R"doc(
+Draw bounding boxes on a batch of images.
+
+Outputs a copy of `images` but draws on top of the pixels zero or more bounding
+boxes specified by the locations in `boxes`. The coordinates of the each
+bounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example, if an image is 100 x 200 pixels and the bounding box is
+`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the
+bounding box will be `(10, 40)` to `(50, 180)`.
+
+Parts of the bounding box may fall outside the image.
+
+images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
+boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+  boxes.
+output: 4-D with the same shape as `images`. The batch of input images with
+  bounding boxes drawn on the images.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("SampleDistortedBoundingBox")
+    .Input("image_size: T")
+    .Input("bounding_boxes: float")
+    .Output("begin: T")
+    .Output("size: T")
+    .Output("bboxes: float")
+    .Attr("T: {uint8, int8, int16, int32, int64}")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("min_object_covered: float = 0.1")
+    .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
+    .Attr("area_range: list(float) = [0.05, 1.0]")
+    .Attr("max_attempts: int = 100")
+    .Attr("use_image_if_no_bounding_boxes: bool = false")
+    .SetIsStateful()
+    .Doc(R"doc(
+Generate a single randomly distorted bounding box for an image.
+
+Bounding box annotations are often supplied in addition to ground-truth labels
+in image recognition or object localization tasks. A common technique for
+training such a system is to randomly distort an image while preserving
+its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+localization of an object, i.e. bounding box, given an `image_size`,
+`bounding_boxes` and a series of constraints.
+
+The output of this Op is a single bounding box that may be used to crop the
+original image. The output is returned as 3 tensors: `begin`, `size` and
+`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+image. The latter may be supplied to `tf.image.draw_bounding_box` to visualize
+what the bounding box looks like.
+
+Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example,
+
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
+
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
+
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
+
+Note that if no bounding box information is available, setting
+`use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+false and no bounding boxes are supplied, an error is raised.
+
+image_size: 1-D, containing `[height, width, channels]`.
+bounding_boxes: 3-D with shape `[batch, N, 4]` describing the N bounding boxes
+  associated with the image.
+begin: 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+  `tf.slice`.
+size: 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+  `tf.slice`.
+bboxes: 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+  Provide as input to `tf.image.draw_bounding_boxes`.
+seed: If either `seed` or `seed2` are set to non-zero, the random number
+  generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
+  seed.
+seed2: A second seed to avoid seed collision.
+min_object_covered: The cropped area of the image must contain at least this
+  fraction of any bounding box supplied.
+aspect_ratio_range: The cropped area of the image must have an aspect ratio =
+  width / height within this range.
+area_range: The cropped area of the image must contain a fraction of the
+  supplied image within in this range.
+max_attempts: Number of attempts at generating a cropped region of the image
+  of the specified constraints. After `max_attempts` failures, return the entire
+  image.
+use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
+  If true, assume an implicit bounding box covering the whole input. If false,
+  raise an error.
+)doc");
 }  // namespace tensorflow

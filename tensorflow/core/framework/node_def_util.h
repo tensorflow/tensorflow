@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -94,6 +95,8 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    TensorShape* value);  // type: "shape"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
+                   PartialTensorShape* value);  // type: "shape"
+Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    Tensor* value);  // type: "tensor"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<string>* value);  // type "list(string)"
@@ -113,6 +116,9 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<TensorShapeProto>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<TensorShape>* value);  // type "list(shape)"
+Status GetNodeAttr(
+    const AttrSlice& attrs, const string& attr_name,
+    std::vector<PartialTensorShape>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 
@@ -140,7 +146,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 
 // Computes the mapping from input/output argument name to the
 // corresponding input/output index range.  For example,
-// input "foo" coresponds to input indices
+// input "foo" corresponds to input indices
 //   [ (*inputs)["foo"].first, (*inputs)["foo"].second ).
 typedef std::unordered_map<string, std::pair<int, int>> NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,

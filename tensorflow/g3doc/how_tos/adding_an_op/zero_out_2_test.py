@@ -19,10 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
-from tensorflow.g3doc.how_tos.adding_an_op import gen_zero_out_op_2
+from tensorflow.g3doc.how_tos.adding_an_op import zero_out_op_2
 from tensorflow.g3doc.how_tos.adding_an_op import zero_out_grad_2
 
 
@@ -30,14 +28,14 @@ class ZeroOut2Test(tf.test.TestCase):
 
   def test(self):
     with self.test_session():
-      result = gen_zero_out_op_2.zero_out([5, 4, 3, 2, 1])
+      result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
 
   def test_grad(self):
     with self.test_session():
       shape = (5,)
       x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
-      y = gen_zero_out_op_2.zero_out(x)
+      y = zero_out_op_2.zero_out(x)
       err = tf.test.compute_gradient_error(x, shape, y, shape)
       self.assertLess(err, 1e-4)
 

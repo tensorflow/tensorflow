@@ -23,19 +23,18 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/reduction_ops.h"
-#include "tensorflow/core/kernels/transpose_op.h"
-
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/reduction_ops.h"
+#include "tensorflow/core/kernels/transpose_op_functor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -197,7 +196,11 @@ class ReductionHelper {
   }
 
   // Shape of shuffled input
-  const gtl::ArraySlice<int64> data_reshape() const { return data_reshape_; }
+  TensorShape data_reshape() const {
+    TensorShape shape;
+    for (auto s : data_reshape_) shape.AddDim(s);
+    return shape;
+  }
 
   // Shape with all reduction dimensions at the end
   TensorShape shuffled_shape() {
@@ -250,7 +253,7 @@ class ReductionOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& data = ctx->input(0);
     const Tensor& axes = ctx->input(1);
-    VLOG(1) << "data shape: " << data.shape().ShortDebugString();
+    VLOG(1) << "data shape: " << data.shape().DebugString();
     VLOG(1) << "axes      : " << axes.SummarizeValue(10);
 
     ReductionHelper helper;
@@ -273,11 +276,15 @@ class ReductionOp : public OpKernel {
       return;
     }
 
+    // We must allocate temp tensors using the same alloc attr as
+    // output(0) because it is returned as output(0) in the end.
+    const AllocatorAttributes alloc_attr = ctx->output_alloc_attr(0);
+
     // A temporary tensor whose size matches the size of the reduced
     // output.
     Tensor tmp_out;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(), &tmp_out));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
+                                           &tmp_out, alloc_attr));
 
     typedef functor::ReduceFunctor<Device> Functor;
     Constants<Device> constants;
@@ -311,12 +318,14 @@ class ReductionOp : public OpKernel {
     } else {
       // If we don't hit one of the cases above, transpose the data so that
       // all reduced dimensions are last and reuse the 2-D -> 1-D case.
+      Tensor data_reshaped;
+      CHECK(data_reshaped.CopyFrom(data, helper.data_reshape()));
       Tensor shuffled;
-      OP_REQUIRES_OK(ctx,
-                     ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                        helper.shuffled_shape(), &shuffled));
-      TransposeTensor<Device, T>(d, data, helper.data_reshape(),
-                                 helper.permutation(), &shuffled);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             helper.shuffled_shape(), &shuffled,
+                                             alloc_attr));
+      OP_REQUIRES_OK(
+          ctx, DoTranspose(d, data_reshaped, helper.permutation(), &shuffled));
       const int64 unreduced = tmp_out.NumElements();
       const int64 reduced = shuffled.NumElements() / unreduced;
       const Tensor& const_shuffled = shuffled;

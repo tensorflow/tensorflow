@@ -73,7 +73,7 @@ The code below is an excerpt; full source is [here](https://www.tensorflow.org/c
 
 ```python
 # Create the model
-x = tf.placeholder("float", [None, 784], name="x-input")
+x = tf.placeholder(tf.float32, [None, 784], name="x-input")
 W = tf.Variable(tf.zeros([784,10]), name="weights")
 b = tf.Variable(tf.zeros([10], name="bias"))
 
@@ -82,23 +82,23 @@ with tf.name_scope("Wx_b") as scope:
   y = tf.nn.softmax(tf.matmul(x,W) + b)
 
 # Add summary ops to collect data
-w_hist = tf.histogram_summary("weights", W)
-b_hist = tf.histogram_summary("biases", b)
-y_hist = tf.histogram_summary("y", y)
+tf.histogram_summary("weights", W)
+tf.histogram_summary("biases", b)
+tf.histogram_summary("y", y)
 
 # Define loss and optimizer
-y_ = tf.placeholder("float", [None,10], name="y-input")
+y_ = tf.placeholder(tf.float32, [None,10], name="y-input")
 # More name scopes will clean up the graph representation
 with tf.name_scope("xent") as scope:
   cross_entropy = -tf.reduce_sum(y_*tf.log(y))
-  ce_summ = tf.scalar_summary("cross entropy", cross_entropy)
+  tf.scalar_summary("cross entropy", cross_entropy)
 with tf.name_scope("train") as scope:
   train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
 
 with tf.name_scope("test") as scope:
   correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-  accuracy_summary = tf.scalar_summary("accuracy", accuracy)
+  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+  tf.scalar_summary("accuracy", accuracy)
 
 # Merge all the summaries and write them out to /tmp/mnist_logs
 merged = tf.merge_all_summaries()

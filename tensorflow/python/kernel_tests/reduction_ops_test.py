@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -118,13 +116,13 @@ class SumReductionTest(tf.test.TestCase):
   # Simple tests for various types.
   def testDoubleReduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.float64)
-    self._compare(np_arr, [], False)
-    self._compare(np_arr, [0], False)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
 
   def testInt32Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.int32)
-    self._compare(np_arr, [], False)
-    self._compare(np_arr, [0], False)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
 
   def testComplex64Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.complex64)
@@ -221,6 +219,19 @@ class MeanReductionTest(tf.test.TestCase):
     # Create a 3D array of floats and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+    self._compareAll(np_arr, [1])
+    self._compareAll(np_arr, [2])
+    self._compareAll(np_arr, [0, 1])
+    self._compareAll(np_arr, [1, 2])
+    self._compareAll(np_arr, [0, 2])
+    self._compareAll(np_arr, [0, 1, 2])
+
+  def testDoubleReduce3D(self):
+    # Create a 3D array of doubles and reduce across all possible
+    # dimensions
+    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
     self._compareAll(np_arr, [1])
@@ -383,6 +394,19 @@ class MinReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
 
+  def testDoubleReduce3D(self):
+    # Create a 3D array of doubles and reduce across all possible
+    # dimensions
+    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+    self._compareAll(np_arr, [1])
+    self._compareAll(np_arr, [2])
+    self._compareAll(np_arr, [0, 1])
+    self._compareAll(np_arr, [1, 2])
+    self._compareAll(np_arr, [0, 2])
+    self._compareAll(np_arr, [0, 1, 2])
+
   def testGradient(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
@@ -467,6 +491,20 @@ class MaxReductionTest(tf.test.TestCase):
     # Create a 3D array of floats and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
+    self._compareAll(np_arr, None)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+    self._compareAll(np_arr, [1])
+    self._compareAll(np_arr, [2])
+    self._compareAll(np_arr, [0, 1])
+    self._compareAll(np_arr, [1, 2])
+    self._compareAll(np_arr, [0, 2])
+    self._compareAll(np_arr, [0, 1, 2])
+
+  def testDoubleReduce3D(self):
+    # Create a 3D array of doubles and reduce across all possible
+    # dimensions
+    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
     self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])

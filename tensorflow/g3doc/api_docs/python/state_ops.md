@@ -3,7 +3,7 @@
 # Variables
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -104,7 +104,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value, trainable=True, collections=None, validate_shape=True, name=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, name=None, variable_def=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -133,6 +133,9 @@ variable to its initial value.
     `initial_value` must be known.
 *  <b>`name`</b>: Optional name for the variable. Defaults to `'Variable'` and gets
     uniquified automatically.
+*  <b>`variable_def`</b>: `VariableDef` protocol buffer. If not `None`, recreates
+    the Variable object with its contents. `variable_def` and the other
+    arguments are mutually exclusive.
 
 ##### Returns:
 
@@ -141,8 +144,9 @@ variable to its initial value.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the initial value does not have a shape and
-    `validate_shape` is `True`.
+*  <b>`ValueError`</b>: If both `variable_def` and initial_value are specified.
+*  <b>`ValueError`</b>: If the initial value is not specified, or does not have a
+    shape and `validate_shape` is `True`.
 
 
 - - -
@@ -383,6 +387,13 @@ The `Operation` of this variable.
 #### Other Methods
 - - -
 
+#### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
+
+
+
+
+- - -
+
 #### `tf.Variable.ref()` {#Variable.ref}
 
 Returns a reference to this variable.
@@ -398,6 +409,17 @@ variable.
 ##### Returns:
 
   A `Tensor` that is a reference to the variable.
+
+
+- - -
+
+#### `tf.Variable.to_proto()` {#Variable.to_proto}
+
+Converts a `Variable` to a `VariableDef` protocol buffer.
+
+##### Returns:
+
+  A `VariableDef` protocol buffer.
 
 
 - - -
@@ -670,11 +692,11 @@ checkpoints per device.
 *  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
 *  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
-*  <b>`max_to_keep`</b>: maximum number of recent checkpoints to keep.
-    Defaults to 10,000 hours.
+*  <b>`max_to_keep`</b>: Maximum number of recent checkpoints to keep.
+    Defaults to 5.
 *  <b>`keep_checkpoint_every_n_hours`</b>: How often to keep checkpoints.
     Defaults to 10,000 hours.
-*  <b>`name`</b>: string.  Optional name to use as a prefix when adding operations.
+*  <b>`name`</b>: String.  Optional name to use as a prefix when adding operations.
 *  <b>`restore_sequentially`</b>: A `Bool`, which if true, causes restore of different
     variables to happen sequentially within each device.  This can lower
     memory usage when restoring very large models.
@@ -695,7 +717,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None)` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta')` {#Saver.save}
 
 Saves variables.
 
@@ -710,7 +732,7 @@ path can be passed directly to a call to `restore()`.
 
 
 *  <b>`sess`</b>: A Session to use to save the variables.
-*  <b>`save_path`</b>: string.  Path to the checkpoint filename.  If the saver is
+*  <b>`save_path`</b>: String.  Path to the checkpoint filename.  If the saver is
     `sharded`, this is the prefix of the sharded checkpoint filename.
 *  <b>`global_step`</b>: If provided the global step number is appended to
     `save_path` to create the checkpoint filename. The optional argument
@@ -720,6 +742,7 @@ path can be passed directly to a call to `restore()`.
     kept in the same directory as the checkpoint files, is automatically
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
+*  <b>`meta_graph_suffix`</b>: Suffix for MetaGraphDef file. Defaults to 'meta'.
 
 ##### Returns:
 
@@ -731,6 +754,7 @@ path can be passed directly to a call to `restore()`.
 
 
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
+*  <b>`ValueError`</b>: If `latest_filename` contains path components.
 
 
 - - -
@@ -774,6 +798,8 @@ You can pass any of the returned values to `restore()`.
 
 #### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
+DEPRECATED: Use set_last_checkpoints_with_time.
+
 Sets the list of old checkpoint filenames.
 
 ##### Args:
@@ -796,6 +822,58 @@ Generates a `SaverDef` representation of this saver.
 ##### Returns:
 
   A `SaverDef` proto.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
+
+Writes `MetaGraphDef` to save_path/filename.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional meta_graph filename including the path.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+#### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
+
+
+
+
+- - -
+
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+
+Sets the list of old checkpoint filenames and timestamps.
+
+##### Args:
+
+
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
+
+##### Raises:
+
+
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.to_proto()` {#Saver.to_proto}
+
+Returns a `SaverDef` protocol buffer.
 
 
 
@@ -856,7 +934,7 @@ proto.
 
 *  <b>`save_dir`</b>: Directory where the model was saved.
 *  <b>`model_checkpoint_path`</b>: The checkpoint file.
-*  <b>`all_model_checkpoint_paths`</b>: list of strings.  Paths to all not-yet-deleted
+*  <b>`all_model_checkpoint_paths`</b>: List of strings.  Paths to all not-yet-deleted
     checkpoints, sorted from oldest to newest.  If this is a non-empty list,
     the last element must be equal to model_checkpoint_path.  These paths
     are also saved in the CheckpointState proto.
@@ -877,7 +955,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, trainable=True, collections=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -895,8 +973,13 @@ with tf.variable_scope("foo", reuse=True)
 ```
 
 If initializer is `None` (the default), the default initializer passed in
-the constructor is used. If that one is `None` too, a
-`UniformUnitScalingInitializer` will be used.
+the variable scope will be used. If that one is `None` too, a
+`UniformUnitScalingInitializer` will be used. The initializer can also be
+a Tensor, in which case the variable is initialized to this value and shape.
+
+Similarly, if the regularizer is `None` (the default), the default regularizer
+passed in the variable scope will be used (if that is `None` too,
+then by default no regularization is performed).
 
 ##### Args:
 
@@ -905,6 +988,9 @@ the constructor is used. If that one is `None` too, a
 *  <b>`shape`</b>: shape of the new or existing variable.
 *  <b>`dtype`</b>: type of the new or existing variable (defaults to `DT_FLOAT`).
 *  <b>`initializer`</b>: initializer for the variable if one is created.
+*  <b>`regularizer`</b>: a (Tensor -> Tensor or None) function; the result of
+    applying it on a newly created variable will be added to the collection
+    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
@@ -920,6 +1006,221 @@ the constructor is used. If that one is `None` too, a
 *  <b>`ValueError`</b>: when creating a new variable and shape is not declared,
     or when violating reuse during variable creation. Reuse is set inside
     `variable_scope`.
+
+
+- - -
+
+### `class tf.VariableScope` {#VariableScope}
+
+Variable scope object to carry defaults to provide to get_variable.
+
+Many of the arguments we need for get_variable in a variable store are most
+easily handled with a context. This object is used for the defaults.
+
+Attributes:
+  name: name of the current scope, used as prefix in get_variable.
+  initializer: default initializer passed to get_variable.
+  regularizer: default regularizer passed to get_variable.
+  reuse: Boolean or None, setting the reuse in get_variable.
+  name_scope: The name passed to tf.name_scope.
+- - -
+
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, name_scope='')` {#VariableScope.__init__}
+
+Creates a new VariableScope with the given properties.
+
+
+- - -
+
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#VariableScope.get_variable}
+
+Gets an existing variable with this name or create a new one.
+
+
+- - -
+
+#### `tf.VariableScope.initializer` {#VariableScope.initializer}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.name` {#VariableScope.name}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.regularizer` {#VariableScope.regularizer}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.reuse` {#VariableScope.reuse}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.reuse_variables()` {#VariableScope.reuse_variables}
+
+Reuse variables in this scope.
+
+
+- - -
+
+#### `tf.VariableScope.set_initializer(initializer)` {#VariableScope.set_initializer}
+
+Set initializer for this scope.
+
+
+- - -
+
+#### `tf.VariableScope.set_regularizer(regularizer)` {#VariableScope.set_regularizer}
+
+Set regularizer for this scope.
+
+
+
+- - -
+
+### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None)` {#variable_scope}
+
+Returns a context for variable scope.
+
+Variable scope allows to create new variables and to share already created
+ones while providing checks to not create or share by accident. For details,
+see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+here we present only a few basic examples.
+
+Simple example of how to create a new variable:
+
+```python
+with tf.variable_scope("foo"):
+    with tf.variable_scope("bar"):
+        v = tf.get_variable("v", [1])
+        assert v.name == "foo/bar/v:0"
+```
+
+Basic example of sharing a variable:
+
+```python
+with tf.variable_scope("foo"):
+    v = tf.get_variable("v", [1])
+with tf.variable_scope("foo", reuse=True):
+    v1 = tf.get_variable("v", [1])
+assert v1 == v
+```
+
+Sharing a variable by capturing a scope and setting reuse:
+
+```python
+with tf.variable_scope("foo") as scope:
+    v = tf.get_variable("v", [1])
+    scope.reuse_variables()
+    v1 = tf.get_variable("v", [1])
+assert v1 == v
+```
+
+To prevent accidental sharing of variables, we raise an exception when
+getting an existing variable in a non-reusing scope.
+
+```python
+with tf.variable_scope("foo"):
+    v = tf.get_variable("v", [1])
+    v1 = tf.get_variable("v", [1])
+    #  Raises ValueError("... v already exists ...").
+```
+
+Similarly, we raise an exception when trying to get a variable that
+does not exist in reuse mode.
+
+```python
+with tf.variable_scope("foo", reuse=True):
+    v = tf.get_variable("v", [1])
+    #  Raises ValueError("... v does not exists ...").
+```
+
+Note that the `reuse` flag is inherited: if we open a reusing scope,
+then all its sub-scopes become reusing as well.
+
+##### Args:
+
+
+*  <b>`name_or_scope`</b>: `string` or `VariableScope`: the scope to open.
+*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
+    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+*  <b>`initializer`</b>: default initializer for variables within this scope.
+*  <b>`regularizer`</b>: default regularizer for variables within this scope.
+
+##### Returns:
+
+  A scope that can be to captured and reused.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
+    a reuse scope, or if reuse is not `None` or `True`.
+*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
+
+
+- - -
+
+### `tf.variable_op_scope(values, name, default_name, initializer=None, regularizer=None)` {#variable_op_scope}
+
+Returns a context manager for defining an op that creates variables.
+
+This context manager validates that the given `values` are from the
+same graph, ensures that that graph is the default graph, and pushes a
+name scope and a variable scope.
+
+If `name` is not None, it is used as is in the variable scope. If `name`
+is None, then `default_name` is used.  In that case, if the same name has been
+previously used in the same scope, it will made unique be appending `_N` to
+it.
+
+This is intended to be used when defining generic ops and so reuse is always
+inherited.
+
+For example, to define a new Python op called `my_op_with_vars`:
+
+```python
+def my_op_with_vars(a, b, name=None):
+  with tf.variable_op_scope([a, b], name, "MyOp") as scope:
+    a = tf.convert_to_tensor(a, name="a")
+    b = tf.convert_to_tensor(b, name="b")
+    c = tf.get_variable('c')
+    # Define some computation that uses `a`, `b`, and `c`.
+    return foo_op(..., name=scope)
+```
+
+##### Args:
+
+
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
+*  <b>`name`</b>: The name argument that is passed to the op function, this name is not
+    uniquified in the variable scope.
+*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
+    name will be uniquified.
+*  <b>`initializer`</b>: A default initializer to pass to variable scope.
+*  <b>`regularizer`</b>: default regularizer for variables within this scope.
+
+##### Returns:
+
+  A context manager for use in defining a Python op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
+    a reuse scope, or if reuse is not `None` or `True`.
+*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
 
 
 - - -
@@ -1027,138 +1328,12 @@ of collisions with kwargs.
 *  <b>`ValueError`</b>: if the name is None.
 
 
-- - -
-
-### `tf.variable_op_scope(values, name, default_name, initializer=None)` {#variable_op_scope}
-
-Returns a context manager for defining an op that creates variables.
-
-This context manager validates that the given `values` are from the
-same graph, ensures that that graph is the default graph, and pushes a
-name scope and a variable scope.
-
-If `name` is not None, it is used as is in the variable scope. If `name`
-is None, then `default_name` is used.  In that case, if the same name has been
-previously used in the same scope, it will made unique be appending `_N` to
-it.
-
-This is intended to be used when defining generic ops and so reuse is always
-inherited.
-
-For example, to define a new Python op called `my_op_with_vars`:
-
-```python
-def my_op_with_vars(a, b, name=None):
-  with tf.variable_op_scope([a, b], name, "MyOp") as scope:
-    a = tf.convert_to_tensor(a, name="a")
-    b = tf.convert_to_tensor(b, name="b")
-    c = tf.get_variable('c')
-    # Define some computation that uses `a`, `b`, and `c`.
-    return foo_op(..., name=scope)
-```
-
-##### Args:
-
-
-*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
-*  <b>`name`</b>: The name argument that is passed to the op function, this name is not
-    uniquified in the variable scope.
-*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
-    name will be uniquified.
-*  <b>`initializer`</b>: A default initializer to pass to variable scope.
-
-##### Returns:
-
-  A context manager for use in defining a Python op.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
-    a reuse scope, or if reuse is not `None` or `True`.
-*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
-
 
 - - -
 
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None)` {#variable_scope}
+### `tf.no_regularizer(_)` {#no_regularizer}
 
-Returns a context for variable scope.
-
-Variable scope allows to create new variables and to share already created
-ones while providing checks to not create or share by accident. For details,
-see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
-here we present only a few basic examples.
-
-Simple example of how to create a new variable:
-
-```python
-with tf.variable_scope("foo"):
-    with tf.variable_scope("bar"):
-        v = tf.get_variable("v", [1])
-        assert v.name == "foo/bar/v:0"
-```
-
-Basic example of sharing a variable:
-
-```python
-with tf.variable_scope("foo"):
-    v = tf.get_variable("v", [1])
-with tf.variable_scope("foo", reuse=True):
-    v1 = tf.get_variable("v", [1])
-assert v1 == v
-```
-
-Sharing a variable by capturing a scope and setting reuse:
-
-```python
-with tf.variable_scope("foo") as scope:
-    v = tf.get_variable("v", [1])
-    scope.reuse_variables()
-    v1 = tf.get_variable("v", [1])
-assert v1 == v
-```
-
-To prevent accidental sharing of variables, we raise an exception when
-getting an existing variable in a non-reusing scope.
-
-```python
-with tf.variable_scope("foo"):
-    v = tf.get_variable("v", [1])
-    v1 = tf.get_variable("v", [1])
-    #  Raises ValueError("... v already exists ...").
-```
-
-Similarly, we raise an exception when trying to get a variable that
-does not exist in reuse mode.
-
-```python
-with tf.variable_scope("foo", reuse=True):
-    v = tf.get_variable("v", [1])
-    #  Raises ValueError("... v does not exists ...").
-```
-
-Note that the `reuse` flag is inherited: if we open a reusing scope,
-then all its sub-scopes become reusing as well.
-
-##### Args:
-
-
-*  <b>`name_or_scope`</b>: `string` or `VariableScope`: the scope to open.
-*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
-    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
-*  <b>`initializer`</b>: default initializer for variables within this scope.
-
-##### Returns:
-
-  A scope that can be to captured and reused.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
-    a reuse scope, or if reuse is not `None` or `True`.
-*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
+Use this function to prevent regularization of variables.
 
 
 
@@ -1292,7 +1467,8 @@ to keep the scale intact, where `dim = W.shape[0]` (the size of the input).
 A similar calculation for convolutional networks gives an analogous result
 with `dim` equal to the product of the first 3 dimensions.  When
 nonlinearities are present, we need to multiply this by a constant `factor`.
-See <https://arxiv.org/pdf/1412.6558v3.pdf> for deeper motivation, experiments
+See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
+([pdf](http://arxiv.org/pdf/1412.6558.pdf)) for deeper motivation, experiments
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
@@ -1357,8 +1533,9 @@ This operation computes
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
-If `indices` contains duplicate entries, lexicographically later entries
-override earlier entries.
+If values in `ref` is to be updated more than once, because there are
+duplicate entires in `indices`, the order at which the updates happen
+for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
@@ -1417,7 +1594,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
@@ -1464,7 +1641,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.

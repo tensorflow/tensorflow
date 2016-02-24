@@ -26,7 +26,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -264,9 +263,16 @@ def _ErfcGrad(op, grad):
 
 
 @ops.RegisterGradient("Lgamma")
-def _LgammaGrad(op, grad):  # pylint: disable=unused-argument
-  # TODO(ebrevdo): implement digamma
-  raise NotImplementedError("grad(Lgamma) == Digamma is not implemented")
+def _LgammaGrad(op, grad):
+  """Returns grad * digamma(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.digamma(x)
+
+
+@ops.RegisterGradient("Digamma")
+def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
+  raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
 
 
 @ops.RegisterGradient("Sigmoid")
@@ -402,6 +408,25 @@ def _MinimumGrad(op, grad):
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 
+@ops.RegisterGradient("SquaredDifference")
+def _SquaredDifferenceGrad(op, grad):
+  """Returns the gradient for (x-y)^2."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  # .op works with Tensors or IndexedSlices
+  with ops.control_dependencies([grad.op]):
+    # The parens ensure that if grad is IndexedSlices, it'll get multiplied by
+    # Tensor (not a number like 2.0) which causes it to convert to Tensor.
+    x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
+  return (array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx),
+          -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy))
+
+
 # Logical operations have no gradients.
 ops.NoGradient("Less")
 ops.NoGradient("LessEqual")
@@ -418,7 +443,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(c), dtype=x.dtype)
+  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 
@@ -487,8 +512,8 @@ def _SparseMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("Floor")
-def _FloorGrad(_, grad):
-  return grad
+def _FloorGrad(_, unused_grad):
+  return [None]
 
 
 @ops.RegisterGradient("BatchMatMul")
@@ -568,3 +593,10 @@ def _FFT2DGrad(_, grad):
 def _IFFT2DGrad(_, grad):
   rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
   return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("Cross")
+def _CrossGrad(op, grad):
+  u = op.inputs[0]
+  v = op.inputs[1]
+  return (math_ops.cross(v, grad), math_ops.cross(grad, u))

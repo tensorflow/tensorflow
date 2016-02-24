@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -38,7 +38,7 @@ class TensorSlice {
   // -- from just a dimension (in this case it will create a full slice)
   // -- from an array of pairs of integers.
   // -- from a TensorSliceProto protocol buffer
-  // -- from a string format of "start,lenth:start,length..." where each
+  // -- from a string format of "start,length:start,length..." where each
   //    "start,length" pair represents the slice on one dimension. We allow a
   //    special "-" that means "everything for this dimension". One such example
   //    is:  0,10:-:14,1:-:-
@@ -157,6 +157,16 @@ class TensorSlice {
   // The caller needs to make sure that "sub" is indeed a sub-slice of *this;
   // otherwise the result is undefined.
   void ComputeRelative(const TensorSlice& sub, TensorSlice* relative) const;
+
+  // Updates the slice in such a way that it fully covers "other" slice.
+  // Note, "other" slice should refer to the same tensor shape.
+  // Example:
+  //   given a slice [2:4, :, 3:] and "other" slice [:, 1:4, 2:4] the
+  //   updated slice would be [:, :, 2:]. Here is why:
+  //   dim 0: "2:4"  U  ":"    ->  ":"
+  //   dim 1: ":"    U  "1-4"  ->  ":"
+  //   dim 2: "3:"   U  "2:4"  ->  "2:"
+  void UpdateToCover(const TensorSlice& other);
 
   // Returns true if the length field was specified in an Extent.
   static bool HasExtentLength(const TensorSliceProto::Extent& extent);

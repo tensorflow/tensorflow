@@ -20,24 +20,104 @@ from __future__ import print_function
 
 import math
 
-import tensorflow.python.platform
-
 import numpy as np
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
+class BooleanMaskTest(test_util.TensorFlowTestCase):
+
+  def CheckVersusNumpy(self, ndims_mask, arr_shape):
+    """Check equivalence between boolean_mask and numpy masking."""
+    arr_size = arr_shape.prod()
+    arr = np.random.rand(arr_size).reshape(arr_shape)
+    mask_shape = arr_shape[: ndims_mask]
+    mask_size = mask_shape.prod()
+    mask = np.random.randint(
+        0, 2, size=mask_size).reshape(mask_shape).astype(bool)
+    masked_arr = arr[mask]
+    with self.test_session():
+      masked_tensor = array_ops.boolean_mask(arr, mask)
+      np.testing.assert_allclose(
+          masked_arr,
+          masked_tensor.eval(),
+          err_msg="masked_arr:\n%s\n\nmasked_tensor:\n%s" % (
+              masked_arr, masked_tensor.eval()))
+
+  def testOneDimensionalMask(self):
+    # Do 1d separately because it's the only easy one to debug!
+    ndims_mask = 1
+    for ndims_arr in range(ndims_mask, ndims_mask + 3):
+      for _ in range(3):
+        arr_shape = np.random.randint(1, 5, size=ndims_arr)
+        self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testMultiDimensionalMask(self):
+    for ndims_mask in range(1, 4):
+      for ndims_arr in range(ndims_mask, ndims_mask + 3):
+        for _ in range(3):
+          arr_shape = np.random.randint(1, 5, size=ndims_arr)
+          self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testWorksWithDimensionsEqualToNoneDuringGraphBuild(self):
+    # The leading dimensions of tensor can be None, allowing for minibatch size
+    # None.  This is explained in the docstring as well.
+    with self.test_session() as sess:
+      ph_tensor = array_ops.placeholder(dtypes.int32, shape=[None, 2])
+      ph_mask = array_ops.placeholder(dtypes.bool, shape=[None])
+
+      arr = np.array([[1, 2], [3, 4]])
+      mask = np.array([False, True])
+
+      masked_tensor = sess.run(
+          array_ops.boolean_mask(ph_tensor, ph_mask),
+          feed_dict={ph_tensor: arr, ph_mask: mask})
+      np.testing.assert_allclose(masked_tensor, arr[mask])
+
+  def testMaskDimensionsSetToNoneRaises(self):
+    # The leading dimensions of tensor can be None, allowing for minibatch size
+    # None.  This is explained in the docstring as well.
+    with self.test_session():
+      tensor = array_ops.placeholder(dtypes.int32, shape=[None, 2])
+      mask = array_ops.placeholder(dtypes.bool, shape=None)
+      with self.assertRaisesRegexp(ValueError, "dimensions must be specified"):
+        array_ops.boolean_mask(tensor, mask)
+
+  def testMaskHasMoreDimsThanTensorRaises(self):
+    mask = [[True, True], [False, False]]
+    tensor = [1, 2, 3, 4]
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "incompatible"):
+        array_ops.boolean_mask(tensor, mask).eval()
+
+  def testMaskIsScalarRaises(self):
+    mask = True
+    tensor = 1
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "mask.*scalar"):
+        array_ops.boolean_mask(tensor, mask).eval()
+
+  def testMaskShapeDifferentThanFirstPartOfTensorShapeRaises(self):
+    mask = [True, True, True]
+    tensor = [[1, 2], [3, 4]]
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "incompatible"):
+        array_ops.boolean_mask(tensor, mask).eval()
+
+
 class OperatorShapeTest(test_util.TensorFlowTestCase):
 
   def testExpandScalar(self):
-    scalar = 'hello'
+    scalar = "hello"
     scalar_expanded = array_ops.expand_dims(scalar, [0])
     self.assertEqual(scalar_expanded.get_shape(), (1,))
 
   def testSqueeze(self):
-    scalar = 'hello'
+    scalar = "hello"
     scalar_squeezed = array_ops.squeeze(scalar, ())
     self.assertEqual(scalar_squeezed.get_shape(), ())
 
@@ -60,5 +140,5 @@ class ReverseTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   googletest.main()

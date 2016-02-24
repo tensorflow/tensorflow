@@ -159,29 +159,6 @@ class UnaryOp : public OpKernel {
   }
 };
 
-// Coefficient-wise select operation.
-//   Device: E.g., CPUDevice, GPUDevice.
-template <typename Device, typename T>
-class SelectOp : public OpKernel {
- public:
-  explicit SelectOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    auto dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({DT_BOOL, dt, dt}, {dt}));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& in0 = ctx->input(0);
-    const Tensor& in1 = ctx->input(1);
-    const Tensor& in2 = ctx->input(2);
-    if (!ctx->ValidateInputsAreSameShape(this)) return;
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
-    functor::SelectFunctor<Device, T> func;
-    func(ctx->eigen_device<Device>(), out->flat<T>(), in0.flat<bool>(),
-         in1.flat<T>(), in2.flat<T>());
-  }
-};
-
 namespace functor {
 
 // For CPUDevice, we do operations inline if the resulting tensor is
@@ -346,21 +323,7 @@ struct UnaryFunctor<CPUDevice, Functor> {
   }
 };
 
-template <typename T>
-struct SelectFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<bool>::ConstFlat cond_flat,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    Assign(d, out, cond_flat.select(then_flat, else_flat));
-  }
-};
-
 }  // end namespace functor
-
-#define REGISTER_SELECT(D, N, F, T)                                          \
-  REGISTER_KERNEL_BUILDER(Name(N).Device(DEVICE_##D).TypeConstraint<T>("T"), \
-                          SelectOp<D##Device, T>)
 
 #define REGISTER(OP, D, N, F, T)                                             \
   REGISTER_KERNEL_BUILDER(Name(N).Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -384,6 +347,8 @@ struct SelectFunctor<CPUDevice, T> {
   REGISTER(OP, D, N, F, T0)
 #define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
   REGISTER(OP, D, N, F, T0)
+#define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
+  REGISTER(OP, D, N, F, T0)
 #else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
@@ -406,6 +371,9 @@ struct SelectFunctor<CPUDevice, T> {
 #define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
   REGISTER4(OP, D, N, F, T0, T1, T2, T3)                       \
   REGISTER4(OP, D, N, F, T4, T5, T6, T7)
+#define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
+  REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                       \
+  REGISTER4(OP, D, N, F, T5, T6, T7, T8)
 #endif  // defined(__ANDROID_TYPES_SLIM__)
 
 }  // end namespace tensorflow

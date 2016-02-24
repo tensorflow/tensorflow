@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -165,7 +163,7 @@ class MomentumOptimizerTest(tf.test.TestCase):
     """Return dist-belief momentum values.
 
     Return values been generated from the dist-belief momentum unittest,
-    running with a learning rate of 0.1 and a momemntum of 0.1.
+    running with a learning rate of 0.1 and a momentum of 0.1.
 
     These values record how a parameter vector of size 10, initialized with 0.0,
     gets updated with 10 consecutive momentum steps.  It uses random gradients.

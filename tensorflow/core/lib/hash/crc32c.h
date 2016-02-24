@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_HASH_CRC32C_H_
 
 #include <stddef.h>
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace crc32c {

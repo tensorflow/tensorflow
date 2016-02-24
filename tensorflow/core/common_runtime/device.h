@@ -31,7 +31,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -44,9 +43,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -86,6 +85,16 @@ class Device : public DeviceBase {
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
     op_kernel->ComputeAsync(context, done);
+  }
+
+  // Takes ownership of the references in tensors. If necessary, a
+  // device may override this method to keep a reference to the
+  // accessed tensors until the async computation has completed.
+  virtual void ConsumeListOfAccessedTensors(
+      DeviceContext* context, const TensorReferenceVector& tensors) {
+    for (const auto& ref : tensors) {
+      ref.Unref();
+    }
   }
 
   // Blocks until all operations queued on the device at the time of

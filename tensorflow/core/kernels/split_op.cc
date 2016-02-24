@@ -19,15 +19,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/split_op.h"
 
-#include <vector>
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -35,11 +38,11 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
-class SplitOp : public OpKernel {
+class SplitOpBase : public OpKernel {
  public:
-  explicit SplitOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit SplitOpBase(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* context) override {
+  void ComputeEasyCases(OpKernelContext* context, bool* done) {
     const int32 split_dim = context->input(0).flat<int32>()(0);
     const int32 num_split = num_outputs();
     const Tensor& input = context->input(1);
@@ -61,11 +64,11 @@ class SplitOp : public OpKernel {
                     "dimension, but got split_dim ",
                     split_dim, " (size = ", input_shape.dim_size(split_dim),
                     ") ", "and num_split ", num_split));
-
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
       VLOG(1) << "Split identity";
       context->set_output(0, context->input(1));
+      *done = true;
       return;
     }
 
@@ -83,9 +86,13 @@ class SplitOp : public OpKernel {
       for (int i = 0; i < num_split; ++i) {
         context->set_output(i, input.Slice(i * delta, (i + 1) * delta));
       }
+      *done = true;
       return;
     }
+  }
 
+  std::tuple<int32, int32, int32> SetDims(const TensorShape& input_shape,
+                                          int32 split_dim) const {
     int32 prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {
       prefix_dim_size *= input_shape.dim_size(i);
@@ -97,7 +104,33 @@ class SplitOp : public OpKernel {
     for (int i = split_dim + 1; i < input_shape.dims(); ++i) {
       suffix_dim_size *= input_shape.dim_size(i);
     }
+    return std::make_tuple(prefix_dim_size, split_dim_size, suffix_dim_size);
+  }
+};
 
+template <typename T>
+class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
+ public:
+  typedef SplitOpBase<CPUDevice, T> Base;
+  explicit SplitOpCPU(OpKernelConstruction* c) : Base(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    bool done = false;
+    Base::ComputeEasyCases(context, &done);
+    if (!context->status().ok() || done) {
+      return;
+    }
+    const int32 split_dim = context->input(0).flat<int32>()(0);
+    const int32 num_split = Base::num_outputs();
+    const Tensor& input = context->input(1);
+    const TensorShape& input_shape = input.shape();
+
+    int32 prefix_dim_size;
+    int32 split_dim_size;
+    int32 suffix_dim_size;
+
+    std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
+        Base::SetDims(input_shape, split_dim);
     auto input_reshaped =
         input.shaped<T, 3>({prefix_dim_size, split_dim_size, suffix_dim_size});
 
@@ -124,21 +157,101 @@ class SplitOp : public OpKernel {
         auto result_shaped = result->shaped<T, 3>(
             {prefix_dim_size, split_dim_output_size, suffix_dim_size});
 
-        functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                    result_shaped, input_reshaped,
-                                    slice_indices, slice_sizes);
+        functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
+                                       result_shaped, input_reshaped,
+                                       slice_indices, slice_sizes);
       }
       indices[1] += split_dim_output_size;
     }
   }
 };
 
+#if GOOGLE_CUDA
+
+template <typename T>
+struct SplitOpGPULaunch {
+  void Run(const Eigen::GpuDevice& d, const T* input, int32 split_dim,
+           int32 prefix_dim_size, int32 split_dim_size, int32 suffix_dim_size,
+           T** output_ptrs_vec);
+};
+
+// Partial specialization for GPU
+template <typename T>
+class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
+ public:
+  typedef SplitOpBase<GPUDevice, T> Base;
+  explicit SplitOpGPU(OpKernelConstruction* c) : Base(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    bool done = false;
+    Base::ComputeEasyCases(context, &done);
+    if (!context->status().ok() || done) {
+      return;
+    }
+    const int32 split_dim = context->input(0).flat<int32>()(0);
+    const int32 num_split = Base::num_outputs();
+    const Tensor& input = context->input(1);
+    const TensorShape& input_shape = input.shape();
+
+    int32 prefix_dim_size;
+    int32 split_dim_size;
+    int32 suffix_dim_size;
+    std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
+        Base::SetDims(input_shape, split_dim);
+
+    const int32 split_dim_output_size = split_dim_size / num_split;
+    TensorShape output_shape(input_shape);
+    output_shape.set_dim(split_dim, split_dim_output_size);
+
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    attr.set_gpu_compatible(true);
+
+    Tensor output_ptrs_on_host;
+    Tensor output_ptrs_on_gpu;
+    int64 output_ptrs_total_bytes = static_cast<int64>(sizeof(T*) * num_split);
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DT_INT8, TensorShape{output_ptrs_total_bytes},
+                                &output_ptrs_on_host, attr));
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DT_INT8, TensorShape{output_ptrs_total_bytes},
+                                &output_ptrs_on_gpu));
+    T** output_ptrs_on_host_arr =
+        reinterpret_cast<T**>(output_ptrs_on_host.flat<int8>().data());
+    for (int i = 0; i < num_split; ++i) {
+      Tensor* result = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(i, output_shape, &result));
+      output_ptrs_on_host_arr[i] = result->flat<T>().data();
+    }
+    if (prefix_dim_size * split_dim_output_size * suffix_dim_size == 0) {
+      return;
+    }
+    auto stream = context->op_device_context<GPUDeviceContext>()->stream();
+    perftools::gputools::DeviceMemoryBase output_ptrs_base{
+        output_ptrs_on_gpu.flat<int8>().data(), static_cast<uint64>(num_split)};
+    TensorReference tensor_ref(output_ptrs_on_host);
+    stream->ThenMemcpy(&output_ptrs_base,
+                       output_ptrs_on_host.flat<int8>().data(),
+                       output_ptrs_total_bytes);
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, [tensor_ref]() { tensor_ref.Unref(); });
+    SplitOpGPULaunch<T>().Run(
+        context->eigen_device<GPUDevice>(), input.flat<T>().data(), num_split,
+        prefix_dim_size, split_dim_size, suffix_dim_size,
+        reinterpret_cast<T**>(output_ptrs_on_gpu.flat<int8>().data()));
+    OP_REQUIRES(context, stream->ok(),
+                errors::Internal("Launch of gpu kernel for SplitOp failed"));
+  }
+};
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_SPLIT(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Split")                  \
                               .Device(DEVICE_CPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("split_dim"),  \
-                          SplitOp<CPUDevice, type>)
+                          SplitOpCPU<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 
@@ -151,7 +264,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
                               .Device(DEVICE_GPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("split_dim"),  \
-                          SplitOp<GPUDevice, type>)
+                          SplitOpGPU<type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU

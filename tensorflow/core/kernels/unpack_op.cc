@@ -17,16 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <vector>
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_op.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -43,10 +41,10 @@ class UnpackOp : public OpKernel {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
-    OP_REQUIRES(
-        context, input_shape.dims() > 0 && input_shape.dim_size(0) == num,
-        errors::InvalidArgument("Input shape must start with ", num, ", got ",
-                                input_shape.ShortDebugString()));
+    OP_REQUIRES(context,
+                input_shape.dims() > 0 && input_shape.dim_size(0) == num,
+                errors::InvalidArgument("Input shape must start with ", num,
+                                        ", got ", input_shape.DebugString()));
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(0);
@@ -105,6 +103,16 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        UnpackOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
 

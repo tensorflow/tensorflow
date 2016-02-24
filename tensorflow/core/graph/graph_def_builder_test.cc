@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_def_builder.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -35,13 +35,16 @@ TEST(GraphDefBuilderTest, Version) {
 
   // Check version when we convert to a Graph
   Graph graph(OpRegistry::Global());
-  EXPECT_OK(builder.ToGraph(&graph));
-  ASSERT_EQ(graph.version(), TF_GRAPH_DEF_VERSION);
+  TF_EXPECT_OK(builder.ToGraph(&graph));
+  ASSERT_EQ(graph.versions().producer(), TF_GRAPH_DEF_VERSION);
+  ASSERT_EQ(graph.versions().min_consumer(), TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
 
   // Check version when we convert to a GraphDef
   GraphDef graph_def;
-  EXPECT_OK(builder.ToGraphDef(&graph_def));
-  ASSERT_EQ(graph_def.version(), TF_GRAPH_DEF_VERSION);
+  TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
+  ASSERT_EQ(graph_def.versions().producer(), TF_GRAPH_DEF_VERSION);
+  ASSERT_EQ(graph_def.versions().min_consumer(),
+            TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
 }
 
 }  // namespace

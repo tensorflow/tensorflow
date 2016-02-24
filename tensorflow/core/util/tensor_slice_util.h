@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_TENSOR_SLICE_UTIL_H_
 #define TENSORFLOW_UTIL_TENSOR_SLICE_UTIL_H_
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 

@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/block.h"
 
 #include <algorithm>
-#include <vector>
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/format.h"

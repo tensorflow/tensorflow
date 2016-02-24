@@ -20,14 +20,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-// NOTE(skal): we don't '#include <setjmp.h>' before png/png.h as it otherwise
+// NOTE(skal): we don't '#include <setjmp.h>' before png.h as it otherwise
 // provokes a compile error. We instead let png.h include what is needed.
 
-#include "external/png_archive/libpng-1.2.53/png.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"  // endian
+#include "tensorflow/core/platform/png.h"
+#include "tensorflow/core/platform/types.h"  // endian
 
 namespace tensorflow {
 namespace png {

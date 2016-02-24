@@ -13,26 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPH_VALIDATE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPH_VALIDATE_H_
+#ifndef TENSORFLOW_CORE_GRAPH_VALIDATE_H_
+#define TENSORFLOW_CORE_GRAPH_VALIDATE_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace graph {
 
-// Returns OK if 'graph_def' has the following properties:
+// Returns OK if every NodeDef in `graph_def` is valid with respect to
+// its corresponding OpDef (as defined by ValidateNodeDef()) as
+// registered in `op_registry`.
 //
-// 1) Every NodeDef is valid with respect to its corresponding OpDef
-//    as registered in 'op_registry'.
-//
-// REQUIRES: 'op_registry' is not nullptr.
+// REQUIRES:
+//  * `op_registry` is not nullptr.
+//  * `graph_def` has default attrs filled in (see AddDefaultAttrsToGraphDef()).
 Status ValidateGraphDef(const GraphDef& graph_def,
-                        const OpRegistryInterface* op_registry);
+                        const OpRegistryInterface& op_registry);
+
+// Like ValidateGraphDef() except it makes a copy of `graph_def` and calls
+// AddDefaultAttrsToGraphDef() on the copy, removing that requirement from the
+// caller.
+Status ValidateGraphDefAgainstOpRegistry(
+    const GraphDef& graph_def, const OpRegistryInterface& op_registry);
+
+// Like ValidateGraphDefAgainstOpRegistry() except it takes an OpList
+// instead of an OpRegistryInterface.  Note that the OpList need not
+// have descriptions, which can be a big space savings, see
+// GetOpListForValidation() below.
+Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
+                                     const OpList& op_list);
+
+// Get an OpList from `*op_registry` with all the descriptions removed.
+void GetOpListForValidation(
+    OpList* op_list, const OpRegistry& op_registry = *OpRegistry::Global());
 
 }  // namespace graph
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPH_VALIDATE_H_
+#endif  // TENSORFLOW_CORE_GRAPH_VALIDATE_H_

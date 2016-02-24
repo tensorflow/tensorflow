@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+option java_outer_classname = "VariableProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+// Protocol buffer representing a Variable.
+message VariableDef {
+  // Name of the variable tensor.
+  string variable_name = 1;
+
+  // Name of the initializer op.
+  string initializer_name = 2;
+
+  // Name of the snapshot tensor.
+  string snapshot_name = 3;
+
+  // Support for saving variables as slices of a larger variable.
+  SaveSliceInfoDef save_slice_info_def = 4;
+}
+
+message SaveSliceInfoDef {
+  // Name of the full variable of which this is a slice.
+  string full_name = 1;
+  // Shape of the full variable.
+  repeated int32 full_shape = 2;
+  // Offset of this variable into the full variable.
+  repeated int32 var_offset = 3;
+  // Shape of this variable.
+  repeated int32 var_shape = 4;
+}

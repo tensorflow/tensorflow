@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -30,24 +31,25 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
-class GpuDevice;
+struct ThreadPoolDevice;
+struct GpuDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -146,13 +148,13 @@ class OpKernel {
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;
+  const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
+  const MemoryTypeVector output_memory_types_;
   const int graph_def_version_;
   const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
-  MemoryTypeVector input_memory_types_;
-  MemoryTypeVector output_memory_types_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -205,8 +207,10 @@ class OpKernelConstruction {
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
                        const DataTypeSlice& input_types,
-                       const DataTypeSlice& output_types, int graph_def_version,
-                       Status* status)
+                       const MemoryTypeSlice& input_memory_types,
+                       const DataTypeSlice& output_types,
+                       const MemoryTypeSlice& output_memory_types,
+                       int graph_def_version, Status* status)
       : device_type_(device_type),
         device_(device),
         allocator_(allocator),
@@ -214,7 +218,9 @@ class OpKernelConstruction {
         op_def_(op_def),
         flib_(flib),
         input_types_(input_types),
+        input_memory_types_(input_memory_types),
         output_types_(output_types),
+        output_memory_types_(output_memory_types),
         graph_def_version_(graph_def_version),
         status_(status) {}
 
@@ -262,11 +268,17 @@ class OpKernelConstruction {
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
   const DataTypeSlice& input_types() const { return input_types_; }
+  const MemoryTypeSlice& input_memory_types() const {
+    return input_memory_types_;
+  }
 
   // For inspecting the outputs expected from this operation.
   int num_outputs() const { return output_types_.size(); }
   DataType output_type(int i) const { return output_types_[i]; }
   const DataTypeSlice& output_types() const { return output_types_; }
+  const MemoryTypeSlice& output_memory_types() const {
+    return output_memory_types_;
+  }
 
   // If expected_inputs == inputs() and expected_outputs == output_types(),
   // returns OK, else returns INVALID_ARGUMENT with an error message.
@@ -309,7 +321,9 @@ class OpKernelConstruction {
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
   DataTypeSlice input_types_;
+  MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
+  MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
 
@@ -346,7 +360,7 @@ class OpInputList {
  public:
   typedef OpArgIterator<OpInputList, const Tensor&> Iterator;
   OpInputList() : ctx_(nullptr), start_(0), stop_(0) {}
-  OpInputList(const OpKernelContext* ctx, int start, int stop)
+  OpInputList(OpKernelContext* ctx, int start, int stop)
       : ctx_(ctx), start_(start), stop_(stop) {}
   OpInputList& operator=(const OpInputList& other) = default;
   const Tensor& operator[](int i) const;
@@ -355,7 +369,7 @@ class OpInputList {
   Iterator end() const { return Iterator(this, size()); }
 
  private:
-  const OpKernelContext* ctx_;  // not owned
+  OpKernelContext* ctx_;  // not owned
   int start_;
   int stop_;
 };
@@ -428,12 +442,42 @@ class OpKernelContext {
   typedef std::pair<Allocator*, TrackingAllocator*> WrappedAllocator;
 
   // TODO(zhifengc): Do some cleanup of Params.
+  // The Params struct is passed in to initialize an OpKernelContext,
+  // and must outlive the OpKernelContext.
   struct Params {
+    ~Params() { delete eigen_gpu_device; }
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
     // The device on which the kernel is running.
     DeviceBase* device = nullptr;
+
+    // The Eigen GPU device wrapper, which may include a per-op
+    // wrapped allocator. The concrete type of this object depends on
+    // the type of this->device, so eigen_gpu_device can't be an
+    // inline member and must be heap allocated. However, we don't
+    // want to allocate a new eigen_gpu_device for every Op that is
+    // executed. Instead this member is allocated on first use using
+    // ensure_eigen_gpu_device, and then if the Params structure is
+    // re-used for subsequent Ops, the eigen_gpu_device is
+    // ReInitialized in the OpKernelContext constructor. Unlike the
+    // other pointers in Params, this one is owned by Params.
+    PerOpGpuDevice* eigen_gpu_device = nullptr;
+
+    inline void ensure_eigen_gpu_device() {
+      DCHECK(device);
+      if (nullptr == eigen_gpu_device) {
+        // Surprisingly, MakeGpuDevice will return nullptr if the
+        // device is not a GPU device. This is ok, since those devices
+        // will never use eigen_gpu_device. It seems better to have
+        // ensure_eigen_gpu_device fall through and regenerate the
+        // nullptr every time an OpKernelContext is instantiated, than
+        // to do an unnecessary allocation of a dummy eigen GPU
+        // device for CPU device Ops.
+        eigen_gpu_device = device->MakeGpuDevice();
+      }
+    }
 
     bool track_allocations = false;
 
@@ -476,16 +520,19 @@ class OpKernelContext {
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
   };
-  explicit OpKernelContext(const Params& params);
+
+  // params must outlive the OpKernelContext.
+  explicit OpKernelContext(Params* params);
+  OpKernelContext(Params* params, int noutputs);
   ~OpKernelContext();
 
-  Env* env() const { return params_.device->env(); }
+  Env* env() const { return params_->device->env(); }
 
-  const OpKernel& op_kernel() const { return *params_.op_kernel; }
+  const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
   // Input/output signature.
 
-  int num_inputs() const { return params_.inputs->size(); }
+  int num_inputs() const { return params_->inputs->size(); }
   DataType input_dtype(int index) const;
   int num_outputs() const { return outputs_.size(); }
   DataType expected_output_dtype(int index) const;
@@ -496,21 +543,21 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index) const;
+  const Tensor& input(int index);
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
   // use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // REQUIRES: the named input must not be a list.
-  Status input(const string& name, const Tensor** tensor) const;
+  Status input(const string& name, const Tensor** tensor);
 
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
-  Status input_list(const string& name, OpInputList* list) const;
+  Status input_list(const string& name, OpInputList* list);
 
   // For mutable inputs, use the following together to make sure there
   // is no concurrent access to mutable_input(), e.g.:
@@ -544,7 +591,7 @@ class OpKernelContext {
   Status mutable_input(const string& name, Tensor* tensor, bool lock_held);
 
   // Returns the named list-valued mutable input in "list", as defined
-  // in the OpDef.  If the named intput is not list-valued, returns a
+  // in the OpDef.  If the named input is not list-valued, returns a
   // one-element list. Must be used to access Ref inputs. The values
   // stored in the Tensor buffer may be modified, and modifications
   // will be visible to other Ops reading the same ref tensor.
@@ -754,7 +801,7 @@ class OpKernelContext {
   template <typename T>
   T* op_device_context();
   DeviceContext* op_device_context() {
-    DeviceContext* ret = params_.op_device_context;
+    DeviceContext* ret = params_->op_device_context;
     if (ret == nullptr) {
       auto* dev_info = device()->tensorflow_gpu_device_info();
       if (dev_info) ret = dev_info->default_context;
@@ -764,12 +811,12 @@ class OpKernelContext {
 
   AllocatorAttributes input_alloc_attr(int index) const {
     DCHECK_GE(index, 0);
-    DCHECK_LT(index, params_.input_alloc_attrs->size());
-    return (*params_.input_alloc_attrs)[index];
+    DCHECK_LT(index, params_->input_alloc_attrs->size());
+    return (*params_->input_alloc_attrs)[index];
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {
-    return params_.output_attr_array[index];
+    return params_->output_attr_array[index];
   }
 
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators() const {
@@ -782,25 +829,25 @@ class OpKernelContext {
   //
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
-  Rendezvous* rendezvous() const { return params_.rendezvous; }
+  Rendezvous* rendezvous() const { return params_->rendezvous; }
 
   // Function call support.
   //
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return params_.call_frame; }
+  FunctionCallFrame* call_frame() const { return params_->call_frame; }
 
   // If not nullptr, the kernel invoke functions defined in the
   // library. E.g., CHECK_NOTNULL(function_library())->Run("Foo", ...).
   FunctionLibraryRuntime* function_library() const {
-    return params_.function_library;
+    return params_->function_library;
   }
 
   // Shared resources accessible to this kernel.
-  ResourceMgr* resource_manager() const { return params_.resource_manager; }
+  ResourceMgr* resource_manager() const { return params_->resource_manager; }
 
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache() const {
-    return params_.slice_reader_cache;
+    return params_->slice_reader_cache;
   }
 
   // Execution.
@@ -811,7 +858,7 @@ class OpKernelContext {
     return *device()->eigen_cpu_device();
   }
   const Eigen::GpuDevice& eigen_gpu_device() const {
-    return eigen_gpu_device_->device();
+    return params_->eigen_gpu_device->device();
   }
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;
@@ -835,47 +882,43 @@ class OpKernelContext {
   // EXPERIMENTAL. See the implementation in tensorflow::TensorQueue for an
   // example of how to use this API.
   CancellationManager* cancellation_manager() const {
-    return params_.cancellation_manager;
+    return params_->cancellation_manager;
   }
 
   // Other accessors.
 
   // For control flow.
-  FrameAndIter frame_iter() const { return params_.frame_iter; }
-  bool is_input_dead() const { return params_.is_input_dead; }
+  FrameAndIter frame_iter() const { return params_->frame_iter; }
+  bool is_input_dead() const { return params_->is_input_dead; }
   bool* is_output_dead() { return &is_output_dead_; }
 
   // May be used, e.g., to get GPU handles, etc.
   // TODO(tucker): Add example usage.
-  DeviceBase* device() const { return params_.device; }
+  DeviceBase* device() const { return params_->device; }
 
-  // Access to list of temporary tensors.
-  int num_temps();
-  Tensor* temp(int index);
-
-  // Access to information about whether each output was newly
-  // allocated or copied from an existing tensor
-  AllocationType output_allocation_type(int index) const {
-    return output_allocation_types_[index];
-  }
+  // Retrieve list of referenced tensors in out_vector. Once this is
+  // called, it is not legal to reference any more tensors.  Should
+  // not be called from Op kernels.
+  void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
 
   // Per-step resource manager for use by white-listed internal ops.
   ResourceMgr* step_resource_manager() const {
-    return params_.step_resource_manager;
+    return params_->step_resource_manager;
   }
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr) {
     Allocator* allocator =
-        params_.device->GetStepAllocator(attr, step_resource_manager());
-    if (params_.track_allocations) {
+        params_->device->GetStepAllocator(attr, step_resource_manager());
+    if (params_->track_allocations) {
       mutex_lock lock(mu_);
       for (const auto& wrapped : wrapped_allocators_) {
         if (wrapped.first == allocator) {
           return wrapped.second;
         }
       }
-      TrackingAllocator* wrapped_allocator = new TrackingAllocator(allocator);
+      TrackingAllocator* wrapped_allocator =
+          new TrackingAllocator(allocator, attr.track_sizes());
       wrapped_allocators_.push_back(
           std::make_pair(allocator, wrapped_allocator));
       return wrapped_allocator;
@@ -883,6 +926,12 @@ class OpKernelContext {
       return allocator;
     }
   }
+
+  // Internal method to add a tensor's buffer to the list of buffers
+  // referenced during the execution of the Op, so that GPUs may
+  // accurately track the memory that may not be reused until the Op
+  // execution completes.
+  void record_tensor_reference(const Tensor& tensor);
 
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
@@ -905,15 +954,13 @@ class OpKernelContext {
   void NotifyUseOfPersistentTensor(const Tensor& tensor);
 
   Status status_;
-  Params params_;                           // immutable after construction.
-  const PerOpGpuDevice* eigen_gpu_device_;  // owned, with a per-op
-                                            // wrapped allocator
+  Params* params_;    // not owned
   mutable mutex mu_;  // mutable so const accessors can acquire the lock
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
-  gtl::InlinedVector<AllocationType, 4> output_allocation_types_;
-  gtl::InlinedVector<Tensor*, 4> temp_tensors_;
+  UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
   bool is_output_dead_ = false;
+  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -970,25 +1017,8 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
-// Returns into *{input,output}_memory_types the memory type of each
-// {input,output} tensor.
-//
-// REQUIRES: * '*_memory_types' is not nullptr.
-//           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
-Status MemoryTypesForNode(DeviceType device_type, const NodeDef& ndef,
-                          const OpDef& op_def,
-                          const NameRangeMap& input_name_map,
-                          const NameRangeMap& output_name_map,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
-Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
-                          DeviceType device_type, const NodeDef& ndef,
-                          MemoryTypeVector* input_memory_types,
-                          MemoryTypeVector* output_memory_types);
-
 // Call once after Op registration has completed.
-Status ValidateKernelRegistrations(const OpRegistryInterface* op_registry);
+Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
 // -----------------------------------------------------------------------------
 // OpKernel registration implementation follows, please ignore.
@@ -1008,10 +1038,15 @@ typedef ::tensorflow::KernelDefBuilder Name;
   static ::tensorflow::kernel_factory::OpKernelRegistrar         \
       registrar__body__##ctr##__object(                          \
           ::tensorflow::register_kernel::kernel_builder.Build(), \
-          +[](::tensorflow::OpKernelConstruction* context)       \
+          [](::tensorflow::OpKernelConstruction* context)        \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
+
+// If node_def has a corresponding kernel registered on device_type,
+// returns OK and fill in the kernel def.
+Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+                     const KernelDef** def);
 
 // Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
 // registered with the current library's global kernel registry (obtained by
@@ -1033,8 +1068,8 @@ class OpKernelRegistrar {
 
 inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  const TensorValue& value((*params_.inputs)[index]);
+  DCHECK_LT(index, params_->inputs->size());
+  const TensorValue& value((*params_->inputs)[index]);
   if (value.is_ref()) {
     return MakeRefType(value->dtype());
   } else {
@@ -1044,78 +1079,103 @@ inline DataType OpKernelContext::input_dtype(int index) const {
 
 inline DataType OpKernelContext::expected_output_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.op_kernel->output_types().size());
-  return params_.op_kernel->output_type(index);
+  DCHECK_LT(index, params_->op_kernel->output_types().size());
+  return params_->op_kernel->output_type(index);
 }
 
-inline const Tensor& OpKernelContext::input(int index) const {
+inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
+  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
+         record_tensor_accesses_);
+  if (record_tensor_accesses_) {
+    mutex_lock l(mu_);
+    // Keep a reference to the underlying memory around.
+    referenced_tensors_.Add(tensor);
+  }
+}
+
+inline void OpKernelContext::retrieve_accessed_tensors(
+    TensorReferenceVector* out_vector) {
+  if (record_tensor_accesses_) {
+    mutex_lock l(mu_);
+    referenced_tensors_.FreezeAndReturnReferences(out_vector);
+  }
+}
+
+inline const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  DCHECK(!(*params_.inputs)[index].is_ref());
-  return *((*params_.inputs)[index].tensor);
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK(!(*params_->inputs)[index].is_ref());
+  const Tensor& tensor = *((*params_->inputs)[index].tensor);
+  record_tensor_reference(tensor);
+  return tensor;
 }
 
 inline Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  DCHECK((*params_.inputs)[index].is_ref());
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    return *((*params_.inputs)[index].tensor);
+    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    return *((*params_.inputs)[index].tensor);
+    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
   }
 }
 
 inline void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
                                                bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  DCHECK((*params_.inputs)[index].is_ref());
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    *(*params_.inputs)[index].tensor = tensor;
+    *(*params_->inputs)[index].tensor = tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    *(*params_.inputs)[index].tensor = tensor;
+    *(*params_->inputs)[index].tensor = tensor;
   }
+  record_tensor_reference(tensor);
 }
 
 inline void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                                                              int output_index) {
   DCHECK_GE(input_index, 0);
-  DCHECK_LT(input_index, params_.inputs->size());
-  DCHECK((*params_.inputs)[input_index].is_ref());
-  set_output_ref(output_index, (*params_.inputs)[input_index].mutex_if_ref,
-                 (*params_.inputs)[input_index].tensor);
+  DCHECK_LT(input_index, params_->inputs->size());
+  DCHECK((*params_->inputs)[input_index].is_ref());
+  set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
+                 (*params_->inputs)[input_index].tensor);
 }
 
 inline void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  DCHECK((*params_.inputs)[index].is_ref());
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    delete (*params_.inputs)[index].tensor;
+    delete (*params_->inputs)[index].tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    delete (*params_.inputs)[index].tensor;
+    delete (*params_->inputs)[index].tensor;
   }
 }
 
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  return (*params_.inputs)[index].tensor != nullptr;
+  DCHECK_LT(index, params_->inputs->size());
+  return (*params_->inputs)[index].tensor != nullptr;
 }
 
 inline mutex* OpKernelContext::input_ref_mutex(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.inputs->size());
-  DCHECK((*params_.inputs)[index].is_ref());
-  return (*params_.inputs)[index].mutex_if_ref;
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
+  return (*params_->inputs)[index].mutex_if_ref;
 }
 
 inline Status OpKernelContext::allocate_output(int index,
@@ -1138,6 +1198,7 @@ inline Status OpKernelContext::allocate_tensor(
                                      shape.DebugString());
   }
   *out_tensor = new_tensor;
+  record_tensor_reference(new_tensor);
   return Status::OK();
 }
 
@@ -1147,10 +1208,7 @@ inline Status OpKernelContext::allocate_output(int index,
                                                AllocatorAttributes attr) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was allocated by the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_ALLOCATED;
-  const DataType type = params_.op_kernel->output_type(index);
+  const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
   Tensor* output_tensor = new Tensor();
@@ -1168,12 +1226,6 @@ inline Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
-  if (s.ok()) {
-    if (params_.device->SaveTemporaryTensors()) {
-      // keep a reference to the underlying memory around
-      temp_tensors_.push_back(new Tensor(*out_temp));
-    }
-  }
   return s;
 }
 
@@ -1185,39 +1237,25 @@ inline Status OpKernelContext::allocate_persistent(
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
     *out_persistent = PersistentTensor(persistent);
-    // This call saves a reference to the newly-allocated tensor if we
-    // are saving temporary tensors
-    Tensor* allocated = out_persistent->AccessTensor(this);
     if (out_tensor) {
-      *out_tensor = allocated;
+      *out_tensor = out_persistent->AccessTensor(this);
     }
   }
   return s;
 }
 
 inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
-  if (t.IsInitialized() && params_.device->SaveTemporaryTensors()) {
-    // keep a reference to the underlying memory around
-    temp_tensors_.push_back(new Tensor(t));
+  if (t.IsInitialized()) {
+    record_tensor_reference(t);
   }
-}
-
-inline int OpKernelContext::num_temps() { return temp_tensors_.size(); }
-
-inline Tensor* OpKernelContext::temp(int index) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, temp_tensors_.size());
-  return temp_tensors_[index];
 }
 
 inline void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was set by the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_EXISTING;
-  DCHECK(!IsRefType(params_.op_kernel->output_type(index)));
+  DCHECK(!IsRefType(params_->op_kernel->output_type(index)));
   DCHECK_EQ(mutable_output(index), nullptr);
+  record_tensor_reference(tensor);
   outputs_[index] = TensorValue(new Tensor(tensor));
 }
 
@@ -1225,16 +1263,16 @@ inline void OpKernelContext::set_output_ref(int index, mutex* mu,
                                             Tensor* tensor_for_ref) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  // Record the fact that this output tensor was set by reference the Op
-  DCHECK_LT(index, output_allocation_types_.size());
-  output_allocation_types_[index] = AT_REF;
-  DCHECK(IsRefType(params_.op_kernel->output_type(index)));
+  DCHECK(IsRefType(params_->op_kernel->output_type(index)));
+  record_tensor_reference(*tensor_for_ref);
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
+  // No need to record_tensor_reference since the output must already
+  // have been set by a call that did so.
   return outputs_[index].tensor;
 }
 
@@ -1256,16 +1294,16 @@ T* OpKernelContext::op_device_context() {
 template <typename T>
 T* OpKernelContext::input_device_context(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.input_device_contexts->size());
+  DCHECK_LT(index, params_->input_device_contexts->size());
   static_assert(std::is_base_of<DeviceContext, T>::value,
                 "T is not a subclass of DeviceContext");
-  return static_cast<T*>((*params_.input_device_contexts)[index]);
+  return static_cast<T*>((*params_->input_device_contexts)[index]);
 }
 
 inline DeviceContext* OpKernelContext::input_device_context(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_.input_device_contexts->size());
-  return (*params_.input_device_contexts)[index];
+  DCHECK_LT(index, params_->input_device_contexts->size());
+  return (*params_->input_device_contexts)[index];
 }
 
 inline const Tensor& OpInputList::operator[](int i) const {

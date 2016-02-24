@@ -18,21 +18,23 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class Session;
-class SessionOptions;
+struct SessionOptions;
 
 class SessionFactory {
  public:
   virtual Session* NewSession(const SessionOptions& options) = 0;
+  virtual bool AcceptsOptions(const SessionOptions& options) = 0;
   virtual ~SessionFactory() {}
   static void Register(const string& runtime_type, SessionFactory* factory);
-  static SessionFactory* GetFactory(const string& runtime_type);
+  static Status GetFactory(const SessionOptions& options,
+                           SessionFactory** out_factory);
 };
 
 }  // namespace tensorflow

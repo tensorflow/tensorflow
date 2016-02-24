@@ -119,7 +119,7 @@
             on-click="_toggleExpanded"
             class="toggle-button">
           </paper-icon-button>
-          <div class="node-name">[[_getNodeName(nodeName)]]</div>
+          <div class="node-name" id="nodetitle"></div>
         </div>
         <div secondary>
           <tf-graph-icon class="node-icon" node="[[_node]]"
@@ -176,6 +176,7 @@
                   class="non-control-list-item"
                   card-node="[[_node]]"
                   item-node="[[_getNode(item, graphHierarchy)]]"
+                  edge-label="[[_getPredEdgeLabel(item)]]"
                   item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
                   name="[[item]]"
                   item-type="predecessors"
@@ -226,6 +227,7 @@
                   class="non-control-list-item"
                   card-node="[[_node]]"
                   item-node="[[_getNode(item, graphHierarchy)]]"
+                  edge-label="[[_getSuccEdgeLabel(item)]]"
                   item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
                   name="[[item]]"
                   item-type="successor"
@@ -270,6 +272,13 @@
             <span>[[_auxButtonText]]</span>
           </paper-button>
         </div>
+        <template is="dom-if" if="{{_isInSeries(_node)}}">
+          <div class="toggle-include-group">
+            <paper-button raised class="toggle-include" on-click="_toggleGroup">
+              <span>[[_groupButtonText]]</span>
+            </paper-button>
+          </div>
+        </template>
       </div>
     </template>
     </iron-collapse>
@@ -340,7 +349,8 @@
             type: Boolean,
             value: false
           },
-          _auxButtonText: String
+          _auxButtonText: String,
+          _groupButtonText: String
         },
         expandNode: function() {
           this.fire('_node.expand', this.node);
@@ -351,10 +361,35 @@
         _getNode: function(nodeName, graphHierarchy) {
           return graphHierarchy.node(nodeName);
         },
-        _getNodeName: function(nodeName) {
-          // Insert a zero-width whitespace character before each slash so that
+        _getPrintableHTMLNodeName: function(nodeName) {
+          // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
-          return (nodeName || '').replace(/\//g, '\u200B/');
+          return (nodeName || '').replace(/\//g, '<wbr>/');
+        },
+        _getPredEdgeLabel: function(sourceName) {
+          return this._getEdgeLabel(sourceName, this.nodeName);
+        },
+        _getSuccEdgeLabel: function(destName) {
+          return this._getEdgeLabel(this.nodeName, destName);
+        },
+        _getEdgeLabel: function(sourceName, destName) {
+          if (!this._node) {
+            // The user clicked outside, thus no node is selected and
+            // the info card should be hidden.
+            return;
+          }
+          var parent = this._node.parentNode;
+          var sourceNode = this.graphHierarchy.node(sourceName);
+          if (!sourceNode.isGroupNode) {
+            // Show the tensor shape directly.
+            return tf.graph.scene.edge.getShapeLabelFromNode(sourceNode);
+          }
+          sourceName = this.renderHierarchy.getNearestVisibleAncestor(sourceName);
+          destName = this.renderHierarchy.getNearestVisibleAncestor(destName);
+          var metaedge = parent.metagraph.edge(sourceName, destName) ||
+              parent.bridgegraph.edge(sourceName, destName);
+          return tf.graph.scene.edge.getLabelForEdge(metaedge,
+              this.renderHierarchy);
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
@@ -401,6 +436,14 @@
         _resetState: function() {
           this._openedControlPred = false;
           this._openedControlSucc = false;
+
+          this.set("_groupButtonText",
+            tf.graph.scene.node.getGroupSettingLabel(this._node));
+
+          if (this._node) {
+            Polymer.dom(this.$.nodetitle).innerHTML =
+              this._getPrintableHTMLNodeName(this._node.name);
+          }
         },
         _resizeList: function(selector) {
           var list = document.querySelector(selector);
@@ -417,6 +460,14 @@
         _nodeIncludeStateChanged: function(include, oldInclude) {
           this.set("_auxButtonText",
             tf.graph.getIncludeNodeButtonString(include));
+        },
+        _toggleGroup: function() {
+          var graphElem = document.querySelector("#graph");
+          var seriesName = tf.graph.scene.node.getSeriesName(this._node);
+          graphElem.fire("node-toggle-seriesgroup", { name: seriesName });
+        },
+        _isInSeries: function(node) {
+          return tf.graph.scene.node.canBeInSeries(node);
         }
       });
     })();

@@ -22,7 +22,7 @@ limitations under the License.
 // Include appropriate platform-dependent implementation of
 // TF_ANNOTATE_MEMORY_IS_INITIALIZED.
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/dynamic_annotations.h"
+#include "tensorflow/core/platform/google/build_config/dynamic_annotations.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/default/dynamic_annotations.h"
@@ -36,6 +36,23 @@ namespace port {
 // Aligned allocation/deallocation
 void* aligned_malloc(size_t size, int minimum_alignment);
 void aligned_free(void* aligned_memory);
+
+// Returns the actual number N of bytes reserved by the malloc for the
+// pointer p.  This number may be equal to or greater than the number
+// of bytes requested when p was allocated.
+//
+// This routine is just useful for statistics collection.  The
+// client must *not* read or write from the extra bytes that are
+// indicated by this call.
+//
+// Example, suppose the client gets memory by calling
+//    p = malloc(10)
+// and GetAllocatedSize(p) may return 16.  The client must only use the
+// first 10 bytes p[0..9], and not attempt to read or write p[10..15].
+//
+// Currently, if a malloc implementation does not support this
+// routine, this routine returns 0.
+std::size_t MallocExtension_GetAllocatedSize(const void* p);
 
 // Prefetching support
 //

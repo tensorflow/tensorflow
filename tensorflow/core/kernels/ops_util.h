@@ -19,8 +19,8 @@ limitations under the License.
 // This file contains utilities for various operations.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -109,7 +109,7 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding);
 
 // Given a shape 's' of a tensor of type T. Returns true iff the
 // number of bytes occupied by each dim 0 (i.e., &tensor(i + 1, ...) -
-// &tensor(i, ...)) is multiple of EIGEN_ALIGN_BYTES.
+// &tensor(i, ...)) is multiple of EIGEN_MAX_ALIGN_BYTES.
 template <typename T>
 bool IsInnerDimsSizeAligned(const TensorShape& s) {
   if (s.dims() == 0) return false;
@@ -120,7 +120,7 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
 }
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
-// extracted from image at 'input_data', which is requred to be in storage
+// extracted from image at 'input_data', which is required to be in storage
 // order (batch, height, width, depth).
 // Implementation written by Yangqing Jia (jiayq).
 template <typename T>

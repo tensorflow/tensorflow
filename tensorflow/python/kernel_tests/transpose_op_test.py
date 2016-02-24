@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -60,6 +58,7 @@ class TransposeTest(tf.test.TestCase):
       inx = tf.convert_to_tensor(x)
       y = tf.transpose(inx, p)
       tf_ans = y.eval()
+
       self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
 
@@ -103,8 +102,9 @@ class TransposeTest(tf.test.TestCase):
         self.assertAllClose(tf_a_cpu, tf_a_gpu, 1e-6, 1e-6)
         self.assertAllClose(tf_g_cpu, tf_g_gpu, 1e-6, 1e-6)
 
-  def _testCpu(self, x):
+  def _testBoth(self, x):
     self._compare(x, use_gpu=False)
+    self._compare(x, use_gpu=True)
 
   def test1D(self):
     self._compareCpu(np.arange(0., 2), [0])
@@ -120,33 +120,48 @@ class TransposeTest(tf.test.TestCase):
     self._compare_cpu_gpu(np.arange(0, 21).reshape([3, 7]).astype(np.float32))
     self._compare_cpu_gpu(
         np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.float32))
+    self._compare_cpu_gpu(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.float32))
 
   def testDouble(self):
     self._compare_cpu_gpu(np.arange(0, 21).reshape([3, 7]).astype(np.float64))
     self._compare_cpu_gpu(
         np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.float64))
+    self._compare_cpu_gpu(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.float64))
 
   def testSComplex(self):
-    self._testCpu(np.complex(1, 2) * np.arange(0, 21).reshape(
-        [3, 7]).astype(np.complex64))
-    self._testCpu(np.complex(1, 2) * np.arange(0, 210).reshape(
-        [2, 3, 5, 7]).astype(np.complex64))
+    self._testBoth(np.complex(1, 2) *
+                   np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
+    self._testBoth(np.complex(1, 2) *
+                   np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.complex64))
+    self._testBoth(
+        np.complex(1, 2) *
+        np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex64))
 
   def testInt8(self):
-    self._testCpu(np.arange(0, 21).reshape([3, 7]).astype(np.int8))
-    self._testCpu(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int8))
+    self._testBoth(np.arange(0, 21).reshape([3, 7]).astype(np.int8))
+    self._testBoth(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int8))
+    self._testBoth(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.int8))
 
   def testInt16(self):
-    self._testCpu(np.arange(0, 21).reshape([3, 7]).astype(np.int16))
-    self._testCpu(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int16))
+    self._testBoth(np.arange(0, 21).reshape([3, 7]).astype(np.int16))
+    self._testBoth(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int16))
+    self._testBoth(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.int16))
 
   def testInt32(self):
-    self._testCpu(np.arange(0, 21).reshape([3, 7]).astype(np.int32))
-    self._testCpu(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int32))
+    self._testBoth(np.arange(0, 21).reshape([3, 7]).astype(np.int32))
+    self._testBoth(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int32))
+    self._testBoth(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.int32))
 
   def testInt64(self):
-    self._testCpu(np.arange(0, 21).reshape([3, 7]).astype(np.int64))
-    self._testCpu(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int64))
+    self._testBoth(np.arange(0, 21).reshape([3, 7]).astype(np.int64))
+    self._testBoth(np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.int64))
+    self._testBoth(np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(
+        np.int64))
 
   def testTranspose2DAuto(self):
     x_np = [[1, 2, 3], [4, 5, 6]]

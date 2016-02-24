@@ -19,13 +19,14 @@ from __future__ import print_function
 
 import os
 
-import tensorflow.python.platform
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import googletest
+from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator as ea
 
 
@@ -94,6 +95,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def setUp(self):
     super(MockingEventAccumulatorTest, self).setUp()
+    self.stubs = googletest.StubOutForTesting()
     self.empty = {ea.IMAGES: [],
                   ea.SCALARS: [],
                   ea.HISTOGRAMS: [],
@@ -107,6 +109,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ea.EventAccumulator = _FakeAccumulatorConstructor
 
   def tearDown(self):
+    self.stubs.CleanUp()
     ea.EventAccumulator = self._real_constructor
     ea._GeneratorFromPath = self._real_generator
 
@@ -237,9 +240,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = -1
     histo_max = .9
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, acc._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, acc._Remap(7500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
     AssertExpectedForBps(10000, histo_max)
 
     ## All weights in second bucket
@@ -247,9 +250,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = 1.1
     histo_max = 1.8
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, acc._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, acc._Remap(7500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
     AssertExpectedForBps(10000, histo_max)
 
     ## All weights in the last bucket
@@ -257,9 +260,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = 3.1
     histo_max = 3.6
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(5000, acc._Remap(5000, 0, 10000, histo_min, histo_max))
-    AssertExpectedForBps(7500, acc._Remap(7500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(5000, ea._Remap(5000, 0, 10000, histo_min, histo_max))
+    AssertExpectedForBps(7500, ea._Remap(7500, 0, 10000, histo_min, histo_max))
     AssertExpectedForBps(10000, histo_max)
 
     ## Weights distributed between two buckets
@@ -267,12 +270,12 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = 1.1
     histo_max = 2.9
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 0, 4000, histo_min,
-                                          bucket_limit[1]))
-    AssertExpectedForBps(5000, acc._Remap(5000, 4000, 10000, bucket_limit[1],
-                                          histo_max))
-    AssertExpectedForBps(7500, acc._Remap(7500, 4000, 10000, bucket_limit[1],
-                                          histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 0, 4000, histo_min,
+                                         bucket_limit[1]))
+    AssertExpectedForBps(5000, ea._Remap(5000, 4000, 10000, bucket_limit[1],
+                                         histo_max))
+    AssertExpectedForBps(7500, ea._Remap(7500, 4000, 10000, bucket_limit[1],
+                                         histo_max))
     AssertExpectedForBps(10000, histo_max)
 
     ## Weights distributed between all buckets
@@ -280,14 +283,14 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = -1
     histo_max = 3.9
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 1000, 4000, bucket_limit[0],
-                                          bucket_limit[1]))
-    AssertExpectedForBps(5000, acc._Remap(5000, 4000, 8000, bucket_limit[1],
-                                          bucket_limit[2]))
-    AssertExpectedForBps(7500, acc._Remap(7500, 4000, 8000, bucket_limit[1],
-                                          bucket_limit[2]))
-    AssertExpectedForBps(9000, acc._Remap(9000, 8000, 10000, bucket_limit[2],
-                                          histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 1000, 4000, bucket_limit[0],
+                                         bucket_limit[1]))
+    AssertExpectedForBps(5000, ea._Remap(5000, 4000, 8000, bucket_limit[1],
+                                         bucket_limit[2]))
+    AssertExpectedForBps(7500, ea._Remap(7500, 4000, 8000, bucket_limit[1],
+                                         bucket_limit[2]))
+    AssertExpectedForBps(9000, ea._Remap(9000, 8000, 10000, bucket_limit[2],
+                                         histo_max))
     AssertExpectedForBps(10000, histo_max)
 
     ## Most weight in first bucket
@@ -295,14 +298,14 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     histo_min = -1
     histo_max = 1.1
     AssertExpectedForBps(0, histo_min)
-    AssertExpectedForBps(2500, acc._Remap(2500, 0, 9000, histo_min,
-                                          bucket_limit[0]))
-    AssertExpectedForBps(5000, acc._Remap(5000, 0, 9000, histo_min,
-                                          bucket_limit[0]))
-    AssertExpectedForBps(7500, acc._Remap(7500, 0, 9000, histo_min,
-                                          bucket_limit[0]))
-    AssertExpectedForBps(9500, acc._Remap(9500, 9000, 10000, bucket_limit[0],
-                                          histo_max))
+    AssertExpectedForBps(2500, ea._Remap(2500, 0, 9000, histo_min,
+                                         bucket_limit[0]))
+    AssertExpectedForBps(5000, ea._Remap(5000, 0, 9000, histo_min,
+                                         bucket_limit[0]))
+    AssertExpectedForBps(7500, ea._Remap(7500, 0, 9000, histo_min,
+                                         bucket_limit[0]))
+    AssertExpectedForBps(9500, ea._Remap(9500, 9000, 10000, bucket_limit[0],
+                                         histo_max))
     AssertExpectedForBps(10000, histo_max)
 
   def testImages(self):
@@ -370,14 +373,23 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
         ea.GRAPH: False})
 
-  def testExpiredDataDiscardedAfterRestart(self):
+  def testExpiredDataDiscardedAfterRestartForFileVersionLessThan2(self):
     """Tests that events are discarded after a restart is detected.
 
     If a step value is observed to be lower than what was previously seen,
-    this should force a discard of all previous items that are outdated.
+    this should force a discard of all previous items with the same tag
+    that are outdated.
+
+    Only file versions < 2 use this out-of-order discard logic. Later versions
+    discard events based on the step value of SessionLog.START.
     """
+    warnings = []
+    self.stubs.Set(logging, 'warn', warnings.append)
+
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
+
+    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -389,20 +401,82 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddScalar('s1', wall_time=1, step=201, value=20)
     gen.AddScalar('s1', wall_time=1, step=301, value=20)
     acc.Reload()
+    ## Check that we have discarded 200 and 300 from s1
+    self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
+
+  def testEventsDiscardedPerTagAfterRestartForFileVersionLessThan2(self):
+    """Tests that event discards after restart, only affect the misordered tag.
+
+    If a step value is observed to be lower than what was previously seen,
+    this should force a discard of all previous items that are outdated, but
+    only for the out of order tag. Other tags should remain unaffected.
+
+    Only file versions < 2 use this out-of-order discard logic. Later versions
+    discard events based on the step value of SessionLog.START.
+    """
+    warnings = []
+    self.stubs.Set(logging, 'warn', warnings.append)
+
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+
+    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddScalar('s1', wall_time=1, step=100, value=20)
+    gen.AddScalar('s1', wall_time=1, step=200, value=20)
+    gen.AddScalar('s1', wall_time=1, step=300, value=20)
+    gen.AddScalar('s1', wall_time=1, step=101, value=20)
+    gen.AddScalar('s1', wall_time=1, step=201, value=20)
+    gen.AddScalar('s1', wall_time=1, step=301, value=20)
+
+    gen.AddScalar('s2', wall_time=1, step=101, value=20)
+    gen.AddScalar('s2', wall_time=1, step=201, value=20)
+    gen.AddScalar('s2', wall_time=1, step=301, value=20)
+
+    acc.Reload()
     ## Check that we have discarded 200 and 300
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 101, 201, 301])
 
+    ## Check that s1 discards do not affect s2
+    ## i.e. check that only events from the out of order tag are discarded
+    self.assertEqual([x.step for x in acc.Scalars('s2')], [101, 201, 301])
+
   def testOnlySummaryEventsTriggerDiscards(self):
-    """Test that file version event doesnt trigger data purge."""
+    """Test that file version event does not trigger data purge."""
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
-    ev1 = tf.Event(wall_time=2, step=0, file_version='0')
-    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_pb2.GraphDef())
+    ev1 = tf.Event(wall_time=2, step=0, file_version='brain.Event:1')
+    graph_bytes = graph_pb2.GraphDef().SerializeToString()
+    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_bytes)
     gen.AddEvent(ev1)
     gen.AddEvent(ev2)
     acc.Reload()
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100])
+
+  def testSessionLogStartMessageDiscardsExpiredEvents(self):
+    """Test that SessionLog.START message discards expired events.
+
+    This discard logic is preferred over the out-of-order step discard logic,
+    but this logic can only be used for event protos which have the SessionLog
+    enum, which was introduced to event.proto for file_version >= brain.Event:2.
+    """
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=0, step=1, file_version='brain.Event:2'))
+
+    gen.AddScalar('s1', wall_time=1, step=100, value=20)
+    gen.AddScalar('s1', wall_time=1, step=200, value=20)
+    gen.AddScalar('s1', wall_time=1, step=300, value=20)
+    gen.AddScalar('s1', wall_time=1, step=400, value=20)
+
+    gen.AddScalar('s2', wall_time=1, step=202, value=20)
+    gen.AddScalar('s2', wall_time=1, step=203, value=20)
+
+    slog = SessionLog(status=SessionLog.START)
+    gen.AddEvent(tf.Event(wall_time=2, step=201, session_log=slog))
+    acc.Reload()
+    self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200])
+    self.assertEqual([x.step for x in acc.Scalars('s2')], [])
 
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
@@ -471,6 +545,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(i*5, sq_events[i].step)
       self.assertEqual(i, id_events[i].value)
       self.assertEqual(i*i, sq_events[i].value)
+    self.assertProtoEquals(graph_def, acc.Graph())
 
 
 if __name__ == '__main__':

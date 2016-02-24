@@ -34,6 +34,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::MinReducer<type>>);
 REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
 #undef REGISTER_GPU_KERNELS
 
 #endif

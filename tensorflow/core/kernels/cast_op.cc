@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -60,6 +60,7 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, bool);              \
   FN(arg0, uint8);             \
   FN(arg0, int8);              \
+  FN(arg0, uint16);            \
   FN(arg0, int16);             \
   FN(arg0, int32);             \
   FN(arg0, int64);             \
@@ -70,6 +71,7 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, arg1, bool);              \
   FN(arg0, arg1, uint8);             \
   FN(arg0, arg1, int8);              \
+  FN(arg0, arg1, uint16);            \
   FN(arg0, arg1, int16);             \
   FN(arg0, arg1, int32);             \
   FN(arg0, arg1, int64);             \
@@ -134,6 +136,7 @@ class CpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, CPUDevice, bool);
     CURRY_TYPES3(CAST_CASE, CPUDevice, uint8);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int8);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, uint16);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int16);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int32);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int64);
@@ -197,6 +200,7 @@ class GpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, GPUDevice, bool);
     CURRY_TYPES3(CAST_CASE, GPUDevice, uint8);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int8);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, uint16);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int16);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int32);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int64);
@@ -223,6 +227,7 @@ REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
 CURRY_TYPES2(REGISTER_CAST_GPU, bool);
 CURRY_TYPES2(REGISTER_CAST_GPU, uint8);
 CURRY_TYPES2(REGISTER_CAST_GPU, int8);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int32);
 CURRY_TYPES2(REGISTER_CAST_GPU, int64);

@@ -23,11 +23,14 @@ from tensorflow.python.framework import ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
+# pylint: disable=unused-import
+from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
+# pylint: enable=unused-import
 
 
 @ops.RegisterShape("SymbolicGradient")
 def _symbolic_gradient_shape(op):
-  # Say, (u, v) = f(x, y, z), symbolic_gradient(f) is a function of
+  # Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
   # (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
   # outputs (dx, dy, dz) are the same as (x, y, z).
   return [op.inputs[i].get_shape() for i in range(len(op.outputs))]

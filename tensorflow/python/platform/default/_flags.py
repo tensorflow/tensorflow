@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import argparse
 
 _global_parser = argparse.ArgumentParser()
@@ -106,6 +104,11 @@ def DEFINE_boolean(flag_name, default_value, docstring):
   _global_parser.add_argument('--no' + flag_name,
                               action='store_false',
                               dest=flag_name)
+
+
+# The internal google library defines the following alias, so we match
+# the API for consistency.
+DEFINE_bool = DEFINE_boolean  # pylint: disable=invalid-name
 
 
 def DEFINE_float(flag_name, default_value, docstring):

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -27,7 +25,7 @@ import tensorflow as tf
 class UniqueTest(tf.test.TestCase):
 
   def testInt32(self):
-    x = list(np.random.randint(2, high=10, size=7000))
+    x = np.random.randint(2, high=10, size=7000)
     with self.test_session() as sess:
       y, idx = tf.unique(x)
       tf_y, tf_idx = sess.run([y, idx])
@@ -36,6 +34,23 @@ class UniqueTest(tf.test.TestCase):
     self.assertEqual(len(tf_y), len(np.unique(x)))
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
+
+
+class UniqueWithCountsTest(tf.test.TestCase):
+
+  def testInt32(self):
+    x = np.random.randint(2, high=10, size=7000)
+    with self.test_session() as sess:
+      y, idx, count = tf.unique_with_counts(x)
+      tf_y, tf_idx, tf_count = sess.run([y, idx, count])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]])
+    for value, count in zip(tf_y, tf_count):
+      self.assertEqual(count, np.sum(x == value))
+
 
 if __name__ == "__main__":
   tf.test.main()

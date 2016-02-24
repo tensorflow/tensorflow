@@ -45,10 +45,13 @@ TensorFlow provides several classes and operations that you can use to
 create variables contingent on certain conditions.
 
 @@get_variable
+@@VariableScope
+@@variable_scope
+@@variable_op_scope
 @@get_variable_scope
 @@make_template
-@@variable_op_scope
-@@variable_scope
+
+@@no_regularizer
 
 @@constant_initializer
 @@random_normal_initializer
@@ -88,7 +91,10 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_state_ops
 # pylint: disable=wildcard-import,undefined-variable
+# undefined-variable is needed because the assign function from
+# gen_state_ops is used later.
 from tensorflow.python.ops.gen_state_ops import *
+# pylint: enable=wildcard-import
 
 
 # pylint: disable=protected-access
@@ -161,7 +167,7 @@ def init_variable(v, init, name="init"):
   """
   with ops.op_scope([v, init], None, v.op.name + "/"):
     with ops.name_scope(name) as scope:
-      with ops.device(v.device or ops.get_default_graph().get_default_device()):
+      with ops.device(v.device):
         if callable(init):
           assert v.get_shape().is_fully_defined(), "Variable shape unknown."
           # TODO(mrry): Convert to v.shape when the property and

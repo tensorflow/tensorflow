@@ -20,6 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -28,11 +29,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -53,7 +54,7 @@ class SparseToDense : public OpKernel {
                 errors::InvalidArgument(
                     "sparse_indices should be a scalar, vector, or matrix, "
                     "got shape ",
-                    indices.shape().ShortDebugString()));
+                    indices.shape().DebugString()));
     const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
@@ -62,7 +63,7 @@ class SparseToDense : public OpKernel {
     OP_REQUIRES(
         c, IsLegacyVector(output_shape.shape()),
         errors::InvalidArgument("output_shape should be a vector, got shape ",
-                                output_shape.shape().ShortDebugString()));
+                                output_shape.shape().DebugString()));
     OP_REQUIRES(c, output_shape.NumElements() == num_dims,
                 errors::InvalidArgument(
                     "output_shape has incorrect number of elements: ",
@@ -71,12 +72,11 @@ class SparseToDense : public OpKernel {
     // sparse_values
     const Tensor& sparse_values = c->input(2);
     const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES(
-        c, sparse_values.dims() == 0 ||
-               (sparse_values.dims() == 1 && num_values == num_elems),
-        errors::InvalidArgument("sparse_values has incorrect shape ",
-                                sparse_values.shape().ShortDebugString(),
-                                ", should be [] or [", num_elems, "]"));
+    OP_REQUIRES(c, sparse_values.dims() == 0 ||
+                       (sparse_values.dims() == 1 && num_values == num_elems),
+                errors::InvalidArgument("sparse_values has incorrect shape ",
+                                        sparse_values.shape().DebugString(),
+                                        ", should be [] or [", num_elems, "]"));
 
     // default_value
     const Tensor& default_value = c->input(3);

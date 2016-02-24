@@ -208,15 +208,6 @@ static string GetBinaryDir(bool strip_exe) {
   return exe_path;
 }
 
-// Returns the location of the runfiles directory.
-// This is the directory which "bazel run" sets as the current working directory
-// before the program starts.
-// N.B. This doesn't have to be running under "bazel run" in order to get the
-// appropriate runfiles directory.
-static string GetRunfilesDir() {
-  return port::StrCat(GetBinaryDir(false), ".runfiles");
-}
-
 bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
                              KernelBase *kernel) {
   CUDAKernel *cuda_kernel = AsCUDAKernel(kernel);

@@ -23,13 +23,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tile_ops.h"
 
+#include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -49,7 +50,7 @@ class TileOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().ShortDebugString()));
+                                multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",
@@ -195,7 +196,7 @@ class TileGradientOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples.shape().ShortDebugString()));
+                                multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",
