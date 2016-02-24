@@ -67,6 +67,7 @@ std::vector<Device*> FilterSupportedDevices(
   return filtered_devices;
 }
 
+// TODO(vrv): Remove "@" syntax capability.
 bool HasColocatedNodeName(const Node& node) {
   return StringPiece(node.def().device()).starts_with("@");
 }
@@ -80,6 +81,30 @@ Status ParseColocatedNodeName(const Node& node,
   }
   // TODO(mrry): Validate that the node name is a valid node name.
   *out_colocated_node_name = device.ToString();
+  return Status::OK();
+}
+
+// Returns the name of the colocation group of the node by inspecting
+// the "_class" attribute of the NodeDef.  Returns "" if it doesn't
+// exist.
+Status ColocationGroup(const Node& node, string* colocation_group) {
+  string class_spec;
+  // TODO(vrv): We should consider adding a GetNodeAttr that returns a
+  // StringPiece, to avoid a copy.
+  Status s = GetNodeAttr(node.def(), "_class", &class_spec);
+  if (!s.ok()) {
+    // No "_class" attribute is equivalent to the empty colocation_group.
+    *colocation_group = "";
+    return Status::OK();
+  }
+
+  StringPiece spec(class_spec);
+  if (!spec.Consume("loc:")) {
+    return errors::InvalidArgument("Node had an invalid _class attribute: ",
+                                   class_spec);
+  }
+
+  *colocation_group = spec.ToString();
   return Status::OK();
 }
 
@@ -134,6 +159,24 @@ class ColocationGraph {
     CHECK_GE(member.parent, 0);
     members_.resize(member.parent + 1);
     members_[member.parent] = std::move(member);
+
+    // When adding the node, identify whether it is part of a
+    // colocation group.
+    string colocation_group;
+    TF_RETURN_IF_ERROR(ColocationGroup(node, &colocation_group));
+    if (!colocation_group.empty()) {
+      // Node has a colocation group specified.
+      auto it = colocation_group_root_.find(colocation_group);
+      if (it == colocation_group_root_.end()) {
+        // This is the first node of the colocation group, so
+        // designate this node as the 'root' of that colocation group.
+        colocation_group_root_[colocation_group] = &node;
+      } else {
+        // Colocate this node with the root.
+        ColocateNodes(node, *(it->second));
+      }
+    }
+
     return Status::OK();
   }
 
@@ -447,6 +490,10 @@ class ColocationGraph {
   const DeviceSet* device_set_;  // Not owned.
   const std::vector<DeviceType> device_types_;
   const SessionOptions* options_;  // Not owned;
+
+  // Maps from a colocation group identifier to the 'root' of that
+  // colocation group.
+  std::unordered_map<string, const Node*> colocation_group_root_;
 };
 
 }  // namespace
