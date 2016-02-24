@@ -21,33 +21,49 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/bounds_check.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
 namespace {
+// Returns -1 on success or a nonnegative i s.t., indices[i] is bad.
 template <typename T, typename Index, int static_slice_elems>
-void HandleCopies(const Tensor& Tparams,
-                  typename TTypes<Index>::ConstVec& Tindices, int slice_elems,
-                  typename TTypes<T>::Matrix Tout) {
-  const int N = Tindices.dimension(0);
-  const auto& Tparams_flat = Tparams.flat_outer_dims<T>();
-  T* Tout_base = &Tout(0, 0);
-  const T* Tparams_base = &Tparams_flat(0, 0);
-  const size_t slice_bytes = slice_elems * sizeof(T);
+Index HandleCopies(const Tensor& params,
+                   typename TTypes<Index>::ConstVec& indices, Index slice_elems,
+                   typename TTypes<T>::Matrix out) {
+  const int N = indices.dimension(0);
+  const auto& params_flat = params.flat_outer_dims<T>();
+  const Index limit = params.dim_size(0);
+  T* out_base = &out(0, 0);
+  const T* params_base = &params_flat(0, 0);
   if (static_slice_elems >= 0) {
     // Give compiler static knowledge of the number of elements/bytes
     CHECK_EQ(static_slice_elems, slice_elems);
     slice_elems = static_slice_elems;
   }
+  // Compute slice_bytes here so that static knowledge is available
+  const size_t slice_bytes = slice_elems * sizeof(T);
   for (int i = 0; i < N; i++) {
-    int j = i + 1;
+    const int j = i + 1;
     if (j < N) {
-      port::prefetch<port::PREFETCH_HINT_T0>(&Tparams_flat(Tindices(j), 0));
-      port::prefetch<port::PREFETCH_HINT_T0>(&Tout(j, 0));
+      port::prefetch<port::PREFETCH_HINT_T0>(&params_flat(indices(j), 0));
+      port::prefetch<port::PREFETCH_HINT_T0>(&out(j, 0));
     }
-    memcpy(Tout_base + i * slice_elems,
-           Tparams_base + Tindices(i) * slice_elems, slice_bytes);
+    // Grab the index and check its validity.  An earlier version of the
+    // code checked it and then grabbed it from memory a second time, which
+    // was a security risk since it could have changed in between.
+    const Index index = indices(i);
+    if (!FastBoundsCheck(index, limit)) return i;
+    // Copy using memcpy if possible, otherwise an Eigen loop
+    if (Allocator::is_simple<T>::value) {
+      memcpy(out_base + i * slice_elems, params_base + index * slice_elems,
+             slice_bytes);
+    } else {
+      out.template chip<0>(i) = params_flat.template chip<0>(index);
+    }
   }
+  return -1;
 }
 
 }  // anonymous namespace
@@ -64,78 +80,67 @@ class GatherOp : public OpKernel {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t}, {dt}));
-    OP_REQUIRES_OK(c, c->GetAttr("validate_indices", &validate_indices_));
+    // We used to grab the validate_indices attribute here, but now we
+    // always validate indices since the speed difference was only 1.5%.
+    // TODO(irving): Remove the validate_indices attribute once we have
+    // support for removing attrs in a backwards compatible way.
   }
 
   void Compute(OpKernelContext* c) override {
-    const Tensor& Tparams = c->input(0);
-    const Tensor& Tindices = c->input(1);
+    const Tensor& params = c->input(0);
+    const Tensor& indices = c->input(1);
     OP_REQUIRES(
-        c, TensorShapeUtils::IsVectorOrHigher(Tparams.shape()),
+        c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         errors::InvalidArgument("params must be at least 1 dimensional"));
-    const int64 N = Tindices.NumElements();
-    const int64 first_dim_size = Tparams.dim_size(0);
 
-    // Validate all the indices are in range
-    auto Tindices_vec = Tindices.flat<Index>();
-    if (validate_indices_) {
-      for (int64 i = 0; i < N; i++) {
-        const Index index = Tindices_vec(i);
-        OP_REQUIRES(c, index >= 0 && index < first_dim_size,
-                    errors::InvalidArgument(
-                        strings::StrCat("Index ", index, " at offset ", i,
-                                        " in Tindices is out of range")));
-      }
-    }
+    // Check that we have enough index space
+    const int64 N_big = indices.NumElements();
+    OP_REQUIRES(c, N_big <= std::numeric_limits<int>::max(),
+                errors::InvalidArgument(
+                    "indices has too many elements for int indexing: ", N_big,
+                    " > ", std::numeric_limits<int>::max()));
+    const int N = indices.NumElements();
+    OP_REQUIRES(
+        c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
+        errors::InvalidArgument("params.shape[0] too large for ",
+                                DataTypeString(DataTypeToEnum<Index>::v()),
+                                " indexing: ", params.dim_size(0), " > ",
+                                std::numeric_limits<Index>::max()));
 
     // The result shape is indices.shape + params.shape[1:].
-    TensorShape result_shape = Tindices.shape();
-    for (int i = 1; i < Tparams.dims(); i++) {
-      result_shape.AddDim(Tparams.dim_size(i));
+    TensorShape result_shape = indices.shape();
+    for (int i = 1; i < params.dims(); i++) {
+      result_shape.AddDim(params.dim_size(i));
     }
 
-    Tensor* Tout = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &Tout));
-    const auto& Tparams_flat = Tparams.flat_outer_dims<T>();
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
     if (N > 0) {
-      auto Tindices_flat = Tindices.flat<Index>();
-      auto Tout_flat = Tout->shaped<T, 2>({N, Tout->NumElements() / N});
-      if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-        const int64 slice_size = Tout->NumElements() / N;
-#define SPECIALIZE(elems)                                               \
-  do {                                                                  \
-    if (slice_size == elems) {                                          \
-      HandleCopies<T, Index, elems>(Tparams, Tindices_flat, slice_size, \
-                                    Tout_flat);                         \
-      return;                                                           \
-    }                                                                   \
-  } while (0)
+      auto indices_flat = indices.flat<Index>();
+      auto out_flat = out->shaped<T, 2>({N, out->NumElements() / N});
+      const int64 slice_size = out->NumElements() / N;
+      Index bad_i;
 
-        SPECIALIZE(10);
-        SPECIALIZE(20);
+#define CALL(elems)                                                       \
+  bad_i = HandleCopies<T, Index, elems>(params, indices_flat, slice_size, \
+                                        out_flat)
 
-#undef SPECIALIZE
+      if (slice_size == 10)
+        CALL(10);
+      else if (slice_size == 20)
+        CALL(20);
+      else
+        CALL(-1);
 
-        HandleCopies<T, Index, -1>(Tparams, Tindices_flat, slice_size,
-                                   Tout_flat);
-      } else {
-        for (int i = 0; i < N; i++) {
-          int j = i + 1;
-          if (j < N) {
-            port::prefetch<port::PREFETCH_HINT_T0>(
-                &Tparams_flat(Tindices_vec(j), 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(&Tout_flat(j, 0));
-          }
-          // Copy last Ndim-1 dimensions of Tparams[Tindices[i]] to Tout[i]
-          Tout_flat.template chip<0>(i) =
-              Tparams_flat.template chip<0>(Tindices_vec(i));
-        }
-      }
+#undef CALL
+
+      OP_REQUIRES(
+          c, bad_i < 0,
+          errors::InvalidArgument(
+              "indices", SliceDebugString(indices.shape(), bad_i), " = ",
+              indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
     }
   }
-
- private:
-  bool validate_indices_;
 };
 
 #define REGISTER_GATHER(type, index_type)                              \
