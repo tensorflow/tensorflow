@@ -25,6 +25,7 @@ def null_input_op_fn(X):
     """This function does no transformation on the inputs, used as default"""
     return X
 
+
 class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow RNN Classifier model.
 
@@ -62,9 +63,6 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         num_cores: Number of cores to be used. (default: 4)
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
@@ -80,8 +78,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1, early_stopping_rounds=None,
+                 config_addon=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
@@ -97,7 +96,6 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             tf_random_seed=tf_random_seed,
             continue_training=continue_training, config_addon=config_addon,
             verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
             max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
@@ -153,16 +151,10 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         num_cores: Number of cores to be used. (default: 4)
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
@@ -177,8 +169,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1, early_stopping_rounds=None,
+                 config_addon=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+
         self.rnn_size = rnn_size
         self.cell_type = cell_type
         self.input_op_fn = input_op_fn
@@ -192,9 +185,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
             continue_training=continue_training, config_addon=config_addon,
-            verbose=verbose,
-            early_stopping_rounds=early_stopping_rounds,
-            max_to_keep=max_to_keep,
+            verbose=verbose, max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     def _model_fn(self, X, y):

@@ -35,6 +35,7 @@ from skflow.trainer import TensorFlowTrainer, RestoredTrainer
 from skflow.io.data_feeder import setup_train_data_feeder
 from skflow.io.data_feeder import setup_predict_data_feeder
 from skflow.ops.dropout_ops import DROPOUTS
+from skflow import monitors
 
 from skflow.addons.config_addon import ConfigAddon
 
@@ -72,9 +73,6 @@ class TensorFlowEstimator(BaseEstimator):
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        early_stopping_rounds: Activates early stopping if this is not None.
-            Loss needs to decrease at least every every <early_stopping_rounds>
-            round(s) to continue training. (default: None)
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
@@ -88,8 +86,8 @@ class TensorFlowEstimator(BaseEstimator):
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
-                 early_stopping_rounds=None,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+
         self.n_classes = n_classes
         self.tf_master = tf_master
         self.batch_size = batch_size
@@ -101,7 +99,6 @@ class TensorFlowEstimator(BaseEstimator):
         self.model_fn = model_fn
         self.continue_training = continue_training
         self._initialized = False
-        self._early_stopping_rounds = early_stopping_rounds
         self.max_to_keep = max_to_keep
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
@@ -159,6 +156,9 @@ class TensorFlowEstimator(BaseEstimator):
                 max_to_keep=self.max_to_keep,
                 keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
 
+            # Enable monitor to create validation data dict with appropriate tf placeholders
+            self._monitor.create_val_feed_dict(self._inp, self._out)
+
             # Create session to run model with.
             if self.config_addon is None:
                 self.config_addon = ConfigAddon(verbose=self.verbose)
@@ -170,7 +170,7 @@ class TensorFlowEstimator(BaseEstimator):
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
             graph_def=self._session.graph_def)
 
-    def fit(self, X, y, logdir=None):
+    def fit(self, X, y, monitor=None, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
         data X and y.
 
@@ -187,6 +187,7 @@ class TensorFlowEstimator(BaseEstimator):
             y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
             iterator that returns array of targets. The training target values
             (class labels in classification, real numbers in regression).
+            monitor: Monitor object to print training progress and invoke early stopping
             logdir: the directory to save the log file that can be used for
             optional visualization.
 
@@ -197,6 +198,12 @@ class TensorFlowEstimator(BaseEstimator):
         self._data_feeder = setup_train_data_feeder(X, y,
                                                     self.n_classes,
                                                     self.batch_size)
+
+        if monitor is None:
+            self._monitor = monitors.default_monitor()
+        else:
+            self._monitor = monitor
+
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
@@ -222,10 +229,9 @@ class TensorFlowEstimator(BaseEstimator):
                             self._data_feeder.get_feed_dict_fn(
                                 self._inp, self._out),
                             self.steps,
+                            self._monitor,
                             self._summary_writer,
                             self._summaries,
-                            verbose=self.verbose,
-                            early_stopping_rounds=self._early_stopping_rounds,
                             feed_params_fn=self._data_feeder.get_feed_params)
         return self
 
@@ -475,4 +481,3 @@ class TensorFlowEstimator(BaseEstimator):
         estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)
         return estimator
-
