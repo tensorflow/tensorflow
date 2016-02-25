@@ -146,7 +146,6 @@ REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device(DEVICE_GPU), DummyOp);
 class SimplePlacerTest : public ::testing::Test {
  protected:
   SimplePlacerTest() {
-    RequireDefaultOps();
     // Build a set of 10 GPU and 10 CPU devices.
     // NOTE: this->local_devices_ owns the device objects;
     // this->devices_ contains borrowed pointers to the device

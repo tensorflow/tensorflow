@@ -47,7 +47,6 @@ class EqualGraphDefTest : public ::testing::Test {
   EqualGraphDefTest()
       : e_(GraphDefBuilder::kFailImmediately),
         a_(GraphDefBuilder::kFailImmediately) {
-    RequireDefaultOps();
   }
 
   bool Match() {
