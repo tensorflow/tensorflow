@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/io_ops.cc
 #include <unordered_map>
 
 #include <vector>
-#include "tensorflow/core/kernels/io.h"
+#include "tensorflow/core/kernels/save_restore_tensor.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
