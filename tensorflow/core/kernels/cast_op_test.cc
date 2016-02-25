@@ -39,7 +39,6 @@ static Graph* Cast(int num) {
 class CastOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType src, DataType dst) {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
                      .Input(FakeInput(src))
                      .Attr("SrcT", src)

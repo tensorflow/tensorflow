@@ -35,7 +35,6 @@ namespace {
 class DynamicPartitionOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "DynamicPartition")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))

@@ -32,7 +32,6 @@ namespace tensorflow {
 class CrossOpTest : public OpsTestBase {
  protected:
   CrossOpTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("cross_op", "Cross")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
@@ -80,7 +79,6 @@ TEST_F(CrossOpTest, ArbitraryNonintegral) {
 class CrossOpIntTest : public OpsTestBase {
  protected:
   CrossOpIntTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("cross_int_op", "Cross")
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_INT32))
