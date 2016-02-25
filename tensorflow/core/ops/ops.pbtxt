@@ -994,6 +994,20 @@ op {
     }
   }
   attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     allowed_values {
@@ -1045,6 +1059,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
       }
     }
   }
@@ -4694,6 +4722,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Performs max pooling on the input."
 }
 op {
@@ -4740,6 +4782,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
       }
     }
   }
