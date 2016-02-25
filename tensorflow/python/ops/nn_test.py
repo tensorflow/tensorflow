@@ -476,7 +476,7 @@ class DropoutTest(tf.test.TestCase):
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, 1])
 
 
-class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
+class BatchNormalizationTest(tf.test.TestCase):
 
   def _npBatchNorm(self, x, m, v, beta, gamma, epsilon,
                    scale_after_normalization, shift_after_normalization):
@@ -670,8 +670,7 @@ class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
           else:
             all_grads = sess.run([dx, dm, dv, db, odx, odm, odv, odb])
             to_check = ["dx", "dm", "dv", "db"]
-          for i, n in enumerate(to_check):
-            print(n)
+          for i, _ in enumerate(to_check):
             self.assertAllClose(
                 all_grads[i + len(to_check)], all_grads[i], atol=0.000001)
 
@@ -757,6 +756,117 @@ class BatchNormWithGlobalNormalizationTest(tf.test.TestCase):
     self._testBatchNormArbitraryShapes((3, 2, 4, 5), (1, 2, 1, 1))
     self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
                                        atol=0.005)
+
+
+class SufficientStatisticsTest(tf.test.TestCase):
+
+  def _npSuffStats(self, x, axes, shift, keep_dims):
+    axis = tuple(axes)
+    if shift:
+      shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
+                       for i in xrange(x.ndim)]]
+      m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum(
+          (x - shift_value) * (x - shift_value),
+          axis=axis,
+          keepdims=keep_dims)
+    else:
+      shift_value = None
+      m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
+    count = 1.0
+    for d in xrange(x.ndim):
+      if d in set(axes):
+        count *= x.shape[d]
+    if not keep_dims:
+      shift_value = np.squeeze(shift_value, axis=axis)
+    return count, m_ss, v_ss, shift_value
+
+  def _opSuffStats(self, x, axes, shift, keep_dims):
+    return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
+
+  def _testSuffStats(self, x_shape, axes, shift, keep_dims, has_shape):
+    x_val = np.random.random_sample(x_shape).astype(np.float32)
+    np_c, np_m, np_v, np_s = self._npSuffStats(x_val, axes, shift, keep_dims)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        if has_shape:
+          x = tf.constant(x_val, name="x")
+          x.set_shape(x_shape)
+          op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
+          if shift:
+            tf_c, tf_m, tf_v, tf_s = sess.run([op_c, op_m, op_v, op_s])
+          else:
+            tf_c, tf_m, tf_v = sess.run([op_c, op_m, op_v])
+        else:
+          x = tf.placeholder(dtype=tf.float32,
+                             shape=[None] * len(x_shape),
+                             name="x")
+          op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
+          if shift:
+            tf_c, tf_m, tf_v, tf_s = sess.run(
+                [op_c, op_m, op_v, op_s],
+                feed_dict={x: x_val})
+          else:
+            tf_c, tf_m, tf_v = sess.run(
+                [op_c, op_m, op_v],
+                feed_dict={x: x_val})
+        self.assertAllClose(np_c, tf_c, atol=0.000001)
+        self.assertAllClose(np_m, tf_m, atol=0.000001)
+        self.assertAllClose(np_v, tf_v, atol=0.000001)
+        if shift:
+          self.assertAllClose(np_s, tf_s, atol=0.000001)
+
+  def testSuffStats(self):
+    for has_shape in [True, False]:
+      for keep_dims in [True, False]:
+        for shift in [True, False]:
+          self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
+          self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
+          self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
+
+
+class AggregateMomentsTest(tf.test.TestCase):
+
+  def _npAggregateMoments(self, counts, mean_ss, variance_ss, shift):
+    mean = mean_ss / counts
+    variance = variance_ss / counts - mean * mean
+    if shift is not None:
+      mean += shift
+    return mean, variance
+
+  def _opAggregateMoments(self, counts, mean_ss, variance_ss, shift):
+    return tf.nn.aggregate_moments(counts, mean_ss, variance_ss, shift)
+
+  def _testAggregateMoments(self, shape, shift):
+    counts = np.ones([1]).astype(np.float32)
+    mean_ss = np.random.random_sample(shape).astype(np.float32)
+    variance_ss = np.random.random_sample(shape).astype(np.float32)
+    variance_ss *= variance_ss
+    if shift:
+      shift_v = np.random.random_sample(shape).astype(np.float32)
+    else:
+      shift_v = None
+    npm, npv = self._npAggregateMoments(counts, mean_ss, variance_ss, shift_v)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        tf_counts = tf.constant(counts, name="counts")
+        tf_mean_ss = tf.constant(mean_ss, name="mean_ss")
+        tf_variance_ss = tf.constant(variance_ss, name="variance_ss")
+        if shift:
+          tf_shift_v = tf.constant(shift_v, name="shift")
+        else:
+          tf_shift_v = None
+        opm, opv = self._opAggregateMoments(tf_counts, tf_mean_ss,
+                                            tf_variance_ss, tf_shift_v)
+        tfm, tfv = sess.run([opm, opv])
+        self.assertAllClose(npm, tfm, atol=0.000001)
+        self.assertAllClose(npv, tfv, atol=0.000001)
+
+  def testAggregateMoments(self):
+    for shift in [True, False]:
+      self._testAggregateMoments([3], shift)
+      self._testAggregateMoments([2, 3], shift)
 
 
 class MomentsTest(tf.test.TestCase):
@@ -856,6 +966,20 @@ class MomentsTest(tf.test.TestCase):
 
   def testVarGlobalGradient(self):
     self._testGlobalGradient(from_y="var")
+
+  def testOutputNamesNoKeep(self):
+    """Make sure the output names are stable."""
+    with self.test_session():
+      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=False)
+      self.assertEquals(mean.op.name, "moments/aggregate/mean")
+      self.assertEquals(var.op.name, "moments/aggregate/variance")
+
+  def testOutputNamesKeep(self):
+    """Make sure the output names are stable."""
+    with self.test_session():
+      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
+      self.assertEquals(mean.op.name, "moments/aggregate/mean")
+      self.assertEquals(var.op.name, "moments/aggregate/variance")
 
 
 class ComputeSampledLogitsTest(tf.test.TestCase):
