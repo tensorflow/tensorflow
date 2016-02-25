@@ -145,11 +145,13 @@ cc_library(
     testonly = 1,
     srcs = [
         "platform/test.cc",
+        "util/reporter.cc",
     ] + tf_additional_test_srcs(),
     hdrs = [
         "lib/core/status_test_util.h",
         "platform/test.h",
         "platform/test_benchmark.h",
+        "util/reporter.h",
     ],
     copts = tf_copts(),
     linkopts = ["-lm"],
