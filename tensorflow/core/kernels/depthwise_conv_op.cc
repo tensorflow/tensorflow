@@ -227,7 +227,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
             << filter_cols << ", " << in_depth << ", " << depth_multiplier
             << "]; stride = " << stride << ", pad_rows = " << pad_rows
             << ", pad_cols = " << pad_cols << ", output: [" << batch << ", "
-            << out_rows << ", " << out_cols << ", " << out_depth << "]" << endl;
+            << out_rows << ", " << out_cols << ", " << out_depth << "]";
 
     // If there is nothing to compute, return.
     if (out_shape.num_elements() == 0) {
