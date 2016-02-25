@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test.h"
 
+#include <cstdlib>
 #include <unordered_set>
 
 #include <netinet/in.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
