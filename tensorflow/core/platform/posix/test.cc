@@ -45,7 +45,7 @@ class PosixSubProcess : public SubProcess {
       // We are in the child process.
       const char* path = argv_[0].c_str();
       const char** argv = new const char*[argv_.size()];
-      for (int i = 1; i < argv_.size(); ++i) {
+      for (size_t i = 1; i < argv_.size(); ++i) {
         argv[i - 1] = argv_[i].c_str();
       }
       argv[argv_.size() - 1] = nullptr;
@@ -175,6 +175,18 @@ int PickUnusedPortOrDie() {
   }
 
   return 0;
+}
+
+string TensorFlowSrcRoot() {
+  // 'bazel test' sets TEST_SRCDIR
+  const char* env = getenv("TEST_SRCDIR");
+  if (env && env[0] != '\0') {
+    return strings::StrCat(env, "/tensorflow");
+  } else {
+    LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
+                 << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";
+    return "tensorflow";
+  }
 }
 
 }  // namespace testing
