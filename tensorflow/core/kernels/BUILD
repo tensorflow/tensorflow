@@ -689,6 +689,7 @@ tf_kernel_library(
     deps = [
         ":conv_2d",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
