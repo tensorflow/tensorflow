@@ -46,11 +46,11 @@ class PosixSubProcess : public SubProcess {
     if (pid_ == 0) {
       // We are in the child process.
       const char* path = argv_[0].c_str();
-      const char** argv = new const char*[argv_.size()];
-      for (size_t i = 1; i < argv_.size(); ++i) {
-        argv[i - 1] = argv_[i].c_str();
+      const char** argv = new const char*[argv_.size() + 1];
+      for (const string& arg : argv) {
+        argv[i] = arg.c_str();
       }
-      argv[argv_.size() - 1] = nullptr;
+      argv[argv_.size()] = nullptr;
       execv(path, (char* const*)argv);
       // Never executes.
       return true;
