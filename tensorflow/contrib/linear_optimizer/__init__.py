@@ -16,11 +16,10 @@
 
 ## This package provides optimizers to train linear models.
 
-@@SdcaModel
+To use this module import: SdcaModel from sdca_ops.
+
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel

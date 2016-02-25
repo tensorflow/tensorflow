@@ -17,14 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=wildcard-import
-from tensorflow.contrib.linear_optimizer.gen_sdca_ops import *
+import os.path
+
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
+from tensorflow.python.platform import resource_loader
+
+_sdca_ops = load_op_library(os.path.join(resource_loader.get_data_files_path(),
+                                         '_sdca_ops.so'))
 
 __all__ = ['SdcaModel']
 
@@ -216,7 +221,7 @@ class SdcaModel(object):
         sparse_features_indices.append(ops.convert_to_tensor(sf.indices))
         sparse_features_weights.append(ops.convert_to_tensor(sf.values))
 
-      return sdca_solver(
+      return _sdca_ops.sdca_solver(
           sparse_features_indices,
           sparse_features_weights,
           self._convert_n_to_tensor(self._examples['dense_features']),

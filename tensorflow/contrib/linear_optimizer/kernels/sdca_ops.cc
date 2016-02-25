@@ -73,12 +73,12 @@ using WeightsByIndex = std::vector<Weights>;
 
 // SparseExamples represent sparse feature groups of each example.
 using SparseExamples =
-    vector<std::unique_ptr<const PerExampleSparseIndicesWeights>>;
+    std::vector<std::unique_ptr<const PerExampleSparseIndicesWeights>>;
 
 // SparseExamples associated with each sparse feature group.
-using SparseExamplesByIndex = vector<SparseExamples>;
+using SparseExamplesByIndex = std::vector<SparseExamples>;
 
-using DenseFeaturesByIndex = vector<tensorflow::TTypes<const float>::Vec>;
+using DenseFeaturesByIndex = std::vector<tensorflow::TTypes<const float>::Vec>;
 
 // Compute the shrinkage factor for proximal sdca.
 inline double ShrinkageFactor(const Regularizations& regularizations) {
@@ -361,7 +361,7 @@ class SdcaSolver : public OpKernel {
               .flat<float>());
     }
 
-    vector<int64> example_ids(num_examples);
+    std::vector<int64> example_ids(num_examples);
     std::iota(example_ids.begin(), example_ids.end(), 0);
     std::random_device random_device;
     std::mt19937 random_generator(random_device());
