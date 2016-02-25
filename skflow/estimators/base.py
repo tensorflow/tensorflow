@@ -259,7 +259,7 @@ class TensorFlowEstimator(BaseEstimator):
         """
         return self.fit(X, y)
 
-    def _predict(self, X, batch_size=-1):
+    def _predict(self, X, axis=-1, batch_size=-1):
         if not self._initialized:
             raise NotFittedError()
         self._graph.add_to_collection("IS_TRAINING", False)
@@ -270,9 +270,14 @@ class TensorFlowEstimator(BaseEstimator):
         feed_dict = {prob: 1.0 for prob in dropouts}
         for data in predict_data_feeder:
             feed_dict[self._inp] = data
-            preds.append(self._session.run(
+            predictions_for_batch = self._session.run(
                 self._model_predictions,
-                feed_dict))
+                feed_dict)
+            if self.n_classes > 1 and axis != -1:
+                preds.append(predictions_for_batch.argmax(axis=axis))
+            else:
+                preds.append(predictions_for_batch)
+
         return np.concatenate(preds, axis=0)
 
     def predict(self, X, axis=1, batch_size=-1):
@@ -294,10 +299,7 @@ class TensorFlowEstimator(BaseEstimator):
             y: array of shape [n_samples]. The predicted classes or predicted
             value.
         """
-        pred = self._predict(X, batch_size=batch_size)
-        if self.n_classes < 2:
-            return pred
-        return pred.argmax(axis=axis)
+        return self._predict(X, axis=axis, batch_size=batch_size)
 
     def predict_proba(self, X, batch_size=-1):
         """Predict class probability of the input samples X.
@@ -311,7 +313,7 @@ class TensorFlowEstimator(BaseEstimator):
             y: array of shape [n_samples, n_classes]. The predicted
             probabilities for each class.
 
-       """
+        """
         return self._predict(X, batch_size=batch_size)
 
     def get_tensor(self, name):
