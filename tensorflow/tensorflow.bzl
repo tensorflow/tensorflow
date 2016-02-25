@@ -274,15 +274,15 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     srcs = srcs + native.glob([prefix + "*.cc"],
                               exclude = ["*test*", "*.cu.cc"])
     hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+
+  cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
         deps = gpu_deps,
         **kwargs)
-    cuda_deps = [":" + name + "_gpu"]
-  else:
-    cuda_deps = None
+    cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
       name = name,
       srcs = srcs,

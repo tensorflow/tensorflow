@@ -750,6 +750,27 @@ cc_library(
     ],
 )
 
+# Libraries for GPU facilities that are useful for writing kernels.
+cc_library(
+    name = "gpu_lib",
+    srcs = [
+        "common_runtime/gpu/gpu_event_mgr.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_event_mgr.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":stream_executor",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -1002,9 +1023,13 @@ tf_cuda_library(
         exclude = [
             "**/*main.cc",
             "**/*test.cc",
+            "common_runtime/gpu/gpu_event_mgr.cc",
         ],
     ),
-    hdrs = glob(["common_runtime/gpu/*.h"]),
+    hdrs = glob(
+        ["common_runtime/gpu/*.h"],
+        exclude = ["common_runtime/gpu/gpu_event_mgr.h"],
+    ),
     copts = tf_copts(),
     cuda_deps = [
         ":cuda",
@@ -1015,6 +1040,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
+        ":gpu_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",

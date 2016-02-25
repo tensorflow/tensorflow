@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -229,10 +230,11 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     perftools::gputools::DeviceMemoryBase output_ptrs_base{
         output_ptrs_on_gpu.flat<int8>().data(), static_cast<uint64>(num_split)};
     TensorReference tensor_ref(output_ptrs_on_host);
-    stream
-        ->ThenMemcpy(&output_ptrs_base, output_ptrs_on_host.flat<int8>().data(),
-                     output_ptrs_total_bytes)
-        .ThenDoHostCallback([tensor_ref]() { tensor_ref.Unref(); });
+    stream->ThenMemcpy(&output_ptrs_base,
+                       output_ptrs_on_host.flat<int8>().data(),
+                       output_ptrs_total_bytes);
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, [tensor_ref]() { tensor_ref.Unref(); });
     SplitOpGPULaunch<T>().Run(
         context->eigen_device<GPUDevice>(), input.flat<T>().data(), num_split,
         prefix_dim_size, split_dim_size, suffix_dim_size,
