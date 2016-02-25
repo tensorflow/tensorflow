@@ -1074,6 +1074,7 @@ filegroup(
         "io.cc",
         "lrn_op.cc",
         "maxpooling_op.cc",
+        "reduction_ops_common.cc",
         "reduction_ops_max.cc",
         "reduction_ops_mean.cc",
         "reduction_ops_min.cc",

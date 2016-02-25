@@ -90,6 +90,8 @@ OpKernel::OpKernel(OpKernelConstruction* context)
                                    &output_name_map_));
 }
 
+OpKernel::~OpKernel() {}
+
 Status OpKernel::InputRange(const string& input_name, int* start,
                             int* stop) const {
   const auto result = input_name_map_.find(input_name);
@@ -172,6 +174,10 @@ Status OpKernelConstruction::allocate_persistent(
   return s;
 }
 
+void OpKernelConstruction::SetStatus(const Status& status) {
+  status_->Update(status);
+}
+
 // OpKernelContext -----------------------------------------------------------
 
 OpKernelContext::OpKernelContext(Params* params)
@@ -192,6 +198,29 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
+}
+
+Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
+  Allocator* allocator =
+      params_->device->GetStepAllocator(attr, step_resource_manager());
+  if (params_->track_allocations) {
+    mutex_lock lock(mu_);
+    for (const auto& wrapped : wrapped_allocators_) {
+      if (wrapped.first == allocator) {
+        return wrapped.second;
+      }
+    }
+    TrackingAllocator* wrapped_allocator =
+        new TrackingAllocator(allocator, attr.track_sizes());
+    wrapped_allocators_.push_back(std::make_pair(allocator, wrapped_allocator));
+    return wrapped_allocator;
+  } else {
+    return allocator;
+  }
+}
+
+void OpKernelContext::SetStatus(const Status& status) {
+  status_.Update(status);
 }
 
 Status OpKernelContext::input(const string& name, const Tensor** tensor) {

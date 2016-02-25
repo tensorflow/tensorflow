@@ -21,6 +21,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
+    : node(n),
+      error(false),
+      name(node != nullptr ? node->name() : (error = true, "")),
+      index(i),
+      dt(SafeGetOutput(node, i, &error)) {}
+
 NodeBuilder::NodeBuilder(const string& name, const string& op_name,
                          const OpRegistryInterface* op_registry)
     : def_builder_(name, op_name, op_registry) {}
