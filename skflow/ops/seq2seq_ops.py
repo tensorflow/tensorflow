@@ -68,9 +68,10 @@ def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
         in_X = array_ops.split_squeeze(1, input_length, X)
         y = array_ops.split_squeeze(1, output_length, y)
         if not sentinel:
-            # Set to zeros of shape of X[0]
-            sentinel = tf.zeros(tf.shape(in_X[0]))
-            sentinel.set_shape(in_X[0].get_shape())
+            # Set to zeros of shape of y[0], using X for batch size.
+            sentinel_shape = tf.pack([tf.shape(X)[0], y[0].get_shape()[1]])
+            sentinel = tf.zeros(sentinel_shape)
+            sentinel.set_shape(y[0].get_shape())
         in_y = [sentinel] + y
         out_y = y + [sentinel]
         return in_X, in_y, out_y
@@ -112,13 +113,15 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
     return outputs, states, sampling_outputs, sampling_states
 
 
-def rnn_seq2seq(encoder_inputs, decoder_inputs, cell, dtype=tf.float32, scope=None):
+def rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_cell, decoder_cell=None,
+                dtype=tf.float32, scope=None):
     """RNN Sequence to Sequence model.
 
     Args:
         encoder_inputs: List of tensors, inputs for encoder.
         decoder_inputs: List of tensors, inputs for decoder.
-        cell: RNN cell to use for encoder and decoder.
+        encoder_cell: RNN cell to use for encoder.
+        decoder_cell: RNN cell to use for decoder, if None encoder_cell is used.
         dtype: Type to initialize encoder state with.
         scope: Scope to use, if None new will be produced.
 
@@ -126,6 +129,6 @@ def rnn_seq2seq(encoder_inputs, decoder_inputs, cell, dtype=tf.float32, scope=No
         List of tensors for outputs and states for trianing and sampling sub-graphs.
     """
     with tf.variable_scope(scope or "rnn_seq2seq"):
-        _, enc_states = tf.nn.rnn(cell, encoder_inputs, dtype=dtype)
-        return rnn_decoder(decoder_inputs, enc_states[-1], cell)
+        _, enc_states = tf.nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+        return rnn_decoder(decoder_inputs, enc_states[-1], decoder_cell or encoder_cell)
 
