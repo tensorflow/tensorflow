@@ -8,15 +8,12 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
-    name = "contrib_py",
-    srcs = glob(["**/*.py"]),
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/testing:testing_py",
-        "//tensorflow/contrib/util:util_py",
+    name = "testing_py",
+    srcs = [
+        "__init__.py",
+        "python/framework/test_util.py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 filegroup(

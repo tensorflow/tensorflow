@@ -9,7 +9,6 @@ load("//tensorflow/core:platform/default/build_config_root.bzl",
 # List of proto files for android builds
 def tf_android_core_proto_sources():
     return [
-        "//google/protobuf",  # any.proto
         "//tensorflow/core:example/example.proto",
         "//tensorflow/core:example/feature.proto",
         "//tensorflow/core:framework/allocation_description.proto",
@@ -30,8 +29,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:protobuf/saver.proto",
-        "//tensorflow/core:util/saved_tensor_slice.proto",
-        "//tensorflow/core:util/test_log.proto",
+        "//tensorflow/core:util/saved_tensor_slice.proto"
   ]
 
 
@@ -274,15 +272,15 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     srcs = srcs + native.glob([prefix + "*.cc"],
                               exclude = ["*test*", "*.cu.cc"])
     hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+
+  cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
         deps = gpu_deps,
         **kwargs)
-    cuda_deps = [":" + name + "_gpu"]
-  else:
-    cuda_deps = None
+    cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
       name = name,
       srcs = srcs,

@@ -170,9 +170,8 @@ cc_library(
 
 cc_library(
     name = "save_restore_tensor",
-    # TODO(josh11b): Rename io.* -> save_restore_tensor.*
-    srcs = ["io.cc"],
-    hdrs = ["io.h"],
+    srcs = ["save_restore_tensor.cc"],
+    hdrs = ["save_restore_tensor.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1019,11 +1018,11 @@ filegroup(
         "avgpooling_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
-        "io.h",
         "maxpooling_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
+        "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
         "tile_ops.h",
@@ -1071,9 +1070,9 @@ filegroup(
     srcs = [
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
-        "io.cc",
         "lrn_op.cc",
         "maxpooling_op.cc",
+        "reduction_ops_common.cc",
         "reduction_ops_max.cc",
         "reduction_ops_mean.cc",
         "reduction_ops_min.cc",
@@ -1082,6 +1081,7 @@ filegroup(
         "relu_op.cc",
         "restore_op.cc",
         "save_op.cc",
+        "save_restore_tensor.cc",
         "softplus_op.cc",
         "softsign_op.cc",
         "sparse_to_dense_op.cc",

@@ -113,8 +113,8 @@ TEST_F(GatherOpTest, Error_IndexOutOfRange) {
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 99, 2});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Index 99 at offset 2 in Tindices is out of range"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString()).contains("indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 

@@ -96,8 +96,8 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
 
   sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_EQ(16, sizes.first);
-  EXPECT_EQ(12, sizes.second);
+  EXPECT_LE(16, sizes.first);
+  EXPECT_LE(12, sizes.second);
 
   ta->DeallocateRaw(p2);
 }

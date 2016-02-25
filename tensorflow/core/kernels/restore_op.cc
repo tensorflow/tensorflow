@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/io_ops.cc.
-#include "tensorflow/core/kernels/io.h"
+#include "tensorflow/core/kernels/save_restore_tensor.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
