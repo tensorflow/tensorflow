@@ -57,12 +57,12 @@ Go to the project folder:
     C:\Path\to>cd tensorflow
     C:\Path\to\tensorflow>
 
-Now go to *cmake* folder in Tensorflow sources:
+Now go to *tensorflow\contrib\cmake* folder in Tensorflow's contrib sources:
 
-    C:\Path\to\tensorflow>cd cmake
-    C:\Path\to\tensorflow\cmake>
+    C:\Path\to\tensorflow>cd tensorflow\contrib\cmake
+    C:\Path\to\tensorflow\tensorflow\contrib\cmake>
 
-Good. Now you are ready to *CMake* configuration.
+Good. Now you are ready to configure *CMake*.
 
 CMake Configuration
 ===================
@@ -80,37 +80,37 @@ source code.
 
 Create a temporary *build* folder and change your working directory to it:
 
-     C:\Path\to\tensorflow\cmake>mkdir build & cd build
-     C:\Path\to\tensorflow\cmake\build>
+     C:\Path\to\tensorflow\tensorflow\contrib\cmake>mkdir build & cd build
+     C:\Path\to\tensorflow\tensorflow\contrib\cmake\build>
 
 The *Makefile* generator can build the project in only one configuration, so
 you need to build a separate folder for each configuration.
 
 To start using a *Release* configuration:
 
-     C:\Path\to\tensorflow\cmake\build>mkdir release & cd release
-     C:\Path\to\tensorflow\cmake\build\release>cmake -G "NMake Makefiles" ^
+     [...]\contrib\cmake\build>mkdir release & cd release
+     [...]\contrib\cmake\build\release>cmake -G "NMake Makefiles" ^
      -DCMAKE_BUILD_TYPE=Release ^
-     -DCMAKE_INSTALL_PREFIX=../../../../install ^
+     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
      ../..
 
 It will generate *nmake* *Makefile* in current directory.
 
 To use *Debug* configuration:
 
-     C:\Path\to\tensorflow\cmake\build>mkdir debug & cd debug
-     C:\Path\to\tensorflow\cmake\build\debug>cmake -G "NMake Makefiles" ^
+     [...]\contrib\cmake\build>mkdir debug & cd debug
+     [...]\contrib\cmake\build\debug>cmake -G "NMake Makefiles" ^
      -DCMAKE_BUILD_TYPE=Debug ^
-     -DCMAKE_INSTALL_PREFIX=../../../../install ^
+     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
      ../..
 
 It will generate *nmake* *Makefile* in current directory.
 
 To create *Visual Studio* solution file:
 
-     C:\Path\to\tensorflow\cmake\build>mkdir solution & cd solution
-     C:\Path\to\tensorflow\cmake\build\solution>cmake -G "Visual Studio 12 2013 Win64" ^
-     -DCMAKE_INSTALL_PREFIX=../../../../install ^
+     [...]\contrib\cmake\build>mkdir solution & cd solution
+     [...]\contrib\cmake\build\solution>cmake -G "Visual Studio 12 2013 Win64" ^
+     -DCMAKE_INSTALL_PREFIX=../../../../../../install ^
      ../..
 
 It will generate *Visual Studio* solution file *tensorflow.sln* in current
@@ -125,11 +125,11 @@ Compiling
 
 To compile tensorflow:
 
-     C:\Path\to\protobuf\cmake\build\release>nmake
+     [...]\contrib\cmake\build\release>nmake
 
 or
 
-     C:\Path\to\protobuf\cmake\build\debug>nmake
+     [...]\contrib\cmake\build\debug>nmake
 
 And wait for the compilation to finish.
 
@@ -146,11 +146,11 @@ Testing
 
 To run unit-tests:
 
-     C:\Path\to\tensorflow\cmake\build\release>nmake check
+     [...]\contrib\cmake\build\release>nmake check
 
 or
 
-     C:\Path\to\tensorflow\cmake\build\debug>nmake check
+     [...]\contrib\cmake\build\debug>nmake check
 
 You can also build project *check* from Visual Studio solution.
 Yes, it may sound strange, but it works.
@@ -167,7 +167,8 @@ You should see an output similar to:
 
 To run specific tests:
 
-     C:\Path\to\tensorflow>cmake\build\release\tests.exe --gtest_filter=AnyTest*
+     C:\Path\to\tensorflow>tensorflow\contrib\cmake\build\release\tests.exe ^
+     --gtest_filter=AnyTest*
      Running main() from gmock_main.cc
      Note: Google Test filter = AnyTest*
      [==========] Running 3 tests from 1 test case.
@@ -194,11 +195,11 @@ Installing
 
 To install Tensorflow to the specified *install* folder:
 
-     C:\Path\to\tensorflow\cmake\build\release>nmake install
+     [...]\contrib\cmake\build\release>nmake install
 
 or
 
-     C:\Path\to\tensorflow\cmake\build\debug>nmake install
+     [...]\contrib\cmake\build\debug>nmake install
 
 You can also build project *INSTALL* from Visual Studio solution.
 It sounds not so strange and it works.

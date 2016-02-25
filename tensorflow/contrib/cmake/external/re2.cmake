@@ -27,7 +27,7 @@ ExternalProject_Add(re2
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
 )
 
-## put png includes in the directory where they are expected
+## put re2 includes in the directory where they are expected
 add_custom_target(re2_create_destination_dir
     COMMAND ${CMAKE_COMMAND} -E make_directory ${re2_INCLUDE_DIR}
     DEPENDS re2)

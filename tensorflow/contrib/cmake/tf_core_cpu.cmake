@@ -15,7 +15,6 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/*main.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/common_runtime/copy_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu_device_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/direct_session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/direct_session.h"

@@ -83,7 +83,11 @@ file(GLOB_RECURSE tf_core_lib_test_srcs
 list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs}) 
 
 add_library(tf_core_lib OBJECT ${tf_core_lib_srcs})
-target_include_directories(tf_core_lib PUBLIC ${tensorflow_source_dir})
+target_include_directories(tf_core_lib PUBLIC
+    ${tensorflow_source_dir}
+    ${jpeg_INCLUDE_DIR}
+    ${png_INCLUDE_DIR}
+)
 #target_link_libraries(tf_core_lib
 #    ${CMAKE_THREAD_LIBS_INIT}
 #    ${PROTOBUF_LIBRARIES}
@@ -122,6 +126,8 @@ file(GLOB_RECURSE tf_core_framework_srcs
 file(GLOB_RECURSE tf_core_framework_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*main.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"

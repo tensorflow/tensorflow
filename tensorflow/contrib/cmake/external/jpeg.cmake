@@ -1,6 +1,6 @@
 include (ExternalProject)
 
-set(jpeg_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/jpeg_archive/jpeg-9a)
+set(jpeg_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/jpeg_archive)
 set(jpeg_URL http://www.ijg.org/files/jpegsrc.v9a.tar.gz)
 set(jpeg_HASH SHA256=3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7)
 set(jpeg_BUILD ${CMAKE_BINARY_DIR}/jpeg/src/jpeg)
@@ -63,7 +63,7 @@ endif()
 
 # put jpeg includes in the directory where they are expected
 add_custom_target(jpeg_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}/jpeg-9a
     DEPENDS jpeg)
 
 add_custom_target(jpeg_copy_headers_to_destination
@@ -71,5 +71,5 @@ add_custom_target(jpeg_copy_headers_to_destination
 
 foreach(header_file ${jpeg_HEADERS})
     add_custom_command(TARGET jpeg_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR})
+    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR}/jpeg-9a)
 endforeach()

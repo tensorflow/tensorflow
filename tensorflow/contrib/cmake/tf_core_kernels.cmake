@@ -9,6 +9,8 @@ file(GLOB_RECURSE tf_core_kernels_srcs
 file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.h"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.h"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
 )
@@ -21,6 +23,7 @@ add_dependencies(tf_core_kernels tf_core_cpu)
 
 target_include_directories(tf_core_kernels PRIVATE
    ${tensorflow_source_dir}
+   ${png_INCLUDE_DIR}
    ${eigen_INCLUDE_DIRS}
 )
 

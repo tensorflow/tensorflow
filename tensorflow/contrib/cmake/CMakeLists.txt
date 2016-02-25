@@ -4,8 +4,10 @@ cmake_minimum_required(VERSION 2.8)
 # Project
 project(tensorflow C CXX)
 
-# Actual source is in parent directory
-get_filename_component(tensorflow_source_dir ${tensorflow_SOURCE_DIR} PATH)
+# Actual source is the ../../.. directory
+get_filename_component(tf_contrib_source_dir ${tensorflow_SOURCE_DIR} PATH)
+get_filename_component(tf_tf_source_dir ${tf_contrib_source_dir} PATH)
+get_filename_component(tensorflow_source_dir ${tf_tf_source_dir} PATH)
 
 # [CLEANUP] Not sure if this is needed (copied from Protobuf)
 # CMake policies

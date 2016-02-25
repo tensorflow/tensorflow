@@ -138,17 +138,17 @@ file(GLOB_RECURSE tf_core_ops_srcs
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cc"
 )
 
-#file(GLOB_RECURSE tf_core_ops_exclude_srcs
-#    "${tensorflow_source_dir}/tensorflow/core/ops/*test*.h"
-#    "${tensorflow_source_dir}/tensorflow/core/ops/*test*.cc"
-#    "${tensorflow_source_dir}/tensorflow/core/ops/*main.cc"
-#    "${tensorflow_source_dir}/tensorflow/core/user_ops/*test*.h"
-#    "${tensorflow_source_dir}/tensorflow/core/user_ops/*test*.cc"
-#    "${tensorflow_source_dir}/tensorflow/core/user_ops/*main.cc"
-#    "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cu.cc"
-#)
-#
-#list(REMOVE_ITEM tf_core_ops_srcs ${tf_core_ops_exclude_srcs}) 
+file(GLOB_RECURSE tf_core_ops_exclude_srcs
+    "${tensorflow_source_dir}/tensorflow/core/ops/*test*.h"
+    "${tensorflow_source_dir}/tensorflow/core/ops/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/ops/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/user_ops/*test*.h"
+    "${tensorflow_source_dir}/tensorflow/core/user_ops/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/user_ops/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cu.cc"
+)
+
+list(REMOVE_ITEM tf_core_ops_srcs ${tf_core_ops_exclude_srcs}) 
 
 add_library(tf_core_ops OBJECT ${tf_core_ops_srcs})
 

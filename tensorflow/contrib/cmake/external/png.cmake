@@ -1,6 +1,6 @@
 include (ExternalProject)
 
-set(png_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/png_archive/libpng-1.2.53)
+set(png_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/png_archive)
 set(png_URL https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz)
 set(png_HASH SHA256=e05c9056d7f323088fd7824d8c6acc03a4a758c4b4916715924edc5dd3223a72)
 set(png_BUILD ${CMAKE_BINARY_DIR}/png/src/png)
@@ -26,7 +26,7 @@ ExternalProject_Add(png
 
 ## put png includes in the directory where they are expected
 add_custom_target(png_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIR}/libpng-1.2.53
     DEPENDS png)
 
 add_custom_target(png_copy_headers_to_destination
@@ -34,5 +34,5 @@ add_custom_target(png_copy_headers_to_destination
 
 foreach(header_file ${png_HEADERS})
     add_custom_command(TARGET png_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${png_INCLUDE_DIR})
+    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${png_INCLUDE_DIR}/libpng-1.2.53)
 endforeach()
