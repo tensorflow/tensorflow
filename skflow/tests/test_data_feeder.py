@@ -14,6 +14,7 @@
 
 from struct import Struct
 import numpy as np
+import six
 
 import tensorflow as tf
 
@@ -111,8 +112,8 @@ class SetupPredictDataFeederTest(tf.test.TestCase):
     def test_iterable_data(self):
         X = iter([[1, 2], [3, 4], [5, 6]])
         df = setup_predict_data_feeder(X, batch_size=2)
-        self.assertAllClose(df.next(), [[1, 2], [3, 4]])
-        self.assertAllClose(df.next(), [[5, 6]])
+        self.assertAllClose(six.next(df), [[1, 2], [3, 4]])
+        self.assertAllClose(six.next(df), [[5, 6]])
 
 
 if __name__ == '__main__':
