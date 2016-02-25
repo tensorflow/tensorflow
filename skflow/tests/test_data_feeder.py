@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from skflow import data_feeder
+from skflow.io.data_feeder import setup_predict_data_feeder
 from skflow.io import *
 
 
@@ -103,6 +104,16 @@ class DataFeederTest(tf.test.TestCase):
                                                      [ 0.60000002, 0.2]])
             self.assertAllClose(feed_dict['output'], [[ 0., 0., 1.],
                                                      [ 0., 1., 0.]])
+
+
+class SetupPredictDataFeederTest(tf.test.TestCase):
+
+    def test_iterable_data(self):
+        X = iter([[1, 2], [3, 4], [5, 6]])
+        df = setup_predict_data_feeder(X, batch_size=2)
+        self.assertAllClose(df.next(), [[1, 2], [3, 4]])
+        self.assertAllClose(df.next(), [[5, 6]])
+
 
 if __name__ == '__main__':
     tf.test.main()
