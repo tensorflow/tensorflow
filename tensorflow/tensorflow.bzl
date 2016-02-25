@@ -9,7 +9,6 @@ load("//tensorflow/core:platform/default/build_config_root.bzl",
 # List of proto files for android builds
 def tf_android_core_proto_sources():
     return [
-        "//google/protobuf",  # any.proto
         "//tensorflow/core:example/example.proto",
         "//tensorflow/core:example/feature.proto",
         "//tensorflow/core:framework/allocation_description.proto",
@@ -30,8 +29,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:protobuf/saver.proto",
-        "//tensorflow/core:util/saved_tensor_slice.proto",
-        "//tensorflow/core:util/test_log.proto",
+        "//tensorflow/core:util/saved_tensor_slice.proto"
   ]
 
 
