@@ -1,7 +1,12 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs. Before running TensorBoard, make sure you have
+TensorFlow runs and graphs.
+
+
+### Basic Usage
+
+Before running TensorBoard, make sure you have
 generated summary data in a log directory by creating a `SummaryWriter`:
 
 ```python
@@ -27,13 +32,35 @@ bazel build tensorflow/tensorboard:tensorboard
 Note that TensorBoard requires a `logdir` to read logs from. For info on
 configuring TensorBoard, run `tensorboard --help`.
 
-TensorBoard includes a backend (tensorboard.py) that reads TensorFlow event data
-from the *tfevents* files, and then  serves this data to the browser. It also
-includes a frontend (app/tf-tensorboard.html) that contains html and javascript
-for displaying this data in a UI.
+### Comparing Multiple Runs
 
+TensorBoard can compare many "runs" of TensorFlow with each other. For example,
+suppose you have two MNIST models with slightly different graphs or different
+learning rates, but both share tags, e.g. `"cross_entropy"`, `"loss"`,
+`"activations"`. TensorBoard has the capability to draw these charts on top of
+each other, so you can easily see which model is outperforming.
 
-## TensorBoard Development Instructions
+To use this functionality, ensure that the summaries from the two runs are being
+written to separate directories, for example:
+
+```
+./mnist_runs
+./mnist_runs/run1/.*tfevents.*
+./mnist_runs/run2/.*tfevents.*
+```
+
+Now, if you pass .../mnist_runs/run1 as the `logdir` to TensorBoard, you will
+visualize training data from that first run. But, if you instead pass the root
+directory .../mnist_runs/ as the logdir, then TensorBoard will load run1 and
+run2 and compare the two for you. In general, TensorBoard will recursively
+search the logdir provided, looking for subdirectories that contain TensorFlow
+event data.
+
+# Architecture
+
+TensorBoard consists of a Python backend (tensorboard/backend/) and a Typescript/Polymer/D3 frontend (tensorboard/lib/, tensorboard/components).
+
+# TensorBoard Development Instructions
 
 The following instructions are useful if you want to develop the TensorBoard
 frontend in a lightweight frontend-only environment. It sets up gulp with

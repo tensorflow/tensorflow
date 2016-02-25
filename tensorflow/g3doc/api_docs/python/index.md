@@ -92,6 +92,7 @@
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
   * [`gather`](../../api_docs/python/array_ops.md#gather)
+  * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
@@ -193,6 +194,7 @@
   * [`sparse_segment_sum`](../../api_docs/python/math_ops.md#sparse_segment_sum)
   * [`sqrt`](../../api_docs/python/math_ops.md#sqrt)
   * [`square`](../../api_docs/python/math_ops.md#square)
+  * [`squared_difference`](../../api_docs/python/math_ops.md#squared_difference)
   * [`sub`](../../api_docs/python/math_ops.md#sub)
   * [`transpose`](../../api_docs/python/math_ops.md#transpose)
   * [`truediv`](../../api_docs/python/math_ops.md#truediv)
@@ -203,6 +205,7 @@
 * **[Control Flow](../../api_docs/python/control_flow_ops.md)**:
   * [`add_check_numerics_ops`](../../api_docs/python/control_flow_ops.md#add_check_numerics_ops)
   * [`Assert`](../../api_docs/python/control_flow_ops.md#Assert)
+  * [`case`](../../api_docs/python/control_flow_ops.md#case)
   * [`check_numerics`](../../api_docs/python/control_flow_ops.md#check_numerics)
   * [`cond`](../../api_docs/python/control_flow_ops.md#cond)
   * [`count_up_to`](../../api_docs/python/control_flow_ops.md#count_up_to)
@@ -233,6 +236,7 @@
   * [`adjust_contrast`](../../api_docs/python/image.md#adjust_contrast)
   * [`adjust_hue`](../../api_docs/python/image.md#adjust_hue)
   * [`adjust_saturation`](../../api_docs/python/image.md#adjust_saturation)
+  * [`central_crop`](../../api_docs/python/image.md#central_crop)
   * [`convert_image_dtype`](../../api_docs/python/image.md#convert_image_dtype)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
@@ -316,6 +320,7 @@
 
 * **[Neural Network](../../api_docs/python/nn.md)**:
   * [`avg_pool`](../../api_docs/python/nn.md#avg_pool)
+  * [`batch_normalization`](../../api_docs/python/nn.md#batch_normalization)
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
   * [`compute_accidental_hits`](../../api_docs/python/nn.md#compute_accidental_hits)
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
@@ -422,8 +427,10 @@
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`assert_same_float_dtype`](../../api_docs/python/contrib.layers.md#assert_same_float_dtype)
+  * [`assert_scalar_int`](../../api_docs/python/contrib.layers.md#assert_scalar_int)
   * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
+  * [`is_numeric_tensor`](../../api_docs/python/contrib.layers.md#is_numeric_tensor)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)

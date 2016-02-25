@@ -39,7 +39,6 @@ namespace {
 class GatherOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType index_type) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "Gather")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(index_type))

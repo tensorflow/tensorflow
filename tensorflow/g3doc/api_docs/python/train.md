@@ -410,35 +410,14 @@ current good choice is 1.0 or 0.1.
 
 Optimizer that implements the FTRL algorithm.
 
+See this [paper](
+https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+
 - - -
 
 #### `tf.train.FtrlOptimizer.__init__(learning_rate, learning_rate_power=-0.5, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='Ftrl')` {#FtrlOptimizer.__init__}
 
 Construct a new FTRL optimizer.
-
-The Ftrl-proximal algorithm, abbreviated for Follow-the-regularized-leader,
-is described in the paper [Ad Click Prediction: a View from the Trenches](
-https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
-It can give a good performance vs. sparsity tradeoff.
-
-Ftrl-proximal uses its own global base learning rate and can behave like
-Adagrad with `learning_rate_power=-0.5`, or like gradient descent with
-`learning_rate_power=0.0`.
-
-The effective learning rate is adjusted per parameter, relative to this
-base learning rate as:
-
-```
-effective_learning_rate_i = (learning_rate /
-    pow(k + summed_squared_gradients_for_i, learning_rate_power));
-```
-
-where k is the small constant `initial_accumulator_value`.
-
-Note that the real regularization coefficient of `|w|^2` for objective
-function is `1 / lambda_2` if specifying `l2 = lambda_2` as argument when
-using this function.
 
 ##### Args:
 
@@ -1442,7 +1421,7 @@ depending on whether or not a `Coordinator` was passed to
 
 #### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
 
-
+Returns a `QueueRunner` object created from `queue_runner_def`.
 
 
 - - -
@@ -1936,7 +1915,7 @@ global_step: 10
 ##### Args:
 
 
-*  <b>`sess`</b>: A brain `Session` object.
+*  <b>`sess`</b>: A TensorFlow `Session` object.
 *  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
     the global step.
 
@@ -2237,9 +2216,12 @@ Generates a checkpoint state proto.
 
 Recreates a Graph saved in a `MetaGraphDef` proto.
 
-This function reads from a file containing a `MetaGraphDef` proto,
-adds all the nodes from the graph_def proto to the current graph,
-recreates all the collections, and returns a saver from saver_def.
+This function takes a `MetaGraphDef` protocol buffer as input. If
+the argument is a file containing a `MetaGraphDef` protocol buffer ,
+it constructs a protocol buffer from the file content. The function
+then adds all the nodes from the `graph_def` field to the
+current graph, recreates all the collections, and returns a saver
+constructed from the `saver_def` field.
 
 In combination with `export_meta_graph()`, this function can be used to
 
@@ -2249,6 +2231,38 @@ In combination with `export_meta_graph()`, this function can be used to
 * Restart training from a saved graph and checkpoints.
 
 * Run inference from a saved graph and checkpoints.
+
+```Python
+...
+# Create a saver.
+saver = tf.train.Saver(...variables...)
+# Remember the training_op we want to run by adding it to a collection.
+tf.add_to_collection('train_op', train_op)
+sess = tf.Session()
+for step in xrange(1000000):
+    sess.run(train_op)
+    if step % 1000 == 0:
+        # Saves checkpoint, which by default also exports a meta_graph
+        # named 'my-model-global_step.meta'.
+        saver.save(sess, 'my-model', global_step=step)
+```
+
+Later we can continue training from this saved `meta_graph` without building
+the model from scratch.
+
+```Python
+with tf.Session() as sess:
+  new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+  new_saver.restore(sess, 'my-save-dir/my-model-10000')
+  # tf.get_collection() retrurns a list. In this example we only want the
+  # first one.
+  train_op = tf.get_collection('train_op')[0]
+  for step in xrange(1000000):
+    sess.run(train_op)
+```
+
+NOTE: Restarting training from saved `meta_graph` only works if the
+device assignments have not changed.
 
 ##### Args:
 

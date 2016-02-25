@@ -21,6 +21,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -100,12 +101,14 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());  // Out of order
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("Index 2 is out of order.", st_indices_valid.error_message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
   st.Reorder<string>({2, 0, 1});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(vals_t(0), "hi0");
   EXPECT_EQ(vals_t(1), "hi3");
   EXPECT_EQ(vals_t(2), "hi2");
@@ -115,7 +118,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   ix_t = ix_c;
   vals_t = vals_c;
   st.Reorder<string>({0, 1, 2});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(vals_t(0), "hi0");
   EXPECT_EQ(vals_t(1), "hi4");
   EXPECT_EQ(vals_t(2), "hi3");
@@ -125,7 +128,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   ix_t = ix_c;
   vals_t = vals_c;
   st.Reorder<string>({2, 1, 0});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 }
 
 TEST(SparseTensorTest, EmptySparseTensorAllowed) {
@@ -138,12 +141,12 @@ TEST(SparseTensorTest, EmptySparseTensorAllowed) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), order);
 
   std::vector<int64> new_order{1, 0, 2};
   st.Reorder<string>(new_order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), new_order);
 }
 
@@ -162,13 +165,13 @@ TEST(SparseTensorTest, SortingWorksCorrectly) {
     ix_t = ix_t.random(Eigen::internal::UniformRandomGenerator<int64>(n + 1));
     ix_t = ix_t.abs() % 1000;
     st.Reorder<string>({0, 1, 2, 3});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({3, 2, 1, 0});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({1, 0, 2, 3});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({3, 0, 2, 1});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
   }
 }
 
@@ -196,17 +199,21 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   SparseTensor st(ix, vals, shape, order);
 
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());  // two indices are identical
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("Index 1 is repeated.", st_indices_valid.error_message());
 
   ix_orig(1, 2) = 1;
   ix_t = ix_orig;
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());  // second index now (0, 0, 1)
+  TF_EXPECT_OK(st.IndicesValid());  // second index now (0, 0, 1)
 
   ix_orig(0, 2) = 1;
   ix_t = ix_orig;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());  // first index now (0, 0, 1)
+  st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());  // first index now (0, 0, 1)
+  EXPECT_EQ("Index 1 is repeated.", st_indices_valid.error_message());
 }
 
 TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
@@ -224,25 +231,30 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   std::vector<int64> order{0, 1, 2};
 
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());
+  EXPECT_FALSE(st.IndicesValid().ok());
 
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 
   ix_t(0, 0) = 11;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  // Error message references index 4 because of the call to Reorder.
+  EXPECT_EQ("Index 4 is out of bounds.", st_indices_valid.error_message());
 
   ix_t(0, 0) = -1;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());
+  st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("Index 0 is out of bounds.", st_indices_valid.error_message());
 
   ix_t(0, 0) = 0;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 }
 
 TEST(SparseTensorTest, SparseTensorToDenseTensor) {
@@ -436,16 +448,16 @@ TEST(SparseTensorTest, Concat) {
   std::vector<int64> order{0, 1, 2};
 
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());
+  EXPECT_FALSE(st.IndicesValid().ok());
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 
   SparseTensor concatted = SparseTensor::Concat<string>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
   TensorShape expected_shape({40, 10, 10});
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
-  EXPECT_TRUE(concatted.IndicesValid());
+  TF_EXPECT_OK(concatted.IndicesValid());
 
   auto conc_ix_t = concatted.indices().matrix<int64>();
   auto conc_vals_t = concatted.values().vec<string>();

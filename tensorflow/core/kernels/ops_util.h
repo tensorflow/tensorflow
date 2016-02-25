@@ -28,6 +28,7 @@ namespace tensorflow {
 // Call this function from a test if op kernels are not being
 // registered.  This can happen if the test is linked in a shared
 // mode and has no direct references to any code from this directory.
+// TODO(josh11b): Delete this, should no longer be needed.
 void RequireDefaultOps();
 
 // Get2dOutputSize(): Given an input tensor, kernel, stride and padding

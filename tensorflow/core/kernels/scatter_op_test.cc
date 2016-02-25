@@ -39,7 +39,6 @@ namespace {
 class ScatterUpdateOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_ref_type, DataType index_type) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterUpdate")
                      .Input(FakeInput(variable_ref_type))
                      .Input(FakeInput(index_type))

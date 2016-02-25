@@ -77,6 +77,11 @@ $ sudo easy_install --upgrade six
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp35-none-any.whl
 ```
 
+NOTE: If you are upgrading from a previous installation of TensorFlow < 0.7.1,
+you should uninstall the previous TensorFlow *and protobuf* using `pip
+uninstall` first to make sure you get a clean installation of the updated
+protobuf dependency.
+
 
 You can now [test your installation](#test-the-tensorflow-installation).
 
@@ -581,6 +586,19 @@ If you built from source, and you left the Cuda or cuDNN version empty, try spec
 explicitly.
 
 ### Pip installation issues
+
+#### Cannot import name 'descriptor'
+
+```python
+ImportError: Traceback (most recent call last):
+  File "/usr/local/lib/python3.4/dist-packages/tensorflow/core/framework/graph_pb2.py", line 6, in <module>
+    from google.protobuf import descriptor as _descriptor
+ImportError: cannot import name 'descriptor'
+```
+
+If you the above error when upgrading to a newer version of TensorFlow, try
+uninstalling both TensorFlow and protobuf (if installed) and re-installing
+TensorFlow (which will also install the correct protobuf dependency).
 
 #### Can't find setup.py
 

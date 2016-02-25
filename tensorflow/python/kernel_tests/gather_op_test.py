@@ -83,6 +83,14 @@ class GatherTest(tf.test.TestCase):
     gather_t = tf.gather(params, indices)
     self.assertEqual(None, gather_t.get_shape())
 
+  def testBadIndices(self):
+    with self.test_session():
+      params = [0, 1, 2]
+      indices = [[7]]
+      gather = tf.gather(params, indices)
+      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
+        gather.eval()
+
 
 if __name__ == "__main__":
   tf.test.main()

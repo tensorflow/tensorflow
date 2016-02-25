@@ -39,7 +39,6 @@ namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init) {
-  RequireDefaultOps();
 
   SessionOptions default_options;
   if (!options) {

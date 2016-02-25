@@ -41,7 +41,6 @@ namespace {
 class SubgraphTest : public ::testing::Test {
  protected:
   SubgraphTest() : g_(new Graph(OpRegistry::Global())) {
-    RequireDefaultOps();
     device_info_.set_name("/job:a/replica:0/task:0/cpu:0");
     device_info_.set_device_type(DeviceType(DEVICE_CPU).type());
     device_info_.set_incarnation(0);

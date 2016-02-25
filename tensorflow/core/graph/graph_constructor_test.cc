@@ -37,7 +37,6 @@ namespace {
 class GraphConstructorTest : public ::testing::Test {
  protected:
   GraphConstructorTest() : g_(new Graph(OpRegistry::Global())) {
-    RequireDefaultOps();
   }
   ~GraphConstructorTest() override {}
 

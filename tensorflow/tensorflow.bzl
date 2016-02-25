@@ -9,6 +9,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl",
 # List of proto files for android builds
 def tf_android_core_proto_sources():
     return [
+        "//google/protobuf",  # any.proto
         "//tensorflow/core:example/example.proto",
         "//tensorflow/core:example/feature.proto",
         "//tensorflow/core:framework/allocation_description.proto",
@@ -29,7 +30,8 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
         "//tensorflow/core:protobuf/saver.proto",
-        "//tensorflow/core:util/saved_tensor_slice.proto"
+        "//tensorflow/core:util/saved_tensor_slice.proto",
+        "//tensorflow/core:util/test_log.proto",
   ]
 
 
@@ -185,12 +187,11 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 
 # Build defs for TensorFlow kernels
 
-
 # When this target is built using --config=cuda, a cc_library is built
 # that passes -DGOOGLE_CUDA=1 and '-x cuda', linking in additional
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
-                       **kwargs):
+                          **kwargs):
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
                 "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
                 "--gcudacc_flag=-ftz=true"] + cuda_copts
@@ -203,7 +204,6 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
       alwayslink=1,
       **kwargs)
-
 
 def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
@@ -233,6 +233,73 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
           ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
+
+
+def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
+                      deps=None, alwayslink=1, **kwargs):
+  """A rule to build a TensorFlow OpKernel.
+
+  May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
+  but with alwayslink=1 by default.  If prefix is specified:
+    * prefix*.cc (except *.cu.cc) is added to srcs
+    * prefix*.h (except *.cu.h) is added to hdrs
+    * prefix*.cu.cc and prefix*.h (including *.cu.h) are added to gpu_srcs.
+  With the exception that test files are excluded.
+  For example, with prefix = "cast_op",
+    * srcs = ["cast_op.cc"]
+    * hdrs = ["cast_op.h"]
+    * gpu_srcs = ["cast_op_gpu.cu.cc", "cast_op.h"]
+    * "cast_op_test.cc" is excluded
+  With prefix = "cwise_op"
+    * srcs = ["cwise_op_abs.cc", ..., "cwise_op_tanh.cc"],
+    * hdrs = ["cwise_ops.h", "cwise_ops_common.h"],
+    * gpu_srcs = ["cwise_op_gpu_abs.cu.cc", ..., "cwise_op_gpu_tanh.cu.cc",
+                  "cwise_ops.h", "cwise_ops_common.h", "cwise_ops_gpu_common.cu.h"]
+    * "cwise_ops_test.cc" is excluded
+  """
+  if not srcs:
+    srcs = []
+  if not hdrs:
+    hdrs = []
+  if not deps:
+    deps = []
+  gpu_deps = deps + ["//tensorflow/core:cuda"]
+
+  if prefix:
+    if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
+      if not gpu_srcs:
+        gpu_srcs = []
+      gpu_srcs = gpu_srcs + native.glob([prefix + "*.cu.cc", prefix + "*.h"],
+                                        exclude = ["*test*"])
+    srcs = srcs + native.glob([prefix + "*.cc"],
+                              exclude = ["*test*", "*.cu.cc"])
+    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+  if gpu_srcs:
+    tf_gpu_kernel_library(
+        name = name + "_gpu",
+        srcs = gpu_srcs,
+        deps = gpu_deps,
+        **kwargs)
+    cuda_deps = [":" + name + "_gpu"]
+  else:
+    cuda_deps = None
+  tf_cuda_library(
+      name = name,
+      srcs = srcs,
+      hdrs = hdrs,
+      copts = tf_copts(),
+      cuda_deps = cuda_deps,
+      linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+      alwayslink = alwayslink,
+      deps = deps,
+      **kwargs)
+
+
+def tf_kernel_libraries(name, prefixes, deps=None, **kwargs):
+  """Makes one target per prefix, and one target that includes them all."""
+  for p in prefixes:
+    tf_kernel_library(name=p, prefix=p, deps=deps, **kwargs)
+  native.cc_library(name=name, deps=[":" + p for p in prefixes])
 
 
 # Bazel rules for building swig files.

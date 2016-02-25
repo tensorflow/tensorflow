@@ -21,4 +21,5 @@ from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import layers
+from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import util

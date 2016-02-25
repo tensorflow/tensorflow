@@ -408,7 +408,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   // Check that this new set of fetches can be computed from all the
   // feeds we have supplied.
   TF_RETURN_IF_ERROR(
-      CheckFetch(inputs, output_names, executors_and_keys->graph, run_state));
+      CheckFetch(inputs, output_names, executors_and_keys, run_state));
 
   // Send inputs.
   Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
@@ -510,12 +510,10 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
 
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
-                                 const Graph* graph,
+                                 const ExecutorsAndKeys* executors_and_keys,
                                  const RunState* run_state) {
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
-  for (Node* n : graph->nodes()) {
-    name_to_node[n->name()] = n;
-  }
+  const Graph* graph = executors_and_keys->graph;
+  const NameNodeMap* name_to_node = executors_and_keys->name_to_node;
 
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
@@ -523,8 +521,8 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
     mutex_lock l(executor_lock_);
     for (const string& feed : run_state->pending_inputs) {
       TensorId id(ParseTensorName(feed));
-      auto it = name_to_node.find(id.first);
-      if (it == name_to_node.end()) {
+      auto it = name_to_node->find(id.first);
+      if (it == name_to_node->end()) {
         return errors::NotFound("Feed ", feed, ": not found");
       }
       pending_feeds.insert(id);
@@ -539,8 +537,8 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   std::vector<const Node*> stack;
   for (const string& fetch : fetches) {
     TensorId id(ParseTensorName(fetch));
-    auto it = name_to_node.find(id.first);
-    if (it == name_to_node.end()) {
+    auto it = name_to_node->find(id.first);
+    if (it == name_to_node->end()) {
       return errors::NotFound("Fetch ", fetch, ": not found");
     }
     stack.push_back(it->second);
@@ -618,6 +616,21 @@ Status DirectSession::GetOrCreateExecutors(
   ek->func_defs = fdefs;
   if (run_state_args->is_partial_run) {
     ek->graph = run_state_args->graph;
+    ek->name_to_node = new NameNodeMap;
+    std::unordered_set<StringPiece, StringPiece::Hasher> names;
+    for (const string& input : inputs) {
+      TensorId id(ParseTensorName(input));
+      names.emplace(id.first);
+    }
+    for (const string& output : outputs) {
+      TensorId id(ParseTensorName(output));
+      names.emplace(id.first);
+    }
+    for (Node* n : run_state_args->graph->nodes()) {
+      if (names.count(n->name()) > 0) {
+        ek->name_to_node->insert({n->name(), n});
+      }
+    }
   }
   ek->items.reserve(graphs.size());
   auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };

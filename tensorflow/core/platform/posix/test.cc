@@ -23,6 +23,8 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 namespace testing {
 

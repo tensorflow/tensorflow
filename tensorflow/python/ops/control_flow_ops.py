@@ -24,6 +24,7 @@ the execution of operations and add conditional dependencies to your graph.
 @@no_op
 @@count_up_to
 @@cond
+@@case
 
 ## Logical Operators
 
@@ -82,6 +83,7 @@ from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
@@ -1885,8 +1887,8 @@ def foldr(fn, elems, initializer=None, name=None):
     return r_a
 
 
-def map(fn, elems, dtype=None, name=None):
-  """The map operator on on the unpacked tensors of a tensor.
+def map_fn(fn, elems, dtype=None, name=None):
+  """The map operator on the unpacked tensors of a tensor.
 
   This map operator applies the function `fn` to a sequence of elements
   from right to left. The elements are made of the tensors unpacked from
@@ -1908,7 +1910,7 @@ def map(fn, elems, dtype=None, name=None):
   Example:
     ```python
     elems = [1, 2, 3, 4, 5, 6]
-    squares = map(lambda x: x * x, elems)
+    squares = map_fn(lambda x: x * x, elems)
     ```
   """
   with ops.op_scope([elems], name, "map") as name:
@@ -1974,6 +1976,9 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
     Expressions:
     ```
+      x = tf.constant(0)
+      y = tf.constant(1)
+      z = tf.constant(2)
       def f1(): return tf.constant(17)
       def f2(): return tf.constant(23)
       def f3(): return tf.constant(-1)
@@ -2050,7 +2055,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     # and prev_case_seq will loop from case_sequence[0] to case_sequence[-1]
     if exclusive:
       # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))
-      preds_c = array_ops.concat(0, preds, name="preds_c")
+      preds_c = array_ops.pack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(

@@ -29,7 +29,6 @@ namespace {
 class SwitchOpTest : public OpsTestBase {
  protected:
   void Initialize(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("op", "Switch")
                      .Input(FakeInput(dt))
                      .Input(FakeInput())
