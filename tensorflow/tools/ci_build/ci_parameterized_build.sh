@@ -50,9 +50,18 @@
 #                      builds where the tests cannot be run in parallel due to
 #                      resource contention (e.g., for GPU builds)
 #   TF_BUILD_TEST_TUTORIALS:
-#                      Perform tutorials test (Applicable only if
-#                      TF_BUILD_IS_PIP is PIP or BOTH).
-#                      See build/test_tutorials.sh
+#                      If set to any non-empty and non-0 value, will perform
+#                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
+#                      PIP or BOTH).
+#                      See builds/test_tutorials.sh
+#   TF_BUILD_DOCKER_TEST:
+#                      If set to any non-empty and non-0 value, will build and
+#                      test Docker image. The image will be tagged
+#                      automatically as ${USER}/tensorflow:${TENSORFLOW_VER}
+#                      The pip whl file built in the prior step will be installed
+#                      in the Docker image.
+#                      (Applicable only if TF_BUILD_IS_PIP is PIP or BOTH.)
+#                      See builds/docker_test.sh
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -64,6 +73,38 @@ to_lower () {
 # Helper function: Strip leading and trailing whitespaces
 str_strip () {
   echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Helper function: Exit on failure
+die () {
+  echo $@
+  exit 1
+}
+
+# Helper function: determine TensorFlow source vesion
+get_tf_ver () {
+  VERSION_H="tensorflow/core/public/version.h"
+  if [[ ! -f "${VERSION_H}" ]]; then
+    echo "ERROR: Unable to find version header file: ${VERSION_H}"
+    return 1
+  fi
+
+  VER_MAJOR=$(cat ${VERSION_H} | grep -E "^#define TF_MAJOR_VERSION [0-9]+" | \
+cut -d ' ' -f 3)
+  VER_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
+cut -d ' ' -f 3)
+  VER_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [0-9]+" | \
+cut -d ' ' -f 3)
+
+  if [[ -z ${VER_MAJOR} ]] ||
+     [[ -z ${VER_MINOR} ]] ||
+     [[ -z ${VER_PATCH} ]]; then
+    echo "ERROR: Failed to determine TensorFlow version from"\
+"header file ${VERSION_H}"
+    return 1
+  fi
+
+  echo "${VER_MAJOR}.${VER_MINOR}.${VER_PATCH}"
 }
 
 
@@ -95,6 +136,8 @@ BAZEL_TARGET="//tensorflow/..."
 TUTORIAL_TEST_CMD="${CI_BUILD_DIR}/builds/test_tutorials.sh"
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
+DOCKER_TEST_CMD="${CI_BUILD_DIR}/builds/docker_test.sh"
+
 ##########################################################
 
 echo "Parameterized build starts at: $(date)"
@@ -122,6 +165,7 @@ echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
+echo "  TF_BUILD_DOCKER_TEST=${TF_BUILD_DOCKER_TEST}"
 
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
@@ -329,6 +373,32 @@ else
   else
     ${TMP_SCRIPT}
   fi
+  STEP1_RES=$?
+
+  # Perform optional Docker image build & test
+  if [[ ${TF_BUILD_IS_PIP} == "both" ||  ${TF_BUILD_IS_PIP} == "pip" ]] &&
+     [[ ! -z ${TF_BUILD_DOCKER_TEST} ]] &&
+     [[ ${TF_BUILD_DOCKER_TEST} != "0" ]]; then
+    if [[ "${STEP1_RES}" != "0" ]]; then
+      die "FAILED: Cannot perform Docker build & test due to failure in "\
+"previous step"
+    fi
+
+    DOCKER_IMAGE_TAG="${USER}/tensorflow:$(get_tf_ver)"
+    if [[ $? != "0" ]]; then
+      die "FAILED: Unable to determine TensorFlow version for Docker image tagging"
+    fi
+
+    WHL_PATH=$(ls -1 pip_test/whl/tensorflow-*.whl | head -1)
+
+    echo ""
+    echo "Performing Docker image build and test with "\
+"container type \"${CTYPE}\", tag \"${DOCKER_IMAGE_TAG}\" and "\
+"PIP whl file path \"${WHL_PATH}\""
+
+    "${DOCKER_TEST_CMD}" "${CTYPE}" "${DOCKER_IMAGE_TAG}" "${WHL_PATH}"
+  fi
+
 fi && FAILURE=0 || FAILURE=1
 [[ ${FAILURE} == "0" ]] && RESULT="SUCCESS" || RESULT="FAILURE"
 

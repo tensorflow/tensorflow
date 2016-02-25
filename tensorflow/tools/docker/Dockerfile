@@ -4,6 +4,7 @@ MAINTAINER Craig Citro <craigcitro@google.com>
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \
+        bc \
         curl \
         libfreetype6-dev \
         libpng12-dev \
@@ -29,8 +30,8 @@ RUN pip --no-cache-dir install \
 
 # Install TensorFlow CPU version.
 ENV TENSORFLOW_VERSION 0.7.1
-RUN pip --no-cache-dir install \
-    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+ADD whl/tensorflow-*.whl /tmp/
+RUN python -m pip --no-cache-dir install /tmp/tensorflow-*.whl
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
