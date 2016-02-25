@@ -58,7 +58,7 @@ void* TrackingAllocator::AllocateRaw(
     in_use_.emplace(std::make_pair(ptr, chunk));
     allocated_ += allocated_bytes;
     high_watermark_ = std::max(high_watermark_, allocated_);
-    total_bytes_ += num_bytes;
+    total_bytes_ += allocated_bytes;
     ++ref_;
   } else {
     mutex_lock lock(mu_);
