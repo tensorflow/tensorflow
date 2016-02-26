@@ -2382,6 +2382,49 @@ op {
   description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and that `block_size * block_size` be a divisor of the\ninput depth.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```prettyprint\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```prettyprint\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```prettyprint\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```prettyprint\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n\n```"
 }
 op {
+  name: "DepthwiseConv2dNative"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
+  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
+}
+op {
   name: "DeserializeManySparse"
   input_arg {
     name: "serialized_sparse"

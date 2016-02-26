@@ -225,6 +225,61 @@ def conv2d_shape(op):
   return [tensor_shape.TensorShape(output_shape)]
 
 
+def depthwise_conv2d_native_shape(op):
+  """Shape function for a DepthwiseConv2D op.
+
+  This op has two inputs:
+
+  * input, a 4D tensor with shape = [batch_size, rows, cols, depth_in]
+  * filter, a 4D tensor with shape =  [filter_rows, filter_cols,
+    depth_in, depthwise_multiplier]
+
+  The output is a 4D tensor with shape = [batch_size, out_rows,
+  out_cols, depth_in*depthwise_multiplier], where out_rows and out_cols depend
+  on the value of the op's "padding" and "strides" attrs.
+
+  Args:
+    op: A DepthwiseConv2dNative Operation.
+
+  Returns:
+    A list containing the Shape of the DepthwiseConv2DNative output.
+
+  Raises:
+    ValueError: If the shapes of the input or filter are incompatible.
+  """
+  input_shape = op.inputs[0].get_shape().with_rank(4)
+  filter_shape = op.inputs[1].get_shape().with_rank(4)
+
+  batch_size = input_shape[0]
+  in_rows = input_shape[1]
+  in_cols = input_shape[2]
+
+  filter_rows = filter_shape[0]
+  filter_cols = filter_shape[1]
+  depth_out = filter_shape[3] * filter_shape[2]
+  # Check that the input depths are compatible.
+  input_shape[3].assert_is_compatible_with(filter_shape[2])
+
+  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  if stride_b != 1 or stride_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+  if stride_r != stride_c:
+    # TODO(shlens): Add support for this.
+    raise ValueError("Current implementation only supports equal length "
+                     "strides in the row and column dimensions.")
+
+  # TODO(mrry,shlens): Raise an error if the stride would cause
+  # information in the input to be ignored. This will require a change
+  # in the kernel implementation.
+  stride = stride_r
+  padding = op.get_attr("padding")
+  out_rows, out_cols = get2d_conv_output_size(
+      in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
+
+  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
+
+
 def separable_conv2d_shape(op):
   """Shape function for a SeparableConv2D op.
 
