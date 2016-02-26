@@ -463,6 +463,7 @@ tf_kernel_libraries(
         "whole_file_read_ops",
     ],
     deps = [
+        ":ops_util",
         ":reader_base",
         ":save_restore_tensor",
         "//tensorflow/core:framework",
