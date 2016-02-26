@@ -14,7 +14,7 @@
 
 """
 This example demonstrates one way to access the weights of a custom skflow
-model.  It is otherwise identical to the standard MNIST convolutional code.
+model. It is otherwise identical to the standard MNIST convolutional code.
 """
 
 from sklearn import metrics
@@ -71,11 +71,13 @@ score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.
 print('Accuracy: {0:f}'.format(score))
 
 # Examining fitted weights
+
 ## General usage is classifier.get_tensor_value('foo')
 ## 'foo' must be the variable scope of the desired tensor followed by the
-## graph path.  To figur out the right scope and path, you can do logging.
-## Then use TensorBoard or a text editor on the log file to look at
-## available strings.
+## graph path. 
+
+## To understand the mechanism and figure out the right scope and path, you can do logging.
+## Then use TensorBoard or a text editor on the log file to look at available strings.
 
 ## First Convolutional Layer
 print('1st Convolutional Layer weights and Bias')

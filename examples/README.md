@@ -5,6 +5,7 @@
 * [Deep Neural Network Classification with Iris Data](iris.py)
 * [Deep Neural Network with Customized Decay Function](iris_custom_decay_dnn.py)
 * [Building A Custom Model](iris_custom_model.py)
+* [Accessing Weights and Biases in A Custom Model](mnist_weights.py)
 * [Building A Custom Model Using Multiple GPUs](multiple_gpu.py)
 * [Building A Model Using Different GPU Configurations](iris_config_addon.py)
 * [Using skflow with Pipeline](iris_with_pipeline.py)
@@ -23,7 +24,7 @@
 ## Text classification
 
 * [Text Classification Using Recurrent Neural Networks on Words](text_classification.py) 
-(See also [Simplified Version Using Built-in RNN Model](text_classification_builtin_rnn_model.py) with easy to use built-in parameters)
+(See also [Simplified Version Using Built-in RNN Model](text_classification_builtin_rnn_model.py) using built-in parameters)
 * [Text Classification Using Convolutional Neural Networks on Words](text_classification_cnn.py)
 * [Text Classification Using Recurrent Neural Networks on Characters](text_classification_character_rnn.py)
 * [Text Classification Using Convolutional Neural Networks on Characters](text_classification_character_cnn.py)
