@@ -56,9 +56,26 @@ run2 and compare the two for you. In general, TensorBoard will recursively
 search the logdir provided, looking for subdirectories that contain TensorFlow
 event data.
 
+### Exporting Data from TensorBoard
+
+If you'd like to export data to visualize elsewhere (e.g. iPython Notebook),
+that's possible too. You can directly depend on the underlying classes that
+TensorBoard uses for loading data: `python/summary/event_accumulator.py` (for
+loading data from a single run) or `python/summary/event_multiplexer.py` (for
+loading data from multiple runs, and keeping it organized). These classes load
+groups of event files, discard data that was "orphaned" by TensorFlow crashes,
+and organize the data by tag.
+
+As another option, there is a script
+(tensorboard/scripts/serialize_tensorboard.py) which will load a logdir just
+like TensorBoard does, but write all of the data out to disk as json instead of
+starting a server. This script is setup to make "fake TensorBoard backends" for
+testing, so it is a bit rough around the edges.
+
 # Architecture
 
-TensorBoard consists of a Python backend (tensorboard/backend/) and a Typescript/Polymer/D3 frontend (tensorboard/lib/, tensorboard/components).
+TensorBoard consists of a Python backend (tensorboard/backend/) and a
+Typescript/Polymer/D3 frontend (tensorboard/lib/, tensorboard/components).
 
 # TensorBoard Development Instructions
 
