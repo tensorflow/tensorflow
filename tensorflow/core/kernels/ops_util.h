@@ -191,6 +191,9 @@ void Col2im(const T* col_data, const int depth, const int height,
   }
 }
 
+// Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
+string SanitizeThreadSuffix(string suffix);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_OPS_UTIL_H_

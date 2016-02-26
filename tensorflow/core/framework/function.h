@@ -305,6 +305,8 @@ class FunctionLibraryRuntime {
   // Does not take ownership of "rets".
   struct Options {
     CancellationManager* cancellation_manager = nullptr;
+    // The id of the step that is calling this function.
+    int64 step_id = 0;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

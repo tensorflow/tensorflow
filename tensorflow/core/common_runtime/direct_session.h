@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
 #define TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -229,6 +230,9 @@ class DirectSession : public Session {
 
   // For generating unique names.
   int64 name_counter_ GUARDED_BY(mu_) = 0;
+
+  // For generating step ids that are unique across all sessions.
+  static std::atomic_int_fast64_t step_id_counter_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };
