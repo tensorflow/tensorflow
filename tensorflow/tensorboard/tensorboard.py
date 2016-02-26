@@ -53,6 +53,11 @@ flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
 
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
+flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
+                     'may have been orphaned due to TensorBoard restarts. '
+                     'Disabling purge_orphaned_data can be used to debug data '
+                     'disappearance')
+
 FLAGS = flags.FLAGS
 
 
@@ -73,7 +78,8 @@ def main(unused_argv=None):
   logging.info('TensorBoard path_to_run is: %s', path_to_run)
 
   multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
+      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE,
+      purge_orphaned_data=FLAGS.purge_orphaned_data)
   server.StartMultiplexerReloadingThread(multiplexer, path_to_run)
   try:
     tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
