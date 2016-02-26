@@ -135,7 +135,7 @@ have varying scale, and to aid generalization.
 @@l2_normalize
 @@local_response_normalization
 @@sufficient_statistics
-@@aggregate_moments
+@@normalize_moments
 @@moments
 
 ## Losses
@@ -561,7 +561,7 @@ def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
   return counts, m_ss, v_ss, shift_value
 
 
-def aggregate_moments(counts, mean_ss, variance_ss, shift, name=None):
+def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   """Calculate the mean and variance of based on the sufficient statistics.
 
   Args:
@@ -577,7 +577,7 @@ def aggregate_moments(counts, mean_ss, variance_ss, shift, name=None):
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "aggregate"):
+  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "normalize"):
     divisor = math_ops.inv(counts, name="divisor")
     if shift is not None:
       shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
@@ -620,7 +620,7 @@ def moments(x, axes, name=None, keep_dims=False):
                                                       axes,
                                                       keep_dims=keep_dims,
                                                       name=name)
-    return aggregate_moments(counts, m_ss, v_ss, shift, name=name)
+    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
 
 
 def batch_normalization(x,
