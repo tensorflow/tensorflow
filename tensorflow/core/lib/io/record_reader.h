@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+// SIZE_MAX is not defined for older gcc versions (5.1 and back). Define if
+// necessary.
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
 #  define SIZE_MAX __SIZE_MAX__

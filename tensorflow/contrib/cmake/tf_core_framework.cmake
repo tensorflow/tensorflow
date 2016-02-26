@@ -93,7 +93,6 @@ target_include_directories(tf_core_lib PUBLIC
 #    ${PROTOBUF_LIBRARIES}
 #    tf_protos_cc
 #)
-
 target_compile_options(tf_core_lib PRIVATE
     -fno-exceptions
     -DEIGEN_AVOID_STL_ARRAY

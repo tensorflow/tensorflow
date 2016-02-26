@@ -3,8 +3,7 @@ include (ExternalProject)
 set(re2_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/re2/re2)
 set(re2_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/re2/src)
 set(re2_URL https://github.com/google/re2.git)
-#set(re2_TAG 791beff)
-set(re2_TAG ce40fd6)
+set(re2_TAG 791beff)
 set(re2_BUILD ${CMAKE_BINARY_DIR}/re2/src/re2)
 set(re2_LIBRARIES ${re2_BUILD}/obj/so/libre2.so)
 get_filename_component(re2_STATIC_LIBRARIES ${re2_BUILD}/obj/libre2.a ABSOLUTE)
@@ -16,7 +15,8 @@ set(re2_HEADERS
     "${re2_BUILD}/re2/re2.h"
 )
 
-#BUILD_COMMAND echo "export LDFLAGS=-lrt" > run.sh && echo "echo $LDFLAGS" >> run.sh && echo "make all" >> run.sh && bash run.sh
+# re2 has both cmake and make based build systems. The cmake generated build
+# fails on linux, so default to using make build.
 ExternalProject_Add(re2
     PREFIX re2
     GIT_REPOSITORY ${re2_URL}

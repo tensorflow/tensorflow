@@ -46,7 +46,7 @@ Good. Now you are ready to continue.
 Ubuntu
 ------
 The basic build can be performed on Ubuntu 12.04 and upwards.
-Successful installation has only been tested with recent versions of cmake (3.
+Successful installation has only been tested with recent versions of
 [CMake](http://www.cmake.org) (3.5+) and [gcc](https://gcc.gnu.org/) (4.9+).
 The oldest version of [glibc](https://www.gnu.org/software/libc/) compilation
 has succeeded on is 2.15. Make sure to update defaults on your system.
