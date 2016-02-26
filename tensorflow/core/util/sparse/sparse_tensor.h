@@ -177,14 +177,22 @@ class SparseTensor {
         if (!different && diff < 0) increasing = false;
       }
     }
-    if (!valid) {
-      return errors::InvalidArgument("Index ", n, " is out of bounds.");
-    }
-    if (!increasing) {
-      return errors::InvalidArgument("Index ", n, " is out of order.");
-    }
-    if (!different) {
-      return errors::InvalidArgument("Index ", n, " is repeated.");
+    if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
+      string index = strings::StrCat("indices[", n, "] = [");
+      for (int di = 0; di < dims_; ++di) {
+        strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
+      }
+      if (!valid) {
+        return errors::InvalidArgument(index,
+                                       " is out of bounds: need 0 <= index < ",
+                                       shape_.DebugString());
+      }
+      if (!increasing) {
+        return errors::InvalidArgument(index, " is out of order");
+      }
+      if (!different) {
+        return errors::InvalidArgument(index, " is repeated");
+      }
     }
     return Status::OK();
   }
