@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/tensor_reference.h"
+// These constants should always be in sync with the path in the .gitignore
+// file.
+var tf_prefix = 'tf-';
+var components_typescript = 'components/' + tf_prefix +
+    '*/**/*.ts';
+var lib_typescript = 'lib/js/**/*.ts';
+var all_typescript = [components_typescript, lib_typescript]
 
-namespace tensorflow {
-
-TensorReference::TensorReference(const Tensor& tensor)
-    : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
-  if (buf_) buf_->Ref();
+module.exports = {
+  components_typescript: components_typescript,
+  lib_typescript: lib_typescript,
+  all_typescript: all_typescript,
+  tf_prefix: tf_prefix,
 }
-
-}  // namespace tensorflow

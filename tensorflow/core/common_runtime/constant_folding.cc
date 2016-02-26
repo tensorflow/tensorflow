@@ -321,6 +321,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   core::ScopedUnref rendez_unref(rendez);
 
   Executor::Args args;
+  args.step_id = Executor::Args::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
   args.rendezvous = rendez;
 

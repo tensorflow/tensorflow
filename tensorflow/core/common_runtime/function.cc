@@ -362,6 +362,7 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -406,6 +407,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
 
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -671,6 +673,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return done(s);
   }
   Executor::Args exec_args;
+  // Inherit the step_id from the caller.
+  exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = runner_;

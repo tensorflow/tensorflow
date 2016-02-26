@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/tensor_reference.h"
+var gulp = require('gulp');
+var tester = require('web-component-tester').test;
 
-namespace tensorflow {
-
-TensorReference::TensorReference(const Tensor& tensor)
-    : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
-  if (buf_) buf_->Ref();
+module.exports = function(done) {
+  tester({suites: ['components/tf-test/'],
+          plugins: {local: {}, sauce: false}}, function(error) {
+    if (error) {
+      // Pretty error for gulp.
+      error = new Error(error.message || error);
+      error.showStack = false;
+    }
+    done(error);
+  });
 }
-
-}  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/tensor_reference.h"
+var gulp = require('gulp');
+var tslint = require('gulp-tslint');
+var constants = require('./constants.js');
 
-namespace tensorflow {
-
-TensorReference::TensorReference(const Tensor& tensor)
-    : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
-  if (buf_) buf_->Ref();
+module.exports = function(strict) {
+  return function() {
+    return gulp.src(constants.all_typescript)
+               .pipe(tslint())
+               .pipe(tslint.report('verbose', {
+                  emitError: strict,
+               }));
+ };
 }
-
-}  // namespace tensorflow

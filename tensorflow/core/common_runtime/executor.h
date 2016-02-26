@@ -55,6 +55,11 @@ class Executor {
   // are alive at least until done is invoked. All pointers to the
   // argument objects can be nullptr.
   //
+  // "step_id" is a process-wide unique identifier for the step being
+  // run. Executors on different devices may receive the same step_id
+  // in the case that a step runs Ops on more than one device. The
+  // step_id is used for tracking resource usage of a given step.
+  //
   // RunAsync() uses the given "rendezvous", if not null, as the
   // mechanism to communicate inputs and outputs of the underlying
   // graph computation.
@@ -75,6 +80,13 @@ class Executor {
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
   struct Args {
+    // Executors are sometimes instantiated for initialization work
+    // like constant folding that is logically outside any computation
+    // step, and SpecialStepIds lists the ids used for those steps.
+    enum SpecialStepIds {
+      CONSTANT_FOLDING_STEP_ID = -1,
+    };
+    int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     StepStatsCollector* stats_collector = nullptr;
     FunctionCallFrame* call_frame = nullptr;

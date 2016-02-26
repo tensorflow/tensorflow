@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/direct_session.h"
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,8 @@ string GetRendezvousKey(const string& tensor_name,
 }
 
 }  // namespace
+
+std::atomic_int_fast64_t DirectSession::step_id_counter_(0);
 
 // NOTE: On Android with a single device, there is never
 // a risk of an OpKernel blocking indefinitely:
@@ -286,9 +289,12 @@ Status DirectSession::Run(const NamedTensorList& inputs,
       });
 
   Executor::Args args;
+  args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  LOG(INFO) << "Step " << args.step_id << " is for handle "
+            << run_state_args.handle;
 
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
@@ -350,9 +356,15 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
       });
 
   Executor::Args args;
+  {
+    mutex_lock l(mu_);
+    args.step_id = name_counter_++;
+  }
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  LOG(INFO) << "Step " << args.step_id << " is for handle "
+            << run_state_args.handle;
 
   for (auto& item : executors_and_keys->items) {
     Executor* exec = item.executor;

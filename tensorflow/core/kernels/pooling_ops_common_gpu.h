@@ -31,8 +31,22 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
+
+// A helper class that launch the cudnn pooling forward operations.
+template <typename T>
+class DnnPoolingOp {
+ public:
+  typedef GPUDevice Device;
+  static void Compute(OpKernelContext* context,
+                      perftools::gputools::dnn::PoolingMode pooling_mode,
+                      const std::vector<int32>& size,
+                      const std::vector<int32>& stride, Padding padding,
+                      TensorFormat data_format, const Tensor& tensor_in,
+                      const TensorShape& tensor_out_shape);
+};
 
 // A helper class that launch the cudnn pooling backward operations.
 // The original input and output tensors are optional for AvgPoolGrad, but
@@ -45,8 +59,8 @@ class DnnPoolingGradOp {
                       perftools::gputools::dnn::PoolingMode pooling_mode,
                       const std::vector<int32>& size,
                       const std::vector<int32>& stride, Padding padding,
-                      const Tensor* tensor_in, const Tensor* tensor_out,
-                      const Tensor& out_backprop,
+                      TensorFormat data_format, const Tensor* tensor_in,
+                      const Tensor* tensor_out, const Tensor& out_backprop,
                       const TensorShape& tensor_in_shape);
 };
 

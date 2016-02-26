@@ -463,6 +463,7 @@ tf_kernel_libraries(
         "whole_file_read_ops",
     ],
     deps = [
+        ":ops_util",
         ":reader_base",
         ":save_restore_tensor",
         "//tensorflow/core:framework",
@@ -689,6 +690,18 @@ tf_kernel_library(
     deps = [
         ":conv_2d",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "depthwise_conv_op",
+    prefix = "depthwise_conv_op",
+    deps = [
+        ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -713,6 +726,7 @@ tf_kernel_libraries(
     deps = [
         ":conv_2d",
         ":conv_ops",
+        ":depthwise_conv_op",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/core:framework",
