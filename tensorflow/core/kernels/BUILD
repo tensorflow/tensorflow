@@ -702,6 +702,7 @@ tf_kernel_library(
     prefix = "depthwise_conv_op",
     deps = [
         ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
