@@ -25,18 +25,15 @@ REGISTER_OP("SdcaSolver")
     .Attr("L1: float >= 0")
     .Attr("L2: float >= 0")
     .Attr("DualityGapThreshold: float = 0.01")
+    .Attr("Container: string")
+    .Attr("SolverUUID: string")
     .Input("sparse_features_indices: NumSparseFeatures * int64")
     .Input("sparse_features_values: NumSparseFeatures * float")
     .Input("dense_features: NumDenseFeatures * float")
     .Input("example_weights: float")
     .Input("example_labels: float")
-    .Input("dual_variables: Ref(float)")
-    .Input(
-        "sparse_weights_by_index: Ref(NumSparseFeatures * "
-        "float)")
-    .Input(
-        "dense_weights_by_index: Ref(NumDenseFeatures * "
-        "float)")
+    .Input("sparse_weights: Ref(NumSparseFeatures * float)")
+    .Input("dense_weights: Ref(NumDenseFeatures * float)")
     .Input("primal_loss: Ref(double)")
     .Doc(R"doc(
 Stochastic Dual Coordinate Ascent (SDCA) optimizer for linear models with
@@ -49,26 +46,27 @@ Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
 2012arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf
 
 LossType: Type of the primal loss. Only logistic_loss is supported.
-NumSparseFeatures: Number of sparse features to train on.
-NumDenseFeatures: Number of dense features to train on.
+NumSparseFeatures: Number of sparse feature groups to train on.
+NumDenseFeatures: Number of dense feature groups to train on.
 L1: Per example symmetric l1 regularization strength.
 L2: Per example symmetric l2 regularization strength.
 DualityGapThreshold: Gap threshold at which we should stop training.
+Container: Name of the Container that stores data across invocations of this
+  Kernel. Together with SolverUUID form an isolation unit for this solver.
+SolverUUID: Universally Unique Identifier for this solver.
 sparse_features_indices: a list of matrices with two columns that contain
   example_indices, and feature_indices.
 sparse_features_values: a list of vectors which contains feature value
-  associated with each feature index.
+  associated with each feature group.
 dense_features: a list of vectors which contains the dense feature values.
 example_weights: a vector which contains the example weight associated with
   each example.
 example_labels: a vector which contains the example label/target asscociated
   with each example.
-dual_variables: a vector which contains the dual variable asscociated with each
-  example.
-sparse_weights_by_index: a list of vectors where each value is the weight
-  associated with a feature index.
-dense_weights_by_index: a list of vectors where the value is the weight
-  associated with the dense feature.
+sparse_weights: a list of vectors where each value is the weight associated with
+  a feature index.
+dense_weights: a list of vectors where the value is the weight associated with
+  a dense feature group.
 )doc");
 
 }  // namespace tensorflow
