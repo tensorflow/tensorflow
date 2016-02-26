@@ -450,7 +450,7 @@ cc_library(
     copts = tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
-    deps = [":framework","@boost_math//:boost_math"],
+    deps = [":framework"],
     alwayslink = 1,
 )
 
