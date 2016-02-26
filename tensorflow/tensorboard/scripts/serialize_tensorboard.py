@@ -48,11 +48,6 @@ will be written""")
 tf.flags.DEFINE_boolean('overwrite', False, """Whether to remove and overwrite
 TARGET if it already exists.""")
 
-tf.flags.DEFINE_boolean(
-    'purge_orphaned_data', True, 'Whether to purge data that '
-    'may have been orphaned due to TensorBoard restarts. '
-    'Disabling purge_orphaned_data can be used to debug data '
-    'disappearance')
 FLAGS = tf.flags.FLAGS
 
 BAD_CHARACTERS = "#%&{}\\/<>*? $!'\":@+`|="
@@ -166,8 +161,7 @@ def main(unused_argv=None):
 
   PrintAndLog('About to load Multiplexer. This may take some time.')
   multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE,
-      purge_orphaned_data=FLAGS.purge_orphaned_data)
+      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
   server.ReloadMultiplexer(multiplexer, path_to_run)
 
   PrintAndLog('Multiplexer load finished. Starting TensorBoard server.')
