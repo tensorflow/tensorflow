@@ -106,7 +106,7 @@ class CholeskyReferenceTest(tf.test.TestCase):
       temp = chol_rev_unblocked( raw_a, raw_g ) 
       test = cholesky_grad_python( raw_a, raw_g )
       reference = 0.5*( temp + temp.T )
-      self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
+      self.assertAllClose( test, reference )
       
 class CholeskyGradTest(tf.test.TestCase):
   def testCholeskyGrad(self):
@@ -154,8 +154,7 @@ class CholeskyGradTest(tf.test.TestCase):
       test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
       temp = chol_rev( raw_a, raw_g, block_size=32 ) 
       reference = 0.5*( temp + temp.T )
-      #print "np.abs( test - reference)  ", np.abs( test - reference) 
-      self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
+      self.assertAllClose( test, reference  )
 
   def testCholeskyGradD(self):
     rng = np.random.RandomState(1)    
