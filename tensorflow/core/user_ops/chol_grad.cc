@@ -1,9 +1,7 @@
 //Copyright (c) 2016, Alexander G. de G. Matthews and James Hensman. All rights reserved.
 
-//Based on MATLAB code for blocked Cholesky reference mode differentiation by Iain Murray.
-
-//Also inspired by implementation from GPy by James Hensman and Alan Saul, 2015
-//and implementation from AutoGrad by Dougal Maclaurin, David Duvenaud and Matt Johnson, 2015.
+//Based on code for blocked Cholesky reference mode differentiation by Iain Murray.
+//For an explanation see "Differentiation of the Cholesky algorithm" by Iain Murray http://arxiv.org/abs/1602.07527.
 
 #include "tensorflow/core/framework/op.h"
 #include "third_party/eigen3/Eigen/Core"
