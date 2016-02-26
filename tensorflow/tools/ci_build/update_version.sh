@@ -104,6 +104,14 @@ sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[0-9]+)(.*\.
 
 sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[0-9]+)([^0-9].*\).*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
+
+# Update README.md
+README_MD="./README.md"
+check_existence file "${README_MD}"
+
+sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}/${MAJOR}.${MINOR}.${PATCH}/g" "${README_MD}"
+
+
 echo "Major: ${OLD_MAJOR} -> ${MAJOR}"
 echo "Minor: ${OLD_MINOR} -> ${MINOR}"
 echo "Patch: ${OLD_PATCH} -> ${PATCH}"
