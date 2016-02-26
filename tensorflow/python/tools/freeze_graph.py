@@ -78,7 +78,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
 
-  if not tf.gfile.Exists(input_checkpoint):
+  if not tf.gfile.Glob(input_checkpoint):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -88,7 +88,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
 
   input_graph_def = tf.GraphDef()
   mode = "rb" if input_binary else "r"
-  with open(input_graph, mode) as f:
+  with tf.gfile.FastGFile(input_graph, mode) as f:
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
@@ -102,7 +102,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
 
   with tf.Session() as sess:
     if input_saver:
-      with open(input_saver, mode) as f:
+      with tf.gfile.FastGFile(input_saver, mode) as f:
         saver_def = tf.train.SaverDef()
         if input_binary:
           saver_def.ParseFromString(f.read())
