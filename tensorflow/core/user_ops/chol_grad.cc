@@ -63,16 +63,16 @@ class CholeskyGrad : public OpKernel {
     MatrixMap output_matrix(output_tensor->template flat<T>().data(), input_tensor_l.dim_size(0), input_tensor_l.dim_size(1) );    
 
     const lcl_size_t N = input_matrix_l.rows();
-    const lcl_size_t NB = 4;
+    const lcl_size_t NB = 32;
 
     output_matrix = input_matrix_l_bar.template triangularView<Eigen::Lower>();
 
     
-    for ( lcl_size_t Ji = (N-NB+1) ; Ji>(-1-NB); Ji-= NB )    
+    for ( lcl_size_t Ji = (N-NB+1) ; Ji>(1-NB); Ji-= NB )   
     {
         lcl_size_t J = std::max<lcl_size_t>(1, Ji);
         lcl_size_t JB = NB - (J - Ji);
-
+    
         output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB) = input_matrix_l.block( J-1, J-1, JB, JB ).adjoint().template triangularView<Eigen::Upper>().solve( output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB ).adjoint() ).adjoint();
         output_matrix.block( J-1, J-1, JB, JB ) -= (output_matrix.block( J+JB-1, J-1, N - (J+JB-1), JB).adjoint() * input_matrix_l.block( J+JB-1, J-1, N - (J+JB-1), JB ) ).template triangularView<Eigen::Lower>();
         output_matrix.block( (J+JB-1), 0, N - (J+JB-1), J-1 )  -=  output_matrix.block( (J+JB-1), J-1, N - (J+JB-1), JB ) * input_matrix_l.block( J-1, 0, JB, J-1 );
