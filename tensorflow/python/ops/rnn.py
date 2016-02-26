@@ -465,6 +465,9 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
   input_shape = array_ops.shape(inputs)
   (time_steps, batch_size, unused_depth) = array_ops.unpack(input_shape, 3)
 
+  inputs_got_shape = inputs.get_shape().with_rank(3)
+  (const_time_steps, const_batch_size, const_depth) = inputs_got_shape.as_list()
+
   # Prepare dynamic conditional copying of state & output
   zero_output = array_ops.zeros(
       array_ops.pack([batch_size, cell.output_size]), inputs.dtype)
@@ -484,7 +487,20 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
   input_ta = input_ta.unpack(inputs)
 
   def _time_step(time, state, output_ta_t):
+    """Take a time step of the dynamic RNN.
+
+    Args:
+      time: int32 scalar Tensor.
+      state: Vector.
+      output_ta_t: `TensorArray`, the output with existing flow.
+
+    Returns:
+      The tuple (time + 1, new_state, output_ta_t with updated flow).
+    """
+
     input_t = input_ta.read(time)
+    # Restore some shape information
+    input_t.set_shape([const_batch_size, const_depth])
 
     (output, new_state) = _rnn_step(
         time, sequence_length, min_sequence_length, max_sequence_length,
@@ -501,5 +517,8 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
       parallel_iterations=parallel_iterations)
 
   final_outputs = output_final_ta.pack()
+  # Restore some shape information
+  final_outputs.set_shape([
+      const_time_steps, const_batch_size, cell.output_size])
 
   return (final_outputs, final_state)

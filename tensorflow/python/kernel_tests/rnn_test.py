@@ -174,6 +174,45 @@ class RNNTest(tf.test.TestCase):
               1.0 * (2 + 1) * np.ones((input_size)))))
 
 
+class GRUTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._seed = 23489
+    np.random.seed(self._seed)
+
+  def _testDynamic(self, use_gpu):
+    time_steps = 8
+    num_units = 3
+    input_size = 5
+    batch_size = 2
+
+    input_values = np.random.randn(time_steps, batch_size, input_size)
+
+    sequence_length = np.random.randint(0, time_steps, size=batch_size)
+
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      concat_inputs = tf.placeholder(
+          tf.float32, shape=(time_steps, batch_size, input_size))
+
+      cell = tf.nn.rnn_cell.GRUCell(num_units=num_units, input_size=input_size)
+
+      with tf.variable_scope("dynamic_scope"):
+        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
+            cell, inputs=concat_inputs, sequence_length=sequence_length,
+            time_major=True, dtype=tf.float32)
+
+      feeds = {concat_inputs: input_values}
+
+      # Initialize
+      tf.initialize_all_variables().run(feed_dict=feeds)
+
+      sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
+
+  def testDynamic(self):
+    self._testDynamic(use_gpu=False)
+    self._testDynamic(use_gpu=True)
+
+
 class LSTMTest(tf.test.TestCase):
 
   def setUp(self):
