@@ -24,8 +24,6 @@
 #     common_runtime/: Common code for execution of graphs
 #     public/: Public APIs for running graphs
 # ":core" - The code for ":core_cpu" plus a GPU runtime
-# ":kernel_lib" - Library with code common to multiple kernel implementations.
-#     DEPRECATED! Use libraries defined in the kernels/ directory instead.
 # ":all_kernels" - The cpu-specific kernels, plus gpu kernels if
 #     built with Cuda
 # ":tensorflow_opensource" - The complete open-source package, including
@@ -449,41 +447,6 @@ cc_library(
     deps = [
         ":core_cpu",
         ":gpu_runtime",
-    ],
-)
-
-# Common libraries used for implementing kernels.
-# DEPRECATED: Use libraries from the kernels/ directory instead.
-# TODO(josh11b): This also currently includes all the kernel implementations,
-# should split that out into the ":all_kernels" target.
-cc_library(
-    name = "kernel_lib",
-    hdrs = [
-        "//tensorflow/core/kernels:assign_op.h",
-        "//tensorflow/core/kernels:conv_2d.h",
-        "//tensorflow/core/kernels:fill_functor.h",
-        "//tensorflow/core/kernels:initializable_lookup_table.h",
-        "//tensorflow/core/kernels:lookup_util.h",
-        "//tensorflow/core/kernels:ops_util.h",
-        "//tensorflow/core/kernels:queue_base.h",
-        "//tensorflow/core/kernels:reader_base.h",
-        "//tensorflow/core/kernels:save_restore_tensor.h",
-        "//tensorflow/core/kernels:typed_queue.h",
-    ],
-    deprecation = "Use libraries from .../kernels instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":all_kernels",
-        "//tensorflow/core/kernels:assign_op",
-        "//tensorflow/core/kernels:conv_2d",
-        "//tensorflow/core/kernels:fill_functor",
-        "//tensorflow/core/kernels:initializable_lookup_table",
-        "//tensorflow/core/kernels:lookup_util",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:queue_base",
-        "//tensorflow/core/kernels:reader_base",
-        "//tensorflow/core/kernels:save_restore_tensor",
-        "//tensorflow/core/kernels:typed_queue",
     ],
 )
 
