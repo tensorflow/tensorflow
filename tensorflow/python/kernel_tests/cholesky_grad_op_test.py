@@ -11,8 +11,8 @@ def chol_rev( L, L_bar ):
     NB = 3
     A_bar = np.tril( L_bar )
     for Ji in range( (N-NB+1), (1-NB+1)-1, -NB ):
-        J = max(1, Ji);
-        JB = NB - (J - Ji); # corrected block-size        
+        J = max(1, Ji)
+        JB = NB - (J - Ji) # corrected block-size      
         A_bar[ (J+JB-1):, (J-1):(J+JB-1) ] = np.linalg.solve( L[(J-1):(J+JB-1), (J-1):(J+JB-1)].T, A_bar[ (J+JB-1):, (J-1):(J+JB-1)].T ).T
         A_bar[ (J-1):(J+JB-1), (J-1):(J+JB-1)] = A_bar[(J-1):J+JB-1, (J-1):J+JB-1] - np.tril( np.dot( A_bar[(J+JB-1):, (J-1):J+JB-1].T, L[(J+JB-1):, (J-1):J+JB-1] ) )
         A_bar[ (J+JB-1):N, 0:(J-1)]  = A_bar[(J+JB-1):N, 0:J-1] - np.dot( A_bar[(J+JB-1):N, (J-1):J+JB-1], L[(J-1):J+JB-1, 0:J-1] )
@@ -49,6 +49,18 @@ def cholesky_grad_python(L,g):
 class CholeskyReferenceTest(tf.test.TestCase):
   def testCholeskyReferenceA(self):
     nDim = 8      
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.rand(nDim,nDim) )
+    raw_g = np.tril( rng.rand(nDim,nDim) )      
+    with self.test_session():
+      murray_blocked = chol_rev( raw_a, raw_g)
+      murray_unblocked = chol_rev_unblocked( raw_a, raw_g)
+      hips = cholesky_grad_python( raw_a, raw_g )
+      self.assertAllClose( murray_blocked, murray_unblocked )
+      self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
+
+  def testCholeskyReferenceB(self):
+    nDim = 30      
     rng = np.random.RandomState(1)
     raw_a = np.tril( rng.rand(nDim,nDim) )
     raw_g = np.tril( rng.rand(nDim,nDim) )      
@@ -95,6 +107,20 @@ class CholeskyGradTest(tf.test.TestCase):
       self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
 
   def testCholeskyGradC(self):
+    nDim = 30    
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.randn(nDim,nDim) )
+    raw_g = np.tril( rng.randn(nDim,nDim) )
+    with self.test_session():
+      a = tf.constant( raw_a )
+      g = tf.constant( raw_g )
+      test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
+      temp = chol_rev( raw_a, raw_g ) 
+      reference = 0.5*( temp + temp.T )
+      #print "np.abs( test - reference)  ", np.abs( test - reference) 
+      self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
+
+  def testCholeskyGradD(self):
     rng = np.random.RandomState(1)    
     a = rng.randn( 5, 3 )
     with self.test_session():
