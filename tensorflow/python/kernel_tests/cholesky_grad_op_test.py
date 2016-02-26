@@ -94,6 +94,19 @@ class CholeskyReferenceTest(tf.test.TestCase):
       hips = cholesky_grad_python( raw_a, raw_g )
       self.assertAllClose( murray_blocked, murray_unblocked )
       self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
+
+  def testCholeskyReferenceE(self):
+    nDim = 30    
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.randn(nDim,nDim) )
+    raw_g = np.tril( rng.randn(nDim,nDim) )
+    with self.test_session():
+      a = tf.constant( raw_a )
+      g = tf.constant( raw_g )
+      temp = chol_rev_unblocked( raw_a, raw_g ) 
+      test = cholesky_grad_python( raw_a, raw_g )
+      reference = 0.5*( temp + temp.T )
+      self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
       
 class CholeskyGradTest(tf.test.TestCase):
   def testCholeskyGrad(self):
