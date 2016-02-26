@@ -524,8 +524,10 @@ def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
   loader_factory = event_file_loader.EventFileLoader
   if gfile.IsDirectory(path):
-    return directory_watcher.DirectoryWatcher(path, loader_factory,
-                                              IsTensorFlowEventsFile)
+    provider = directory_watcher.SequentialGFileProvider(
+        path,
+        path_filter=IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(provider, loader_factory)
   else:
     return loader_factory(path)
 
