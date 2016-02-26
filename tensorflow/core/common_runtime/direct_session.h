@@ -60,6 +60,14 @@ class DirectSession : public Session {
                            const std::vector<string>& target_nodes,
                            std::vector<Tensor>* outputs) override;
 
+  // NOTE: Experimental and subject to change.
+  ::tensorflow::Status RunWithOpts(const RunOptions& run_options,
+                                   const NamedTensorList& inputs,
+                                   const std::vector<string>& output_names,
+                                   const std::vector<string>& target_nodes,
+                                   std::vector<Tensor>* outputs,
+                                   RunOutputs* run_outputs) override;
+
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
   ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,
@@ -146,6 +154,9 @@ class DirectSession : public Session {
     string handle;
     Graph* graph = nullptr;
   };
+
+  const RunOptions kEmptyRunOptions = RunOptions();
+  RunOutputs kEmptyRunOutputs = RunOutputs();
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -113,6 +114,20 @@ class Session {
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
+
+  /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
+  /// to retrieve non-Tensor metadata output via a `RunOutputs` proto for this
+  /// step.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status RunWithOpts(
+      const RunOptions& run_options,
+      const std::vector<std::pair<string, Tensor> >& inputs,
+      const std::vector<string>& output_tensor_names,
+      const std::vector<string>& target_node_names,
+      std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
+    return errors::Unimplemented(
+        "RunWithOpts() is not supported for this session.");
+  }
 
   /// \brief Sets up a graph for partial execution. All future feeds and
   /// fetches are specified by 'input_names' and 'output_names'. Returns

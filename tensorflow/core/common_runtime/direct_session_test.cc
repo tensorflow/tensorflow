@@ -255,6 +255,40 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
 }
 
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
+  Initialize({3, 2, -1, 0});
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  // Prepares RunOptions and RunOutputs
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  RunOutputs run_outputs;
+  EXPECT_EQ(run_outputs.step_stats().dev_stats_size(), 0);
+
+  Status s = session->RunWithOpts(run_options, inputs, output_names,
+                                  target_nodes, &outputs, &run_outputs);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Checks RunOutputs is well-formed
+  ASSERT_TRUE(run_outputs.has_step_stats());
+  EXPECT_EQ(run_outputs.step_stats().dev_stats_size(), 2);
+}
+
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   GraphDef def;
   Graph g(OpRegistry::Global());

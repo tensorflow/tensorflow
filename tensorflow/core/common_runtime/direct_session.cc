@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -251,6 +252,16 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
+  return RunWithOpts(kEmptyRunOptions, inputs, output_names, target_nodes,
+                     outputs, &kEmptyRunOutputs);
+}
+
+Status DirectSession::RunWithOpts(const RunOptions& run_options,
+                                  const NamedTensorList& inputs,
+                                  const std::vector<string>& output_names,
+                                  const std::vector<string>& target_nodes,
+                                  std::vector<Tensor>* outputs,
+                                  RunOutputs* run_outputs) {
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {
@@ -296,11 +307,21 @@ Status DirectSession::Run(const NamedTensorList& inputs,
   VLOG(1) << "Step " << args.step_id << " is for handle "
           << run_state_args.handle;
 
+  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
+    args.stats_collector =
+        new StepStatsCollector(run_outputs->mutable_step_stats());
+  }
+
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
   }
 
   run_state.executors_done.WaitForNotification();
+
+  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
+    delete args.stats_collector;
+  }
+
   TF_RETURN_IF_ERROR(run_state.status);
 
   // Receive outputs.
