@@ -447,6 +447,9 @@ class OpKernelContext {
   struct Params {
     ~Params() { delete eigen_gpu_device; }
 
+    // The step being executed.
+    int64 step_id = 0;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -527,6 +530,8 @@ class OpKernelContext {
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
+
+  int64 step_id() const { return params_->step_id; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
