@@ -6,9 +6,9 @@ import scipy.linalg as linalg
 from scipy.linalg.blas import dsymv
 
 #Reference Python implementation ported from Iain Murray Matlab code. Blocked version.
-def chol_rev( L, L_bar ):
+def chol_rev( L, L_bar, block_size=3 ):
     N = L.shape[0]
-    NB = 3
+    NB = block_size
     A_bar = np.tril( L_bar )
     for Ji in range( (N-NB+1), (1-NB+1)-1, -NB ):
         J = max(1, Ji)
@@ -70,6 +70,30 @@ class CholeskyReferenceTest(tf.test.TestCase):
       hips = cholesky_grad_python( raw_a, raw_g )
       self.assertAllClose( murray_blocked, murray_unblocked )
       self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
+
+  def testCholeskyReferenceC(self):
+    nDim = 37      
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.rand(nDim,nDim) )
+    raw_g = np.tril( rng.rand(nDim,nDim) )      
+    with self.test_session():
+      murray_blocked = chol_rev( raw_a, raw_g, block_size = 7)
+      murray_unblocked = chol_rev_unblocked( raw_a, raw_g)
+      hips = cholesky_grad_python( raw_a, raw_g )
+      self.assertAllClose( murray_blocked, murray_unblocked )
+      self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
+
+  def testCholeskyReferenceD(self):
+    nDim = 30      
+    rng = np.random.RandomState(1)
+    raw_a = np.tril( rng.rand(nDim,nDim) )
+    raw_g = np.tril( rng.rand(nDim,nDim) )      
+    with self.test_session():
+      murray_blocked = chol_rev( raw_a, raw_g, block_size = 32)
+      murray_unblocked = chol_rev_unblocked( raw_a, raw_g)
+      hips = cholesky_grad_python( raw_a, raw_g )
+      self.assertAllClose( murray_blocked, murray_unblocked )
+      self.assertAllClose( 0.5*(murray_unblocked+murray_unblocked.T) , hips )
       
 class CholeskyGradTest(tf.test.TestCase):
   def testCholeskyGrad(self):
@@ -115,7 +139,7 @@ class CholeskyGradTest(tf.test.TestCase):
       a = tf.constant( raw_a )
       g = tf.constant( raw_g )
       test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
-      temp = chol_rev( raw_a, raw_g ) 
+      temp = chol_rev( raw_a, raw_g, block_size=32 ) 
       reference = 0.5*( temp + temp.T )
       #print "np.abs( test - reference)  ", np.abs( test - reference) 
       self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
