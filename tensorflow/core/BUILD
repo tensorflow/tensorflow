@@ -813,6 +813,7 @@ cc_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
+        "common_runtime/gpu_device_context.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -1010,9 +1011,9 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
-            "common_runtime/gpu_device_factory.cc",
             "common_runtime/direct_session.cc",
             "common_runtime/direct_session.h",
+            "common_runtime/gpu_device_context.h",
         ],
     ),
     hdrs = glob(
@@ -1023,6 +1024,7 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "common_runtime/direct_session.h",
+            "common_runtime/gpu_device_context.h",
         ],
     ),
     copts = tf_copts(),
