@@ -21,10 +21,12 @@ add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 
 add_dependencies(tf_core_kernels tf_core_cpu)
 
+MESSAGE("re2_INCLUDE_DIR: " ${re2_INCLUDE_DIR})
 target_include_directories(tf_core_kernels PRIVATE
    ${tensorflow_source_dir}
    ${png_INCLUDE_DIR}
    ${eigen_INCLUDE_DIRS}
+   ${re2_INCLUDE_DIR}
 )
 
 #target_link_libraries(tf_core_kernels
