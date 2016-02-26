@@ -293,8 +293,8 @@ Status DirectSession::Run(const NamedTensorList& inputs,
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
-  LOG(INFO) << "Step " << args.step_id << " is for handle "
-            << run_state_args.handle;
+  VLOG(1) << "Step " << args.step_id << " is for handle "
+          << run_state_args.handle;
 
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
