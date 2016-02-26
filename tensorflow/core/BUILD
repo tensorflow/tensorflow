@@ -55,7 +55,6 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_kernel_library")
 
 # For platform specific build config
 load(
@@ -303,6 +302,7 @@ tf_gen_op_libs(
         "attention_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
+        "ctc_ops",
         "data_flow_ops",
         "function_ops",
         "functional_ops",
@@ -344,6 +344,7 @@ cc_library(
         ":attention_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
+        ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
@@ -494,6 +495,7 @@ cc_library(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:image",
@@ -592,7 +594,10 @@ filegroup(
 # sources.
 filegroup(
     name = "android_srcs",
-    srcs = ["//tensorflow/core/kernels:android_srcs"] + glob(
+    srcs = [
+        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+    ] + glob(
         [
             "client/**/*.cc",
             "common_runtime/**/*.h",

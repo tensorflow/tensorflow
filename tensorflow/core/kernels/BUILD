@@ -335,6 +335,19 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "ctc_ops",
+    prefix = "ctc",
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:ctc_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/util/ctc:ctc_beam_search_lib",
+        "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
+    ],
+)
+
 tf_cc_test(
     name = "control_flow_ops_test",
     deps = [
@@ -1081,6 +1094,7 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
+        "ctc_decoder_ops.cc",
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
         "lrn_op.cc",
