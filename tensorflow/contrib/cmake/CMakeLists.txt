@@ -21,6 +21,12 @@ option(tensorflow_BUILD_TESTS "Build tests" ON)
 # targets that link ${CMAKE_THREAD_LIBS_INIT}.
 find_package (Threads)
 
+if (UNIX)
+  SET(GCC_COMPILE_FLAGS "-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS")
+  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+  set(dl_LIBRARIES "dl")
+endif (UNIX)
+
 # [CLEANUP] Remove when done
 # For debugging
 function(SHOW_VARIABLES)
