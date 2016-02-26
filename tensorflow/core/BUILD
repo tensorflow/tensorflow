@@ -61,6 +61,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gpu_kernel_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
+    "tf_proto_library_cc",
     "tf_additional_lib_srcs",
     "tf_additional_stream_executor_srcs",
     "tf_additional_test_deps",
@@ -77,12 +78,68 @@ load(
 
 tf_proto_library(
     name = "protos_all",
-    srcs = glob(["**/*.proto"]),
+    srcs = glob(
+        ["**/*.proto"],
+        exclude = [
+            "protobuf/worker.proto",
+            "protobuf/worker_service.proto",
+            "protobuf/master.proto",
+            "protobuf/master_service.proto",
+        ],
+    ),
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library_cc(
+    name = "worker_proto",
+    srcs = ["protobuf/worker.proto"],
+    cc_api_version = 2,
+    cc_libs = [":protos_all_cc"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "worker_service_proto",
+    srcs = ["protobuf/worker_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    cc_libs = [":worker_proto_cc"],
+    cc_stubby_versions = ["2"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "master_proto",
+    srcs = ["protobuf/master.proto"],
+    cc_api_version = 2,
+    cc_libs = [":protos_all_cc"],
+    py_api_version = 2,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "master_service_proto",
+    srcs = ["protobuf/master_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    cc_libs = [":master_proto_cc"],
+    cc_stubby_versions = ["2"],
+    py_api_version = 2,
+    visibility = [
+        "//tensorflow:internal",
+    ],
 )
 
 cc_library(
