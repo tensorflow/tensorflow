@@ -66,3 +66,4 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.layers.python.framework.tensor_util import *
 from tensorflow.contrib.layers.python.layers import *
+from tensorflow.contrib.layers.python.ops import *
