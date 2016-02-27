@@ -275,7 +275,8 @@ class Page(object):
     return self.type
 
   def get_md_filename(self):
-    return self.get_type() + anchorize(self.get_short_name()) + '.md'
+    deftype = self.type[0].upper() + self.type[1:]
+    return deftype + anchorize(self.get_short_name()) + '.md'
 
 
 def main(unused_argv):
