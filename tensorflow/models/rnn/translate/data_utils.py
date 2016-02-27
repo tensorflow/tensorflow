@@ -66,7 +66,7 @@ def gunzip_file(gz_path, new_path):
   """Unzips from gz_path into new_path."""
   print("Unpacking %s to %s" % (gz_path, new_path))
   with gzip.open(gz_path, "rb") as gz_file:
-    with open(new_path, "w") as new_file:
+    with open(new_path, "wb") as new_file:
       for line in gz_file:
         new_file.write(line)
 
