@@ -179,12 +179,12 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
     # Forward direction
     with tf.variable_scope(name + "_FW"):
         output_fw, state_fw = tf.nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
-                                 sequence_length)
+                                        sequence_length)
 
     # Backward direction
     with tf.variable_scope(name + "_BW"):
         tmp, state_bw = tf.nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                           initial_state_bw, dtype, sequence_length)
+                                  initial_state_bw, dtype, sequence_length)
     output_bw = _reverse_seq(tmp, sequence_length)
     # Concat each of the forward/backward outputs
     outputs = [tf.concat(1, [fw, bw])
