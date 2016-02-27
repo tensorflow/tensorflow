@@ -134,7 +134,7 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
                       initial_state_fw=None, initial_state_bw=None,
                       dtype=None, sequence_length=None, scope=None):
     """Creates a bidirectional recurrent neural network.
-    Similar to the unidirectional case above (rnn) but takes input and builds
+    Similar to the unidirectional case (rnn) but takes input and builds
     independent forward and backward RNNs with the final forward and backward
     outputs depth-concatenated, such that the output will have the format
     [time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
@@ -157,9 +157,10 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
           containing the actual lengths for each of the sequences.
         scope: VariableScope for the created subgraph; defaults to "BiRNN"
     Returns:
-        A set of output `Tensors` where:
+        A pair (outputs, state) where:
           outputs is a length T list of outputs (one for each input), which
-          are depth-concatenated forward and backward outputs
+            are depth-concatenated forward and backward outputs
+          state is the concatenated final state of the forward and backward RNN
     Raises:
         TypeError: If "cell_fw" or "cell_bw" is not an instance of RNNCell.
         ValueError: If inputs is None or an empty list.
@@ -177,19 +178,19 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
     name = scope or "BiRNN"
     # Forward direction
     with tf.variable_scope(name + "_FW"):
-        output_fw, _ = tf.nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
+        output_fw, state_fw = tf.nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
                                  sequence_length)
 
     # Backward direction
     with tf.variable_scope(name + "_BW"):
-        tmp, _ = tf.nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
+        tmp, state_bw = tf.nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
                            initial_state_bw, dtype, sequence_length)
     output_bw = _reverse_seq(tmp, sequence_length)
     # Concat each of the forward/backward outputs
     outputs = [tf.concat(1, [fw, bw])
                for fw, bw in zip(output_fw, output_bw)]
 
-    return outputs
+    return outputs, tf.concat(1, [state_fw, state_bw])
 
 # End of Tensorflow 0.7
 
@@ -238,15 +239,15 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
             # backward direction cell
             rnn_bw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            encoding = bidirectional_rnn(rnn_fw_cell, rnn_bw_cell, X,
-                                         dtype=tf.float32,
-                                         sequence_length=sequence_length,
-                                         initial_state_fw=initial_state,
-                                         initial_state_bw=initial_state)
+            _, encoding = bidirectional_rnn(rnn_fw_cell, rnn_bw_cell, X,
+                                            dtype=tf.float32,
+                                            sequence_length=sequence_length,
+                                            initial_state_fw=initial_state,
+                                            initial_state_bw=initial_state)
         else:
             cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             _, encoding = tf.nn.rnn(cell, X, dtype=tf.float32,
                                     sequence_length=sequence_length,
                                     initial_state=initial_state)
-        return target_predictor_fn(encoding[-1], y)
+        return target_predictor_fn(encoding, y)
     return rnn_estimator
