@@ -18,3 +18,4 @@ node_modules
 /util/python/python_include
 /util/python/python_lib
 /pip_test
+/_python_build
