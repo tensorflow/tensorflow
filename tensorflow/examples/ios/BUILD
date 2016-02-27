@@ -15,6 +15,7 @@ objc_library(
     srcs = [
         "UrlGet/AppDelegate.mm",
         "UrlGet/UrlGetViewController.mm",
+	"UrlGet/ios_image_load.mm",
     ],
     hdrs = glob(["UrlGet/*.h"]),
     xibs = ["UrlGet/UrlGetViewController.xib"],
@@ -25,18 +26,20 @@ objc_library(
 	"//tensorflow/core:android_tensorflow_lib",
 	"//third_party/eigen3:eigen3",
     ],
-    copts = ["--std=c++11"],
+    copts = ["--std=c++11", "-Wl,--whole-archive", "-Wl,-all_load", "-femit-all-decls", "-O0"],
     includes = ["../../../external/eigen_archive"],
+    sdk_frameworks = ["CoreGraphics"],
 )
 
 objc_binary(
     name = "ios-app-binary",
     srcs = [
-        "UrlGet/main.m",
+        "UrlGet/main.mm",
     ],
     deps = [
         ":UrlGetClasses",
     ],
+    copts = ["-Wl,--whole-archive", "-Wl,-all_load", "-femit-all-decls", "-O3"],
 )
 
 ios_application(
@@ -48,7 +51,7 @@ ios_application(
 objc_binary(
     name = "ios-app-binary-cc",
     srcs = [
-        "UrlGet/main.m",
+        "UrlGet/main.mm",
     ],
     deps = [
         ":UrlGetClasses",
@@ -60,6 +63,7 @@ objc_binary(
         "data/imagenet_comp_graph_label_strings.txt",
         "data/tensorflow_inception_graph.pb",
     ],
+    copts = ["-Wl,--whole-archive", "-femit-all-decls"],
 )
 
 config_setting(

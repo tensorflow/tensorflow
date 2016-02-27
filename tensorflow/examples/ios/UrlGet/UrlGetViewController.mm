@@ -14,6 +14,14 @@
 
 #import "UrlGetViewController.h"
 
+#include <fstream>
+#include <sstream>
+
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/message_lite.h"
+
 #import "tensorflow/examples/ios/UrlGet/test.pb.h"
 
 #include "tensorflow/core/framework/tensor.h"
@@ -23,10 +31,34 @@
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/common_runtime/direct_session.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
+
+#include "ios_image_load.h"
 
 #include <iostream>
 
 NSString* TestFunction();
+
+namespace {
+class IfstreamInputStream : public ::google::protobuf::io::CopyingInputStream {
+ public:
+  explicit IfstreamInputStream(const std::string& file_name)
+      : ifs_(file_name.c_str(), std::ios::in | std::ios::binary) {}
+  ~IfstreamInputStream() { ifs_.close(); }
+
+  int Read(void* buffer, int size) {
+    if (!ifs_) {
+      return -1;
+    }
+    ifs_.read(static_cast<char*>(buffer), size);
+    return ifs_.gcount();
+  }
+
+ private:
+  std::ifstream ifs_;
+};
+}  // namespace
 
 @interface UrlGetViewController ()
 @end
@@ -328,13 +360,38 @@ TENSORFLOW_METHOD(classifyImageBmp)(
 #endif
 }
 
+bool PortableReadFileToProto(const std::string& file_name,
+                             ::google::protobuf::MessageLite* proto) {
+  ::google::protobuf::io::CopyingInputStreamAdaptor stream(
+      new IfstreamInputStream(file_name));
+  stream.SetOwnsCopyingStream(true);
+  // TODO(jiayq): the following coded stream is for debugging purposes to allow
+  // one to parse arbitrarily large messages for MessageLite. One most likely
+  // doesn't want to put protobufs larger than 64MB on Android, so we should
+  // eventually remove this and quit loud when a large protobuf is passed in.
+  ::google::protobuf::io::CodedInputStream coded_stream(&stream);
+  // Total bytes hard limit / warning limit are set to 1GB and 512MB
+  // respectively. 
+  coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
+  return proto->ParseFromCodedStream(&coded_stream);
+}
+
 NSString* TestFunction() {
 //    initializeTensorflow(nullptr, nullptr, nullptr, "model", "labels", 0, 0, 0);
 
+  tensorflow::CreateDirectSessionFactory();
+
   tensorflow::SessionOptions options;
   tensorflow::ConfigProto& config = options.config;
-  LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
+  LOG(INFO) << "Got config, " << config.device_count_size() << " devices.";
 
+  Session* session_pointer = nullptr;
+  Status session_status = tensorflow::NewSession(options, &session_pointer);
+  if (!session_status.ok()) {
+    std::string status_string = session_status.ToString();
+    return [NSString stringWithFormat: @"Session create failed - %s",
+	status_string.c_str()];
+  }
   session.reset(tensorflow::NewSession(options));
   LOG(INFO) << "Session created.";
 
@@ -346,6 +403,87 @@ NSString* TestFunction() {
     fprintf(stderr, "Couldn't find the neural network parameters file - did you add it as a resource to your application?\n");
     assert(false);
   }
+  PortableReadFileToProto([networkPath UTF8String], &tensorflow_graph);
 
-  return networkPath;
+  LOG(INFO) << "Creating session.";
+  tensorflow::Status s = session->Create(tensorflow_graph);
+  if (!s.ok()) {
+    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    return @"";
+  }
+
+  // Read the label list
+  NSString* labelsPath = [[NSBundle mainBundle] pathForResource:@"imagenet_comp_graph_label_strings" ofType:@"txt"];
+  if (labelsPath == NULL) {
+    fprintf(stderr, "Couldn't find the network labels file - did you add it as a resource to your application?\n");
+    assert(false);
+  }
+
+  std::vector<std::string> label_strings;
+  std::ifstream t;
+  t.open([labelsPath UTF8String]);
+  std::string line;
+  while(t){
+    std::getline(t, line);
+    label_strings.push_back(line);
+  }
+  t.close();
+
+  // Read the Grace Hopper image.
+  NSString* imagePath = [[NSBundle mainBundle] pathForResource:@"grace_hopper" ofType:@"jpg"];
+  if (imagePath == NULL) {
+    fprintf(stderr, "Couldn't find the image file - did you add it as a resource to your application?\n");
+    assert(false);
+  }
+
+  int image_width;
+  int image_height;
+  int image_channels;
+  std::vector<tensorflow::uint8> image_data = LoadImageFromFile(
+	[imagePath UTF8String], &image_width, &image_height, &image_channels);
+  tensorflow::Tensor image_tensor(
+      tensorflow::DT_UINT8,
+      tensorflow::TensorShape({
+          1, image_height, image_width, image_channels}));
+  auto image_tensor_mapped = image_tensor.tensor<tensorflow::uint8, 4>();
+  memcpy(image_tensor_mapped.data(), image_data.data(),
+	(image_height * image_width * image_channels));
+
+  NSString* result = [networkPath stringByAppendingString: @" - loaded!"];
+  result = [NSString stringWithFormat: @"%@ - %d, %s - %dx%d", result,
+	label_strings.size(), label_strings[0].c_str(), image_width, image_height];
+
+  fprintf(stderr, "a\n");
+
+  std::string input_layer = "Cast";
+  std::string output_layer = "softmax";
+  std::vector<Tensor> outputs;
+  fprintf(stderr, "b\n");
+  Status run_status = session->Run({{input_layer, image_tensor}},
+                                   {output_layer}, {}, &outputs);
+  fprintf(stderr, "c\n");
+  if (!run_status.ok()) {
+    LOG(ERROR) << "Running model failed: " << run_status;
+  }
+  string status_string = run_status.ToString();
+  result = [NSString stringWithFormat: @"%@ - %s", result,
+	status_string.c_str()];
+
+  fprintf(stderr, "d\n");
+
+  return result;
 }
+
+#include <sys/syslog.h>
+
+tensorflow::Status TPDValidateOpName(const tensorflow::string& op_name);
+
+__attribute__((constructor))
+static void SomeFactoryInitFunc() {
+  syslog(LOG_ERR, "SomeFactoryInitFunc was called from UrlGetViewController!");
+  volatile int foo = 0;
+  if (foo == 1) {
+    //TPDValidateOpName("foo");
+  }
+}
+

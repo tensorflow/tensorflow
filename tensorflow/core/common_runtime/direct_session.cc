@@ -872,6 +872,9 @@ class DirectSessionRegistrar {
     SessionFactory::Register("DIRECT_SESSION", new DirectSessionFactory());
   }
 };
-static DirectSessionRegistrar registrar;
+
+void CreateDirectSessionFactory() {
+  static DirectSessionRegistrar direct_session_registrar;
+}
 
 }  // namespace tensorflow

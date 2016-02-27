@@ -70,11 +70,12 @@ class Registrar {
   INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY(device_type, device_factory,   \
                                          __COUNTER__, ##__VA_ARGS__)
 
-#define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY(device_type, device_factory, \
-                                               ctr, ...)                    \
-  static ::tensorflow::dfactory::Registrar<device_factory>                  \
-      INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr)(device_type,         \
-                                                       ##__VA_ARGS__)
+#define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY(device_type, device_factory,  \
+                                               ctr, ...)                     \
+      [[gnu::used]] ::tensorflow::dfactory::Registrar<device_factory> \
+      INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr)(device_type,          \
+                                                       ##__VA_ARGS__) __attribute__((used))
+
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr) ___##ctr##__object_

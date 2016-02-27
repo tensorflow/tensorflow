@@ -228,6 +228,8 @@ class DirectSession : public Session {
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };
 
+void CreateDirectSessionFactory();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_

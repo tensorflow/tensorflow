@@ -103,6 +103,9 @@ IOS_ARM_TF_COPTS = [
     "-arch arm64",
     "-D__thread=",
     "-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.2.sdk/",
+    "-DPLATFORM_POSIX_IOS=1",
+    "-Wl,-all_load",
+    "-femit-all-decls",
 ]
 
 tf_proto_library(
