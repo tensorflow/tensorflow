@@ -4137,7 +4137,7 @@ op {
     description: "An exponent."
   }
   summary: "Local Response Normalization."
-  description: "The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last\ndimension), and each vector is normalized independently.  Within a given vector,\neach component is divided by the weighted, squared sum of inputs within\n`depth_radius`.  In detail,\n\n    sqr_sum[a, b, c, d] =\n        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)\n    output = input / (bias + alpha * sqr_sum ** beta)\n\nFor details, see [Krizhevsky et al., ImageNet classification with deep\nconvolutional neural networks (NIPS 2012)]\n(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks)."
+  description: "The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last\ndimension), and each vector is normalized independently.  Within a given vector,\neach component is divided by the weighted, squared sum of inputs within\n`depth_radius`.  In detail,\n\n    sqr_sum[a, b, c, d] =\n        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)\n    output = input / (bias + alpha * sqr_sum) ** beta\n\nFor details, see [Krizhevsky et al., ImageNet classification with deep\nconvolutional neural networks (NIPS 2012)]\n(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks)."
 }
 op {
   name: "LRNGrad"

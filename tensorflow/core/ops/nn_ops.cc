@@ -349,7 +349,7 @@ each component is divided by the weighted, squared sum of inputs within
 
     sqr_sum[a, b, c, d] =
         sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
-    output = input / (bias + alpha * sqr_sum ** beta)
+    output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
 convolutional neural networks (NIPS 2012)]
