@@ -238,11 +238,11 @@ class SdcaModel(object):
           self._convert_n_to_tensor(self._variables['dense_features_weights'],
                                     as_ref=True),
           self._training_log_loss,
-          L1=self._options['symmetric_l1_regularization'],
-          L2=self._options['symmetric_l2_regularization'],
-          LossType=self._options['loss_type'],
-          Container=self._container,
-          SolverUUID=self._solver_uuid)
+          l1=self._options['symmetric_l1_regularization'],
+          l2=self._options['symmetric_l2_regularization'],
+          loss_type=self._options['loss_type'],
+          container=self._container,
+          solver_uuid=self._solver_uuid)
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
