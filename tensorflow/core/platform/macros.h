@@ -87,4 +87,14 @@ limitations under the License.
   } while (0)
 #endif
 
+// SIZE_MAX is not defined for older gcc versions (5.1 and back). Define if
+// necessary.
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX std::numeric_limits<size_t>::max()
+# endif
+#endif
+
 #endif  // TENSORFLOW_PLATFORM_MACROS_H_
