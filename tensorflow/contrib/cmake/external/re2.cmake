@@ -33,6 +33,7 @@ ExternalProject_Add(re2
 )
 
 ## put re2 includes in the directory where they are expected
+#    COMMAND ${CMAKE_COMMAND} -E make_directory ${re2_INCLUDE_DIR}/re2
 add_custom_target(re2_create_destination_dir
     COMMAND ${CMAKE_COMMAND} -E make_directory ${re2_INCLUDE_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${re2_INCLUDE_DIR}/re2"
@@ -43,7 +44,8 @@ add_custom_target(re2_copy_headers_to_destination
 
 foreach(header_file ${re2_HEADERS})
     add_custom_command(TARGET re2_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} "${re2_INCLUDE_DIR}/re2"
+      COMMAND ${CMAKE_COMMAND} -E copy ${header_file} "${re2_INCLUDE_DIR}/re2"
+    )
 endforeach()
 
 ADD_LIBRARY(re2_lib STATIC IMPORTED
