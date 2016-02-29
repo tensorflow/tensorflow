@@ -18,15 +18,11 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   pip_test.sh [--allow-non-user-install]
+#   pip_test.sh [--virtualenv]
 #
-# Arguments:
-#   --allow-non-user-install: This flag allows the script to search for
-#                             the pip installation of TensorFlow outside
-#                             the user's home directory, i.e., in system
-#                             library paths such as /usr/local/lib.
-#                             This is useful for testing TensorFlow docker
-#                             images.
+# If the flag --virtualenv is set, the script will use "python" as the Python
+# binary path. Otherwise, it will use tools/python_bin_path.sh to determine
+# the Python binary path.
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -88,11 +84,17 @@ die() {
 
 
 # Obtain the path to Python binary
-source tools/python_bin_path.sh
+# source tools/python_bin_path.sh
+if [[ "$1" == "--virtualenv" ]]; then
+  PYTHON_BIN_PATH="$(which python)"
+else
+  source tools/python_bin_path.sh
+  # Assume: PYTHON_BIN_PATH is exported by the script above
+fi
 
-# Assume: PYTHON_BIN_PATH is exported by the script above
-if [[ -z "$PYTHON_BIN_PATH" ]]; then
-  die "PYTHON_BIN_PATH was not provided. Did you run configure?"
+if [[ -z "${PYTHON_BIN_PATH}" ]]; then
+  die "PYTHON_BIN_PATH was not provided. If this is not virtualenv, "\
+"did you run configure?"
 fi
 
 # Determine the major and minor versions of Python being used (e.g., 2.7)
@@ -103,6 +105,8 @@ PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f
 echo "Python binary path to be used in PIP install-test: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
+# Avoid permission issues outside container
+umask 000
 
 # Directory from which the unit-test files will be run
 PY_TEST_DIR_REL="pip_test/tests"
@@ -113,13 +117,6 @@ rm -rf ${PY_TEST_DIR} && mkdir -p ${PY_TEST_DIR}
 PY_TEST_LOG_DIR_REL=${PY_TEST_DIR_REL}/logs
 PY_TEST_LOG_DIR=$(abs_path ${PY_TEST_LOG_DIR_REL})  # Absolute path
 
-if [[ "$1" == "--allow-non-user-install" ]]; then
-  # When --allow-non-user-install is used, we are typically inside
-  # a docker container as the root. Avoid creating directories and
-  # files that cannot be written outside the container
-  umask 000
-fi
-
 mkdir ${PY_TEST_LOG_DIR}
 
 
@@ -129,32 +126,14 @@ mkdir ${PY_TEST_LOG_DIR}
 # Look for local Python library directory
 LIB_PYTHON_DIR=""
 
-# Candidate locations of the local Python library directory
-# Assumes that the TensorFlow pip installation is done using the "--user" flag
-LIB_PYTHON_DIR_CANDS="${HOME}/.local/lib/python${PY_MAJOR_MINOR_VER}* "\
-"${HOME}/Library/Python/${PY_MAJOR_MINOR_VER}*/lib/python"
+pushd /tmp > /dev/null
+TF_FILE=$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.__file__)") \
+|| die "FAILED: Unable to import tensorflow in python: ${PYTHON_BIN_PATH}"
+popd > /dev/null
 
-for CAND in ${LIB_PYTHON_DIR_CANDS}; do
-  if [[ -d "${CAND}" ]]; then
-    LIB_PYTHON_DIR="${CAND}"
-    break
-  fi
-done
-
-if [[ -z ${LIB_PYTHON_DIR} ]] &&
-   [[ "$1" == "--allow-non-user-install" ]]; then
-  # TensorFlow cannot be found in local (user) Python library paths.
-  # Final attempt will be made to determine the install directory.
-  echo "It appears that TensorFlow is not installed with the --user flag."
-
-  pushd /tmp > /dev/null
-  TF_FILE=$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.__file__)")
-  popd > /dev/null
-
-  # A typical value of TF_FILE would be:
-  #   /usr/local/lib/python2.7/dist-packages/tensorflow/__init__.pyc
-  LIB_PYTHON_DIR=$(dirname $(dirname $(dirname "${TF_FILE}")))
-fi
+# A typical value of TF_FILE would be:
+#   /usr/local/lib/python2.7/dist-packages/tensorflow/__init__.pyc
+LIB_PYTHON_DIR=$(dirname $(dirname $(dirname "${TF_FILE}")))
 
 if [[ -z ${LIB_PYTHON_DIR} ]]; then
   die "Failed to find Python library directory where TensorFlow is installed."
@@ -186,6 +165,7 @@ echo "Copying additional files required by tests to working directory "\
 "for test: ${PY_TEST_DIR}"
 
 # Image files required by some tests, e.g., images_ops_test.py
+
 mkdir -p ${PY_TEST_DIR}/tensorflow/core/lib
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 cp -r tensorflow/core/lib/jpeg ${PY_TEST_DIR}/tensorflow/core/lib
@@ -286,6 +266,9 @@ for TEST_FILE_PATH in ${ALL_PY_TESTS}; do
   rm -f ${PY_TEST_DIR}/${TEST_BASENAME}
 
 done
+
+# Avoid permission issues outside Docker container
+chmod -R 777 "${PY_TEST_DIR_REL}"
 
 echo ""
 echo "${PY_TEST_COUNT} Python test(s):" \

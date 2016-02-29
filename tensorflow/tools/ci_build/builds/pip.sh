@@ -22,14 +22,18 @@
 #   pip.sh CONTAINER_TYPE
 #
 # When executing the Python unit tests, the script obeys the shell
-# variables: TF_BUILD_BAZEL_CLEAN, NO_TEST_ON_INSTALL.
+# variables: TF_BUILD_BAZEL_CLEAN, NO_TEST_ON_INSTALL, TF_BUILD_TEST_TUTORIALS
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
-
+#
+# TF_BUILD_TEST_TUTORIALS, if set any non-empty and non-0 values, will cause
+# this script to run the tutorial tests (see test_tutorials.sh) after the PIP
+# installation and the Python unit tests-on-install step (if not deactivated).
+#
 
 # Helper functions
 # Get the absolute path from a path
@@ -42,48 +46,6 @@ abs_path() {
 die() {
     echo $@
     exit 1
-}
-
-# Uninstall existing pip packages
-uninstall_existing_pip_packages() {
-  # Usage: uninstall_existing <PYTHON_BIN_PATH> <PY_MAJOR_MINOR_VER>
-  PACKAGES_TO_UNINSTALL="protobuf tensorflow"
-
-  # Candidate locations of the local Python library directory
-  # Assumes that the TensorFlow pip installation is done using the "--user" flag
-  LIB_PYTHON_DIR_CANDS="${HOME}/.local/lib/python${2}* "\
-"${HOME}/Library/Python/${2}*/lib/python"
-
-  for CAND in ${LIB_PYTHON_DIR_CANDS}; do
-    if [[ -d "${CAND}" ]]; then
-      LIB_PYTHON_DIR="${CAND}"
-      break
-    fi
-  done
-
-  if [[ -z ${LIB_PYTHON_DIR} ]]; then
-    echo "uninstall_existing_pip_packages: "\
-"No local Python library directory is found. Moving on."
-    return 0
-  else
-    echo "Found local Python library directory at: ${LIB_PYTHON_DIR}"
-  fi
-
-  PACKAGES_DIR=$(ls -d ${LIB_PYTHON_DIR}/*-packages | head -1)
-
-  for PACKAGE in ${PACKAGES_TO_UNINSTALL}; do
-    if [[ -d "${PACKAGES_DIR}/${PACKAGE}" ]]; then
-      echo "Uninstalling existing local installation of ${PACKAGE}"
-
-      "$1" -m pip uninstall -y "${PACKAGE}"
-      if [[ $? != 0 ]]; then
-        echo "FAILED to uninstall existing local installation of ${PACKAGE}"
-        return 1
-      fi
-    fi
-  done
-
-  return 0
 }
 
 
@@ -114,6 +76,12 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:${PY_TEST_GPU_BLACKLIST}"
 fi
 
+# If still in a virtualenv, deactivate it first
+if [[ ! -z "$(which deactivate)" ]]; then
+  echo "It appears that we are already in a virtualenv. Deactivating..."
+  deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
+fi
+
 # Obtain the path to Python binary
 source tools/python_bin_path.sh
 
@@ -131,7 +99,8 @@ echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
 # Build PIP Wheel file
-PIP_WHL_DIR="pip_test/whl"
+PIP_TEST_ROOT="pip_test"
+PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(abs_path ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
 bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
@@ -149,12 +118,28 @@ echo "whl file path = ${WHL_PATH}"
 # Install, in user's local home folder
 echo "Installing pip whl file: ${WHL_PATH}"
 
-# Call pip install on the whl file. We are doing it without the --upgrade
-# option. So dependency updates will need to be performed separately in
-# the environment.
-uninstall_existing_pip_packages "${PYTHON_BIN_PATH}" "${PY_MAJOR_MINOR_VER}"
+# Create temporary directory for install test
+VENV_DIR="${PIP_TEST_ROOT}/venv"
+rm -rf "${VENV_DIR}" && mkdir -p "${VENV_DIR}"
+echo "Create directory for virtualenv: ${VENV_DIR}"
 
-"${PYTHON_BIN_PATH}" -m pip install -v --user ${WHL_PATH} \
+# Verify that virtualenv exists
+if [[ -z $(which virtualenv) ]]; then
+  die "FAILED: virtualenv not available on path"
+fi
+
+virtualenv -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" ||
+die "FAILED: Unable to create virtualenv"
+
+source "${VENV_DIR}/bin/activate" ||
+die "FAILED: Unable to activate virtualenv"
+
+# Install the pip file in virtual env
+# "${PYTHON_BIN_PATH}" -m pip install -v --user ${WHL_PATH} \
+# && echo "Successfully installed pip package ${WHL_PATH}" \
+# || die "pip install (without --upgrade) FAILED"
+
+pip install -v ${WHL_PATH} \
 && echo "Successfully installed pip package ${WHL_PATH}" \
 || die "pip install (without --upgrade) FAILED"
 
@@ -170,4 +155,14 @@ fi
 # Call pip_test.sh to perform test-on-install
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/pip_test.sh"
+# Call the pip test script
+"${DIR}/pip_test.sh --virtualenv" || die "PIP tests-on-install FAILED"
+
+# Optional: Run the tutorial tests
+if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
+   [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
+  "${DIR}/test_tutorials.sh --virtualenv" || die "PIP tutorial tests-on-install FAILED"
+fi
+
+deactivate ||
+die "FAILED: Unable to deactivate virtualenv"
