@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -36,6 +36,24 @@ struct AllocationAttributes {
   // An example use case is optional scratch spaces where a failure
   // has only performance impact.
   bool no_retry_on_failure = false;
+};
+
+// Runtime statistics collected by an allocator.
+struct AllocatorStats {
+  int64 num_allocs;        // Number of allocations.
+  int64 bytes_in_use;      // Number of bytes in use.
+  int64 max_bytes_in_use;  // The maximum bytes in use.
+  int64 max_alloc_size;    // The max single allocation seen.
+
+  // The upper limit what the allocator can allocate, if such a limit
+  // is known. Certain allocator may return 0 to indicate the limit is
+  // unknown.
+  int64 bytes_limit;
+
+  AllocatorStats() { Clear(); }
+
+  void Clear();
+  string DebugString() const;
 };
 
 // Allocator is an abstract interface for allocating and deallocating
@@ -105,8 +123,14 @@ class Allocator {
 
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if
-  // TracksAlloctionSizes is overridden to return true.
+  // TracksAllocationSizes is overridden to return true.
   virtual bool TracksAllocationSizes() { return false; }
+
+  // Returns true if this allocator requires tensors with 0 elements
+  // to allocate buffers. This is false for most allocators, but may
+  // be used by special-case allocators that want to track tensor
+  // usage.
+  virtual bool ShouldAllocateEmptyTensors() { return false; }
 
   // Returns the user-requested size of the data allocated at
   // 'ptr'.  Note that the actual buffer allocated might be larger
@@ -131,6 +155,30 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
 
+  // Returns either 0 or an identifier assigned to the buffer at 'ptr'
+  // when the buffer was returned by AllocateRaw. If non-zero, the
+  // identifier differs from every other ID assigned by this
+  // allocator.
+  //
+  // REQUIRES: TracksAllocationSizes() is true.
+  //
+  // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
+  // allocated by this allocator.
+  virtual int64 AllocationId(void* ptr) { return 0; }
+
+  // Returns the allocated size of the buffer at 'ptr' if known,
+  // otherwise returns 0. This method can be called when
+  // TracksAllocationSizes() is false, but can be extremely slow.
+  //
+  // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
+  // allocated by this allocator.
+  virtual size_t AllocatedSizeSlow(void* ptr) {
+    if (TracksAllocationSizes()) {
+      return AllocatedSize(ptr);
+    }
+    return 0;
+  }
+
   // is_simple<T>::value if T[] can be safely constructed and destructed
   // without running T() and ~T().  We do not use std::is_trivial<T>
   // directly because std::complex<float> is not trival but its array
@@ -142,6 +190,9 @@ class Allocator {
                               std::is_same<T, complex64>::value ||
                               is_quantized<T>::value;
   };
+
+  // Fills in 'stats' with statistics collected by this allocator.
+  virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
  private:
   // No constructors or destructors are run for simple types
@@ -200,11 +251,6 @@ inline void Allocator::RunDtor(string* p, size_t n) {
 // specification of the desired memory attributes in order to select
 // an Allocator.
 //
-// NOTE: The upper 8 bits of the value are reserved for
-// device-specific uses.  Implementors of a device can interpret these
-// upper 8 bits in device-specific ways, and ops implemented for those
-// devices are responsible for setting those 8 bits appropriately.
-//
 // Example use:
 //  // Allocator for ordinary device memory:
 //  Allocator* a = allocator(AllocatorAttributes());
@@ -220,15 +266,24 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-
+  void set_track_sizes(bool v) { value |= (static_cast<int>(v) << 3); }
+  bool track_sizes() const { return value & (0x1 << 3); }
   void Merge(AllocatorAttributes other) { value |= other.value; }
 
+  // NOTE: The upper 8 bits of the value are reserved for
+  // device-specific uses.  Implementors of a device can interpret these
+  // upper 8 bits in device-specific ways, and ops implemented for those
+  // devices are responsible for setting those 8 bits appropriately.
   uint32 value = 0;
 };
 
 // Returns a trivial implementation of Allocator which uses the system
-// default malloc.
+// default malloc. The returned allocator is a process singleton.
 Allocator* cpu_allocator();
+
+// If 'enable' is true, the process-wide cpu allocator collects
+// AllocatorStats. By default, it's disabled.
+void EnableCPUAllocatorStats(bool enable);
 
 }  // namespace tensorflow
 

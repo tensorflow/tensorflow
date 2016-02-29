@@ -33,7 +33,6 @@ from __future__ import print_function
 import os.path
 import time
 
-import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 
@@ -65,9 +64,10 @@ def run_training():
   # Tell TensorFlow that the model will be built into the default Graph.
   with tf.Graph().as_default():
     with tf.name_scope('input'):
-      # Input data
-      input_images = tf.constant(data_sets.train.images)
-      input_labels = tf.constant(data_sets.train.labels)
+      # Input data, pin to CPU because rest of pipeline is CPU-only
+      with tf.device('/cpu:0'):
+        input_images = tf.constant(data_sets.train.images)
+        input_labels = tf.constant(data_sets.train.labels)
 
       image, label = tf.train.slice_input_producer(
           [input_images, input_labels], num_epochs=FLAGS.num_epochs)

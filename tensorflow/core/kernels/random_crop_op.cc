@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {
@@ -28,6 +28,7 @@ template <typename T>
 class RandomCropOp : public OpKernel {
  public:
   explicit RandomCropOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_DEPRECATED(context, 8, "Random crop is now pure Python");
     OP_REQUIRES_OK(context, generator_.Init(context));
   }
 
@@ -35,14 +36,14 @@ class RandomCropOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 3,
                 errors::InvalidArgument("input must be 3-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto shape_vec = shape_t.vec<int64>();
     const int32 target_height = shape_vec(0);

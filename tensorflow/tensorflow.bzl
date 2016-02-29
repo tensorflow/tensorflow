@@ -3,7 +3,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
-load("/tensorflow/core/platform/default/build_config_root",
+load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds
@@ -26,9 +26,11 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/tensor_shape.proto",
         "//tensorflow/core:framework/tensor_slice.proto",
         "//tensorflow/core:framework/types.proto",
+        "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
+        "//tensorflow/core:protobuf/saver.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto"
-	]
+  ]
 
 
 def if_cuda(a, b=[]):
@@ -39,7 +41,10 @@ def if_cuda(a, b=[]):
 
 
 def tf_copts():
-  return ["-pthread", "-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] + if_cuda(["-DGOOGLE_CUDA=1"])
+  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
+          if_cuda(["-DGOOGLE_CUDA=1"]) +
+          select({"//tensorflow:darwin": [],
+                  "//conditions:default": ["-pthread"]}))
 
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -180,16 +185,14 @@ def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
 
 # Build defs for TensorFlow kernels
 
-
 # When this target is built using --config=cuda, a cc_library is built
 # that passes -DGOOGLE_CUDA=1 and '-x cuda', linking in additional
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
-                       **kwargs):
-  # We have to disable variadic templates in Eigen for NVCC even though
-  # std=c++11 are enabled
+                          **kwargs):
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
-                "-nvcc_options=relaxed-constexpr"] + cuda_copts
+                "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+                "--gcudacc_flag=-ftz=true"] + cuda_copts
   native.cc_library(
       srcs = srcs,
       hdrs = hdrs,
@@ -199,7 +202,6 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
       alwayslink=1,
       **kwargs)
-
 
 def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
@@ -231,6 +233,73 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
       **kwargs)
 
 
+def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
+                      deps=None, alwayslink=1, **kwargs):
+  """A rule to build a TensorFlow OpKernel.
+
+  May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
+  but with alwayslink=1 by default.  If prefix is specified:
+    * prefix*.cc (except *.cu.cc) is added to srcs
+    * prefix*.h (except *.cu.h) is added to hdrs
+    * prefix*.cu.cc and prefix*.h (including *.cu.h) are added to gpu_srcs.
+  With the exception that test files are excluded.
+  For example, with prefix = "cast_op",
+    * srcs = ["cast_op.cc"]
+    * hdrs = ["cast_op.h"]
+    * gpu_srcs = ["cast_op_gpu.cu.cc", "cast_op.h"]
+    * "cast_op_test.cc" is excluded
+  With prefix = "cwise_op"
+    * srcs = ["cwise_op_abs.cc", ..., "cwise_op_tanh.cc"],
+    * hdrs = ["cwise_ops.h", "cwise_ops_common.h"],
+    * gpu_srcs = ["cwise_op_gpu_abs.cu.cc", ..., "cwise_op_gpu_tanh.cu.cc",
+                  "cwise_ops.h", "cwise_ops_common.h", "cwise_ops_gpu_common.cu.h"]
+    * "cwise_ops_test.cc" is excluded
+  """
+  if not srcs:
+    srcs = []
+  if not hdrs:
+    hdrs = []
+  if not deps:
+    deps = []
+  gpu_deps = deps + ["//tensorflow/core:cuda"]
+
+  if prefix:
+    if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
+      if not gpu_srcs:
+        gpu_srcs = []
+      gpu_srcs = gpu_srcs + native.glob([prefix + "*.cu.cc", prefix + "*.h"],
+                                        exclude = ["*test*"])
+    srcs = srcs + native.glob([prefix + "*.cc"],
+                              exclude = ["*test*", "*.cu.cc"])
+    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+
+  cuda_deps = ["//tensorflow/core:gpu_lib"]
+  if gpu_srcs:
+    tf_gpu_kernel_library(
+        name = name + "_gpu",
+        srcs = gpu_srcs,
+        deps = gpu_deps,
+        **kwargs)
+    cuda_deps.extend([":" + name + "_gpu"])
+  tf_cuda_library(
+      name = name,
+      srcs = srcs,
+      hdrs = hdrs,
+      copts = tf_copts(),
+      cuda_deps = cuda_deps,
+      linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+      alwayslink = alwayslink,
+      deps = deps,
+      **kwargs)
+
+
+def tf_kernel_libraries(name, prefixes, deps=None, **kwargs):
+  """Makes one target per prefix, and one target that includes them all."""
+  for p in prefixes:
+    tf_kernel_library(name=p, prefix=p, deps=deps, **kwargs)
+  native.cc_library(name=name, deps=[":" + p for p in prefixes])
+
+
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
   srcs = ctx.files.srcs
@@ -249,6 +318,7 @@ def _py_wrap_cc_impl(ctx):
     cc_include_dirs += [h.dirname for h in dep.cc.transitive_headers]
     cc_includes += dep.cc.transitive_headers
   args += ["-I" + x for x in cc_include_dirs]
+  args += ["-I" + ctx.label.workspace_root]
   args += ["-o", cc_out.path]
   args += ["-outdir", py_out.dirname]
   args += [src.path]
@@ -256,7 +326,7 @@ def _py_wrap_cc_impl(ctx):
   ctx.action(executable=ctx.executable.swig_binary,
              arguments=args,
              mnemonic="PythonSwig",
-             inputs=list(set([src]) + cc_includes + ctx.files.swig_includes +
+             inputs=sorted(set([src]) + cc_includes + ctx.files.swig_includes +
                          ctx.attr.swig_deps.files),
              outputs=outputs,
              progress_message="SWIGing {input}".format(input=src.path))
@@ -284,6 +354,28 @@ _py_wrap_cc = rule(attrs={
                        "py_out": "%{py_module_name}.py",
                    },
                    implementation=_py_wrap_cc_impl,)
+
+
+# Bazel rule for collecting the header files that a target depends on.
+def _transitive_hdrs_impl(ctx):
+  outputs = set()
+  for dep in ctx.attr.deps:
+    outputs += dep.cc.transitive_headers
+  return struct(files=outputs)
+
+
+_transitive_hdrs = rule(attrs={
+    "deps": attr.label_list(allow_files=True,
+                            providers=["cc"]),
+},
+                        implementation=_transitive_hdrs_impl,)
+
+
+def transitive_hdrs(name, deps=[], **kwargs):
+  _transitive_hdrs(name=name + "_gather",
+                   deps=deps)
+  native.filegroup(name=name,
+                   srcs=[":" + name + "_gather"])
 
 def tf_extension_linkopts():
   return []  # No extension link opts

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_H_
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace random {

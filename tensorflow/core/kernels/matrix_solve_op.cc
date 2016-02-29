@@ -23,11 +23,11 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/binary_linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -81,10 +81,10 @@ class MatrixSolveOp
       return;
     }
     Eigen::PartialPivLU<Matrix> lu_decomposition(matrix);
-    // While PartialPivLU cannot give strong guarantees on invertability,
+    // While PartialPivLU cannot give strong guarantees on invertibility,
     // we can at least guard against exact zero pivots. This can occur as
     // a result of basic user mistakes such providing integer valued
-    // matrices that are exacly singular, or due to underflow if this
+    // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
     // TODO(rmlarsen): Add check based on condition number estimation.
     const Scalar min_abs_pivot =

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace functor {
@@ -41,7 +41,7 @@ struct SpatialAvgPooling {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// Lauch a custom GPU kernels from Yanqing for the avgpooling backward operation
+// Launch a custom GPU kernels from Yanqing for the avgpooling backward operation
 // that works NHWC data formats.
 // Arguments:
 //   top_diff: backprop to the output of the pooling layer

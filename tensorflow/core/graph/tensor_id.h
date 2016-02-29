@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -33,6 +34,13 @@ struct TensorId : public std::pair<StringPiece, int> {
   using Base::pair;
 
   string ToString() const { return strings::StrCat(first, ":", second); }
+
+  struct Hasher {
+   public:
+    std::size_t operator()(const TensorId& x) const {
+      return Hash32(x.first.data(), x.first.size(), x.second);
+    }
+  };
 };
 
 TensorId ParseTensorName(const string& name);

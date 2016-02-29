@@ -17,8 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
 import shutil
+import time
 
 from tensorflow.python.platform.default import _gfile as gfile
 from tensorflow.python.platform.default import _googletest as googletest
@@ -147,6 +149,22 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     gfile.DeleteRecursively(self.tmp + "test_dir")
     self.assertFalse(gfile.Exists(self.tmp + "test_dir"))
 
+  @contextlib.contextmanager
+  def _working_directory(self, wd):
+    original_cwd = os.getcwd()
+    os.chdir(wd)
+    try:
+      yield
+    finally:
+      os.chdir(original_cwd)
+
+  def testMakeDirsWithEmptyString(self):
+    gfile.MakeDirs(self.tmp + "test_dir")
+    with self._working_directory(self.tmp + "test_dir"):
+      gfile.MakeDirs("")
+    # Should succeed because MakeDirs("") is a no-op.
+    gfile.RmDir(self.tmp + "test_dir")
+
   def testErrors(self):
     self.assertRaises(
         OSError, lambda: gfile.RmDir(self.tmp + "dir_doesnt_exist"))
@@ -163,6 +181,68 @@ class FunctionTests(_BaseTest, googletest.TestCase):
     gfile.DeleteRecursively(self.tmp + "error_dir")
     self.assertFalse(gfile.Exists(self.tmp + "error_dir"))
 
+  def testStat(self):
+    with gfile.GFile(self.tmp + "test_stat", "w"):
+      pass
+    creation_time = time.time()
+    statinfo = gfile.Stat(self.tmp + "test_stat")
+    # Test the modification timestamp is within 20 seconds of closing the file.
+    self.assertLessEqual(statinfo.mtime, creation_time + 10)
+    self.assertGreaterEqual(statinfo.mtime, creation_time - 10)
+
+  def testRename(self):
+    gfile.MkDir(self.tmp + "dir1")
+    gfile.MkDir(self.tmp + "dir2")
+    with gfile.GFile(self.tmp + "file1", "w"):
+      pass  # Create file
+    with gfile.GFile(self.tmp + "file2", "w"):
+      pass  # Create file
+
+    # Dest file already exists, overwrite=False (default).
+    self.assertRaises(
+        OSError, lambda: gfile.Rename(self.tmp + "file1", self.tmp + "file2"))
+    gfile.Rename(self.tmp + "file1", self.tmp + "file2", overwrite=True)
+    self.assertFalse(gfile.Exists(self.tmp + "file1"))
+    gfile.Rename(self.tmp + "file2", self.tmp + "newfile")
+    self.assertTrue(gfile.Exists(self.tmp + "newfile"))
+
+    gfile.Rename(self.tmp + "dir1", self.tmp + "dir2")
+    self.assertFalse(gfile.Exists(self.tmp + "dir1"))
+    gfile.Rename(self.tmp + "dir2", self.tmp + "newdir")
+    self.assertTrue(gfile.Exists(self.tmp + "newdir"))
+
+  def testCopy(self):
+    gfile.MkDir(self.tmp + "dir1")
+    gfile.MkDir(self.tmp + "dir2")
+    with gfile.GFile(self.tmp + "dir1/file1", "w"):
+      pass  # Create file
+    with gfile.GFile(self.tmp + "dir2/file2", "w"):
+      pass  # Create file
+
+    # Dest file already exists, overwrite=False (default).
+    self.assertRaises(
+        OSError, lambda: gfile.Copy(self.tmp + "dir1/file1",
+                                    self.tmp + "dir2/file2"))
+    # Overwrite succeeds
+    gfile.Copy(self.tmp + "dir1/file1", self.tmp + "dir2/file2",
+               overwrite=True)
+    self.assertTrue(gfile.Exists(self.tmp + "dir2/file2"))
+
+    # Normal copy.
+    gfile.Rename(self.tmp + "dir1/file1", self.tmp + "dir2/file1")
+    self.assertTrue(gfile.Exists(self.tmp + "dir2/file1"))
+
+    # Normal copy to non-existent dir
+    self.assertRaises(OSError,
+                      lambda: gfile.Rename(self.tmp + "dir1/file1",
+                                           self.tmp + "newdir/file1"))
+
+  def testOpen(self):
+    with gfile.Open(self.tmp + "test_open", "wb") as f:
+      f.write(b"foo")
+    with gfile.Open(self.tmp + "test_open") as f:
+      result = f.readlines()
+    self.assertEqual(["foo"], result)
 
 if __name__ == "__main__":
   googletest.main()

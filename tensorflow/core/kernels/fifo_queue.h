@@ -20,13 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/typed_queue.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -52,7 +52,7 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
     return queues_[0].size();
   }
 
- private:
+ protected:
   ~FIFOQueue() override {}
 
   // Helper for dequeuing a single element from queues_.
@@ -64,6 +64,7 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
                                              OpKernelContext* ctx,
                                              PersistentTensor* out_element);
 
+ private:
   TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueue);
 };
 

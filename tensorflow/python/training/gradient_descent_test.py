@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -95,6 +93,16 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
           ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
           opt.apply_gradients, zip(good_grads, bad_vars))
       opt.apply_gradients(zip(good_grads, good_vars))
+
+  def testGradWrtRef(self):
+    with self.test_session():
+      opt = tf.train.GradientDescentOptimizer(3.0)
+      values = [1.0, 3.0]
+      vars_ = [tf.Variable([v]) for v in values]
+      grads_and_vars = opt.compute_gradients(vars_[0].ref() + vars_[1], vars_)
+      tf.initialize_all_variables().run()
+      for grad, _ in grads_and_vars:
+        self.assertAllClose([1.0], grad.eval())
 
   def testWithGlobalStep(self):
     with self.test_session():

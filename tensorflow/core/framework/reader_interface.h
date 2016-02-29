@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -51,7 +50,7 @@ class ReaderInterface : public ResourceBase {
  public:
   // Read a single record into *key / *value.  May get more work from
   // *queue if the current work is complete.  Sets the status on
-  // *context with an OutOfRange Status if the the current work is
+  // *context with an OutOfRange Status if the current work is
   // complete and the queue is done (closed and empty).
   // This method may block.
   virtual void Read(QueueInterface* queue, string* key, string* value,

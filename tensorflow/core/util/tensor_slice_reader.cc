@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <vector>
+#include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/iterator.h"
 #include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 
@@ -154,6 +157,10 @@ void TensorSliceReader::LoadShard(int shard) const {
         fname);
     return;
   }
+  status_ = CheckVersions(sts.meta().versions(), TF_CHECKPOINT_VERSION,
+                          TF_CHECKPOINT_VERSION_MIN_PRODUCER, "Checkpoint",
+                          "checkpoint");
+  if (!status_.ok()) return;
   for (const SavedSliceMeta& ssm : sts.meta().tensor()) {
     TensorShape ssm_shape(ssm.shape());
     for (const TensorSliceProto& tsp : ssm.slice()) {

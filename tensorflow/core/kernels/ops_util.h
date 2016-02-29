@@ -19,8 +19,8 @@ limitations under the License.
 // This file contains utilities for various operations.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -28,6 +28,7 @@ namespace tensorflow {
 // Call this function from a test if op kernels are not being
 // registered.  This can happen if the test is linked in a shared
 // mode and has no direct references to any code from this directory.
+// TODO(josh11b): Delete this, should no longer be needed.
 void RequireDefaultOps();
 
 // Get2dOutputSize(): Given an input tensor, kernel, stride and padding
@@ -109,7 +110,7 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding);
 
 // Given a shape 's' of a tensor of type T. Returns true iff the
 // number of bytes occupied by each dim 0 (i.e., &tensor(i + 1, ...) -
-// &tensor(i, ...)) is multiple of EIGEN_ALIGN_BYTES.
+// &tensor(i, ...)) is multiple of EIGEN_MAX_ALIGN_BYTES.
 template <typename T>
 bool IsInnerDimsSizeAligned(const TensorShape& s) {
   if (s.dims() == 0) return false;
@@ -120,7 +121,7 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
 }
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
-// extracted from image at 'input_data', which is requred to be in storage
+// extracted from image at 'input_data', which is required to be in storage
 // order (batch, height, width, depth).
 // Implementation written by Yangqing Jia (jiayq).
 template <typename T>
@@ -189,6 +190,9 @@ void Col2im(const T* col_data, const int depth, const int height,
     h_pad += stride_h;
   }
 }
+
+// Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
+string SanitizeThreadSuffix(string suffix);
 
 }  // namespace tensorflow
 

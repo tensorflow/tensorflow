@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -113,6 +113,33 @@ class Session {
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
+
+  /// \brief Sets up a graph for partial execution. All future feeds and
+  /// fetches are specified by 'input_names' and 'output_names'. Returns
+  /// 'handle' that can be used to perform a sequence of partial feeds and
+  /// fetches.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status PRunSetup(const std::vector<string>& input_names,
+                           const std::vector<string>& output_names,
+                           const std::vector<string>& target_nodes,
+                           string* handle) {
+    return errors::Unimplemented(
+        "Partial run is not supported for"
+        " this session.");
+  }
+
+  /// \brief Continues the pending execution specified by 'handle' with the
+  /// provided input tensors and fills `outputs` for the endpoints specified
+  /// in `output_names`.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status PRun(const string& handle,
+                      const std::vector<std::pair<string, Tensor> >& inputs,
+                      const std::vector<string>& output_names,
+                      std::vector<Tensor>* outputs) {
+    return errors::Unimplemented(
+        "Partial run is not supported for"
+        " this session.");
+  }
 
   /// \brief Closes this session.
   ///

@@ -19,8 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-
-import tensorflow.python.platform
+import os
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -443,57 +442,6 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
 
-class RandomCropTest(test_util.TensorFlowTestCase):
-
-  def testNoOp(self):
-    # No random cropping is performed since the target width and height
-    # are match the image dimensions.
-    height = 4
-    width = 5
-    x_shape = [height, width, 3]
-    x_np = np.arange(0, np.prod(x_shape), dtype=np.int32).reshape(x_shape)
-    target_shape_np = np.array([height, width], dtype=np.int64)
-
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y = image_ops.random_crop(x, target_shape)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testRandomization(self):
-    # Run 1x1 crop num_samples times in an image and ensure that one finds each
-    # pixel 1/num_pixels of the time.
-    num_samples = 1000
-    height = 5
-    width = 4
-
-    num_pixels = height * width
-    data = np.arange(num_pixels).reshape([height, width, 1])
-    x_np = np.array(data).astype(np.int32)
-
-    target_shape_np = np.array([1, 1], dtype=np.int64)
-
-    y = []
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_np.shape)
-      target_shape = constant_op.constant(target_shape_np, shape=[2])
-      y_tf = image_ops.random_crop(x, target_shape)
-      for _ in xrange(num_samples):
-        y_np = y_tf.eval()
-        self.assertAllEqual(y_np.shape, [1, 1, 1])
-        y.extend(y_np.flatten())
-
-    # Calculate the mean and 4 * standard deviation.
-    mean = [num_samples / num_pixels] * num_pixels
-    four_stddev = 4.0 * np.sqrt(mean)
-
-    # Ensure that each entry is observed in 1/num_pixels of the samples
-    # within 4 standard deviations.
-    counts = np.bincount(y)
-    self.assertAllClose(counts, mean, atol=four_stddev)
-
-
 class PerImageWhiteningTest(test_util.TensorFlowTestCase):
 
   def _NumpyPerImageWhitening(self, x):
@@ -565,6 +513,41 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y_tf.flatten(), y_np.flatten())
 
 
+class CentralCropTest(test_util.TensorFlowTestCase):
+
+  def testNoOp(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.central_crop(x, 1.0)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, x_np)
+      self.assertEqual(y.op.name, x.op.name)
+
+  def testCropping(self):
+    x_shape = [4, 8, 1]
+    x_np = np.array([[1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8],
+                     [1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8]],
+                    dtype=np.int32).reshape(x_shape)
+    y_np = np.array([[3, 4, 5, 6], [3, 4, 5, 6]]).reshape([2, 4, 1])
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.central_crop(x, 0.5)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testError(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      with self.assertRaises(ValueError):
+        _ = image_ops.central_crop(x, 0.0)
+      with self.assertRaises(ValueError):
+        _ = image_ops.central_crop(x, 1.01)
+
+
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
   def testNoOp(self):
@@ -606,6 +589,148 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
                                         target_height, target_width)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+
+class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
+
+  def _testSampleDistortedBoundingBox(self, image, bounding_box,
+                                      min_object_covered, aspect_ratio_range,
+                                      area_range):
+    original_area = float(np.prod(image.shape))
+    bounding_box_area = float((bounding_box[3] - bounding_box[1]) *
+                              (bounding_box[2] - bounding_box[0]))
+
+    image_size_np = np.array(image.shape, dtype=np.int32)
+    bounding_box_np = (np.array(bounding_box, dtype=np.float32)
+                       .reshape([1, 1, 4]))
+
+    aspect_ratios = []
+    area_ratios = []
+
+    fraction_object_covered = []
+
+    num_iter = 1000
+    with self.test_session():
+      image_tf = constant_op.constant(image,
+                                      shape=image.shape)
+      image_size_tf = constant_op.constant(image_size_np,
+                                           shape=image_size_np.shape)
+      bounding_box_tf = constant_op.constant(bounding_box_np,
+                                             dtype=dtypes.float32,
+                                             shape=bounding_box_np.shape)
+      begin, end, _ = image_ops.sample_distorted_bounding_box(
+          image_size=image_size_tf,
+          bounding_boxes=bounding_box_tf,
+          min_object_covered=min_object_covered,
+          aspect_ratio_range=aspect_ratio_range,
+          area_range=area_range)
+      y = array_ops.slice(image_tf, begin, end)
+
+      for _ in xrange(num_iter):
+        y_tf = y.eval()
+        crop_height = y_tf.shape[0]
+        crop_width = y_tf.shape[1]
+        aspect_ratio = float(crop_width) / float(crop_height)
+        area = float(crop_width * crop_height)
+
+        aspect_ratios.append(aspect_ratio)
+        area_ratios.append(area / original_area)
+        fraction_object_covered.append(float(np.sum(y_tf)) / bounding_box_area)
+
+    # Ensure that each entry is observed within 3 standard deviations.
+    # num_bins = 10
+    # aspect_ratio_hist, _ = np.histogram(aspect_ratios,
+    #                                     bins=num_bins,
+    #                                     range=aspect_ratio_range)
+    # mean = np.mean(aspect_ratio_hist)
+    # stddev = np.sqrt(mean)
+    # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
+    # TODO(irving): Since the rejection probability is not independent of the
+    # aspect ratio, the aspect_ratio random value is not exactly uniformly
+    # distributed in [min_aspect_ratio, max_aspect_ratio).  This test should be
+    # fixed to reflect the true statistical property, then tightened to enforce
+    # a stricter bound.  Or, ideally, the sample_distorted_bounding_box Op
+    # be fixed to not use rejection sampling and generate correctly uniform
+    # aspect ratios.
+    # self.assertAllClose(aspect_ratio_hist,
+    #                     [mean] * num_bins, atol=3.6 * stddev)
+
+    # The resulting crop will not be uniformly distributed in area. In practice,
+    # we find that the area skews towards the small sizes. Instead, we perform
+    # a weaker test to ensure that the area ratios are merely within the
+    # specified bounds.
+    self.assertLessEqual(max(area_ratios), area_range[1])
+    self.assertGreaterEqual(min(area_ratios), area_range[0])
+
+    # For reference, here is what the distribution of area ratios look like.
+    area_ratio_hist, _ = np.histogram(area_ratios, bins=10, range=area_range)
+    print('area_ratio_hist ', area_ratio_hist)
+
+    # Ensure that fraction_object_covered is satisfied.
+    # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
+    # self.assertGreaterEqual(min(fraction_object_covered), min_object_covered)
+
+  def testWholeImageBoundingBox(self):
+    height = 40
+    width = 50
+    image_size = [height, width, 1]
+    bounding_box = [0.0, 0.0, 1.0, 1.0]
+    image = np.arange(0, np.prod(image_size),
+                      dtype=np.int32).reshape(image_size)
+    self._testSampleDistortedBoundingBox(image,
+                                         bounding_box,
+                                         min_object_covered=0.1,
+                                         aspect_ratio_range=(0.75, 1.33),
+                                         area_range=(0.05, 1.0))
+
+  def testWithBoundingBox(self):
+    height = 40
+    width = 50
+    x_shape = [height, width, 1]
+    image = np.zeros(x_shape, dtype=np.int32)
+
+    # Create an object with 1's in a region with area A and require that
+    # the total pixel values >= 0.1 * A.
+    min_object_covered = 0.1
+
+    xmin = 2
+    ymin = 3
+    xmax = 12
+    ymax = 13
+    for x in np.arange(xmin, xmax + 1, 1):
+      for y in np.arange(ymin, ymax + 1, 1):
+        image[x, y] = 1
+
+    # Bounding box is specified as (ymin, xmin, ymax, xmax) in
+    # relative coordinates.
+    bounding_box = (float(ymin) / height, float(xmin) / width,
+                    float(ymax) / height, float(xmax) / width)
+
+    self._testSampleDistortedBoundingBox(image,
+                                         bounding_box=bounding_box,
+                                         min_object_covered=min_object_covered,
+                                         aspect_ratio_range=(0.75, 1.33),
+                                         area_range=(0.05, 1.0))
+
+  def testSampleDistortedBoundingBoxShape(self):
+    with self.test_session():
+      image_size = constant_op.constant([40, 50, 1],
+                                        shape=[3],
+                                        dtype=dtypes.int32)
+      bounding_box = constant_op.constant([0.0, 0.0, 1.0, 1.0],
+                                          shape=[4],
+                                          dtype=dtypes.float32,)
+      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+          image_size=image_size,
+          bounding_boxes=bounding_box,
+          min_object_covered=0.1,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+      # Test that the shapes are correct.
+      self.assertAllEqual([3], begin.get_shape().as_list())
+      self.assertAllEqual([3], end.get_shape().as_list())
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
 
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
@@ -653,6 +778,58 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         yshape = array_ops.shape(y)
         newshape = yshape.eval()
         self.assertAllEqual(single_shape, newshape)
+
+  def testTensorArguments(self):
+    img_shape = [1, 6, 4, 1]
+    single_shape = [6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [127, 127, 64, 64,
+            127, 127, 64, 64,
+            64, 64, 127, 127,
+            64, 64, 127, 127,
+            50, 50, 100, 100,
+            50, 50, 100, 100]
+    target_height = array_ops.placeholder(dtypes.int32)
+    target_width = array_ops.placeholder(dtypes.int32)
+
+    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
+
+    for opt in self.OPTIONS:
+      with self.test_session() as sess:
+        image = constant_op.constant(img_np, shape=img_shape)
+        y = image_ops.resize_images(image, target_height, target_width, opt)
+        yshape = array_ops.shape(y)
+        resized, newshape = sess.run([y, yshape], {target_height: 6,
+                                                   target_width: 4})
+        self.assertAllEqual(img_shape, newshape)
+        self.assertAllClose(resized, img_np, atol=1e-5)
+
+    # Resizing with a single image must leave the shape unchanged also.
+    with self.test_session():
+      img_single = img_np.reshape(single_shape)
+      image = constant_op.constant(img_single, shape=single_shape)
+      y = image_ops.resize_images(image, target_height, target_width,
+                                  self.OPTIONS[0])
+      yshape = array_ops.shape(y)
+      newshape = yshape.eval(feed_dict={target_height: 6, target_width: 4})
+      self.assertAllEqual(single_shape, newshape)
+
+    # Incorrect shape.
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, [12, 32], 4, image_ops.ResizeMethod.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, 6, [12, 32], image_ops.ResizeMethod.BILINEAR)
+
+    # Incorrect dtypes.
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, 6.0, 4, image_ops.ResizeMethod.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, 6, 4.0, image_ops.ResizeMethod.BILINEAR)
 
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
@@ -946,6 +1123,24 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertLess(self.averageError(image0, image1), 0.8)
 
+  def testCmyk(self):
+    # Confirm that CMYK reads in as RGB
+    base = 'tensorflow/core/lib/jpeg/testdata'
+    rgb_path = os.path.join(base, 'jpeg_merge_test1.jpg')
+    cmyk_path = os.path.join(base, 'jpeg_merge_test1_cmyk.jpg')
+    shape = 256, 128, 3
+    for channels in 3, 0:
+      with self.test_session() as sess:
+        rgb = image_ops.decode_jpeg(io_ops.read_file(rgb_path),
+                                    channels=channels)
+        cmyk = image_ops.decode_jpeg(io_ops.read_file(cmyk_path),
+                                     channels=channels)
+        rgb, cmyk = sess.run([rgb, cmyk])
+        self.assertEqual(rgb.shape, shape)
+        self.assertEqual(cmyk.shape, shape)
+        error = self.averageError(rgb, cmyk)
+        self.assertLess(error, 4)
+
   def testSynthetic(self):
     with self.test_session() as sess:
       # Encode it, then decode it, then encode it
@@ -1005,6 +1200,43 @@ class PngTest(test_util.TensorFlowTestCase):
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 400)
       self.assertLessEqual(len(png0), 750)
+
+  def testSyntheticUint16(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it
+      image0 = constant_op.constant(_SimpleColorRamp(), dtype=dtypes.uint16)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+
+      # PNG is lossless
+      self.assertAllEqual(image0, image1)
+
+      # Smooth ramps compress well, but not too well
+      self.assertGreaterEqual(len(png0), 800)
+      self.assertLessEqual(len(png0), 1500)
+
+  def testSyntheticTwoChannel(self):
+    with self.test_session() as sess:
+      # Strip the b channel from an rgb image to get a two-channel image.
+      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      image0 = constant_op.constant(gray_alpha)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+      self.assertEqual(2, image0.shape[-1])
+      self.assertAllEqual(image0, image1)
+
+  def testSyntheticTwoChannelUint16(self):
+    with self.test_session() as sess:
+      # Strip the b channel from an rgb image to get a two-channel image.
+      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
+      png0 = image_ops.encode_png(image0, compression=7)
+      image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
+      png0, image0, image1 = sess.run([png0, image0, image1])
+      self.assertEqual(2, image0.shape[-1])
+      self.assertAllEqual(image0, image1)
 
   def testShape(self):
     with self.test_session():

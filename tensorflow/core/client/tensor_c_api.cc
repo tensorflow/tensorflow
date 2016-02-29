@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/public/tensor_c_api.h"
 
 #include <memory>
+#include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
@@ -315,16 +316,16 @@ Status LoadLibrary(const char* library_filename, void** result,
 
 }  // namespace tensorflow
 
-extern "C" {
-
-void TF_Run(TF_Session* s,
-            // Input tensors
-            const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
-            // Output tensors
-            const char** c_output_tensor_names, TF_Tensor** c_outputs,
-            int noutputs,
-            // Target nodes
-            const char** c_target_node_names, int ntargets, TF_Status* status) {
+void TF_Run_Helper(TF_Session* s, const char* handle,
+                   // Input tensors
+                   const char** c_input_names, TF_Tensor** c_inputs,
+                   int ninputs,
+                   // Output tensors
+                   const char** c_output_tensor_names, TF_Tensor** c_outputs,
+                   int noutputs,
+                   // Target nodes
+                   const char** c_target_node_names, int ntargets,
+                   TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; i++) {
     c_outputs[i] = NULL;
@@ -364,8 +365,13 @@ void TF_Run(TF_Session* s,
   for (int i = 0; i < ntargets; i++) {
     target_node_names[i] = c_target_node_names[i];
   }
-  Status result =
-      s->session->Run(inputs, output_tensor_names, target_node_names, &outputs);
+  Status result;
+  if (handle == nullptr) {
+    result = s->session->Run(inputs, output_tensor_names, target_node_names,
+                             &outputs);
+  } else {
+    result = s->session->PRun(handle, inputs, output_tensor_names, &outputs);
+  }
   if (!result.ok()) {
     status->status = result;
     return;
@@ -389,6 +395,69 @@ void TF_Run(TF_Session* s,
       c_outputs[i] = tensorflow::TF_Tensor_EncodeStrings(src);
     }
   }
+}
+
+extern "C" {
+
+void TF_Run(TF_Session* s,
+            // Input tensors
+            const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
+            // Output tensors
+            const char** c_output_tensor_names, TF_Tensor** c_outputs,
+            int noutputs,
+            // Target nodes
+            const char** c_target_node_names, int ntargets, TF_Status* status) {
+  TF_Run_Helper(s, nullptr, c_input_names, c_inputs, ninputs,
+                c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
+                ntargets, status);
+}
+
+void TF_PRunSetup(TF_Session* s,
+                  // Input names
+                  const char** c_input_names, int ninputs,
+                  // Output names
+                  const char** c_output_tensor_names, int noutputs,
+                  // Target nodes
+                  const char** c_target_node_names, int ntargets, char** handle,
+                  TF_Status* status) {
+  status->status = Status::OK();
+
+  std::vector<tensorflow::string> input_names(ninputs);
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
+  std::vector<tensorflow::string> target_node_names(ntargets);
+  for (int i = 0; i < ninputs; i++) {
+    input_names[i] = c_input_names[i];
+  }
+  for (int i = 0; i < noutputs; i++) {
+    output_tensor_names[i] = c_output_tensor_names[i];
+  }
+  for (int i = 0; i < ntargets; i++) {
+    target_node_names[i] = c_target_node_names[i];
+  }
+  tensorflow::string new_handle;
+  Status result;
+  result = s->session->PRunSetup(input_names, output_tensor_names,
+                                 target_node_names, &new_handle);
+  if (result.ok()) {
+    *handle = new char[new_handle.size() + 1];
+    memcpy(*handle, new_handle.c_str(), new_handle.size() + 1);
+  } else {
+    status->status = result;
+  }
+}
+
+void TF_PRun(TF_Session* s, const char* handle,
+             // Input tensors
+             const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
+             // Output tensors
+             const char** c_output_tensor_names, TF_Tensor** c_outputs,
+             int noutputs,
+             // Target nodes
+             const char** c_target_node_names, int ntargets,
+             TF_Status* status) {
+  TF_Run_Helper(s, handle, c_input_names, c_inputs, ninputs,
+                c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
+                ntargets, status);
 }
 
 const void* TF_BufferData(TF_Buffer* buffer) { return buffer->data; }

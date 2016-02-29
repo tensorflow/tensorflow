@@ -91,6 +91,7 @@ print(sess.run(var))
 @@truncated_normal
 @@random_uniform
 @@random_shuffle
+@@random_crop
 @@set_random_seed
 
 """
@@ -101,7 +102,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2

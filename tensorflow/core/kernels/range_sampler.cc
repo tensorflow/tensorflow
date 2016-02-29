@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -60,7 +60,7 @@ namespace {
 // We use batch_size and num_tries, where num_tries is the observed number of
 // tries it took to get batch_size unique values.
 //
-// Assuming (falsely) that the nubmer of tries to get a batch of batch_size
+// Assuming (falsely) that the number of tries to get a batch of batch_size
 // distinct values is _always_ num_tries, the probability that the value
 // is in a batch is (1 - (1-p)^num_tries)
 static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
@@ -97,7 +97,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
       }
     }
   } else {
-    CHECK_EQ(avoided_values.size(), 0)
+    CHECK_EQ(avoided_values.size(), size_t{0})
         << "avoided_values only supported with unique=true";
     for (int i = 0; i < batch_size; i++) {
       batch[i] = Sample(rnd);
@@ -138,7 +138,7 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
       batch_expected_count[i] = 1;
     }
   }
-  CHECK_EQ(0, avoided_values.size());
+  CHECK_EQ(size_t{0}, avoided_values.size());
   CHECK_EQ(extras.size(), extras_expected_count.size());
   for (size_t i = 0; i < extras.size(); i++) {
     extras_expected_count[i] = 1;
@@ -213,7 +213,7 @@ float UnigramSampler::Probability(int64 value) const {
   return unsafe_sampler_.Probability(value);
 }
 
-// Overriding at a high level results in far fewer lock aquisitions.
+// Overriding at a high level results in far fewer lock acquisitions.
 void UnigramSampler::SampleBatchGetExpectedCountAvoid(
     random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
     MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,

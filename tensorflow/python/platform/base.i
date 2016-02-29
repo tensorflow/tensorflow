@@ -17,7 +17,7 @@ limitations under the License.
 //
 %{
   #include <memory>
-  #include "tensorflow/core/platform/port.h"
+  #include "tensorflow/core/platform/types.h"
   using tensorflow::uint64;
   using tensorflow::string;
 

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -70,7 +68,7 @@ class XentTest(tf.test.TestCase):
     np_labels = np.array(
         [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(np.float32)
     self.assertRaisesRegexp(
-        ValueError, "must have the same rank",
+        ValueError, "must have rank 2",
         tf.nn.softmax_cross_entropy_with_logits, np_features, np_labels)
 
   def testNpXent(self):

@@ -100,12 +100,13 @@ class RNNCell(object):
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
-  def __init__(self, num_units):
+  def __init__(self, num_units, input_size=None):
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
@@ -125,12 +126,13 @@ class BasicRNNCell(RNNCell):
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units):
+  def __init__(self, num_units, input_size=None):
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
@@ -157,22 +159,33 @@ class GRUCell(RNNCell):
 class BasicLSTMCell(RNNCell):
   """Basic LSTM recurrent network cell.
 
-  The implementation is based on: http://arxiv.org/pdf/1409.2329v5.pdf.
+  The implementation is based on: http://arxiv.org/abs/1409.2329.
+
+  We add forget_bias (default: 1) to the biases of the forget gate in order to
+  reduce the scale of forgetting in the beginning of the training.
 
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  Biases of the forget gate are initialized by default to 1 in order to reduce
-  the scale of forgetting in the beginning of the training.
+  For advanced models, please use the full LSTMCell that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0):
+  def __init__(self, num_units, forget_bias=1.0, input_size=None):
+    """Initialize the basic LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell.
+      forget_bias: float, The bias added to forget gates (see above).
+      input_size: int, The dimensionality of the inputs into the LSTM cell,
+        by default equal to num_units.
+    """
     self._num_units = num_units
+    self._input_size = num_units if input_size is None else input_size
     self._forget_bias = forget_bias
 
   @property
   def input_size(self):
-    return self._num_units
+    return self._input_size
 
   @property
   def output_size(self):
@@ -198,22 +211,40 @@ class BasicLSTMCell(RNNCell):
     return new_h, array_ops.concat(1, [new_c, new_h])
 
 
-def _get_sharded_variable(name, shape, initializer, dtype, num_shards):
-  """Get a list of sharded variables with the given dtype and initializer."""
-  unit_shard_size = int(math.ceil(shape[1] / num_shards))
+def _get_concat_variable(name, shape, dtype, num_shards):
+  """Get a sharded variable concatenated into one tensor."""
+  sharded_variable = _get_sharded_variable(name, shape, dtype, num_shards)
+  if len(sharded_variable) == 1:
+    return sharded_variable[0]
+
+  concat_name = name + "/concat"
+  concat_full_name = vs.get_variable_scope().name + "/" + concat_name + ":0"
+  for value in ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES):
+    if value.name == concat_full_name:
+      return value
+
+  concat_variable = array_ops.concat(0, sharded_variable, name=concat_name)
+  ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
+                        concat_variable)
+  return concat_variable
+
+
+def _get_sharded_variable(name, shape, dtype, num_shards):
+  """Get a list of sharded variables with the given dtype."""
+  if num_shards > shape[0]:
+    raise ValueError("Too many shards: shape=%s, num_shards=%d" %
+                     (shape, num_shards))
+  unit_shard_size = int(math.floor(shape[0] / num_shards))
+  remaining_rows = shape[0] - unit_shard_size * num_shards
 
   shards = []
   for i in range(num_shards):
-    current_size = min(unit_shard_size, shape[1] - unit_shard_size * i)
-    shards.append(vs.get_variable(name + "_%d" % i, [shape[0], current_size],
-                                  initializer=initializer, dtype=dtype))
+    current_size = unit_shard_size
+    if i < remaining_rows:
+      current_size += 1
+    shards.append(vs.get_variable(name + "_%d" % i, [current_size, shape[1]],
+                                  dtype=dtype))
   return shards
-
-
-def _matmul_with_sharded_variable(tensor, sharded_tensor):
-  """Multiply tensor with each tensor in sharded_tensor and column-concatenated"""
-  return array_ops.concat(1, [math_ops.matmul(tensor, shard)
-                              for shard in sharded_tensor])
 
 
 class LSTMCell(RNNCell):
@@ -231,7 +262,7 @@ class LSTMCell(RNNCell):
   projection layer.
   """
 
-  def __init__(self, num_units, input_size,
+  def __init__(self, num_units, input_size=None,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None,
                num_unit_shards=1, num_proj_shards=1):
@@ -253,7 +284,7 @@ class LSTMCell(RNNCell):
         projection matrix is stored across num_proj_shards.
     """
     self._num_units = num_units
-    self._input_size = input_size
+    self._input_size = num_units if input_size is None else input_size
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
     self._initializer = initializer
@@ -280,60 +311,54 @@ class LSTMCell(RNNCell):
   def state_size(self):
     return self._state_size
 
-  def __call__(self, input_, state, scope=None):
+  def __call__(self, inputs, state, scope=None):
     """Run one step of LSTM.
 
     Args:
-      input_: input Tensor, 2D, batch x num_units.
+      inputs: input Tensor, 2D, batch x num_units.
       state: state Tensor, 2D, batch x state_size.
       scope: VariableScope for the created subgraph; defaults to "LSTMCell".
 
     Returns:
       A tuple containing:
       - A 2D, batch x output_dim, Tensor representing the output of the LSTM
-        after reading "input_" when previous state was "state".
+        after reading "inputs" when previous state was "state".
         Here output_dim is:
            num_proj if num_proj was set,
            num_units otherwise.
       - A 2D, batch x state_size, Tensor representing the new state of LSTM
-        after reading "input_" when previous state was "state".
+        after reading "inputs" when previous state was "state".
     """
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
     c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
     m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    dtype = input_.dtype
+    dtype = inputs.dtype
 
-    with vs.variable_scope(scope or type(self).__name__):  # "LSTMCell"
-      sharded_w = _get_sharded_variable(
+    with vs.variable_scope(scope or type(self).__name__,
+                           initializer=self._initializer):  # "LSTMCell"
+      concat_w = _get_concat_variable(
           "W", [self.input_size + num_proj, 4 * self._num_units],
-          self._initializer, dtype, self._num_unit_shards)
+          dtype, self._num_unit_shards)
 
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
           initializer=array_ops.zeros_initializer, dtype=dtype)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [input_, m_prev])
-      lstm_matrix = nn_ops.bias_add(
-          _matmul_with_sharded_variable(cell_inputs, sharded_w), b)
+      cell_inputs = array_ops.concat(1, [inputs, m_prev])
+      lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
       i, j, f, o = array_ops.split(1, 4, lstm_matrix)
 
       # Diagonal connections
       if self._use_peepholes:
         w_f_diag = vs.get_variable(
-            "W_F_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_F_diag", shape=[self._num_units], dtype=dtype)
         w_i_diag = vs.get_variable(
-            "W_I_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_I_diag", shape=[self._num_units], dtype=dtype)
         w_o_diag = vs.get_variable(
-            "W_O_diag", shape=[self._num_units],
-            initializer=self._initializer,
-            dtype=dtype)
+            "W_O_diag", shape=[self._num_units], dtype=dtype)
 
       if self._use_peepholes:
         c = (sigmoid(f + 1 + w_f_diag * c_prev) * c_prev +
@@ -350,11 +375,11 @@ class LSTMCell(RNNCell):
         m = sigmoid(o) * tanh(c)
 
       if self._num_proj is not None:
-        sharded_w_proj = _get_sharded_variable(
-            "W_P", [self._num_units, self._num_proj], self._initializer,
+        concat_w_proj = _get_concat_variable(
+            "W_P", [self._num_units, self._num_proj],
             dtype, self._num_proj_shards)
 
-        m = _matmul_with_sharded_variable(m, sharded_w_proj)
+        m = math_ops.matmul(m, concat_w_proj)
 
     return m, array_ops.concat(1, [c, m])
 
@@ -501,7 +526,7 @@ class DropoutWrapper(RNNCell):
   def state_size(self):
     return self._cell.state_size
 
-  def __call__(self, inputs, state):
+  def __call__(self, inputs, state, scope=None):
     """Run the cell with the declared dropouts."""
     if (not isinstance(self._input_keep_prob, float) or
         self._input_keep_prob < 1):

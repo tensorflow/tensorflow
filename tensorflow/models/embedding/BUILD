@@ -7,7 +7,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "package",
@@ -96,6 +96,7 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":word2vec_ops",
         "//tensorflow/core",
     ],
     alwayslink = 1,

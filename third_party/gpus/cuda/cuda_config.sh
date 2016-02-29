@@ -16,7 +16,7 @@
 
 
 # A simple script to configure the Cuda tree needed for the TensorFlow GPU
-# build. We need both Cuda toolkit 7.0 and Cudnn 6.5.
+# build. We need both Cuda toolkit $TF_CUDA_VERSION and Cudnn $TF_CUDNN_VERSION.
 # Useage:
 #    * User edit cuda.config to point both Cuda toolkit and Cudnn libraries to their local path
 #    * run cuda_config.sh to generate symbolic links in the source tree to reflect
@@ -62,8 +62,8 @@ function CudaError {
 cat << EOF
 ##############################################################################
 ##############################################################################
-Cuda 7.0 toolkit is missing.
-1. Download and install the CUDA 7.0 toolkit and CUDNN 6.5 library;
+Cuda $TF_CUDA_VERSION toolkit is missing.
+1. Download and install the CUDA $TF_CUDA_VERSION toolkit and CUDNN $TF_CUDNN_VERSION library;
 2. Run configure from the root of the source tree, before rerunning bazel;
 Please refer to README.md for more details.
 ##############################################################################
@@ -78,8 +78,8 @@ function CudnnError {
 cat << EOF
 ##############################################################################
 ##############################################################################
-Cudnn 6.5 is missing.
-1. Download and install the CUDA 7.0 toolkit and CUDNN 6.5 library;
+Cudnn $TF_CUDNN_VERSION is missing.
+1. Download and install the CUDA $TF_CUDA_VERSION toolkit and CUDNN $TF_CUDNN_VERSION library;
 2. Run configure from the root of the source tree, before rerunning bazel;
 Please refer to README.md for more details.
 ##############################################################################
@@ -110,18 +110,18 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
   CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
-  CheckAndLinkToSrcTree CudaError lib64/libcublas.so.7.0
-  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so.6.5
-  CheckAndLinkToSrcTree CudaError lib64/libcudart.so.7.0
-  CheckAndLinkToSrcTree CudaError lib64/libcufft.so.7.0
+  CheckAndLinkToSrcTree CudaError lib64/libcublas.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so$TF_CUDNN_VERSION
+  CheckAndLinkToSrcTree CudaError lib64/libcudart.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudaError lib64/libcufft.so$TF_CUDA_VERSION
   exit 0
 fi
 
 # Actually configure the source tree for TensorFlow's canonical view of Cuda
 # libraries.
 
-if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0; then
-  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so.7.0"
+if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -133,17 +133,19 @@ if test -e ${CUDNN_INSTALL_PATH}/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}
 elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}/include
+elif test -e /usr/include/cudnn.h; then
+  CUDNN_HEADER_PATH=/usr/include
 else
-  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH} or /usr/include"
 fi
 
-# Locate libcudnn.so.6.5
-if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so.6.5; then
+# Locate libcudnn.so.${$TF_CUDNN_VERSION}
+if test -e ${CUDNN_INSTALL_PATH}/libcudnn.so$TF_CUDNN_VERSION; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}
-elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so.6.5; then
+elif test -e ${CUDNN_INSTALL_PATH}/lib64/libcudnn.so$TF_CUDNN_VERSION; then
   CUDNN_LIB_PATH=${CUDNN_INSTALL_PATH}/lib64
 else
-  CudnnError "cannot find libcudnn.so.6.5 under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find libcudnn.so.$TF_CUDNN_VERSION under: ${CUDNN_INSTALL_PATH}"
 fi
 
 # Helper function to build symbolic links for all files under a directory.
@@ -182,4 +184,4 @@ LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || 
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
-ln -sf $CUDNN_LIB_PATH/libcudnn.so.6.5 $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so.6.5 || exit -1
+ln -sf $CUDNN_LIB_PATH/libcudnn.so$TF_CUDNN_VERSION $OUTPUTDIR/third_party/gpus/cuda/lib64/libcudnn.so$TF_CUDNN_VERSION || exit -1

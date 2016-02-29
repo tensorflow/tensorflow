@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_BFLOAT16_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Compact 16-bit encoding of floating point numbers. This representation uses
 // 1 bit for the sign, 8 bits for the exponent and 7 bits for the mantissa.  It

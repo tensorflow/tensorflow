@@ -19,11 +19,12 @@ limitations under the License.
 
 #include <cfloat>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/range_sampler.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {

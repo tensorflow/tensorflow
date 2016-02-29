@@ -35,8 +35,13 @@ namespace perftools {
 namespace gputools {
 namespace internal {
 
+// TensorFlow OSS configure uses the following lines to configure versions. For
+// any modifications of the format, please make sure the script still works.
+string GetCudaVersion() { return ""; }
+string GetCudnnVersion() { return ""; }
+
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcublas.so.7.0",
+  return GetDsoHandle(FindDsoPath("libcublas.so" + GetCudaVersion(),
                                   "third_party/gpus/cuda/lib64"),
                       dso_handle);
 }
@@ -46,31 +51,32 @@ namespace internal {
   // different version number than other CUDA libraries.  See b/22397368 for
   // some details about the complications surrounding this.
   return GetDsoHandle(
-      FindDsoPath("libcudnn.so.6.5", "third_party/gpus/cuda/lib64"),
+      FindDsoPath("libcudnn.so" + GetCudnnVersion(),
+                  "third_party/gpus/cuda/lib64"),
       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcufft.so.7.0",
+  return GetDsoHandle(FindDsoPath("libcufft.so" + GetCudaVersion(),
                                   "third_party/gpus/cuda/lib64"),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcurand.so.7.0",
+  return GetDsoHandle(FindDsoPath("libcurand.so" + GetCudaVersion(),
                                   "third_party/gpus/cuda/lib64"),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath("libcuda.so",
-                                  "third_party/gpus/cuda/driver/lib64"),
-                      dso_handle);
+  return GetDsoHandle(
+      FindDsoPath("libcuda.so.1", "third_party/gpus/cuda/driver/lib64"),
+      dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
   return GetDsoHandle(
-      FindDsoPath("libcupti.so.7.0",
+      FindDsoPath("libcupti.so" + GetCudaVersion(),
                   "third_party/gpus/cuda/extras/CUPTI/lib64"),
       dso_handle);
 }
@@ -92,8 +98,6 @@ namespace internal {
   if (*dso_handle == nullptr) {
     LOG(INFO) << "Couldn't open CUDA library " << path
               << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
-    // TODO(b/22689637): Eliminate unnecessary ToString once StrCat has been
-    // moved to the open-sourceable version.
     return port::Status(
         port::error::FAILED_PRECONDITION,
         port::StrCat("could not dlopen DSO: ", path, "; dlerror: ", dlerror()));

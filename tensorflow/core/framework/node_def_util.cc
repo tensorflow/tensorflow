@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op.h"

@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -48,12 +48,7 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int i = 0)  // NOLINT(runtime/explicit)
-        : node(n),
-          error(false),
-          name(node != nullptr ? node->name() : (error = true, "")),
-          index(i),
-          dt(SafeGetOutput(node, i, &error)) {}
+    NodeOut(Node* n, int i = 0);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a

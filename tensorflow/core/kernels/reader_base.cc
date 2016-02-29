@@ -158,12 +158,12 @@ Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
   if (work_started_ < 0 || work_finished_ < 0 || num_records_produced_ < 0) {
     return errors::InvalidArgument(
         "Unexpected negative value when restoring in ", name(), ": ",
-        state.ShortDebugString());
+        state.DebugString());
   }
   if (work_started_ > work_finished_) {
     return errors::InvalidArgument(
         "Inconsistent work started vs. finished when restoring in ", name(),
-        ": ", state.ShortDebugString());
+        ": ", state.DebugString());
   }
   return Status::OK();
 }

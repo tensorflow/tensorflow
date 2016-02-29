@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -84,6 +82,14 @@ class GatherTest(tf.test.TestCase):
     indices = tf.placeholder(tf.int32)
     gather_t = tf.gather(params, indices)
     self.assertEqual(None, gather_t.get_shape())
+
+  def testBadIndices(self):
+    with self.test_session():
+      params = [0, 1, 2]
+      indices = [[7]]
+      gather = tf.gather(params, indices)
+      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
+        gather.eval()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 # Neural Network
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -27,7 +27,7 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -82,7 +82,7 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -99,7 +99,7 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -235,7 +235,7 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then the spatial semantics of the
 convolution ops are as follows: first, according to the padding scheme chosen
@@ -296,7 +296,7 @@ performs the following:
 
 1. Flattens the filter to a 2-D matrix with shape
    `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the the input tensor to form a *virtual*
+2. Extracts image patches from the input tensor to form a *virtual*
    tensor of shape `[batch, out_height, out_width,
    filter_height * filter_width * in_channels]`.
 3. For each patch, right-multiplies the filter matrix and the image patch
@@ -620,7 +620,7 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None)` {#moments}
+### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -638,6 +638,7 @@ For so-called "global normalization" needed for convolutional filters pass
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
 ##### Returns:
@@ -665,7 +666,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -751,6 +752,12 @@ classes are mutually exclusive (each entry is in exactly one class).  For
 example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
+**NOTE:**  While the classes are mutually exclusive, their probabilities
+need not be.  All that is required is that each row of `labels` is
+a valid probability distribution.  If using exclusive `labels`
+(wherein one and only one class is true at a time), see
+`sparse_softmax_cross_entropy_with_logits`.
+
 **WARNING:** This op expects unscaled logits, since it performs a `softmax`
 on `logits` internally for efficiency.  Do not call this op with the
 output of `softmax`, as it will produce incorrect results.
@@ -771,6 +778,46 @@ and the same dtype (either `float32` or `float64`).
   softmax cross entropy loss.
 
 
+- - -
+
+### `tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels, name=None)` {#sparse_softmax_cross_entropy_with_logits}
+
+Computes sparse softmax cross entropy between `logits` and `labels`.
+
+Measures the probability error in discrete classification tasks in which the
+classes are mutually exclusive (each entry is in exactly one class).  For
+example, each CIFAR-10 image is labeled with one and only one label: an image
+can be a dog or a truck, but not both.
+
+**NOTE:**  For this operation, the probability of a given label is considered
+exclusive.  That is, soft classes are not allowed, and the `labels` vector
+must provide a single specific index for the true class for each row of
+`logits` (each minibatch entry).  For soft softmax classification with
+a probability distribution for each entry, see
+`softmax_cross_entropy_with_logits`.
+
+**WARNING:** This op expects unscaled logits, since it performs a `softmax`
+on `logits` internally for efficiency.  Do not call this op with the
+output of `softmax`, as it will produce incorrect results.
+
+`logits` and must have the shape `[batch_size, num_classes]`
+and the dtype (either `float32` or `float64`).
+
+`labels` must have the shape `[batch_size]` and the dtype `int64`.
+
+##### Args:
+
+
+*  <b>`logits`</b>: Unscaled log probabilities.
+*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
+  softmax cross entropy loss.
+
+
 
 ## Embeddings
 
@@ -779,7 +826,7 @@ tensors.
 
 - - -
 
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
@@ -818,6 +865,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`validate_indices`</b>: Whether or not to validate gather indices.
 
 ##### Returns:
 
@@ -837,36 +885,36 @@ Since they are nondifferentiable, they are typically used at evaluation time.
 
 - - -
 
-### `tf.nn.top_k(input, k, sorted=None, name=None)` {#top_k}
+### `tf.nn.top_k(input, k=1, sorted=True, name=None)` {#top_k}
 
-Returns the values and indices of the `k` largest elements for each row.
+Finds values and indices of the `k` largest entries for the last dimension.
 
-\\(values_{i, j}\\) represents the j-th largest element in \\(input_i\\).
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
 
-\\(indices_{i, j}\\) gives the column index of the corresponding element,
-such that \\(input_{i, indices_{i, j}} = values_{i, j}\\). If two
-elements are equal, the lower-index element appears first.
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`.
-    A `batch_size` x `classes` tensor.
-*  <b>`k`</b>: An `int` that is `>= 1`.
-    Number of top elements to look for within each row.
-*  <b>`sorted`</b>: An optional `bool`. Defaults to `True`.
-    If true the resulting `k` elements will be sorted by the values in
+*  <b>`input`</b>: 1-D or higher `Tensor` with last dimension at least `k`.
+*  <b>`k`</b>: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
+    dimension (along each row for matrices).
+*  <b>`sorted`</b>: If true the resulting `k` elements will be sorted by the values in
     descending order.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (values, indices).
 
-*  <b>`values`</b>: A `Tensor`. Has the same type as `input`. A `batch_size` x `k` tensor with the `k` largest elements for
-    each row.
-*  <b>`indices`</b>: A `Tensor` of type `int32`. A `batch_size` x `k` tensor with the index of each value within
-    each row.
+*  <b>`values`</b>: The `k` largest elements along each last dimensional slice.
+*  <b>`indices`</b>: The indices of `values` within the last dimension of `input`.
 
 
 - - -
@@ -997,7 +1045,8 @@ expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
 
-Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
 ##### Args:
 
@@ -1205,7 +1254,7 @@ compute them approximately.
 
 - - -
 
-### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=[], seed=None, name=None)` {#fixed_unigram_candidate_sampler}
+### `tf.nn.fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique, range_max, vocab_file='', distortion=1.0, num_reserved_ids=0, num_shards=1, shard=0, unigrams=(), seed=None, name=None)` {#fixed_unigram_candidate_sampler}
 
 Samples a set of classes using the provided (fixed) base distribution.
 

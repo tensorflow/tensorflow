@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/array_ops.cc
-#include "tensorflow/core/framework/op_kernel.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -33,7 +33,7 @@ class DiagonalGenerator {
   T operator()(
       const Eigen::array<Eigen::DenseIndex, DoubleNumDims>& coordinates) const {
     Eigen::array<Eigen::DenseIndex, NumDims> index;
-    for (int i = 0; i < NumDims; ++i) {
+    for (size_t i = 0; i < NumDims; ++i) {
       if (coordinates[i] != coordinates[NumDims + i]) {
         return T(0);
       }

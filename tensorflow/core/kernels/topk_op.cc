@@ -17,12 +17,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -32,6 +33,7 @@ class TopK : public OpKernel {
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
     if (num_inputs() < 2) {  // k is an attr (TopK).
+      OP_DEPRECATED(context, 7, "Use TopKV2 instead");
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     } else {  // k is an input (TopKV2), so we won't know it until Compute.
       k_ = -1;
@@ -44,7 +46,7 @@ class TopK : public OpKernel {
       const auto& k_in = context->input(1);
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_in.shape()),
                   errors::InvalidArgument("k must be scalar, got shape ",
-                                          k_in.shape().ShortDebugString()));
+                                          k_in.shape().DebugString()));
       k = k_in.scalar<int32>()();
     }
     OP_REQUIRES(context, k >= 0,
@@ -52,7 +54,7 @@ class TopK : public OpKernel {
     const auto& input_in = context->input(0);
     OP_REQUIRES(context, input_in.dims() >= 1,
                 errors::InvalidArgument("input must be >= 1-D, got shape ",
-                                        input_in.shape().ShortDebugString()));
+                                        input_in.shape().DebugString()));
     OP_REQUIRES(context, input_in.dim_size(input_in.dims() - 1) >= k,
                 errors::InvalidArgument("input must have at least k columns"));
 

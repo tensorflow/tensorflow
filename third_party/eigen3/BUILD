@@ -7,6 +7,7 @@ cc_library(
         "Eigen/LU",
         "Eigen/Cholesky",
         "Eigen/Eigenvalues",
+        "Eigen/QR",
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",

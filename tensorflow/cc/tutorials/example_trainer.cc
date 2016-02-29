@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
 
 using tensorflow::string;
 using tensorflow::int32;
@@ -114,7 +114,7 @@ void ConcurrentSteps(const Options* opts, int session_index) {
         outputs.clear();
         TF_CHECK_OK(
             session->Run({{"x", x}}, {"y:0", "y_normalized:0"}, {}, &outputs));
-        CHECK_EQ(2, outputs.size());
+        CHECK_EQ(size_t{2}, outputs.size());
 
         const Tensor& y = outputs[0];
         const Tensor& y_norm = outputs[1];

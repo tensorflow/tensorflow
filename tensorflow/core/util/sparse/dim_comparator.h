@@ -19,7 +19,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -49,7 +48,7 @@ class DimComparator {
   inline DimComparator(const TTypes<int64>::Matrix& ix,
                        const VarDimArray& order, int dims)
       : ix_(ix), order_(order), dims_(dims) {
-    CHECK_GT(order.size(), 0) << "Must order using at least one index";
+    CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
     CHECK_LE(order.size(), dims_) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
       CHECK_GE(order[d], 0);

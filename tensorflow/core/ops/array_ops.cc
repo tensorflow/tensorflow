@@ -75,6 +75,31 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+REGISTER_OP("ConcatOffset")
+    .Input("concat_dim: int32")
+    .Input("shape: N * int32")
+    .Output("offset: N * int32")
+    .Attr("N: int >= 2")
+    .Doc(R"doc(
+Computes offsets of concat inputs within its output.
+
+For example:
+
+```prettyprint
+# 'x' is [2, 2, 7]
+# 'y' is [2, 3, 7]
+# 'z' is [2, 5, 7]
+concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+```
+
+concat_dim: The dimension along which to concatenate.
+shape: The `N` int32 vectors representing shape of tensors being concatenated.
+output: The `N` int32 vectors representing the starting offset
+        of input tensors within the concatenated output.
+
+This is typically used by gradient computations for a concat operation.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Split")
     .Input("split_dim: int32")
@@ -303,6 +328,7 @@ value: 0-D (scalar). Value to fill the returned tensor.
 REGISTER_OP("Gather")
     .Input("params: Tparams")
     .Input("indices: Tindices")
+    .Attr("validate_indices: bool = true")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
@@ -539,7 +565,7 @@ For example:
 
 ```prettyprint
 # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique(x)
+y, idx, count = unique_with_counts(x)
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 count ==> [2, 1, 3, 1, 2]
@@ -568,6 +594,17 @@ For example:
 shape(t) ==> [2, 2, 3]
 ```
 
+)doc");
+
+REGISTER_OP("ShapeN")
+    .Input("input: N * T")
+    .Output("output: N * int32")
+    .Attr("N: int32")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns shape of tensors.
+
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -969,6 +1006,308 @@ x: 1-D. Values to keep.
 y: 1-D. Values to remove.
 out: 1-D. Values present in `x` but not in `y`.
 idx: 1-D. Positions of `x` values preserved in `out`.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("SpaceToDepth")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 >= 1")
+    .Doc(R"doc(
+SpaceToDepth for tensors of type T.
+
+Rearranges blocks of spatial data, into depth. More specifically,
+this op outputs a copy of the input tensor where values from the `height`
+and `width` dimensions are moved to the `depth` dimension.
+The attr `block_size` indicates the input block size and how the data is moved.
+
+  * Non-overlapping blocks of size `block_size x block size` are rearranged
+    into depth at each location.
+  * The depth of the output tensor is `input_depth * block_size * block_size`.
+  * The input tensor's height and width must be divisible by block_size.
+
+That is, assuming the input is in the shape:
+`[batch, height, width, depth]`,
+the shape of the output will be:
+`[batch, height/block_size, width/block_size, depth*block_size*block_size]`
+
+This operation requires that the input tensor be of rank 4, and that
+`block_size` be >=1 and a divisor of both the input `height` and `width`.
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
+
+```prettyprint
+x = [[[[1], [2]],
+      [[3], [4]]]]
+```
+
+This operation will output a tensor of shape `[1, 1, 1, 4]`:
+
+```prettyprint
+[[[[1, 2, 3, 4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+the corresponding output will have a single element (i.e. width and height are
+both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+The output element shape is `[1, 1, 4]`.
+
+For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+
+```prettyprint
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+This operation, for block_size of 2, will return the following tensor of shape
+`[1, 1, 1, 12]`
+
+```prettyprint
+[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+
+```prettyprint
+x = [[ [1],   [2],  [5],  [6]],
+     [ [3],   [4],  [7],  [8]],
+     [ [9],  [10], [13],  [14]],
+     [ [11], [12], [15],  [16]]]
+```
+
+the operator will return the following tensor of shape `[1 2 2 4]`:
+
+```prettyprint
+x = [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+
+block_size: The size of the spatial block.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DepthToSpace")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 >= 1")
+    .Doc(R"doc(
+DepthToSpace for tensors of type T.
+
+Rearranges data from depth into blocks of spatial data.
+This is the reverse transformation of SpaceToDepth. More specifically,
+this op outputs a copy of the input tensor where values from the `depth`
+dimension are moved in spatial blocks to the `height` and `width` dimensions.
+The attr `block_size` indicates the input block size and how the data is moved.
+
+  * Chunks of data of size `block_size * block_size` from depth are rearranged
+    into non-overlapping blocks of size `block_size x block_size`
+  * The width the output tensor is `input_depth * block_size`, whereas the
+    height is `input_height * block_size`.
+  * The depth of the input tensor must be divisible by
+    `block_size * block_size`.
+
+That is, assuming the input is in the shape:
+`[batch, height, width, depth]`,
+the shape of the output will be:
+`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`
+
+This operation requires that the input tensor be of rank 4, and that
+`block_size` be >=1 and that `block_size * block_size` be a divisor of the
+input depth.
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
+
+```prettyprint
+x = [[[[1, 2, 3, 4]]]]
+
+```
+
+This operation will output a tensor of shape `[1, 2, 2, 1]`:
+
+```prettyprint
+   [[[[1], [2]],
+     [[3], [4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,
+the corresponding output will have 2x2 elements and will have a depth of
+1 channel (1 = `4 / (block_size * block_size)`).
+The output element shape is `[2, 2, 1]`.
+
+For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
+
+```prettyprint
+x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+This operation, for block size of 2, will return the following tensor of shape
+`[1, 2, 2, 3]`
+
+```prettyprint
+   [[[[1, 2, 3], [4, 5, 6]],
+     [[7, 8, 9], [10, 11, 12]]]]
+
+```
+
+Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
+
+```prettyprint
+x =  [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+
+the operator will return the following tensor of shape `[1 4 4 1]`:
+
+```prettyprint
+x = [[ [1],   [2],  [5],  [6]],
+     [ [3],   [4],  [7],  [8]],
+     [ [9],  [10], [13],  [14]],
+     [ [11], [12], [15],  [16]]]
+
+```
+
+block_size: The size of the spatial block, same as in Space2Depth.
+)doc");
+
+REGISTER_OP("Bitcast")
+    .Input("input: T")
+    .Output("output: type")
+    .Attr("T: numbertype")
+    .Attr("type: numbertype")
+    .Doc(R"doc(
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
+)doc");
+
+REGISTER_OP("OneHot")
+    .Input("indices: int64")
+    .Input("depth: int32")
+    .Input("on_value: T")
+    .Input("off_value: T")
+    .Attr("axis: int = -1")
+    .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns a one-hot tensor.
+
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+
+    ```output =
+      [5.0 0.0 0.0]  // one_hot(0)
+      [0.0 0.0 5.0]  // one_hot(2)
+      [0.0 0.0 0.0]  // one_hot(-1)
+      [0.0 5.0 0.0]  // one_hot(1)
+    ```
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+
+    ```output =
+      [0.0 3.0 3.0 3.0]
+      [3.0 3.0 3.0 0.0]
+      [3.0 3.0 3.0 3.0]
+      [3.0 0.0 3.0 3.0]
+    //  ^                one_hot(0)
+    //      ^            one_hot(2)
+    //          ^        one_hot(-1)
+    //              ^    one_hot(1)
+    ```
+Suppose that
+
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+
+    ```output =
+      [
+        [1.0, 0.0, 0.0]  // one_hot(0)
+        [0.0, 0.0, 1.0]  // one_hot(2)
+      ][
+        [0.0, 1.0, 0.0]  // one_hot(1)
+        [0.0, 0.0, 0.0]  // one_hot(-1)
+      ]```
+
+indices: A tensor of indices.
+depth: A scalar defining the depth of the one hot dimension.
+on_value: A scalar defining the value to fill in output when `indices[j] = i`.
+off_value: A scalar defining the value to fill in output when `indices[j] != i`.
+axis: The axis to fill (default: -1, a new inner-most axis).
+output: The one-hot tensor.
 )doc");
 
 }  // namespace tensorflow

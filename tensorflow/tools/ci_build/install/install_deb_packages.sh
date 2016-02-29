@@ -19,6 +19,7 @@ set -e
 # Install dependencies from ubuntu deb repository.
 apt-get update
 apt-get install -y \
+    bc \
     build-essential \
     curl \
     git \
@@ -26,6 +27,9 @@ apt-get install -y \
     python-dev \
     python-numpy \
     python-pip \
+    python3-dev \
+    python3-numpy \
+    python3-pip \
     software-properties-common \
     swig \
     unzip \

@@ -17,12 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/kernels/batch_norm_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/batch_norm_op.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
@@ -33,6 +33,7 @@ template <typename Device, typename T>
 class BatchNormOp : public OpKernel {
  public:
   explicit BatchNormOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_DEPRECATED(context, 9, "Use tf.nn.batch_normalization()");
     OP_REQUIRES_OK(context,
                    context->GetAttr("variance_epsilon", &variance_epsilon_));
     OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
@@ -48,19 +49,19 @@ class BatchNormOp : public OpKernel {
 
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     OP_REQUIRES(context, mean.dims() == 1,
                 errors::InvalidArgument("mean must be 1-dimensional",
-                                        mean.shape().ShortDebugString()));
+                                        mean.shape().DebugString()));
     OP_REQUIRES(context, var.dims() == 1,
                 errors::InvalidArgument("var must be 1-dimensional",
-                                        var.shape().ShortDebugString()));
+                                        var.shape().DebugString()));
     OP_REQUIRES(context, beta.dims() == 1,
                 errors::InvalidArgument("beta must be 1-dimensional",
-                                        beta.shape().ShortDebugString()));
+                                        beta.shape().DebugString()));
     OP_REQUIRES(context, gamma.dims() == 1,
                 errors::InvalidArgument("gamma must be 1-dimensional",
-                                        gamma.shape().ShortDebugString()));
+                                        gamma.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -81,6 +82,7 @@ template <typename Device, typename T>
 class BatchNormGradOp : public OpKernel {
  public:
   explicit BatchNormGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_DEPRECATED(context, 9, "Use tf.nn.batch_normalization()");
     OP_REQUIRES_OK(context,
                    context->GetAttr("variance_epsilon", &variance_epsilon_));
     OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
@@ -96,20 +98,19 @@ class BatchNormGradOp : public OpKernel {
 
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     OP_REQUIRES(context, mean.dims() == 1,
                 errors::InvalidArgument("mean must be 1-dimensional",
-                                        mean.shape().ShortDebugString()));
+                                        mean.shape().DebugString()));
     OP_REQUIRES(context, var.dims() == 1,
                 errors::InvalidArgument("var must be 1-dimensional",
-                                        var.shape().ShortDebugString()));
+                                        var.shape().DebugString()));
     OP_REQUIRES(context, gamma.dims() == 1,
                 errors::InvalidArgument("gamma must be 1-dimensional",
-                                        gamma.shape().ShortDebugString()));
-    OP_REQUIRES(
-        context, out_backprop.dims() == 4,
-        errors::InvalidArgument("out_backprop must be 4-dimensional",
-                                out_backprop.shape().ShortDebugString()));
+                                        gamma.shape().DebugString()));
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                errors::InvalidArgument("out_backprop must be 4-dimensional",
+                                        out_backprop.shape().DebugString()));
 
     Tensor* dx = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &dx));

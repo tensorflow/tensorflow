@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace strings {
@@ -33,7 +33,7 @@ char* FastInt32ToBufferLeft(int32 i, char* buffer) {
   if (i < 0) {
     *buffer++ = '-';
     // We need to do the negation in modular (i.e., "unsigned")
-    // arithmetic; MSVC++ apprently warns for plain "-u", so
+    // arithmetic; MSVC++ apparently warns for plain "-u", so
     // we write the equivalent expression "0 - u" instead.
     u = 0 - u;
   }

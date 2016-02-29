@@ -57,8 +57,8 @@ class AssignOp : public OpKernel {
             context, old_lhs.shape().IsSameSize(rhs.shape()),
             errors::InvalidArgument(
                 "Assign requires shapes of both tensors to match. lhs shape= ",
-                old_lhs.shape().ShortDebugString(), " rhs shape= ",
-                rhs.shape().ShortDebugString()));
+                old_lhs.shape().DebugString(), " rhs shape= ",
+                rhs.shape().DebugString()));
       }
 
       const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());

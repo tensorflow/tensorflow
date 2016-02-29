@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_CORE_REFCOUNT_H_
 
 #include <atomic>
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace core {
@@ -71,6 +72,34 @@ class ScopedUnref {
   ScopedUnref(const ScopedUnref&) = delete;
   void operator=(const ScopedUnref&) = delete;
 };
+
+// Inlined routines, since these are performance critical
+inline RefCounted::RefCounted() : ref_(1) {}
+
+inline RefCounted::~RefCounted() { DCHECK_EQ(ref_.load(), 0); }
+
+inline void RefCounted::Ref() const {
+  DCHECK_GE(ref_.load(), 1);
+  ref_.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline bool RefCounted::Unref() const {
+  DCHECK_GT(ref_.load(), 0);
+  // If ref_==1, this object is owned only by the caller. Bypass a locked op
+  // in that case.
+  if (ref_.load(std::memory_order_acquire) == 1 || ref_.fetch_sub(1) == 1) {
+    // Make DCHECK in ~RefCounted happy
+    DCHECK((ref_.store(0), true));
+    delete this;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+inline bool RefCounted::RefCountIsOne() const {
+  return (ref_.load(std::memory_order_acquire) == 1);
+}
 
 }  // namespace core
 }  // namespace tensorflow

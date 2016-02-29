@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import contextlib
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -215,7 +213,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   with ops.op_scope(input_map.values(), name, 'import'):
     g = ops.get_default_graph()
-    g.graph_def_version = graph_def.version
+    g.graph_def_versions.CopyFrom(graph_def.versions)
 
     with ops.name_scope('_inputs'):
       input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
@@ -235,10 +233,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             node.attr[key].CopyFrom(attr_def.default_value)
 
       output_types = _OutputTypes(node, op_dict)
-      with _MaybeDevice(node.device):
-        name_to_op[node.name] = g.create_op(
-            node.op, [], output_types, name=node.name, attrs=node.attr,
-            compute_shapes=False)
+      name_to_op[node.name] = g.create_op(
+          node.op, [], output_types, name=node.name, attrs=node.attr,
+          compute_shapes=False, compute_device=False)
 
     # 2. Add inputs to the operations.
     for node in graph_def.node:
@@ -312,6 +309,12 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       # NOTE(mrry): If the graph contains a cycle, the full shape information
       # may not be available for this op's inputs.
       ops.set_shapes_for_outputs(op)
+
+      # Apply device functions for this op.
+      # NOTE(mrry): We do this after configuring the inputs, because
+      # the result of the device functions may depend on the inputs.
+      with _MaybeDevice(node.device):
+        g._apply_device_functions(op)  # pylint: disable=protected-access
 
     # Treat unused input mappings as an error, because they are likely to be
     # due to a typo.

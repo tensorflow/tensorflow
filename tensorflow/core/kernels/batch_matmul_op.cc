@@ -17,20 +17,21 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -195,8 +196,8 @@ class BatchMatMul : public OpKernel {
     const Tensor& in1 = ctx->input(1);
     OP_REQUIRES(ctx, in0.dims() == in1.dims(),
                 errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        in0.shape().ShortDebugString(), " vs. ",
-                                        in1.shape().ShortDebugString()));
+                                        in0.shape().DebugString(), " vs. ",
+                                        in1.shape().DebugString()));
     const int ndims = in0.dims();
     OP_REQUIRES(
         ctx, ndims >= 3,
@@ -224,8 +225,8 @@ class BatchMatMul : public OpKernel {
     OP_REQUIRES(ctx, d1 == d2,
                 errors::InvalidArgument(
                     "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
-                    in0.shape().ShortDebugString(), " ",
-                    in1.shape().ShortDebugString(), " ", adj_x_, " ", adj_y_));
+                    in0.shape().DebugString(), " ", in1.shape().DebugString(),
+                    " ", adj_x_, " ", adj_y_));
     out_shape.AddDim(d0);
     out_shape.AddDim(d3);
     Tensor* out = nullptr;

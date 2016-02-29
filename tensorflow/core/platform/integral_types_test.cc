@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {

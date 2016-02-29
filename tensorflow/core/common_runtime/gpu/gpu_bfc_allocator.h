@@ -21,15 +21,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
 #include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,12 +65,27 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   size_t AllocatedSize(void* ptr) override;
 
+  int64 AllocationId(void* ptr) override;
+
+  void GetStats(AllocatorStats* stats) override;
+
  private:
   struct Bin;
+
+  void MaybeInitialize() EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
                             bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
+
+  // A ChunkHandle is an index into the chunks_ vector in GPUBFCAllocator
+  // kInvalidChunkHandle means an invalid chunk
+  typedef int ChunkHandle;
+  static const int kInvalidChunkHandle = -1;
+
+  typedef int BinNum;
+  static const int kInvalidBinNum = -1;
+  static const int kNumBins = 21;
 
   // Chunks point to GPU memory.  Their prev/next pointers form a
   // doubly-linked list of addresses sorted by GPU base address that
@@ -86,69 +101,135 @@ class GPUBFCAllocator : public VisitableAllocator {
     // strategy is efficient.
     size_t requested_size = 0;
 
-    bool in_use = false;
+    // allocation_id is set to -1 when the chunk is not in use. It is assigned a
+    // value greater than zero before the chunk is returned from
+    // AllocateRaw, and this value is unique among values assigned by
+    // the parent allocator.
+    int64 allocation_id = -1;
     void* ptr = nullptr;  // pointer to granted GPU subbuffer.
 
-    // If not null, the memory referred to by 'prev' is directly
+    // If not kInvalidChunkHandle, the memory referred to by 'prev' is directly
     // preceding the memory used by this chunk.  E.g., It should start
     // at 'ptr - prev->size'
-    Chunk* prev = nullptr;
+    ChunkHandle prev = kInvalidChunkHandle;
 
-    // If not null, the memory referred to by 'next' is directly
+    // If not kInvalidChunkHandle, the memory referred to by 'next' is directly
     // following the memory used by this chunk.  E.g., It should be at
     // 'ptr + size'
-    Chunk* next = nullptr;
+    ChunkHandle next = kInvalidChunkHandle;
 
     // What bin are we in?
-    Bin* bin = nullptr;
+    BinNum bin_num = kInvalidBinNum;
 
-    string DebugString(bool recurse) {
+    bool in_use() { return allocation_id != -1; }
+
+    string DebugString(GPUBFCAllocator* a, bool recurse) {
       string dbg;
       strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
                          " | Requested Size: ",
                          strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use);
-      if (recurse && prev) {
-        strings::StrAppend(&dbg, ", prev: ", prev->DebugString(false));
+                         " | in_use: ", in_use());
+      if (recurse && prev != GPUBFCAllocator::kInvalidChunkHandle) {
+        Chunk* p = a->ChunkFromHandle(prev);
+        strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));
       }
-      if (recurse && next) {
-        strings::StrAppend(&dbg, ", next: ", next->DebugString(false));
+      if (recurse && next != GPUBFCAllocator::kInvalidChunkHandle) {
+        Chunk* n = a->ChunkFromHandle(next);
+        strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
       return dbg;
     }
   };
-
-  Chunk* AllocateNewChunk(size_t num_bytes);
-  void SplitChunk(Chunk* c, size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void Merge(Chunk* c1, Chunk* c2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void FreeAndMaybeCoalesce(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void InsertFreeChunkIntoBin(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void RemoveFreeChunkFromBin(Chunk* c);
-  void DeleteChunk(Chunk* c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
-  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
   // A Bin is a collection of similar-sized free chunks.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
     size_t bin_size = 0;
 
     struct ChunkComparator {
+      explicit ChunkComparator(GPUBFCAllocator* allocator)
+          : allocator_(allocator) {}
       // Sort first by size and then use pointer address as a tie breaker.
-      bool operator()(const Chunk* a, const Chunk* b) const {
+      bool operator()(const ChunkHandle ha, const ChunkHandle hb) const {
+        const Chunk* a = allocator_->ChunkFromHandle(ha);
+        const Chunk* b = allocator_->ChunkFromHandle(hb);
         if (a->size != b->size) {
           return a->size < b->size;
         }
         return a->ptr < b->ptr;
       }
+
+     private:
+      GPUBFCAllocator* allocator_;  // The parent allocator
     };
 
+    typedef std::set<ChunkHandle, ChunkComparator> FreeChunkSet;
     // List of free chunks within the bin, sorted by chunk size.
     // Chunk * not owned.
-    std::set<Chunk*, ChunkComparator> free_chunks;
-
-    explicit Bin(size_t bs) : bin_size(bs) {}
+    FreeChunkSet free_chunks;
+    Bin(GPUBFCAllocator* allocator, size_t bs)
+        : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
+  class PtrToChunkMap {
+   public:
+    explicit PtrToChunkMap(size_t memory_size, size_t min_allocation_size)
+        : base_ptr_(nullptr), memory_size_(memory_size) {
+      CHECK_EQ(min_allocation_size, 256);  // Otherwise shifts need to
+                                           // be adjusted in this class
+      const size_t n_handles =
+          (memory_size + min_allocation_size - 1) / min_allocation_size;
+      handles_ = new ChunkHandle[n_handles];
+      for (size_t i = 0; i < n_handles; i++) {
+        handles_[i] = kInvalidChunkHandle;
+      }
+    }
+    ~PtrToChunkMap() { delete[] handles_; }
+
+    void set_base_ptr(void* base_ptr) {
+      CHECK(base_ptr_ == nullptr);
+      base_ptr_ = base_ptr;
+    }
+
+    ChunkHandle get_handle(const void* p) const {
+      return handles_[IndexFor(p)];
+    }
+    void set_handle(const void* p, ChunkHandle h) { handles_[IndexFor(p)] = h; }
+    void erase(const void* p) { set_handle(p, kInvalidChunkHandle); }
+
+   private:
+    int IndexFor(const void* p) const {
+      std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
+      std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(base_ptr_);
+      DCHECK_GE(p_int, base_int);
+      DCHECK_LT(p_int, base_int + memory_size_);
+      return static_cast<int>(
+          ((p_int - base_int) >>
+           8));  // Shift by 8 because min_allocation_size is 256
+    }
+    void* base_ptr_;
+    size_t memory_size_;
+    // Array of size "memory_size / min_allocation_size".  It is
+    // indexed by (p-base) / min_allocation_size, contains ChunkHandle
+    // for the memory allocation represented by "p"
+    ChunkHandle* handles_;
+  };
+
+  void SplitChunk(ChunkHandle h, size_t num_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void Merge(ChunkHandle h, ChunkHandle h2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void FreeAndMaybeCoalesce(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void InsertFreeChunkIntoBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
+                                  const Bin::FreeChunkSet::iterator& c)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void RemoveFreeChunkFromBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  ChunkHandle AllocateChunk() EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void DeallocateChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  Chunk* ChunkFromHandle(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   GPUAllocatorRetry retry_helper_;
 
@@ -157,20 +238,53 @@ class GPUBFCAllocator : public VisitableAllocator {
   // The base pointer where all the GPU memory begins.
   void* base_ptr_ = nullptr;
   size_t gpu_memory_size_ = 0;
+  inline int Log2FloorNonZero(uint64 n) {
+#if defined(__GNUC__)
+    return 63 ^ __builtin_clzll(n);
+#else
+    int r = 0;
+    while (n > 0) {
+      r++;
+      n >>= 1;
+    }
+    return r;
+#endif
+  }
 
   // Map from bin size to Bin
-  // After construction, the bin map is never resized.
-  std::map<size_t, Bin*> bins_;
+  Bin* BinFromIndex(BinNum index) {
+    return reinterpret_cast<Bin*>(&(bins_space_[index * sizeof(Bin)]));
+  }
+  size_t BinNumToSize(BinNum index) {
+    return static_cast<size_t>(256) << index;
+  }
+  BinNum BinNumForSize(size_t bytes) {
+    uint64 v = std::max<size_t>(bytes, 256) >> 8;
+    int b = std::min(kNumBins - 1, Log2FloorNonZero(v));
+    return b;
+  }
+  Bin* BinForSize(size_t bytes) { return BinFromIndex(BinNumForSize(bytes)); }
+
+  char bins_space_[sizeof(Bin) * kNumBins];
 
   perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
 
   // Structures mutable after construction
   mutable mutex lock_;
-  // Chunk * owned.
-  std::unordered_map<void*, Chunk*> ptr_to_chunk_map_ GUARDED_BY(lock_);
+  PtrToChunkMap ptr_to_chunk_map_ GUARDED_BY(lock_);
+
+  std::vector<Chunk> chunks_;
+  ChunkHandle free_chunks_list_;  // Ptr to head of linked list of free Chunks
 
   // Called once on each region, ASAP.
   std::vector<Visitor> region_visitors_;
+
+  // Counter containing the next unique identifier to assign to a
+  // newly-created chunk.
+  int64 next_allocation_id_ GUARDED_BY(lock_);
+
+  // Stats.
+  AllocatorStats stats_ GUARDED_BY(lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 };

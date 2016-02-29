@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package tensorflow;
 // option cc_enable_arenas = true;
+option java_outer_classname = "AllocationDescriptionProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
 
 message AllocationDescription {
   // Total number of bytes requested
@@ -12,4 +15,10 @@ message AllocationDescription {
 
   // Name of the allocator used
   string allocator_name = 3;
+
+  // Identifier of the allocated buffer if known
+  int64 allocation_id = 4;
+
+  // Set if this tensor only has one remaining reference
+  bool has_single_reference = 5;
 };

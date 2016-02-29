@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace test {
@@ -40,6 +40,14 @@ void ToGraphDef(Graph* g, GraphDef* def);
 // Adds a node in "g" producing a constant "tensor".
 Node* Constant(Graph* g, const Tensor& tensor);
 Node* Constant(Graph* g, const Tensor& tensor, const string& name);
+
+// Adds a node in "g" producing a constant "tensor" on the host.
+// The given node which, unlike the regular Constant above, always
+// stores its output on the host.  This is necessary for use
+// in GPU tests where the test Op in question runs on the device
+// but requires some arguments to be pinned to the host.
+Node* HostConstant(Graph* g, const Tensor& tensor);
+Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
 
 // Adds a variable in "g" of the given "shape" and "dtype".
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
@@ -95,7 +103,7 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
-Node* RandomParameters(Graph* g, Node* input, DataType dtype);
+Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always
 // generates an error with the given error message "errmsg".
@@ -146,6 +154,9 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
+
+// Computes the args needed broadcast gradient function.
+Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 
 }  // end namespace graph
 }  // end namespace test

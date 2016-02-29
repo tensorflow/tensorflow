@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string.h>
 #include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace core {

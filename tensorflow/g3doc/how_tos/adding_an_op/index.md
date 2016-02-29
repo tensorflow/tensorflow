@@ -3,7 +3,10 @@
 PREREQUISITES:
 
 * Some familiarity with C++.
-* Must have [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources),
+* Must have installed the
+  [TensorFlow binary](../../get_started/os_setup.md#pip-installation), or must
+  have
+  [downloaded TensorFlow source](../../get_started/os_setup.md#installing-from-sources),
   and be able to build it.
 
 If you'd like to incorporate an operation that isn't covered by the existing
@@ -16,13 +19,13 @@ to:
 * Implement the Op in C++. This implementation is called a "kernel", and there
   can be multiple kernels for different architectures (e.g. CPUs, GPUs) or
   input / output types.
-* Create a Python wrapper. This wrapper is the public API to create the Op. A
-  default wrapper is generated from the Op registration, which can be used
-  directly or added to.
+* Optionally, create a Python wrapper. This wrapper is the public API to create
+  the Op. A default wrapper is generated from the Op registration, which can be
+  used directly or added to.
 * Optionally, write a function to compute gradients for the Op.
 * Optionally, write a function that describes the input and output shapes
   for the Op.  This allows shape inference to work with your Op.
-* Test the Op, typically in Python. If you define gradients, you can verify them   with the Python [`GradientChecker`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/gradient_checker.py).
+* Test the Op, typically in Python. If you define gradients, you can verify them with the Python [`GradientChecker`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/gradient_checker.py).
 
 [TOC]
 
@@ -106,68 +109,96 @@ To do this for the `ZeroOut` op, add the following to `zero_out.cc`:
 REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ```
 
-Once you
-[build and reinstall TensorFlow](../../get_started/os_setup.md#create-the-pip-package-and-install), the
-Tensorflow system can reference and use the Op when requested.
+## Building the Op library
+### With TensorFlow binary installation
 
-## Generate the client wrapper
-### The Python Op wrapper
+You should be able to compile `zero_out.cc` with a `C++` compiler such as `g++`
+or `clang` available on your system. The binary PIP package installs the header
+files and the library that you need to compile your Op in locations that are
+system specific. However, the TensorFlow python library provides functions
+`get_include` and `get_lib` to get the header and library directories
+respectively. Here is the output of those functions on a Ubuntu machine.
 
-Python op wrappers are created automatically in
-`bazel-genfiles/tensorflow/python/ops/gen_user_ops.py` for all ops placed in the
-[`tensorflow/core/user_ops`][user_ops] directory when you build Tensorflow.
+```bash
+$ python
+>>> import tensorflow as tf
+>>> tf.sysconfig.get_include()
+'/usr/local/lib/python2.7/site-packages/tensorflow/include'
+>>> tf.sysconfig.get_lib()
+'/usr/local/lib/python2.7/site-packages/tensorflow/core'
+>>> 
+
+```
+
+Assuming you have `g++` installed, here is the sequence of commands you can use
+to compile your Op into a dynamic library.
+
+```bash
+$ TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+$ TF_LIB=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+
+$ g++ -std=c++11 -shared zero_out.cc -o zero_out.so \
+-I $TF_INC -l tensorflow_framework -L $TF_LIB \
+-fPIC -Wl,-rpath $TF_LIB
+```
+
+### With TensorFlow source installation
+
+If you have TensorFlow sources installed, you can make use of TensorFlow's build
+system to compile your Op. The following Bazel build rule would build
+`zero_out.so`.
+
+```python
+cc_binary(
+    name = "zero_out.so",
+    srcs = ["zero_out.cc"],
+    linkopts = [
+        "-Wl,-Bsymbolic",
+        "-lm",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        "//third_party/tensorflow/core:framework",
+    ],
+)
+```
+
+## Using the Op in Python
+
+TensorFlow Python API provides the
+[load_op_library](../../api_docs/python/framework#load_op_library) function to
+load the dynamic library and register the Op with the TensorFlow
+framework. `load_op_library` returns a Python module, that contains the Python
+wrappers for the Op. Thus, once you have built the op, you can do the following
+to run it from Python :
+
+```python
+import tensorflow as tf
+zero_out_module = tf.load_op_library('zero_out.so')
+with tf.Session(''):
+  zero_out_module.zero_out([[1, 2], [3, 4]]).eval()
+
+# Prints
+array([[1, 0],
+       [0, 0]], dtype=int32)
+```
 
 > Note: The generated function will be given a snake\_case name (to comply with
 > [PEP8](https://www.python.org/dev/peps/pep-0008/)).  So if your op is named
 > `ZeroOut` in the C++ files, the python function will be called `zero_out`.
 
-Those ops are imported into
-[`tensorflow/python/user_ops/user_ops.py`][python-user_ops] with the statement:
+To make the Op available as a regular function `import`-able from a Python
+module, it maybe useful to have the `load_op_library` call in a Python source
+file as follows (see
+[zero_out_op_1.py](https://www.tensorflow.org/code/tensorflow/g3doc/how_tos/adding_an_op/zero_out_op_1.py))
+:
 
 ```python
-from tensorflow.python.ops.gen_user_ops import *
-```
+import tensorflow as tf
 
-You may optionally use your own function instead.  To do this, you first hide
-the generated code for that op by adding its name to the `hidden` list in the
-`"user_ops"` rule in
-[`tensorflow/python/BUILD`](https://www.tensorflow.org/code/tensorflow/python/BUILD):
-
-```python
-tf_gen_op_wrapper_py(
-    name = "user_ops",
-    hidden = [
-        "Fact",
-    ],
-    require_shape_functions = False,
-)
-```
-
-List your op next to `"Fact"`.  Next you add your replacement function to
-[`tensorflow/python/user_ops/user_ops.py`](https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py).
-Typically your function will call the generated function to actually add the op
-to the graph.  The hidden version of the generated function will be in the
-`gen_user_ops` package and start with an underscore ("`_`").  For example:
-
-```python
-def my_fact():
-    """Example of overriding the generated code for an Op."""
-    return gen_user_ops._fact()
-```
-
-### The C++ Op wrapper
-
-C++ op wrappers are created automatically for all ops placed in the
-[`tensorflow/core/user_ops`][user_ops] directory, when you build Tensorflow. For
-example, ops in `tensorflow/core/user_ops/zero_out.cc` will generate wrappers in
-`bazel-genfiles/tensorflow/cc/ops/user_ops.{h,cc}`.
-
-All generated wrappers for user ops are automatically
-imported into [`tensorflow/cc/ops/standard_ops.h`][standard_ops-cc] with the
-statement
-
-```c++
-#include "tensorflow/cc/ops/user_ops.h"
+_zero_out_module = tf.load_op_library('zero_out_op_kernel_1.so')
+zero_out = _zero_out_module.zero_out
 ```
 
 ## Verify it works
@@ -179,11 +210,11 @@ test for it. Create the file
 ```python
 import tensorflow as tf
 
-
 class ZeroOutTest(tf.test.TestCase):
   def testZeroOut(self):
+    zero_out_module = tf.load_op_library('zero_out.so')
     with self.test_session():
-      result = tf.user_ops.zero_out([5, 4, 3, 2, 1])
+      result = zero_out_module.zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
 ```
 
@@ -220,9 +251,9 @@ This asserts that the input is a vector, and returns having set the
     for its `SetStatus()` method.
 *   The condition.  For example, there are functions for validating the shape
     of a tensor in
-    [`tensorflow/core/public/tensor_shape.h`](https://www.tensorflow.org/code/tensorflow/core/public/tensor_shape.h)
+    [`tensorflow/core/framework/tensor_shape.h`](https://www.tensorflow.org/code/tensorflow/core/framework/tensor_shape.h)
 *   The error itself, which is represented by a `Status` object, see
-    [`tensorflow/core/public/status.h`](https://www.tensorflow.org/code/tensorflow/core/public/status.h). A
+    [`tensorflow/core/lib/core/status.h`](https://www.tensorflow.org/code/tensorflow/core/lib/core/status.h). A
     `Status` has both a type (frequently `InvalidArgument`, but see the list of
     types) and a message.  Functions for constructing an error may be found in
     [`tensorflow/core/lib/core/errors.h`][validation-macros].

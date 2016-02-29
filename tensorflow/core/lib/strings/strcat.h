@@ -25,12 +25,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
 // The basic idea is that by accepting a "const AlphaNum &" as an argument
-// to your function, your callers will automagically convert bools, integers,
+// to your function, your callers will automatically convert bools, integers,
 // and floating point values to strings for you.
 //
 // NOTE: Use of AlphaNum outside of the //strings package is unsupported except
@@ -140,9 +140,6 @@ class AlphaNum {
 };
 
 extern AlphaNum gEmptyAlphaNum;
-
-using strings::AlphaNum;
-using strings::gEmptyAlphaNum;
 
 // ----------------------------------------------------------------------
 // StrCat()

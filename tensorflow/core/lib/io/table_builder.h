@@ -25,8 +25,8 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/table_options.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 class WritableFile;

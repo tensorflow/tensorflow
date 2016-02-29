@@ -24,11 +24,11 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -60,12 +60,15 @@ def limit_epochs(tensor, num_epochs=None, name=None):
 
   Args:
     tensor: Any `Tensor`.
-    num_epochs: An integer (optional).  If specified, limits the number
+    num_epochs: A positive integer (optional).  If specified, limits the number
       of steps the output tensor may be evaluated.
     name: A name for the operations (optional).
 
   Returns:
     tensor or `OutOfRange`.
+
+  Raises:
+    ValueError: if `num_epochs` is invalid.
   """
   if num_epochs is None:
     return tensor
@@ -176,6 +179,8 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
       produces each slice `num_epochs` times before generating
       an `OutOfRange` error. If not specified, `slice_input_producer` can cycle
       through the slices an unlimited number of times.
+    shuffle: Boolean. If true, the integers are randomly shuffled within each
+      epoch.
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     name: A name for the operations (optional).
@@ -184,6 +189,9 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
     A list of tensors, one for each element of `tensor_list`.  If the tensor
     in `tensor_list` has shape `[N, a, b, .., z]`, then the corresponding output
     tensor will have shape `[a, b, ..., z]`.
+
+  Raises:
+    ValueError: if `slice_input_producer` produces nothing from `tensor_list`.
   """
   with ops.op_scope(tensor_list, name, "input_producer"):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)
@@ -201,6 +209,7 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
 
 
 # Helpers for the batching functions ------------------------------------------
+
 
 def _flatten(tensor_list_list):
   return [tensor for tensor_list in tensor_list_list for tensor in tensor_list]
@@ -269,6 +278,7 @@ def _enqueue(queue, tensor_list, threads, enqueue_many):
 
 
 # Batching functions ----------------------------------------------------------
+
 
 def batch(tensor_list, batch_size, num_threads=1, capacity=32,
           enqueue_many=False, shapes=None, name=None):

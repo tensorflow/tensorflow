@@ -17,16 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include <vector>
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -101,7 +102,7 @@ class SegmentReductionOp : public OpKernel {
                                Eigen::Unaligned> OutT;
       T* out_slice_ptr = &output_flat(segment_vec(start), 0);
       OutT out_slice(out_slice_ptr, out_slice_shape);
-      // We don't use out_slice.device(context->egien_device<Device>)
+      // We don't use out_slice.device(context->eigen_device<Device>)
       // because these pieces of work are likely to be very small and
       // the context switching overhead dwarfs any benefit we get from
       // using another thread to do this work.
@@ -186,14 +187,14 @@ class UnsortedSegmentSumOp : public OpKernel {
     OP_REQUIRES(
         context, IsLegacyScalar(num_segments.shape()),
         errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                num_segments.shape().ShortDebugString()));
+                                num_segments.shape().DebugString()));
 
-    OP_REQUIRES(context,
-                TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
-                errors::InvalidArgument(
-                    "data.shape = ", data.shape().ShortDebugString(),
-                    " does not start with segment_ids.shape = ",
-                    segment_ids.shape().ShortDebugString()));
+    OP_REQUIRES(
+        context,
+        TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
+        errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
+                                " does not start with segment_ids.shape = ",
+                                segment_ids.shape().DebugString()));
 
     const auto segment_flat = segment_ids.flat<Index>();
     const int32 N = segment_flat.dimension(0);
@@ -465,7 +466,7 @@ class SparseSegmentGradOpBase : public OpKernel {
     for (int64 i = 0; i < N; ++i) {
       scaling[segment_vec(i)] += 1;
     }
-    for (int i = 0; i < scaling.size(); ++i) {
+    for (size_t i = 0; i < scaling.size(); ++i) {
       if (is_sqrtn_) {
         scaling[i] = 1.0 / sqrt(std::max(scaling[i], 1.0));
       } else {

@@ -20,12 +20,21 @@ endorsed by or otherwise affiliated with Google. When referring to our marks,
 please include the following attribution statement: "TensorFlow, the TensorFlow
 logo and any related marks are trademarks of Google Inc."
 
-### What is TensorFlow used for?
+## What is TensorFlow used for?
+
+TensorFlow enables researchers to build machine learning models. We collect such
+models in our [Zoo](https://github.com/tensorflow/models). If you have built a 
+model with TensorFlow, you may consider publishing it there.
 
 We keep a list of projects that use TensorFlow [here](uses.md). If you made
 something amazing with TensorFlow, we'd like to hear about it!
 
 ## Community
+
+The TensorFlow community has created many great projects around TensorFlow, including:
+
+* [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
+* [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/skflow)
 
 ### Development
 

@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -30,7 +30,7 @@ class AssertOp : public OpKernel {
     const Tensor& cond = ctx->input(0);
     OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
                 errors::InvalidArgument("In[0] should be a scalar: ",
-                                        cond.shape().ShortDebugString()));
+                                        cond.shape().DebugString()));
 
     if (cond.scalar<bool>()()) {
       return;

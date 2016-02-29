@@ -117,18 +117,26 @@ class Reservoir(object):
       bucket = self._buckets[key]
     bucket.AddItem(item)
 
-  def FilterItems(self, filterFn):
+  def FilterItems(self, filterFn, key=None):
     """Filter items within a Reservoir, using a filtering function.
 
     Args:
       filterFn: A function that returns True for the items to be kept.
+      key: An optional bucket key to filter. If not specified, will filter all
+        all buckets.
 
     Returns:
       The number of items removed.
     """
     with self._mutex:
-      return sum(bucket.FilterItems(filterFn)
-                 for bucket in self._buckets.values())
+      if key:
+        if key in self._buckets:
+          return self._buckets[key].FilterItems(filterFn)
+        else:
+          return 0
+      else:
+        return sum(bucket.FilterItems(filterFn)
+                   for bucket in self._buckets.values())
 
 
 class _ReservoirBucket(object):
@@ -214,7 +222,7 @@ class _ReservoirBucket(object):
       self.items = list(filter(filterFn, self.items))
       size_diff = size_before - len(self.items)
 
-      # Estimate a correction the the number of items seen
+      # Estimate a correction the number of items seen
       prop_remaining = len(self.items) / float(
           size_before) if size_before > 0 else 0
       self._num_items_seen = int(round(self._num_items_seen * prop_remaining))

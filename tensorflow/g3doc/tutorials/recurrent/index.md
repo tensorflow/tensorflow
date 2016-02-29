@@ -21,8 +21,9 @@ recognition, machine translation, or image captioning. It is also fun, too --
 take a look [here] (http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
-[Zaremba et al., 2014] (http://arxiv.org/abs/1409.2329), which achieves very
-good results on the PTB dataset.
+[Zaremba et al., 2014] (http://arxiv.org/abs/1409.2329)
+([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good results
+on the PTB dataset.
 
 ## Tutorial Files
 
@@ -91,7 +92,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 initial_state = state = tf.zeros([batch_size, lstm.state_size])
 
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = lstm(words[:, i], state)
 
@@ -158,7 +159,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = stacked_lstm(words[:, i], state)
 

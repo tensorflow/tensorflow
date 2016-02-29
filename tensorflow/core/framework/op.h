@@ -18,17 +18,18 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -71,7 +72,7 @@ class OpRegistry : public OpRegistryInterface {
   const OpDef* LookUp(const string& op_type_name,
                       Status* status) const override;
 
-  // Fills *ops with all registered OpDefss (except those with names
+  // Fills *ops with all registered OpDefs (except those with names
   // starting with '_' if include_internal == false).
   void Export(bool include_internal, OpList* ops) const;
 
@@ -101,6 +102,19 @@ class OpRegistry : public OpRegistryInterface {
   mutable std::vector<OpDef> deferred_ GUARDED_BY(mu_);
   mutable std::unordered_map<string, OpDef*> registry_ GUARDED_BY(mu_);
   mutable bool initialized_ GUARDED_BY(mu_);
+};
+
+// An adapter to allow an OpList to be used as an OpRegistryInterface.
+class OpListOpRegistry : public OpRegistryInterface {
+ public:
+  // Does not take ownership of op_list, *op_list must outlive *this.
+  OpListOpRegistry(const OpList* op_list);
+  ~OpListOpRegistry() override {}
+  const OpDef* LookUp(const string& op_type_name,
+                      Status* status) const override;
+
+ private:
+  std::unordered_map<string, const OpDef*> index_;
 };
 
 // Treats 'registry_ptr' as a pointer to OpRegistry, and calls

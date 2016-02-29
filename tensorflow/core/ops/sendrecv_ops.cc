@@ -25,6 +25,7 @@ REGISTER_OP("_Send")
     .Attr("send_device_incarnation: int")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
+    .SetIsStateful()
     .Doc(R"doc(
 Sends the named tensor from send_device to recv_device.
 
@@ -47,6 +48,7 @@ REGISTER_OP("_Recv")
     .Attr("send_device_incarnation: int")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
+    .SetIsStateful()
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 
@@ -69,6 +71,7 @@ REGISTER_OP("_HostSend")
     .Attr("send_device_incarnation: int")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
+    .SetIsStateful()
     .Doc(R"doc(
 Sends the named tensor from send_device to recv_device.
 
@@ -94,6 +97,7 @@ REGISTER_OP("_HostRecv")
     .Attr("send_device_incarnation: int")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
+    .SetIsStateful()
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 

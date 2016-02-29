@@ -33,8 +33,10 @@ function main() {
     exit 1
   fi
   cp -R \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
     ${TMPDIR}
+  # TODO: We should have cleaner solution for this after 0.7 release
+  rm -rf ${TMPDIR}/external/eigen_archive
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}

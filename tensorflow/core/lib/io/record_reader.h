@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_RECORD_READER_H_
 #define TENSORFLOW_LIB_IO_RECORD_READER_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

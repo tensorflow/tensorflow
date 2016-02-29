@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package tensorflow;
 // option cc_enable_arenas = true;
+option java_outer_classname = "TypesProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
 
 enum DataType {
   // Not a legal value for DataType.  Used to indicate a DataType field
@@ -26,9 +29,10 @@ enum DataType {
   DT_BFLOAT16 = 14;  // Float32 truncated to 16 bits.  Only for cast ops.
   DT_QINT16 = 15;    // Quantized int16
   DT_QUINT16 = 16;   // Quantized uint16
+  DT_UINT16 = 17;
 
   // TODO(josh11b): DT_GENERIC_PROTO = ??;
-  // TODO(jeff,josh11b): DT_UINT64?  DT_UINT32?  DT_UINT16?
+  // TODO(jeff,josh11b): DT_UINT64?  DT_UINT32?
   // TODO(zhifengc): DT_COMPLEX128 (double-precision complex)?
 
   // Do not use!  These are only for parameters.  Every enum above
@@ -49,4 +53,5 @@ enum DataType {
   DT_BFLOAT16_REF = 114;
   DT_QINT16_REF = 115;
   DT_QUINT16_REF = 116;
+  DT_UINT16_REF = 117;
 }

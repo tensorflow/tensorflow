@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/graph/node_builder.h"
 
+#include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+
+NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
+    : node(n),
+      error(false),
+      name(node != nullptr ? node->name() : (error = true, "")),
+      index(i),
+      dt(SafeGetOutput(node, i, &error)) {}
 
 NodeBuilder::NodeBuilder(const string& name, const string& op_name,
                          const OpRegistryInterface* op_registry)

@@ -19,13 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import itertools
+
 import numpy as np
 import tensorflow as tf
+
+from google.protobuf import json_format
 
 # Helpers for creating Example objects
 example = tf.train.Example
@@ -96,7 +95,7 @@ class ParseExampleTest(tf.test.TestCase):
       batch_size = (
           serialized.eval().size if isinstance(serialized, tf.Tensor)
           else np.asarray(serialized).size)
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(
               tuple(out[k].get_shape().as_list()), (batch_size,) + f.shape)
@@ -365,7 +364,7 @@ class ParseSingleExampleTest(tf.test.TestCase):
         _compare_output_to_expected(self, out, expected_values, tf_result)
 
       # Check shapes.
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(tuple(out[k].get_shape()), f.shape)
         elif isinstance(f, tf.VarLenFeature):
@@ -453,7 +452,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
       # Check shapes; if serialized is a Tensor we need its size to
       # properly check.
       if "context_features" in kwargs:
-        for k, f in kwargs["context_features"].iteritems():
+        for k, f in kwargs["context_features"].items():
           if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
             self.assertEqual(
                 tuple(context_out[k].get_shape().as_list()), f.shape)
@@ -521,7 +520,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             [[5, 6, 7]],
             [[8, 9, 10]]], dtype=np.int64),
         "b": np.array([  # outer dimension is time, inside are 2x2 matrices
-            [[b"r00", b"r01"], [b"r10", b"r11"]]], dtype=np.str),
+            [[b"r00", b"r01"], [b"r10", b"r11"]]], dtype=bytes),
         "c": np.array([  # outer dimension is time, inside are 2-vectors
             [3, 4],
             [-1, 2]], dtype=np.float32),
@@ -563,7 +562,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
@@ -612,7 +611,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
@@ -727,6 +726,80 @@ class ParseSequenceExampleTest(tf.test.TestCase):
         "  Did you mean to include it in"
         " feature_list_dense_missing_assumed_empty or"
         " feature_list_dense_defaults?"))
+
+
+class DecodeJSONExampleTest(tf.test.TestCase):
+
+  def _testRoundTrip(self, examples):
+    with self.test_session() as sess:
+      examples = np.array(examples, dtype=np.object)
+
+      json_tensor = tf.constant(
+          [json_format.MessageToJson(m) for m in examples.flatten()],
+          shape=examples.shape, dtype=tf.string)
+      binary_tensor = tf.decode_json_example(json_tensor)
+      binary_val = sess.run(binary_tensor)
+
+      if examples.shape:
+        self.assertShapeEqual(binary_val, json_tensor)
+        for input_example, output_binary in zip(np.array(examples).flatten(),
+                                                binary_val.flatten()):
+          output_example = tf.train.Example()
+          output_example.ParseFromString(output_binary)
+          self.assertProtoEquals(input_example, output_example)
+      else:
+        output_example = tf.train.Example()
+        output_example.ParseFromString(binary_val)
+        self.assertProtoEquals(examples.item(), output_example)
+
+  def testEmptyTensor(self):
+    self._testRoundTrip([])
+    self._testRoundTrip([[], [], []])
+
+  def testEmptyExamples(self):
+    self._testRoundTrip([example(), example(), example()])
+
+  def testDenseFeaturesScalar(self):
+    self._testRoundTrip(
+        example(features=features({"a": float_feature([1, 1, 3])})))
+
+  def testDenseFeaturesVector(self):
+    self._testRoundTrip([
+        example(features=features({"a": float_feature([1, 1, 3])})),
+        example(features=features({"a": float_feature([-1, -1, 2])})),
+    ])
+
+  def testDenseFeaturesMatrix(self):
+    self._testRoundTrip([
+        [example(features=features({"a": float_feature([1, 1, 3])}))],
+        [example(features=features({"a": float_feature([-1, -1, 2])}))],
+    ])
+
+  def testSparseFeatures(self):
+    self._testRoundTrip([
+        example(features=features({"st_c": float_feature([3, 4])})),
+        example(features=features({"st_c": float_feature([])})),
+        example(features=features({"st_d": feature()})),
+        example(features=features({"st_c": float_feature([1, 2, -1]),
+                                   "st_d": bytes_feature([b"hi"])})),
+    ])
+
+  def testSerializedContainingBytes(self):
+    aname = "a"
+    bname = "b*has+a:tricky_name"
+    self._testRoundTrip([
+        example(features=features({aname: float_feature([1, 1]),
+                                   bname: bytes_feature([b"b0_str"])})),
+        example(features=features({aname: float_feature([-1, -1]),
+                                   bname: bytes_feature([b"b1"])})),
+    ])
+
+  def testInvalidSyntax(self):
+    with self.test_session() as sess:
+      json_tensor = tf.constant(["{]"])
+      binary_tensor = tf.decode_json_example(json_tensor)
+      with self.assertRaisesOpError("Error while parsing JSON"):
+        sess.run(binary_tensor)
 
 
 if __name__ == "__main__":

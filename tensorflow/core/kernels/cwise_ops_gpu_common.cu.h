@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -99,17 +99,6 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
     }
     To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
         To32Bit(in1).broadcast(bcast1), func);
-  }
-};
-
-template <typename T>
-struct SelectFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<bool>::ConstFlat cond_flat,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    To32Bit(out).device(d) =
-        To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
   }
 };
 

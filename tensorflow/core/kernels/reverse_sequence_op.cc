@@ -24,15 +24,16 @@ limitations under the License.
 #include "tensorflow/core/kernels/reverse_sequence_op.h"
 
 #include <memory>
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -66,7 +67,7 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
                                       "), ", "(", seq_lens.NumElements(),
                                       " vs. ", input.dim_size(batch_dim)));
 
-  for (int d = 0; d < seq_lens_vec.size(); ++d) {
+  for (size_t d = 0; d < seq_lens_vec.size(); ++d) {
     OP_REQUIRES(context, seq_lens_vec[d] >= 0,
                 errors::InvalidArgument("seq_lens(", d, ") < 0"));
     OP_REQUIRES(context, seq_lens_vec[d] <= input.dim_size(seq_dim),

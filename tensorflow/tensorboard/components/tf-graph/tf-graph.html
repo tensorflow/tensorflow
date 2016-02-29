@@ -64,6 +64,12 @@ Polymer({
       notify: true,
       observer: '_graphChanged'
     },
+    basicGraph: Object,
+    hierarchyParams: Object,
+    progress: {
+      type: Object,
+      notify: true,
+    },
     title: String,
     selectedNode: {
       type: String,
@@ -99,7 +105,7 @@ Polymer({
     _allowGraphSelect: {
       type: Boolean,
       value: true
-    }
+    },
   },
   observers: [
     '_buildRenderHierarchy(graphHierarchy, _graphParams)'
@@ -158,6 +164,7 @@ Polymer({
     'node-highlight': '_nodeHighlighted',
     'node-unhighlight': '_nodeUnhighlighted',
     'node-toggle-extract': '_nodeToggleExtract',
+    'node-toggle-seriesgroup': '_nodeToggleSeriesGroup',
 
     // Annotations
 
@@ -207,6 +214,10 @@ Polymer({
     this.set('highlightedNode', null);
   },
   _nodeToggleExpand: function(event) {
+    // Immediately select the node that is about to be expanded.
+    this._nodeSelected(event);
+
+    // Compute the sub-hierarchy scene.
     var nodeName = event.detail.name;
     var renderNode = this.renderHierarchy.getRenderNodeByName(nodeName);
     // Op nodes are not expandable.
@@ -215,9 +226,13 @@ Polymer({
     }
     this.renderHierarchy.buildSubhierarchy(nodeName);
     renderNode.expanded = !renderNode.expanded;
-    this.querySelector('#scene').setNodeExpanded(renderNode);
-    // Also select the expanded node.
-    this._nodeSelected(event);
+
+    // Expand the node with some delay so that the user can immediately see
+    // the visual effect of selecting that node, before the expansion is
+    // done.
+    this.async(function() {
+      this.querySelector('#scene').setNodeExpanded(renderNode);
+    }, 75);
   },
   _nodeToggleExtract: function(event) {
     // Toggle the include setting of the specified node appropriately.
@@ -235,6 +250,25 @@ Polymer({
 
     // Rebuild the render hierarchy.
     this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
+  },
+  _nodeToggleSeriesGroup: function(event) {
+    // Toggle the group setting of the specified node appropriately.
+    var nodeName = event.detail.name;
+    tf.graph.toggleNodeSeriesGroup(this.hierarchyParams.seriesMap, nodeName);
+
+    // Rebuild the render hierarchy with the updated series grouping map.
+    this.set('progress', {
+      value: 0,
+      msg: ''
+    });
+    var tracker = tf.getTracker(this);
+    var hierarchyTracker = tf.getSubtaskTracker(tracker, 100,
+          'Namespace hierarchy');
+    tf.graph.hierarchy.build(this.basicGraph, this.hierarchyParams, hierarchyTracker)
+    .then(function(graphHierarchy) {
+      this.set('graphHierarchy', graphHierarchy);
+      this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
+    }.bind(this));
   },
   not: function(x) {
     return !x;

@@ -2,14 +2,14 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("/tensorflow/tensorflow", "tf_copts")
-load("/tensorflow/tensorflow", "tf_gen_op_wrappers_cc")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 cc_library(
     name = "cc_op_gen_main",
@@ -70,7 +70,7 @@ cc_binary(
     ],
     deps = [
         ":cc_ops",
-        "//tensorflow/core:kernels",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:tensorflow",
     ],
 )

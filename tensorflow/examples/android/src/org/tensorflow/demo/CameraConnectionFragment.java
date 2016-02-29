@@ -180,6 +180,16 @@ public class CameraConnectionFragment extends Fragment {
   private Handler backgroundHandler;
 
   /**
+   * An additional thread for running inference so as not to block the camera.
+   */
+  private HandlerThread inferenceThread;
+
+  /**
+   * A {@link Handler} for running tasks in the background.
+   */
+  private Handler inferenceHandler;
+
+  /**
    * An {@link ImageReader} that handles preview frame capture.
    */
   private ImageReader previewReader;
@@ -404,9 +414,13 @@ public class CameraConnectionFragment extends Fragment {
    * Starts a background thread and its {@link Handler}.
    */
   private void startBackgroundThread() {
-    backgroundThread = new HandlerThread("CameraBackground");
+    backgroundThread = new HandlerThread("ImageListener");
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
+    
+    inferenceThread = new HandlerThread("InferenceThread");
+    inferenceThread.start();
+    inferenceHandler = new Handler(inferenceThread.getLooper());
   }
 
   /**
@@ -414,10 +428,15 @@ public class CameraConnectionFragment extends Fragment {
    */
   private void stopBackgroundThread() {
     backgroundThread.quitSafely();
+    inferenceThread.quitSafely();
     try {
       backgroundThread.join();
       backgroundThread = null;
       backgroundHandler = null;
+      
+      inferenceThread.join();
+      inferenceThread = null;
+      inferenceThread = null;
     } catch (final InterruptedException e) {
       LOGGER.e(e, "Exception!");
     }
@@ -511,7 +530,7 @@ public class CameraConnectionFragment extends Fragment {
     }
 
     LOGGER.i("Getting assets.");
-    tfPreviewListener.initialize(getActivity().getAssets(), scoreView);
+    tfPreviewListener.initialize(getActivity().getAssets(), scoreView, inferenceHandler);
     LOGGER.i("Tensorflow initialized.");
   }
 

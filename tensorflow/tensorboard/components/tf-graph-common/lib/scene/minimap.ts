@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../../../typings/tsd.d.ts" />
 /// <reference path="../common.ts" />
 
 module tf.scene {
@@ -262,7 +261,8 @@ export class Minimap {
       downloadContext.drawImage(image, 0, 0,
         this.downloadCanvas.width, this.downloadCanvas.height);
     };
-    image.src = "data:image/svg+xml;base64," + btoa(svgXml);
+    let blob = new Blob([svgXml], {type: "image/svg+xml;charset=utf-8"});
+    image.src = URL.createObjectURL(blob);
   }
 
   /**

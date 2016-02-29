@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -54,7 +54,7 @@ class DecodeJpegOp : public OpKernel {
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
                 errors::InvalidArgument("contents must be scalar, got shape ",
-                                        contents.shape().ShortDebugString()));
+                                        contents.shape().DebugString()));
     const StringPiece input = contents.scalar<string>()();
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
                 errors::InvalidArgument("JPEG contents are too large for int: ",

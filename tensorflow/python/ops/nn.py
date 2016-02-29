@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order
+# pylint: disable=unused-import,g-bad-import-order
 """## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
@@ -55,7 +55,7 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the the 4-D `input` has shape
+Ignoring channels for the moment, and assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
 `[filter_height, filter_width, ...]`, then the spatial semantics of the
 convolution ops are as follows: first, according to the padding scheme chosen
@@ -134,6 +134,8 @@ have varying scale, and to aid generalization.
 
 @@l2_normalize
 @@local_response_normalization
+@@sufficient_statistics
+@@normalize_moments
 @@moments
 
 ## Losses
@@ -151,6 +153,7 @@ TensorFlow provides several operations that help you perform classification.
 @@sigmoid_cross_entropy_with_logits
 @@softmax
 @@softmax_cross_entropy_with_logits
+@@sparse_softmax_cross_entropy_with_logits
 
 ## Embeddings
 
@@ -207,6 +210,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -229,10 +233,12 @@ from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 
 # Bring more nn-associated functionality into this package.
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 from tensorflow.python.ops.rnn import *
+# pylint: enable=wildcard-import
 
 
 def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
@@ -491,58 +497,222 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
-def moments(x, axes, name=None):
+def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
+  """Calculate the sufficient statistics for the mean and variance of `x`.
+
+  These sufficient statistics are computed using the one pass algorithm on
+  an input that's optionally shifted using the value of the 1st element in `x`.
+  See:
+  https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+
+  Args:
+    x: A `Tensor`.
+    axes: Array of ints. Axes along which to compute mean and variance.
+    shift: If true, shift the data to provide more numerically stable results.
+    keep_dims: produce statistics with the same dimensionality as the input.
+    name: Name used to scope the operations that compute the sufficient stats.
+
+  Returns:
+    Four `Tensor` objects of the same type as `x`:
+    * the count (number of elements to average over).
+    * the (possibly shifted) sum of the elements in the array.
+    * the (possibly shifted) sum of squares of the elements in the array.
+    * the shift by which the mean must be corrected or None if `shift` is False.
+  """
+  with ops.op_scope([x, axes], name, "sufficient_statistics"):
+    x = ops.convert_to_tensor(x, name="x")
+    x_shape = x.get_shape()
+    if x_shape.is_fully_defined():
+      counts = 1
+      m_shape = []
+      for d in xrange(x_shape.ndims):
+        dim = x_shape[d].value
+        if d in set(axes):
+          counts *= dim
+          dim = 1
+        m_shape.append(dim)
+      counts = constant_op.constant(counts, dtype=x.dtype)
+    else:  # shape needs to be inferred at runtime.
+      x_shape = array_ops.shape(x)
+      select_axes = sparse_ops.sparse_to_dense(axes, array_ops.shape(x_shape),
+                                               True, False)
+      m_shape = math_ops.select(select_axes, array_ops.ones_like(x_shape),
+                                x_shape)
+      counts = math_ops.cast(
+          math_ops.reduce_prod(x_shape / m_shape),
+          x.dtype,
+          name="count")
+    if shift:
+      shift_value = array_ops.slice(x, array_ops.zeros_like(m_shape), m_shape)
+      m_ss = math_ops.sub(x, shift_value)
+      v_ss = math_ops.squared_difference(x, shift_value)
+      if keep_dims:
+        shift_value = array_ops.identity(shift_value, name="shift")
+      else:
+        shift_value = array_ops.squeeze(shift_value,
+                                        squeeze_dims=axes,
+                                        name="shift")
+    else:  # not shift.
+      m_ss = x
+      v_ss = math_ops.square(x)
+      shift_value = None
+    m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
+    v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
+  return counts, m_ss, v_ss, shift_value
+
+
+def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
+  """Calculate the mean and variance of based on the sufficient statistics.
+
+  Args:
+    counts: A `Tensor` containing a the total count of the data (one value).
+    mean_ss: A `Tensor` containing the mean sufficient statistics: the (possibly
+      shifted) sum of the elements to average over.
+    variance_ss: A `Tensor` containing the variance sufficient statistics: the
+      (possibly shifted) squared sum of the data to compute the variance over.
+    shift: A `Tensor` containing the value by which the data is shifted for
+      numerical stability, or `None` if no shift was performed.
+    name: Name used to scope the operations that compute the moments.
+
+  Returns:
+    Two `Tensor` objects: `mean` and `variance`.
+  """
+  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "normalize"):
+    divisor = math_ops.inv(counts, name="divisor")
+    if shift is not None:
+      shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
+      mean = math_ops.add(shifted_mean, shift, name="mean")
+    else:  # no shift.
+      shifted_mean = math_ops.mul(mean_ss, divisor, name="mean")
+      mean = shifted_mean
+    variance = math_ops.sub(
+        math_ops.mul(variance_ss, divisor),
+        math_ops.square(shifted_mean),
+        name="variance")
+  return (mean, variance)
+
+
+def moments(x, axes, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  For so-called "global normalization" needed for convolutional filters pass
-  `axes=[0, 1, 2]` (batch, height, width).  For batch normalization pass
-  `axes=[0]` (batch).
+  When using these moments for batch normalization (see
+  `tf.nn.batch_normalization`):
+    * for so-called "global normalization", used with convolutional filters with
+      shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+    * for simple batch normalization pass `axes=[0]` (batch only).
 
   Args:
     x: A `Tensor`.
     axes: array of ints.  Axes along which to compute mean and
       variance.
+    keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes], name, "moments"):
-    x = ops.convert_to_tensor(x, name="x")
-    x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
-      # The shape is known in the relevant axes, so we can statically
-      # compute the divisor.
-      divisor = 1.0
-      for d in set(axes):
-        divisor *= x.get_shape()[d].value
-      divisor = constant_op.constant(1.0 / divisor, x.dtype, name="divisor")
-    else:
-      divisor = constant_op.constant(1.0, dtype=x.dtype)
-      x_dynamic_shape = array_ops.shape(x)
-      for d in set(axes):
-        divisor *= math_ops.cast(x_dynamic_shape[d], x.dtype)
-      divisor = math_ops.inv(divisor, name="divisor")
-    axes = constant_op.constant(axes, name="axes")
-    # Note: We do not use Mean here because it is very slow on GPU.
-    # Note 2: The expression below is potentially more stable.
-    # It is however a bit slower and stability doesn't appear to be an issue.
-    # mean = math_ops.reduce_sum(math_ops.mul(x, divisor), axes, name="mean")
-    # var = math_ops.reduce_sum(math_ops.mul(math_ops.square(x - mean),
-    #                                        divisor), axes,
-    #                    name="variance")
-    mean = math_ops.mul(math_ops.reduce_sum(x, axes), divisor, name="mean")
-    # Give x-mean a specific name, so the caller might take advantage of it.
-    # The caller should have a fallback plan, however: this tensor may not be
-    # available if this function implementation changes.
-    x_centered = math_ops.sub(x, mean, name="x_centered")
-    var = math_ops.mul(math_ops.reduce_sum(math_ops.square(x_centered), axes),
-                       divisor, name="variance")
-    return mean, var
+    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+                                                      axes,
+                                                      keep_dims=keep_dims,
+                                                      name=name)
+    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+
+
+def batch_normalization(x,
+                        mean,
+                        variance,
+                        offset,
+                        scale,
+                        variance_epsilon,
+                        name=None):
+  """Batch normalization.
+
+  As described in http://arxiv.org/abs/1502.03167.
+  Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
+  `scale` \\\\(\gamma\\\\) to it, as well as an `offest` \\\\(\beta\\\\):
+
+  \\\\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\\\)
+
+  `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
+  shapes:
+    * In all generality, they can have the same number of dimensions as the
+      input `x`, with identical sizes as `x` for the dimensions that are not
+      normalized over (the 'depth' dimension(s)), and dimension 1 for the
+      others which are being normalized over.
+      `mean` and `variance` in this case would typically be the outputs of
+      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      thereof during inference.
+    * In the common case where the 'depth' dimension is the last dimension in
+      the input tensor `x`, they may be one dimensional tensors of the same
+      size as the 'depth' dimension.
+      This is the case for example for the common `[batch, depth]` layout of
+      fully-connected layers, and `[batch, height, width, depth]` for
+      convolutions.
+      `mean` and `variance` in this case would typically be the outputs of
+      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      thereof during inference.
+
+  Args:
+    x: Input `Tensor` of arbitrary dimensionality.
+    mean: A mean `Tensor`.
+    variance: A variance `Tensor`.
+    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, or
+      None. If present, will be added to the normalized tensor.
+    scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
+      `None`. If present, the scale is applied to the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    name: A name for this operation (optional).
+
+  Returns:
+    the normalized, scaled, offset tensor.
+  """
+  with ops.op_scope([x, mean, variance, scale, offset], name, "batchnorm"):
+    inv = math_ops.rsqrt(variance + variance_epsilon)
+    if scale is not None:
+      inv *= scale
+    return x * inv + (offset - mean * inv if offset else -mean * inv)
+
+
+def batch_norm_with_global_normalization(t,
+                                         m,
+                                         v,
+                                         beta,
+                                         gamma,
+                                         variance_epsilon,
+                                         scale_after_normalization,
+                                         name=None):
+  """Batch normalization.
+
+  This op is deprecated. See `tf.nn.batch_normalization`.
+
+  Args:
+    t: A 4D input Tensor.
+    m: A 1D mean Tensor with size matching the last dimension of t.
+      This is the first output from tf.nn.moments,
+      or a saved moving average thereof.
+    v: A 1D variance Tensor with size matching the last dimension of t.
+      This is the second output from tf.nn.moments,
+      or a saved moving average thereof.
+    beta: A 1D beta Tensor with size matching the last dimension of t.
+      An offset to be added to the normalized tensor.
+    gamma: A 1D gamma Tensor with size matching the last dimension of t.
+      If "scale_after_normalization" is true, this tensor will be multiplied
+      with the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    scale_after_normalization: A bool indicating whether the resulted tensor
+      needs to be multiplied with gamma.
+    name: A name for this operation (optional).
+
+   Returns:
+     A batch-normalized `t`.
+  """
+  return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
+                             else None, variance_epsilon, name)
 
 
 def _sum_rows(x):
@@ -806,7 +976,8 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)
 
-  Also see Section 3 of http://arxiv.org/abs/1412.2007 for the math.
+  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`

@@ -20,11 +20,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -41,14 +41,14 @@ class ResizeBilinearOp : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto Svec = shape_t.vec<int32>();
     // Initialize shape to the batch size of the input, then add
@@ -90,14 +90,12 @@ class ResizeBilinearOp : public OpKernel {
         const int bottom_y_index =
             std::min(static_cast<int64>(ceilf(in_y)), (in_height - 1));
         const float y_lerp = in_y - top_y_index;
-        const float inverse_y_lerp = (1.0f - y_lerp);
         for (int x = 0; x < out_width; ++x) {
           const float in_x = x * width_scale;
           const int left_x_index = static_cast<int>(floorf(in_x));
           const int right_x_index =
               std::min(static_cast<int64>(ceilf(in_x)), (in_width - 1));
           const float x_lerp = in_x - left_x_index;
-          const float inverse_x_lerp = (1.0f - x_lerp);
           for (int c = 0; c < channels; ++c) {
             const float top_left = input_data(b, top_y_index, left_x_index, c);
             const float top_right =
@@ -106,12 +104,10 @@ class ResizeBilinearOp : public OpKernel {
                 input_data(b, bottom_y_index, left_x_index, c);
             const float bottom_right =
                 input_data(b, bottom_y_index, right_x_index, c);
-            const float top =
-                (top_left * inverse_x_lerp) + (top_right * x_lerp);
+            const float top = top_left + (top_right - top_left) * x_lerp;
             const float bottom =
-                (bottom_left * inverse_x_lerp) + (bottom_right * x_lerp);
-            output_data(b, y, x, c) =
-                (top * inverse_y_lerp) + (bottom * y_lerp);
+                bottom_left + (bottom_right - bottom_left) * x_lerp;
+            output_data(b, y, x, c) = top + (bottom - top) * y_lerp;
           }
         }
       }
@@ -136,7 +132,7 @@ class ResizeBilinearOpGrad : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     // ResizeBilinear always produces float images, so the input gradient is
     // always a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
@@ -145,10 +141,9 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     // The second argument is the original input to resize_bilinear.
     const Tensor& original_image = context->input(1);
-    OP_REQUIRES(
-        context, original_image.dims() == 4,
-        errors::InvalidArgument("original_image must be 4-dimensional",
-                                original_image.shape().ShortDebugString()));
+    OP_REQUIRES(context, original_image.dims() == 4,
+                errors::InvalidArgument("original_image must be 4-dimensional",
+                                        original_image.shape().DebugString()));
 
     // Allocate output and initialize to zeros.
     const int64 batch_size = input.dim_size(0);

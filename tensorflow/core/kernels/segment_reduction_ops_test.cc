@@ -14,10 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <vector>
 
-#include "tensorflow/core/public/session_options.h"
-
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -33,8 +32,9 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -77,7 +77,7 @@ static void BM_SegmentReduction(int iters, string reduction, Index num_rows,
   test::SetOutputAttrs(&params, &attrs);
 
   std::unique_ptr<OpKernelContext> reduction_context(
-      new OpKernelContext(params));
+      new OpKernelContext(&params));
 
   reduction_op->Compute(reduction_context.get());
   TF_CHECK_OK(reduction_context->status());
@@ -115,7 +115,6 @@ BM_Reduce_Arg(4096, 128, 2);
 
 static void SparseSegmentMeanGradHelper(int iters, float uniqueness, int size) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   CHECK_LE(uniqueness, 1.0);
   CHECK_GT(uniqueness, 0.0);

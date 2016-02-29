@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
@@ -65,7 +65,7 @@ Status LoadLibrary(const char* library_filename, void** result,
   string str;
   GetOpList(&str);
   char* str_buf = reinterpret_cast<char*>(operator new(str.length()));
-  strncpy(str_buf, str.data(), str.length());
+  memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();
 

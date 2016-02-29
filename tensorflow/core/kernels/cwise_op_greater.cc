@@ -21,7 +21,6 @@ REGISTER7(BinaryOp, CPU, "Greater", functor::greater, float, double, int32,
 #if GOOGLE_CUDA
 REGISTER6(BinaryOp, GPU, "Greater", functor::greater, float, double, int64,
           uint8, int8, int16);
-#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -33,5 +32,6 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::greater<int32>>);
+#endif
 
 }  // namespace tensorflow

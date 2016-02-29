@@ -21,11 +21,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -34,20 +34,22 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Device, typename T>
 class ResizeBicubicOp : public OpKernel {
  public:
-  explicit ResizeBicubicOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit ResizeBicubicOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const Tensor& shape_t = context->input(1);
     OP_REQUIRES(context, shape_t.dims() == 1,
                 errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
     OP_REQUIRES(context, shape_t.NumElements() == 2,
                 errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+                                        shape_t.shape().DebugString()));
 
     auto Svec = shape_t.vec<int32>();
     // Initialize shape to the batch size of the input, then add
@@ -72,8 +74,14 @@ class ResizeBicubicOp : public OpKernel {
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<float, 4>::Tensor output_data = output->tensor<float, 4>();
 
-    const float height_scale = in_height / static_cast<float>(out_height);
-    const float width_scale = in_width / static_cast<float>(out_width);
+    const float height_scale =
+        (align_corners_ && out_height > 1)
+            ? (in_height - 1) / static_cast<float>(out_height - 1)
+            : in_height / static_cast<float>(out_height);
+    const float width_scale =
+        (align_corners_ && out_width > 1)
+            ? (in_width - 1) / static_cast<float>(out_width - 1)
+            : in_width / static_cast<float>(out_width);
 
     // Initialize coefficients table using Bicubic convolution algorithm.
     // https://en.wikipedia.org/wiki/Bicubic_interpolation
@@ -122,6 +130,9 @@ class ResizeBicubicOp : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 #define REGISTER_KERNEL(T)                            \
