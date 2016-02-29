@@ -717,8 +717,10 @@ cc_library(
     ],
 )
 
+# Full Tensorflow library with operator support. Use this unless reducing
+# binary size (by packaging a reduced operator set) is a concern.
 cc_library(
-    name = "android_tensorflow_operators",
+    name = "android_tensorflow_lib",
     srcs = [
         "//tensorflow/core:android_core_ops",
         "//tensorflow/core:android_extended_ops",
@@ -737,22 +739,6 @@ cc_library(
         ":android_tensorflow_lib_lite",
         ":protos_cc",
         "//third_party/eigen3",
-    ],
-)
-
-# Full Tensorflow library with operator support. Use this unless reducing
-# binary size (by packaging a reduced operator set) is a concern.
-cc_library(
-    name = "android_tensorflow_lib",
-    srcs = [],
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":android_tensorflow_lib_lite",
-        ":android_tensorflow_operators",
     ],
 )
 

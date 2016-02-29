@@ -245,6 +245,9 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
             std::max<std::size_t>(stats_.max_alloc_size, chunk->size);
 
         VLOG(4) << "Returning: " << chunk->ptr;
+        if (VLOG_IS_ON(4)) {
+          LOG(INFO) << "A: " << RenderOccupancy();
+        }
         return chunk->ptr;
       }
     }
@@ -255,6 +258,7 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
     DumpMemoryLog(rounded_bytes);
+    LOG(WARNING) << RenderOccupancy();
     LOG(WARNING) << "Ran out of memory trying to allocate "
                  << strings::HumanReadableNumBytes(num_bytes)
                  << ".  See logs for memory state.";
@@ -316,6 +320,10 @@ void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
 
   // Consider coalescing it.
   FreeAndMaybeCoalesce(h);
+
+  if (VLOG_IS_ON(4)) {
+    LOG(INFO) << "F: " << RenderOccupancy();
+  }
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
@@ -471,6 +479,55 @@ int64 GPUBFCAllocator::AllocationId(void* ptr) {
   return c->allocation_id;
 }
 
+void GPUBFCAllocator::RenderRegion(char* rendered, const size_t resolution,
+                                   const void* ptr, const size_t offset,
+                                   const size_t size, const char c) {
+  const char* base_ptr_c = static_cast<const char*>(base_ptr_);
+  const char* ptr_c = static_cast<const char*>(ptr) + offset;
+
+  size_t start_location =
+      ((ptr_c - base_ptr_c) * resolution) / gpu_memory_size_;
+  CHECK_GE(start_location, 0);
+  CHECK_LT(start_location, resolution);
+  size_t end_location =
+      ((ptr_c + size - 1 - base_ptr_c) * resolution) / gpu_memory_size_;
+  CHECK_GE(end_location, 0);
+  CHECK_LT(end_location, resolution);
+
+  for (size_t i = start_location; i <= end_location; ++i) {
+    rendered[i] = c;
+  }
+}
+
+string GPUBFCAllocator::RenderOccupancy() {
+  // Make a buffer for the ASCII-art representation.
+  const size_t resolution = 100;
+  char rendered[resolution];
+
+  // Start out with everything empty
+  RenderRegion(rendered, resolution, base_ptr_, 0, gpu_memory_size_, '_');
+
+  ChunkHandle h = ptr_to_chunk_map_.get_handle(base_ptr_);
+
+  // Then render each chunk left to right.
+  while (h != kInvalidChunkHandle) {
+    Chunk* c = ChunkFromHandle(h);
+    if (c->in_use()) {
+      // Render the wasted space
+      size_t wasted = c->size - c->requested_size;
+      if (wasted > 0) {
+        RenderRegion(rendered, resolution, c->ptr, c->requested_size, wasted,
+                     'x');
+      }
+      // Then the occupied space
+      RenderRegion(rendered, resolution, c->ptr, 0, c->requested_size, '*');
+    }
+    h = c->next;
+  }
+
+  return StringPiece(rendered, resolution).ToString();
+}
+
 void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // For each bin: tally up the total number of chunks and bytes.
   // Note that bins hold only free chunks.
@@ -524,16 +581,22 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // Next show the chunks that are in use, and also summarize their
   // number by size.
   std::map<size_t, int> in_use_by_size;
-  for (const char* p = reinterpret_cast<const char*>(base_ptr_);
-       p < reinterpret_cast<const char*>(base_ptr_) + gpu_memory_size_;
-       p += 256) {
-    const void* void_p = reinterpret_cast<const void*>(p);
-    ChunkHandle h = ptr_to_chunk_map_.get_handle(void_p);
-    if (h != kInvalidChunkHandle) {
-      const Chunk* c = ChunkFromHandle(h);
+  ChunkHandle h = ptr_to_chunk_map_.get_handle(base_ptr_);
+  while (h != kInvalidChunkHandle) {
+    const Chunk* c = ChunkFromHandle(h);
+    if (c->in_use()) {
       in_use_by_size[c->size]++;
-      LOG(INFO) << "Chunk at " << void_p << " of size " << c->size;
+      LOG(INFO) << "Chunk at " << c->ptr << " of size " << c->size;
     }
+    h = c->next;
+  }
+  h = ptr_to_chunk_map_.get_handle(base_ptr_);
+  while (h != kInvalidChunkHandle) {
+    const Chunk* c = ChunkFromHandle(h);
+    if (!c->in_use()) {
+      LOG(INFO) << "Free at " << c->ptr << " of size " << c->size;
+    }
+    h = c->next;
   }
 
   LOG(INFO) << "     Summary of in-use Chunks by size: ";
