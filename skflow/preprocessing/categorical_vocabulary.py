@@ -91,8 +91,10 @@ class CategoricalVocabulary(object):
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove very frequent categories (like stop words).
         """
+        # Sort by alphabet then reversed frequency.
         self._freq = sorted(
-            six.iteritems(self._freq), key=lambda x: x[1], reverse=True)
+            sorted(six.iteritems(self._freq), key=lambda x: x[0]), 
+            key=lambda x: x[1], reverse=True)
         self._mapping = {self._unknown_token: 0}
         if self._support_reverse:
             self._reverse_mapping = [self._unknown_token]
