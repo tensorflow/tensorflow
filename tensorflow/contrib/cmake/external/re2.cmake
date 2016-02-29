@@ -33,7 +33,6 @@ ExternalProject_Add(re2
 )
 
 ## put re2 includes in the directory where they are expected
-#    COMMAND ${CMAKE_COMMAND} -E make_directory ${re2_INCLUDE_DIR}/re2
 add_custom_target(re2_create_destination_dir
     COMMAND ${CMAKE_COMMAND} -E make_directory ${re2_INCLUDE_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${re2_INCLUDE_DIR}/re2"
