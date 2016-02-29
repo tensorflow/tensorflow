@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/grpc/include/grpc++/grpc++.h"
+#include "grpc++/grpc++.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 

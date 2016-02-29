@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 
-#include "external/grpc/include/grpc++/grpc++.h"
+#include "grpc++/grpc++.h"
 
 #include "tensorflow/core/distributed_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
