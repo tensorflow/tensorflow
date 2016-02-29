@@ -60,7 +60,7 @@ def char_rnn_model(X, y):
     byte_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
     cell = rnn_cell.GRUCell(HIDDEN_SIZE)
     _, encoding = rnn.rnn(cell, byte_list, dtype=tf.float32)
-    return skflow.models.logistic_regression(encoding[-1], y)
+    return skflow.models.logistic_regression(encoding, y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
     steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)

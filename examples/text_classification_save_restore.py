@@ -73,7 +73,7 @@ def rnn_model(X, y):
     # Given encoding of RNN, take encoding of last step (e.g hidden size of the
     # neural network of last step) and pass it as features for logistic
     # regression over output classes.
-    return skflow.models.logistic_regression(encoding[-1], y)
+    return skflow.models.logistic_regression(encoding, y)
 
 model_path = '/tmp/skflow_examples/text_classification'
 if os.path.exists(model_path):

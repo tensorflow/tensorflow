@@ -72,7 +72,7 @@ def rnn_model(X, y):
     # Given encoding of RNN, take encoding of last step (e.g hidden size of the
     # neural network of last step) and pass it as features for logistic
     # regression over output classes.
-    return skflow.models.logistic_regression(encoding[-1], y)
+    return skflow.models.logistic_regression(encoding, y)
 
 classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)
