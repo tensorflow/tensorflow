@@ -15,9 +15,10 @@
 
 from __future__ import division, print_function, absolute_import
 
+import datetime
 import json
 import os
-import datetime
+import shutil
 from six import string_types
 
 import numpy as np
@@ -38,6 +39,13 @@ from skflow.ops.dropout_ops import DROPOUTS
 from skflow import monitors
 
 from skflow.addons.config_addon import ConfigAddon
+
+
+def _write_with_backup(filename, content):
+    if os.path.exists(filename):
+        shutil.move(filename, filename + '.old')
+    with open(filename, 'w') as f:
+        f.write(content)
 
 
 class TensorFlowEstimator(BaseEstimator):
@@ -353,26 +361,33 @@ class TensorFlowEstimator(BaseEstimator):
         if not os.path.isdir(path):
             raise ValueError("Path %s should be a directory to save"
                              "checkpoints and graph." % path)
-        with open(os.path.join(path, 'model.def'), 'w') as fmodel:
-            all_params = self.get_params()
-            params = {}
-            for key, value in all_params.items():
-                if not callable(value) and value is not None:
-                    params[key] = value
-            params['class_name'] = type(self).__name__
-            fmodel.write(json.dumps(
-                params,
-                default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None))
-        with open(os.path.join(path, 'endpoints'), 'w') as foutputs:
-            foutputs.write('%s\n%s\n%s\n%s' % (
-                self._inp.name,
-                self._out.name,
-                self._model_predictions.name,
-                self._model_loss.name))
-        with open(os.path.join(path, 'graph.pbtxt'), 'w') as fgraph:
-            fgraph.write(str(self._graph.as_graph_def()))
-        with open(os.path.join(path, 'saver.pbtxt'), 'w') as fsaver:
-            fsaver.write(str(self._saver.as_saver_def()))
+        # Save model definition.
+        all_params = self.get_params()
+        params = {}
+        for key, value in all_params.items():
+            if not callable(value) and value is not None:
+                params[key] = value
+        params['class_name'] = type(self).__name__
+        model_def = json.dumps(
+            params,
+            default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None)
+        _write_with_backup(os.path.join(path, 'model.def'), model_def)
+
+        # Save checkpoints.
+        endpoints = '%s\n%s\n%s\n%s' % (
+            self._inp.name,
+            self._out.name,
+            self._model_predictions.name,
+            self._model_loss.name)
+        _write_with_backup(os.path.join(path, 'endpoints'), endpoints)
+
+        # Save graph definition.
+        _write_with_backup(os.path.join(path, 'graph.pbtxt'), str(self._graph.as_graph_def()))
+
+        # Save saver defintion.
+        _write_with_backup(os.path.join(path, 'saver.pbtxt'), str(self._saver.as_saver_def()))
+
+        # Save checkpoints.
         self._saver.save(self._session, os.path.join(path, 'model'),
                          global_step=self._global_step)
 
