@@ -23,7 +23,6 @@ TF_Tensor* TF_NewTensor_wrapper(TF_DataType dtype, long long* dims, int num_dims
                    void* data, size_t len) {
   
   return TF_NewTensor(dtype, dims, num_dims, data, len, [](void *data, size_t len, void* arg){
-      puts("in tensor dealloc");
       }, nullptr);
 }
 

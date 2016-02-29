@@ -10,10 +10,12 @@ import (
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
+// Session allows driving a TensorFlow graph computation.
 type Session struct {
 	session tf.TF_Session
 }
 
+// NewSession initializes a new TensorFlow session.
 func NewSession() (*Session, error) {
 	status := tf.TF_NewStatus()
 	return &Session{
@@ -24,11 +26,13 @@ func NewSession() (*Session, error) {
 	}, statusToError(status)
 }
 
+// Tensor represents a value created from an Operation
 type Tensor struct {
 	tensor tf.TF_Tensor
 	buf    []byte
 }
 
+// TensorShape represents the shapre of a Tensor.
 type TensorShape [][]int64
 
 var (
@@ -41,14 +45,14 @@ func NewTensor(dataType tf.DataType, shape TensorShape, data interface{}) (*Tens
 	if v.Kind() != reflect.Slice {
 		return nil, fmt.Errorf("tensorflow: 'data' argument must be a slice")
 	}
-	dataSize := v.Len() * int(v.Type().Elem().Size())
+	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
 	dataPtr := v.Pointer()
 	return newTensor(dataType, shape, dataPtr, dataSize)
 }
 
-func newTensor(dataType tf.DataType, shape TensorShape, data uintptr, size int) (*Tensor, error) {
+func newTensor(dataType tf.DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
 	t := &Tensor{
-		tensor: tf.TF_NewTensor_wrapper(tf.TF_DataType(dataType), &(shape[0][0]), len(shape), data, int64(size)),
+		tensor: tf.TF_NewTensor_wrapper(tf.TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
 	}
 
 	return t, nil
@@ -80,9 +84,8 @@ func encodeStrings(in []string) []byte {
 func Constant(value interface{}) (*Tensor, error) {
 	switch v := value.(type) {
 	case string:
-		//		defer C.free(unsafe.Pointer(str))
 		buf := encodeStrings([]string{v})
-		t, err := newTensor(tf.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), len(buf))
+		t, err := newTensor(tf.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), int64(len(buf)))
 		if err != nil {
 			return nil, err
 		}
@@ -106,11 +109,9 @@ func statusToError(status tf.TF_Status) error {
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
 	inputNames := tf.NewStringVector()
 	inputValues := tf.NewTensorVector()
-	if inputs != nil {
-		for k, v := range inputs {
-			inputValues.Add(v.tensor)
-			inputNames.Add(k)
-		}
+	for k, v := range inputs {
+		inputValues.Add(v.tensor)
+		inputNames.Add(k)
 	}
 	outputNames := tf.NewStringVector()
 	for _, n := range outputs {
@@ -127,7 +128,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 
 	tf.TF_Run_wrapper(s.session, inputNames, inputValues, outputNames, outputValues, targetNames, status)
 
-	result := []*Tensor{}
+	result := make([]*Tensor, 0, outputValues.Size())
 	for i := int64(0); i < outputValues.Size(); i++ {
 		result = append(result, &Tensor{
 			tensor: outputValues.Get(int(i)),
@@ -158,8 +159,8 @@ func (t *Tensor) Dim(n int) int {
 	return int(tf.TF_Dim(t.tensor, n))
 }
 
-func (t *Tensor) DataSize() int {
-	return int(tf.TF_TensorByteSize(t.tensor))
+func (t *Tensor) DataSize() int64 {
+	return tf.TF_TensorByteSize(t.tensor)
 }
 
 func (t *Tensor) Data() []byte {
