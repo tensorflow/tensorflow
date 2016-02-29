@@ -40,17 +40,19 @@ class CategoricalVocabularyTest(tf.test.TestCase):
 
     def testCountsTrim(self):
         vocab = categorical_vocabulary.CategoricalVocabulary()
-        vocab.get('a')
-        vocab.add('a', 10)
         vocab.get('c')
         vocab.add('c', 5)
-        # not in vocab yet, skips.
+        vocab.get('a')
+        vocab.add('a', 10)
+       # not in vocab yet, skips.
         vocab.add('b', 5)
-        vocab.trim(7)
+        vocab.add('d', 12)
+        vocab.trim(7, 11)
         vocab.freeze()
         self.assertEqual(vocab.get('b'), 0)
         self.assertEqual(vocab.get('c'), 0)
         self.assertEqual(len(vocab), 2)
+        self.assertEqual(vocab.get('a'), 1)
 
 
 if __name__ == "__main__":

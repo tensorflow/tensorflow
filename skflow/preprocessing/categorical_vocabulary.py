@@ -29,6 +29,7 @@ class CategoricalVocabulary(object):
     """
 
     def __init__(self, unknown_token='<UNK>', support_reverse=True):
+        self._unknown_token = unknown_token
         self._mapping = {unknown_token: 0}
         self._support_reverse = support_reverse
         if support_reverse:
@@ -82,15 +83,29 @@ class CategoricalVocabulary(object):
     def trim(self, min_frequency, max_frequency=-1):
         """Trims vocabulary for minimum frequency.
 
+        Remaps ids from 1..n in sort frequency order.
+        where n - number of elements left.
+
         Args:
             min_frequency: minimum frequency to keep.
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove very frequent categories (like stop words).
         """
+        self._freq = dict(sorted(six.iteritems(self._freq), key=lambda x: x[1],
+            reverse=True))
+        self._mapping = {self._unknown_token: 0}
+        if self._support_reverse:
+            self._reverse_mapping = [self._unknown_token]
+        idx = 1
         for category, count in six.iteritems(self._freq):
-            if count <= min_frequency and (max_frequency < 0 or
-                                           count >= max_frequency):
-                self._mapping.pop(category)
+            if max_frequency > 0 and count >= max_frequency:
+                continue
+            if count <= min_frequency:
+                break
+            self._mapping[category] = idx
+            idx += 1
+            if self._support_reverse:
+                self._reverse_mapping.append(category)
 
     def reverse(self, class_id):
         """Given class id reverse to original class name.
