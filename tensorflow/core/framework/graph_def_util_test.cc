@@ -133,7 +133,7 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
   EXPECT_TRUE(op_attr_removed.empty());
 }
 
-TEST(StrippedOpListForGraphTest, StripTest) {
+TEST(StrippedOpListForGraphTest, FlatTest) {
   // Make four ops
   OpList op_list;
   for (const string& op : {"A", "B", "C", "D"}) {
@@ -148,29 +148,71 @@ TEST(StrippedOpListForGraphTest, StripTest) {
   // The result should be independent of the ordering.
   const string graph_ops[4][3] = {
       {"C", "B", "B"}, {"B", "C", "B"}, {"B", "B", "C"}, {"C", "C", "B"}};
-  for (int order = 0; order < 4; order++) {
+  for (const bool use_function : {false, true}) {
+    for (int order = 0; order < 4; order++) {
+      GraphDef graph_def;
+      if (use_function) {
+        FunctionDef* function_def = graph_def.mutable_library()->add_function();
+        function_def->mutable_signature()->set_name("F");
+        for (const string& op : graph_ops[order]) {
+          function_def->add_node()->set_op(op);
+        }
+        graph_def.add_node()->set_op("F");
+      } else {
+        for (const string& op : graph_ops[order]) {
+          string name = strings::StrCat("name", graph_def.node_size());
+          NodeDef* node = graph_def.add_node();
+          node->set_name(name);
+          node->set_op(op);
+        }
+      }
+
+      // Strip the op list
+      OpList stripped_op_list;
+      TF_ASSERT_OK(StrippedOpListForGraph(graph_def, OpListOpRegistry(&op_list),
+                                          &stripped_op_list));
+
+      // We should have exactly two ops: B and C.
+      ASSERT_EQ(stripped_op_list.op_size(), 2);
+      for (int i = 0; i < 2; i++) {
+        const OpDef& op = stripped_op_list.op(i);
+        EXPECT_EQ(op.name(), i ? "C" : "B");
+        EXPECT_EQ(op.summary(), "");
+        EXPECT_EQ(op.description(), "");
+        EXPECT_EQ(op.is_commutative(), !i);
+      }
+    }
+  }
+}
+
+TEST(StrippedOpListForGraphTest, NestedFunctionTest) {
+  // Make a primitive op A.
+  OpList op_list;
+  op_list.add_op()->set_name("A");
+
+  for (const bool recursive : {false, true}) {
+    // Call A from function B, and B from function C.
     GraphDef graph_def;
-    for (const string& op : graph_ops[order]) {
-      string name = strings::StrCat("name", graph_def.node_size());
-      NodeDef* node = graph_def.add_node();
-      node->set_name(name);
-      node->set_op(op);
+    FunctionDef* b = graph_def.mutable_library()->add_function();
+    FunctionDef* c = graph_def.mutable_library()->add_function();
+    b->mutable_signature()->set_name("B");
+    c->mutable_signature()->set_name("C");
+    b->add_node()->set_op("A");
+    c->add_node()->set_op("B");
+    if (recursive) {
+      b->add_node()->set_op("B");
+      c->add_node()->set_op("C");
     }
 
-    // Strip the op list
+    // Use C in the graph.
+    graph_def.add_node()->set_op("C");
+
+    // The stripped op list should contain just A.
     OpList stripped_op_list;
     TF_ASSERT_OK(StrippedOpListForGraph(graph_def, OpListOpRegistry(&op_list),
                                         &stripped_op_list));
-
-    // We should have exactly two ops: B and C.
-    ASSERT_EQ(stripped_op_list.op_size(), 2);
-    for (int i = 0; i < 2; i++) {
-      const OpDef& op = stripped_op_list.op(i);
-      EXPECT_EQ(op.name(), i ? "C" : "B");
-      EXPECT_EQ(op.summary(), "");
-      EXPECT_EQ(op.description(), "");
-      EXPECT_EQ(op.is_commutative(), !i);
-    }
+    ASSERT_EQ(stripped_op_list.op_size(), 1);
+    ASSERT_EQ(stripped_op_list.op(0).name(), "A");
   }
 }
 
