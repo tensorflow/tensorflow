@@ -156,12 +156,12 @@ fi
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Call the pip test script
-"${DIR}/pip_test.sh --virtualenv" || die "PIP tests-on-install FAILED"
+"${DIR}/pip_test.sh" --virualenv || die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
    [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
-  "${DIR}/test_tutorials.sh --virtualenv" || die "PIP tutorial tests-on-install FAILED"
+  "${DIR}/test_tutorials.sh" --virtualenv || die "PIP tutorial tests-on-install FAILED"
 fi
 
 deactivate ||
