@@ -372,7 +372,7 @@ void FillWeightsFromInputs(
 
 void AllocateDeltaWeightsTensor(
     /*const*/ OpMutableInputList* const input_list,
-    vector<Tensor>* const delta_weight_tensors) {
+    std::vector<Tensor>* const delta_weight_tensors) {
   delta_weight_tensors->clear();
   delta_weight_tensors->resize(input_list->size());
   for (int i = 0; i < input_list->size(); ++i) {
@@ -383,7 +383,7 @@ void AllocateDeltaWeightsTensor(
 }
 
 WeightsByGroup GetWeightsFromTensor(
-    /*const*/ vector<Tensor>* const weight_tensors) {
+    /*const*/ std::vector<Tensor>* const weight_tensors) {
   WeightsByGroup weights;
   for (size_t i = 0; i < weight_tensors->size(); ++i) {
     weights.emplace_back((*weight_tensors)[i].flat<float>());
@@ -519,7 +519,7 @@ class SdcaSolver : public OpKernel {
                                 "sparse_weights", &sparse_weights_inputs));
     WeightsByGroup sparse_weights_by_group;
     FillWeightsFromInputs(&sparse_weights_inputs, &sparse_weights_by_group);
-    vector<Tensor> sparse_delta_weights_tensor_by_group;
+    std::vector<Tensor> sparse_delta_weights_tensor_by_group;
     AllocateDeltaWeightsTensor(&sparse_weights_inputs,
                                &sparse_delta_weights_tensor_by_group);
     WeightsByGroup sparse_delta_weights_by_group =
@@ -532,7 +532,7 @@ class SdcaSolver : public OpKernel {
                                                         &dense_weights_inputs));
     WeightsByGroup dense_weights_by_group;
     FillWeightsFromInputs(&dense_weights_inputs, &dense_weights_by_group);
-    vector<Tensor> dense_delta_weights_tensor_by_group;
+    std::vector<Tensor> dense_delta_weights_tensor_by_group;
     AllocateDeltaWeightsTensor(&dense_weights_inputs,
                                &dense_delta_weights_tensor_by_group);
     WeightsByGroup dense_delta_weights_by_group =

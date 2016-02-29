@@ -666,28 +666,11 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Config settings for determining if we are building for Android
-# (the android_32 and android_64 entries are only relevant to internal Google builds).
+# Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
     values = {
         "crosstool_top": "//external:android/crosstool",
-    },
-)
-
-config_setting(
-    name = "android_32",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_8:custom_malloc",
-    },
-)
-
-config_setting(
-    name = "android_64",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "custom_malloc": "//third_party/java/android/android_ndk_linux/toolchains/gcc_4_9:custom_malloc",
     },
 )
 
@@ -707,8 +690,6 @@ cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = select({
         ":android": ["//tensorflow/core:android_srcs"],
-        ":android_32": ["//tensorflow/core:android_srcs"],
-        ":android_64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -722,8 +703,6 @@ cc_library(
     ],
     copts = select({
         ":android": ANDROID_TF_COPTS,
-        ":android_32": ANDROID_TF_COPTS,
-        ":android_64": ANDROID_TF_COPTS,
         "//conditions:default": [],
     }),
     tags = [
@@ -746,8 +725,6 @@ cc_library(
     ],
     copts = select({
         ":android": ANDROID_TF_COPTS,
-        ":android_32": ANDROID_TF_COPTS,
-        ":android_64": ANDROID_TF_COPTS,
         "//conditions:default": [],
     }),
     tags = [
