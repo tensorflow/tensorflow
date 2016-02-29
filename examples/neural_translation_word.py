@@ -115,8 +115,9 @@ X_test = X_vocab_processor.transform(X_test)
 X_test = np.array([X_test.next() for _ in range(1000)])
 y_test = [y_test.next() for _ in range(1000)]
 
-n_words = len(X_vocab_processor.vocabulary_)
-print('Total words: %d' % n_words)
+n_en_words = len(X_vocab_processor.vocabulary_)
+n_fr_words = len(y_vocab_processor.vocabulary_)
+print('Total words, en: %d, fr: %d' % (n_en_words, n_fr_words))
 
 # Translation model
 
@@ -124,13 +125,13 @@ HIDDEN_SIZE = 20
 EMBEDDING_SIZE = 20
 
 def translate_model(X, y):
-    word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
+    word_vectors = skflow.ops.categorical_variable(X, n_classes=n_en_words,
         embedding_size=EMBEDDING_SIZE, name='words')
     in_X, in_y, out_y = skflow.ops.seq2seq_inputs(
         word_vectors, y, MAX_DOCUMENT_LENGTH, MAX_DOCUMENT_LENGTH)
     encoder_cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
     decoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(
-        tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), n_words)
+        tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), n_fr_words)
     decoding, _, sampling_decoding, _ = skflow.ops.rnn_seq2seq(in_X, in_y,
         encoder_cell, decoder_cell=decoder_cell)
     return skflow.ops.sequence_classifier(decoding, out_y, sampling_decoding)
@@ -142,7 +143,7 @@ if os.path.exists(os.path.join(PATH, 'graph.pbtxt')):
     translator = skflow.TensorFlowEstimator.restore(PATH)
 else:
     translator = skflow.TensorFlowEstimator(model_fn=translate_model,
-        n_classes=n_words,
+        n_classes=n_fr_words,
         optimizer='Adam', learning_rate=0.01, batch_size=128,
         continue_training=True, steps=100)
 

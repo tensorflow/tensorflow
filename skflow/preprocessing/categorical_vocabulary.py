@@ -91,13 +91,13 @@ class CategoricalVocabulary(object):
             max_frequency: optional, maximum frequency to keep.
                 Useful to remove very frequent categories (like stop words).
         """
-        self._freq = dict(sorted(six.iteritems(self._freq), key=lambda x: x[1],
-            reverse=True))
+        self._freq = sorted(
+            six.iteritems(self._freq), key=lambda x: x[1], reverse=True)
         self._mapping = {self._unknown_token: 0}
         if self._support_reverse:
             self._reverse_mapping = [self._unknown_token]
         idx = 1
-        for category, count in six.iteritems(self._freq):
+        for category, count in self._freq:
             if max_frequency > 0 and count >= max_frequency:
                 continue
             if count <= min_frequency:
@@ -106,6 +106,7 @@ class CategoricalVocabulary(object):
             idx += 1
             if self._support_reverse:
                 self._reverse_mapping.append(category)
+        self._freq = dict(self._freq[:idx - 1])
 
     def reverse(self, class_id):
         """Given class id reverse to original class name.

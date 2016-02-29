@@ -33,7 +33,7 @@ class CategoricalProcessor(object):
                     the input dataset.
 
     Attributes:
-        vocabularies_: CategoricalVocabulary object.
+        vocabularies_: list of CategoricalVocabulary objects.
     """
 
     def __init__(self, min_frequency=0, share=False, vocabularies=None):
