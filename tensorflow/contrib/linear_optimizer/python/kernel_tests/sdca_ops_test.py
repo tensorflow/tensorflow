@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import uuid
+
 import tensorflow as tf
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -72,18 +74,26 @@ def make_example_dict(example_protos, example_weights):
               example_labels=tf.reshape(parsed['target'], [-1]))
 
 
-def make_variable_dict(examples_dict, max_age, max_gender):
+def make_variable_dict(max_age, max_gender):
   # TODO(dbaylor):  Figure out how to derive max_age & max_gender from
   # examples_dict.
   age_weights = tf.Variable(tf.zeros([max_age + 1], dtype=tf.float32))
   gender_weights = tf.Variable(tf.zeros([max_gender + 1], dtype=tf.float32))
-  dual_variables = tf.Variable(tf.zeros_like(examples_dict['example_labels'],
-                                             dtype=tf.float32))
   training_log_loss = tf.Variable(tf.zeros([], dtype=tf.float64))
   return dict(sparse_features_weights=[age_weights, gender_weights],
               dense_features_weights=[],
-              dual=dual_variables,
               training_log_loss=training_log_loss)
+
+
+# Setup the single container shared across all tests. This is testing proper
+# isolation across optimizers instantiated in each of the tests below.
+CONTAINER = uuid.uuid4().hex
+
+
+# Clear the shared container.
+def tearDown():
+  # TODO(katsiapis): Proper cleanup of Containers when possible.
+  pass
 
 
 class SdcaOptimizerTest(TensorFlowTestCase):
@@ -101,13 +111,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     example_weights = [1.0, 1.0]
     with self.test_session(use_gpu=False):
       examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(examples, 1, 1)
+      variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss',
                      prior=0.0)
       tf.initialize_all_variables().run()
-      lr = SdcaModel(examples, variables, options)
+      lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
@@ -146,12 +156,12 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self.test_session(use_gpu=False):
       # Only use examples 0 and 2
       examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(examples, 1, 1)
+      variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.25,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
-      lr = SdcaModel(examples, variables, options)
+      lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
@@ -177,12 +187,12 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     example_weights = [0.0, 0.0]
     with self.test_session(use_gpu=False):
       examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(examples, 1, 1)
+      variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
-      lr = SdcaModel(examples, variables, options)
+      lr = SdcaModel(CONTAINER, examples, variables, options)
       self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
       with self.assertRaisesOpError(
           'No weighted examples in 2 training examples'):
@@ -208,13 +218,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     example_weights = [1.0, 1.0, 1.0, 1.0]
     with self.test_session(use_gpu=False):
       examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(examples, 3, 1)
+      variables = make_variable_dict(3, 1)
       options = dict(symmetric_l2_regularization=0.25,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss',
                      prior=-1.09861)
       tf.initialize_all_variables().run()
-      lr = SdcaModel(examples, variables, options)
+      lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
@@ -242,12 +252,12 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     example_weights = [3.0, 1.0]
     with self.test_session(use_gpu=False):
       examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(examples, 1, 1)
+      variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.25,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
-      lr = SdcaModel(examples, variables, options)
+      lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)

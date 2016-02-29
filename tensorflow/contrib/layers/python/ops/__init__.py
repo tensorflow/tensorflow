@@ -12,16 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""contrib module containing volatile or experimental code."""
+"""A module containing TensorFlow ops whose API may change in the future."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Add projects here, they will show up under tf.contrib.
-from tensorflow.contrib import ctc
-from tensorflow.contrib import layers
-from tensorflow.contrib import linear_optimizer
-from tensorflow.contrib import testing
-from tensorflow.contrib import util
+# pylint: disable=wildcard-import
+from tensorflow.contrib.layers.python.ops.loss_ops import *

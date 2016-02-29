@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import uuid
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
@@ -38,7 +39,7 @@ class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
     This class currently only supports a single machine (multi-threaded)
-    implementation. We expect the data, and weights to fit in a single machine.
+    implementation. We expect the weights and duals to fit in a single machine.
 
     Loss functions supported:
      * Binary logistic loss
@@ -49,7 +50,8 @@ class SdcaModel(object):
 
     ```python
     # Create a solver with the desired parameters.
-    lr = tf.contrib.linear_optimizer.SdcaModel(examples, variables, options)
+    lr = tf.contrib.linear_optimizer.SdcaModel(
+        container, examples, variables, options)
     opt_op = lr.minimize()
 
     predictions = lr.predictions(examples)
@@ -58,6 +60,9 @@ class SdcaModel(object):
     # Primal loss only
     unregularized_loss = lr.unregularized_loss(examples)
 
+    container: Name of the container (eg a hex-encoded UUID) where internal
+      state of the optimizer can be stored. The container can be safely shared
+      across many models.
     examples: {
       sparse_features: list of SparseTensors of value type float32.
       dense_features: list of dense tensors of type float32.
@@ -67,7 +72,6 @@ class SdcaModel(object):
     variables: {
       sparse_features_weights: list of tensors of shape [vocab size]
       dense_features_weights: list of tensors of shape [1]
-      dual: tensor of shape [Num examples]
     }
     options: {
       symmetric_l1_regularization: 0.0
@@ -77,7 +81,8 @@ class SdcaModel(object):
     ```
 
     In the training program you will just have to run the returned Op from
-    minimize().
+    minimize(). You should also eventually cleanup the temporary state used by
+    the model, by resetting its (possibly shared) container.
 
     ```python
     # Execute opt_op once to perform training, which continues until
@@ -88,10 +93,10 @@ class SdcaModel(object):
     ```
     """
 
-  def __init__(self, examples, variables, options):
+  def __init__(self, container, examples, variables, options):
     """Create a new sdca optimizer."""
 
-    if not examples or not variables or not options:
+    if not container or not examples or not variables or not options:
       raise ValueError('All arguments must be specified.')
 
     if options['loss_type'] != 'logistic_loss':
@@ -104,7 +109,7 @@ class SdcaModel(object):
 
     self._assertSpecified(
         ['sparse_features_weights', 'dense_features_weights',
-         'training_log_loss', 'dual'], variables)
+         'training_log_loss'], variables)
     self._assertList(
         ['sparse_features_weights', 'dense_features_weights'], variables)
 
@@ -112,12 +117,14 @@ class SdcaModel(object):
         ['loss_type', 'symmetric_l2_regularization',
          'symmetric_l1_regularization'], options)
 
+    self._container = container
     self._examples = examples
     self._variables = variables
     self._options = options
     self._training_log_loss = convert_to_tensor(
         self._variables['training_log_loss'],
         as_ref=True)
+    self._solver_uuid = uuid.uuid4().hex
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -170,8 +177,7 @@ class SdcaModel(object):
         ei = array_ops.reshape(ei, [-1])
         fi = array_ops.reshape(fi, [-1])
         fv = array_ops.reshape(st_i.values, [-1])
-        # TODO(rohananil): This does not work if examples have empty
-        # features.
+        # TODO(rohananil): This does not work if examples have empty features.
         logits += math_ops.segment_sum(
             math_ops.mul(
                 array_ops.gather(sv, fi), fv), array_ops.reshape(ei, [-1]))
@@ -194,8 +200,7 @@ class SdcaModel(object):
 
         Returns:
           An Operation that computes the predictions for examples. For logistic
-          loss
-          output is a tensor with sigmoid output.
+          loss output is a tensor with sigmoid output.
         Raises:
           ValueError: if examples are not well defined.
         """
@@ -227,8 +232,6 @@ class SdcaModel(object):
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          convert_to_tensor(self._variables['dual'],
-                            as_ref=True),
           self._convert_n_to_tensor(self._variables[
               'sparse_features_weights'],
                                     as_ref=True),
@@ -237,7 +240,9 @@ class SdcaModel(object):
           self._training_log_loss,
           L1=self._options['symmetric_l1_regularization'],
           L2=self._options['symmetric_l2_regularization'],
-          LossType=self._options['loss_type'])
+          LossType=self._options['loss_type'],
+          Container=self._container,
+          SolverUUID=self._solver_uuid)
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).

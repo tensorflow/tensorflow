@@ -145,8 +145,8 @@ $ g++ -std=c++11 -shared zero_out.cc -o zero_out.so \
 ### With TensorFlow source installation
 
 If you have TensorFlow sources installed, you can make use of TensorFlow's build
-system to compile your Op. The following Bazel build rule would build
-`zero_out.so`.
+system to compile your Op. Place a BUILD file with following Bazel build rule in
+the [`tensorflow/core/user_ops`][user_ops] directory.
 
 ```python
 cc_binary(
@@ -162,6 +162,12 @@ cc_binary(
         "//third_party/tensorflow/core:framework",
     ],
 )
+```
+
+Run the following command to build `zero_out.so`.
+
+```bash
+$ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
 
 ## Using the Op in Python

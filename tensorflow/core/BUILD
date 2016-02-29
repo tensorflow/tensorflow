@@ -55,7 +55,6 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_kernel_library")
 
 # For platform specific build config
 load(
@@ -202,11 +201,13 @@ cc_library(
     testonly = 1,
     srcs = [
         "platform/test.cc",
+        "util/reporter.cc",
     ] + tf_additional_test_srcs(),
     hdrs = [
         "lib/core/status_test_util.h",
         "platform/test.h",
         "platform/test_benchmark.h",
+        "util/reporter.h",
     ],
     copts = tf_copts(),
     linkopts = ["-lm"],
@@ -301,6 +302,7 @@ tf_gen_op_libs(
         "attention_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
+        "ctc_ops",
         "data_flow_ops",
         "function_ops",
         "functional_ops",
@@ -342,6 +344,7 @@ cc_library(
         ":attention_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
+        ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
@@ -492,6 +495,7 @@ cc_library(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:image",
@@ -590,7 +594,10 @@ filegroup(
 # sources.
 filegroup(
     name = "android_srcs",
-    srcs = ["//tensorflow/core/kernels:android_srcs"] + glob(
+    srcs = [
+        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+    ] + glob(
         [
             "client/**/*.cc",
             "common_runtime/**/*.h",
@@ -813,6 +820,7 @@ cc_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
+        "common_runtime/gpu_device_context.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -886,6 +894,8 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "util/reporter.h",
+            "util/reporter.cc",
             "framework/fake_input.*",
         ],
     ),
@@ -1010,9 +1020,9 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
-            "common_runtime/gpu_device_factory.cc",
             "common_runtime/direct_session.cc",
             "common_runtime/direct_session.h",
+            "common_runtime/gpu_device_context.h",
         ],
     ),
     hdrs = glob(
@@ -1023,6 +1033,7 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "common_runtime/direct_session.h",
+            "common_runtime/gpu_device_context.h",
         ],
     ),
     copts = tf_copts(),

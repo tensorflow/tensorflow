@@ -103,7 +103,8 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   SparseTensor st(ix, vals, shape, order);
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("Index 2 is out of order.", st_indices_valid.error_message());
+  EXPECT_EQ("indices[2] = [2,0,0] is out of order",
+            st_indices_valid.error_message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
@@ -201,7 +202,8 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   st.Reorder<string>(order);
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("Index 1 is repeated.", st_indices_valid.error_message());
+  EXPECT_EQ("indices[1] = [0,0,0] is repeated",
+            st_indices_valid.error_message());
 
   ix_orig(1, 2) = 1;
   ix_t = ix_orig;
@@ -213,7 +215,8 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   st.Reorder<string>(order);
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());  // first index now (0, 0, 1)
-  EXPECT_EQ("Index 1 is repeated.", st_indices_valid.error_message());
+  EXPECT_EQ("indices[1] = [0,0,1] is repeated",
+            st_indices_valid.error_message());
 }
 
 TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
@@ -242,14 +245,18 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   // Error message references index 4 because of the call to Reorder.
-  EXPECT_EQ("Index 4 is out of bounds.", st_indices_valid.error_message());
+  EXPECT_EQ(
+      "indices[4] = [11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+      st_indices_valid.error_message());
 
   ix_t(0, 0) = -1;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("Index 0 is out of bounds.", st_indices_valid.error_message());
+  EXPECT_EQ(
+      "indices[0] = [-1,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+      st_indices_valid.error_message());
 
   ix_t(0, 0) = 0;
   ix.matrix<int64>() = ix_t;
