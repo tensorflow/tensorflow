@@ -3306,6 +3306,8 @@ class GraphKeys(object):
   # Key to collect Variable objects that will be trained by the
   # optimizers.
   TRAINABLE_VARIABLES = "trainable_variables"
+  # Key to collect local variables that are not saved/restored.
+  LOCAL_VARIABLES = "local_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -3332,6 +3334,7 @@ class GraphKeys(object):
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
+  LOCAL_INIT_OP = "local_init_op"
   READY_OP = "ready_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
