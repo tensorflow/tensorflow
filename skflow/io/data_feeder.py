@@ -95,8 +95,9 @@ def _batch_data(X, batch_size):
     chunk = []
     for data in X:
         chunk.append(data)
-        if batch_size > 0 and len(chunk) > batch_size:
+        if batch_size > 0 and len(chunk) >= batch_size:
             yield np.matrix(chunk)
+            chunk = []
     yield np.matrix(chunk)
 
 
