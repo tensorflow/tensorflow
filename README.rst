@@ -25,7 +25,7 @@ Dependencies
 ~~~~~~~~~~~~
 - Python: 2.7, 3.4+ 
 - Scikit learn: 0.16, 0.17, 0.18+ 
-- Tensorflow: 0.6+
+- Tensorflow: 0.7+
 
 First, make sure you have TensorFlow and Scikit Learn installed, then run the following to install the stable version from PyPI:
 
