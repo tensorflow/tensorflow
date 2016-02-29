@@ -32,6 +32,7 @@ REGISTER_OP("SdcaSolver")
     .Input("dense_features: num_dense_features * float")
     .Input("example_weights: float")
     .Input("example_labels: float")
+    .Input("example_ids: string")
     .Input("sparse_weights: Ref(num_sparse_features * float)")
     .Input("dense_weights: Ref(num_dense_features * float)")
     .Input("primal_loss: Ref(double)")
@@ -59,10 +60,12 @@ sparse_features_indices: a list of matrices with two columns that contain
 sparse_features_values: a list of vectors which contains feature value
   associated with each feature group.
 dense_features: a list of vectors which contains the dense feature values.
-example_weights: a vector which contains the example weight associated with
-  each example.
-example_labels: a vector which contains the example label/target asscociated
-  with each example.
+example_weights: a vector which contains the weight associated with each
+  example.
+example_labels: a vector which contains the label/target associated with each
+  example.
+example_ids: a vector which contains the unique identifier associated with each
+  example.
 sparse_weights: a list of vectors where each value is the weight associated with
   a feature index.
 dense_weights: a list of vectors where the value is the weight associated with

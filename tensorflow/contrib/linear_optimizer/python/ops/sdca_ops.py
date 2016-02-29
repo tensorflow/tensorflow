@@ -66,8 +66,9 @@ class SdcaModel(object):
     examples: {
       sparse_features: list of SparseTensors of value type float32.
       dense_features: list of dense tensors of type float32.
-      example_labels: a tensor of of shape [Num examples]
-      example_weights: a tensor of shape [Num examples]
+      example_labels: a tensor of type float32 and shape [Num examples]
+      example_weights: a tensor of type float32 and shape [Num examples]
+      example_ids: a tensor of type string and shape [Num examples]
     }
     variables: {
       sparse_features_weights: list of tensors of shape [vocab size]
@@ -103,7 +104,7 @@ class SdcaModel(object):
       raise ValueError('Optimizer only supports logistic regression (for now).')
 
     self._assertSpecified(
-        ['example_labels', 'example_weights', 'sparse_features',
+        ['example_labels', 'example_weights', 'example_ids', 'sparse_features',
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
 
@@ -223,8 +224,8 @@ class SdcaModel(object):
       sparse_features_indices = []
       sparse_features_weights = []
       for sf in self._examples['sparse_features']:
-        sparse_features_indices.append(ops.convert_to_tensor(sf.indices))
-        sparse_features_weights.append(ops.convert_to_tensor(sf.values))
+        sparse_features_indices.append(convert_to_tensor(sf.indices))
+        sparse_features_weights.append(convert_to_tensor(sf.values))
 
       return _sdca_ops.sdca_solver(
           sparse_features_indices,
@@ -232,8 +233,8 @@ class SdcaModel(object):
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          self._convert_n_to_tensor(self._variables[
-              'sparse_features_weights'],
+          convert_to_tensor(self._examples['example_ids']),
+          self._convert_n_to_tensor(self._variables['sparse_features_weights'],
                                     as_ref=True),
           self._convert_n_to_tensor(self._variables['dense_features_weights'],
                                     as_ref=True),

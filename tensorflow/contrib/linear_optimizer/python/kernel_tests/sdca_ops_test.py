@@ -66,12 +66,12 @@ def make_example_dict(example_protos, example_weights):
   parsed = parse_examples(example_protos)
   return dict(sparse_features=[
       sf_from_st(parsed['age_indices'], parsed['age_values']), sf_from_st(
-          parsed[
-              'gender_indices'], parsed['gender_values'])
+          parsed['gender_indices'], parsed['gender_values'])
   ],
               dense_features=[],
               example_weights=example_weights,
-              example_labels=tf.reshape(parsed['target'], [-1]))
+              example_labels=tf.reshape(parsed['target'], [-1]),
+              example_ids=['%d' % i for i in xrange(0, len(example_protos))])
 
 
 def make_variable_dict(max_age, max_gender):
