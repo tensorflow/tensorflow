@@ -276,7 +276,7 @@ def get_config():
     raise ValueError("Invalid model: %s", FLAGS.model)
 
 
-def main(unused_args):
+def main(_):
   if not FLAGS.data_path:
     raise ValueError("Must set --data_path to PTB data directory")
 
