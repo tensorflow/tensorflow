@@ -93,7 +93,8 @@ class CategoricalVocabulary(object):
         """
         # Sort by alphabet then reversed frequency.
         self._freq = sorted(
-            sorted(six.iteritems(self._freq), key=lambda x: x[0]), 
+            sorted(six.iteritems(self._freq),
+                   key=lambda x: (isinstance(x[0], str), x[0])),
             key=lambda x: x[1], reverse=True)
         self._mapping = {self._unknown_token: 0}
         if self._support_reverse:
