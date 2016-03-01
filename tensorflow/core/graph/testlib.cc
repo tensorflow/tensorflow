@@ -351,15 +351,6 @@ Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
   return ret;
 }
 
-Node* Gather(Graph* g, Node* in0, Node* in1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")
-                  .Input(in0)
-                  .Input(in1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph
