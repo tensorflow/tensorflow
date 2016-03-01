@@ -112,7 +112,7 @@ class SdcaModel(object):
     """Create a new sdca optimizer."""
 
     _maybe_load_sdca_ops()
-    
+
     if not container or not examples or not variables or not options:
       raise ValueError('All arguments must be specified.')
 
@@ -303,7 +303,6 @@ class SdcaModel(object):
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
-      logits = self._logits(examples)
       # TODO(rohananil): Change loss when supporting linear regression.
       return self._l1_loss() + self._l2_loss() + self.unregularized_loss(
           examples)
