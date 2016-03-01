@@ -155,9 +155,6 @@ class DirectSession : public Session {
     Graph* graph = nullptr;
   };
 
-  const RunOptions kEmptyRunOptions = RunOptions();
-  RunOutputs kEmptyRunOutputs = RunOutputs();
-
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(

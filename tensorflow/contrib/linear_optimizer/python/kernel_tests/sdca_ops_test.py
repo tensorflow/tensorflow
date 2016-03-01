@@ -55,23 +55,18 @@ def make_example_dict(example_protos, example_weights):
     return tf.parse_example(
         [e.SerializeToString() for e in example_protos], features)
 
-  # TODO(rohananil): This converts two sparse tensors, into one sparse feature
-  # tensor. Use the tf core op once its merged in.
-  def sf_from_st(ids, weights):
-    example_indices, _ = tf.split(1, 2, ids.indices)
-    feature_indices = tf.expand_dims(ids.values, 1)
-    indices = tf.concat(1, [example_indices, feature_indices])
-    return tf.SparseTensor(indices, weights.values, ids.shape)
+  sparse_merge = lambda ids, values: tf.sparse_merge(ids, values, ids.shape[1])
 
   parsed = parse_examples(example_protos)
-  return dict(sparse_features=[
-      sf_from_st(parsed['age_indices'], parsed['age_values']), sf_from_st(
-          parsed[
-              'gender_indices'], parsed['gender_values'])
-  ],
+  sparse_features = [
+      sparse_merge(parsed['age_indices'], parsed['age_values']),
+      sparse_merge(parsed['gender_indices'], parsed['gender_values'])
+  ]
+  return dict(sparse_features=sparse_features,
               dense_features=[],
               example_weights=example_weights,
-              example_labels=tf.reshape(parsed['target'], [-1]))
+              example_labels=tf.reshape(parsed['target'], [-1]),
+              example_ids=['%d' % i for i in xrange(0, len(example_protos))])
 
 
 def make_variable_dict(max_age, max_gender):

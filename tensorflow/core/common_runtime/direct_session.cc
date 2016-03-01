@@ -252,8 +252,9 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
-  return RunWithOpts(kEmptyRunOptions, inputs, output_names, target_nodes,
-                     outputs, &kEmptyRunOutputs);
+  RunOutputs run_outputs;
+  return RunWithOpts(RunOptions(), inputs, output_names, target_nodes, outputs,
+                     &run_outputs);
 }
 
 Status DirectSession::RunWithOpts(const RunOptions& run_options,

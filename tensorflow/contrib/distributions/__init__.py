@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for training linear models.
+"""Ops for representing statistical distributions.
 
-## This package provides optimizers to train linear models.
+## This package provides classes for statistical distributions.
 
-@@SdcaModel
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
+# pylint: disable=unused-import,wildcard-import, line-too-long
+from tensorflow.contrib.distributions.python.ops import gaussian_conjugate_posteriors
+from tensorflow.contrib.distributions.python.ops.gaussian import *
+# from tensorflow.contrib.distributions.python.ops.dirichlet import *  # pylint: disable=line-too-long
+# from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *  # pylint: disable=line-too-long

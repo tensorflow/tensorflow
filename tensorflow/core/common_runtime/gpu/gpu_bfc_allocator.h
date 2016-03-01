@@ -121,7 +121,7 @@ class GPUBFCAllocator : public VisitableAllocator {
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
 
-    bool in_use() { return allocation_id != -1; }
+    bool in_use() const { return allocation_id != -1; }
 
     string DebugString(GPUBFCAllocator* a, bool recurse) {
       string dbg;
@@ -224,6 +224,10 @@ class GPUBFCAllocator : public VisitableAllocator {
   void RemoveFreeChunkFromBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  void RenderRegion(char* rendered, size_t resolution, const void* ptr,
+                    size_t offset, size_t size, char c)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  string RenderOccupancy() EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   ChunkHandle AllocateChunk() EXCLUSIVE_LOCKS_REQUIRED(lock_);

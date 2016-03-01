@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 
-#include "external/grpc/include/grpc++/grpc++.h"
-#include "external/grpc/include/grpc++/server_builder.h"
+#include "grpc++/grpc++.h"
+#include "grpc++/server_builder.h"
 
 namespace tensorflow {
 
