@@ -358,6 +358,7 @@ echo ""
 
 chmod +x ${TMP_SCRIPT}
 
+FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
   echo "*** This is a DRY RUN ***"
@@ -393,8 +394,13 @@ else
 
     "${DOCKER_TEST_CMD}" "${CTYPE}" "${DOCKER_IMAGE_TAG}" "${WHL_PATH}"
   fi
+  STEP2_RES=$?
 
-fi && FAILURE=0 || FAILURE=1
+  if [[ ${STEP1_RES} != "0" ]] || [[ ${STEP2_RES} != "0" ]]; then
+    FAILURE=1
+  fi
+fi
+
 [[ ${FAILURE} == "0" ]] && RESULT="SUCCESS" || RESULT="FAILURE"
 
 rm -f ${TMP_SCRIPT}
