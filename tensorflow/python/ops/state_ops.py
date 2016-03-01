@@ -24,10 +24,12 @@ collected in the graph.
 
 @@all_variables
 @@trainable_variables
+@@local_variables
 @@moving_average_variables
 
 @@initialize_all_variables
 @@initialize_variables
+@@initialize_local_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
