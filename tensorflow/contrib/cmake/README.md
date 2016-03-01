@@ -10,6 +10,9 @@ actions can be performed using appropriate GUI tools.
 Environment Setup
 =================
 
+Windows
+-------
+
 Open the appropriate *Command Prompt* from the *Start* menu.
 
 For example *VS2013 x64 Native Tools Command Prompt*:
@@ -40,8 +43,20 @@ If *git* command is not available from *Command Prompt*, add it to system
 
 Good. Now you are ready to continue.
 
+Ubuntu
+------
+The basic build can be performed on Ubuntu 12.04 and upwards.
+Successful installation has only been tested with recent versions of
+[CMake](http://www.cmake.org) (3.5+) and [gcc](https://gcc.gnu.org/) (4.9+).
+The oldest version of [glibc](https://www.gnu.org/software/libc/) compilation
+has succeeded on is 2.15. Make sure to update defaults on your system.
+
+
 Getting Sources
 ===============
+
+Windows
+-------
 
 You can get the latest stable source packages from the
 [releases](https://github.com/tensorflow/tensorflow/releases) page.
@@ -64,15 +79,29 @@ Now go to *tensorflow\contrib\cmake* folder in Tensorflow's contrib sources:
 
 Good. Now you are ready to configure *CMake*.
 
+Ubuntu
+------
+Clone sources as above.
+
+    git clone --recursive -b [release_tag] https://github.com/tensorflow/tensorflow.git
+
+Then
+
+    cd tensorflow
+    cd tensorflow/contrib/cmake
+
+
 CMake Configuration
 ===================
+
+Windows
+-------
 
 *CMake* supports a lot of different
 [generators](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html)
 for various native build systems. We are only interested in
 [Makefile](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#makefile-generators)
-and
-[Visual Studio](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#visual-studio-generators)
+and [Visual Studio](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#visual-studio-generators)
 generators.
 
 We will use shadow building to separate the temporary files from the Tensorflow
@@ -120,8 +149,19 @@ If the *gmock* directory does not exist, and/or you do not want to build
 Tensorflow unit tests, you need to add *cmake* command argument
 `-Dtensorflow_BUILD_TESTS=OFF` to disable testing.
 
+Ubuntu
+------
+Create build directory and run `cmake`:
+
+    mkdir -p build/release
+    cd build/release
+    cmake -DCMAKE_BUILD_TYPE=Release ../..
+
 Compiling
 =========
+
+Windows
+-------
 
 To compile tensorflow:
 
@@ -140,6 +180,11 @@ If you prefer to use the IDE:
   * From the Build menu, choose "Build Solution".
 
 And wait for the compilation to finish.
+
+Ubuntu
+------
+
+Run `make`
 
 Testing
 =======

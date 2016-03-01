@@ -25,6 +25,7 @@ target_include_directories(tf_core_kernels PRIVATE
    ${tensorflow_source_dir}
    ${png_INCLUDE_DIR}
    ${eigen_INCLUDE_DIRS}
+   ${re2_INCLUDE_DIR}
 )
 
 #target_link_libraries(tf_core_kernels
