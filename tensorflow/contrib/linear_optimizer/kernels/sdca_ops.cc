@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
@@ -79,17 +78,22 @@ class DualsByExample : public ResourceBase {
 
   virtual ~DualsByExample() {}
 
-  // TODO(katsiapis): Investigate using a smaller key space to save memory if
-  // collisions are not much of an issue.
-  //
   // The current probability of at least on collision for 1B example_ids is
   // approximately 10^-11 (ie 2^60 / 2^97).
+  //
+  // TODO(katsiapis): Investigate using a smaller key space to save memory if
+  // collisions are not much of an issue.
   using Key = std::pair<uint64, uint32>;
 
   static Key MakeKey(const string& example_id) {
     // Platform agnostic and collision resistant key-generation function.
-    return std::make_pair(Hash64(example_id),
-                          crc32c::Value(example_id.data(), example_id.size()));
+    //
+    // TODO(katsiapis): Avoid the double-pass over the data.
+    static const uint64 kSeed1 = 0xDECAFCAFFE;  // Same as Hash64 default seed.
+    static const uint64 kSeed2 = 0xABCDEF0123;  // Anything != kSeed1 will do.
+    return std::make_pair(
+        Hash64(example_id.data(), example_id.size(), kSeed1),
+        Hash64(example_id.data(), example_id.size(), kSeed2) & 0xFFFFFFFF);
   }
 
   float& operator[](const Key& key) {
@@ -123,8 +127,8 @@ class DualsByExample : public ResourceBase {
   std::unordered_map<Key, float, KeyHash> duals_by_example_;  // Guarded by mu_.
 };
 
-// Weights associated with a (sparse or dense) feature group, such that size of
-// WeightsByGroup is the number of feature groups.
+// Weights associated with a (sparse or dense) feature group, such that the size
+// of WeightsByGroup is the number of feature groups.
 using WeightsByGroup = std::vector<TTypes<float>::Vec>;
 
 // SparseExamples represent sparse feature groups of each example.
@@ -223,14 +227,14 @@ inline RegularizationLoss ComputeRegularizationLoss(
     result.l2_loss += sw * sw;
   };
 
-  for (auto& sparse_weights : sparse_weights_by_group) {
-    for (int64 i = 0; i < sparse_weights.size(); ++i) {
-      accumulate_regularization_loss(sparse_weights(i));
+  for (const TTypes<float>::Vec weights : sparse_weights_by_group) {
+    for (int64 i = 0; i < weights.size(); ++i) {
+      accumulate_regularization_loss(weights(i));
     }
   }
 
-  for (auto& dense_weights : dense_weights_by_group) {
-    accumulate_regularization_loss(dense_weights(0));
+  for (const TTypes<float>::Vec weights : dense_weights_by_group) {
+    accumulate_regularization_loss(weights(0));
   }
 
   result.l1_loss *= regularizations.symmetric_l1;
@@ -253,18 +257,17 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
   const double shrink_by = ShrinkageFactor(regularizations);
   for (size_t i = 0; i < sparse_examples_by_group.size(); ++i) {
     const SparseExamples& sparse_indices_values = sparse_examples_by_group[i];
-    const auto sparse_weights = sparse_weights_by_group[i];
-    const auto sparse_delta_weights = sparse_delta_weights_by_group[i];
+    const TTypes<float>::Vec weights = sparse_weights_by_group[i];
+    const TTypes<float>::Vec delta_weights = sparse_delta_weights_by_group[i];
     if (sparse_indices_values[example_id]) {
       const auto indices = sparse_indices_values[example_id]->indices;
       const auto values = sparse_indices_values[example_id]->values;
       for (int64 dim = 0; dim < indices.dimension(0); ++dim) {
-        const double weight = sparse_weights(indices(dim, 1));
+        const int64 index = indices(dim, 1);
+        const double weight = weights(index);
         const double value = values(dim);
-        result.old_wx += Shrink((weight), shrink_by) * value;
-        result.wx +=
-            Shrink(weight + sparse_delta_weights(indices(dim, 1)), shrink_by) *
-            value;
+        result.old_wx += Shrink(weight, shrink_by) * value;
+        result.wx += Shrink(weight + delta_weights(index), shrink_by) * value;
       }
       result.norm += sparse_indices_values[example_id]->norm;
     }
@@ -285,11 +288,11 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
 void SetZeroDeltaWeights(WeightsByGroup* const sparse_delta_weights_by_group,
                          WeightsByGroup* const dense_delta_weights_by_group) {
   // TODO(rohananil): Parallelize this.
-  for (auto& sparse_weights : *sparse_delta_weights_by_group) {
-    sparse_weights.setZero();
+  for (TTypes<float>::Vec delta_weights : *sparse_delta_weights_by_group) {
+    delta_weights.setZero();
   }
-  for (auto& dense_weights : *dense_delta_weights_by_group) {
-    dense_weights.setZero();
+  for (TTypes<float>::Vec delta_weights : *dense_delta_weights_by_group) {
+    delta_weights.setZero();
   }
 }
 
@@ -308,13 +311,13 @@ void ShrinkWeights(const Regularizations& regularizations,
                    WeightsByGroup* const sparse_weights_by_group,
                    WeightsByGroup* const dense_weights_by_group) {
   const double shrink_by = ShrinkageFactor(regularizations);
-  for (auto& sparse_weights : *sparse_weights_by_group) {
-    for (int64 i = 0; i < sparse_weights.size(); ++i) {
-      sparse_weights(i) = Shrink(sparse_weights(i), shrink_by);
+  for (TTypes<float>::Vec weights : *sparse_weights_by_group) {
+    for (int64 i = 0; i < weights.size(); ++i) {
+      weights(i) = Shrink(weights(i), shrink_by);
     }
   }
-  for (auto& dense_weights : *dense_weights_by_group) {
-    dense_weights(0) = Shrink(dense_weights(0), shrink_by);
+  for (TTypes<float>::Vec weights : *dense_weights_by_group) {
+    weights(0) = Shrink(weights(0), shrink_by);
   }
 }
 
@@ -327,7 +330,7 @@ void UpdateDeltaWeights(const int64 example_id,
                         WeightsByGroup* const dense_delta_weights_by_group) {
   for (size_t i = 0; i < sparse_examples_by_group.size(); ++i) {
     const SparseExamples& sparse_examples = sparse_examples_by_group[i];
-    auto sparse_weights = (*sparse_delta_weights_by_group)[i];
+    TTypes<float>::Vec delta_weights = (*sparse_delta_weights_by_group)[i];
     if (sparse_examples[example_id]) {
       const auto indices = sparse_examples[example_id]->indices;
       const auto values = sparse_examples[example_id]->values;
@@ -336,20 +339,20 @@ void UpdateDeltaWeights(const int64 example_id,
         // However, casting float to atomic<float> is UB. We may consider
         // sharded set of locks, or bring primal-dual relationship to consistent
         // state after several epochs.
-        sparse_weights(indices(dim, 1)) +=
+        delta_weights(indices(dim, 1)) +=
             bounded_dual_delta * values(dim) / l2_regularization;
       }
     }
   }
   for (size_t i = 0; i < dense_features_by_group.size(); ++i) {
-    const auto dense_values = dense_features_by_group[i];
-    auto dense_weights = (*dense_delta_weights_by_group)[i];
+    const auto values = dense_features_by_group[i];
+    TTypes<float>::Vec delta_weights = (*dense_delta_weights_by_group)[i];
     // TODO(rohananil): Atomic updates provide better convergence gaurantees
     // However, casting float to atomic<float> is UB. We may consider
     // sharded set of locks, or bring primal-dual relationship to consistent
     // state after several epochs.
-    dense_weights(0) +=
-        bounded_dual_delta * dense_values(example_id) / l2_regularization;
+    delta_weights(0) +=
+        bounded_dual_delta * values(example_id) / l2_regularization;
   }
 }
 
@@ -361,34 +364,30 @@ inline void AtomicAdd(const double src, std::atomic<double>* const dst) {
   }
 }
 
-void FillWeightsFromInputs(
-    /*const*/ OpMutableInputList* const input_list,
-    WeightsByGroup* const weights) {
-  weights->clear();
+WeightsByGroup MakeWeightsFrom(OpMutableInputList* const input_list) {
+  WeightsByGroup result;
   for (int i = 0; i < input_list->size(); ++i) {
-    weights->emplace_back(input_list->at(i, /*lock_held=*/true).flat<float>());
+    result.emplace_back(input_list->at(i, /*lock_held=*/true).flat<float>());
   }
+  return result;
 }
 
-void AllocateDeltaWeightsTensor(
-    /*const*/ OpMutableInputList* const input_list,
-    std::vector<Tensor>* const delta_weight_tensors) {
-  delta_weight_tensors->clear();
-  delta_weight_tensors->resize(input_list->size());
+std::vector<Tensor> MakeTensorsLike(OpMutableInputList* const input_list) {
+  std::vector<Tensor> result;
   for (int i = 0; i < input_list->size(); ++i) {
-    (*delta_weight_tensors)[i] =
-        Tensor(DT_FLOAT, input_list->at(i, /*lock_held=*/true).shape());
-    (*delta_weight_tensors)[i].flat<float>().setZero();
+    result.emplace_back(DT_FLOAT,
+                        input_list->at(i, /*lock_held=*/true).shape());
+    result.back().flat<float>().setZero();
   }
+  return result;
 }
 
-WeightsByGroup GetWeightsFromTensor(
-    /*const*/ std::vector<Tensor>* const weight_tensors) {
-  WeightsByGroup weights;
-  for (size_t i = 0; i < weight_tensors->size(); ++i) {
-    weights.emplace_back((*weight_tensors)[i].flat<float>());
+WeightsByGroup MakeDeltaWeightsFrom(std::vector<Tensor>* const tensors) {
+  WeightsByGroup result;
+  for (auto& tensor : *tensors) {
+    result.emplace_back(tensor.flat<float>());
   }
-  return weights;
+  return result;
 }
 
 }  // namespace
@@ -462,7 +461,8 @@ class SdcaSolver : public OpKernel {
                 errors::InvalidArgument("No weighted examples in ",
                                         num_examples, " training examples"));
 
-    // We scale it up by weighted examples.
+    // We scale regularizations up by weighted examples and enforce a minimal
+    // l2, required by the algorithm.
     regularizations_.symmetric_l1 =
         regularizations_.symmetric_l1 * weighted_examples;
     regularizations_.symmetric_l2 =
@@ -517,26 +517,24 @@ class SdcaSolver : public OpKernel {
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
                                 "sparse_weights", &sparse_weights_inputs));
-    WeightsByGroup sparse_weights_by_group;
-    FillWeightsFromInputs(&sparse_weights_inputs, &sparse_weights_by_group);
-    std::vector<Tensor> sparse_delta_weights_tensor_by_group;
-    AllocateDeltaWeightsTensor(&sparse_weights_inputs,
-                               &sparse_delta_weights_tensor_by_group);
+    WeightsByGroup sparse_weights_by_group =
+        MakeWeightsFrom(&sparse_weights_inputs);
+    std::vector<Tensor> sparse_delta_weights_by_group_backing_store =
+        MakeTensorsLike(&sparse_weights_inputs);
     WeightsByGroup sparse_delta_weights_by_group =
-        GetWeightsFromTensor(&sparse_delta_weights_tensor_by_group);
+        MakeDeltaWeightsFrom(&sparse_delta_weights_by_group_backing_store);
 
     // TODO(rohananil): Remove the code duplication between sparse and
     // dense weights.
     OpMutableInputList dense_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list("dense_weights",
                                                         &dense_weights_inputs));
-    WeightsByGroup dense_weights_by_group;
-    FillWeightsFromInputs(&dense_weights_inputs, &dense_weights_by_group);
-    std::vector<Tensor> dense_delta_weights_tensor_by_group;
-    AllocateDeltaWeightsTensor(&dense_weights_inputs,
-                               &dense_delta_weights_tensor_by_group);
+    WeightsByGroup dense_weights_by_group =
+        MakeWeightsFrom(&dense_weights_inputs);
+    std::vector<Tensor> dense_delta_weights_by_group_backing_store =
+        MakeTensorsLike(&dense_weights_inputs);
     WeightsByGroup dense_delta_weights_by_group =
-        GetWeightsFromTensor(&dense_delta_weights_tensor_by_group);
+        MakeDeltaWeightsFrom(&dense_delta_weights_by_group_backing_store);
 
     // Those will be shuffled below at each iteration and processed in a
     // partitioned fashion across multiple threads.
@@ -632,12 +630,14 @@ class SdcaSolver : public OpKernel {
           // relationship consistent as our current updates are not
           // transactional.
         };
-        const DeviceBase::CpuWorkerThreads* const worker_threads =
-            context->device()->tensorflow_cpu_worker_threads();
+        const DeviceBase::CpuWorkerThreads& worker_threads =
+            *context->device()->tensorflow_cpu_worker_threads();
+        // TODO(katsiapis): Current multiplier (100,000) works well empirically
+        // but perhaps we can tune it better.
         const int64 kCostPerUnit =
             100000 * (num_sparse_features_ + num_dense_features_);
-        Shard(worker_threads->num_threads, worker_threads->workers,
-              num_examples, kCostPerUnit, update_partition);
+        Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
+              kCostPerUnit, update_partition);
       }
       total_duality_gap = total_primal_loss.load() + total_dual_loss.load() +
                           regularization_loss.l1_loss +
