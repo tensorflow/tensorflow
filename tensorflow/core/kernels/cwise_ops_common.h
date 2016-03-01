@@ -45,8 +45,17 @@ class BinaryOpShared : public OpKernel {
     // If ctx->status().ok() is true, then out is guaranteed to be allocated.
     BinaryOpState(OpKernelContext* ctx);
 
+    const Tensor& in0;
+    const Tensor& in1;
+
     BCast bcast;
     Tensor* out = nullptr;
+    int64 out_num_elements;
+
+    int64 in0_num_elements;
+    int64 in1_num_elements;
+
+    int ndims;
   };
 
   template <int NDIMS>
@@ -74,42 +83,41 @@ class BinaryOp : public BinaryOpShared {
                        DataTypeToEnum<Tin>::v()) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& in0 = ctx->input(0);
-    const Tensor& in1 = ctx->input(1);
     // 'state': Shared helper not dependent on T to reduce code size
     BinaryOpState state(ctx);
     if (!ctx->status().ok()) return;
     Tensor* out = state.out;
     BCast* bcast = &state.bcast;
-    if (out->NumElements() == 0) {
+    auto& in0 = state.in0;
+    auto& in1 = state.in1;
+    if (state.out_num_elements == 0) {
       return;
     }
-    const int ndims = bcast->x_reshape().size();
+    const int ndims = state.ndims;
+    const Device& eigen_device = ctx->eigen_device<Device>();
     if (ndims <= 1) {
-      if (in1.NumElements() == 1) {
+      auto out_flat = out->flat<Tout>();
+      if (state.in1_num_elements == 1) {
         // tensor op scalar
         functor::BinaryFunctor<Device, Functor, 1>().Right(
-            ctx->eigen_device<Device>(), out->flat<Tout>(), in0.flat<Tin>(),
-            in1.scalar<Tin>());
+            eigen_device, out_flat, in0.flat<Tin>(), in1.scalar<Tin>());
         return;
       }
-      if (in0.NumElements() == 1) {
+      auto in1_flat = in1.flat<Tin>();
+      if (state.in0_num_elements == 1) {
         // scalar op tensor
         functor::BinaryFunctor<Device, Functor, 1>().Left(
-            ctx->eigen_device<Device>(), out->flat<Tout>(), in0.scalar<Tin>(),
-            in1.flat<Tin>());
+            eigen_device, out_flat, in0.scalar<Tin>(), in1_flat);
         return;
       }
-      functor::BinaryFunctor<Device, Functor, 1>()(
-          ctx->eigen_device<Device>(), out->flat<Tout>(), in0.flat<Tin>(),
-          in1.flat<Tin>());
+      functor::BinaryFunctor<Device, Functor, 1>()(eigen_device, out_flat,
+                                                   in0.flat<Tin>(), in1_flat);
       return;
     }
 
     if (ndims == 2) {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(
-          ctx->eigen_device<Device>(),
-          out->shaped<Tout, 2>(bcast->result_shape()),
+          eigen_device, out->shaped<Tout, 2>(bcast->result_shape()),
           in0.shaped<Tin, 2>(bcast->x_reshape()),
           ToIndexArray<2>(bcast->x_bcast()),
           in1.shaped<Tin, 2>(bcast->y_reshape()),
@@ -119,8 +127,7 @@ class BinaryOp : public BinaryOpShared {
 
     if (ndims == 3) {
       functor::BinaryFunctor<Device, Functor, 3>().BCast(
-          ctx->eigen_device<Device>(),
-          out->shaped<Tout, 3>(bcast->result_shape()),
+          eigen_device, out->shaped<Tout, 3>(bcast->result_shape()),
           in0.shaped<Tin, 3>(bcast->x_reshape()),
           ToIndexArray<3>(bcast->x_bcast()),
           in1.shaped<Tin, 3>(bcast->y_reshape()),
@@ -163,6 +170,11 @@ namespace functor {
 
 // For CPUDevice, we do operations inline if the resulting tensor is
 // modestly sized.
+//
+// NOTE(jeff): Changing DoInline to 'return false' gives significant code
+// size benefits, but hurts CPU performance considerably (performance
+// on ptb_word_lm drops from 3568 wps to 1922 wps, but code size for
+// tensorflow code in the binary drops by 3.3%).
 static bool DoInline(size_t size) { return size <= 32768; }
 
 template <typename D, typename OUT, typename RHS>

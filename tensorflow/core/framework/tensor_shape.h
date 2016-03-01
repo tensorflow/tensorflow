@@ -137,6 +137,7 @@ class TensorShape {
 
   void DumpRep() const;  // XXX
  private:
+  void DestructorOutOfLine();
   void ClearAllButDataType();
   void SlowCopyFrom(const TensorShape& b);
 
@@ -323,7 +324,7 @@ inline TensorShape::TensorShape(const TensorShape& b) {
 
 inline TensorShape::~TensorShape() {
   if (tag() == REP_OUT_OF_LINE) {
-    delete as64()->dims_;
+    DestructorOutOfLine();
   }
 }
 

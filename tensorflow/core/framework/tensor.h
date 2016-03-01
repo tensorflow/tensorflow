@@ -227,9 +227,7 @@ class Tensor {
   ///
   /// ```
   template <typename T>
-  typename TTypes<T>::Flat flat() {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::Flat flat();
 
   template <typename T>
   typename TTypes<T>::UnalignedFlat unaligned_flat() {
@@ -294,9 +292,7 @@ class Tensor {
   typename TTypes<T, NDIMS>::ConstTensor tensor() const;
 
   template <typename T>
-  typename TTypes<T>::ConstFlat flat() const {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::ConstFlat flat() const;
 
   template <typename T>
   typename TTypes<T>::UnalignedConstFlat unaligned_flat() const {
@@ -316,16 +312,7 @@ class Tensor {
   }
 
   template <typename T>
-  typename TTypes<T>::ConstMatrix flat_outer_dims() const {
-    int64 first_size = dims() > 0 ? dim_size(0) : 1;
-    if (first_size == 0) {
-      DCHECK_EQ(NumElements(), 0);
-      // Return something empty, avoiding divide by 0
-      return shaped<T, 2>({0, 0});
-    } else {
-      return shaped<T, 2>({first_size, NumElements() / first_size});
-    }
-  }
+  typename TTypes<T>::ConstMatrix flat_outer_dims() const;
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor shaped(
@@ -398,6 +385,11 @@ class Tensor {
 
   template <typename T>
   T* base() const;
+
+  template <size_t NDIMS>
+  void FillDimsAndValidateCompatibleShape(
+      Eigen::array<Eigen::DenseIndex, NDIMS>* dims,
+      gtl::ArraySlice<int64> new_sizes) const;
 };
 
 // Implementation details
@@ -477,19 +469,26 @@ typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
   return typename TTypes<T, NDIMS>::UnalignedTensor(base<T>(), dims);
 }
 
+template <size_t NDIMS>
+void Tensor::FillDimsAndValidateCompatibleShape(
+    Eigen::array<Eigen::DenseIndex, NDIMS>* dims,
+    gtl::ArraySlice<int64> new_sizes) const {
+  CHECK_EQ(NDIMS, new_sizes.size());
+  int64 new_num_elements = 1;
+  for (size_t d = 0; d < NDIMS; d++) {
+    new_num_elements *= new_sizes[d];
+    (*dims)[d] = new_sizes[d];
+  }
+  CHECK_EQ(new_num_elements, NumElements());
+}
+
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
   CHECK(IsAligned());
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CHECK_EQ(NDIMS, new_sizes.size());
-  int64 new_num_elements = 1;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
-  for (size_t d = 0; d < NDIMS; d++) {
-    new_num_elements *= new_sizes[d];
-    dims[d] = new_sizes[d];
-  }
-  CHECK_EQ(new_num_elements, NumElements());
+  FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
 }
 
@@ -497,14 +496,8 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
     gtl::ArraySlice<int64> new_sizes) const {
   CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CHECK_EQ(NDIMS, new_sizes.size());
-  int64 new_num_elements = 1;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
-  for (size_t d = 0; d < NDIMS; d++) {
-    new_num_elements *= new_sizes[d];
-    dims[d] = new_sizes[d];
-  }
-  CHECK_EQ(new_num_elements, NumElements());
+  FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::UnalignedConstTensor(base<T>(), dims);
 }
 
@@ -520,6 +513,28 @@ typename TTypes<T>::ConstScalar Tensor::scalar() const {
   CHECK(IsAligned());
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
   return typename TTypes<T>::ConstScalar(base<T>());
+}
+
+template <typename T>
+typename TTypes<T>::Flat Tensor::flat() {
+  return shaped<T, 1>({NumElements()});
+}
+
+template <typename T>
+typename TTypes<T>::ConstFlat Tensor::flat() const {
+  return shaped<T, 1>({NumElements()});
+}
+
+template <typename T>
+typename TTypes<T>::ConstMatrix Tensor::flat_outer_dims() const {
+  int64 first_size = dims() > 0 ? dim_size(0) : 1;
+  if (first_size == 0) {
+    DCHECK_EQ(NumElements(), 0);
+    // Return something empty, avoiding divide by 0
+    return shaped<T, 2>({0, 0});
+  } else {
+    return shaped<T, 2>({first_size, NumElements() / first_size});
+  }
 }
 
 }  // namespace tensorflow

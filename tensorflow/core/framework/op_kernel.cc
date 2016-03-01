@@ -137,6 +137,10 @@ Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
 
 // OpKernelConstruction ------------------------------------------------------
 
+void OpKernelConstruction::SetStatus(const Status& status) {
+  status_->Update(status);
+}
+
 Status OpKernelConstruction::MatchSignature(
     const DataTypeSlice expected_inputs, const DataTypeSlice expected_outputs) {
   return MatchSignatureHelper(expected_inputs, expected_outputs, input_types_,
@@ -172,10 +176,6 @@ Status OpKernelConstruction::allocate_persistent(
     *out_tensor = allocated;
   }
   return s;
-}
-
-void OpKernelConstruction::SetStatus(const Status& status) {
-  status_->Update(status);
 }
 
 // OpKernelContext -----------------------------------------------------------
@@ -223,6 +223,12 @@ void OpKernelContext::SetStatus(const Status& status) {
   status_.Update(status);
 }
 
+void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
+  mutex_lock l(mu_);
+  // Keep a reference to the underlying memory around.
+  referenced_tensors_.Add(tensor);
+}
+
 Status OpKernelContext::input(const string& name, const Tensor** tensor) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
@@ -251,6 +257,69 @@ Status OpKernelContext::input_ref_mutex(const string& name, mutex** out_mutex) {
   }
   *out_mutex = input_ref_mutex(start);
   return Status::OK();
+}
+
+const Tensor& OpKernelContext::input(int index) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK(!(*params_->inputs)[index].is_ref());
+  const Tensor& tensor = *((*params_->inputs)[index].tensor);
+  record_tensor_reference(tensor);
+  return tensor;
+}
+
+Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
+  // return a copy of the Ref acquired while holding the mutex
+  if (lock_held) {
+    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
+  } else {
+    mutex_lock l(*input_ref_mutex(index));
+    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    record_tensor_reference(tensor);
+    return tensor;
+  }
+}
+
+void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
+                                        bool lock_held) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
+  // should only modify the tensor while holding the mutex
+  if (lock_held) {
+    *(*params_->inputs)[index].tensor = tensor;
+  } else {
+    mutex_lock l(*input_ref_mutex(index));
+    *(*params_->inputs)[index].tensor = tensor;
+  }
+  record_tensor_reference(tensor);
+}
+
+void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
+                                                      int output_index) {
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, params_->inputs->size());
+  DCHECK((*params_->inputs)[input_index].is_ref());
+  set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
+                 (*params_->inputs)[input_index].tensor);
+}
+
+void OpKernelContext::delete_ref_input(int index, bool lock_held) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, params_->inputs->size());
+  DCHECK((*params_->inputs)[index].is_ref());
+  // should only modify the tensor while holding the mutex
+  if (lock_held) {
+    delete (*params_->inputs)[index].tensor;
+  } else {
+    mutex_lock l(*input_ref_mutex(index));
+    delete (*params_->inputs)[index].tensor;
+  }
 }
 
 Status OpKernelContext::mutable_input(const string& name, Tensor* tensor,
@@ -317,6 +386,14 @@ Status OpKernelContext::output_list(const string& name, OpOutputList* list) {
   return Status::OK();
 }
 
+Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
+                                        Tensor** output) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, num_outputs());
+  AllocatorAttributes attr = output_alloc_attr(index);
+  return allocate_output(index, shape, output, attr);
+}
+
 Status OpKernelContext::allocate_output(const string& name,
                                         const TensorShape& shape,
                                         Tensor** tensor) {
@@ -346,6 +423,64 @@ Status OpKernelContext::allocate_output(const string& name,
   return allocate_output(start, shape, tensor, attr);
 }
 
+Status OpKernelContext::allocate_tensor(
+    DataType type, const TensorShape& shape, Tensor* out_tensor,
+    AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
+  Allocator* a = get_allocator(attr);
+  Tensor new_tensor(a, type, shape, allocation_attr);
+
+  if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
+    return errors::ResourceExhausted("OOM when allocating tensor with shape",
+                                     shape.DebugString());
+  }
+  *out_tensor = new_tensor;
+  record_tensor_reference(new_tensor);
+  return Status::OK();
+}
+
+Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
+                                        Tensor** output,
+                                        AllocatorAttributes attr) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, outputs_.size());
+  const DataType type = params_->op_kernel->output_type(index);
+  DCHECK(!IsRefType(type));
+  DCHECK(mutable_output(index) == nullptr);
+  Tensor* output_tensor = new Tensor();
+  Status s = allocate_tensor(type, shape, output_tensor, attr);
+  if (s.ok()) {
+    outputs_[index] = TensorValue(output_tensor);
+    *output = outputs_[index].tensor;
+  }
+  return s;
+}
+
+Status OpKernelContext::allocate_temp(
+    DataType type, const TensorShape& shape, Tensor* out_temp,
+    AllocatorAttributes allocator_attr,
+    const AllocationAttributes& allocation_attr) {
+  Status s =
+      allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
+  return s;
+}
+
+Status OpKernelContext::allocate_persistent(DataType type,
+                                            const TensorShape& shape,
+                                            PersistentTensor* out_persistent,
+                                            Tensor** out_tensor,
+                                            AllocatorAttributes attr) {
+  // TODO(misard) add specific memory tracking for persistent tensors
+  Tensor persistent;
+  Status s = allocate_tensor(type, shape, &persistent, attr);
+  if (s.ok()) {
+    *out_persistent = PersistentTensor(persistent);
+    if (out_tensor) {
+      *out_tensor = out_persistent->AccessTensor(this);
+    }
+  }
+  return s;
+}
+
 Status OpKernelContext::set_output(const string& name, const Tensor& tensor) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
@@ -357,6 +492,24 @@ Status OpKernelContext::set_output(const string& name, const Tensor& tensor) {
   }
   set_output(start, tensor);
   return Status::OK();
+}
+
+void OpKernelContext::set_output(int index, const Tensor& tensor) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, outputs_.size());
+  DCHECK(!IsRefType(params_->op_kernel->output_type(index)));
+  DCHECK_EQ(mutable_output(index), nullptr);
+  record_tensor_reference(tensor);
+  outputs_[index] = TensorValue(new Tensor(tensor));
+}
+
+void OpKernelContext::set_output_ref(int index, mutex* mu,
+                                     Tensor* tensor_for_ref) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, outputs_.size());
+  DCHECK(IsRefType(params_->op_kernel->output_type(index)));
+  record_tensor_reference(*tensor_for_ref);
+  outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
 Status OpKernelContext::set_output_ref(const string& name, mutex* mu,
@@ -715,6 +868,26 @@ const Eigen::ThreadPoolDevice& OpKernelContext::eigen_device() const {
 template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
+}
+
+void OpKernelConstruction::CtxFailure(Status s) {
+  VLOG(1) << s;
+  SetStatus(s);
+}
+
+void OpKernelConstruction::CtxFailureWithWarning(Status s) {
+  LOG(WARNING) << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(Status s) {
+  VLOG(1) << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailureWithWarning(Status s) {
+  LOG(WARNING) << s;
+  SetStatus(s);
 }
 
 }  // namespace tensorflow

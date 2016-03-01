@@ -85,6 +85,11 @@ TensorShape::TensorShape() {
   num_elements_ = 1;
 }
 
+void TensorShape::DestructorOutOfLine() {
+  DCHECK(tag() == REP_OUT_OF_LINE);
+  delete as64()->dims_;
+}
+
 void TensorShape::SlowCopyFrom(const TensorShape& b) {
   if (b.tag() != REP_OUT_OF_LINE) {
     if (tag() == REP_OUT_OF_LINE) {

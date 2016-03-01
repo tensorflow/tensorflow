@@ -34,6 +34,26 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// Static routines not in the templated class to reduce code size
+static void SegmentReductionValidationHelper(OpKernelContext* context,
+                                             const Tensor& input,
+                                             const Tensor& segment_ids) {
+  OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
+              errors::InvalidArgument("segment_ids should be a vector."));
+  const int64 num_indices = segment_ids.NumElements();
+  OP_REQUIRES(context, num_indices == input.dim_size(0),
+              errors::InvalidArgument(
+                  "segment_ids should be the same size as dimension 0 of"
+                  " input."));
+}
+
+static bool SegmentReductionDoValidation(OpKernelContext* c,
+                                         const Tensor& input,
+                                         const Tensor& segment_ids) {
+  SegmentReductionValidationHelper(c, input, segment_ids);
+  return c->status().ok();
+}
+
 // This operator handles reducing segments along the first dimension.
 // See core/ops/math_ops.cc for more details.
 template <typename Device, class T, class Index, typename Reducer>
@@ -46,14 +66,11 @@ class SegmentReductionOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-    const int64 num_indices = segment_ids.NumElements();
-    OP_REQUIRES(context, num_indices == input.dim_size(0),
-                errors::InvalidArgument(
-                    "segment_ids should be the same size as dimension 0 of"
-                    " input."));
+    if (!SegmentReductionDoValidation(context, input, segment_ids)) {
+      return;
+    }
 
+    const int64 num_indices = segment_ids.NumElements();
     auto input_flat = input.flat_outer_dims<T>();
     const int64 num_col = input_flat.dimension(1);
 
@@ -99,7 +116,8 @@ class SegmentReductionOp : public OpKernel {
       // Process segment [start, end)
       const T* in_slice_ptr = &input_flat(start, 0);
       typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
-                               Eigen::Unaligned> OutT;
+                               Eigen::Unaligned>
+          OutT;
       T* out_slice_ptr = &output_flat(segment_vec(start), 0);
       OutT out_slice(out_slice_ptr, out_slice_shape);
       // We don't use out_slice.device(context->eigen_device<Device>)
@@ -108,14 +126,16 @@ class SegmentReductionOp : public OpKernel {
       // using another thread to do this work.
       if (start == end - 1) {
         typedef Eigen::TensorMap<Eigen::Tensor<const T, 1, Eigen::RowMajor>,
-                                 Eigen::Unaligned> InT;
+                                 Eigen::Unaligned>
+            InT;
         InT in_slice(in_slice_ptr, out_slice_shape);
         out_slice = in_slice;
       } else {
         Eigen::DSizes<Eigen::DenseIndex, 2> in_slice_shape(end - start,
                                                            num_col);
         typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                                 Eigen::Unaligned> InT;
+                                 Eigen::Unaligned>
+            InT;
         InT in_slice(in_slice_ptr, in_slice_shape);
 
         out_slice = in_slice.reduce(dims_to_reduce, Reducer());
