@@ -350,6 +350,36 @@ Summarize activations, using `summarize_activation` to summarize.
 ## Other Functions and Classes
 - - -
 
+### `tf.contrib.layers.absolute_loss(predicted, target, name=None)` {#absolute_loss}
+
+Computes and returns the per-example absolute loss.
+
+Computes the per-example absolute value of the difference between
+the target and predicted tensors. The tensors must have the same
+shape.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size, dim_1, ..., dim_n]` tensor of per-example absolute losses.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
+
+
+- - -
+
 ### `tf.contrib.layers.assert_same_float_dtype(tensors=None, dtype=None)` {#assert_same_float_dtype}
 
 Validate and return float type based on `tensors` and `dtype`.
@@ -404,5 +434,249 @@ Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 ### `tf.contrib.layers.is_numeric_tensor(tensor)` {#is_numeric_tensor}
 
 
+
+
+- - -
+
+### `tf.contrib.layers.mean_absolute_loss(predicted, target, name=None)` {#mean_absolute_loss}
+
+Calculates the mean absolute loss across batches.
+
+Computes the absolute difference between the target and predicted
+tensors, averaged across all dimensions except dimension 0:
+
+      losses = reduce_batch_mean(absolute_loss(predicted, target))
+
+where `losses` is a tensor with dimensions [batch_size].
+
+The tensors must have the same shape.
+
+This loss function is a form of L1 loss.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size]` tensor of absolute differences, averaged across all
+  dimensions except dimension 0.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
+
+
+- - -
+
+### `tf.contrib.layers.mean_squared_loss(predicted, target, name=None)` {#mean_squared_loss}
+
+Calculates the mean squared loss across batches.
+
+Computes the squared difference between the target and predicted
+tensors, and averages across all dimensions except dimension 0:
+
+      losses = reduce_batch_mean(squared_loss(predicted, target))
+
+where `losses` is a tensor with dimensions [batch_size].
+
+The tensors must have the same shape.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size]` tensor of squared differences, averaged across
+  all dimensions except dimension 0.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
+
+
+- - -
+
+### `tf.contrib.layers.reduce_batch_mean(x, name=None)` {#reduce_batch_mean}
+
+Given a tensor `x`, returns the mean across all dimensions except dim 0.
+
+Given a tensor with the number of dimensions > 1, reduce_batch_mean
+will calculate the mean across all dimensions except for dimension
+0. This function is useful for calculating the mean loss (error)
+across all examples in a batch when training. As an example, given a
+tensor of shape [batch_size, d1, d2], this function will calculate
+the mean across dimensions d1 and d2, returning a tensor of shape
+[batch_size].
+
+Tensors of dimension 1 are returned as-is.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` with dimension > 0.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with values averaged across all dimensions > 0.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` has dimension 0.
+
+
+- - -
+
+### `tf.contrib.layers.reduce_batch_sum(x, name=None)` {#reduce_batch_sum}
+
+Given a tensor `x`, sums across all dimensions except dimension 0.
+
+Given a tensor with the number of dimensions > 1, reduce_batch_sum
+will sum across all dimensions except for dimension 0. This function
+is useful for summing the loss (error) across all examples in a
+batch when training. As an example, given a tensor of shape
+[batch_size, d1, d2], this function will sum across dimensions d1
+and d2, returning a tensor of shape [batch_size].
+
+Tensors of dimension 1 are returned as-is, while tensors of dimension 0
+raise a ValueError.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` with dimension > 0.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with values summed across all dimensions > 0.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` has dimension 0.
+
+
+- - -
+
+### `tf.contrib.layers.root_mean_squared_loss(predicted, target, name=None)` {#root_mean_squared_loss}
+
+Calculates the root mean squared loss across batches.
+
+Computes the root mean squared loss between the target and predicted
+tensors, which is the square root of the mean squared differences
+between the predicted and target tensors:
+
+      losses = sqrt(mean_squared_loss(predicted, target))
+
+where `losses` is a tensor with dimensions [batch_size].
+
+The tensors must have the same shape.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size]` tensor of the root mean squared differences.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
+
+
+- - -
+
+### `tf.contrib.layers.squared_loss(predicted, target, name=None)` {#squared_loss}
+
+Computes and returns the per-example squared loss.
+
+Computes the per-example squared difference between the target and
+predicted tensors. The tensors must have the same shape.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size, dim_1, ..., dim_n]` tensor of per-example squared losses.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
+
+
+- - -
+
+### `tf.contrib.layers.sum_squared_loss(predicted, target, name=None)` {#sum_squared_loss}
+
+Calculates 1/2 the sum of the squared loss across batches.
+
+Computes the squared difference between the target and predicted
+tensors, sums across all dimensions except dimension 0, and divides
+by 2:
+
+    losses = reduce_batch_sum(squared_loss(predicted, target)) / 2.0
+
+where `losses` is a tensor with dimensions [batch_size].
+
+The tensors must have the same shape.
+
+This function is equivalent to typical formulations of L2 loss, and similar
+to TensorFlow's l2_loss function. It differs from the l2_loss function
+by allowing the caller to specify both the predicted and target tensors.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size]` tensor of squared losses summed across all dimensions
+  except dimension 0, divided by 2.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
 
 
