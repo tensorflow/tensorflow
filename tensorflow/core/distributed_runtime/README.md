@@ -127,7 +127,7 @@ replicated model. Possible approaches include:
   
 * As above, but where the gradients from all workers are averaged. See the
   [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)
-  for an example of this form of replication. The implements *synchronous* training
+  for an example of this form of replication. This implements *synchronous* training
   
 * The "distributed trainer" approach uses multiple graphs&mdash;one per
   worker&mdash;where each graph contains one set of parameters (pinned to
