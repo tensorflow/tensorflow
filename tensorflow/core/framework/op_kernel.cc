@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -150,11 +151,17 @@ Status OpKernelConstruction::MatchSignature(
 Status OpKernelConstruction::allocate_temp(DataType type,
                                            const TensorShape& shape,
                                            Tensor* out_temp) {
-  Tensor new_temp(allocator_, type, shape);
+  AllocationAttributes attr;
+  attr.allocation_will_be_logged = true;
+  Tensor new_temp(allocator_, type, shape, attr);
 
   if (!new_temp.IsInitialized() && shape.num_elements() > 0) {
     return errors::ResourceExhausted(
         "OOM when allocating temporary tensor with shape", shape.DebugString());
+  }
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation(
+        def_->name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
   return Status::OK();
@@ -186,7 +193,7 @@ OpKernelContext::OpKernelContext(Params* params, int noutputs)
     : params_(params), outputs_(noutputs) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
-  params_->device->ReinitializeGpuDevice(params_->eigen_gpu_device,
+  params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
                                          params_->op_device_context,
                                          eigen_gpu_allocator);
   record_tensor_accesses_ = params_->device->RequiresRecordingAccessedTensors();
@@ -427,11 +434,17 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  Tensor new_tensor(a, type, shape, allocation_attr);
+  AllocationAttributes logged_attr(allocation_attr);
+  logged_attr.allocation_will_be_logged = true;
+  Tensor new_tensor(a, type, shape, logged_attr);
 
   if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
+  }
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
+                                      params_->step_id, new_tensor);
   }
   *out_tensor = new_tensor;
   record_tensor_reference(new_tensor);

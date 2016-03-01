@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -91,7 +92,7 @@ string GetRendezvousKey(const string& tensor_name,
 
 }  // namespace
 
-std::atomic_int_fast64_t DirectSession::step_id_counter_(0);
+std::atomic_int_fast64_t DirectSession::step_id_counter_(1);
 
 // NOTE: On Android with a single device, there is never
 // a risk of an OpKernel blocking indefinitely:
@@ -305,8 +306,9 @@ Status DirectSession::RunWithOpts(const RunOptions& run_options,
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
-  VLOG(1) << "Step " << args.step_id << " is for handle "
-          << run_state_args.handle;
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordStep(args.step_id, run_state_args.handle);
+  }
 
   if (run_options.trace_level() == RunOptions::FULL_TRACE) {
     args.stats_collector =

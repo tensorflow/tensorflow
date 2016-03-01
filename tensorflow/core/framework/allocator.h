@@ -36,6 +36,12 @@ struct AllocationAttributes {
   // An example use case is optional scratch spaces where a failure
   // has only performance impact.
   bool no_retry_on_failure = false;
+  // If a Tensor is allocated without the following set to true, then
+  // it is logged as an unknown allocation. During execution Tensors
+  // should be allocated through the OpKernelContext which records
+  // which Op is performing the allocation, and sets this flag to
+  // true.
+  bool allocation_will_be_logged = false;
 };
 
 // Runtime statistics collected by an allocator.

@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
@@ -60,6 +61,7 @@ class Buffer : public TensorBuffer {
     int64 rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(alloc_->Name());
+    proto->set_ptr(reinterpret_cast<uintptr_t>(data_));
     if (alloc_->TracksAllocationSizes()) {
       int64 ab = alloc_->AllocatedSize(data_);
       proto->set_allocated_bytes(ab);
@@ -257,6 +259,10 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 
 template <typename T>
 Buffer<T>::~Buffer() {
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data_),
+                                        alloc_->Name());
+  }
   alloc_->Deallocate<T>(data_, elem_);
 }
 
@@ -402,6 +408,10 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
+  if (IsInitialized() && LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
+                                      *this);
+  }
 }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
@@ -411,6 +421,11 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
+  }
+  if (!allocation_attr.allocation_will_be_logged && IsInitialized() &&
+      LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown (with attributes)",
+                                      LogMemory::UNKNOWN_STEP_ID, *this);
   }
 }
 
@@ -501,6 +516,11 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   set_dtype(proto.dtype());
   UnrefIfNonNull(buf_);
   buf_ = p;
+  // TODO(misard) add tracking of which kernels and steps are calling FromProto.
+  if (IsInitialized() && LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown (from Proto)",
+                                      LogMemory::UNKNOWN_STEP_ID, *this);
+  }
   return true;
 }
 

@@ -43,20 +43,36 @@ class Tensor {
   /// Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
   Tensor();
 
-  /// \brief Creates a Tensor of the given `type` and `shape`.
+  /// \brief Creates a Tensor of the given `type` and `shape`.  If
+  /// LogMemory::IsEnabled() the allocation is logged as coming from
+  /// an unknown kernel and step. Calling the Tensor constructor
+  /// directly from within an Op is deprecated: use the
+  /// OpKernelConstruction/OpKernelContext allocate_* methods to
+  /// allocate a new tensor, which record the kernel and step.
   ///
   /// The underlying buffer is allocated using a `CPUAllocator`.
   Tensor(DataType type, const TensorShape& shape);
 
-  /// \brief Creates a tensor with the input `type` and `shape`, using the
-  /// allocator `a` to allocate the underlying buffer.
+  /// \brief Creates a tensor with the input `type` and `shape`, using
+  /// the allocator `a` to allocate the underlying buffer. If
+  /// LogMemory::IsEnabled() the allocation is logged as coming from
+  /// an unknown kernel and step. Calling the Tensor constructor
+  /// directly from within an Op is deprecated: use the
+  /// OpKernelConstruction/OpKernelContext allocate_* methods to
+  /// allocate a new tensor, which record the kernel and step.
   ///
   /// `a` must outlive the lifetime of this Tensor.
   Tensor(Allocator* a, DataType type, const TensorShape& shape);
 
-  /// \brief Creates a tensor with the input `type` and `shape`, using the
-  /// allocator `a` and the specified "allocation_attr" to allocate the
-  /// underlying buffer.
+  /// \brief Creates a tensor with the input `type` and `shape`, using
+  /// the allocator `a` and the specified "allocation_attr" to
+  /// allocate the underlying buffer. If the kernel and step are known
+  /// allocation_attr.allocation_will_be_logged should be set to true
+  /// and LogMemory::RecordTensorAllocation should be called after the
+  /// tensor is constructed. Calling the Tensor constructor directly
+  /// from within an Op is deprecated: use the
+  /// OpKernelConstruction/OpKernelContext allocate_* methods to
+  /// allocate a new tensor, which record the kernel and step.
   ///
   /// `a` must outlive the lifetime of this Tensor.
   Tensor(Allocator* a, DataType type, const TensorShape& shape,
