@@ -19,10 +19,10 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE
+#   pip.sh CONTAINER_TYPE [--test_tutorials]
 #
 # When executing the Python unit tests, the script obeys the shell
-# variables: TF_BUILD_BAZEL_CLEAN, NO_TEST_ON_INSTALL, TF_BUILD_TEST_TUTORIALS
+# variables: TF_BUILD_BAZEL_CLEAN, NO_TEST_ON_INSTALL
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -30,9 +30,9 @@
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
 #
-# TF_BUILD_TEST_TUTORIALS, if set any non-empty and non-0 values, will cause
-# this script to run the tutorial tests (see test_tutorials.sh) after the PIP
-# installation and the Python unit tests-on-install step (if not deactivated).
+# I the --test_tutorials flag is set, it will cause the script to run the
+# tutorial tests (see test_tutorials.sh) after the PIP
+# installation and the Python unit tests-on-install step.
 #
 
 # Helper functions
@@ -57,6 +57,13 @@ if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
   echo "TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}: Performing 'bazel clean'"
   bazel clean
 fi
+
+DO_TEST_TUTORIALS=0
+for ARG in $@; do
+  if [[ "${ARG}" == "--test_tutorials" ]]; then
+    DO_TEST_TUTORIALS=1
+  fi
+done
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
@@ -159,9 +166,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "${DIR}/pip_test.sh" --virualenv || die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
-if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
-   [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
-  "${DIR}/test_tutorials.sh" --virtualenv || die "PIP tutorial tests-on-install FAILED"
+if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
+  "${DIR}/test_tutorials.sh" --virtualenv ||
+die "PIP tutorial tests-on-install FAILED"
 fi
 
 deactivate ||

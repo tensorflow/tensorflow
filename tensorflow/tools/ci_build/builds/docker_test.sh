@@ -95,6 +95,7 @@ docker build -t "${DOCKER_IMG_TAG}" -f "${DOCKERFILE_PATH}" \
 "${DOCKERFILE_DIR}" \
 || die "FAILED to build docker image from Dockerfile ${DOCKERFILE_PATH}"
 
+# Clean up
 rm -rf "${TMP_WHL_DIR}" ||
 die "Failed to remove temporary directory ${TMP_WHL_DIR}"
 

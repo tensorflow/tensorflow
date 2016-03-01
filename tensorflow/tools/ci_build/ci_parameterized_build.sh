@@ -33,6 +33,8 @@
 #   TF_BUILD_DRY_RUN:  If it is set to any non-empty value that is not "0",
 #                      the script will just generate and print the final
 #                      command, but not actually run it.
+#   TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS:
+#                      String appended to the content of CI_DOCKER_EXTRA_PARAMS
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
 #                      pip.sh or android.sh command
@@ -110,11 +112,16 @@ cut -d ' ' -f 3)
 # Default configuration
 CI_BUILD_DIR="tensorflow/tools/ci_build"
 
+# Command to call when Docker is available
+DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
+# Command to call when Docker is unavailable
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
 NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
 "--genrule_strategy=standalone"
+
+DO_DOCKER=1
 
 BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
@@ -122,11 +129,12 @@ BAZEL_CLEAN_CMD="bazel clean"
 BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
+PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BAZEL_TARGET="//tensorflow/..."
 
-TUTORIAL_TEST_CMD="${CI_BUILD_DIR}/builds/test_tutorials.sh"
+TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
 DOCKER_TEST_CMD="${CI_BUILD_DIR}/builds/docker_test.sh"
 
@@ -150,6 +158,8 @@ echo "  TF_BUILD_IS_OPT=${TF_BUILD_IS_OPT}"
 echo "  TF_BUILD_IS_PIP=${TF_BUILD_IS_PIP}"
 echo "Optional build parameters:"
 echo "  TF_BUILD_DRY_RUN=${TF_BUILD_DRY_RUN}"
+echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
@@ -171,8 +181,20 @@ else
 "\"${TF_BUILD_CONTAINER_TYPE}\""
 fi
 
-MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
-OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
+EXTRA_PARAMS=""
+
+# Determine if Docker is available
+if [[ -z "$(which docker)" ]]; then
+  DO_DOCKER=0
+
+  echo "It appears that Docker is not available on this system. "\
+"Will perform build without Docker."
+  echo "Also, the additional option flags will be applied to the build:"
+  echo "  ${NO_DOCKER_OPT_FLAG}"
+  MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
+  OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
+
+fi
 
 # Process Bazel "-c opt" flag
 if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
@@ -239,6 +261,20 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
   PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
 "${TF_BUILD_APPEND_ARGUMENTS}"
 
+  # Add command for tutorial test
+  if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
+     [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_TEST_TUTORIALS_FLAG}"
+
+    # Prepare data directory for tutorial tests
+    mkdir -p "${TUT_TEST_DATA_DIR}" ||
+    die "FAILED to create data directory for tutorial tests: "\
+        "${TUT_TEST_DATA_DIR}"
+
+    if [[ "${DO_DOCKER}" == "1" ]]; then
+      EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TUT_TEST_DATA_DIR}:${TUT_TEST_DATA_DIR}"
+    fi
+  fi
 fi
 
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
@@ -257,21 +293,27 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   # Supply proper environment variable to select Python 3
-
-  # Determine the path to python3
-  PYTHON3_PATH=$(which python3 | head -1)
-  if [[ -z "${PYTHON3_PATH}" ]]; then
-    die "ERROR: Failed to locate python3 binary on the system"
+  if [[ "${DO_DOCKER}" == "1" ]]; then
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=python3"
   else
-    echo "Found python3 binary at: ${PYTHON3_PATH}"
-  fi
+    # Determine the path to python3
+    PYTHON3_PATH=$(which python3 | head -1)
+    if [[ -z "${PYTHON3_PATH}" ]]; then
+      die "ERROR: Failed to locate python3 binary on the system"
+    else
+      echo "Found python3 binary at: ${PYTHON3_PATH}"
+    fi
 
-  export PYTHON_BIN_PATH="${PYTHON3_PATH}"
+    export PYTHON_BIN_PATH="${PYTHON3_PATH}"
+  fi
 
 else
   die "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
 "\"${TF_BUILD_PYTHON_VERSION}\""
 fi
+
+# Append additional Docker extra parameters
+EXTRA_PARAMS="${EXTRA_PARAMS} ${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 
 # Finally, do a dry run or call the command
 
@@ -281,6 +323,24 @@ fi
 # builds on the node possible.
 RAND_STR=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
 TMP_SCRIPT=/tmp/ci_parameterized_build_${RAND_STR}.sh
+
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  # Map the tmp script into the Docker container
+  EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TMP_SCRIPT}:/tmp/tf_build.sh"
+
+  if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
+     [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]] &&
+     [[ "${TF_BUILD_IS_PIP}" != "both" ]]; then
+    # For TF_BUILD_IS_PIP == both, "bazel clean" will have already
+    # been performed before the "bazel test" step
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_BAZEL_CLEAN=1"
+  fi
+
+  EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
+
+  echo "Exporting CI_DOCKER_EXTRA_PARAMS: ${EXTRA_PARAMS}"
+  export CI_DOCKER_EXTRA_PARAMS="${EXTRA_PARAMS}"
+fi
 
 # Write to the tmp script
 echo "#!/bin/bash" > ${TMP_SCRIPT}
@@ -303,7 +363,11 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   echo "*** This is a DRY RUN ***"
 else
   # Actually run the command
-  ${TMP_SCRIPT}
+  if [[ "${DO_DOCKER}" == "1" ]]; then
+    ${DOCKER_MAIN_CMD} ${CTYPE} /tmp/tf_build.sh
+  else
+    ${TMP_SCRIPT}
+  fi
   STEP1_RES=$?
 
   # Perform optional Docker image build & test
