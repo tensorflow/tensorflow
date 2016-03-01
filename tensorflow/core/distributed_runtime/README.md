@@ -31,7 +31,7 @@ test your installation by starting a server as follows:
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
 $ bazel-bin/tensorflow/core/distributed_runtime/rpc/grpc_tensorflow_server \
-    --cluster_spec='local|localhost:2222' --job_name=local --task_index=0 &
+    --cluster_spec='local|localhost:2222' --job_name=local --task_id=0 &
 ```
 
 ...then start a Python interpreter and create a remote session:
@@ -62,9 +62,9 @@ The command-line arguments to `grpc_tensorflow_server` define the membership of 
   </tr>
 </table>
 
-The `--job_name` and `--task_index` flags indicate which task will run in this
+The `--job_name` and `--task_id` flags indicate which task will run in this
 process, out of the jobs and tasks defined in `--cluster_spec`.  For example,
-`--job_name=local --task_index=0` means that the process will be task
+`--job_name=local --task_id=0` means that the process will be task
 `/job:local/task:0`, and TensorFlow devices in the process will have names
 starting with that prefix.
 
