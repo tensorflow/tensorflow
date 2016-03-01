@@ -54,57 +54,18 @@ from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
-def stripped_op_list_for_graph(graph_def):
-  """Collect the ops used by a graph.
-
-  This function computes the `stripped_op_list` field of `MetaGraphDef` and
-  similar protos.  The result can be communicated from the producer to the
-  consumer, which can then use the C++ function
-  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
-
-  Args:
-    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
-
-  Returns:
-    An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
-  """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
-  # Map function names to definitions
-  name_to_function = {}
-  for fun in graph_def.library.function:
-    name_to_function[fun.signature.name] = fun
-
-  # Collect the list of op names.  Since functions can reference functions, we
-  # need a recursive traversal.
-  used_ops = set()  # Includes both primitive ops and functions
-  functions_to_process = []  # A subset of used_ops
-  def mark_op_as_used(op):
-    if op not in used_ops and op in name_to_function:
-      functions_to_process.append(name_to_function[op])
-    used_ops.add(op)
-  for node in graph_def.node:
-    mark_op_as_used(node.op)
-  while functions_to_process:
-    fun = functions_to_process.pop()
-    for node in fun.node:
-      mark_op_as_used(node.op)
-
-  # Verify that all used ops are registered.
+def _stripped_op_list_for_graph(graph_def):
+  """Returns OpDefs of ops used in graph_def."""
+  op_set = set()
   registered_ops = op_def_registry.get_registered_ops()
-  for op in used_ops:
-    if op not in name_to_function and op not in registered_ops:
-      raise ValueError("Op %s is used by the graph, but is not registered" % op)
-
-  # Build the stripped op list in sorted order
-  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
-                               if op not in name_to_function])
+  for n in graph_def.node:
+    if n.op in registered_ops:
+      op_set.add(n.op)
+  for func in graph_def.library.function:
+    for n in func.node:
+      if n.op in registered_ops:
+        op_set.add(n.op)
+  return op_def_pb2.OpList(op=[registered_ops[x] for x in sorted(op_set)])
 
 
 class BaseSaverBuilder(object):
@@ -1219,7 +1180,7 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   # pylint: disable=g-explicit-length-test
   if len(meta_graph_def.meta_info_def.stripped_op_list.op) == 0:
     meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-        stripped_op_list_for_graph(meta_graph_def.graph_def))
+        _stripped_op_list_for_graph(meta_graph_def.graph_def))
   # pylint: enable=g-explicit-length-test
 
   # Adds saver_def.

@@ -31,7 +31,6 @@ import six
 
 from google.protobuf.any_pb2 import Any
 
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import function
@@ -1052,55 +1051,6 @@ class MetaGraphTest(tf.test.TestCase):
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
                              "RestoreSlice", "SaveSlices", "Sub", "Variable"])
-
-      # Test calling stripped_op_list_for_graph directly
-      op_list = tf.contrib.util.stripped_op_list_for_graph(
-          meta_graph_def.graph_def)
-      self.assertEqual(ops, [o.name for o in op_list.op])
-      for o in op_list.op:
-        self.assertEqual(o.summary, "")
-        self.assertEqual(o.description, "")
-
-  def testStrippedOpListNestedFunctions(self):
-    with self.test_session():
-      # Square two levels deep
-      def f0(x):
-        return tf.square(x)
-      f0 = function.define_function(f0, {"x": tf.int32})
-      def f1(x):
-        return function.call_function(f0, x)
-      f1 = function.define_function(f1, {"x": tf.int32})
-
-      # At this point we've defined two functions but haven't called them, so
-      # there should be no used ops.
-      op_list = tf.contrib.util.stripped_op_list_for_graph(
-          tf.get_default_graph().as_graph_def())
-      self.assertEquals(len(op_list.op), 0)
-
-      # If we call the function on a constant, there should be two ops
-      function.call_function(f1, tf.constant(7))
-      op_list = tf.contrib.util.stripped_op_list_for_graph(
-          tf.get_default_graph().as_graph_def())
-      self.assertEquals(["Const", "Square"], [op.name for op in op_list.op])
-
-  def testStrippedOpListRecursiveFunctions(self):
-    # The function module doesn't support recursive functions, so we build a
-    # recursive function situation by ourselves: A calls B calls A and Const.
-    graph = graph_pb2.GraphDef()
-    a = graph.library.function.add()
-    b = graph.library.function.add()
-    a.signature.name = "A"
-    b.signature.name = "B"
-    a.node.add().op = "B"
-    b.node.add().op = "Const"
-    b.node.add().op = "A"
-
-    # Use A in the graph
-    graph.node.add().op = "A"
-
-    # The stripped op list should contain just Const.
-    op_list = tf.contrib.util.stripped_op_list_for_graph(graph)
-    self.assertEquals(["Const"], [op.name for op in op_list.op])
 
 
 if __name__ == "__main__":

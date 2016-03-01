@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <deque>
 
-#include "grpc++/server_builder.h"
+#include "external/grpc/include/grpc++/server_builder.h"
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"

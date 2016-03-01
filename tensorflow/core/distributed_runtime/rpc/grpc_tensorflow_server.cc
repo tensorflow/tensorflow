@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <iostream>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
-#include "grpc++/server_builder.h"
+#include "external/grpc/include/grpc++/grpc++.h"
+#include "external/grpc/include/grpc++/security/credentials.h"
+#include "external/grpc/include/grpc++/server_builder.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 

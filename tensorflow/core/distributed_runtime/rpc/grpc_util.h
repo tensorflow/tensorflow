@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "grpc++/grpc++.h"
+#include "external/grpc/include/grpc++/grpc++.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
