@@ -52,7 +52,7 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._directory = os.path.join(self.get_temp_dir(), 'monitor_dir')
     os.mkdir(self._directory)
     self._watcher = directory_watcher.DirectoryWatcher(
-        self._directory, _ByteLoader)
+        directory_watcher.SequentialGFileProvider(self._directory), _ByteLoader)
 
   def tearDown(self):
     shutil.rmtree(self._directory)
@@ -69,7 +69,7 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       directory_watcher.DirectoryWatcher(None, lambda x: [])
     with self.assertRaises(ValueError):
-      directory_watcher.DirectoryWatcher('asdf', None)
+      directory_watcher.DirectoryWatcher(lambda x: None, None)
 
   def testEmptyDirectory(self):
     self.assertWatcherYields([])
@@ -110,15 +110,17 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._WriteToFile('c', 'c')
     self.assertWatcherYields(['a', 'c'])
 
-  def testFileFilter(self):
-    self._watcher = directory_watcher.DirectoryWatcher(
-        self._directory, _ByteLoader,
+  def testPathFilter(self):
+    provider = directory_watcher.SequentialGFileProvider(
+        self._directory,
         path_filter=lambda path: 'do_not_watch_me' not in path)
+    self._watcher = directory_watcher.DirectoryWatcher(provider, _ByteLoader)
 
     self._WriteToFile('a', 'a')
     self._WriteToFile('do_not_watch_me', 'b')
     self._WriteToFile('c', 'c')
     self.assertWatcherYields(['a', 'c'])
+
 
 if __name__ == '__main__':
   googletest.main()

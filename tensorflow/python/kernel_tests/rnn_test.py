@@ -174,6 +174,45 @@ class RNNTest(tf.test.TestCase):
               1.0 * (2 + 1) * np.ones((input_size)))))
 
 
+class GRUTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._seed = 23489
+    np.random.seed(self._seed)
+
+  def _testDynamic(self, use_gpu):
+    time_steps = 8
+    num_units = 3
+    input_size = 5
+    batch_size = 2
+
+    input_values = np.random.randn(time_steps, batch_size, input_size)
+
+    sequence_length = np.random.randint(0, time_steps, size=batch_size)
+
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      concat_inputs = tf.placeholder(
+          tf.float32, shape=(time_steps, batch_size, input_size))
+
+      cell = tf.nn.rnn_cell.GRUCell(num_units=num_units, input_size=input_size)
+
+      with tf.variable_scope("dynamic_scope"):
+        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
+            cell, inputs=concat_inputs, sequence_length=sequence_length,
+            time_major=True, dtype=tf.float32)
+
+      feeds = {concat_inputs: input_values}
+
+      # Initialize
+      tf.initialize_all_variables().run(feed_dict=feeds)
+
+      sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
+
+  def testDynamic(self):
+    self._testDynamic(use_gpu=False)
+    self._testDynamic(use_gpu=True)
+
+
 class LSTMTest(tf.test.TestCase):
 
   def setUp(self):
@@ -953,6 +992,68 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
          delta_dynamic, delta_dynamic/delta_static))
 
 
+def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length,
+                                       swap_memory):
+  (unused_0, unused_1, input_size) = inputs_t.get_shape().as_list()
+  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = tf.nn.rnn_cell.LSTMCell(
+      num_units=input_size, input_size=input_size, use_peepholes=True,
+      initializer=initializer)
+  outputs, final_state = tf.nn.dynamic_rnn(
+      cell, inputs_t, sequence_length=sequence_length,
+      swap_memory=swap_memory, dtype=tf.float32)
+
+  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = tf.gradients([outputs, final_state], trainable_variables)
+
+  return [outputs, final_state] + gradients
+
+
+def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
+  config = tf.ConfigProto()
+  config.allow_soft_placement = True
+
+  def _timer(sess, ops):
+    # Warm in
+    for _ in range(2):
+      sess.run(ops)
+
+    # Timing run
+    start = time.time()
+    for _ in range(10):
+      sess.run(ops)
+    end = time.time()
+
+    return (end - start)/10.0  # Average runtime per iteration
+
+  # Set up sequence lengths
+  np.random.seed([127])
+  sequence_length = np.random.randint(0, max_time, size=batch_size)
+  inputs_list = [
+      np.random.randn(batch_size, num_units).astype(np.float32)
+      for _ in range(max_time)]
+  inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
+
+  # No memory swap
+  with tf.Session(config=config, graph=tf.Graph()) as sess:
+    inputs_t = tf.constant(inputs)
+    ops = _dynamic_rnn_swap_memory_benchmark(
+        inputs_t, sequence_length, swap_memory=False)
+    tf.initialize_all_variables().run()
+    no_swap = _timer(sess, ops)
+
+  # Memory swap
+  with tf.Session(config=config, graph=tf.Graph()) as sess:
+    inputs_t = tf.constant(inputs)
+    ops = _dynamic_rnn_swap_memory_benchmark(
+        inputs_t, sequence_length, swap_memory=True)
+    tf.initialize_all_variables().run()
+    swap = _timer(sess, ops)
+
+  print("%d \t %d \t %d \t %f \t %f \t %f" %
+        (batch_size, max_time, num_units, no_swap, swap, swap/no_swap))
+
+
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
@@ -969,6 +1070,14 @@ def main(_):
         for num_units in (512, 256, 128):
           static_vs_dynamic_rnn_benchmark(
               batch_size, max_time, num_units, use_gpu)
+
+  print("Calculation: Dynamic LSTM No Memory Swap vs. Memory Swap")
+  print("batch \t max_t \t units \t no_swap \t swap \t swap/no_swap")
+  for batch_size in (256, 512):
+    for max_time in (50, 100):
+      for num_units in (512, 256, 128):
+        dynamic_rnn_swap_memory_benchmark(
+            batch_size, max_time, num_units)
 
 
 if __name__ == "__main__":

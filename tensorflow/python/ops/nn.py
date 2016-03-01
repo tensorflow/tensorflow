@@ -161,6 +161,7 @@ TensorFlow provides library support for looking up values in embedding
 tensors.
 
 @@embedding_lookup
+@@embedding_lookup_sparse
 
 ## Evaluation
 

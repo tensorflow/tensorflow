@@ -30,7 +30,7 @@ limitations under the License.
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 
-#include "external/grpc/include/grpc++/server_builder.h"
+#include "grpc++/server_builder.h"
 
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"

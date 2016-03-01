@@ -59,9 +59,11 @@ class DType(object):
   @@is_compatible_with
   @@name
   @@base_dtype
+  @@real_dtype
   @@is_ref_dtype
   @@as_ref
   @@is_floating
+  @@is_complex
   @@is_integer
   @@is_quantized
   @@is_unsigned
@@ -115,6 +117,15 @@ class DType(object):
       return self
 
   @property
+  def real_dtype(self):
+    """Returns the dtype correspond to this dtype's real part."""
+    base = self.base_dtype
+    if base == complex64:
+      return float32
+    else:
+      return self
+
+  @property
   def as_numpy_dtype(self):
     """Returns a `numpy.dtype` based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
@@ -134,6 +145,11 @@ class DType(object):
   def is_floating(self):
     """Returns whether this is a (real) floating point type."""
     return issubclass(self.as_numpy_dtype, np.floating)
+
+  @property
+  def is_complex(self):
+    """Returns whether this is a complex floating point type."""
+    return self.base_dtype == complex64
 
   @property
   def is_quantized(self):

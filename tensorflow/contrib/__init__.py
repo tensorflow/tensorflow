@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import ctc
+from tensorflow.contrib import distributions
 from tensorflow.contrib import layers
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import testing

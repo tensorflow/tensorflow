@@ -61,19 +61,26 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx):
     and "dy_size" columns where "x_size" is the number of elements in x and
     "dy_size" is the number of elements in dy.
   """
-  # To compute the jacobian, we treat x and y are one-dimensional vectors
+  # Complex vectors are treated as vectors of twice as many reals.
+  if x.dtype.is_complex:
+    x_shape = tuple(x_shape) + (2,)
+  dy_factor = 2 if dy.dtype.is_complex else 1
+
+  # To compute the jacobian, we treat x and y as one-dimensional vectors.
   x_size = _product(x_shape)
   x_val_size = _product(x_shape[1:])  # This is used for sparse gradients
-  dy_size = _product(dy_shape)
+  dy_size = _product(dy_shape) * dy_factor
 
-  jacobian = np.zeros((x_size, dy_size), dtype=x_data.dtype)
+  jacobian = np.zeros((x_size, dy_size),
+                      dtype=x.dtype.real_dtype.as_numpy_dtype)
   # For each of the entry of dy, we set this to be 1 and
   # everything else to be 0 and compute the backprop -- this will give us one
   # one column of the Jacobian matrix.
-  for col in range(0, dy_size):
-    dy_data = np.zeros(dy_shape, dtype=x_data.dtype)
-    dy_data.flat[col] = 1
-    sess = ops.get_default_session()
+  dy_data = np.zeros(dy_shape, dtype=dy.dtype.as_numpy_dtype)
+  dy_data_flat = dy_data.ravel().view(dy.dtype.real_dtype.as_numpy_dtype)
+  sess = ops.get_default_session()
+  for col in range(dy_size):
+    dy_data_flat[col] = 1
     if isinstance(dx, ops.IndexedSlices):
       backprop_indices, backprop_values = sess.run(
           [dx.indices, dx.values], feed_dict={x: x_data, dy: dy_data})
@@ -84,7 +91,8 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx):
     else:
       assert isinstance(dx, ops.Tensor), "dx = " + str(dx)
       backprop = sess.run(dx, feed_dict={x: x_data, dy: dy_data})
-      jacobian[:, col] = backprop.reshape(x_size)
+      jacobian[:, col] = backprop.ravel().view(jacobian.dtype)
+    dy_data_flat[col] = 0
 
   logging.vlog(1, "Theoretical Jacobian =\n%s", jacobian)
   return jacobian
@@ -110,23 +118,29 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta):
     "y_size" is the number of elements in y.
   """
 
-  # To compute the jacobian, we treat x and y are one-dimensional vectors
-  x_size = _product(x_shape)
-  y_size = _product(y_shape)
+  # To compute the jacobian, we treat x and y as one-dimensional vectors
+  x_size = _product(x_shape) * (2 if x.dtype.is_complex else 1)
+  y_size = _product(y_shape) * (2 if y.dtype.is_complex else 1)
+  x_dtype = x.dtype.real_dtype.as_numpy_dtype
+  y_dtype = y.dtype.real_dtype.as_numpy_dtype
 
-  jacobian = np.zeros((x_size, y_size), dtype=x_data.dtype)
+  # Make sure we have the right types
+  x_data = np.asarray(x_data, dtype=x.dtype.as_numpy_dtype)
+  scale = np.asarray(1 / (2 * delta), dtype=y_dtype)[()]
+
+  jacobian = np.zeros((x_size, y_size), dtype=x_dtype)
   # For each of the entry of x, we slightly perturbs this by adding and
   # subtracting a delta and then compute difference between the outputs. This
   # will give us one row of the Jacobian matrix.
-  for row in range(0, x_size):
+  for row in range(x_size):
     x_pos = x_data.copy()
-    x_pos.flat[row] += delta
+    x_pos.ravel().view(x_dtype)[row] += delta
     y_pos = y.eval(feed_dict={x: x_pos})
     x_neg = x_data.copy()
-    x_neg.flat[row] -= delta
+    x_neg.ravel().view(x_dtype)[row] -= delta
     y_neg = y.eval(feed_dict={x: x_neg})
-    diff = (y_pos - y_neg) / (2 * delta)
-    jacobian[row, :] = diff.reshape(y_size)
+    diff = scale * (y_pos - y_neg)
+    jacobian[row, :] = diff.ravel().view(y_dtype)
 
   logging.vlog(1, "Numeric Jacobian =\n%s", jacobian)
   return jacobian
@@ -157,7 +171,7 @@ def _compute_gradient(x,
                       delta=1e-3):
   """Computes the theoretical and numerical jacobian."""
   t = dtypes.as_dtype(x.dtype)
-  allowed_types = [dtypes.float32, dtypes.float64]
+  allowed_types = [dtypes.float32, dtypes.float64, dtypes.complex64]
   assert t.base_dtype in allowed_types, "Don't support type %s for x" % t.name
   t2 = dtypes.as_dtype(y.dtype)
   assert t2.base_dtype in allowed_types, "Don't support type %s for y" % t2.name
@@ -211,6 +225,18 @@ def compute_gradient(x,
                      delta=1e-3,
                      init_targets=None):
   """Computes and returns the theoretical and numerical Jacobian.
+
+  If `x` or `y` is complex, the Jacobian will still be real but the
+  corresponding Jacobian dimension(s) will be twice as large.  This is required
+  even if both input and output is complex since TensorFlow graphs are not
+  necessarily holomorphic, and may have gradients not expressible as complex
+  numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
+  with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
+
+      J[:m, :n] = d(Re y)/d(Re x)
+      J[:m, n:] = d(Im y)/d(Re x)
+      J[m:, :n] = d(Re y)/d(Im x)
+      J[m:, n:] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors

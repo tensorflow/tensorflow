@@ -666,7 +666,7 @@ class Variable(object):
 
 
 def all_variables():
-  """Returns all variables collected in the graph.
+  """Returns all variables that must be saved/restored.
 
   The `Variable()` constructor automatically adds new variables to the graph
   collection `GraphKeys.VARIABLES`. This convenience function returns the
@@ -691,6 +691,13 @@ def trainable_variables():
   """
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
+def local_variables():
+  """Returns all variables created with collection=[LOCAL_VARIABLES].
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
 
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
@@ -743,6 +750,17 @@ def initialize_all_variables():
   return initialize_variables(all_variables())
 
 
+def initialize_local_variables():
+  """Returns an Op that initializes all local variables.
+
+  This is just a shortcut for `initialize_variables(local_variables())`
+
+  Returns:
+    An Op that initializes all local variables in the graph.
+  """
+  return initialize_variables(local_variables())
+
+
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
 
@@ -761,7 +779,7 @@ def assert_variables_initialized(var_list=None):
     An Op, or None if there are no variables.
   """
   if var_list is None:
-    var_list = all_variables()
+    var_list = all_variables() + local_variables()
   # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []

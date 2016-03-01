@@ -39,8 +39,11 @@ namespace tensorflow {
 namespace testing {
 
 #if defined(PLATFORM_GOOGLE)
+
 using ::testing::Benchmark;
+
 #else
+
 class Benchmark {
  public:
   Benchmark(const char* name, void (*fn)(int));

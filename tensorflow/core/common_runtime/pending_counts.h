@@ -27,6 +27,19 @@ namespace tensorflow {
 // for use in the ExecutorState module.
 class PendingCounts {
  public:
+  // The state machine for a node's execution.
+  enum NodeState {
+    // The pending count for the node > 0.
+    PENDING_NOTREADY,
+    // The pending count for the node == 0, but the node has not
+    // started executing.
+    PENDING_READY,
+    // The node has started executing.
+    STARTED,
+    // The node has finished executing.
+    COMPLETED
+  };
+
   explicit PendingCounts(int num_nodes)
       : num_nodes_(num_nodes), counts_(new PackedCounts[num_nodes]) {}
 
@@ -52,16 +65,58 @@ class PendingCounts {
       PackedCounts pc;
       pc.pending = pending_count;
       pc.dead_count = 0;
+      pc.has_started = 0;
       pc.is_large = 0;
       counts_[id] = pc;
     }
   }
 
+  NodeState node_state(int id) {
+    if (IsLarge(id)) {
+      return NodeStateLarge(id);
+    } else {
+      return NodeStatePacked(id);
+    }
+  }
+  void mark_started(int id) {
+    if (IsLarge(id)) {
+      auto& pending = overflow_[id].pending;
+      DCHECK_EQ(pending, 0);
+      pending = -1;
+    } else {
+      DCHECK_EQ(counts_[id].pending, 0);
+      DCHECK_EQ(counts_[id].has_started, 0);
+      counts_[id].has_started = 1;
+    }
+  }
+  void mark_completed(int id) {
+    if (IsLarge(id)) {
+      auto& pending = overflow_[id].pending;
+      DCHECK_EQ(pending, -1);
+      pending = -2;
+    } else {
+      DCHECK_EQ(counts_[id].pending, 0);
+      DCHECK_EQ(counts_[id].has_started, 1);
+      counts_[id].pending = 1;
+    }
+  }
   int pending(int id) {
     if (IsLarge(id)) {
-      return overflow_[id].pending;
+      if (PENDING_NOTREADY == NodeStateLarge(id)) {
+        return overflow_[id].pending;
+      } else {
+        // The pending count encodes the state once the node has
+        // started, so just return 0.
+        return 0;
+      }
     } else {
-      return counts_[id].pending;
+      if (PENDING_NOTREADY == NodeStatePacked(id)) {
+        return counts_[id].pending;
+      } else {
+        // The pending count encodes the state once the node has
+        // started, so just return 0.
+        return 0;
+      }
     }
   }
   int decrement_pending(int id, int v) {
@@ -79,9 +134,18 @@ class PendingCounts {
   // REQUIRES: Node corresponding to "id" is a merge node
   void mark_live(int id) {
     if (IsLarge(id)) {
-      overflow_[id].pending |= 0x1;
+      int& count = overflow_[id].pending;
+      // Only do anything if the node hasn't already started executing.
+      if (PENDING_NOTREADY == NodeStateLarge(id)) {
+        count &= ~static_cast<int>(0x1);
+      }
     } else {
-      counts_[id].pending |= 0x1;
+      // Only do anything if the node hasn't already started executing.
+      if (PENDING_NOTREADY == NodeStatePacked(id)) {
+        static_assert(7 == kMaxCountForPackedCounts,
+                      "Live flag incorrect for max packed count");
+        counts_[id].pending &= 0x6;
+      }
     }
   }
 
@@ -91,10 +155,14 @@ class PendingCounts {
   }
   void increment_dead_count(int id) {
     if (IsLarge(id)) {
-      overflow_[id].dead_count++;
+      if (PENDING_NOTREADY == NodeStateLarge(id)) {
+        overflow_[id].dead_count++;
+      }
     } else {
-      DCHECK_LT(counts_[id].dead_count, kMaxCountForPackedCounts);
-      counts_[id].dead_count++;
+      if (PENDING_NOTREADY == NodeStatePacked(id)) {
+        DCHECK_LT(counts_[id].dead_count, kMaxCountForPackedCounts);
+        counts_[id].dead_count++;
+      }
     }
   }
 
@@ -124,25 +192,51 @@ class PendingCounts {
   // the frame is only a small subset of the partition. We should make
   // the vector size to be only the size of the frame subgraph.
 
-  const int kMaxCountForPackedCounts = 7;  // We use 3 bits for dead_count
+  // We use 3 bits each for dead_count and pending.
+  static const int kMaxCountForPackedCounts = 7;
 
   bool IsLarge(int id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     return counts_[id].is_large;
   }
+  // Requires !IsLarge(id).
+  NodeState NodeStatePacked(int id) const {
+    if (counts_[id].has_started) {
+      return (counts_[id].pending == 0) ? STARTED : COMPLETED;
+    } else {
+      return (counts_[id].pending == 0) ? PENDING_READY : PENDING_NOTREADY;
+    }
+  }
+  // Requires IsLarge(id).
+  NodeState NodeStateLarge(int id) {
+    int pending = overflow_[id].pending;
+    if (pending > 0) {
+      return PENDING_NOTREADY;
+    } else if (pending == 0) {
+      return PENDING_READY;
+    } else if (pending == -1) {
+      return STARTED;
+    } else {
+      return COMPLETED;
+    }
+  }
   // Most counts are small, so we pack a pending count and a dead
-  // count into 4 bits and 3 bits, respectively, and then use one bit
-  // as a marker bit.  If "is_large" is true, then the true pending
-  // and dead_count for that "id" are stored as full 32-bit counts in
-  // "overflow_", a hash table indexed by id.
+  // count into 3 bits each, use 1 bit to indicate that the node has
+  // started computing, and then use the final bit as a marker bit.
+  // If "is_large" is true, then the true pending and dead_count for
+  // that "id" are stored as full 32-bit counts in "overflow_", a hash
+  // table indexed by id.
   struct PackedCounts {
-    uint8 pending : 4;
+    uint8 pending : 3;
     uint8 dead_count : 3;
+    uint8 has_started : 1;
     uint8 is_large : 1;
   };
 
   struct LargeCounts {
+    // A negative value for pending indicates that the node has
+    // started executing.
     int pending = 0;
     int dead_count = 0;
   };
