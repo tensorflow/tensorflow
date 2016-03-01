@@ -142,10 +142,6 @@ source "${VENV_DIR}/bin/activate" ||
 die "FAILED: Unable to activate virtualenv"
 
 # Install the pip file in virtual env
-# "${PYTHON_BIN_PATH}" -m pip install -v --user ${WHL_PATH} \
-# && echo "Successfully installed pip package ${WHL_PATH}" \
-# || die "pip install (without --upgrade) FAILED"
-
 pip install -v ${WHL_PATH} \
 && echo "Successfully installed pip package ${WHL_PATH}" \
 || die "pip install (without --upgrade) FAILED"
@@ -163,7 +159,7 @@ fi
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Call the pip test script
-"${DIR}/pip_test.sh" --virualenv || die "PIP tests-on-install FAILED"
+"${DIR}/pip_test.sh" --virtualenv || die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
