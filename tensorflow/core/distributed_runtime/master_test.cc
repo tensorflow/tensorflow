@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
-#include "external/grpc/include/grpc++/grpc++.h"
+#include "grpc++/grpc++.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"

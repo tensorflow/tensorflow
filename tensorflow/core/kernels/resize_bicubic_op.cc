@@ -29,6 +29,29 @@ limitations under the License.
 
 namespace tensorflow {
 
+static const int64 tab_size = (1 << 10);
+
+const float* InitCoeffsTable() {
+  // Allocate and initialize coefficients table using Bicubic
+  // convolution algorithm.
+  // https://en.wikipedia.org/wiki/Bicubic_interpolation
+  float* coeffs_tab = new float[(tab_size + 1) * 2];
+  static const double A = -0.75;
+  for (int i = 0; i <= tab_size; ++i) {
+    float x = i * 1.0 / tab_size;
+    coeffs_tab[i * 2] = ((A + 2) * x - (A + 3)) * x * x + 1;
+    x += 1.0;
+    coeffs_tab[i * 2 + 1] = ((A * x - 5 * A) * x + 8 * A) * x - 4 * A;
+  }
+  return coeffs_tab;
+}
+
+const float* GetCoeffsTable() {
+  // Static so that we initialize it on first use
+  static const float* coeffs_tab = InitCoeffsTable();
+  return coeffs_tab;
+}
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Device, typename T>
@@ -83,19 +106,10 @@ class ResizeBicubicOp : public OpKernel {
             ? (in_width - 1) / static_cast<float>(out_width - 1)
             : in_width / static_cast<float>(out_width);
 
-    // Initialize coefficients table using Bicubic convolution algorithm.
-    // https://en.wikipedia.org/wiki/Bicubic_interpolation
-    static const int64 tab_size = (1 << 10);
-    static float coeffs_tab[(tab_size + 1) * 2];
-    static const double A = -0.75;
-    for (int i = 0; i <= tab_size; ++i) {
-      float x = i * 1.0 / tab_size;
-      coeffs_tab[i * 2] = ((A + 2) * x - (A + 3)) * x * x + 1;
-      x += 1.0;
-      coeffs_tab[i * 2 + 1] = ((A * x - 5 * A) * x + 8 * A) * x - 4 * A;
-    }
+    const float* coeffs_tab = GetCoeffsTable();
 
-    auto cal = [](float v0, float v1, float v2, float v3, float dx) {
+    auto cal = [](const float* coeffs_tab, float v0, float v1, float v2,
+                  float v3, float dx) {
       const int64 offset = round(dx * tab_size);
       const float a0 = coeffs_tab[offset * 2 + 1];
       const float a1 = coeffs_tab[offset * 2];
@@ -117,14 +131,15 @@ class ResizeBicubicOp : public OpKernel {
 #define BOUND(val, limit) std::min(((limit)-1ll), (std::max(0ll, (val))))
               int64 bound_y = BOUND(in_y - 1 + i, in_height);
               coeff[i] =
-                  cal(input_data(b, bound_y, BOUND(in_x - 1, in_width), c),
+                  cal(coeffs_tab,
+                      input_data(b, bound_y, BOUND(in_x - 1, in_width), c),
                       input_data(b, bound_y, BOUND(in_x, in_width), c),
                       input_data(b, bound_y, BOUND(in_x + 1, in_width), c),
                       input_data(b, bound_y, BOUND(in_x + 2, in_width), c), dx);
 #undef BOUND
             }
             output_data(b, y, x, c) =
-                cal(coeff[0], coeff[1], coeff[2], coeff[3], dy);
+                cal(coeffs_tab, coeff[0], coeff[1], coeff[2], coeff[3], dy);
           }
         }
       }

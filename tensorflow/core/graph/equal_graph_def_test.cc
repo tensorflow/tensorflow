@@ -295,5 +295,18 @@ TEST_F(EqualGraphDefTest, AttrMismatch) {
       diff_);
 }
 
+TEST_F(EqualGraphDefTest, IgnoreInternalAttrs) {
+  Node* a = Input(e_.opts().WithName("A"));
+  NodeDef actual(a->def());
+  AddNodeAttr("foo", "bar", &actual);
+  // Internal attrs are ignored.
+  AddNodeAttr("_class", 5, &actual);
+
+  NodeDef expected(a->def());
+  AddNodeAttr("foo", "bar", &expected);
+  AddNodeAttr("_kernel", "eigen", &actual);
+  EXPECT_TRUE(EqualNodeDef(actual, expected, &diff_));
+}
+
 }  // namespace
 }  // namespace tensorflow

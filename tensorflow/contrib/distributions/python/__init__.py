@@ -12,14 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for training linear models.
+"""ops module."""
 
-## This package provides optimizers to train linear models.
-
-@@SdcaModel
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel

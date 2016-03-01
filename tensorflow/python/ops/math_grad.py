@@ -337,18 +337,18 @@ def _SubGrad(op, grad):
 
 @ops.RegisterGradient("Mul")
 def _MulGrad(op, grad):
+  """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  if x.dtype.base_dtype == dtypes.complex64:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * math_ops.conj(y), rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(math_ops.conj(x) * grad, ry), sy))
-  else:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
+  if x.dtype.is_complex:
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
+  return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
 
 
 @ops.RegisterGradient("Div")
@@ -372,9 +372,10 @@ def _PowGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  gx = array_ops.reshape(math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx),
-                         sx)
-  gy = array_ops.reshape(math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
+  gx = array_ops.reshape(
+      math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
+  gy = array_ops.reshape(
+      math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
   return gx, gy
 
 

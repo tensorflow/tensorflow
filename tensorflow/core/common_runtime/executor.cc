@@ -509,6 +509,13 @@ class ExecutorState {
     // Mark a merge node as live
     // REQUIRES: Node corresponding to "id" is a merge node
     void mark_live(int id) { counts_.mark_live(id); }
+    // Mark a node to show that processing has started.
+    void mark_started(int id) { counts_.mark_started(id); }
+    // Mark a node to show that processing has completed.
+    void mark_completed(int id) { counts_.mark_completed(id); }
+    PendingCounts::NodeState node_state(int id) {
+      return counts_.node_state(id);
+    }
 
     int dead_count(int id) { return counts_.dead_count(id); }
     void increment_dead_count(int id) { counts_.increment_dead_count(id); }
@@ -651,6 +658,10 @@ class ExecutorState {
   // Step-local resource manager.
   ResourceMgr step_resource_manager_;
 
+  // A flag that is set on error after the frame state has been
+  // dumped for diagnostic purposes.
+  bool dumped_on_error_ = false;
+
   // The root frame in which the execution of this step is started.
   FrameState* root_frame_;
 
@@ -752,6 +763,18 @@ class ExecutorState {
   void ScheduleReady(const TaggedNodeSeq& ready,
                      std::deque<TaggedNode>* inline_ready);
 
+  // Provide debugging output about an outstanding node in the executor.
+  void DumpCompletedNodeState(const int node_id, const Entry* input_vector);
+  void DumpPendingNodeState(const int node_id, const Entry* input_vector,
+                            bool show_nodes_with_no_ready_inputs);
+  void DumpActiveNodeState(const int node_id, const Entry* input_vector);
+
+  // Provide debugging output about an outstanding iteration in the executor.
+  void DumpIterationState(IterationState* iteration);
+
+  // Provide debugging output of the state of the executor.
+  void DumpState();
+
   // One thread of control finishes.
   void Finish();
 
@@ -827,8 +850,8 @@ void ExecutorImpl::InitializePending(const Graph* graph,
           num_control_edges++;
         }
       }
-      // Use bit 0 to indicate if there is a ready live data input.
-      initial_count = num_control_edges << 1;
+      // Use bit 0 to indicate if we are waiting for a ready live data input.
+      initial_count = 1 + (num_control_edges << 1);
     } else {
       initial_count = num_in_edges;
     }
@@ -938,6 +961,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     const int id = node->id();
     const NodeItem& item = nodes[id];
 
+    // TODO(misard) Replace with a finer-grain enabling flag once we
+    // add better optional debugging support.
+    if (VLOG_IS_ON(1)) {
+      mutex_lock l(mu_);
+
+      IterationState* iter_state = input_frame->GetIteration(input_iter);
+      iter_state->mark_started(id);
+    }
+
     // Set the device_context for this node id, if it exists.
     auto dc_it = device_context_map_.find(id);
     if (dc_it != device_context_map_.end()) {
@@ -971,6 +1003,19 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
                         &input_alloc_attrs, &is_input_dead);
       if (!s.ok()) {
+        // Clear the inputs to maintain the invariant that completed
+        // nodes have no valid input tensors.
+        int num_inputs = item.num_inputs;
+        for (int i = 0; i < num_inputs; ++i) {
+          (first_input + i)->val = *kEmptyTensor;
+        }
+        // TODO(misard) Replace with a finer-grain enabling flag once we
+        // add better optional debugging support.
+        if (VLOG_IS_ON(1)) {
+          mutex_lock l(mu_);
+          IterationState* iter_state = input_frame->GetIteration(input_iter);
+          iter_state->mark_completed(id);
+        }
         // Continue to process the nodes in 'inline_ready'.
         completed = NodeDone(s, item.node, ready, stats, &inline_ready);
         continue;
@@ -1003,6 +1048,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           int num_inputs = item.num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
             (first_input + i)->val = *kEmptyTensor;
+          }
+          // TODO(misard) Replace with a finer-grain enabling flag once we
+          // add better optional debugging support.
+          if (VLOG_IS_ON(1)) {
+            mutex_lock l(mu_);
+            tagged_node.input_frame->GetIteration(tagged_node.input_iter)
+                ->mark_completed(tagged_node.node->id());
           }
           TaggedNodeSeq ready;
           if (s.ok()) {
@@ -1037,8 +1089,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         // execute Ops after their Compute methods have completed,
         // this ensures that control is not returned to the user until
         // the step (and its side-effects) has actually completed.
-        if (node->IsSink()) {
-          s = device->Sync();
+        if (node->IsSink() && ctx.status().ok()) {
+          ctx.SetStatus(device->Sync());
         }
         if (stats_collector_) nodestats::SetOpEnd(stats);
 
@@ -1057,6 +1109,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       const int num_inputs = item.num_inputs;
       for (int i = 0; i < num_inputs; ++i) {
         (first_input + i)->val = *kEmptyTensor;
+      }
+      // TODO(misard) Replace with a finer-grain enabling flag once we
+      // add better optional debugging support.
+      if (VLOG_IS_ON(1)) {
+        mutex_lock l(mu_);
+        IterationState* iter_state = input_frame->GetIteration(input_iter);
+        iter_state->mark_completed(id);
       }
       // Propagates outputs.
       if (s.ok()) {
@@ -1159,6 +1218,11 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   if (!s.ok()) {
     s = AttachDef(s, item.kernel->def());
     LOG(WARNING) << this << " Compute status: " << s;
+    // TODO(misard) Replace with a finer-grain enabling flag once we
+    // add better optional debugging support.
+    if (VLOG_IS_ON(1)) {
+      DumpState();
+    }
     return s;
   }
 
@@ -1282,20 +1346,26 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
         int count = output_iter_state->pending(dst_id);
         dst_dead =
             (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
-        dst_ready = (count == 1) || ((count == 0) && dst_dead);
+        dst_ready = (count == 0) || ((count == 1) && dst_dead);
       } else {
         if (outputs[src_slot].has_value) {
           // This is a live data input.
           int count = output_iter_state->pending(dst_id);
           output_iter_state->mark_live(dst_id);
-          dst_ready = (count == 0);
-          dst_need_input = (count & 0x1) == 0;
+          // Only the first live edge sets the input and (potentially)
+          // triggers execution. The low bit of count is set if and
+          // only if no live input has been used yet (mark_live clears
+          // it). The node should be started if and only if this is
+          // the first live input and there are no pending control
+          // edges, i.e. count == 1.
+          dst_ready = (count == 1);
+          dst_need_input = ((count & 0x1) == 1);
         } else {
           // This is a dead data input.
           output_iter_state->increment_dead_count(dst_id);
           dst_dead =
               (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
-          dst_ready = (output_iter_state->pending(dst_id) == 0) && dst_dead;
+          dst_ready = (output_iter_state->pending(dst_id) == 1) && dst_dead;
           dst_need_input = false;
         }
       }
@@ -1462,6 +1532,141 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
       runner_(
           std::bind(&ME::Process, this, *curr_expensive_node, scheduled_usec));
     }
+  }
+}
+
+void ExecutorState::DumpCompletedNodeState(const int node_id,
+                                           const Entry* input_vector) {
+  const NodeItem& node_item = impl_->nodes_[node_id];
+  const Node& node = *node_item.node;
+  LOG(WARNING) << "    Completed Node: " << node.DebugString();
+  const int input_base = node_item.input_start;
+  for (int i = 0; i < node.num_inputs(); ++i) {
+    const Entry& input = input_vector[input_base + i];
+    CHECK(!input.val.IsInitialized());
+  }
+}
+
+void ExecutorState::DumpPendingNodeState(
+    const int node_id, const Entry* input_vector,
+    const bool show_nodes_with_no_ready_inputs) {
+  const NodeItem& node_item = impl_->nodes_[node_id];
+  const Node& node = *node_item.node;
+  const int input_base = node_item.input_start;
+  if (!show_nodes_with_no_ready_inputs) {
+    bool has_ready_input = false;
+    for (int i = 0; i < node.num_inputs(); ++i) {
+      const Entry& input = input_vector[input_base + i];
+      const Tensor* tensor;
+      if (input.ref == nullptr) {
+        tensor = &input.val;
+      } else {
+        tensor = input.ref;
+      }
+      if (tensor->IsInitialized()) {
+        has_ready_input = true;
+        break;
+      }
+    }
+    if (!has_ready_input) {
+      return;
+    }
+  }
+  LOG(WARNING) << "    Pending Node: " << node.DebugString();
+  for (int i = 0; i < node.num_inputs(); ++i) {
+    const Entry& input = input_vector[input_base + i];
+    const Tensor* tensor;
+    if (input.ref == nullptr) {
+      tensor = &input.val;
+    } else {
+      tensor = input.ref;
+    }
+    if (tensor->IsInitialized()) {
+      LOG(WARNING) << "      Input " << i << ": "
+                   << strings::StrCat(
+                          "Tensor<type: ", DataTypeString(tensor->dtype()),
+                          " shape: ", tensor->shape().DebugString(), ">");
+    } else {
+      LOG(WARNING) << "      Input " << i << ": not present";
+    }
+  }
+}
+
+void ExecutorState::DumpActiveNodeState(const int node_id,
+                                        const Entry* input_vector) {
+  const NodeItem& node_item = impl_->nodes_[node_id];
+  const Node& node = *node_item.node;
+  LOG(WARNING) << "    Active Node: " << node.DebugString();
+  const int input_base = node_item.input_start;
+  for (int i = 0; i < node.num_inputs(); ++i) {
+    const Entry& input = input_vector[input_base + i];
+    const Tensor* tensor;
+    if (input.ref == nullptr) {
+      tensor = &input.val;
+    } else {
+      tensor = input.ref;
+    }
+    if (tensor->IsInitialized()) {
+      LOG(WARNING) << "      Input " << i << ": "
+                   << strings::StrCat(
+                          "Tensor<type: ", DataTypeString(tensor->dtype()),
+                          " shape: ", tensor->shape().DebugString(), ">");
+    } else {
+      LOG(WARNING) << "      Input " << i << ": not present";
+    }
+  }
+}
+
+void ExecutorState::DumpIterationState(IterationState* iteration) {
+  // Dump any waiting nodes that are holding on to tensors.
+  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+    if (iteration->node_state(i) == PendingCounts::PENDING_NOTREADY ||
+        iteration->node_state(i) == PendingCounts::PENDING_READY) {
+      DumpPendingNodeState(i, iteration->input_tensors, false);
+    }
+  }
+  // Then the active nodes.
+  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+    if (iteration->node_state(i) == PendingCounts::STARTED) {
+      DumpActiveNodeState(i, iteration->input_tensors);
+    }
+  }
+  // Show all input tensors in use.
+  size_t total_bytes = 0;
+  for (int i = 0; i < impl_->total_input_tensors_; ++i) {
+    const Entry& input = iteration->input_tensors[i];
+    const Tensor* tensor;
+    if (input.ref == nullptr) {
+      tensor = &input.val;
+    } else {
+      tensor = input.ref;
+    }
+    if (tensor->IsInitialized()) {
+      LOG(WARNING) << "    Input " << i << ": "
+                   << strings::StrCat("Tensor<type: ",
+                                      DataTypeString(tensor->dtype()),
+                                      " shape: ", tensor->shape().DebugString(),
+                                      ", bytes: ", tensor->TotalBytes(),
+                                      ", hash: ", tensor->BufferHash(), ">");
+      total_bytes += tensor->TotalBytes();
+    }
+  }
+  LOG(WARNING) << "    Total bytes " << total_bytes;
+}
+
+void ExecutorState::DumpState() {
+  mutex_lock l(mu_);
+  if (!dumped_on_error_) {
+    LOG(WARNING) << "Dumping state";
+    for (auto& frame : outstanding_frames_) {
+      LOG(WARNING) << frame.first;
+      FrameState* frame_state = frame.second;
+      for (IterationState* iteration : frame_state->iterations) {
+        LOG(WARNING) << "  Iteration:";
+        DumpIterationState(iteration);
+      }
+    }
+    dumped_on_error_ = true;
   }
 }
 
@@ -1653,12 +1858,12 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
             int count = parent_iter_state->pending(dst_id);
             dst_dead = (parent_iter_state->dead_count(dst_id) ==
                         dst_node->num_inputs());
-            dst_ready = (count == 1) || ((count == 0) && dst_dead);
+            dst_ready = (count == 0) || ((count == 1) && dst_dead);
           } else {
             parent_iter_state->increment_dead_count(dst_id);
             dst_dead = (parent_iter_state->dead_count(dst_id) ==
                         dst_node->num_inputs());
-            dst_ready = (parent_iter_state->pending(dst_id) == 0) && dst_dead;
+            dst_ready = (parent_iter_state->pending(dst_id) == 1) && dst_dead;
           }
         } else {
           parent_iter_state->increment_dead_count(dst_id);

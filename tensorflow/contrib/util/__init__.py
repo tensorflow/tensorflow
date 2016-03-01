@@ -19,6 +19,7 @@
 
 @@constant_value
 @@make_tensor_proto
+@@make_ndarray
 
 """
 
@@ -29,6 +30,7 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.framework.tensor_util import constant_value
 from tensorflow.python.framework.tensor_util import make_tensor_proto
+from tensorflow.python.framework.tensor_util import MakeNdarray as make_ndarray
 
 # TODO(irving): Use make_all here.
-__all__ = ['constant_value', 'make_tensor_proto']
+__all__ = ['constant_value', 'make_tensor_proto', 'make_ndarray']

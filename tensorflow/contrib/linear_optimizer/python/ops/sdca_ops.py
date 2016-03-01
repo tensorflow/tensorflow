@@ -29,10 +29,24 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.platform import resource_loader
 
-_sdca_ops = load_op_library(os.path.join(resource_loader.get_data_files_path(),
-                                         '_sdca_ops.so'))
 
 __all__ = ['SdcaModel']
+
+
+_sdca_ops = None
+
+
+# Workaround for the fact that importing tensorflow imports contrib
+# (even if a user isn't using this or any other contrib op), but
+# there's not yet any guarantee that the shared object exists.
+# In which case, "import tensorflow" will always crash, even for users that
+# never use contrib.
+def _maybe_load_sdca_ops():
+  global _sdca_ops
+  if not _sdca_ops:
+    _sdca_ops = load_op_library(os.path.join(
+        resource_loader.get_data_files_path(), '_sdca_ops.so'))
+    assert _sdca_ops is not None, 'Could not load _sdca_ops.so'
 
 
 class SdcaModel(object):
@@ -66,8 +80,9 @@ class SdcaModel(object):
     examples: {
       sparse_features: list of SparseTensors of value type float32.
       dense_features: list of dense tensors of type float32.
-      example_labels: a tensor of of shape [Num examples]
-      example_weights: a tensor of shape [Num examples]
+      example_labels: a tensor of type float32 and shape [Num examples]
+      example_weights: a tensor of type float32 and shape [Num examples]
+      example_ids: a tensor of type string and shape [Num examples]
     }
     variables: {
       sparse_features_weights: list of tensors of shape [vocab size]
@@ -91,11 +106,13 @@ class SdcaModel(object):
       gap is set to 0.01 as default.
     opt_op.run()
     ```
-    """
+  """
 
   def __init__(self, container, examples, variables, options):
     """Create a new sdca optimizer."""
 
+    _maybe_load_sdca_ops()
+    
     if not container or not examples or not variables or not options:
       raise ValueError('All arguments must be specified.')
 
@@ -103,7 +120,7 @@ class SdcaModel(object):
       raise ValueError('Optimizer only supports logistic regression (for now).')
 
     self._assertSpecified(
-        ['example_labels', 'example_weights', 'sparse_features',
+        ['example_labels', 'example_weights', 'example_ids', 'sparse_features',
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
 
@@ -223,8 +240,8 @@ class SdcaModel(object):
       sparse_features_indices = []
       sparse_features_weights = []
       for sf in self._examples['sparse_features']:
-        sparse_features_indices.append(ops.convert_to_tensor(sf.indices))
-        sparse_features_weights.append(ops.convert_to_tensor(sf.values))
+        sparse_features_indices.append(convert_to_tensor(sf.indices))
+        sparse_features_weights.append(convert_to_tensor(sf.values))
 
       return _sdca_ops.sdca_solver(
           sparse_features_indices,
@@ -232,17 +249,17 @@ class SdcaModel(object):
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          self._convert_n_to_tensor(self._variables[
-              'sparse_features_weights'],
+          convert_to_tensor(self._examples['example_ids']),
+          self._convert_n_to_tensor(self._variables['sparse_features_weights'],
                                     as_ref=True),
           self._convert_n_to_tensor(self._variables['dense_features_weights'],
                                     as_ref=True),
           self._training_log_loss,
-          L1=self._options['symmetric_l1_regularization'],
-          L2=self._options['symmetric_l2_regularization'],
-          LossType=self._options['loss_type'],
-          Container=self._container,
-          SolverUUID=self._solver_uuid)
+          l1=self._options['symmetric_l1_regularization'],
+          l2=self._options['symmetric_l2_regularization'],
+          loss_type=self._options['loss_type'],
+          container=self._container,
+          solver_uuid=self._solver_uuid)
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
