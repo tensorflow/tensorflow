@@ -131,7 +131,7 @@ class FunctionTest(tf.test.TestCase):
   def testTanhSymGrad(self):
     g = tf.Graph()
     with g.as_default():
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def Forward(x):
         return tf.reduce_sum(tf.tanh(x))
       x = tf.placeholder(tf.float32)
@@ -200,9 +200,6 @@ class FunctionTest(tf.test.TestCase):
     def NoResult():
       pass
 
-    def VarArgs(*unused_b):
-      return tf.constant([1])
-
     def DefaultArg(unused_a=12):
       return tf.constant([1])
 
@@ -215,11 +212,9 @@ class FunctionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
         function.define_function(NoResult, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
-        function.define_function(VarArgs, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(DefaultArg, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(KwArgs, {})
       with self.assertRaisesRegexp(ValueError, "specified input types"):
         function.define_function(PlusMinus, {})
@@ -278,7 +273,7 @@ class FunctionTest(tf.test.TestCase):
 
     with tf.Graph().as_default():
 
-      @function.Defun(b=tf.float32)
+      @function.Defun(tf.float32)
       def Minus1(b):
         return b - 1.0
 
@@ -296,11 +291,11 @@ class FunctionTest(tf.test.TestCase):
   def testNestedFunction(self):
     with tf.Graph().as_default():
 
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def Cube(x):
         return x * x * x
 
-      @function.Defun(x=tf.float32, y=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def CubeXPlusY(x, y):
         return Cube(x) + y
 
@@ -358,7 +353,7 @@ class UnrollLSTMTest(tf.test.TestCase):
 
     if mode == "loop":
       # Wraps the whole loop as a function.
-      @function.Defun(w=tf.float32, i=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def LSTMLoop(w, i):
         return Loop(cell, w, i)
 
@@ -368,27 +363,15 @@ class UnrollLSTMTest(tf.test.TestCase):
       # Wraps 10 lstm steps into one function, and the whole loop
       # into another calling the formers.
 
-      # Groups 10 steps at a time):
-      # TODO(zhifengc): Any way to make the syntax less hideous?
-      @function.Defun(m=tf.float32,
-                      c=tf.float32,
-                      w=tf.float32,
-                      x0=tf.float32,
-                      x1=tf.float32,
-                      x2=tf.float32,
-                      x3=tf.float32,
-                      x4=tf.float32,
-                      x5=tf.float32,
-                      x6=tf.float32,
-                      x7=tf.float32,
-                      x8=tf.float32,
-                      x9=tf.float32)
-      def Loop10(w, m, c, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9):
-        for x in [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9]:
+      # Groups 10 steps at a time.
+      @function.Defun(tf.float32, tf.float32, tf.float32,
+                      *([tf.float32] * 10))
+      def Loop10(w, m, c, *args):
+        for x in args:
           m, c = cell(x, m, c, w)
         return m, c
 
-      @function.Defun(weights=tf.float32, inp=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def LSTMLoop10(weights, inp):
         x = tf.unpack(inp, self.NUM_UNROLL)
         m = tf.zeros_like(x[0])
