@@ -206,8 +206,6 @@ with a learning rate that
 [exponentially decays](../../api_docs/python/train.md#exponential_decay)
 over time.
 
-![CIFAR-10 Learning Rate Decay](../../images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
-
 The `train()` function adds the operations needed to minimize the objective by
 calculating the gradient and updating the learned variables (see
 [`GradientDescentOptimizer`](../../api_docs/python/train.md#GradientDescentOptimizer)
