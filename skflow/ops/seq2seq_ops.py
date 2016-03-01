@@ -129,6 +129,5 @@ def rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_cell, decoder_cell=None,
         List of tensors for outputs and states for trianing and sampling sub-graphs.
     """
     with tf.variable_scope(scope or "rnn_seq2seq"):
-        _, enc_states = tf.nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
-        return rnn_decoder(decoder_inputs, enc_states[-1], decoder_cell or encoder_cell)
-
+        _, last_enc_state = tf.nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+        return rnn_decoder(decoder_inputs, last_enc_state, decoder_cell or encoder_cell)
