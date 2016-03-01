@@ -168,7 +168,7 @@ Here is a graph generated from TensorBoard describing the inference operation:
 </div>
 
 > **EXERCISE**: The output of `inference` are un-normalized logits. Try editing
-the network architecture to return normalized predictions using [`tf.softmax()`]
+the network architecture to return normalized predictions using [`tf.nn.softmax()`]
 (../../api_docs/python/nn.md#softmax).
 
 The `inputs()` and `inference()` functions provide all the components
