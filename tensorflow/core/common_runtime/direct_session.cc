@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/direct_session.h"
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -88,6 +90,8 @@ string GetRendezvousKey(const string& tensor_name,
 }
 
 }  // namespace
+
+std::atomic_int_fast64_t DirectSession::step_id_counter_(0);
 
 // NOTE: On Android with a single device, there is never
 // a risk of an OpKernel blocking indefinitely:
@@ -248,6 +252,16 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
+  return RunWithOpts(kEmptyRunOptions, inputs, output_names, target_nodes,
+                     outputs, &kEmptyRunOutputs);
+}
+
+Status DirectSession::RunWithOpts(const RunOptions& run_options,
+                                  const NamedTensorList& inputs,
+                                  const std::vector<string>& output_names,
+                                  const std::vector<string>& target_nodes,
+                                  std::vector<Tensor>* outputs,
+                                  RunOutputs* run_outputs) {
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {
@@ -286,15 +300,28 @@ Status DirectSession::Run(const NamedTensorList& inputs,
       });
 
   Executor::Args args;
+  args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  VLOG(1) << "Step " << args.step_id << " is for handle "
+          << run_state_args.handle;
+
+  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
+    args.stats_collector =
+        new StepStatsCollector(run_outputs->mutable_step_stats());
+  }
 
   for (const auto& item : executors_and_keys->items) {
     item.executor->RunAsync(args, barrier->Get());
   }
 
   run_state.executors_done.WaitForNotification();
+
+  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
+    delete args.stats_collector;
+  }
+
   TF_RETURN_IF_ERROR(run_state.status);
 
   // Receive outputs.
@@ -350,9 +377,15 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
       });
 
   Executor::Args args;
+  {
+    mutex_lock l(mu_);
+    args.step_id = name_counter_++;
+  }
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  LOG(INFO) << "Step " << args.step_id << " is for handle "
+            << run_state_args.handle;
 
   for (auto& item : executors_and_keys->items) {
     Executor* exec = item.executor;
@@ -408,7 +441,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   // Check that this new set of fetches can be computed from all the
   // feeds we have supplied.
   TF_RETURN_IF_ERROR(
-      CheckFetch(inputs, output_names, executors_and_keys->graph, run_state));
+      CheckFetch(inputs, output_names, executors_and_keys, run_state));
 
   // Send inputs.
   Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
@@ -510,12 +543,10 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
 
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
-                                 const Graph* graph,
+                                 const ExecutorsAndKeys* executors_and_keys,
                                  const RunState* run_state) {
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
-  for (Node* n : graph->nodes()) {
-    name_to_node[n->name()] = n;
-  }
+  const Graph* graph = executors_and_keys->graph;
+  const NameNodeMap* name_to_node = executors_and_keys->name_to_node;
 
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
@@ -523,8 +554,8 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
     mutex_lock l(executor_lock_);
     for (const string& feed : run_state->pending_inputs) {
       TensorId id(ParseTensorName(feed));
-      auto it = name_to_node.find(id.first);
-      if (it == name_to_node.end()) {
+      auto it = name_to_node->find(id.first);
+      if (it == name_to_node->end()) {
         return errors::NotFound("Feed ", feed, ": not found");
       }
       pending_feeds.insert(id);
@@ -539,8 +570,8 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   std::vector<const Node*> stack;
   for (const string& fetch : fetches) {
     TensorId id(ParseTensorName(fetch));
-    auto it = name_to_node.find(id.first);
-    if (it == name_to_node.end()) {
+    auto it = name_to_node->find(id.first);
+    if (it == name_to_node->end()) {
       return errors::NotFound("Fetch ", fetch, ": not found");
     }
     stack.push_back(it->second);
@@ -618,6 +649,21 @@ Status DirectSession::GetOrCreateExecutors(
   ek->func_defs = fdefs;
   if (run_state_args->is_partial_run) {
     ek->graph = run_state_args->graph;
+    ek->name_to_node = new NameNodeMap;
+    std::unordered_set<StringPiece, StringPiece::Hasher> names;
+    for (const string& input : inputs) {
+      TensorId id(ParseTensorName(input));
+      names.emplace(id.first);
+    }
+    for (const string& output : outputs) {
+      TensorId id(ParseTensorName(output));
+      names.emplace(id.first);
+    }
+    for (Node* n : run_state_args->graph->nodes()) {
+      if (names.count(n->name()) > 0) {
+        ek->name_to_node->insert({n->name(), n});
+      }
+    }
   }
   ek->items.reserve(graphs.size());
   auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };

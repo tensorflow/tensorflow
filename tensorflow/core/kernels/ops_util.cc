@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -125,4 +126,11 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
   }
   return Status::OK();
 }
+
+string SanitizeThreadSuffix(string suffix) {
+  static RE2 re("[^A-Za-z0-9_-]");
+  re.GlobalReplace(&suffix, re, "_");
+  return suffix;
+}
+
 }  // namespace tensorflow

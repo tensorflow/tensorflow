@@ -1,0 +1,67 @@
+/* Copyright 2016 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow.grpc;
+option java_outer_classname = "WorkerServiceProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.distruntime";
+
+import "tensorflow/core/protobuf/worker.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// WorkerService defines a TensorFlow service that executes dataflow
+// graphs on a set of local devices, on behalf of a MasterService.
+//
+// A worker service keeps track of multiple "registered graphs". Each
+// registered graph is a subgraph of a client's graph, corresponding to
+// only the nodes that should execute on this worker (and any
+// additional nodes necessary for inter-process communication using
+// the `RecvTensor` method).
+//
+////////////////////////////////////////////////////////////////////////////////
+
+service WorkerService {
+  // See worker.proto for details.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // See worker.proto for details.
+  rpc RegisterGraph(RegisterGraphRequest) returns (RegisterGraphResponse);
+
+  // See worker.proto for details.
+  rpc DeregisterGraph(DeregisterGraphRequest) returns (DeregisterGraphResponse);
+
+  // See worker.proto for details.
+  rpc RunGraph(RunGraphRequest) returns (RunGraphResponse);
+
+  // See worker.proto for details.
+  rpc CleanupGraph(CleanupGraphRequest) returns (CleanupGraphResponse);
+
+  // See worker.proto for details.
+  rpc CleanupAll(CleanupAllRequest) returns (CleanupAllResponse);
+
+  // See worker.proto for details.
+  rpc RecvTensor(RecvTensorRequest) returns (RecvTensorResponse) {
+    // RecvTensor Method
+  }
+
+  // See worker.proto for details.
+  rpc Logging(LoggingRequest) returns (LoggingResponse);
+
+  // See worker.proto for details.
+  rpc Tracing(TracingRequest) returns (TracingResponse);
+}

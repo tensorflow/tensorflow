@@ -32,7 +32,7 @@ namespace {
 
 class GraphTest : public ::testing::Test {
  protected:
-  GraphTest() : graph_(OpRegistry::Global()) { RequireDefaultOps(); }
+  GraphTest() : graph_(OpRegistry::Global()) {}
   ~GraphTest() override {}
 
   static void VerifyNodes(Node* node, std::vector<Node*> expected_in,

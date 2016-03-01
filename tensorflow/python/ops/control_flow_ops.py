@@ -24,6 +24,7 @@ the execution of operations and add conditional dependencies to your graph.
 @@no_op
 @@count_up_to
 @@cond
+@@case
 
 ## Logical Operators
 
@@ -82,6 +83,7 @@ from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
@@ -528,6 +530,7 @@ class GradLoopState(object):
       outer_grad_ctxt.Enter()
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
+                                        forward_ctxt.swap_memory,
                                         forward_ctxt.name)
       real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
       self._grad_index = self._grad_context.AddBackPropCounter(real_cnt)
@@ -536,6 +539,7 @@ class GradLoopState(object):
       if outer_forward_ctxt: outer_forward_ctxt.Enter()
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
+                                        forward_ctxt.swap_memory,
                                         forward_ctxt.name)
       self._grad_index = self._grad_context.AddBackPropCounter(cnt)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
@@ -640,13 +644,15 @@ class GradLoopState(object):
     enter_acc = self.forward_context.AddValue(acc)
 
     # Add the stack_push op in the context of value.op.
+    swap_enabled = self.forward_context.swap_memory
     value_ctxt = value.op._get_control_flow_context()
     if _IsLoopExit(value.op):
       value_ctxt = value_ctxt.outer_context
     if value_ctxt == self.forward_context:
       # value is not nested in the forward context.
       self.forward_context.Enter()
-      push = gen_data_flow_ops._stack_push(enter_acc, value)
+      push = gen_data_flow_ops._stack_push(enter_acc, value,
+                                           swap_memory=swap_enabled)
       self.forward_context.Exit()
       # Protect stack push and order it before forward_index.
       self.forward_index.op._add_control_input(push.op)
@@ -657,12 +663,14 @@ class GradLoopState(object):
         # The special case for creating a zero tensor for a dead
         # branch of a switch. See ControlFlowState.ZerosLike().
         value_ctxt.outer_context.Enter()
-        push = gen_data_flow_ops._stack_push(enter_acc, value)
+        push = gen_data_flow_ops._stack_push(enter_acc, value,
+                                             swap_memory=swap_enabled)
         value_ctxt.outer_context.Exit()
         push.op._set_control_flow_context(value_ctxt)
       else:
         value_ctxt.Enter()
-        push = gen_data_flow_ops._stack_push(enter_acc, value)
+        push = gen_data_flow_ops._stack_push(enter_acc, value,
+                                             swap_memory=swap_enabled)
         value_ctxt.Exit()
       # Protect stack push and order it before forward_sync.
       self.forward_sync._add_control_input(push.op)
@@ -1240,11 +1248,12 @@ def cond(pred, fn1, fn2, name=None):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations, back_prop, name):
+  def __init__(self, parallel_iterations, back_prop, swap_memory, name):
     ControlFlowContext.__init__(self)
     self._name = ops.get_default_graph().unique_name(name)
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
+    self._swap_memory = swap_memory
     # We use this node to control constants created by the pred lambda.
     self._pivot_for_pred = None
     # We use this node to control constants created by the body lambda.
@@ -1268,6 +1277,11 @@ class WhileContext(ControlFlowContext):
   def back_prop(self):
     """True iff backprop is enabled for this While loop."""
     return self._back_prop
+
+  @property
+  def swap_memory(self):
+    """True iff GPU-CPU memory swap is enabled for this While loop."""
+    return self._swap_memory
 
   @property
   def pivot(self):
@@ -1538,7 +1552,7 @@ class WhileContext(ControlFlowContext):
 
 
 def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
-          name=None):
+          swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a function taking a list of tensors and returning a boolean scalar
@@ -1558,6 +1572,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     loop_vars: The list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
+    swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
 
   Returns:
@@ -1583,7 +1598,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     if not callable(body):
       raise TypeError("body must be callable.")
 
-    context = WhileContext(parallel_iterations, back_prop, name)
+    context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
     context.Enter()
     result = context.BuildLoop(cond, body, loop_vars)
     context.Exit()
@@ -1885,8 +1900,8 @@ def foldr(fn, elems, initializer=None, name=None):
     return r_a
 
 
-def map(fn, elems, dtype=None, name=None):
-  """The map operator on on the unpacked tensors of a tensor.
+def map_fn(fn, elems, dtype=None, name=None):
+  """The map operator on the unpacked tensors of a tensor.
 
   This map operator applies the function `fn` to a sequence of elements
   from right to left. The elements are made of the tensors unpacked from
@@ -1908,7 +1923,7 @@ def map(fn, elems, dtype=None, name=None):
   Example:
     ```python
     elems = [1, 2, 3, 4, 5, 6]
-    squares = map(lambda x: x * x, elems)
+    squares = map_fn(lambda x: x * x, elems)
     ```
   """
   with ops.op_scope([elems], name, "map") as name:
@@ -1974,6 +1989,9 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
     Expressions:
     ```
+      x = tf.constant(0)
+      y = tf.constant(1)
+      z = tf.constant(2)
       def f1(): return tf.constant(17)
       def f2(): return tf.constant(23)
       def f3(): return tf.constant(-1)
@@ -2050,7 +2068,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     # and prev_case_seq will loop from case_sequence[0] to case_sequence[-1]
     if exclusive:
       # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))
-      preds_c = array_ops.concat(0, preds, name="preds_c")
+      preds_c = array_ops.pack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(

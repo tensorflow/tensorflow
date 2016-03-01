@@ -70,7 +70,6 @@ bool ExpectBefore(const std::vector<std::pair<string, string>>& ordered_pairs,
 }
 
 TEST(AlgorithmTest, ReversePostOrder) {
-  RequireDefaultOps();
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   Node* w1 = SourceOp("TestParams", b.opts().WithName("W1"));

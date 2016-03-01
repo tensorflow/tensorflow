@@ -634,6 +634,7 @@ class ExecutorState {
   typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
   typedef gtl::InlinedVector<Entry, 4> EntryVector;
 
+  int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
   StepStatsCollector* stats_collector_;
@@ -766,7 +767,8 @@ class ExecutorState {
 };
 
 ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
-    : rendezvous_(args.rendezvous),
+    : step_id_(args.step_id),
+      rendezvous_(args.rendezvous),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -906,6 +908,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   AllocatorAttributeVec input_alloc_attrs;
 
   OpKernelContext::Params params;
+  params.step_id = step_id_;
   Device* device = impl_->params_.device;
   params.device = device;
   // track allocations if and only if we are collecting statistics
@@ -948,7 +951,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       nodestats::SetAllStart(stats);
     }
 
-    VLOG(1) << "Process node: " << id << " " << SummarizeNodeDef(node->def());
+    VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
+            << SummarizeNodeDef(node->def());
 
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
     Entry* first_input = input_tensors + item.input_start;

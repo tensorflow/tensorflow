@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
 #define TENSORFLOW_COMMON_RUNTIME_DIRECT_SESSION_H_
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -49,6 +50,8 @@ class DirectSession : public Session {
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
+  typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher>
+      NameNodeMap;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
@@ -56,6 +59,14 @@ class DirectSession : public Session {
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
                            std::vector<Tensor>* outputs) override;
+
+  // NOTE: Experimental and subject to change.
+  ::tensorflow::Status RunWithOpts(const RunOptions& run_options,
+                                   const NamedTensorList& inputs,
+                                   const std::vector<string>& output_names,
+                                   const std::vector<string>& target_nodes,
+                                   std::vector<Tensor>* outputs,
+                                   RunOutputs* run_outputs) override;
 
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
@@ -81,13 +92,15 @@ class DirectSession : public Session {
   // An ExecutorsAndKeys is created for a given set of feeds/fetches.
   // 'func_defs' are the function definition used by all the
   // underlying executors. 'graph' is the entire graph being
-  // executed. Each item in 'items' is the executor for a
-  // partition of the graph bundled with its dependent library
-  // runtime. 'input_keys' are the rendezvous keys for the feeds and
-  // 'output_keys' are rendezvous keys for the fetches.
+  // executed. 'name_to_node' maps node name to node. We keep 'graph'
+  // and 'name_to_node' only in the case of partial runs. Each item in
+  // 'items' is the executor for a partition of the graph bundled with
+  // its dependent library runtime. 'input_keys' are the rendezvous keys
+  // for the feeds and 'output_keys' are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
     FunctionLibraryDefinition* func_defs = nullptr;
     Graph* graph = nullptr;
+    NameNodeMap* name_to_node = nullptr;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
@@ -99,6 +112,7 @@ class DirectSession : public Session {
       }
       delete func_defs;
       delete graph;
+      delete name_to_node;
     }
   };
 
@@ -141,6 +155,9 @@ class DirectSession : public Session {
     Graph* graph = nullptr;
   };
 
+  const RunOptions kEmptyRunOptions = RunOptions();
+  RunOutputs kEmptyRunOutputs = RunOutputs();
+
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
@@ -177,8 +194,8 @@ class DirectSession : public Session {
   // that we have already provided.
   ::tensorflow::Status CheckFetch(
       const std::vector<std::pair<string, Tensor>>& feeds,
-      const std::vector<string>& fetches, const Graph* graph,
-      const RunState* run_state);
+      const std::vector<string>& fetches,
+      const ExecutorsAndKeys* executors_and_keys, const RunState* run_state);
 
   const SessionOptions options_;
 
@@ -224,6 +241,9 @@ class DirectSession : public Session {
 
   // For generating unique names.
   int64 name_counter_ GUARDED_BY(mu_) = 0;
+
+  // For generating step ids that are unique across all sessions.
+  static std::atomic_int_fast64_t step_id_counter_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };

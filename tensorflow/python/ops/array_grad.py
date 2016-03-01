@@ -312,3 +312,6 @@ def _DepthToSpaceGrad(op, grad):
   # Its gradient is the opposite op: SpaceToDepth.
   block_size = op.get_attr("block_size")
   return array_ops.space_to_depth(grad, block_size)
+
+
+ops.NoGradient("OneHot")

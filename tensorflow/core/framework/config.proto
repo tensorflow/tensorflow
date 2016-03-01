@@ -6,6 +6,8 @@ option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/step_stats.proto";
+
 message GPUOptions {
   // A value between 0 and 1 that indicates what fraction of the
   // available GPU memory to pre-allocate for each process.  1 means
@@ -130,3 +132,20 @@ message ConfigProto {
   // Options that apply to all graphs.
   GraphOptions graph_options = 10;
 };
+
+// EXPERIMENTAL. Options for a single Run() call.
+message RunOptions {
+  enum TraceLevel {
+    NO_TRACE = 0;
+    FULL_TRACE = 1;
+  }
+  TraceLevel trace_level = 1;
+}
+
+// EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
+message RunOutputs {
+  // Statistics traced for this step. Populated if tracing is turned on via the
+  // "RunOptions" proto.
+  // EXPERIMENTAL: The format and set of events may change in future versions.
+  StepStats step_stats = 1;
+}

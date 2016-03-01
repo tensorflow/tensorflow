@@ -30,7 +30,6 @@ class PrintingGraphTest : public OpsTestBase {
  protected:
   Status Init(DataType input_type1, DataType input_type2, string msg = "",
               int first_n = -1, int summarize = 3) {
-    RequireDefaultOps();
     TF_CHECK_OK(NodeDefBuilder("op", "Print")
                     .Input(FakeInput(input_type1))
                     .Input(FakeInput(2, input_type2))

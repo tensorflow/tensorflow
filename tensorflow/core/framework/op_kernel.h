@@ -69,7 +69,7 @@ class OpKernel {
   // OpKernel won't be instantiated by the scheduler, so you may perform
   // expensive initialization in the descendant's constructor.
   explicit OpKernel(OpKernelConstruction* context);
-  virtual ~OpKernel() {}
+  virtual ~OpKernel();
 
   // An OpKernel's computation can be either synchronous or
   // asynchronous.
@@ -287,7 +287,7 @@ class OpKernelConstruction {
                         const DataTypeSlice expected_outputs);
 
   // For recording configuration errors during construction.
-  void SetStatus(const Status& status) { status_->Update(status); }
+  void SetStatus(const Status& status);
   const Status& status() const { return *status_; }
 
   // Look up the attr with name attr_name and set *value to its value.  If no
@@ -447,6 +447,9 @@ class OpKernelContext {
   struct Params {
     ~Params() { delete eigen_gpu_device; }
 
+    // The step being executed.
+    int64 step_id = 0;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -527,6 +530,8 @@ class OpKernelContext {
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
+
+  int64 step_id() const { return params_->step_id; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -874,7 +879,7 @@ class OpKernelContext {
 
   // An OpKernel should call SetStatus() if Compute() encounters an
   // error.
-  void SetStatus(const Status& status) { status_.Update(status); }
+  void SetStatus(const Status& status);
   const Status& status() const { return status_; }
 
   // Cancellation.
@@ -907,25 +912,7 @@ class OpKernelContext {
   }
 
  private:
-  Allocator* get_allocator(AllocatorAttributes attr) {
-    Allocator* allocator =
-        params_->device->GetStepAllocator(attr, step_resource_manager());
-    if (params_->track_allocations) {
-      mutex_lock lock(mu_);
-      for (const auto& wrapped : wrapped_allocators_) {
-        if (wrapped.first == allocator) {
-          return wrapped.second;
-        }
-      }
-      TrackingAllocator* wrapped_allocator =
-          new TrackingAllocator(allocator, attr.track_sizes());
-      wrapped_allocators_.push_back(
-          std::make_pair(allocator, wrapped_allocator));
-      return wrapped_allocator;
-    } else {
-      return allocator;
-    }
-  }
+  Allocator* get_allocator(AllocatorAttributes attr);
 
   // Internal method to add a tensor's buffer to the list of buffers
   // referenced during the execution of the Op, so that GPUs may

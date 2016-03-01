@@ -750,8 +750,9 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(c_list[1], out[1].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'Registered factories are {DIRECT_SESSION}'):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        'No session factory registered for the given session options.'):
       session.Session('INVALID_TARGET')
 
   def testFetchByNameDifferentStringTypes(self):
