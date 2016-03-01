@@ -1032,7 +1032,12 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
+
+    Raises:
+      ValueError: If the given `save_path` does not point to a file.
     """
+    if not gfile.Glob(save_path):
+      raise ValueError("Restore called with invalid save path %s" % save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
