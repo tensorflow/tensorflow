@@ -412,10 +412,10 @@ class AsyncReaderTest(tf.test.TestCase):
       for i, d in enumerate(reversed(thread_data)):
         fname = os.path.join(self.get_temp_dir(), "deadlock.%s.txt" % i)
         with open(fname, "wb") as f:
-          f.write("file-%s" % i)
+          f.write(("file-%s" % i).encode())
         d.queue.enqueue_many([[fname]]).run()
         d.thread.join()
-        self.assertEqual([["file-%s" % i]], d.output)
+        self.assertEqual([[("file-%s" % i).encode()]], d.output)
 
   @staticmethod
   def _RunSessionAndSave(sess, args, output):
