@@ -22,15 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-void RequireDefaultOps() {
-// TODO(opensource): Use a more generic sounding preprocessor name than
-// GOOGLE_CUDA (maybe SUPPORT_CUDA?)
-#if GOOGLE_CUDA
-  void RequireGPUDevice();
-  RequireGPUDevice();
-#endif
-}
-
 Status Get2dOutputSize(const int in_height, const int in_width,
                        int filter_height, int filter_width, int row_stride,
                        int col_stride, Padding padding, int* new_height,
