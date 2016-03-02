@@ -128,6 +128,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.ops import gradients
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import state_ops
+
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
@@ -165,3 +169,35 @@ from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import exponential_decay
+
+from tensorflow.python.util.all_util import make_all
+
+# Include extra make_all calls because:
+# * Input methods in tf.train are documented in io_ops.
+# * Saver methods in tf.train are documented in state_ops.
+__all__ = list(set(
+    make_all(__name__) +
+    make_all(__name__, io_ops.__name__) +
+    make_all(__name__, state_ops.__name__)))
+
+# Symbols whitelisted for export without documentation.
+# TODO(cwhipkey): review these and move to contrib or expose through
+# documentation.
+__all__.extend([
+    "BytesList",
+    "Example",
+    "Feature",
+    "FeatureList",
+    "FeatureLists",
+    "Features",
+    "FloatList",
+    "InferenceExample",
+    "Int64List",
+    "LooperThread",
+    "SaverDef",
+    "SequenceExample",
+    "export_meta_graph",
+    "generate_checkpoint_state_proto",
+    "import_meta_graph",
+    "queue_runner",
+])

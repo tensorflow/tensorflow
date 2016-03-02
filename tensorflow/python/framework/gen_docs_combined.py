@@ -106,7 +106,6 @@ def all_libraries(module_to_name, members, documented):
                                "lrn", "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
                                "all_candidate_sampler",
-                               "embedding_lookup_sparse",
                                "rnn", "state_saving_rnn", "bidirectional_rnn",
                                "dynamic_rnn", "seq2seq", "rnn_cell"],
               prefix=PREFIX_TEXT),

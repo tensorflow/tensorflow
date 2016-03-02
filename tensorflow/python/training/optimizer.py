@@ -301,7 +301,7 @@ class Optimizer(object):
         return self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
-          with ops.device(global_step.device):
+          with ops.colocate_with(global_step):
             return state_ops.assign_add(global_step, 1, name=name).op
 
   def get_slot(self, var, name):

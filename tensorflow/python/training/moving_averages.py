@@ -52,7 +52,7 @@ def assign_moving_average(variable, value, decay, name=None):
     moving average.
   """
   with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as scope:
-    with ops.device(variable.device):
+    with ops.colocate_with(variable):
       decay = ops.convert_to_tensor(1.0 - decay, name="decay")
       if decay.dtype != variable.dtype.base_dtype:
         decay = math_ops.cast(decay, variable.dtype.base_dtype)
