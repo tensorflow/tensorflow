@@ -232,6 +232,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+from tensorflow.python.util.all_util import make_all
 
 # Bring more nn-associated functionality into this package.
 # pylint: disable=wildcard-import
@@ -1019,3 +1020,31 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
+
+
+# TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
+__all__ = make_all(__name__)
+__all__.append("zero_fraction")  # documented in training.py
+
+# Modules whitelisted for reference through tf.nn.
+# TODO(cwhipkey): migrate callers to use the submodule directly.
+__all__.extend(["nn_ops", "rnn_cell", "seq2seq"])
+
+# Symbols whitelisted for export without documentation.
+# TODO(cwhipkey): review these and move to contrib or expose through
+# documentation.
+__all__.extend([
+    "all_candidate_sampler",
+    "batch_norm_with_global_normalization",
+    "batch_normalization",
+    "bidirectional_rnn",
+    "conv2d_backprop_filter",
+    "conv2d_backprop_input",
+    "depthwise_conv2d_native",
+    "dynamic_rnn",
+    "lrn",
+    "relu_layer",
+    "rnn",
+    "state_saving_rnn",
+    "xw_plus_b",
+])

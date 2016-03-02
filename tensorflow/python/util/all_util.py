@@ -18,26 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import re
 import sys
 
 _reference_pattern = re.compile(r'^@@(\w+)$', flags=re.MULTILINE)
 
 
-def make_all(module_name):
+def make_all(module_name, doc_string_module_name=None):
   """Generate `__all__` from a module's docstring.
 
   Usage: `make_all(__name__)`.  The caller module must have a docstring,
-  and `__all__` will contain all symbols with `@@` references.
+  and `__all__` will contain all symbols with `@@` references, where
+  that symbol currently exists in the module named `module_name`.
 
   Args:
     module_name: The name of the module (usually `__name__`).
+    doc_string_module_name: the name of the module whose docstring should
+        be used to find symbols. If None, then `module_name` is used.
 
   Returns:
     A list suitable for use as `__all__`.
   """
-  doc = sys.modules[module_name].__doc__
-  return [m.group(1) for m in _reference_pattern.finditer(doc)]
+  if doc_string_module_name is None: doc_string_module_name = module_name
+  doc = sys.modules[doc_string_module_name].__doc__
+  cur_members = set([name for name, _
+                     in inspect.getmembers(sys.modules[module_name])])
+  return [m.group(1) for m in _reference_pattern.finditer(doc)
+          if m.group(1) in cur_members]
 
 
 __all__ = ['make_all']
