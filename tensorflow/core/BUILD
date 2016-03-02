@@ -47,8 +47,6 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
