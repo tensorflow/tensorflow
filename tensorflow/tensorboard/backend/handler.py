@@ -36,8 +36,6 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 
-from google.protobuf import text_format
-
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
@@ -245,7 +243,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       return
 
     # Serialize the graph to pbtxt format.
-    graph_pbtxt = text_format.MessageToString(graph)
+    graph_pbtxt = str(graph)
     # Gzip it and send it to the user.
     self._send_gzip_response(graph_pbtxt, 'text/plain')
 
