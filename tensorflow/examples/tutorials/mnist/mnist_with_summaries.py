@@ -69,7 +69,7 @@ def main(_):
   y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
   with tf.name_scope('xent'):
-    cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
+    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     tf.scalar_summary('cross entropy', cross_entropy)
   with tf.name_scope('train'):
     train_step = tf.train.GradientDescentOptimizer(
