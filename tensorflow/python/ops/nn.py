@@ -274,10 +274,20 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
     logistic losses.
+
+  Raises:
+    ValueError: If `logits` and `targets` do not have the same shape.
   """
   with ops.op_scope([logits, targets], name, "logistic_loss") as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
+    try:
+      targets.get_shape().merge_with(logits.get_shape())
+    except ValueError:
+      raise ValueError(
+          "logits and targets must have the same shape (%s vs %s)"
+          % (logits.get_shape(), targets.get_shape()))
+
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
     # For x < 0, a more numerically stable formula is
