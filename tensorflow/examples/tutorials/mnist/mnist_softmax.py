@@ -43,7 +43,7 @@ y = tf.nn.softmax(tf.matmul(x, W) + b)
 
 # Define loss and optimizer
 y_ = tf.placeholder(tf.float32, [None, 10])
-cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
 
 # Train
