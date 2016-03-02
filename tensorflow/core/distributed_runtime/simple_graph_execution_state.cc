@@ -40,22 +40,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-string BuildGraphOptions::DebugString() const {
-  string rv = "Feed endpoints: ";
-  for (auto& s : feed_endpoints) {
-    strings::StrAppend(&rv, s, ", ");
-  }
-  strings::StrAppend(&rv, "\nFetch endpoints: ");
-  for (auto& s : fetch_endpoints) {
-    strings::StrAppend(&rv, s, ", ");
-  }
-  strings::StrAppend(&rv, "\nTarget nodes: ");
-  for (auto& s : target_nodes) {
-    strings::StrAppend(&rv, s, ", ");
-  }
-  return rv;
-}
-
 SimpleGraphExecutionState::SimpleGraphExecutionState(
     const OpRegistryInterface* ops,
     const SimpleGraphExecutionStateOptions& options)
