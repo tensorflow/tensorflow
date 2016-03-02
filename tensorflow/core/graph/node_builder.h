@@ -54,21 +54,20 @@ class NodeBuilder {
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(const string& name, int i, DataType t)
-        : node(nullptr), error(false), name(name), index(i), dt(t) {}
+    NodeOut(const string& name, int i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
-    NodeOut() {}
+    NodeOut();
 
-    Node* node = nullptr;
+    Node* node;
     // error is set to true if:
     // * the NodeOut was default constructed and never overwritten,
     // * a nullptr Node* was passed to the NodeOut constructor, or
     // * an out-of-range index was passed to the NodeOut constructor.
-    bool error = true;
+    bool error;
     string name;
-    int index = 0;
-    DataType dt = DT_FLOAT;
+    int index;
+    DataType dt;
   };
 
   // Specify the name and the Op (either via an OpDef or the name of
@@ -139,7 +138,7 @@ class NodeBuilder {
 // IMPLEMENTATION -------------------------------------------------------------
 
 template <class T>
-inline NodeBuilder& NodeBuilder::Attr(const string& attr_name, T&& value) {
+NodeBuilder& NodeBuilder::Attr(const string& attr_name, T&& value) {
   def_builder_.Attr(attr_name, std::forward<T>(value));
   return *this;
 }

@@ -80,12 +80,6 @@ class Executor {
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
   struct Args {
-    // Executors are sometimes instantiated for initialization work
-    // like constant folding that is logically outside any computation
-    // step, and SpecialStepIds lists the ids used for those steps.
-    enum SpecialStepIds {
-      CONSTANT_FOLDING_STEP_ID = -1,
-    };
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     StepStatsCollector* stats_collector = nullptr;

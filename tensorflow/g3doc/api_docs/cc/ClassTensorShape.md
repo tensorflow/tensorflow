@@ -132,6 +132,12 @@ Returns true if `*this` and `b` have the same sizes. Ignores dimension names.
 
 
 
+#### `bool tensorflow::TensorShape::operator!=(const TensorShape &b) const` {#bool_tensorflow_TensorShape_operator_}
+
+
+
+
+
 #### `void tensorflow::TensorShape::AsProto(TensorShapeProto *proto) const` {#void_tensorflow_TensorShape_AsProto}
 
 Fill `*proto` from `*this`.

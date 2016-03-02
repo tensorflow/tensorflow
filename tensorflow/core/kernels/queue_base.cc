@@ -72,6 +72,8 @@ QueueBase::QueueBase(int32 capacity, const DataTypeVector& component_dtypes,
       name_(name),
       closed_(false) {}
 
+QueueBase::~QueueBase() {}
+
 Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
   if (tuple.size() != static_cast<size_t>(num_components())) {
     return errors::InvalidArgument(

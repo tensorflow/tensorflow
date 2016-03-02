@@ -25,33 +25,33 @@ write the graph to a file.
 
 ## Env
 
-* [tensorflow::Env](classEnv.md)
-* [tensorflow::RandomAccessFile](classRandomAccessFile.md)
-* [tensorflow::WritableFile](classWritableFile.md)
-* [tensorflow::EnvWrapper](classEnvWrapper.md)
+* [tensorflow::Env](ClassEnv.md)
+* [tensorflow::RandomAccessFile](ClassRandomAccessFile.md)
+* [tensorflow::WritableFile](ClassWritableFile.md)
+* [tensorflow::EnvWrapper](ClassEnvWrapper.md)
 
 ## Session
 
-* [tensorflow::Session](classSession.md)
-* [tensorflow::SessionOptions](structSessionOptions.md)
+* [tensorflow::Session](ClassSession.md)
+* [tensorflow::SessionOptions](StructSessionOptions.md)
 
 ## Status
 
-* [tensorflow::Status](classStatus.md)
-* [tensorflow::Status::State](structState.md)
+* [tensorflow::Status](ClassStatus.md)
+* [tensorflow::Status::State](StructState.md)
 
 ## Tensor
 
-* [tensorflow::Tensor](classTensor.md)
-* [tensorflow::TensorShape](classTensorShape.md)
-* [tensorflow::TensorShapeDim](structTensorShapeDim.md)
-* [tensorflow::TensorShapeUtils](classTensorShapeUtils.md)
-* [tensorflow::PartialTensorShape](classPartialTensorShape.md)
-* [tensorflow::PartialTensorShapeUtils](classPartialTensorShapeUtils.md)
-* [TF_Buffer](structTF_Buffer.md)
+* [tensorflow::Tensor](ClassTensor.md)
+* [tensorflow::TensorShape](ClassTensorShape.md)
+* [tensorflow::TensorShapeDim](StructTensorShapeDim.md)
+* [tensorflow::TensorShapeUtils](ClassTensorShapeUtils.md)
+* [tensorflow::PartialTensorShape](ClassPartialTensorShape.md)
+* [tensorflow::PartialTensorShapeUtils](ClassPartialTensorShapeUtils.md)
+* [TF_Buffer](StructTF_Buffer.md)
 
 ## Thread
 
-* [tensorflow::Thread](classThread.md)
-* [tensorflow::ThreadOptions](structThreadOptions.md)
+* [tensorflow::Thread](ClassThread.md)
+* [tensorflow::ThreadOptions](StructThreadOptions.md)
 

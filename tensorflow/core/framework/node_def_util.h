@@ -56,11 +56,9 @@ void AddNodeAttr(const string& name, std::initializer_list<T> value,
 
 class AttrSlice {
  public:
-  AttrSlice(const NodeDef& node_def)  // NOLINT(runtime/explicit)
-      : ndef_(&node_def),
-        attrs_(&ndef_->attr()) {}
+  AttrSlice(const NodeDef& node_def);  // NOLINT(runtime/explicit)
 
-  explicit AttrSlice(const AttrValueMap* a) : attrs_(a) {}
+  explicit AttrSlice(const AttrValueMap* a);
 
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
@@ -71,7 +69,7 @@ class AttrSlice {
   Status Find(const string& attr_name, const AttrValue** attr_value) const;
 
  private:
-  const NodeDef* ndef_ = nullptr;
+  const NodeDef* ndef_;
   const AttrValueMap* attrs_;
 };
 

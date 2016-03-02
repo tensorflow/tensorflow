@@ -83,8 +83,7 @@ class KernelDefBuilder {
 // IMPLEMENTATION
 
 template <class T>
-inline KernelDefBuilder& KernelDefBuilder::TypeConstraint(
-    const char* attr_name) {
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* attr_name) {
   return this->TypeConstraint(attr_name, DataTypeToEnum<T>::v());
 }
 

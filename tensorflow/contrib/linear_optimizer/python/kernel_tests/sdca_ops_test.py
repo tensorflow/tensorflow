@@ -104,7 +104,9 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [1.0, 1.0]
-    with self.test_session(use_gpu=False):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(use_gpu=False, config=config):
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
@@ -119,8 +121,10 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       self.assertAllClose(0.693147, unregularized_loss.eval())
       self.assertAllClose(0.693147, loss.eval())
       lr.minimize().run()
-      self.assertAllClose(0.395226, unregularized_loss.eval())
-      self.assertAllClose(0.657446, loss.eval())
+      self.assertAllClose(0.395226, unregularized_loss.eval(),
+                          rtol=3e-2, atol=3e-2)
+      self.assertAllClose(0.657446, loss.eval(),
+                          rtol=3e-2, atol=3e-2)
       predicted_labels = tf.cast(
           tf.greater_equal(prediction,
                            tf.ones_like(prediction) * 0.5), tf.float32)
@@ -148,11 +152,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [0]}, 1),
     ]
     example_weights = [1.0, 0.0, 1.0, 0.0]
-    with self.test_session(use_gpu=False):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(use_gpu=False, config=config):
       # Only use examples 0 and 2
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.25,
+      options = dict(symmetric_l2_regularization=0.5,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
@@ -161,8 +167,10 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
       lr.minimize().run()
-      self.assertAllClose(0.395226, unregularized_loss.eval())
-      self.assertAllClose(0.526336, loss.eval())
+      self.assertAllClose(0.395226, unregularized_loss.eval(),
+                          rtol=3e-2, atol=3e-2)
+      self.assertAllClose(0.657446, loss.eval(),
+                          rtol=3e-2, atol=3e-2)
       predicted_labels = tf.cast(
           tf.greater_equal(prediction,
                            tf.ones_like(prediction) * 0.5), tf.float32)
@@ -180,7 +188,9 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     ]
     # Zeroed out example weights.
     example_weights = [0.0, 0.0]
-    with self.test_session(use_gpu=False):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(use_gpu=False, config=config):
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
@@ -211,7 +221,9 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [1.0, 1.0, 1.0, 1.0]
-    with self.test_session(use_gpu=False):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(use_gpu=False, config=config):
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(3, 1)
       options = dict(symmetric_l2_regularization=0.25,
@@ -224,10 +236,8 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
       lr.minimize().run()
-      self.assertAllClose(0.331710,
-                          unregularized_loss.eval(),
-                          rtol=3e-2,
-                          atol=3e-2)
+      self.assertAllClose(0.331710, unregularized_loss.eval(),
+                          rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.591295, loss.eval(), rtol=3e-2, atol=3e-2)
       predicted_labels = tf.cast(
           tf.greater_equal(prediction,
@@ -245,7 +255,9 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [3.0, 1.0]
-    with self.test_session(use_gpu=False):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(use_gpu=False, config=config):
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.25,
@@ -257,10 +269,8 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       loss = lr.regularized_loss(examples)
       prediction = lr.predictions(examples)
       lr.minimize().run()
-      self.assertAllClose(0.266189,
-                          unregularized_loss.eval(),
-                          rtol=3e-2,
-                          atol=3e-2)
+      self.assertAllClose(0.266189, unregularized_loss.eval(),
+                          rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.571912, loss.eval(), rtol=3e-2, atol=3e-2)
       predicted_labels = tf.cast(
           tf.greater_equal(prediction,

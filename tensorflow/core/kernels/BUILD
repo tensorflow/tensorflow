@@ -1044,6 +1044,7 @@ filegroup(
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
+        "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
         "maxpooling_op.h",
@@ -1067,6 +1068,7 @@ filegroup(
     srcs = [
         "argmax_op.cc",
         "avgpooling_op.cc",
+        "batch_norm_op.cc",
         "bcast_ops.cc",
         "control_flow_ops.cc",
         "conv_2d.h",

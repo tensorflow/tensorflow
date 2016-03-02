@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/config.pb.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -335,8 +336,9 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
-  VLOG(1) << "Step " << args.step_id << " is for handle " << handle
-          << ", graph-local step " << step_id;
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordStep(args.step_id, handle);
+  }
   thread::ThreadPool* pool = worker_env_->compute_pool;
   args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
   for (const auto& unit : item->units) {

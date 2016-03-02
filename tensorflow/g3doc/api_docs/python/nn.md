@@ -285,7 +285,7 @@ concatenated.
 
 - - -
 
-### `tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)` {#conv2d}
+### `tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, data_format=None, name=None)` {#conv2d}
 
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
 
@@ -302,7 +302,7 @@ performs the following:
 3. For each patch, right-multiplies the filter matrix and the image patch
    vector.
 
-In detail,
+In detail, with the default NCHW format,
 
     output[b, i, j, k] =
         sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -318,10 +318,16 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
-    of `input`.
+    of `input`. Must be in the same order as the dimension specified with format.
 *  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
     The type of padding algorithm to use.
 *  <b>`use_cudnn_on_gpu`</b>: An optional `bool`. Defaults to `True`.
+*  <b>`data_format`</b>: An optional `string` from: `"NHWC", "NCHW"`. Defaults to `"NHWC"`.
+    Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -467,7 +473,7 @@ to the `Convolution` section for details about the padding calculation.
 
 - - -
 
-### `tf.nn.avg_pool(value, ksize, strides, padding, name=None)` {#avg_pool}
+### `tf.nn.avg_pool(value, ksize, strides, padding, data_format='NHWC', name=None)` {#avg_pool}
 
 Performs the average pooling on the input.
 
@@ -485,6 +491,7 @@ window in `value`.
     The stride of the sliding window for each dimension of the
     input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
@@ -494,7 +501,7 @@ window in `value`.
 
 - - -
 
-### `tf.nn.max_pool(value, ksize, strides, padding, name=None)` {#max_pool}
+### `tf.nn.max_pool(value, ksize, strides, padding, data_format='NHWC', name=None)` {#max_pool}
 
 Performs the max pooling on the input.
 
@@ -508,6 +515,7 @@ Performs the max pooling on the input.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
     window for each dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
@@ -594,7 +602,7 @@ each component is divided by the weighted, squared sum of inputs within
 
     sqr_sum[a, b, c, d] =
         sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
-    output = input / (bias + alpha * sqr_sum ** beta)
+    output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
 convolutional neural networks (NIPS 2012)]
@@ -620,6 +628,58 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
+### `tf.nn.sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None)` {#sufficient_statistics}
+
+Calculate the sufficient statistics for the mean and variance of `x`.
+
+These sufficient statistics are computed using the one pass algorithm on
+an input that's optionally shifted using the value of the 1st element in `x`.
+See:
+https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`.
+*  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
+*  <b>`shift`</b>: If true, shift the data to provide more numerically stable results.
+*  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
+*  <b>`name`</b>: Name used to scope the operations that compute the sufficient stats.
+
+##### Returns:
+
+  Four `Tensor` objects of the same type as `x`:
+  * the count (number of elements to average over).
+  * the (possibly shifted) sum of the elements in the array.
+  * the (possibly shifted) sum of squares of the elements in the array.
+  * the shift by which the mean must be corrected or None if `shift` is False.
+
+
+- - -
+
+### `tf.nn.normalize_moments(counts, mean_ss, variance_ss, shift, name=None)` {#normalize_moments}
+
+Calculate the mean and variance of based on the sufficient statistics.
+
+##### Args:
+
+
+*  <b>`counts`</b>: A `Tensor` containing a the total count of the data (one value).
+*  <b>`mean_ss`</b>: A `Tensor` containing the mean sufficient statistics: the (possibly
+    shifted) sum of the elements to average over.
+*  <b>`variance_ss`</b>: A `Tensor` containing the variance sufficient statistics: the
+    (possibly shifted) squared sum of the data to compute the variance over.
+*  <b>`shift`</b>: A `Tensor` containing the value by which the data is shifted for
+    numerical stability, or `None` if no shift was performed.
+*  <b>`name`</b>: Name used to scope the operations that compute the moments.
+
+##### Returns:
+
+  Two `Tensor` objects: `mean` and `variance`.
+
+
+- - -
+
 ### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
@@ -628,9 +688,11 @@ The mean and variance are calculated by aggregating the contents of `x`
 across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
 and variance of a vector.
 
-For so-called "global normalization" needed for convolutional filters pass
-`axes=[0, 1, 2]` (batch, height, width).  For batch normalization pass
-`axes=[0]` (batch).
+When using these moments for batch normalization (see
+`tf.nn.batch_normalization`):
+  * for so-called "global normalization", used with convolutional filters with
+    shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+  * for simple batch normalization pass `axes=[0]` (batch only).
 
 ##### Args:
 
@@ -875,6 +937,75 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 
 *  <b>`ValueError`</b>: If `params` is empty.
+
+
+- - -
+
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner='mean')` {#embedding_lookup_sparse}
+
+Computes embeddings for the given ids and weights.
+
+This op assumes that there is at least one id for each row in the dense tensor
+represented by sp_ids (i.e. there are no rows with empty features), and that
+all the indices of sp_ids are in canonical row-major order.
+
+It also assumes that all id values lie in the range [0, p0), where p0
+is the sum of the size of params along dimension 0.
+
+##### Args:
+
+
+*  <b>`params`</b>: A single tensor representing the complete embedding tensor,
+    or a list of P tensors all of same shape except for the first dimension,
+    representing sharded embedding tensors.
+*  <b>`sp_ids`</b>: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
+    where N is typically batch size and M is arbitrary.
+*  <b>`sp_weights`</b>: either a SparseTensor of float / double weights, or None to
+    indicate all weights should be taken to be 1. If specified, sp_weights
+    must have exactly the same shape and indices as sp_ids.
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
+    if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+    is `"mod"`. See `tf.nn.embedding_lookup` for more details.
+*  <b>`name`</b>: Optional name for the op.
+*  <b>`combiner`</b>: A string specifying the reduction op. Currently "mean", "sqrtn"
+    and "sum" are supported.
+    "sum" computes the weighted sum of the embedding results for each row.
+    "mean" is the weighted sum divided by the total weight.
+    "sqrtn" is the weighted sum divided by the square root of the sum of the
+    squares of the weights.
+
+##### Returns:
+
+  A dense tensor representing the combined embeddings for the
+  sparse ids. For each row in the dense tensor represented by sp_ids, the op
+  looks up the embeddings for all ids in that row, multiplies them by the
+  corresponding weight, and combines these embeddings as specified.
+
+  In other words, if
+    shape(combined params) = [p0, p1, ..., pm]
+  and
+    shape(sp_ids) = shape(sp_weights) = [d0, d1, ..., dn]
+  then
+    shape(output) = [d0, d1, ..., dn-1, p1, ..., pm].
+
+  For instance, if params is a 10x20 matrix, and sp_ids / sp_weights are
+
+    [0, 0]: id 1, weight 2.0
+    [0, 1]: id 3, weight 0.5
+    [1, 0]: id 0, weight 1.0
+    [2, 3]: id 1, weight 3.0
+
+  with combiner="mean", then the output will be a 3x20 matrix where
+    output[0, :] = (params[1, :] * 2.0 + params[3, :] * 0.5) / (2.0 + 0.5)
+    output[1, :] = params[0, :] * 1.0
+    output[2, :] = params[1, :] * 3.0
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If sp_ids is not a SparseTensor, or if sp_weights is neither
+    None nor SparseTensor.
+*  <b>`ValueError`</b>: If combiner is not one of {"mean", "sqrtn", "sum"}.
 
 
 
@@ -1379,5 +1510,96 @@ target classes as noise classes for the same example.
     Values indicate positions in `sampled_candidates`.
 *  <b>`weights`</b>: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
     Each value is `-FLOAT_MAX`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.nn.batch_normalization(x, mean, variance, offset, scale, variance_epsilon, name=None)` {#batch_normalization}
+
+Batch normalization.
+
+As described in http://arxiv.org/abs/1502.03167.
+Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
+`scale` \\(\gamma\\) to it, as well as an `offest` \\(eta\\):
+
+\\(rac{\gamma(x-\mu)}{\sigma}+eta\\)
+
+`mean`, `variance`, `offset` and `scale` are all expected to be of one of two
+shapes:
+  * In all generality, they can have the same number of dimensions as the
+    input `x`, with identical sizes as `x` for the dimensions that are not
+    normalized over (the 'depth' dimension(s)), and dimension 1 for the
+    others which are being normalized over.
+    `mean` and `variance` in this case would typically be the outputs of
+    `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+    thereof during inference.
+  * In the common case where the 'depth' dimension is the last dimension in
+    the input tensor `x`, they may be one dimensional tensors of the same
+    size as the 'depth' dimension.
+    This is the case for example for the common `[batch, depth]` layout of
+    fully-connected layers, and `[batch, height, width, depth]` for
+    convolutions.
+    `mean` and `variance` in this case would typically be the outputs of
+    `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+    thereof during inference.
+
+##### Args:
+
+
+*  <b>`x`</b>: Input `Tensor` of arbitrary dimensionality.
+*  <b>`mean`</b>: A mean `Tensor`.
+*  <b>`variance`</b>: A variance `Tensor`.
+*  <b>`offset`</b>: An offset `Tensor`, often denoted \\(eta\\) in equations, or
+    None. If present, will be added to the normalized tensor.
+*  <b>`scale`</b>: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
+    `None`. If present, the scale is applied to the normalized tensor.
+*  <b>`variance_epsilon`</b>: A small float number to avoid dividing by 0.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  the normalized, scaled, offset tensor.
+
+
+- - -
+
+### `tf.nn.depthwise_conv2d_native(input, filter, strides, padding, name=None)` {#depthwise_conv2d_native}
+
+Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
+
+Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+and a filter / kernel tensor of shape
+`[filter_height, filter_width, in_channels, channel_multiplier]`, containing
+`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
+a different filter to each input channel (expanding from 1 channel to
+`channel_multiplier` channels for each), then concatenates the results
+together. Thus, the output has `in_channels * channel_multiplier` channels.
+
+for k in 0..in_channels-1
+  for q in 0..channel_multiplier-1
+    output[b, i, j, k * channel_multiplier + q] =
+      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
+                        filter[di, dj, k, q]
+
+Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`strides`</b>: A list of `ints`.
+    1-D of length 4.  The stride of the sliding window for each dimension
+    of `input`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
 
 

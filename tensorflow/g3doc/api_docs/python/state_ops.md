@@ -462,7 +462,7 @@ collected in the graph.
 
 ### `tf.all_variables()` {#all_variables}
 
-Returns all variables collected in the graph.
+Returns all variables that must be saved/restored.
 
 The `Variable()` constructor automatically adds new variables to the graph
 collection `GraphKeys.VARIABLES`. This convenience function returns the
@@ -487,6 +487,17 @@ contents of that collection.
 ##### Returns:
 
   A list of Variable objects.
+
+
+- - -
+
+### `tf.local_variables()` {#local_variables}
+
+Returns all variables created with collection=[LOCAL_VARIABLES].
+
+##### Returns:
+
+  A list of local Variable objects.
 
 
 - - -
@@ -544,6 +555,19 @@ be run. That Op just has no effect.
 ##### Returns:
 
   An Op that run the initializers of all the specified variables.
+
+
+- - -
+
+### `tf.initialize_local_variables()` {#initialize_local_variables}
+
+Returns an Op that initializes all local variables.
+
+This is just a shortcut for `initialize_variables(local_variables())`
+
+##### Returns:
+
+  An Op that initializes all local variables in the graph.
 
 
 - - -
