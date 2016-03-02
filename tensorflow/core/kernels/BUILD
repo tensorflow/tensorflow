@@ -33,6 +33,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -377,6 +378,7 @@ tf_kernel_libraries(
         "tensor_array_ops",
     ],
     deps = [
+        ":bounds_check",
         ":concat_lib",
         ":fifo_queue",
         ":initializable_lookup_table",
