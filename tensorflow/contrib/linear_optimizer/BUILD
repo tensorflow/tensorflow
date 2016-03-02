@@ -19,10 +19,13 @@ cc_binary(
         "kernels/squared-loss.h",
         "ops/sdca_ops.cc",
     ],
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [
