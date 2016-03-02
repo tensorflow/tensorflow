@@ -27,6 +27,7 @@ apt-get install -y \
     python-dev \
     python-numpy \
     python-pip \
+    python-virtualenv \
     python3-dev \
     python3-numpy \
     python3-pip \
@@ -38,5 +39,3 @@ apt-get install -y \
     zlib1g-dev
 apt-get clean
 rm -rf /var/lib/apt/lists/*
-
-pip install virtualenv
