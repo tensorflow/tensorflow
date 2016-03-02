@@ -381,6 +381,11 @@ template <typename T>
 T ceil(T v) {
   return std::ceil(v);
 }
+
+template <typename T>
+T rint(T v){
+  return std::rint(v);
+}
 #else
 // Uses CUDA's functions for float and double.
 template <typename T>
@@ -406,6 +411,11 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T floor(T v) {
 template <typename T>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T ceil(T v) {
   return ::ceil(v);
+
+template <typename T>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T rint(T v) {
+  return ::rint(v); 
+  
 }
 #endif
 }  // end namespace impl
@@ -468,6 +478,18 @@ struct ceil_func {
 
 template <typename T>
 struct ceil : base<T, ceil_func<T> > {};
+
+template <typename T>
+struct rint_func {
+  typedef T result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x) const {
+    return impl::rint(x);
+  }
+};
+
+template <typename T>
+struct rint : base<T, rint_func<T> > {};
+ 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
