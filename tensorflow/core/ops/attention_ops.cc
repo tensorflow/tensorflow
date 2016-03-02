@@ -34,7 +34,7 @@ REGISTER_OP("ExtractGlimpse")
 Extracts a glimpse from the input tensor.
 
 Returns a set of windows called glimpses extracted at location `offsets`
-from the input tensor. If the windows only partially overlaps the inputs, the
+from the input tensor. If the windows only partially overlap the inputs, the
 non overlapping areas will be filled with random noise.
 
 The result is a 4-D tensor of shape `[batch_size, glimpse_height,
