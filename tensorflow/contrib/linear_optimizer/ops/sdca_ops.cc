@@ -19,7 +19,7 @@ namespace tensorflow {
 // --------------------------------------------------------------------------
 
 REGISTER_OP("SdcaSolver")
-    .Attr("loss_type: {'logistic_loss'}")
+    .Attr("loss_type: {'logistic_loss', 'squared_loss'}")
     .Attr("num_sparse_features: int >= 0")
     .Attr("num_dense_features: int >= 0")
     .Attr("l1: float >= 0")
@@ -46,7 +46,8 @@ is learning rate free and enjoys linear convergence rate.
 Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
 2012arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf
 
-loss_type: Type of the primal loss. Only logistic_loss is supported.
+loss_type: Type of the primal loss. Only logistic_loss and squared_loss
+   are supported.
 num_sparse_features: Number of sparse feature groups to train on.
 num_dense_features: Number of dense feature groups to train on.
 l1: Per example symmetric l1 regularization strength.

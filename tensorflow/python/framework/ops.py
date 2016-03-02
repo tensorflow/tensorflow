@@ -1097,6 +1097,23 @@ class Operation(object):
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
+  def colocation_groups(self):
+    """Returns the list of colocation groups of the op."""
+    default_colocation_group = [compat.as_bytes("loc:@%s" %
+                                                self._node_def.name)]
+    if "_class" not in self._node_def.attr:
+      # This op has no explicit colocation group, so it is itself its
+      # own root of a colocation group.
+      return default_colocation_group
+
+    attr_groups = [class_name
+                   for class_name in self.get_attr("_class")
+                   if class_name.startswith("loc:@")]
+
+    # If there are no colocation groups in the explicit _class field,
+    # return the default colocation group.
+    return attr_groups if attr_groups else default_colocation_group
+
   def values(self):
     """DEPRECATED: Use outputs."""
     return tuple(self.outputs)
@@ -1781,6 +1798,8 @@ class Graph(object):
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
+    # Stack of colocate_with ops
+    self._colocation_stack = []
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1997,6 +2016,7 @@ class Graph(object):
 
     Raises:
       TypeError: if any of the inputs is not a `Tensor`.
+      ValueError: if colocation conflicts with existing device assignment.
 
     Returns:
       An `Operation` object.
@@ -2042,8 +2062,30 @@ class Graph(object):
       set_shapes_for_outputs(ret)
     self._add_op(ret)
     self._record_op_seen_by_control_dependencies(ret)
+
     if compute_device:
       self._apply_device_functions(ret)
+
+    if self._colocation_stack:
+      all_colocation_groups = []
+      for colocation_op in self._colocation_stack:
+        all_colocation_groups.extend(colocation_op.colocation_groups())
+        if colocation_op.device:
+          # Make this device match the device of the colocated op, to
+          # provide consistency between the device and the colocation
+          # property.
+          if ret.device and ret.device != colocation_op.device:
+            logging.warning("Tried to colocate with an op that had "
+                            "a different device: %s vs %s. "
+                            "Ignoring colocation property." % (
+                                ret.device, colocation_op.device))
+          else:
+            ret._set_device(colocation_op.device)
+
+      all_colocation_groups = list(set(all_colocation_groups))
+      ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+
     return ret
 
   def as_graph_element(self, obj, allow_tensor=True, allow_operation=True):
@@ -2484,6 +2526,59 @@ class Graph(object):
     return name
 
   @contextlib.contextmanager
+  def colocate_with(self, op):
+    """Returns a context manager that specifies an op to colocate with.
+
+    For example:
+
+    ```python
+    a = tf.Variable([1.0])
+    with g.colocate_with(a):
+      b = tf.constant(1.0)
+      c = tf.add(a, b)
+    ```
+
+    `b` and `c` will always be colocated with `a`, no matter where `a`
+    is eventually placed.
+
+    Args:
+      op: The op to colocate all created ops with.
+
+    Raises:
+      ValueError: if op is None.
+
+    Yields:
+      A context manager that specifies the op with which to colocate
+      newly created ops.
+
+    """
+    if op is None:
+      raise ValueError("Tried to colocate with None")
+
+    if not isinstance(op, Operation):
+      # We always want to colocate with the reference op.
+      op = convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+
+    # By default, colocate_with resets the device function stack,
+    # since colocate_with is typically used in specific internal
+    # library functions where colocation is intended to be "stronger"
+    # than device functions.
+    #
+    # In the future, a caller may specify that device_functions win
+    # over colocation, in which case we can add support.
+    device_fn_tmp = self._device_function_stack
+    self._device_function_stack = []
+
+    self._colocation_stack.append(op)
+
+    try:
+      yield
+    finally:
+      # Restore device function stack
+      self._device_function_stack = device_fn_tmp
+      self._colocation_stack.pop()
+
+  @contextlib.contextmanager
   def device(self, device_name_or_function):
     """Returns a context manager that specifies the default device to use.
 
@@ -2910,6 +3005,10 @@ def device(device_name_or_function):
     created ops.
   """
   return get_default_graph().device(device_name_or_function)
+
+
+def colocate_with(op):
+  return get_default_graph().colocate_with(op)
 
 
 def name_scope(name):

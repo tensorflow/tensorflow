@@ -1391,11 +1391,14 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
-      vdef = tf.Variable([0.0])
+      vdef = tf.Variable([0.0], name="vdef")
       with tf.device("/job:worker/gpu:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
-        self.assertDeviceEqual("/job:worker/gpu:1", with_vdef_dep.device)
+        # The device is empty, but the colocation constraint is set.
+        self.assertDeviceEqual("", with_vdef_dep.device)
+        self.assertEqual(["loc:@vdef"],
+                         with_vdef_dep.op.colocation_groups())
 
   def testGroup(self):
     with self.test_session() as sess:

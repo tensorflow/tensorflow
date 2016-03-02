@@ -38,7 +38,7 @@ def verify_tensor_all_finite(t, msg, name=None):
   """
   with ops.op_scope([t], name, "VerifyFinite") as name:
     t = ops.convert_to_tensor(t, name="t")
-    with ops.device(t.device):
+    with ops.colocate_with(t):
       verify_input = array_ops.check_numerics(t, message=msg)
       out = control_flow_ops.with_dependencies([verify_input], t)
   return out

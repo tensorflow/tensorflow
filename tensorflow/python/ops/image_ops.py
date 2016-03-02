@@ -175,6 +175,8 @@ from tensorflow.python.ops.attention_ops import *
 from tensorflow.python.ops.gen_image_ops import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.util.all_util import make_all
+
 ops.NoGradient('RandomCrop')
 ops.NoGradient('RGBToHSV')
 ops.NoGradient('HSVToRGB')
@@ -1205,3 +1207,8 @@ def _random_crop_shape(op):
     raise ValueError('Input "size" must be a vector of two elements.')
 
   return [tensor_shape.TensorShape(output_shape)]
+
+
+__all__ = make_all(__name__)
+# ResizeMethod is not documented, but is documented in functions that use it.
+__all__.append('ResizeMethod')
