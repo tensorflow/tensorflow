@@ -464,7 +464,7 @@ We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
 dependencies, and installing python dependencies using easy_install or pip.
 
 Of course you can also install Swig from source without using homebrew. In that
-case, be sure to install its dependency [PCRE](from www.pcre.org) and not PCRE2.
+case, be sure to install its dependency [PCRE](http://www.pcre.org) and not PCRE2.
 
 #### Dependencies
 

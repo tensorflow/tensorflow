@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -321,7 +322,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   core::ScopedUnref rendez_unref(rendez);
 
   Executor::Args args;
-  args.step_id = Executor::Args::CONSTANT_FOLDING_STEP_ID;
+  args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
   args.rendezvous = rendez;
 

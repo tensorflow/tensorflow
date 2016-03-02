@@ -264,6 +264,15 @@ def call_function(func_def, *inputs, **kwargs):
       return op
 
 
+def _get_func_name(func):
+  if inspect.isfunction(func):
+    return func.__name__
+  elif inspect.ismethod(func):
+    return func.__self__.__name__ + "." + func.__name__
+  else:
+    raise ValueError("Argument must be a function")
+
+
 def define_function(func, input_types):
   """Creates a `FunctionDef` for a python function.
 
@@ -301,6 +310,8 @@ def define_function(func, input_types):
   # Create a FunctionDef for 'my_func'. (This does not change the default
   graph.)
   my_func_def = tf.define_function(my_func, {'x': tf.float32, 'y': tf.float32})
+  # Alternatively:
+  # my_func_def = tf.define_function(my_func, [tf.float32, tf.float32])
 
   # Build the graph, calling the function.
   a = tf.constant([1.0])
@@ -310,8 +321,9 @@ def define_function(func, input_types):
 
   Args:
     func: a Python function.
-    input_types: dict.  Keys are the names of the arguments of `func`, values
-      are their expected `tf.DType`.
+    input_types: if a dict, keys are the names of the arguments of
+      `func`, values are their expected `tf.DType`. Otherwise,
+      a list of `tf.DType`s.
 
   Returns:
     A FunctionDef protocol buffer.
@@ -321,26 +333,39 @@ def define_function(func, input_types):
 
   """
   # TODO(touts): Lift the limitation that func can only receive Tensor args.
-  if inspect.isfunction(func):
-    func_name = func.__name__
-  elif inspect.ismethod(func):
-    func_name = func.__self__.__name__ + "." + func.__name__
-  else:
-    raise ValueError("Argument must be a function")
+  func_name = _get_func_name(func)
+
   argspec = inspect.getargspec(func)
-  if argspec.varargs or argspec.keywords or argspec.defaults:
-    raise ValueError("Only functions with plain arglists are supported.")
+  if argspec.keywords or argspec.defaults:
+    raise ValueError("Functions with argument defaults or keywards "
+                     "arguments are not supported.")
   if inspect.isfunction(func):
-    if len(argspec.args) != len(input_types):
-      raise ValueError("The function must have the same number of arguments "
-                       "as the number of specified input types.")
-    args = argspec.args
+    if argspec.varargs and (
+        len(argspec.args) > len(input_types)) or not argspec.varargs and (
+            len(argspec.args) != len(input_types)):
+      raise ValueError("The function has fewer arguments "
+                       "than the number of specified input types.")
+    argnames = argspec.args
   elif inspect.ismethod(func):
-    if len(argspec.args) != 1 + len(input_types):
-      raise ValueError(
-          "The class function must have the same number of arguments "
-          "as the number of specified input types.")
-    args = argspec.args[1:]  # 1st argument is the "class" type.
+    if argspec.varargs and (
+        len(argspec.args) > 1 + len(input_types)) or not argspec.varargs and (
+            len(argspec.args) != 1 + len(input_types)):
+      raise ValueError("The class function has fewer arguments "
+                       "than the number of specified input types.")
+    # 1st argument is the "class" type.
+    argnames = argspec.args[1:]
+
+  args = []
+  if isinstance(input_types, (list, tuple)):
+    for i in range(len(input_types)):
+      argname = argnames[i] if i < len(argnames) else ("arg%d" % i)
+      argtype = input_types[i]
+      args.append((argname, argtype))
+  else:
+    for name in argnames:
+      if name not in input_types:
+        raise ValueError("Missing type for argument: " + name)
+      args.append((name, input_types[name]))
 
   # Create the func_def object.
   temp_graph = ops.Graph()
@@ -349,14 +374,15 @@ def define_function(func, input_types):
     inputs = []
     # Arglist to call 'func'
     kwargs = {}
-    for argname in args:
-      if argname not in input_types:
-        raise ValueError("Missing type for argument: " + argname)
-      argholder = array_ops.placeholder(input_types[argname], name=argname)
+    for (argname, argtype) in args:
+      argholder = array_ops.placeholder(argtype, name=argname)
       inputs.append(argholder)
       kwargs[argname] = argholder
     # Call func and gather the output tensors.
-    outputs = func(**kwargs)
+    if isinstance(input_types, (list, tuple)):
+      outputs = func(*inputs)
+    else:
+      outputs = func(**kwargs)
     if not outputs:
       raise ValueError("Function must return at least one tensor")
     # Convenience: if func only returned one value, make it a tuple.
@@ -383,7 +409,7 @@ class Defun(object):
   For example if the function to decorate accepts to `tf.float32` arguments
   named `x` and `y`, call the decorator with:
 
-      @Defun(x=tf.float32, y=tf.float32)
+      @Defun(tf.float32, tf.float32)
       def foo(x, y):
         ...
 
@@ -393,7 +419,7 @@ class Defun(object):
 
   ```python
   # Defining the function.
-  @tf.Defun(x=tf.float32, y=tf.float32)
+  @tf.Defun(tf.float32, tf.float32)
   def MyFunc(x, y):
     return x + y, x - y
 
@@ -406,15 +432,22 @@ class Defun(object):
   @@__init__
   """
 
-  def __init__(self, **input_types):
+  def __init__(self, *input_type_list, **input_types):
     """Create a `Defun` decorator.
 
     Args:
+      *input_type_list: A list of `tf.DType`
       **input_types: Dict mapping string with `tf.DType`
         One key for each argument of the function to decorate.
     """
+    assert not input_type_list or not input_types, (
+        "Can't specify both *input_type_list and **input_types")
     self._input_types = input_types
+    self._input_type_list = input_type_list
 
   def __call__(self, f):
-    func_def = define_function(f, self._input_types)
+    if self._input_types:
+      func_def = define_function(f, self._input_types)
+    else:
+      func_def = define_function(f, self._input_type_list)
     return lambda *args, **kwargs: call_function(func_def, *args, **kwargs)

@@ -57,6 +57,11 @@ EventMgr::~EventMgr() {
       delete ue->mem;
     }
     if (ue->bufrec.buf) {
+      if (LogMemory::IsEnabled()) {
+        LogMemory::RecordRawDeallocation(ue->bufrec.operation,
+                                         ue->bufrec.step_id, ue->bufrec.buf,
+                                         ue->bufrec.alloc, false);
+      }
       ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
     }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);

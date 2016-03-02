@@ -22,8 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-void RequireGPUDevice() {}
-
 class GPUDevice : public BaseGPUDevice {
  public:
   GPUDevice(const SessionOptions& options, const string& name,

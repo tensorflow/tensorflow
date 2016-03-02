@@ -28,6 +28,12 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
+NodeBuilder::NodeOut::NodeOut(const string& name, int i, DataType t)
+    : node(nullptr), error(false), name(name), index(i), dt(t) {}
+
+NodeBuilder::NodeOut::NodeOut()
+    : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
+
 NodeBuilder::NodeBuilder(const string& name, const string& op_name,
                          const OpRegistryInterface* op_registry)
     : def_builder_(name, op_name, op_registry) {}

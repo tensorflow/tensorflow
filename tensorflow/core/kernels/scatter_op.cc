@@ -58,6 +58,39 @@ struct Assign<scatter_op::UpdateOp::SUB> {
 
 }  // namespace
 
+// Check whether updates.shape = indices.shape + params.shape[1:]
+static bool ValidShapes(const Tensor& params, const Tensor& updates,
+                        const Tensor& indices) {
+  if (updates.dims() != indices.dims() + params.dims() - 1) return false;
+  for (int d = 0; d < indices.dims(); d++) {
+    if (updates.dim_size(d) != indices.dim_size(d)) {
+      return false;
+    }
+  }
+  for (int d = 1; d < params.dims(); d++) {
+    if (params.dim_size(d) != updates.dim_size(d - 1 + indices.dims())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void DoValidationChecking(OpKernelContext* c, const Tensor& params,
+                                 const Tensor& indices, const Tensor& updates) {
+  OP_REQUIRES(c, params.IsInitialized(),
+              errors::FailedPrecondition("Null ref for params"));
+  OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
+              errors::InvalidArgument("params must be at least 1-D, got shape ",
+                                      params.shape().DebugString()));
+  OP_REQUIRES(
+      c, ValidShapes(params, updates, indices),
+      errors::InvalidArgument(
+          "Must have updates.shape = indices.shape + params.shape[1:], got ",
+          "updates.shape ", updates.shape().DebugString(), ", indices.shape ",
+          indices.shape().DebugString(), ", params.shape ",
+          params.shape().DebugString()));
+}
+
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ScatterUpdateOp : public OpKernel {
  public:
@@ -83,40 +116,12 @@ class ScatterUpdateOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 
-  // Check whether updates.shape = indices.shape + params.shape[1:]
-  static bool ValidShapes(const Tensor& params, const Tensor& updates,
-                          const Tensor& indices) {
-    if (updates.dims() != indices.dims() + params.dims() - 1) return false;
-    for (int d = 0; d < indices.dims(); d++) {
-      if (updates.dim_size(d) != indices.dim_size(d)) {
-        return false;
-      }
-    }
-    for (int d = 1; d < params.dims(); d++) {
-      if (params.dim_size(d) != updates.dim_size(d - 1 + indices.dims())) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   void DoCompute(OpKernelContext* c) {
     Tensor params = c->mutable_input(0, use_exclusive_lock_);
-    OP_REQUIRES(c, params.IsInitialized(),
-                errors::FailedPrecondition("Null ref for params"));
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
-    OP_REQUIRES(
-        c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
-        errors::InvalidArgument("params must be at least 1-D, got shape ",
-                                params.shape().DebugString()));
-    OP_REQUIRES(
-        c, ValidShapes(params, updates, indices),
-        errors::InvalidArgument(
-            "Must have updates.shape = indices.shape + params.shape[1:], got ",
-            "updates.shape ", updates.shape().DebugString(), ", indices.shape ",
-            indices.shape().DebugString(), ", params.shape ",
-            params.shape().DebugString()));
+    DoValidationChecking(c, params, indices, updates);
+    if (!c->status().ok()) return;
 
     // Check that we have enough index space
     const int64 N_big = indices.NumElements();
@@ -178,45 +183,38 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
 };
 }  // namespace functor
 
-#define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op)  \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name(name)                                                        \
-      .Device(DEVICE_##dev)                                             \
-      .TypeConstraint<type>("T")                                        \
-      .TypeConstraint<index_type>("Tindices"),                          \
-      ScatterUpdateOp<dev##Device, type, index_type, op>)
+#define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
+  REGISTER_KERNEL_BUILDER(Name(name)                                   \
+                              .Device(DEVICE_##dev)                    \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          ScatterUpdateOp<dev##Device, type, index_type, op>)
 
-#define REGISTER_SCATTER_KERNEL(type, dev, name, op)            \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op);    \
+#define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
+  REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
-#define REGISTER_SCATTER_ADD_SUB(type, dev)                 \
-  REGISTER_SCATTER_KERNEL(                                  \
-      type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD);  \
-  REGISTER_SCATTER_KERNEL(                                  \
-      type, dev, "ScatterSub", scatter_op::UpdateOp::SUB);
+#define REGISTER_SCATTER_ADD_SUB(type, dev)                                    \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterSub", scatter_op::UpdateOp::SUB);
 
-#define REGISTER_SCATTER_UPDATE(type, dev)                  \
-  REGISTER_SCATTER_KERNEL(                                  \
-      type, dev, "ScatterUpdate", scatter_op::UpdateOp::ASSIGN);
+#define REGISTER_SCATTER_UPDATE(type, dev)            \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterUpdate", \
+                          scatter_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
-#define REGISTER_SCATTER_ADD_SUB_CPU(type)      \
-  REGISTER_SCATTER_ADD_SUB(type, CPU);
+#define REGISTER_SCATTER_ADD_SUB_CPU(type) REGISTER_SCATTER_ADD_SUB(type, CPU);
 
-#define REGISTER_SCATTER_UPDATE_CPU(type)       \
-  REGISTER_SCATTER_UPDATE(type, CPU);
+#define REGISTER_SCATTER_UPDATE_CPU(type) REGISTER_SCATTER_UPDATE(type, CPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_CPU);
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
-#define REGISTER_SCATTER_ADD_SUB_GPU(type)      \
-  REGISTER_SCATTER_ADD_SUB(type, GPU);
+#define REGISTER_SCATTER_ADD_SUB_GPU(type) REGISTER_SCATTER_ADD_SUB(type, GPU);
 
-#define REGISTER_SCATTER_UPDATE_GPU(type)       \
-  REGISTER_SCATTER_UPDATE(type, GPU);
+#define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
@@ -251,8 +249,8 @@ namespace functor {
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);
 
-#define DECLARE_GPU_SPECS(T)                    \
-  DECLARE_GPU_SPECS_INDEX(T, int32);            \
+#define DECLARE_GPU_SPECS(T)         \
+  DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);

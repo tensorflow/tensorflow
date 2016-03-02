@@ -18,6 +18,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/function.proto",
         "//tensorflow/core:framework/graph.proto",
         "//tensorflow/core:framework/kernel_def.proto",
+        "//tensorflow/core:framework/log_memory.proto",
         "//tensorflow/core:framework/op_def.proto",
         "//tensorflow/core:framework/step_stats.proto",
         "//tensorflow/core:framework/summary.proto",

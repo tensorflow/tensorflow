@@ -116,10 +116,10 @@ class ProcessState {
 
   mutex mu_;
 
-  std::vector<PoolAllocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
   std::vector<std::vector<AllocVisitor>> gpu_visitors_ GUARDED_BY(mu_);
-  std::vector<PoolAllocator*> cuda_host_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cuda_host_allocators_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 

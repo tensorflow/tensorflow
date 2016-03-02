@@ -30,6 +30,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+AttrSlice::AttrSlice(const NodeDef& node_def)
+    : ndef_(&node_def), attrs_(&ndef_->attr()) {}
+
+AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
+
 string SummarizeNodeDef(const NodeDef& node_def) {
   string ret = strings::StrCat(node_def.name(), " = ", node_def.op(), "[");
 

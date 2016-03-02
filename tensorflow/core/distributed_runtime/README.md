@@ -31,7 +31,7 @@ test your installation by starting a server as follows:
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
 $ bazel-bin/tensorflow/core/distributed_runtime/rpc/grpc_tensorflow_server \
-    --cluster_spec='local|localhost:2222' --job_name=local --task_index=0 &
+    --cluster_spec='local|localhost:2222' --job_name=local --task_id=0 &
 ```
 
 ...then start a Python interpreter and create a remote session:
@@ -62,9 +62,9 @@ The command-line arguments to `grpc_tensorflow_server` define the membership of 
   </tr>
 </table>
 
-The `--job_name` and `--task_index` flags indicate which task will run in this
+The `--job_name` and `--task_id` flags indicate which task will run in this
 process, out of the jobs and tasks defined in `--cluster_spec`.  For example,
-`--job_name=local --task_index=0` means that the process will be task
+`--job_name=local --task_id=0` means that the process will be task
 `/job:local/task:0`, and TensorFlow devices in the process will have names
 starting with that prefix.
 
@@ -127,7 +127,7 @@ replicated model. Possible approaches include:
   
 * As above, but where the gradients from all workers are averaged. See the
   [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)
-  for an example of this form of replication. The implements *synchronous* training
+  for an example of this form of replication. This implements *synchronous* training
   
 * The "distributed trainer" approach uses multiple graphs&mdash;one per
   worker&mdash;where each graph contains one set of parameters (pinned to
