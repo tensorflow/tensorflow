@@ -245,16 +245,25 @@ class Variable(object):
           raise ValueError("initial_value must have a shape specified: %s"
                            % self._initial_value)
         shape_to_set = initial_value_shape if validate_shape else []
+
         self._variable = state_ops.variable_op(
             shape_to_set, self._initial_value.dtype.base_dtype,
             set_shape=validate_shape, name=name)
-        with ops.device(self._variable.device):
+
+        with ops.colocate_with(self._variable.op):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value,
               validate_shape=validate_shape).op
-        with ops.device(caching_device if caching_device is not None
-                        else self._variable.device):
-          self._snapshot = array_ops.identity(self._variable, name="read")
+
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if caching_device is not None:
+          with ops.device(caching_device):
+            self._snapshot = array_ops.identity(self._variable, name="read")
+        else:
+          with ops.colocate_with(self._variable.op):
+            self._snapshot = array_ops.identity(self._variable, name="read")
 
     ops.add_to_collections(collections, self)
     self._caching_device = caching_device
@@ -395,10 +404,15 @@ class Variable(object):
     """
     with ops.control_dependencies(None):
       with ops.control_dependencies([self._initializer_op]):
-        with ops.device(
-            self._caching_device if self._caching_device is not None
-            else self._variable.device):
-          return array_ops.identity(self._variable)
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if self._caching_device is not None:
+          with ops.device(self._caching_device):
+            return array_ops.identity(self._variable)
+        else:
+          with ops.colocate_with(self._variable.op):
+            return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
@@ -791,7 +805,7 @@ def assert_variables_initialized(var_list=None):
   else:
     ranks = []
     for var in var_list:
-      with ops.device(var.device):
+      with ops.colocate_with(var.op):
         ranks.append(array_ops.rank(var))
     if len(ranks) == 1:
       return ranks[0]

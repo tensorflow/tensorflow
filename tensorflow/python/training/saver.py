@@ -218,7 +218,7 @@ class BaseSaverBuilder(object):
           values = array_ops.reshape(values, shape)
 
       # Assign on the same device as the variable.
-      with ops.device(v.device):
+      with ops.colocate_with(v):
         assign_ops.append(state_ops.assign(v,
                                            values,
                                            validate_shape=not reshape))
