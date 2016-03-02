@@ -2086,14 +2086,14 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
         prev_case_seq = None
-        for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
+        for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
           prev_case_seq = cond(
               cp, fn,
               default if i == 0 else lambda: prev_case_seq,
               name="If_%d" % i)
     else:
       prev_case_seq = None
-      for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
+      for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
         prev_case_seq = cond(
             cp, fn,
             default if i == 0 else lambda: prev_case_seq,

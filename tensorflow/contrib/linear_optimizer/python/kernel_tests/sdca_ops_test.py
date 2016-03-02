@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import uuid
 
+
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 import tensorflow as tf
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -32,7 +35,7 @@ def make_example_proto(feature_dict, target, value=1.0):
 
   features.feature['target'].float_list.value.append(target)
 
-  for key, values in feature_dict.iteritems():
+  for key, values in feature_dict.items():
     features.feature[key + '_indices'].int64_list.value.extend(values)
     features.feature[key + '_values'].float_list.value.extend([value] *
                                                               len(values))
