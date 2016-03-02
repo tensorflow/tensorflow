@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
+#include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -401,6 +402,15 @@ class SdcaSolver : public OpKernel {
       compute_dual_loss_ = logistic_loss::ComputeDualLoss;
       compute_primal_loss_ = logistic_loss::ComputePrimalLoss;
       compute_dual_update_ = logistic_loss::ComputeUpdatedDual;
+      convert_label_ = logistic_loss::ConvertLabel;
+    } else if (loss_type == "squared_loss") {
+      compute_dual_loss_ = squared_loss::ComputeDualLoss;
+      compute_primal_loss_ = squared_loss::ComputePrimalLoss;
+      compute_dual_update_ = squared_loss::ComputeUpdatedDual;
+      convert_label_ = squared_loss::ConvertLabel;
+    } else {
+      OP_REQUIRES(context, false, errors::InvalidArgument(
+                                      "Unsupported loss type: ", loss_type));
     }
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features",
                                              &num_sparse_features_));
@@ -565,28 +575,26 @@ class SdcaSolver : public OpKernel {
 
       {
         // Process examples in parallel, in a partitioned fashion.
-        mutex mu;  // Guards this->context.
+        mutex mu;  // Guards this->context within update_partition.
         auto update_partition = [&](const int64 begin, const int64 end) {
           double dual_loss_on_example_subset = 0;
           double primal_loss_on_example_subset = 0;
           for (int64 offset = begin; offset < end; ++offset) {
             // Get example id, label, and weight.
             const int64 example_index = example_indices[offset];
-            if (!(example_labels(example_index) == 0 ||
-                  example_labels(example_index) == 1)) {
-              mutex_lock l(mu);
-              OP_REQUIRES(context, false,
-                          errors::InvalidArgument(
-                              "Fractional labels not supported right now. "
-                              "Found example with label: ",
-                              example_labels(example_index)));
-            }
-            const float example_label =
-                example_labels(example_index) == 0 ? -1 : 1;
             const DualsByExample::Key example_key =
                 DualsByExample::MakeKey(example_ids(example_index));
             const double current_dual = (*duals_by_example)[example_key];
             const double example_weight = example_weights(example_index);
+            float example_label = example_labels(example_index);
+            const Status conversion_status = convert_label_(&example_label);
+            if (!conversion_status.ok()) {
+              mutex_lock l(mu);
+              context->SetStatus(conversion_status);
+              // TODO(dbaylor):  Need to break out of outer loop as well, or
+              // peform this sanity checking before start optimizing.
+              return;
+            }
 
             // Compute wx, example norm weighted by regularization, dual loss,
             // primal loss.
@@ -661,6 +669,7 @@ class SdcaSolver : public OpKernel {
       compute_primal_loss_;
   std::function<decltype(logistic_loss::ComputeUpdatedDual)>
       compute_dual_update_;
+  std::function<decltype(logistic_loss::ConvertLabel)> convert_label_;
   int64 num_sparse_features_;
   int64 num_dense_features_;
   Regularizations regularizations_;

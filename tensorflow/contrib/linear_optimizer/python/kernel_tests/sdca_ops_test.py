@@ -26,7 +26,7 @@ from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
 
 
-def make_example_proto(feature_dict, target):
+def make_example_proto(feature_dict, target, value=1.0):
   e = tf.train.Example()
   features = e.features
 
@@ -34,7 +34,7 @@ def make_example_proto(feature_dict, target):
 
   for key, values in feature_dict.iteritems():
     features.feature[key + '_indices'].int64_list.value.extend(values)
-    features.feature[key + '_values'].float_list.value.extend([1.0] *
+    features.feature[key + '_values'].float_list.value.extend([value] *
                                                               len(values))
 
   return e
@@ -74,10 +74,10 @@ def make_variable_dict(max_age, max_gender):
   # examples_dict.
   age_weights = tf.Variable(tf.zeros([max_age + 1], dtype=tf.float32))
   gender_weights = tf.Variable(tf.zeros([max_gender + 1], dtype=tf.float32))
-  training_log_loss = tf.Variable(tf.zeros([], dtype=tf.float64))
+  primal_loss = tf.Variable(tf.zeros([], dtype=tf.float64))
   return dict(sparse_features_weights=[age_weights, gender_weights],
               dense_features_weights=[],
-              training_log_loss=training_log_loss)
+              primal_loss=primal_loss)
 
 
 # Setup the single container shared across all tests. This is testing proper
@@ -93,7 +93,12 @@ def tearDown():
 
 class SdcaOptimizerTest(TensorFlowTestCase):
 
-  def testSimple(self):
+  def _single_threaded_test_session(self):
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    return self.test_session(use_gpu=False, config=config)
+
+  def testSimpleLogistic(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -104,9 +109,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [1.0, 1.0]
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
-    with self.test_session(use_gpu=False, config=config):
+    with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
@@ -152,9 +155,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [0]}, 1),
     ]
     example_weights = [1.0, 0.0, 1.0, 0.0]
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
-    with self.test_session(use_gpu=False, config=config):
+    with self._single_threaded_test_session():
       # Only use examples 0 and 2
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
@@ -188,9 +189,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     ]
     # Zeroed out example weights.
     example_weights = [0.0, 0.0]
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
-    with self.test_session(use_gpu=False, config=config):
+    with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.5,
@@ -221,9 +220,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [1.0, 1.0, 1.0, 1.0]
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
-    with self.test_session(use_gpu=False, config=config):
+    with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(3, 1)
       options = dict(symmetric_l2_regularization=0.25,
@@ -255,9 +252,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
              'gender': [1]}, 1),
     ]
     example_weights = [3.0, 1.0]
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
-    with self.test_session(use_gpu=False, config=config):
+    with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=0.25,
@@ -277,6 +272,152 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                            tf.ones_like(prediction) * 0.5), tf.float32)
       self.assertAllEqual([0, 1], predicted_labels.eval())
 
+  def testSimpleLinear(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, -10.0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 14.0),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=0.5,
+                     symmetric_l1_regularization=0,
+                     loss_type='squared_loss',
+                     prior=0.0)
+      tf.initialize_all_variables().run()
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      prediction = lr.predictions(examples)
+
+      lr.minimize().run()
+
+      # Predictions should be 2/3 of label due to minimizing regularized loss:
+      #   (label - 2 * weight)^2 / 2 + L2 * 2 * weight^2
+      self.assertAllClose([-20.0 / 3.0, 28.0 / 3.0],
+                          prediction.eval(),
+                          rtol=0.005)
+
+  def testLinearRegularization(self):
+    # Setup test data
+    example_protos = [
+        # 2 identical examples
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, -10.0),
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, -10.0),
+        # 2 more identical examples
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 14.0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 14.0),
+    ]
+    example_weights = [1.0, 1.0, 1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=4.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='squared_loss',
+                     prior=0.0)
+      tf.initialize_all_variables().run()
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      prediction = lr.predictions(examples)
+
+      lr.minimize().run()
+
+      # Predictions should be 1/5 of label due to minimizing regularized loss:
+      #   (label - 2 * weight)^2 + L2 * 16 * weight^2
+      optimal1 = -10.0 / 5.0
+      optimal2 = 14.0 / 5.0
+      self.assertAllClose(
+          [optimal1, optimal1, optimal2, optimal2],
+          prediction.eval(),
+          rtol=0.01)
+
+  def testLinearFeatureValues(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, -10.0, -2.0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 14.0, 2.0),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=0.5,
+                     symmetric_l1_regularization=0,
+                     loss_type='squared_loss',
+                     prior=0.0)
+      tf.initialize_all_variables().run()
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      prediction = lr.predictions(examples)
+
+      lr.minimize().run()
+
+      # Predictions should be 8/9 of label due to minimizing regularized loss:
+      #   (label - 2 * 2 * weight)^2 / 2 + L2 * 2 * weight^2
+      self.assertAllClose([-10.0 * 8 / 9, 14.0 * 8 / 9],
+                          prediction.eval(),
+                          rtol=0.07)
+
+  def testLinearDenseFeatures(self):
+    with self._single_threaded_test_session():
+      examples = dict(sparse_features=[],
+                      dense_features=[tf.convert_to_tensor(
+                          [-2.0, 0.0],
+                          dtype=tf.float32), tf.convert_to_tensor(
+                              [0.0, 2.0],
+                              dtype=tf.float32)],
+                      example_weights=[1.0, 1.0],
+                      example_labels=[-10.0, 14.0],
+                      example_ids=['%d' % i for i in xrange(0, 2)])
+      variables = dict(sparse_features_weights=[],
+                       dense_features_weights=[tf.Variable(tf.zeros(
+                           [1],
+                           dtype=tf.float32)), tf.Variable(tf.zeros(
+                               [1],
+                               dtype=tf.float32))],
+                       dual=tf.Variable(tf.zeros(
+                           [2],
+                           dtype=tf.float32)),
+                       primal_loss=tf.Variable(tf.zeros(
+                           [],
+                           dtype=tf.float64)))
+      options = dict(symmetric_l2_regularization=0.5,
+                     symmetric_l1_regularization=0,
+                     loss_type='squared_loss',
+                     prior=0.0)
+      tf.initialize_all_variables().run()
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      prediction = lr.predictions(examples)
+
+      lr.minimize().run()
+
+      # Predictions should be 4/5 of label due to minimizing regularized loss:
+      #   (label - 2 * weight)^2 / 2 + L2 * weight^2
+      self.assertAllClose([-10.0 * 4 / 5, 14.0 * 4 / 5],
+                          prediction.eval(),
+                          rtol=0.01)
+
+      loss = lr.regularized_loss(examples)
+      self.assertAllClose(
+          (4.0 + 7.84 + 16.0 + 31.36) / 2,
+          loss.eval(),
+          rtol=0.01)
 
 if __name__ == '__main__':
   googletest.main()

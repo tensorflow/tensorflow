@@ -16,6 +16,7 @@ cc_binary(
     srcs = [
         "kernels/logistic-loss.h",
         "kernels/sdca_ops.cc",
+        "kernels/squared-loss.h",
         "ops/sdca_ops.cc",
     ],
     linkopts = [

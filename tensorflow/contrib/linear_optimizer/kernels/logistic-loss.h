@@ -19,6 +19,9 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 struct logistic_loss {
   // Use an approximate step that is guaranteed to decrease the dual loss.
@@ -97,7 +100,24 @@ struct logistic_loss {
     // log(1 + e^(ywx)) - ywx
     return (log(1 + exp(y_wx)) - y_wx) * example_weight;
   }
+
+  // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
+  // as expected by logistic regression.
+  inline static Status ConvertLabel(float* const example_label) {
+    if (*example_label == 0.0) {
+      *example_label = -1;
+      return Status::OK();
+    }
+    if (*example_label == 1.0) {
+      return Status::OK();
+    }
+    return errors::InvalidArgument(
+        "Only labels of 0.0 or 1.0 are supported right now. "
+        "Found example with label: ",
+        *example_label);
+  }
 };
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_LOGISTIC_LOSS_H_
