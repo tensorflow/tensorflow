@@ -844,6 +844,35 @@ def _DiagShape(op):
   input_shape = op.inputs[0].get_shape().with_rank_at_most(3)
   return [input_shape.concatenate(input_shape)]
 
+@ops.RegisterShape("DiagPart")
+def _DiagPartShape(op):
+  """Shape function for array_ops.diag_part.
+
+  This op has one input (of rank k = 2, 4, or 6), and one output (of rank k/2),
+  where the shape of the output is the diagonal of the input shape.
+
+  Args:
+    op: A DiagPart Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If input has odd rank or greater than 6
+
+  """
+  shape = op.inputs[0].get_shape()
+  rank = len(shape)
+  mid = rank // 2
+  if rank % 2 or rank > 6:
+    raise ValueError("Input must have even rank <= 6, input rank is " +
+                     str(rank) + "." )
+  if shape[:mid] != shape[mid:]:
+    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
+                     " and shape[mid:] " + str(shape[mid:]) +
+                     " do not match ")
+  input_shape = shape.with_rank_at_most(6)
+  return [input_shape[:len(input_shape) // 2]]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):

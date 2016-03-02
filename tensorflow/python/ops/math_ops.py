@@ -62,6 +62,7 @@ TensorFlow provides several operations that you can use to add basic
 mathematical functions for matrices to your graph.
 
 @@diag
+@@diag_part
 @@transpose
 
 @@matmul
