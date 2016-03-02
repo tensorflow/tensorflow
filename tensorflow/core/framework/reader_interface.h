@@ -41,11 +41,6 @@ class ReaderInterface;
 // so see ../ops/io_ops.cc for detailed descriptions.
 //
 // All descendants of this class must be thread-safe.
-//
-// See the design document here:
-// https://docs.google.com/document/d/1UAgZOoeehYr20TdzW2CoZ30V-aqQphU4SwKXsW7eJv4/edit#
-
-// TODO(josh11b): Switch this to Async.
 class ReaderInterface : public ResourceBase {
  public:
   // Read a single record into *key / *value.  May get more work from
