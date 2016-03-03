@@ -318,9 +318,13 @@ cc_library(
     alwayslink = 1,
 )
 
+# TODO(vrv): These tests open many ports, resuting in TOCTTOU
+# port-binding races that cause test timeouts.  We run these in
+# exclusive mode to reduce the probability of these races, but the
+# longer term solution is to remove the race.
 tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["exclusive"],
     tests = [
         "grpc_channel_test.cc",
         "grpc_server_lib_test.cc",
