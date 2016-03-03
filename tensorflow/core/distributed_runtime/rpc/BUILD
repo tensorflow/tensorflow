@@ -322,7 +322,7 @@ cc_library(
 
 tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["exclusive"],
     tests = [
         "grpc_channel_test.cc",
         "grpc_server_lib_test.cc",
