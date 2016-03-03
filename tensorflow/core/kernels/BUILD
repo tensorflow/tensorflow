@@ -5,8 +5,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -33,6 +31,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -377,6 +376,7 @@ tf_kernel_libraries(
         "tensor_array_ops",
     ],
     deps = [
+        ":bounds_check",
         ":concat_lib",
         ":fifo_queue",
         ":initializable_lookup_table",
@@ -525,14 +525,12 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
-        "//third_party/eigen3",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        # TODO(josh11b): Merge these ops libs
-        "//tensorflow/core:image_ops_op_lib",
-        "//tensorflow/core:attention_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 
@@ -612,10 +610,8 @@ tf_kernel_libraries(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        # TODO(josh11b): Merge these ops libs?
-        "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1009,6 +1005,7 @@ filegroup(
         "example_parsing_ops.cc",
         "fill_functor.h",
         "gather_op.cc",
+        "gather_op.h",
         "identity_op.cc",
         "identity_op.h",
         "matmul_op.cc",

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for tensorflow.python.ops.attention_ops."""
+"""Tests for image.extract_glimpse()."""
 
 from __future__ import absolute_import
 from __future__ import division

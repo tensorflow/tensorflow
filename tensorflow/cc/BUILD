@@ -29,7 +29,6 @@ tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [
         "array_ops",
-        "attention_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "data_flow_ops",
@@ -46,7 +45,6 @@ tf_gen_op_wrappers_cc(
         "sparse_ops",
         "state_ops",
         "string_ops",
-        "summary_ops",
         "training_ops",
         "user_ops",
     ],

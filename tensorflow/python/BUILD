@@ -449,11 +449,6 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
-    name = "attention_ops",
-    require_shape_functions = True,
-)
-
-tf_gen_op_wrapper_py(
     name = "candidate_sampling_ops",
     hidden = [
         "AllCandidateSampler",
@@ -578,7 +573,12 @@ tf_gen_op_wrapper_py(
     name = "logging_ops",
     hidden = [
         "Assert",
+        "HistogramAccumulatorSummary",
+        "HistogramSummary",
+        "ImageSummary",
+        "MergeSummary",
         "Print",
+        "ScalarSummary",
     ],
     require_shape_functions = True,
 )
@@ -697,18 +697,6 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
-    name = "summary_ops",
-    hidden = [
-        "HistogramAccumulatorSummary",
-        "HistogramSummary",
-        "ImageSummary",
-        "MergeSummary",
-        "ScalarSummary",
-    ],
-    require_shape_functions = True,
-)
-
-tf_gen_op_wrapper_py(
     name = "user_ops",
     hidden = [
         "Fact",
@@ -727,7 +715,6 @@ py_library(
     srcs = [
         "ops/array_grad.py",
         "ops/array_ops.py",
-        "ops/attention_ops.py",
         "ops/candidate_sampling_ops.py",
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
@@ -736,7 +723,6 @@ py_library(
         "ops/data_flow_ops.py",
         "ops/embedding_ops.py",
         "ops/gen_array_ops.py",
-        "ops/gen_attention_ops.py",
         "ops/gen_control_flow_ops.py",
         "ops/gen_ctc_ops.py",
         "ops/gen_data_flow_ops.py",
@@ -749,7 +735,6 @@ py_library(
         "ops/gen_random_ops.py",
         "ops/gen_state_ops.py",
         "ops/gen_string_ops.py",
-        "ops/gen_summary_ops.py",
         "ops/gradients.py",
         "ops/histogram_ops.py",
         "ops/image_grad.py",
@@ -778,7 +763,6 @@ py_library(
         "ops/state_grad.py",
         "ops/state_ops.py",
         "ops/string_ops.py",
-        "ops/summary_ops.py",
         "ops/template.py",
         "ops/tensor_array_grad.py",
         "ops/tensor_array_ops.py",
@@ -804,7 +788,6 @@ py_library(
         ":script_ops",
         ":sparse_ops",
         ":string_ops",
-        ":summary_ops",
         ":user_ops",
     ],
 )

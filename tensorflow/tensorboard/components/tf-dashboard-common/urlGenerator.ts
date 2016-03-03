@@ -25,7 +25,8 @@ module TF {
       compressedHistograms: RunTagUrlFn;
       images: RunTagUrlFn;
       individualImage: (query: string) => string;
-      graph: (run: string) => string;
+      graph: (run: string, limit_attr_size?: number, large_attrs_key?: string)
+          => string;
     };
 
     export var routes = ["runs", "scalars", "histograms",
@@ -43,8 +44,19 @@ module TF {
       function individualImageUrl(query: string) {
         return "/data/individualImage?" + query;
       }
-      function graphUrl(run: string) {
-        return "/data/graph?run=" + encodeURIComponent(run);
+      function graphUrl(run: string, limit_attr_size?: number,
+          large_attrs_key?: string) {
+        let query_params = [["run", run]];
+        if (limit_attr_size != null) {
+          query_params.push(["limit_attr_size", String(limit_attr_size)]);
+        }
+        if (large_attrs_key != null) {
+          query_params.push(["large_attrs_key", large_attrs_key]);
+        }
+        let query = query_params.map(param => {
+          return param[0] + "=" + encodeURIComponent(param[1]);
+        }).join("&");
+        return "/data/graph?" + query;
       }
       return {
         runs: () => "/data/runs",

@@ -58,11 +58,6 @@ from tensorflow.python.ops.state_ops import scatter_add
 from tensorflow.python.ops.state_ops import scatter_sub
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.string_ops import *
-from tensorflow.python.ops.summary_ops import histogram_summary
-from tensorflow.python.ops.summary_ops import image_summary
-from tensorflow.python.ops.summary_ops import merge_all_summaries
-from tensorflow.python.ops.summary_ops import merge_summary
-from tensorflow.python.ops.summary_ops import scalar_summary
 from tensorflow.python.ops.template import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *

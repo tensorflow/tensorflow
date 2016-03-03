@@ -16,37 +16,49 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERVER_LIB_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERVER_LIB_H_
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include <memory>
+
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 
-// Defines the configuration for a single task (typically a process)
-// that is part of a gRPC-based TensorFlow cluster.
-struct GrpcServerOptions {
-  // This identity of the job to which this task belongs.  The names
-  // of the devices in this task will be prefixed with
-  // "/job:<job_name>/task:<task_index>"
-  string job_name;
-  int32 task_index = 0;
+// Represents a single TensorFlow server, which exports Master and Worker
+// services.
+class ServerInterface {
+ public:
+  ServerInterface() {}
+  virtual ~ServerInterface() {}
 
-  // A channel specification, which defines (i) the set of jobs that
-  // comprise the cluster, and (ii) within each job, the endpoints
-  // exposed by each task. NOTE: This spec also defines the endpoint
-  // on which this task will listen.
-  GrpcChannelSpec channel_spec;
+  // Starts the server running asynchronously. Returns OK on success, otherwise
+  // returns an error.
+  virtual Status Start() = 0;
 
-  // SessionOptions that will be used as defaults when configuring
-  // sessions in this task. `default_session_options.target` is
-  // ignored.
-  SessionOptions default_session_options;
+  // Stops the server asynchronously. Returns OK on success, otherwise returns
+  // an error.
+  //
+  // After calling `Stop()`, the caller may call `Join()` to block until the
+  // server has stopped.
+  virtual Status Stop() = 0;
+
+  // Blocks until the server has stopped. Returns OK on success, otherwise
+  // returns an error.
+  virtual Status Join() = 0;
+
+  // Returns a target string that can be used to connect to this server using
+  // `tensorflow::NewSession()`.
+  virtual const string& target() const = 0;
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(ServerInterface);
 };
 
-// Starts a gRPC-based TensorFlow server with the given options.
-// This function will not return.
-void StartTensorFlowServer(const GrpcServerOptions& options);
+// Creates a server based on the given `server_def`, and stores it in
+// *out_server. Returns OK on success, otherwise returns an error.
+Status NewServer(const ServerDef& server_def,
+                 std::unique_ptr<ServerInterface>* out_server);
 
 }  // namespace tensorflow
 

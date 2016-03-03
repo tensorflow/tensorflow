@@ -285,9 +285,21 @@ bool QueueBase::TryAttemptLocked(Action action,
   while (!done && !attempts->empty()) {
     if (attempts->front().is_cancelled) {
       if (action == kEnqueue) {
-        LOG(INFO) << "Skipping cancelled enqueue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled enqueue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled enqueue attempt with queue not closed";
+        }
       } else {
-        LOG(INFO) << "Skipping cancelled dequeue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled dequeue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled dequeue attempt with queue not closed";
+        }
       }
       attempts->pop_front();
     } else {

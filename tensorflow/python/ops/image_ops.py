@@ -169,19 +169,21 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
-
 # pylint: disable=wildcard-import
-from tensorflow.python.ops.attention_ops import *
 from tensorflow.python.ops.gen_image_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import make_all
+
+
 
 ops.NoGradient('RandomCrop')
 ops.NoGradient('RGBToHSV')
 ops.NoGradient('HSVToRGB')
 ops.NoGradient('DrawBoundingBoxes')
 ops.NoGradient('SampleDistortedBoundingBox')
+# TODO(bsteiner): Implement the gradient function for extract_glimpse
+ops.NoGradient("ExtractGlimpse")
 
 
 def _ImageDimensions(images):
@@ -1207,6 +1209,26 @@ def _random_crop_shape(op):
     raise ValueError('Input "size" must be a vector of two elements.')
 
   return [tensor_shape.TensorShape(output_shape)]
+
+
+@ops.RegisterShape("ExtractGlimpse")
+def _ExtractGlimpseShape(op):
+  """Shape function for ExtractGlimpse op."""
+  input_shape = op.inputs[0].get_shape().with_rank(4)
+  unused_size_shape = op.inputs[1].get_shape().merge_with(
+      tensor_shape.vector(2))
+  offsets_shape = op.inputs[2].get_shape().merge_with(
+      input_shape[:1].concatenate([2]))
+  offsets_shape = offsets_shape
+  size_value = tensor_util.constant_value(op.inputs[1])
+  if size_value is not None:
+    height = size_value[0]
+    width = size_value[1]
+  else:
+    height = None
+    width = None
+  return [tensor_shape.TensorShape(
+      [input_shape[0], height, width, input_shape[3]])]
 
 
 __all__ = make_all(__name__)
