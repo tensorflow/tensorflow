@@ -570,7 +570,8 @@ class SdcaSolver : public OpKernel {
 
       {
         // Process examples in parallel, in a partitioned fashion.
-        mutex mu;  // Guards this->context within update_partition.
+        mutex mu;
+        Status update_status;  // Guarded by mu.
         auto update_partition = [&](const int64 begin, const int64 end) {
           double dual_loss_on_example_subset = 0;
           double primal_loss_on_example_subset = 0;
@@ -585,9 +586,9 @@ class SdcaSolver : public OpKernel {
             const Status conversion_status = convert_label_(&example_label);
             if (!conversion_status.ok()) {
               mutex_lock l(mu);
-              context->SetStatus(conversion_status);
-              // TODO(dbaylor):  Need to break out of outer loop as well, or
-              // peform this sanity checking before start optimizing.
+              update_status = conversion_status;
+              // Return from this worker thread - the calling thread is
+              // responsible for checking context status and returning on error.
               return;
             }
 
@@ -641,7 +642,9 @@ class SdcaSolver : public OpKernel {
             100000 * (num_sparse_features_ + num_dense_features_);
         Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
               kCostPerUnit, update_partition);
+        OP_REQUIRES_OK(context, update_status);
       }
+
       total_duality_gap = total_primal_loss.load() + total_dual_loss.load() +
                           regularization_loss.l1_loss +
                           regularization_loss.l2_loss;

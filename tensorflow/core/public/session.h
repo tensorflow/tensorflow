@@ -115,16 +115,34 @@ class Session {
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
 
+  /// \brief Implementations which support `RunOptions`.
+  //
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Create(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Create(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Extend(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Close(const RunOptions& run_options) {
+    return errors::Unimplemented(
+        "Close(const RunOptions& run_options) is not supported for this "
+        "session.");
+  }
+
   /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
   /// to retrieve non-Tensor metadata output via a `RunOutputs` proto for this
   /// step.
   /// NOTE: This API is still experimental and may change.
-  virtual Status RunWithOpts(
-      const RunOptions& run_options,
-      const std::vector<std::pair<string, Tensor> >& inputs,
-      const std::vector<string>& output_tensor_names,
-      const std::vector<string>& target_node_names,
-      std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
+  virtual Status Run(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
     return errors::Unimplemented(
         "RunWithOpts() is not supported for this session.");
   }

@@ -61,6 +61,7 @@ create variables contingent on certain conditions.
 @@random_uniform_initializer
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
+@@ones_initializer
 
 ## Sparse Variable Updates
 

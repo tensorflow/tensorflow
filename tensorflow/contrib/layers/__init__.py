@@ -69,6 +69,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.layers.python.framework.tensor_util import *
 from tensorflow.contrib.layers.python.layers import *
@@ -81,5 +83,4 @@ from tensorflow.python.util.all_util import make_all
 # docs yet.
 # TODO(cwhipkey): get the loss_ops documented in the main documentation and do
 # this in a better way.
-__all__ = (make_all(__name__) +
-           make_all(__name__, loss_ops.__name__))
+__all__ = make_all(__name__, [sys.modules[__name__], loss_ops])

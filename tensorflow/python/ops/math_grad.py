@@ -194,6 +194,8 @@ def _InvGrad(op, grad):
   y = op.outputs[0]  # y = 1 / x
   # Added control dependencies to prevent -x^2 from being computed too early.
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (- math_ops.square(y))
 
 
@@ -202,6 +204,8 @@ def _SquareGrad(op, grad):
   x = op.inputs[0]
   # Added control dependencies to prevent 2*x from being computed too early.
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return grad * (2.0 * x)
 
 
@@ -224,7 +228,10 @@ def _RsqrtGrad(op, grad):
 def _ExpGrad(op, grad):
   """Returns grad * exp(x)."""
   y = op.outputs[0]  # y = e^x
-  return grad * y
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * y
 
 
 @ops.RegisterGradient("Log")
@@ -240,6 +247,8 @@ def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (1 - math_ops.square(y))
 
 
@@ -280,6 +289,8 @@ def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (y * (1 - y))
 
 
@@ -295,6 +306,8 @@ def _SinGrad(op, grad):
   """Returns grad * cos(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return grad * math_ops.cos(x)
 
 
@@ -303,6 +316,8 @@ def _CosGrad(op, grad):
   """Returns grad * -sin(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return -grad * math_ops.sin(x)
 
 
