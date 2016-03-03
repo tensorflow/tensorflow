@@ -168,22 +168,9 @@ class UnaryOp : public OpKernel {
 
 namespace functor {
 
-// For CPUDevice, we do operations inline if the resulting tensor is
-// modestly sized.
-//
-// NOTE(jeff): Changing DoInline to 'return false' gives significant code
-// size benefits, but hurts CPU performance considerably (performance
-// on ptb_word_lm drops from 3568 wps to 1922 wps, but code size for
-// tensorflow code in the binary drops by 3.3%).
-static bool DoInline(size_t size) { return size <= 32768; }
-
 template <typename D, typename OUT, typename RHS>
 void Assign(const D& d, OUT out, RHS rhs) {
-  if (DoInline(out.size())) {
-    out = rhs;
-  } else {
-    out.device(d) = rhs;
-  }
+  out.device(d) = rhs;
 }
 
 // Partial specialization of BinaryFunctor<Device=CPUDevice, Functor>.
