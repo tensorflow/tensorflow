@@ -18,7 +18,7 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   pip_test.sh [--virtualenv]
+#   test_installation.sh [--virtualenv]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine

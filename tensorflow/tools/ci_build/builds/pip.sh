@@ -155,11 +155,11 @@ if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
   exit 0
 fi
 
-# Call pip_test.sh to perform test-on-install
+# Call test_installation.sh to perform test-on-install
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Call the pip test script
-"${DIR}/pip_test.sh" --virtualenv || die "PIP tests-on-install FAILED"
+"${DIR}/test_installation.sh" --virtualenv ||
+die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then

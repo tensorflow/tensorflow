@@ -28,8 +28,6 @@ RUN pip --no-cache-dir install \
         && \
     python -m ipykernel.kernelspec
 
-
-
 # Install TensorFlow CPU version.
 ENV TENSORFLOW_VERSION 0.7.1
 RUN pip --no-cache-dir install \

@@ -113,7 +113,7 @@ fi
 docker run -v ${BASE_DIR}:/tensorflow-src -w /tensorflow-src \
 ${GPU_EXTRA_PARAMS} \
 "${DOCKER_IMG_TAG}" \
-/bin/bash -c "tensorflow/tools/ci_build/builds/pip_test.sh && "\
+/bin/bash -c "tensorflow/tools/ci_build/builds/test_installation.sh && "\
 "tensorflow/tools/ci_build/builds/test_tutorials.sh"
 
 RESULT=$?
