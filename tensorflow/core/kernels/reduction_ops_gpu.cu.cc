@@ -68,8 +68,8 @@ DEFINE_FOR_ALL_REDUCERS(float);
 #undef DEFINE_FOR_ALL_REDUCERS
 
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);
-DEFINE_FOR_TYPE_AND_R(bool, AllReducer);
-DEFINE_FOR_TYPE_AND_R(bool, AnyReducer);
+DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::AndReducer);
+DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::OrReducer);
 #undef DEFINE_FOR_TYPE_AND_R
 
 #undef DEFINE
