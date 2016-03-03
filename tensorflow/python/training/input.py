@@ -35,7 +35,6 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import queue_runner
 
@@ -92,7 +91,7 @@ def _input_producer(input_tensor, dtype, num_epochs, shuffle, seed, capacity,
                               name=name)
   enq = q.enqueue_many([input_tensor])
   queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
-  summary_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
+  logging_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
                              math_ops.cast(q.size(), dtypes.float32) *
                              (1. / capacity))
   return q
@@ -334,7 +333,7 @@ def batch(tensor_list, batch_size, num_threads=1, capacity=32,
     queue = data_flow_ops.FIFOQueue(
         capacity=capacity, dtypes=types, shapes=shapes)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
-    summary_ops.scalar_summary(
+    logging_ops.scalar_summary(
         "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
         math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
     return queue.dequeue_many(batch_size, name=name)
@@ -411,7 +410,7 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
     queue = data_flow_ops.FIFOQueue(
         capacity=capacity, dtypes=types, shapes=shapes)
     _enqueue_join(queue, tensor_list_list, enqueue_many)
-    summary_ops.scalar_summary(
+    logging_ops.scalar_summary(
         "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
         math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
     return queue.dequeue_many(batch_size, name=name)
@@ -501,7 +500,7 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    summary_ops.scalar_summary(summary_name, full)
+    logging_ops.scalar_summary(summary_name, full)
 
     return queue.dequeue_many(batch_size, name=name)
 
@@ -580,5 +579,5 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
     summary_name = (
         "queue/%sfraction_over_%d_of_%d_full" %
         (name, min_after_dequeue, capacity - min_after_dequeue))
-    summary_ops.scalar_summary(summary_name, full)
+    logging_ops.scalar_summary(summary_name, full)
     return queue.dequeue_many(batch_size, name=name)

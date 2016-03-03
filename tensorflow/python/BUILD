@@ -578,7 +578,12 @@ tf_gen_op_wrapper_py(
     name = "logging_ops",
     hidden = [
         "Assert",
+        "HistogramAccumulatorSummary",
+        "HistogramSummary",
+        "ImageSummary",
+        "MergeSummary",
         "Print",
+        "ScalarSummary",
     ],
     require_shape_functions = True,
 )
@@ -697,18 +702,6 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
-    name = "summary_ops",
-    hidden = [
-        "HistogramAccumulatorSummary",
-        "HistogramSummary",
-        "ImageSummary",
-        "MergeSummary",
-        "ScalarSummary",
-    ],
-    require_shape_functions = True,
-)
-
-tf_gen_op_wrapper_py(
     name = "user_ops",
     hidden = [
         "Fact",
@@ -749,7 +742,6 @@ py_library(
         "ops/gen_random_ops.py",
         "ops/gen_state_ops.py",
         "ops/gen_string_ops.py",
-        "ops/gen_summary_ops.py",
         "ops/gradients.py",
         "ops/histogram_ops.py",
         "ops/image_grad.py",
@@ -778,7 +770,6 @@ py_library(
         "ops/state_grad.py",
         "ops/state_ops.py",
         "ops/string_ops.py",
-        "ops/summary_ops.py",
         "ops/template.py",
         "ops/tensor_array_grad.py",
         "ops/tensor_array_ops.py",
@@ -804,7 +795,6 @@ py_library(
         ":script_ops",
         ":sparse_ops",
         ":string_ops",
-        ":summary_ops",
         ":user_ops",
     ],
 )

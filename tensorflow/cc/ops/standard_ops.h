@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/sparse_ops.h"
 #include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/cc/ops/string_ops.h"
-#include "tensorflow/cc/ops/summary_ops.h"
 #include "tensorflow/cc/ops/training_ops.h"
 #include "tensorflow/cc/ops/user_ops.h"
 

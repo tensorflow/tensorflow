@@ -612,10 +612,8 @@ tf_kernel_libraries(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        # TODO(josh11b): Merge these ops libs?
-        "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

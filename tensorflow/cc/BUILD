@@ -46,7 +46,6 @@ tf_gen_op_wrappers_cc(
         "sparse_ops",
         "state_ops",
         "string_ops",
-        "summary_ops",
         "training_ops",
         "user_ops",
     ],
