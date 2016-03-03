@@ -87,6 +87,39 @@ def _init_sampler(tc, init, num, use_gpu):
   return func
 
 
+class ConstantInitializersTest(tf.test.TestCase):
+
+  def testZerosInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape, initializer=tf.zeros_initializer)
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.zeros(shape))
+
+  def testOnesInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape, initializer=tf.ones_initializer)
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.ones(shape))
+
+  def testConstantZeroInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape,
+                          initializer=tf.constant_initializer(0.0))
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.zeros(shape))
+
+  def testConstantOneInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape,
+                          initializer=tf.constant_initializer(1.0))
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.ones(shape))
+
+
 class RandomNormalInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):

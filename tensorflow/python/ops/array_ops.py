@@ -94,6 +94,13 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
+# DEPRECATED use init_ops.zeros_initializer
+# TODO(irving) Move it to init_ops.py
+def zeros_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return zeros(shape, dtype)
+
+
 # pylint: disable=undefined-variable,protected-access
 def _SliceHelper(tensor, slice_spec):
   """Overload for Tensor.__getitem__.
@@ -666,11 +673,6 @@ def ones_like(tensor, dtype=None, name=None):
     ret = ones(ones_shape, dtype=dtype, name=name)
     ret.set_shape(tensor.get_shape())
     return ret
-
-
-def zeros_initializer(shape, dtype=dtypes.float32):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
 
 
 def ones(shape, dtype=dtypes.float32, name=None):
