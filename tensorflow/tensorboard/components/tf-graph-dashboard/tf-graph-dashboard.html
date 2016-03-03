@@ -115,7 +115,8 @@ Polymer({
     return _.map(runsWithGraph, function(runName) {
       return {
         name: runName,
-        path: graphUrlGen(runName)
+        path: graphUrlGen(runName, tf.graph.LIMIT_ATTR_SIZE,
+            tf.graph.LARGE_ATTRS_KEY)
       };
     });
   },

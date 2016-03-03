@@ -137,7 +137,8 @@ export function parsePbtxt(input: string): TFNode[] {
     "node.attr.value.tensor.string_val": true,
     "node.attr.value.tensor.tensor_shape.dim": true,
     "node.attr.value.list.shape": true,
-    "node.attr.value.list.shape.dim": true
+    "node.attr.value.list.shape.dim": true,
+    "node.attr.value.list.s": true
   };
 
   /**

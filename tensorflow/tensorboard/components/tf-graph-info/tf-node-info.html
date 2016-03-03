@@ -396,10 +396,25 @@
         },
         _getAttributes: function(node) {
           this.async(this._resizeList.bind(this, "#attributesList"));
-          return node && node.attr ? node.attr.map(function(entry) {
-            return {key: entry.key, value: JSON.stringify(entry.value)};
-          }) : [];
-
+          if (!node || !node.attr) {
+            return [];
+          }
+          var attrs = [];
+          _.each(node.attr, function(entry) {
+            // Unpack the "too large" attributes into separate attributes
+            // in the info card, with values "too large to show".
+            if (entry.key === tf.graph.LARGE_ATTRS_KEY) {
+              attrs = attrs.concat(entry.value.list.s.map(function(key) {
+                return {key: key, value: "Too large to show..."};
+              }));
+            } else {
+              attrs.push({
+                key: entry.key,
+                value: JSON.stringify(entry.value)
+              });
+            }
+          });
+          return attrs;
         },
         _getDevice: function(node) {
           return node ? node.device : null;
