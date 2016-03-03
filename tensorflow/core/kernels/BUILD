@@ -1007,6 +1007,7 @@ filegroup(
         "example_parsing_ops.cc",
         "fill_functor.h",
         "gather_op.cc",
+        "gather_op.h",
         "identity_op.cc",
         "identity_op.h",
         "matmul_op.cc",
