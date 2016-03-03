@@ -746,5 +746,93 @@ TEST(SessionTest, ExtendValidation) {
   EXPECT_NE(s.error_message().find("'b', which was created by a previous call"),
             string::npos);
 }
+// Tests that Create() with "operation_timeout_in_ms" set times out.
+TEST(SessionTest, CreateTimeoutWithSessionOptions) {
+  // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
+  SessionOptions options = Options("example.org", 1);
+  options.config.set_operation_timeout_in_ms(100);
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  // Creates a long running op.
+  Graph graph(OpRegistry::Global());
+  Node* b = test::graph::Constant(&graph, Tensor());
+  test::graph::Delay(&graph, b, Microseconds(1000000));
+  GraphDef gdef;
+  test::graph::ToGraphDef(&graph, &gdef);
+  Status status = session->Create(gdef);
+  EXPECT_EQ(error::DEADLINE_EXCEEDED, status.code());
+}
+
+// Tests that Create() with "timeout_in_ms" in RunOptions set times out.
+TEST(SessionTest, CreateTimeoutWithRunOptions) {
+  SessionOptions options = Options("example.org", 1);
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  // Creates a long running op.
+  Graph graph(OpRegistry::Global());
+  Node* b = test::graph::Constant(&graph, Tensor());
+  test::graph::Delay(&graph, b, Microseconds(1000000));
+  GraphDef gdef;
+  test::graph::ToGraphDef(&graph, &gdef);
+  RunOptions run_options;
+  // Sets RunOption timeout_in_ms to 20.
+  run_options.set_timeout_in_ms(20);
+  Status status = session->Create(run_options, gdef);
+  EXPECT_EQ(error::DEADLINE_EXCEEDED, status.code());
+}
+
+// Tests that Run() with "operation_timeout_in_ms" set times out.
+TEST(SessionTest, RunTimeoutWithSessionOptions) {
+  // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 100);
+  options.config.set_operation_timeout_in_ms(1);
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  // Creates a long running op.
+  Graph graph(OpRegistry::Global());
+  Node* b = test::graph::Constant(&graph, Tensor());
+  Node* b_delay = test::graph::Delay(&graph, b, Microseconds(2000000));
+  GraphDef gdef;
+  test::graph::ToGraphDef(&graph, &gdef);
+  RunOptions run_options;
+  TF_CHECK_OK(session->Create(run_options, gdef));
+
+  // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
+  std::vector<std::pair<string, Tensor>> inputs;
+  Status status = session->Run(inputs, {}, {b_delay->name()}, nullptr);
+  // TODO(sherrym): Due to potentially a GRPC bug, we sometimes get
+  // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
+  EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
+              error::INTERNAL == status.code());
+}
+
+// Tests that Run() with "timeout_in_ms" set times out.
+TEST(SessionTest, RunTimeoutWithRunOptions) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 1);
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  // Creates a long running op.
+  Graph graph(OpRegistry::Global());
+  Node* b = test::graph::Constant(&graph, Tensor());
+  Node* b_delay = test::graph::Delay(&graph, b, Microseconds(1000000));
+  GraphDef gdef;
+  test::graph::ToGraphDef(&graph, &gdef);
+  TF_CHECK_OK(session->Create(gdef));
+
+  // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
+  std::vector<std::pair<string, Tensor>> inputs;
+  RunOptions run_options;
+  run_options.set_timeout_in_ms(100);
+  Status status = session->Run(run_options, inputs, {}, {b_delay->name()},
+                               nullptr, nullptr);
+  // TODO(sherrym): Due to potentially a GRPC bug, we sometimes get
+  // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
+  EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
+              error::INTERNAL == status.code());
+}
 
 }  // namespace tensorflow

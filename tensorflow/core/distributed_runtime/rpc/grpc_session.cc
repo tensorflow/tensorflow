@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/session_factory.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
@@ -67,7 +68,8 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
-Status GrpcSession::Create(const GraphDef& graph) {
+Status GrpcSession::CreateImpl(CallOptions* call_options,
+                               const GraphDef& graph) {
   if (!handle_.empty()) {
     return errors::InvalidArgument("A session is alive.");
   }
@@ -76,7 +78,7 @@ Status GrpcSession::Create(const GraphDef& graph) {
   *req.mutable_graph_def() = graph;
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
-  Status s = master_->CreateSession(&req, &resp);
+  Status s = master_->CreateSession(call_options, &req, &resp);
   if (s.ok()) {
     mutex_lock l(mu_);
     swap(handle_, *(resp.mutable_session_handle()));
@@ -85,7 +87,21 @@ Status GrpcSession::Create(const GraphDef& graph) {
   return s;
 }
 
-Status GrpcSession::Extend(const GraphDef& graph) {
+Status GrpcSession::Create(const GraphDef& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return CreateImpl(&call_options, graph);
+}
+
+Status GrpcSession::Create(const RunOptions& run_options,
+                           const GraphDef& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(run_options.timeout_in_ms());
+  return CreateImpl(&call_options, graph);
+}
+
+Status GrpcSession::ExtendImpl(CallOptions* call_options,
+                               const GraphDef& graph) {
   if (handle_.empty()) {
     // Session was unitialized, so simply initialize the session with 'graph'.
     return Create(graph);
@@ -96,17 +112,31 @@ Status GrpcSession::Extend(const GraphDef& graph) {
   *req.mutable_graph_def() = graph;
   req.set_current_graph_version(current_graph_version_);
   ExtendSessionResponse resp;
-  Status s = master_->ExtendSession(&req, &resp);
+  Status s = master_->ExtendSession(call_options, &req, &resp);
   if (s.ok()) {
     current_graph_version_ = resp.new_graph_version();
   }
   return s;
 }
 
-Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
-                        const std::vector<string>& output_names,
-                        const std::vector<string>& target_nodes,
-                        std::vector<Tensor>* outputs) {
+Status GrpcSession::Extend(const GraphDef& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return ExtendImpl(&call_options, graph);
+}
+
+Status GrpcSession::Extend(const RunOptions& run_options,
+                           const GraphDef& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(run_options.timeout_in_ms());
+  return ExtendImpl(&call_options, graph);
+}
+
+Status GrpcSession::Run(const RunOptions& run_options,
+                        const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& output_tensor_names,
+                        const std::vector<string>& target_node_names,
+                        std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
   // Convert to proto
   RunStepRequest req;
   RunStepResponse resp;
@@ -121,19 +151,21 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 
   // Build an index from fetch tensor name to offset.
   std::unordered_map<string, int> output_name_to_offset;
-  for (const string& output_name : output_names) {
+  for (const string& output_name : output_tensor_names) {
     req.add_fetch(output_name);
     output_name_to_offset.insert(
         std::make_pair(output_name, output_name_to_offset.size()));
   }
-  for (const string& target : target_nodes) {
+  for (const string& target : target_node_names) {
     req.add_target(target);
   }
 
-  TF_RETURN_IF_ERROR(RunProto(&req, &resp));
+  CallOptions call_options;
+  call_options.SetTimeout(run_options.timeout_in_ms());
+  TF_RETURN_IF_ERROR(RunProto(&call_options, &req, &resp));
 
-  if (!output_names.empty()) {
-    outputs->resize(output_names.size());
+  if (!output_tensor_names.empty()) {
+    outputs->resize(output_tensor_names.size());
   }
 
   // Convert response back to Tensors in the correct order.
@@ -156,13 +188,24 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
   return Status::OK();
 }
 
-Status GrpcSession::RunProto(RunStepRequest* req, RunStepResponse* resp) {
+Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& output_tensor_names,
+                        const std::vector<string>& target_node_names,
+                        std::vector<Tensor>* outputs) {
+  RunOptions run_options;
+  run_options.set_timeout_in_ms(options_.config.operation_timeout_in_ms());
+  return Run(run_options, inputs, output_tensor_names, target_node_names,
+             outputs, nullptr);
+}
+
+Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
+                             RunStepResponse* resp) {
   if (handle_.empty()) {
     return errors::InvalidArgument("A session is not created yet....");
   }
 
   req->set_session_handle(handle_);
-  return master_->RunStep(req, resp);
+  return master_->RunStep(call_options, req, resp);
 }
 
 Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
@@ -187,7 +230,9 @@ Status GrpcSession::Close() {
   req.set_session_handle(handle_);
   handle_.clear();
   CloseSessionResponse resp;
-  return master_->CloseSession(&req, &resp);
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return master_->CloseSession(&call_options, &req, &resp);
 }
 
 std::vector<DeviceAttributes> GrpcSession::ListDevices() {
@@ -195,7 +240,9 @@ std::vector<DeviceAttributes> GrpcSession::ListDevices() {
 
   ListDevicesRequest req;
   ListDevicesResponse resp;
-  Status s = master_->ListDevices(&req, &resp);
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  Status s = master_->ListDevices(&call_options, &req, &resp);
   if (!s.ok()) {
     LOG(ERROR) << "Could not list devices: " << s;
     return devices;

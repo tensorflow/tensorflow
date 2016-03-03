@@ -273,8 +273,8 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
   RunOutputs run_outputs;
   EXPECT_EQ(run_outputs.step_stats().dev_stats_size(), 0);
 
-  Status s = session->RunWithOpts(run_options, inputs, output_names,
-                                  target_nodes, &outputs, &run_outputs);
+  Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                          &outputs, &run_outputs);
   TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
@@ -558,6 +558,100 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
   ASSERT_EQ(true, outputs[0].flat<bool>()(0));
+}
+
+TEST(DirectSessionTest, TimeoutSession) {
+  GraphDef graph;
+  // Creates a graph with one FIFOQueue and one dequeue op.
+  protobuf::TextFormat::ParseFromString(R"proto(
+    node {
+      name: 'fifo_queue'
+      op: 'FIFOQueue'
+      device: '/device:CPU:0'
+      attr {
+        key: 'capacity'
+        value {
+          i: 10
+        }
+      }
+      attr {
+        key: 'component_types'
+        value {
+          list {
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: 'container'
+        value {
+          s: ''
+        }
+      }
+      attr {
+        key: 'shapes'
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: 'shared_name'
+        value {
+          s: ''
+        }
+      }
+    }
+    node {
+      name: 'fifo_queue_Dequeue'
+      op: 'QueueDequeue'
+      input: 'fifo_queue'
+      device: '/device:CPU:0'
+      attr {
+        key: 'component_types'
+        value {
+          list {
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: 'timeout_ms'
+        value {
+          i: -1
+        }
+      }
+    }
+    versions {
+      producer: 9
+    }
+  )proto",
+                                        &graph);
+
+  // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  options.config.set_operation_timeout_in_ms(100);
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(graph));
+
+  // Verifies that the error code is DEADLINE_EXCEEDED.
+  Status s = session->Run({}, {}, {"fifo_queue_Dequeue"}, nullptr);
+  ASSERT_EQ(error::DEADLINE_EXCEEDED, s.code());
+  session->Close();
+
+  // Creates a session with no operation_timeout_in_ms.
+  session.reset(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(graph));
+  RunOptions run_options;
+  run_options.set_timeout_in_ms(20);
+  // Verifies that the error code is DEADLINE_EXCEEDED.
+  Status s2 = session->Run(run_options, {}, {}, {"fifo_queue_Dequeue"}, nullptr,
+                           nullptr);
+  ASSERT_EQ(error::DEADLINE_EXCEEDED, s2.code());
+  session->Close();
 }
 
 }  // namespace
