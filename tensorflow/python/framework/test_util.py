@@ -33,7 +33,6 @@ from google.protobuf import text_format
 from tensorflow.core.framework import config_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -253,7 +252,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
@@ -263,7 +262,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
   # pylint: enable=g-doc-return-or-yield
 

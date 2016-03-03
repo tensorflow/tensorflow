@@ -27,8 +27,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
-
 
 def _flatten(list_of_lists):
   return [x for y in list_of_lists for x in y]
@@ -962,7 +960,7 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   # Using rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         inputs_list_t = [tf.constant(x) for x in inputs_list]
         ops = _static_vs_dynamic_rnn_benchmark_static(
             inputs_list_t, sequence_length)
@@ -976,7 +974,7 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   # Using dynamic_rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         inputs_t = tf.constant(inputs)
         ops = _static_vs_dynamic_rnn_benchmark_dynamic(
             inputs_t, sequence_length)
