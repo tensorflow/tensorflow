@@ -41,7 +41,7 @@ namespace internal {
 template <typename T>
 const T SubtleMustCopy(const T &x) {
   static_assert(std::is_integral<T>::value,
-                "must_copy can only be used on integer types.");
+                "SubtleMustCopy can only be used on integer types.");
   auto *to_x = reinterpret_cast<const volatile T *>(&x);
   return *to_x;
 }
