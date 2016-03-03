@@ -1108,7 +1108,7 @@ class Operation(object):
 
     attr_groups = [class_name
                    for class_name in self.get_attr("_class")
-                   if class_name.startswith("loc:@")]
+                   if class_name.startswith(b"loc:@")]
 
     # If there are no colocation groups in the explicit _class field,
     # return the default colocation group.
