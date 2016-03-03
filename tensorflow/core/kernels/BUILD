@@ -525,14 +525,12 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
-        "//third_party/eigen3",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        # TODO(josh11b): Merge these ops libs
-        "//tensorflow/core:image_ops_op_lib",
-        "//tensorflow/core:attention_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 

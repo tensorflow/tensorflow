@@ -297,7 +297,6 @@ cc_binary(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
-        "attention_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -338,7 +337,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
-        ":attention_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
