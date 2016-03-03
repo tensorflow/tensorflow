@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -241,6 +242,28 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     for node in graph_def.node:
       op = name_to_op[node.name]
       input_types = _InputTypes(node, op_dict)
+
+      # Rewrite the colocation attributes in the graph, since the
+      # names of new ops may have changed.
+      for key, value in op.node_def.attr.items():
+        if key == '_class':
+          class_values = value.list
+          new_class_values = []
+          for class_value in class_values.s:
+            if class_value.startswith('loc:@'):
+              op_to_bind_to = class_value[5:]
+              # Find the op by its original name.
+              if op_to_bind_to not in name_to_op:
+                raise ValueError('Specified colocation to an op that '
+                                 'does not exist during import: %s in %s' % (
+                                     op_to_bind_to, node.name))
+              original_op = name_to_op[op_to_bind_to]
+              new_class_values.append(compat.as_bytes(
+                  'loc:@' + original_op.name))
+            else:
+              new_class_values.append(class_value)
+          value.list.CopyFrom(attr_value_pb2.AttrValue.ListValue(
+              s=new_class_values))
 
       # NOTE(mrry): We cannot use zip here because control inputs do not appear
       # in the list of input_types.
