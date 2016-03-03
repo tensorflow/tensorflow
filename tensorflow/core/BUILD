@@ -47,8 +47,6 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
@@ -299,7 +297,6 @@ cc_binary(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
-        "attention_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -320,7 +317,6 @@ tf_gen_op_libs(
         "sparse_ops",
         "state_ops",
         "string_ops",
-        "summary_ops",
         "training_ops",
     ],
 )
@@ -341,7 +337,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
-        ":attention_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -362,7 +357,6 @@ cc_library(
         ":sparse_ops_op_lib",
         ":state_ops_op_lib",
         ":string_ops_op_lib",
-        ":summary_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         "//tensorflow/models/embedding:word2vec_ops",

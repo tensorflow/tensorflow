@@ -46,3 +46,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.lib.io.tf_record import *
+from tensorflow.python.util.all_util import make_all
+
+
+__all__ = make_all(__name__)

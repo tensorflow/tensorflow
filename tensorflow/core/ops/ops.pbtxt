@@ -3230,22 +3230,18 @@ op {
   name: "ExtractGlimpse"
   input_arg {
     name: "input"
-    description: "A 4-D float tensor of shape `[batch_size, height, width, channels]`."
     type: DT_FLOAT
   }
   input_arg {
     name: "size"
-    description: "A 1-D tensor of 2 elements containing the size of the glimpses to extract.\nThe glimpse height must be specified first, following by the glimpse width."
     type: DT_INT32
   }
   input_arg {
     name: "offsets"
-    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing the x, y\nlocations of the center of each window."
     type: DT_FLOAT
   }
   output_arg {
     name: "glimpse"
-    description: "A tensor representing the glimpses `[batch_size, glimpse_height,\nglimpse_width, channels]`."
     type: DT_FLOAT
   }
   attr {
@@ -3254,7 +3250,6 @@ op {
     default_value {
       b: true
     }
-    description: "indicates if the offset coordinates are centered relative to\nthe image, in which case the (0, 0) offset is relative to the center of the\ninput images. If false, the (0,0) offset corresponds to the upper left corner\nof the input images."
   }
   attr {
     name: "normalized"
@@ -3262,7 +3257,6 @@ op {
     default_value {
       b: true
     }
-    description: "indicates if the offset coordinates are normalized."
   }
   attr {
     name: "uniform_noise"
@@ -3270,10 +3264,9 @@ op {
     default_value {
       b: true
     }
-    description: "indicates if the noise should be generated using a\nuniform distribution or a gaussian distribution."
   }
   summary: "Extracts a glimpse from the input tensor."
-  description: "Returns a set of windows called glimpses extracted at location `offsets`\nfrom the input tensor. If the windows only partially overlaps the inputs, the\nnon overlapping areas will be filled with random noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the same as that\nof the input tensor. The height and width of the output windows are\nspecified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are built:\n* If the coordinates are normalized but not centered, 0.0 and 1.0\n  correspond to the minimum and maximum of each height and width dimension.\n* If the coordinates are both normalized and centered, they range from -1.0 to\n  1.0. The coordinates (-1.0, -1.0) correspond to the upper left corner, the\n  lower right corner is located at  (1.0, 1.0) and the center is at (0, 0).\n* If the coordinates are not normalized they are interpreted as numbers of pixels."
+  description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are"
 }
 op {
   name: "FFT2D"

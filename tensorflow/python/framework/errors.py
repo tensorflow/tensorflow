@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Exception types for TensorFlow errors."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -432,3 +432,24 @@ def _make_specific_exception(node_def, op, message, error_code):
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)
     return UnknownError(node_def, op, message, error_code)
+
+
+# These are documented in client/client_lib.py.
+__all__ = [
+    "AbortedError",
+    "AlreadyExistsError",
+    "CancelledError",
+    "DataLossError",
+    "DeadlineExceededError",
+    "FailedPreconditionError",
+    "InternalError",
+    "InvalidArgumentError",
+    "NotFoundError",
+    "OutOfRangeError",
+    "PermissionDeniedError",
+    "ResourceExhaustedError",
+    "UnauthenticatedError",
+    "UnavailableError",
+    "UnimplementedError",
+    "UnknownError",
+]

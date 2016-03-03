@@ -1218,10 +1218,10 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   Status s = ctx->status();
   if (!s.ok()) {
     s = AttachDef(s, item.kernel->def());
-    LOG(WARNING) << this << " Compute status: " << s;
     // TODO(misard) Replace with a finer-grain enabling flag once we
     // add better optional debugging support.
     if (VLOG_IS_ON(1)) {
+      LOG(WARNING) << this << " Compute status: " << s;
       DumpState();
     }
     return s;

@@ -149,14 +149,30 @@ class Call : public UntypedCall<Service> {
       Call<Service, GrpcService, RequestMessage, ResponseMessage>*);
 
   Call(HandleRequestFunction handle_request_function)
-      : handle_request_function_(handle_request_function), responder_(&ctx_) {}
+      : handle_request_function_(handle_request_function),
+        responder_(&ctx_),
+        cancel_tag_(new typename UntypedCall<Service>::Tag(
+            this, &UntypedCall<Service>::RequestCancelled)) {
+    // The `ctx_` borrows the `cancel_tag_` until
+    // `this->RequestReceived()` is called.
+    ctx_.AsyncNotifyWhenDone(cancel_tag_.get());
+  }
 
   virtual ~Call() {}
 
   void RequestReceived(Service* service, bool ok) override {
     if (ok) {
+      // At this point, the `cancel_tag_` becomes owned by the
+      // completion queue.
+      cancel_tag_.release();
+
       this->Ref();
       (service->*handle_request_function_)(this);
+    } else {
+      // `!ok` implies we never received a request for this call, and
+      // the `cancel_tag_` will never be added to the completion
+      // queue, so we free it here.
+      cancel_tag_.reset();
     }
   }
 
@@ -201,9 +217,6 @@ class Call : public UntypedCall<Service> {
     auto call = new Call<Service, GrpcService, RequestMessage, ResponseMessage>(
         handle_request_function);
 
-    call->ctx_.AsyncNotifyWhenDone(new typename UntypedCall<Service>::Tag(
-        call, &UntypedCall<Service>::RequestCancelled));
-
     (grpc_service->*enqueue_function)(
         &call->ctx_, &call->request, &call->responder_, cq, cq,
         new typename UntypedCall<Service>::Tag(
@@ -220,6 +233,12 @@ class Call : public UntypedCall<Service> {
   ::grpc::ServerAsyncResponseWriter<ResponseMessage> responder_;
   mutex mu_;
   std::function<void()> cancel_callback_ GUARDED_BY(mu_);
+
+  // This tag is initially owned by `*this` and borrowed by
+  // `ctx_->AsyncNotifyWhenDone()`. Ownership is transferred to the
+  // appropriate service's completion queue after
+  // `this->RequestReceived(..., true)` is called.
+  std::unique_ptr<typename UntypedCall<Service>::Tag> cancel_tag_;
 };
 
 }  // namespace tensorflow

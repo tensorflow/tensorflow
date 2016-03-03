@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -31,47 +32,51 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ParseFlagsForTask(int argc, char* argv[], GrpcServerOptions* options) {
+Status ParseFlagsForTask(int argc, char* argv[], ServerDef* options) {
   string job_spec;
   int num_cpus = 1;
   int num_gpus = 0;
+  int task_index = 0;
   const bool parse_result =
-      ParseFlags(&argc, argv, {Flag("tf_jobs", &job_spec),             //
-                               Flag("tf_job", &options->job_name),     //
-                               Flag("tf_task", &options->task_index),  //
-                               Flag("num_cpus", &num_cpus),            //
+      ParseFlags(&argc, argv, {Flag("tf_jobs", &job_spec),                   //
+                               Flag("tf_job", options->mutable_job_name()),  //
+                               Flag("tf_task", &task_index),                 //
+                               Flag("num_cpus", &num_cpus),                  //
                                Flag("num_gpus", &num_gpus)});
+
+  options->set_task_index(task_index);
+
   if (!parse_result) {
     return errors::InvalidArgument("Error parsing command-line flags");
   }
 
   uint32 my_tasks_per_replica = 0;
   for (const string& job_str : str_util::Split(job_spec, ',')) {
-    // Split each entry in the flag into 3 pieces, separated by "|".
+    JobDef* job_def = options->mutable_cluster()->add_job();
+    // Split each entry in the flag into 2 pieces, separated by "|".
     const std::vector<string> job_pieces = str_util::Split(job_str, '|');
     CHECK_EQ(2, job_pieces.size()) << job_str;
-    const string& job = job_pieces[0];
+    job_def->set_name(job_pieces[0]);
     // Does a bit more validation of the tasks_per_replica.
     const StringPiece spec = job_pieces[1];
     // job_str is of form <job_name>|<host_ports>.
     const std::vector<string> host_ports = str_util::Split(spec, ';');
     uint32 tasks_per_replica = host_ports.size();
-    if (job == options->job_name) {
+    for (size_t i = 0; i < host_ports.size(); ++i) {
+      (*job_def->mutable_tasks())[i] = host_ports[i];
+    }
+    if (job_def->name() == options->job_name()) {
       my_tasks_per_replica = tasks_per_replica;
     }
-    TF_RETURN_IF_ERROR(options->channel_spec.AddHostPortsJob(
-        job, host_ports, tasks_per_replica));
-    LOG(INFO) << "Peer " << job << " " << tasks_per_replica << " {"
+    LOG(INFO) << "Peer " << job_def->name() << " " << tasks_per_replica << " {"
               << str_util::Join(host_ports, ", ") << "}";
   }
   if (my_tasks_per_replica == 0) {
     return errors::InvalidArgument("Invalid job specification");
   }
-
-  (*options->default_session_options.config.mutable_device_count())["CPU"] =
-      num_cpus;
-  (*options->default_session_options.config.mutable_device_count())["GPU"] =
-      num_gpus;
+  ConfigProto* config = options->mutable_default_session_config();
+  (*config->mutable_device_count())["CPU"] = num_cpus;
+  (*config->mutable_device_count())["GPU"] = num_gpus;
   return Status::OK();
 }
 
@@ -80,13 +85,25 @@ Status ParseFlagsForTask(int argc, char* argv[], GrpcServerOptions* options) {
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-  tensorflow::GrpcServerOptions options;
-  tensorflow::Status s = tensorflow::ParseFlagsForTask(argc, argv, &options);
+
+  tensorflow::ServerDef def;
+  tensorflow::Status s = tensorflow::ParseFlagsForTask(argc, argv, &def);
+
   if (!s.ok()) {
     LOG(ERROR) << "Could not parse flags: " << s.error_message();
     return -1;
   }
-  tensorflow::StartTensorFlowServer(options);
+
+  std::unique_ptr<tensorflow::ServerInterface> svr;
+  s = tensorflow::NewServer(def, &svr);
+
+  if (!s.ok()) {
+    LOG(ERROR) << "Could not create server: " << s.error_message();
+    return -1;
+  }
+  svr->Start();
+  svr->Join();
+
   // NOTE(mrry): Unreachable code.
   return 0;
 }

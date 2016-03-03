@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/attention_ops.cc.
+// See docs in ../ops/image_ops.cc.
 
 #define EIGEN_USE_THREADS
 

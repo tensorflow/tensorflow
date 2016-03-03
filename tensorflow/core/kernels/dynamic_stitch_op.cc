@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -51,10 +52,13 @@ class DynamicStitchOp : public OpKernel {
 
     int32 max_index = -1;
     for (const Tensor& indices : indices_inputs) {
-      Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
-          indices.flat<int32>().maximum();
-      max_index = std::max(m(), max_index);
+      if (indices.NumElements() > 0) {
+        Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
+            indices.flat<int32>().maximum();
+        max_index = std::max(m(), max_index);
+      }
     }
+
     const int first_dim_size = max_index + 1;
 
     // Validate that data[i].shape = indices[i].shape + constant
@@ -109,16 +113,23 @@ class DynamicStitchOp : public OpKernel {
           const T* data_base = &data_flat(0, 0);
           const size_t slice_bytes = slice_size * sizeof(T);
           for (int i = 0; i < indices_vec.size(); i++) {
-            memcpy(merged_base + indices_vec(i) * slice_size,
-                   data_base + i * slice_size, slice_bytes);
+            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            OP_REQUIRES(
+                c, FastBoundsCheck(index, first_dim_size),
+                errors::InvalidArgument("indices[", i, "] is out of range"));
+            memcpy(merged_base + index * slice_size, data_base + i * slice_size,
+                   slice_bytes);
           }
         } else {
           Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
           for (int i = 0; i < indices_vec.size(); i++) {
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
-            Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(indices_vec(i),
-                                                               0);
+            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            OP_REQUIRES(
+                c, FastBoundsCheck(index, first_dim_size),
+                errors::InvalidArgument("indices[", i, "] is out of range"));
+            Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
             merged_flat.slice(merged_indices, sizes) =
                 data_flat.slice(data_indices, sizes);
           }

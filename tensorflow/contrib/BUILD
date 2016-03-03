@@ -11,6 +11,7 @@ py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/contrib/ctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
