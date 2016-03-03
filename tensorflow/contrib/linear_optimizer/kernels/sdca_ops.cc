@@ -17,16 +17,19 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <stddef.h>
 #include <atomic>
-#include <memory>
+#include <cmath>
+#include <functional>
+#include <limits>
 #include <random>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
+#include "tensorflow/contrib/linear_optimizer/kernels/resources.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -35,9 +38,16 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/sparse/group_iterator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -46,10 +56,12 @@ namespace {
 
 // A feature group of a single example by this struct.
 struct PerExampleSparseIndicesWeights {
-  // N X 2 matrix with (example_id, feature_indices).
-  TTypes<const int64>::UnalignedMatrix indices;
-  // N X 1 vector with feature weights.
-  TTypes<float>::UnalignedVec values;
+  // N X 1 vector with feature indices.
+  Eigen::Tensor</*const*/ int64, 1, Eigen::RowMajor> feature_indices;
+
+  // N X 1 vector with feature values.
+  TTypes</*const*/ float>::UnalignedVec feature_values;
+
   // sum squared norm of the features.
   double norm;
 };
@@ -68,64 +80,6 @@ struct PerExampleData {
   double old_wx = 0;
   double wx = 0;
   double norm = 0;
-};
-
-// Resource for storing dual variable per example across many sessions.
-// This class is thread-safe.
-class DualsByExample : public ResourceBase {
- public:
-  DualsByExample(const string& container, const string& solver_uuid)
-      : container_(container), solver_uuid_(solver_uuid) {}
-
-  virtual ~DualsByExample() {}
-
-  // The current probability of at least on collision for 1B example_ids is
-  // approximately 10^-11 (ie 2^60 / 2^97).
-  //
-  // TODO(katsiapis): Investigate using a smaller key space to save memory if
-  // collisions are not much of an issue.
-  using Key = std::pair<uint64, uint32>;
-
-  static Key MakeKey(const string& example_id) {
-    // Platform agnostic and collision resistant key-generation function.
-    //
-    // TODO(katsiapis): Avoid the double-pass over the data.
-    static const uint64 kSeed1 = 0xDECAFCAFFE;  // Same as Hash64 default seed.
-    static const uint64 kSeed2 = 0xABCDEF0123;  // Anything != kSeed1 will do.
-    return std::make_pair(
-        Hash64(example_id.data(), example_id.size(), kSeed1),
-        Hash64(example_id.data(), example_id.size(), kSeed2) & 0xFFFFFFFF);
-  }
-
-  float& operator[](const Key& key) {
-    mutex_lock l(mu_);
-    return duals_by_example_[key];
-  }
-
-  string DebugString() override {
-    return strings::StrCat("DualsByExample(", container_, ", ", solver_uuid_,
-                           ")");
-  }
-
- private:
-  struct KeyHash {
-    size_t operator()(const Key& key) const {
-      // Since key.first is already a Hash64 it suffices.
-      return key.first;
-    }
-  };
-
-  const string container_;
-  const string solver_uuid_;
-
-  // TODO(katsiapis): Come up with a more efficient locking scheme.
-  mutex mu_;
-
-  // Backing container.
-  //
-  // sizeof(EntryPayload) = sizeof(Key) + sizeof(float) = 16.
-  // So on average we use ~35 bytes per entry in this table.
-  std::unordered_map<Key, float, KeyHash> duals_by_example_;  // Guarded by mu_.
 };
 
 // Weights associated with a (sparse or dense) feature group, such that the size
@@ -150,13 +104,20 @@ Status FillSparseExamplesByGroup(
     const int64 num_sparse_features, const int64 num_examples,
     const OpInputList& sparse_features_indices_inputs,
     const OpInputList& sparse_features_values_inputs,
+    const WeightsByGroup& sparse_weights_by_group,
     const DeviceBase::CpuWorkerThreads& worker_threads,
     SparseExamplesByGroup* const sparse_examples_by_group) {
-  mutex mu;
-  Status result;  // Guarded by mu.
+  if (sparse_features_indices_inputs.size() != num_sparse_features ||
+      sparse_features_values_inputs.size() != num_sparse_features ||
+      sparse_weights_by_group.size() != num_sparse_features) {
+    return errors::Internal("Unaligned sparse features.");
+  }
 
   sparse_examples_by_group->clear();
   sparse_examples_by_group->resize(num_sparse_features);
+
+  mutex mu;
+  Status result;  // Guarded by mu.
   {
     auto parse_partition = [&](const int64 begin, const int64 end) {
       // We set the order as [0, 1], which specifies that its row-major
@@ -168,22 +129,49 @@ Status FillSparseExamplesByGroup(
       for (int64 i = begin; i < end; ++i) {
         if (sparse_features_indices_inputs[i].shape().dims() != kIndicesDims) {
           mutex_lock l(mu);
-          result = errors::InvalidArgument(strings::StrCat(
-              "Indices should have exactly ", kIndicesDims, " dimensions"));
+          result = errors::InvalidArgument(strings::Printf(
+              "Indices should have exactly %lld dimensions. Encountered: %d",
+              kIndicesDims, sparse_features_indices_inputs[i].shape().dims()));
           return;
         }
+
         sparse::SparseTensor st(
             sparse_features_indices_inputs[i], sparse_features_values_inputs[i],
             sparse_features_indices_inputs[i].shape(), order);
         (*sparse_examples_by_group)[i] = SparseExamples(num_examples);
         for (const auto& example_group : st.group({0})) {
-          const int64 example_index = example_group.indices()(0, 0);
+          const TTypes<int64>::UnalignedConstMatrix indices =
+              example_group.indices();
+          const int64 example_index = indices(0, 0);
+          if (example_index < 0 || example_index >= num_examples) {
+            mutex_lock l(mu);
+            result = errors::Internal(strings::Printf(
+                "Example indices should be in [0, %lld). Encountered: %lld",
+                num_examples, example_index));
+            return;
+          }
+
+          const auto feature_indices = indices.chip</*dim=*/1>(/*offset=*/1);
+          const Eigen::Tensor<int64, 0, Eigen::RowMajor> min_feature_index =
+              feature_indices.minimum();
+          const Eigen::Tensor<int64, 0, Eigen::RowMajor> max_feature_index =
+              feature_indices.maximum();
+          if (min_feature_index() < 0 ||
+              max_feature_index() >= sparse_weights_by_group[i].size()) {
+            mutex_lock l(mu);
+            result = errors::InvalidArgument(strings::Printf(
+                "Feature indices should be in [0, %ld). Encountered "
+                "min:%lld max:%lld for example:%lld",
+                sparse_weights_by_group[i].size(), min_feature_index(),
+                max_feature_index(), example_index));
+            return;
+          }
+
           const Eigen::Tensor<float, 0, Eigen::RowMajor> norm =
               example_group.values<float>().square().sum();
           (*sparse_examples_by_group)[i][example_index].reset(
-              new PerExampleSparseIndicesWeights{example_group.indices(),
-                                                 example_group.values<float>(),
-                                                 norm()});
+              new PerExampleSparseIndicesWeights{
+                  feature_indices, example_group.values<float>(), norm()});
         }
       }
     };
@@ -261,10 +249,10 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
     const TTypes<float>::Vec weights = sparse_weights_by_group[i];
     const TTypes<float>::Vec delta_weights = sparse_delta_weights_by_group[i];
     if (sparse_indices_values[example_id]) {
-      const auto indices = sparse_indices_values[example_id]->indices;
-      const auto values = sparse_indices_values[example_id]->values;
+      const auto indices = sparse_indices_values[example_id]->feature_indices;
+      const auto values = sparse_indices_values[example_id]->feature_values;
       for (int64 dim = 0; dim < indices.dimension(0); ++dim) {
-        const int64 index = indices(dim, 1);
+        const int64 index = indices(dim);
         const double weight = weights(index);
         const double value = values(dim);
         result.old_wx += Shrink(weight, shrink_by) * value;
@@ -333,14 +321,14 @@ void UpdateDeltaWeights(const int64 example_id,
     const SparseExamples& sparse_examples = sparse_examples_by_group[i];
     TTypes<float>::Vec delta_weights = (*sparse_delta_weights_by_group)[i];
     if (sparse_examples[example_id]) {
-      const auto indices = sparse_examples[example_id]->indices;
-      const auto values = sparse_examples[example_id]->values;
+      const auto indices = sparse_examples[example_id]->feature_indices;
+      const auto values = sparse_examples[example_id]->feature_values;
       for (int64 dim = 0; dim < indices.dimension(0); ++dim) {
         // TODO(rohananil): Atomic updates provide better convergence guarantees
         // However, casting float to atomic<float> is UB. We may consider
         // sharded set of locks, or bring primal-dual relationship to consistent
         // state after several epochs.
-        delta_weights(indices(dim, 1)) +=
+        delta_weights(indices(dim)) +=
             bounded_dual_delta * values(dim) / l2_regularization;
       }
     }
@@ -348,7 +336,7 @@ void UpdateDeltaWeights(const int64 example_id,
   for (size_t i = 0; i < dense_features_by_group.size(); ++i) {
     const auto values = dense_features_by_group[i];
     TTypes<float>::Vec delta_weights = (*dense_delta_weights_by_group)[i];
-    // TODO(rohananil): Atomic updates provide better convergence gaurantees
+    // TODO(rohananil): Atomic updates provide better convergence guarantees
     // However, casting float to atomic<float> is UB. We may consider
     // sharded set of locks, or bring primal-dual relationship to consistent
     // state after several epochs.
@@ -453,12 +441,16 @@ class SdcaSolver : public OpKernel {
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input("example_weights", &example_weights_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(example_weights_t->shape()),
+                errors::InvalidArgument("example_weights should be a vector."));
     const auto example_weights = example_weights_t->vec<float>();
 
     Tensor primal_loss_t;
     OP_REQUIRES_OK(context,
                    context->mutable_input("primal_loss", &primal_loss_t,
                                           /*lock_held=*/true));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(primal_loss_t.shape()),
+                errors::InvalidArgument("primal_loss should be a scalar."));
     auto primal_loss = primal_loss_t.scalar<double>();
 
     Eigen::Tensor<float, 0, Eigen::RowMajor> example_weights_sum;
@@ -478,24 +470,6 @@ class SdcaSolver : public OpKernel {
     regularizations_.symmetric_l2 =
         std::max(regularizations_.symmetric_l2 * weighted_examples, 1.0f);
 
-    OpInputList sparse_features_indices_inputs;
-    OP_REQUIRES_OK(context,
-                   context->input_list("sparse_features_indices",
-                                       &sparse_features_indices_inputs));
-    OpInputList sparse_features_values_inputs;
-    OP_REQUIRES_OK(context,
-                   context->input_list("sparse_features_values",
-                                       &sparse_features_values_inputs));
-
-    SparseExamplesByGroup sparse_examples_by_group;
-    OP_REQUIRES_OK(
-        context,
-        FillSparseExamplesByGroup(
-            num_sparse_features_, num_examples, sparse_features_indices_inputs,
-            sparse_features_values_inputs,
-            *context->device()->tensorflow_cpu_worker_threads(),
-            &sparse_examples_by_group));
-
     OpInputList dense_features_inputs;
     OP_REQUIRES_OK(
         context, context->input_list("dense_features", &dense_features_inputs));
@@ -508,21 +482,25 @@ class SdcaSolver : public OpKernel {
     const Tensor* example_labels_t;
     OP_REQUIRES_OK(context,
                    context->input("example_labels", &example_labels_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(example_labels_t->shape()),
+                errors::InvalidArgument("example_labels should be a vector."));
     const auto example_labels = example_labels_t->vec<float>();
     OP_REQUIRES(context, example_labels.size() == num_examples,
-                errors::InvalidArgument(strings::StrCat(
-                    "The number of example labels does not match the number of "
-                    "example weights: (",
-                    example_labels.size(), " vs ", num_examples, ")")));
+                errors::InvalidArgument(strings::Printf(
+                    "The number of example labels (%ld) should match the "
+                    "number of example weights (%lld).",
+                    example_labels.size(), num_examples)));
 
     const Tensor* example_ids_t;
     OP_REQUIRES_OK(context, context->input("example_ids", &example_ids_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(example_ids_t->shape()),
+                errors::InvalidArgument("example_ids should be a vector."));
     const auto example_ids = example_ids_t->vec<string>();
-    OP_REQUIRES(context, example_ids.size() == num_examples,
-                errors::InvalidArgument(strings::StrCat(
-                    "The number of example ids does not match the number of "
-                    "example weights: (",
-                    example_ids.size(), " vs ", num_examples, ")")));
+    OP_REQUIRES(context, example_labels.size() == num_examples,
+                errors::InvalidArgument(strings::Printf(
+                    "The number of example ids (%ld) should match the number "
+                    "of example weights (%lld).",
+                    example_ids.size(), num_examples)));
 
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
@@ -545,6 +523,23 @@ class SdcaSolver : public OpKernel {
         MakeTensorsLike(&dense_weights_inputs);
     WeightsByGroup dense_delta_weights_by_group =
         MakeDeltaWeightsFrom(&dense_delta_weights_by_group_backing_store);
+
+    OpInputList sparse_features_indices_inputs;
+    OP_REQUIRES_OK(context,
+                   context->input_list("sparse_features_indices",
+                                       &sparse_features_indices_inputs));
+    OpInputList sparse_features_values_inputs;
+    OP_REQUIRES_OK(context,
+                   context->input_list("sparse_features_values",
+                                       &sparse_features_values_inputs));
+    SparseExamplesByGroup sparse_examples_by_group;
+    OP_REQUIRES_OK(
+        context,
+        FillSparseExamplesByGroup(
+            num_sparse_features_, num_examples, sparse_features_indices_inputs,
+            sparse_features_values_inputs, sparse_weights_by_group,
+            *context->device()->tensorflow_cpu_worker_threads(),
+            &sparse_examples_by_group));
 
     // Those will be shuffled below at each iteration and processed in a
     // partitioned fashion across multiple threads.

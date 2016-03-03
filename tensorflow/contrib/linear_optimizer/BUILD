@@ -14,9 +14,6 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 cc_binary(
     name = "python/ops/_sdca_ops.so",
     srcs = [
-        "kernels/logistic-loss.h",
-        "kernels/sdca_ops.cc",
-        "kernels/squared-loss.h",
         "ops/sdca_ops.cc",
     ],
     linkopts = select({
@@ -29,6 +26,7 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     deps = [
+        "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -66,5 +64,4 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

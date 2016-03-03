@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import uuid
 
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
