@@ -63,17 +63,20 @@ Master::Master(MasterEnv* env, double session_gc_seconds)
   CHECK(!env->local_devices.empty());
 
   if (session_gc_seconds_ > 0.0) {
-    SchedClosure([this]() { GC(); });
+    gc_thread_ = env_->env->StartThread(ThreadOptions(), "TF_master_GC",
+                                        [this]() { GC(); });
+  } else {
+    gc_thread_ = nullptr;
   }
 }
 
 Master::~Master() {
-  {
+  if (gc_thread_) {
     mutex_lock l(mu_);
     shutdown_ = true;
     shutdown_cv_.notify_all();
+    delete gc_thread_;
   }
-  gc_stopped_.WaitForNotification();
 }
 
 void Master::GC() {
@@ -104,7 +107,6 @@ void Master::GC() {
     }
     for (const auto& handle : handles) sessions_.erase(handle);
   }
-  gc_stopped_.Notify();
 }
 
 class DeviceFinder {
