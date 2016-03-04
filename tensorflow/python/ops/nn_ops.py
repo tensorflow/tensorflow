@@ -104,8 +104,42 @@ def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
 
 
 # pylint: disable=protected-access
-def bias_add(value, bias, name=None):
+def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
+
+  This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
+  Broadcasting is supported, so `value` may have any number of dimensions.
+  Unlike `tf.add`, the type of `bias` is allowed to differ from `value` in the
+  case where both types are quantized.
+
+  Args:
+    value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
+      `int16`, `int8`, or `complex64`.
+    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+      Must be the same type as `value` unless `value` is a quantized type,
+      in which case a different quantized type may be used.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+  """
+  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+    value = ops.convert_to_tensor(value, name="input")
+    bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
+    return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
+
+ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
+
+
+# pylint: disable=protected-access
+def bias_add_v1(value, bias, name=None):
+  """Adds `bias` to `value`.
+
+  This is a deprecated version of bias_add and will soon to be removed.
 
   This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
   Broadcasting is supported, so `value` may have any number of dimensions.
@@ -123,13 +157,16 @@ def bias_add(value, bias, name=None):
   Returns:
     A `Tensor` with the same type as `value`.
   """
-  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+  with ops.op_scope([value, bias], name, "BiasAddV1") as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops._bias_add(value, bias, name=name)
+    return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
 
 
@@ -558,6 +595,30 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     biases = ops.convert_to_tensor(biases, name="biases")
     mm = math_ops.matmul(x, weights)
     return bias_add(mm, biases, name=name)
+
+
+def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(x, weights) + biases.
+
+  This is a deprecated version of that will soon be removed.
+
+  Args:
+    x: a 2D tensor.  Dimensions typically: batch, in_units
+    weights: a 2D tensor.  Dimensions typically: in_units, out_units
+    biases: a 1D tensor.  Dimensions: out_units
+    name: A name for the operation (optional).  If not specified
+      "xw_plus_b_v1" is used.
+
+  Returns:
+    A 2-D Tensor computing matmul(x, weights) + biases.
+    Dimensions typically: batch, out_units.
+  """
+  with ops.op_scope([x, weights, biases], name, "xw_plus_b_v1") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    weights = ops.convert_to_tensor(weights, name="weights")
+    biases = ops.convert_to_tensor(biases, name="biases")
+    mm = math_ops.matmul(x, weights)
+    return bias_add_v1(mm, biases, name=name)
 
 
 # pylint: disable=invalid-name

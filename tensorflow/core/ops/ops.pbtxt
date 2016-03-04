@@ -1531,8 +1531,111 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the bias tensor will be added to the last dimension\nof the value tensor.\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nThe tensor will be added to \"in_channels\", the third-to-the-last\n    dimension."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Adds `bias` to `value`."
   description: "This is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
+}
+op {
+  name: "BiasAddGrad"
+  input_arg {
+    name: "out_backprop"
+    description: "Any number of dimensions."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "1-D with size the feature dimension of `out_backprop`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the bias tensor will be added to the last dimension\nof the value tensor.\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nThe tensor will be added to \"in_channels\", the third-to-the-last\n    dimension."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  summary: "The backward operation for \"BiasAdd\" on the \"bias\" tensor."
+  description: "It accumulates all the values from out_backprop into the feature dimension.\nFor NHWC data format, the feature dimension is the last. For NCHW data format,\nthe feature dimension is the third-to-last."
+}
+op {
+  name: "BiasAddV1"
+  input_arg {
+    name: "value"
+    description: "Any number of dimensions."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "bias"
+    description: "1-D with size the last dimension of `value`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Broadcasted sum of `value` and `bias`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Adds `bias` to `value`."
+  description: "This is a deprecated version of BiasAdd and will be soon removed.\n\nThis is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
 }
 op {
   name: "Bitcast"

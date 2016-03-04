@@ -154,9 +154,60 @@ REGISTER_OP("BiasAdd")
     .Attr("T: numbertype")
     .Input("value: T")
     .Input("bias: T")
+    .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
     .Doc(R"doc(
 Adds `bias` to `value`.
+
+This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+Broadcasting is supported, so `value` may have any number of dimensions.
+
+value: Any number of dimensions.
+bias: 1-D with size the last dimension of `value`.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the bias tensor will be added to the last dimension
+    of the value tensor.
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+    The tensor will be added to "in_channels", the third-to-the-last
+        dimension.
+output: Broadcasted sum of `value` and `bias`.
+)doc");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("BiasAddGrad")
+    .Attr("T: numbertype")
+    .Input("out_backprop: T")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Output("output: T")
+    .Doc(R"doc(
+The backward operation for "BiasAdd" on the "bias" tensor.
+
+It accumulates all the values from out_backprop into the feature dimension.
+For NHWC data format, the feature dimension is the last. For NCHW data format,
+the feature dimension is the third-to-last.
+
+out_backprop: Any number of dimensions.
+output: 1-D with size the feature dimension of `out_backprop`.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the bias tensor will be added to the last dimension
+    of the value tensor.
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+    The tensor will be added to "in_channels", the third-to-the-last
+        dimension.
+)doc");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("BiasAddV1")
+    .Attr("T: numbertype")
+    .Input("value: T")
+    .Input("bias: T")
+    .Output("output: T")
+    .Doc(R"doc(
+Adds `bias` to `value`.
+
+This is a deprecated version of BiasAdd and will be soon removed.
 
 This is a special case of `tf.add` where `bias` is restricted to be 1-D.
 Broadcasting is supported, so `value` may have any number of dimensions.
