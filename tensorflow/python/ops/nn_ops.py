@@ -456,6 +456,26 @@ def _Conv2DBackpropInputShape(op):
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
+def _DepthwiseConv2dNativeBackpropFilterShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropFilter op."""
+  filter_shape = tensor_util.constant_value(op.inputs[1])
+  if filter_shape is not None:
+    return [tensor_shape.TensorShape(filter_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
+def _DepthwiseConv2dNativeBackpropInputShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropInput op."""
+  input_shape = tensor_util.constant_value(op.inputs[0])
+  if input_shape is not None:
+    return [tensor_shape.TensorShape(input_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
 @ops.RegisterShape("MaxPoolGrad")
 @ops.RegisterShape("MaxPoolGradWithArgmax")
 def _MaxPoolGradShape(op):

@@ -181,6 +181,18 @@ def _Conv2DGrad(op, grad):
                                         op.get_attr("data_format"))]
 
 
+@ops.RegisterGradient("DepthwiseConv2dNative")
+def _DepthwiseConv2dNativeGrad(op, grad):
+  return [
+      nn_ops.depthwise_conv2d_native_backprop_input(
+          array_ops.shape(op.inputs[0]), op.inputs[1], grad,
+          op.get_attr("strides"), op.get_attr("padding")),
+      nn_ops.depthwise_conv2d_native_backprop_filter(
+          op.inputs[0], array_ops.shape(op.inputs[1]), grad,
+          op.get_attr("strides"), op.get_attr("padding"))
+  ]
+
+
 @ops.RegisterGradient("LRN")
 def _LRNGrad(op, grad):
   depth_radius = op.get_attr("depth_radius")
