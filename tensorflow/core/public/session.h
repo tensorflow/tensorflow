@@ -80,6 +80,9 @@ namespace tensorflow {
 /// after all other calls to Run() have returned.
 class Session {
  public:
+  Session();
+  virtual ~Session();
+
   /// \brief Create the graph to be used for the session.
   ///
   /// Returns an error if this session has already been created with a
@@ -142,10 +145,7 @@ class Session {
                      const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
-                     std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
-    return errors::Unimplemented(
-        "RunWithOpts() is not supported for this session.");
-  }
+                     std::vector<Tensor>* outputs, RunOutputs* run_outputs);
 
   /// \brief Sets up a graph for partial execution. All future feeds and
   /// fetches are specified by 'input_names' and 'output_names'. Returns
@@ -155,11 +155,7 @@ class Session {
   virtual Status PRunSetup(const std::vector<string>& input_names,
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
-                           string* handle) {
-    return errors::Unimplemented(
-        "Partial run is not supported for"
-        " this session.");
-  }
+                           string* handle);
 
   /// \brief Continues the pending execution specified by 'handle' with the
   /// provided input tensors and fills `outputs` for the endpoints specified
@@ -168,11 +164,7 @@ class Session {
   virtual Status PRun(const string& handle,
                       const std::vector<std::pair<string, Tensor> >& inputs,
                       const std::vector<string>& output_names,
-                      std::vector<Tensor>* outputs) {
-    return errors::Unimplemented(
-        "Partial run is not supported for"
-        " this session.");
-  }
+                      std::vector<Tensor>* outputs);
 
   /// \brief Closes this session.
   ///
@@ -180,8 +172,6 @@ class Session {
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
-
-  virtual ~Session() {}
 };
 
 /// \brief Create a new session with the given options.

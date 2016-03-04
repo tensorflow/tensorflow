@@ -22,6 +22,35 @@ limitations under the License.
 
 namespace tensorflow {
 
+Session::Session() {}
+
+Session::~Session() {}
+
+Status Session::Run(const RunOptions& run_options,
+                    const std::vector<std::pair<string, Tensor> >& inputs,
+                    const std::vector<string>& output_tensor_names,
+                    const std::vector<string>& target_node_names,
+                    std::vector<Tensor>* outputs, RunOutputs* run_outputs) {
+  return errors::Unimplemented(
+      "Run with options is not supported for this session.");
+}
+
+Status Session::PRunSetup(const std::vector<string>& input_names,
+                          const std::vector<string>& output_names,
+                          const std::vector<string>& target_nodes,
+                          string* handle) {
+  return errors::Unimplemented(
+      "Partial run is not supported for this session.");
+}
+
+Status Session::PRun(const string& handle,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_names,
+                     std::vector<Tensor>* outputs) {
+  return errors::Unimplemented(
+      "Partial run is not supported for this session.");
+}
+
 Session* NewSession(const SessionOptions& options) {
   SessionFactory* factory;
   Status s = SessionFactory::GetFactory(options, &factory);
