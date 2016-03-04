@@ -932,22 +932,23 @@ def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
         (max_time, delta_static, delta_dynamic, delta_dynamic/delta_static))
 
 
+def _timer(sess, ops):
+  # Warm in
+  for _ in range(5):
+    sess.run(ops)
+
+  # Timing run
+  runs = 10
+  start = time.time()
+  for _ in range(runs):
+    sess.run(ops)
+  end = time.time()
+  return (end - start)/float(runs)
+
+
 def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   config = tf.ConfigProto()
   config.allow_soft_placement = True
-
-  def _timer(sess, ops):
-    # Warm in
-    for _ in range(2):
-      sess.run(ops)
-
-    # Timing run
-    start = time.time()
-    for _ in range(10):
-      sess.run(ops)
-    end = time.time()
-
-    return (end - start)/10.0  # Average runtime per iteration
 
   # Set up sequence lengths
   np.random.seed([127])
@@ -1011,19 +1012,6 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
   config = tf.ConfigProto()
   config.allow_soft_placement = True
 
-  def _timer(sess, ops):
-    # Warm in
-    for _ in range(2):
-      sess.run(ops)
-
-    # Timing run
-    start = time.time()
-    for _ in range(10):
-      sess.run(ops)
-    end = time.time()
-
-    return (end - start)/10.0  # Average runtime per iteration
-
   # Set up sequence lengths
   np.random.seed([127])
   sequence_length = np.random.randint(0, max_time, size=batch_size)
@@ -1052,6 +1040,40 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
         (batch_size, max_time, num_units, no_swap, swap, swap/no_swap))
 
 
+def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
+                                dynamic, swap_memory):
+  config = tf.ConfigProto()
+  config.allow_soft_placement = True
+
+  # Set up sequence lengths
+  np.random.seed([127])
+  sequence_length = [seqlen for _ in range(batch_size)]
+  inputs_list = [
+      np.random.randn(batch_size, num_units).astype(np.float32)
+      for _ in range(seqlen)]
+  inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
+
+  for _ in range(5):
+    if dynamic:
+      with tf.Session(config=config, graph=tf.Graph()) as sess:
+        inputs_t = tf.constant(inputs)
+        ops = _dynamic_rnn_swap_memory_benchmark(
+            inputs_t, sequence_length, swap_memory=swap_memory)
+        tf.initialize_all_variables().run()
+        elapsed = _timer(sess, ops)
+    else:
+      with tf.Session(config=config, graph=tf.Graph()) as sess:
+        inputs_list_t = [tf.constant(x) for x in inputs_list]
+        ops = _static_vs_dynamic_rnn_benchmark_static(
+            inputs_list_t, sequence_length)
+        tf.initialize_all_variables().run()
+        elapsed = _timer(sess, ops)
+
+    print("%d \t %d \t %d \t %s \t %f \t %f" %
+          (batch_size, seqlen, num_units, dynamic, elapsed,
+           elapsed/seqlen))
+
+
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
@@ -1074,8 +1096,7 @@ def main(_):
   for batch_size in (256, 512):
     for max_time in (50, 100):
       for num_units in (512, 256, 128):
-        dynamic_rnn_swap_memory_benchmark(
-            batch_size, max_time, num_units)
+        dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units)
 
 
 if __name__ == "__main__":
