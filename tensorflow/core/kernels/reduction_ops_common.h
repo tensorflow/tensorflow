@@ -171,7 +171,7 @@ class ReductionOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
                                            &tmp_out, alloc_attr));
 
-    typedef functor::ReduceFunctor<Device> Functor;
+    typedef functor::ReduceFunctor<Device, Reducer> Functor;
     Constants<Device> constants;
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
@@ -234,10 +234,9 @@ class ReductionOp : public OpKernel {
 
 namespace functor {
 
-template <>
-struct ReduceFunctor<CPUDevice> {
-  template <typename OUT_T, typename IN_T, typename ReductionAxes,
-            typename Reducer>
+template <typename Reducer>
+struct ReduceFunctor<CPUDevice, Reducer> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(const CPUDevice& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {

@@ -483,13 +483,16 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
 
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
+  with ops.op_scope([], "dynamic_rnn") as scope:
+    base_name = scope
+
   output_ta = tensor_array_ops.TensorArray(
       dtype=inputs.dtype, size=time_steps,
-      tensor_array_name="dynamic_rnn_output")
+      tensor_array_name=base_name + "output")
 
   input_ta = tensor_array_ops.TensorArray(
       dtype=inputs.dtype, size=time_steps,
-      tensor_array_name="dynamic_rnn_input")
+      tensor_array_name=base_name + "input")
 
   input_ta = input_ta.unpack(inputs)
 
