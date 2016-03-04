@@ -197,14 +197,14 @@ class SumReductionTest(tf.test.TestCase):
 
 class MeanReductionTest(tf.test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims):
+  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
     np_sum = x
     count = 1
     for ra in reduction_axes[::-1]:
       np_sum = np.sum(np_sum, axis=ra, keepdims=keep_dims)
       count *= x.shape[ra]
     np_ans = np_sum / count
-    with self.test_session():
+    with self.test_session(use_gpu=use_gpu):
       reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = tf.reduce_mean(x, reduction_axes, keep_dims)
       out = tf_ans.eval()
@@ -212,8 +212,10 @@ class MeanReductionTest(tf.test.TestCase):
     self.assertShapeEqual(np_ans, tf_ans)
 
   def _compareAll(self, x, reduction_axes):
-    self._compare(x, reduction_axes, False)
-    self._compare(x, reduction_axes, True)
+    self._compare(x, reduction_axes, False, use_gpu=True)
+    self._compare(x, reduction_axes, True, use_gpu=True)
+    self._compare(x, reduction_axes, False, use_gpu=False)
+    self._compare(x, reduction_axes, True, use_gpu=False)
 
   def testFloatReduce3D(self):
     # Create a 3D array of floats and reduce across all possible

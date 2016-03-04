@@ -30,14 +30,32 @@ typedef Eigen::GpuDevice GPUDevice;
 // TODO(zhifengc): Moves the definition to TTypes.
 typedef TTypes<float>::Tensor::Index Index;
 
-template <>
-struct ReduceFunctor<GPUDevice> {
-  template <typename OUT_T, typename IN_T, typename ReductionAxes,
-            typename Reducer>
+template <typename Reducer>
+struct ReduceFunctor<GPUDevice, Reducer> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(const GPUDevice& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     ReduceEigenImpl(d, To32Bit(out), To32Bit(in), reduction_axes, reducer);
+  }
+};
+
+template <typename T>
+struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(const GPUDevice& d, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MeanReducer<T>& reducer) {
+    typedef typename IN_T::Index Index;
+    // Eigen sum reductions are much faster on GPU than mean reductions:
+    // Simply trigger them by computing the sum of the weighted inputs.
+    Index num_coeffs_to_reduce = 1;
+    for (int i = 0; i < Eigen::internal::array_size<ReductionAxes>::value;
+         ++i) {
+      num_coeffs_to_reduce *= in.dimension(i);
+    }
+    T scale = T(1.0) / num_coeffs_to_reduce;
+    out.device(d) = (in * scale).sum(reduction_axes);
   }
 };
 
@@ -46,7 +64,7 @@ struct ReduceFunctor<GPUDevice> {
 // NUM_AXES: the number of axes to reduce
 // IN_DIMS: the number of dimensions of the input tensor
 #define DEFINE(T, REDUCER, IN_DIMS, NUM_AXES)                        \
-  template void ReduceFunctor<GPUDevice>::Reduce(                    \
+  template void ReduceFunctor<GPUDevice, REDUCER>::Reduce(           \
       const GPUDevice& d, TTypes<T, IN_DIMS - NUM_AXES>::Tensor out, \
       TTypes<T, IN_DIMS>::ConstTensor in,                            \
       const Eigen::array<Index, NUM_AXES>& reduction_axes,           \
@@ -58,10 +76,11 @@ struct ReduceFunctor<GPUDevice> {
   DEFINE(T, R, 3, 1);               \
   DEFINE(T, R, 3, 2);
 
-#define DEFINE_FOR_ALL_REDUCERS(T)                          \
-  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::SumReducer<T>); \
-  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MinReducer<T>); \
-  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MaxReducer<T>); \
+#define DEFINE_FOR_ALL_REDUCERS(T)                           \
+  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::SumReducer<T>);  \
+  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MeanReducer<T>); \
+  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MinReducer<T>);  \
+  DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MaxReducer<T>);  \
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
 DEFINE_FOR_ALL_REDUCERS(float);
