@@ -63,11 +63,14 @@ class MatrixSolveLsOp
     }
   }
 
-  using typename BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix;
-  using typename BinaryLinearAlgebraOp<Scalar,
-                                       SupportsBatchOperationT>::MatrixMap;
-  using typename BinaryLinearAlgebraOp<Scalar,
-                                       SupportsBatchOperationT>::ConstMatrixMap;
+  typedef
+      typename BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix
+          Matrix;
+  typedef
+      typename BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap
+          MatrixMap;
+  typedef typename BinaryLinearAlgebraOp<
+      Scalar, SupportsBatchOperationT>::ConstMatrixMap ConstMatrixMap;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& matrix,
                      const ConstMatrixMap& rhs, MatrixMap* output) override {
