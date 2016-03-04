@@ -105,8 +105,6 @@ PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f
 echo "Python binary path to be used in PIP install-test: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
-# Avoid permission issues outside container
-umask 000
 
 # Directory from which the unit-test files will be run
 PY_TEST_DIR_REL="pip_test/tests"
@@ -267,8 +265,6 @@ for TEST_FILE_PATH in ${ALL_PY_TESTS}; do
 
 done
 
-# Avoid permission issues outside Docker container
-chmod -R 777 "${PY_TEST_DIR_REL}"
 
 echo ""
 echo "${PY_TEST_COUNT} Python test(s):" \

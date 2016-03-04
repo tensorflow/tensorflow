@@ -108,9 +108,6 @@ if [[ -z "$(which ${TIMEOUT_BIN})" ]]; then
 fi
 echo "Binary path for timeout: \"$(which ${TIMEOUT_BIN})\""
 
-# Avoid permission issues outside Docker containers
-umask 000
-
 mkdir -p "${LOGS_DIR}" || die "Failed to create logs directory"
 mkdir -p "${TUT_TEST_ROOT}" || die "Failed to create test directory"
 
