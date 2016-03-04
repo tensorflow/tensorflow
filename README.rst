@@ -19,10 +19,10 @@ Why *Scikit Flow*?
 - To provide a set of reference models that would be easy to integrate with existing code.
 
 Installation
-------------
+============
 
 Dependencies
-~~~~~~~~~~~~
+-----------
 - Python: 2.7, 3.4+ 
 - Scikit learn: 0.16, 0.17, 0.18+ 
 - Tensorflow: 0.7+
@@ -49,6 +49,13 @@ Tutorial
 -  `Categorical variables: One hot vs Distributed
    representation <https://medium.com/@ilblackdragon/tensorflow-tutorial-part-3-c5fc0662bc08>`__
 -  More coming soon.
+
+Community
+---------
+- Twitter `#skflow <https://twitter.com/search?q=skflow&src=typd>`__.
+- StackOverflow with `skflow tag <http://stackoverflow.com/questions/tagged/skflow>`__ for questions and struggles.
+- Github `issues <https://github.com/tensorflow/skflow/issues>`__ for technical discussions and feature requests. 
+- `Gitter channel <https://gitter.im/tensorflow/skflow>`__ for non-trivial discussions.
 
 Usage
 -----
