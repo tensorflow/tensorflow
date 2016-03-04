@@ -1935,13 +1935,14 @@ def map_fn(fn, elems, dtype=None, name=None):
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
-    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=0,
-                                            dynamic_size=True)
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
     elems_ta = elems_ta.unpack(elems)
 
-    n = elems_ta.size()
     i = constant_op.constant(0)
-    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n)
+    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n,
+                                          dynamic_size=False)
     def compute(i, a):
       a = a.write(i, fn(elems_ta.read(i)))
       i = math_ops.add(i, 1)

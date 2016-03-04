@@ -629,6 +629,7 @@ tf_gen_op_wrapper_py(
         "TopK",
         "TopKV2",
         "BiasAdd",
+        "BiasAddV1",
         "Relu6",
         "AvgPool",
         "MaxPool",

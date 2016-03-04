@@ -80,7 +80,34 @@ def _SoftmaxGrad(op, grad_softmax):
 
 
 @ops.RegisterGradient("BiasAdd")
-def _BiasAddGrad(unused_bias_op, received_grad):
+def _BiasAddGrad(op, received_grad):
+  """Return the gradients for the 2 inputs of bias_op.
+
+  The first input of unused_bias_op is the tensor t, and its gradient is
+  just the gradient the unused_bias_op received.
+
+  The second input of unused_bias_op is the bias vector which has one fewer
+  dimension than "received_grad" (the batch dimension.)  Its gradient is the
+  received gradient Summed on the batch dimension, which is the first dimension.
+
+  Args:
+    op: The BiasOp for which we need to generate gradients.
+    received_grad: Tensor.  The gradients passed to the BiasOp.
+
+  Returns:
+    Two tensors, the first one for the "tensor" input of the BiasOp,
+    the second one for the "bias" input of the BiasOp.
+  """
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+  return (received_grad, gen_nn_ops.bias_add_grad(out_backprop=received_grad,
+                                                  data_format=data_format))
+
+
+@ops.RegisterGradient("BiasAddV1")
+def _BiasAddGradV1(unused_bias_op, received_grad):
   """Return the gradients for the 2 inputs of bias_op.
 
   The first input of unused_bias_op is the tensor t, and its gradient is
@@ -179,6 +206,18 @@ def _Conv2DGrad(op, grad):
                                         op.get_attr("padding"),
                                         op.get_attr("use_cudnn_on_gpu"),
                                         op.get_attr("data_format"))]
+
+
+@ops.RegisterGradient("DepthwiseConv2dNative")
+def _DepthwiseConv2dNativeGrad(op, grad):
+  return [
+      nn_ops.depthwise_conv2d_native_backprop_input(
+          array_ops.shape(op.inputs[0]), op.inputs[1], grad,
+          op.get_attr("strides"), op.get_attr("padding")),
+      nn_ops.depthwise_conv2d_native_backprop_filter(
+          op.inputs[0], array_ops.shape(op.inputs[1]), grad,
+          op.get_attr("strides"), op.get_attr("padding"))
+  ]
 
 
 @ops.RegisterGradient("LRN")

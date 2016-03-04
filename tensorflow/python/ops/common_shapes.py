@@ -96,11 +96,37 @@ def bias_add_shape(op):
   bias_shape = op.inputs[1].get_shape().with_rank(1)
   if input_shape.ndims is not None:
     # Output has the same shape as input, and matches the length of
-    # bias in its last dimension.
-    output_shape = input_shape[0:-1].concatenate(
-        input_shape[-1].merge_with(bias_shape[0]))
+    # bias in its bias dimension.
+    try:
+      data_format = op.get_attr("data_format")
+    except ValueError:
+      data_format = None
+    if data_format == "NCHW":
+      # Merge the length of bias_shape into the third-to-last dimension.
+      output_shape = input_shape[0:-3].concatenate(
+          input_shape[-3].merge_with(bias_shape[0])).concatenate(
+              input_shape[-2:])
+    else:
+      output_shape = input_shape[0:-1].concatenate(
+          input_shape[-1].merge_with(bias_shape[0]))
   else:
     output_shape = tensor_shape.unknown_shape()
+  return [output_shape]
+
+
+def bias_add_grad_shape(op):
+  """Shape function for a BiasAddGrad op."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  if data_format == "NCHW":
+    output_shape = input_shape[-3]
+  else:
+    output_shape = input_shape[-1]
+
   return [output_shape]
 
 

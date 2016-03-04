@@ -30,8 +30,8 @@ import six
 
 from google.protobuf import text_format
 
-from tensorflow.core.framework import config_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev

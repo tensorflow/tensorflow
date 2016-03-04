@@ -53,7 +53,7 @@ with tf.Session() as sess:
 ```
 
 The [`ConfigProto`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,
@@ -87,7 +87,7 @@ the session constructor.
     Defaults to using an in-process engine. At present, no value
     other than the empty string is supported.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
-*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
     protocol buffer with configuration options for the session.
 
 

@@ -22,6 +22,7 @@ import os
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
+from tensorflow.python.summary.impl import gcs
 
 
 class DirectoryWatcher(object):
@@ -173,5 +174,13 @@ def SequentialGFileProvider(directory, path_filter=lambda x: True):
     paths = (os.path.join(directory, path)
              for path in gfile.ListDirectory(directory))
     return (path for path in paths if path_filter(path))
+
+  return _SequentialProvider(_Source)
+
+
+def SequentialGCSProvider(directory, path_filter=lambda x: True):
+  """Provides the files in a GCS directory that match the given filter."""
+  def _Source():
+    return (path for path in gcs.ListDirectory(directory) if path_filter(path))
 
   return _SequentialProvider(_Source)
