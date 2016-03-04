@@ -131,6 +131,11 @@ message ConfigProto {
 
   // Options that apply to all graphs.
   GraphOptions graph_options = 10;
+
+  // Global timeout for all blocking operations in this session.  If non-zero,
+  // and not overridden on a per-operation basis, this value will be used as the
+  // deadline for all blocking operations.
+  int64 operation_timeout_in_ms = 11;
 };
 
 // EXPERIMENTAL. Options for a single Run() call.
@@ -140,6 +145,9 @@ message RunOptions {
     FULL_TRACE = 1;
   }
   TraceLevel trace_level = 1;
+
+  // Time to wait for operation to complete in milliseconds.
+  int64 timeout_in_ms = 2;
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.

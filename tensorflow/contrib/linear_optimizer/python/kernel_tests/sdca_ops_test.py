@@ -180,6 +180,28 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                            tf.ones_like(prediction) * 0.5), tf.float32)
       self.assertAllClose([0, 1, 1, 1], predicted_labels.eval())
 
+  def testFractionalLogisticExample(self):
+    # Setup test data with 1 positive, and 1 mostly-negative example.
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, 0.1),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=0.5,
+                     symmetric_l1_regularization=0,
+                     loss_type='logistic_loss')
+      tf.initialize_all_variables().run()
+      with self.assertRaisesOpError(
+          'Only labels of 0.0 or 1.0 are supported right now.'):
+        SdcaModel(CONTAINER, examples, variables, options).minimize().run()
+
   def testNoWeightedExamples(self):
     # Setup test data with 1 positive, and 1 negative example.
     example_protos = [

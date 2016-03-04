@@ -26,18 +26,12 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-static inline bool DoInline(int64 size) { return size <= (256ll << 10); }
-
 template <typename T>
 struct ApplyGradientDescent<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
-    if (DoInline(var.size())) {
-      var -= grad * lr();
-    } else {
-      var.device(d) -= grad * lr();
-    }
+    var.device(d) -= grad * lr();
   }
 };
 
@@ -47,13 +41,8 @@ struct ApplyAdagrad<CPUDevice, T> {
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
-    if (DoInline(var.size())) {
-      accum += grad.square();
-      var -= grad * lr() * accum.rsqrt();
-    } else {
-      accum.device(d) += grad.square();
-      var.device(d) -= grad * lr() * accum.rsqrt();
-    }
+    accum.device(d) += grad.square();
+    var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
 
@@ -67,54 +56,28 @@ struct ApplyFtrl<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar l1,
                   typename TTypes<T>::ConstScalar l2,
                   typename TTypes<T>::ConstScalar lr_power) {
-    if (DoInline(var.size())) {
-      auto new_accum = accum + grad.square();
-      // special case if lr_power=-0.5.
-      if (lr_power() == -0.5) {
-        linear += grad - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
-      } else {
-        linear +=
-            grad -
-            (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
-      }
-      auto x = (linear.constant(l1()) * linear.sign() - linear);
-      // special case if lr_power=-0.5.
-      if (lr_power() == -0.5) {
-        auto y = new_accum.sqrt() / new_accum.constant(lr()) +
-                 linear.constant(2 * l2());
-        var = x / y;
-      } else {
-        auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
-                 linear.constant(2 * l2());
-        var = x / y;
-      }
-      var = (linear.abs() > linear.constant(l1())).select(var, var.constant(0));
-      accum += grad.square();
+    auto new_accum = accum + grad.square();
+    // special case for which lr_power=-0.5.
+    if (lr_power() == -0.5) {
+      linear.device(d) += grad - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
     } else {
-      auto new_accum = accum + grad.square();
-      // special case for which lr_power=-0.5.
-      if (lr_power() == -0.5) {
-        linear.device(d) +=
-            grad - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
-      } else {
-        linear.device(d) +=
-            grad -
-            (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
-      }
-      auto x = (linear.constant(l1()) * linear.sign() - linear);
-      if (lr_power() == -0.5) {
-        auto y = new_accum.sqrt() / new_accum.constant(lr()) +
-                 linear.constant(2 * l2());
-        var.device(d) = x / y;
-      } else {
-        auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
-                 linear.constant(2 * l2());
-        var.device(d) = x / y;
-      }
-      var.device(d) =
-          (linear.abs() > linear.constant(l1())).select(var, var.constant(0));
-      accum.device(d) += grad.square();
+      linear.device(d) +=
+          grad -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
     }
+    auto x = (linear.constant(l1()) * linear.sign() - linear);
+    if (lr_power() == -0.5) {
+      auto y = new_accum.sqrt() / new_accum.constant(lr()) +
+               linear.constant(2 * l2());
+      var.device(d) = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
+               linear.constant(2 * l2());
+      var.device(d) = x / y;
+    }
+    var.device(d) =
+        (linear.abs() > linear.constant(l1())).select(var, var.constant(0));
+    accum.device(d) += grad.square();
   }
 };
 
@@ -125,13 +88,8 @@ struct ApplyMomentum<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar momentum) {
-    if (DoInline(var.size())) {
-      accum = accum * momentum() + grad;
-      var -= accum * lr();
-    } else {
-      accum.device(d) = accum * momentum() + grad;
-      var.device(d) -= accum * lr();
-    }
+    accum.device(d) = accum * momentum() + grad;
+    var.device(d) -= accum * lr();
   }
 };
 
@@ -147,15 +105,9 @@ struct ApplyAdam<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad) {
     const T alpha = lr() * std::sqrt(1 - beta2_power()) / (1 - beta1_power());
-    if (DoInline(var.size())) {
-      m += (grad - m) * (1 - beta1());
-      v += (grad.square() - v) * (1 - beta2());
-      var -= (m * alpha) / (v.sqrt() + epsilon());
-    } else {
-      m.device(d) += (grad - m) * (1 - beta1());
-      v.device(d) += (grad.square() - v) * (1 - beta2());
-      var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
-    }
+    m.device(d) += (grad - m) * (1 - beta1());
+    v.device(d) += (grad.square() - v) * (1 - beta2());
+    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
   }
 };
 
@@ -168,16 +120,10 @@ struct ApplyRMSProp<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar momentum,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad) {
-    if (DoInline(var.size())) {
-      ms += (grad.square() - ms) * (1 - rho());
-      mom = mom * momentum() + (grad * lr()) / ((ms + epsilon()).sqrt());
-      var -= mom;
-    } else {
-      ms.device(d) += (grad.square() - ms) * (1 - rho());
-      mom.device(d) =
-          mom * momentum() + (grad * lr()) / ((ms + epsilon()).sqrt());
-      var.device(d) -= mom;
-    }
+    ms.device(d) += (grad.square() - ms) * (1 - rho());
+    mom.device(d) =
+        mom * momentum() + (grad * lr()) / ((ms + epsilon()).sqrt());
+    var.device(d) -= mom;
   }
 };
 

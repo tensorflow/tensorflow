@@ -27,8 +27,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
-
 
 def _flatten(list_of_lists):
   return [x for y in list_of_lists for x in y]
@@ -771,28 +769,30 @@ class BidirectionalRNNTest(tf.test.TestCase):
         tf.placeholder(tf.float32,
                        shape=(batch_size, input_size) if use_shape else None)
     ]
-    outputs = tf.nn.bidirectional_rnn(cell_fw,
-                                      cell_bw,
-                                      inputs,
-                                      dtype=tf.float32,
-                                      sequence_length=sequence_length)
+    outputs, state_fw, state_bw = tf.nn.bidirectional_rnn(cell_fw,
+                                                          cell_bw,
+                                                          inputs,
+                                                          dtype=tf.float32,
+                                                          sequence_length=sequence_length)
     self.assertEqual(len(outputs), len(inputs))
     for out in outputs:
       self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
                                                    else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
+    outputs = tf.pack(outputs)
 
-    return input_value, inputs, outputs, sequence_length
+    return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testBidirectionalRNN(self, use_gpu, use_shape):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      input_value, inputs, outputs, sequence_length = (
+      input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalRNN(use_gpu, use_shape, True))
       tf.initialize_all_variables().run()
       # Run with pre-specified sequence length of 2, 3
-      out = sess.run(outputs, feed_dict={inputs[0]: input_value,
-                                         sequence_length: [2, 3]})
+      out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw], 
+                                 feed_dict={inputs[0]: input_value,
+                                 sequence_length: [2, 3]})
 
       # Since the forward and backward LSTM cells were initialized with the
       # same parameters, the forward and backward output has to be the same,
@@ -824,13 +824,17 @@ class BidirectionalRNNTest(tf.test.TestCase):
       self.assertEqual(out[2][1][0], out[0][1][3])
       self.assertEqual(out[2][1][1], out[0][1][4])
       self.assertEqual(out[2][1][2], out[0][1][5])
+      # Via the reasoning above, the forward and backward final state should be
+      # exactly the same
+      self.assertAllClose(s_fw, s_bw)
 
   def _testBidirectionalRNNWithoutSequenceLength(self, use_gpu, use_shape):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      input_value, inputs, outputs, _ = self._createBidirectionalRNN(
-          use_gpu, use_shape, False)
+      input_value, inputs, outputs, state_fw, state_bw, _ = self._createBidirectionalRNN(
+                                                                use_gpu, use_shape, False)
       tf.initialize_all_variables().run()
-      out = sess.run(outputs, feed_dict={inputs[0]: input_value})
+      out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw], 
+                                 feed_dict={inputs[0]: input_value})
 
       # Since the forward and backward LSTM cells were initialized with the
       # same parameters, the forward and backward output has to be the same,
@@ -849,6 +853,9 @@ class BidirectionalRNNTest(tf.test.TestCase):
         self.assertEqual(out[i][1][0], out[8 - 1 - i][1][3])
         self.assertEqual(out[i][1][1], out[8 - 1 - i][1][4])
         self.assertEqual(out[i][1][2], out[8 - 1 - i][1][5])
+      # Via the reasoning above, the forward and backward final state should be
+      # exactly the same
+      self.assertAllClose(s_fw, s_bw)
 
   def testBidirectionalRNN(self):
     self._testBidirectionalRNN(use_gpu=False, use_shape=False)
@@ -962,7 +969,7 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   # Using rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         inputs_list_t = [tf.constant(x) for x in inputs_list]
         ops = _static_vs_dynamic_rnn_benchmark_static(
             inputs_list_t, sequence_length)
@@ -976,7 +983,7 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   # Using dynamic_rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         inputs_t = tf.constant(inputs)
         ops = _static_vs_dynamic_rnn_benchmark_dynamic(
             inputs_t, sequence_length)

@@ -41,4 +41,14 @@ void CallOptions::ClearCancelCallback() {
   cancel_func_ = nullptr;
 }
 
+int64 CallOptions::GetTimeout() {
+  mutex_lock l(mu_);
+  return timeout_in_ms_;
+}
+
+void CallOptions::SetTimeout(int64 ms) {
+  mutex_lock l(mu_);
+  timeout_in_ms_ = ms;
+}
+
 }  // end namespace tensorflow
