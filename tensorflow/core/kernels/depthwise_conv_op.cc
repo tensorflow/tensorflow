@@ -348,7 +348,7 @@ REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
           << in_depth << ", " << depth_multiplier << "]; stride = " << stride  \
           << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols        \
           << ", output: [" << batch << ", " << out_rows << ", " << out_cols    \
-          << ", " << out_depth << "]" << endl;
+          << ", " << out_depth << "]";
 
 // Kernels to compute the input backprop for depthwise convolution.
 template <typename Device, typename T>
