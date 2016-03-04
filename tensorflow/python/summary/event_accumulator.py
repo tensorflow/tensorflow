@@ -26,6 +26,8 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import event_file_loader
+from tensorflow.python.summary.impl import gcs
+from tensorflow.python.summary.impl import gcs_file_loader
 from tensorflow.python.summary.impl import reservoir
 
 namedtuple = collections.namedtuple
@@ -547,14 +549,20 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
-  loader_factory = event_file_loader.EventFileLoader
-  if gfile.IsDirectory(path):
+  if gcs.IsGCSPath(path):
+    provider = directory_watcher.SequentialGCSProvider(
+        path,
+        path_filter=IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(provider,
+                                              gcs_file_loader.GCSFileLoader)
+  elif gfile.IsDirectory(path):
     provider = directory_watcher.SequentialGFileProvider(
         path,
         path_filter=IsTensorFlowEventsFile)
-    return directory_watcher.DirectoryWatcher(provider, loader_factory)
+    return directory_watcher.DirectoryWatcher(provider,
+                                              event_file_loader.EventFileLoader)
   else:
-    return loader_factory(path)
+    return event_file_loader.EventFileLoader(path)
 
 
 def _ParseFileVersion(file_version):

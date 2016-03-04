@@ -32,6 +32,7 @@ from six.moves import socketserver
 
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import gcs
 from tensorflow.tensorboard.backend import handler
 
 # How many elements to store per tag, by tag type
@@ -124,6 +125,14 @@ def StartMultiplexerReloadingThread(multiplexer,
   # Ensure the Multiplexer initializes in a loaded state before it adds runs
   # So it can handle HTTP requests while runs are loading
   multiplexer.Reload()
+
+  for path in path_to_run.keys():
+    if gcs.IsGCSPath(path):
+      gcs.CheckIsSupported()
+      logging.info(
+          'Assuming %s is intended to be a Google Cloud Storage path because '
+          'it starts with %s. If it isn\'t, prefix it with \'/.\' (i.e., use '
+          '/.%s instead)', path, gcs.PATH_PREFIX, path)
 
   def _ReloadForever():
     while True:
