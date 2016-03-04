@@ -50,9 +50,10 @@
 #                      builds where the tests cannot be run in parallel due to
 #                      resource contention (e.g., for GPU builds)
 #   TF_BUILD_TEST_TUTORIALS:
-#                      Perform tutorials test (Applicable only if
-#                      TF_BUILD_IS_PIP is PIP or BOTH).
-#                      See build/test_tutorials.sh
+#                      If set to any non-empty and non-0 value, will perform
+#                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
+#                      PIP or BOTH).
+#                      See builds/test_tutorials.sh
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -64,6 +65,12 @@ to_lower () {
 # Helper function: Strip leading and trailing whitespaces
 str_strip () {
   echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Helper function: Exit on failure
+die () {
+  echo $@
+  exit 1
 }
 
 
@@ -88,11 +95,11 @@ BAZEL_CLEAN_CMD="bazel clean"
 BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
+PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BAZEL_TARGET="//tensorflow/..."
 
-TUTORIAL_TEST_CMD="${CI_BUILD_DIR}/builds/test_tutorials.sh"
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
 ##########################################################
@@ -133,9 +140,8 @@ elif [[ ${CTYPE} == "gpu" ]]; then
 elif [[ ${CTYPE} == "android" ]]; then
   :
 else
-  echo "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
+  die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
 "\"${TF_BUILD_CONTAINER_TYPE}\""
-  exit 1
 fi
 
 EXTRA_PARAMS=""
@@ -165,8 +171,7 @@ if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
 elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
   OPT_FLAG="${OPT_FLAG} -c opt"
 else
-  echo "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
-  exit 1
+  die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
 fi
 
 # Strip whitespaces from OPT_FLAG
@@ -222,7 +227,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
   # Add command for tutorial test
   if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
      [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} && ${MAIN_CMD} ${TUTORIAL_TEST_CMD}"
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_TEST_TUTORIALS_FLAG}"
 
     # Prepare data directory for tutorial tests
     mkdir -p "${TUT_TEST_DATA_DIR}" ||
@@ -242,8 +247,7 @@ elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
 elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
-  echo "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
-  exit 1
+  die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
 fi
 
 
@@ -258,8 +262,7 @@ elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
     # Determine the path to python3
     PYTHON3_PATH=$(which python3 | head -1)
     if [[ -z "${PYTHON3_PATH}" ]]; then
-      echo "ERROR: Failed to locate python3 binary on the system"
-      exit 1
+      die "ERROR: Failed to locate python3 binary on the system"
     else
       echo "Found python3 binary at: ${PYTHON3_PATH}"
     fi
@@ -268,9 +271,8 @@ elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   fi
 
 else
-  echo "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
+  die "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
 "\"${TF_BUILD_PYTHON_VERSION}\""
-  exit 1
 fi
 
 # Append additional Docker extra parameters
@@ -319,6 +321,7 @@ echo ""
 
 chmod +x ${TMP_SCRIPT}
 
+FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
   echo "*** This is a DRY RUN ***"
@@ -329,7 +332,12 @@ else
   else
     ${TMP_SCRIPT}
   fi
-fi && FAILURE=0 || FAILURE=1
+
+  if [[ $? != "0" ]]; then
+    FAILURE=1
+  fi
+fi
+
 [[ ${FAILURE} == "0" ]] && RESULT="SUCCESS" || RESULT="FAILURE"
 
 rm -f ${TMP_SCRIPT}
