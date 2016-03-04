@@ -760,7 +760,9 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   GraphDef gdef;
   test::graph::ToGraphDef(&graph, &gdef);
   Status status = session->Create(gdef);
-  EXPECT_EQ(error::DEADLINE_EXCEEDED, status.code());
+  // Either error is possible, depending on the environment.
+  EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
+              error::UNAVAILABLE == status.code());
 }
 
 // Tests that Create() with "timeout_in_ms" in RunOptions set times out.
@@ -778,7 +780,9 @@ TEST(SessionTest, CreateTimeoutWithRunOptions) {
   // Sets RunOption timeout_in_ms to 20.
   run_options.set_timeout_in_ms(20);
   Status status = session->Create(run_options, gdef);
-  EXPECT_EQ(error::DEADLINE_EXCEEDED, status.code());
+  // Either error is possible, depending on the environment.
+  EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
+              error::UNAVAILABLE == status.code());
 }
 
 // Tests that Run() with "operation_timeout_in_ms" set times out.
