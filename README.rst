@@ -27,7 +27,9 @@ Dependencies
 - Scikit learn: 0.16, 0.17, 0.18+ 
 - Tensorflow: 0.7+
 
-First, make sure you have TensorFlow and Scikit Learn installed, then run the following to install the stable version from PyPI:
+First, you need to make sure you have `TensorFlow <https://github.com/tensorflow/tensorflow#installation>`__ and `Scikit Learn <http://scikit-learn.org/stable/install.html>`__ installed. 
+
+Run the following to install the stable version from PyPI:
 
 .. code:: bash
 
@@ -139,27 +141,6 @@ Example of how to pass a custom model to the TensorFlowEstimator:
     classifier.fit(iris.data, iris.target)
     score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
     print("Accuracy: %f" % score)
-
-Custom model with multiple GPUs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To use multiple GPUs to build a custom model, everything else is the same as the example above except that in the definition of custom model you'll need to specify the device:
-
-.. code:: python
-
-    import tensorflow as tf
-
-    def my_model(X, y):
-        """
-        This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
-
-        Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and
-        CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
-        """
-        with tf.device('/gpu:1'):
-            layers = skflow.ops.dnn(X, [10, 20, 10], keep_prob=0.5)
-        with tf.device('/gpu:2'):
-            return skflow.models.logistic_regression(layers, y)
 
 Saving / Restoring models
 ~~~~~~~~~~~~~~~~~~~~~~~~~
