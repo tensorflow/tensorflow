@@ -232,5 +232,13 @@ class TensorboardServerTest(tf.test.TestCase):
     writer.close()
 
 
+class ParseEventFilesSpecTest(tf.test.TestCase):
+
+  def testRespectsGCSPath(self):
+    logdir_string = 'gs://foo/path'
+    expected = {'gs://foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+
 if __name__ == '__main__':
   tf.test.main()

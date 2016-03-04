@@ -70,16 +70,20 @@ def ParseEventFilesSpec(logdir):
   if logdir is None:
     return files
   for specification in logdir.split(','):
+    # If it's a gcs path, don't split on colon
+    if gcs.IsGCSPath(specification):
+      run_name = None
+      path = specification
     # If the spec looks like /foo:bar/baz, then we assume it's a path with a
     # colon.
-    if ':' in specification and specification[0] != '/':
+    elif ':' in specification and specification[0] != '/':
       # We split at most once so run_name:/path:with/a/colon will work.
-      run_name, path = specification.split(':', 1)
+      run_name, _, path = specification.partition(':')
     else:
       run_name = None
       path = specification
 
-    if not os.path.isabs(path):
+    if not os.path.isabs(path) and not gcs.IsGCSPath(path):
       # Create absolute path out of relative one.
       path = os.path.join(os.path.realpath('.'), path)
 
