@@ -2937,7 +2937,7 @@ class Graph(object):
 
     ```python
     @tf.RegisterGradient("CustomSquare")
-    def _custom_square_grad(op, inputs):
+    def _custom_square_grad(op, grad):
       # ...
 
     with tf.Graph().as_default() as g:
