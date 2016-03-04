@@ -377,7 +377,6 @@ bool PortableReadFileToProto(const std::string& file_name,
 }
 
 NSString* TestFunction() {
-//    initializeTensorflow(nullptr, nullptr, nullptr, "model", "labels", 0, 0, 0);
 
   tensorflow::CreateDirectSessionFactory();
 
@@ -441,13 +440,21 @@ NSString* TestFunction() {
   int image_channels;
   std::vector<tensorflow::uint8> image_data = LoadImageFromFile(
 	[imagePath UTF8String], &image_width, &image_height, &image_channels);
+  const int wanted_channels = 3;
+  assert(image_channels >= wanted_channels);
   tensorflow::Tensor image_tensor(
       tensorflow::DT_UINT8,
       tensorflow::TensorShape({
-          1, image_height, image_width, image_channels}));
-  auto image_tensor_mapped = image_tensor.tensor<tensorflow::uint8, 4>();
-  memcpy(image_tensor_mapped.data(), image_data.data(),
-	(image_height * image_width * image_channels));
+          image_height, image_width, wanted_channels}));
+  auto image_tensor_mapped = image_tensor.tensor<tensorflow::uint8, 3>();
+  tensorflow::uint8* in = image_data.data();
+  tensorflow::uint8* in_end = (in + (image_height * image_width * image_channels));
+  tensorflow::uint8* out = image_tensor_mapped.data();
+  for (; in != in_end; in += image_channels, out += wanted_channels) {
+    for (int i = 0; i < wanted_channels; ++i) {
+	out[i] = in[i];
+    }
+  }
 
   NSString* result = [networkPath stringByAppendingString: @" - loaded!"];
   result = [NSString stringWithFormat: @"%@ - %d, %s - %dx%d", result,
@@ -455,7 +462,7 @@ NSString* TestFunction() {
 
   fprintf(stderr, "a\n");
 
-  std::string input_layer = "Cast";
+  std::string input_layer = "DecodeJpeg";
   std::string output_layer = "softmax";
   std::vector<Tensor> outputs;
   fprintf(stderr, "b\n");
@@ -469,21 +476,37 @@ NSString* TestFunction() {
   result = [NSString stringWithFormat: @"%@ - %s", result,
 	status_string.c_str()];
 
-  fprintf(stderr, "d\n");
+  tensorflow::Tensor* output = &outputs[0];
+  const int kNumResults = 5;
+  const float kThreshold = 0.1f;
+  std::vector<std::pair<float, int> > top_results;
+  GetTopN(output->flat<float>(), kNumResults, kThreshold, &top_results);
+
+  std::stringstream ss;
+  ss.precision(3);
+  for (const auto& result : top_results) {
+    const float confidence = result.first;
+    const int index = result.second;
+
+    ss << index << " " << confidence << " ";
+
+    // Write out the result as a string
+    if (index < g_label_strings.size()) {
+      // just for safety: theoretically, the output is under 1000 unless there
+      // is some numerical issues leading to a wrong prediction.
+      ss << g_label_strings[index];
+    } else {
+      ss << "Prediction: " << index;
+    }
+
+    ss << "\n";
+  }
+
+  LOG(INFO) << "Predictions: " << ss.str();
+
+  string predictions = ss.str();
+  result = [NSString stringWithFormat: @"%@ - %s", result,
+	predictions.c_str()];
 
   return result;
 }
-
-#include <sys/syslog.h>
-
-tensorflow::Status TPDValidateOpName(const tensorflow::string& op_name);
-
-__attribute__((constructor))
-static void SomeFactoryInitFunc() {
-  syslog(LOG_ERR, "SomeFactoryInitFunc was called from UrlGetViewController!");
-  volatile int foo = 0;
-  if (foo == 1) {
-    //TPDValidateOpName("foo");
-  }
-}
-

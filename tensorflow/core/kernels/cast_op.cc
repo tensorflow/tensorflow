@@ -185,6 +185,7 @@ class CpuCastOp : public CastOpBase {
   }
 };
 
+#if !defined(PLATFORM_POSIX_IOS)
 class GpuCastOp : public CastOpBase {
  public:
   explicit GpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
@@ -211,6 +212,7 @@ class GpuCastOp : public CastOpBase {
     return Unimplemented();
   }
 };
+#endif  // PLATFORM_POSIX_IOS
 
 #undef CAST_CASE
 
