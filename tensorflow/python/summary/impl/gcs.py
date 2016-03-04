@@ -99,7 +99,7 @@ def CheckIsSupported():
       instructions.
   """
   try:
-    subprocess.call(['gsutil'])
+    subprocess.check_output(['gsutil', 'version'])
   except OSError as e:
     logging.error('Error while checking for gsutil: %s', e)
     raise OSError(
