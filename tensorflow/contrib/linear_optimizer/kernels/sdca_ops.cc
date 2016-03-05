@@ -420,22 +420,22 @@ class SdcaSolver : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Get a handle on a shared container across invocations of this Kernel.
-    // The shared container is intended to maintain state (values of dual
-    // variables) across invocations of the kernel on different input data.
+    // The shared container is intended to maintain state at the example level
+    // across invocations of the kernel on different input data.
     //
     // TODO(katsiapis): Replace this in-Kernel data structure with a first class
     // citizen mutable Dictionary in tensorflow proper, that we will initialize
     // and update externally.
-    DualsByExample* duals_by_example = nullptr;
+    DataByExample* data_by_example = nullptr;
     OP_REQUIRES_OK(context,
-                   context->resource_manager()->LookupOrCreate<DualsByExample>(
-                       container_, solver_uuid_, &duals_by_example,
-                       [this](DualsByExample** ret) {
-                         *ret = new DualsByExample(container_, solver_uuid_);
+                   context->resource_manager()->LookupOrCreate<DataByExample>(
+                       container_, solver_uuid_, &data_by_example,
+                       [this](DataByExample** ret) {
+                         *ret = new DataByExample(container_, solver_uuid_);
                          return Status::OK();
                        }));
     OP_REQUIRES(
-        context, !duals_by_example->RefCountIsOne(),
+        context, !data_by_example->RefCountIsOne(),
         errors::Internal("Expected shared-ownership of duals_by_example."));
 
     const Tensor* example_weights_t;
@@ -578,9 +578,9 @@ class SdcaSolver : public OpKernel {
           for (int64 offset = begin; offset < end; ++offset) {
             // Get example id, label, and weight.
             const int64 example_index = example_indices[offset];
-            const DualsByExample::Key example_key =
-                DualsByExample::MakeKey(example_ids(example_index));
-            const double current_dual = (*duals_by_example)[example_key];
+            const DataByExample::Key example_key =
+                DataByExample::MakeKey(example_ids(example_index));
+            const double current_dual = (*data_by_example)[example_key].dual;
             const double example_weight = example_weights(example_index);
             float example_label = example_labels(example_index);
             const Status conversion_status = convert_label_(&example_label);
@@ -626,7 +626,7 @@ class SdcaSolver : public OpKernel {
                                &dense_delta_weights_by_group);
 
             // Update dual variable.
-            (*duals_by_example)[example_key] = new_dual;
+            (*data_by_example)[example_key].dual = new_dual;
           }
           AtomicAdd(primal_loss_on_example_subset, &total_primal_loss);
           AtomicAdd(dual_loss_on_example_subset, &total_dual_loss);
@@ -658,7 +658,7 @@ class SdcaSolver : public OpKernel {
                   &dense_weights_by_group);
 
     // TODO(katsiapis): Use core::ScopedUnref once it's moved out of internal.
-    duals_by_example->Unref();
+    data_by_example->Unref();
   }
 
  private:
