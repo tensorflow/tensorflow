@@ -23,3 +23,15 @@ from skflow import preprocessing
 from skflow.io import data_feeder
 from skflow import models
 from skflow.trainer import TensorFlowTrainer
+
+import pkg_resources as pkg_rs
+
+__version__ = pkg_rs.get_distribution("skflow").version
+
+sklearn_version = pkg_rs.get_distribution("scikit-learn").version
+tensorflow_version = pkg_rs.get_distribution("tensorflow").version
+
+if float(sklearn_version) < 0.16:
+	raise ImportError("Your scikit-learn version needs to be at least 0.16. ")
+if float(tensorflow_version[0:3]) < 0.7:
+	raise ImportError("Your tensorflow version needs to be at least 0.7. ")
