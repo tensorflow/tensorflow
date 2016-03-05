@@ -445,14 +445,6 @@ class SdcaSolver : public OpKernel {
                 errors::InvalidArgument("example_weights should be a vector."));
     const auto example_weights = example_weights_t->vec<float>();
 
-    Tensor primal_loss_t;
-    OP_REQUIRES_OK(context,
-                   context->mutable_input("primal_loss", &primal_loss_t,
-                                          /*lock_held=*/true));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(primal_loss_t.shape()),
-                errors::InvalidArgument("primal_loss should be a scalar."));
-    auto primal_loss = primal_loss_t.scalar<double>();
-
     Eigen::Tensor<float, 0, Eigen::RowMajor> example_weights_sum;
     example_weights_sum.device(context->eigen_cpu_device()) =
         example_weights.sum();
@@ -469,6 +461,14 @@ class SdcaSolver : public OpKernel {
         regularizations_.symmetric_l1 * weighted_examples;
     regularizations_.symmetric_l2 =
         std::max(regularizations_.symmetric_l2 * weighted_examples, 1.0f);
+
+    Tensor primal_loss_t;
+    OP_REQUIRES_OK(context,
+                   context->mutable_input("primal_loss", &primal_loss_t,
+                                          /*lock_held=*/true));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(primal_loss_t.shape()),
+                errors::InvalidArgument("primal_loss should be a scalar."));
+    auto primal_loss = primal_loss_t.scalar<double>();
 
     OpInputList dense_features_inputs;
     OP_REQUIRES_OK(
@@ -501,6 +501,23 @@ class SdcaSolver : public OpKernel {
                     "The number of example ids (%ld) should match the number "
                     "of example weights (%lld).",
                     example_ids.size(), num_examples)));
+    const int64 num_duplicate_example_ids = [&] {
+      // TODO(katsiapis): Benchmark and/or optimize.
+      std::vector<StringPiece> scratch_storage;
+      scratch_storage.reserve(example_ids.size());
+      for (size_t i = 0; i < example_ids.size(); ++i) {
+        scratch_storage.emplace_back(example_ids(i));
+      }
+      std::sort(scratch_storage.begin(), scratch_storage.end());
+      return std::distance(
+          std::unique(scratch_storage.begin(), scratch_storage.end()),
+          scratch_storage.end());
+    }();
+    OP_REQUIRES(context, num_duplicate_example_ids == 0,
+                errors::InvalidArgument(strings::Printf(
+                    "Detected %lld duplicates in example_ids, which usually "
+                    "indicates a bug in the input data.",
+                    num_duplicate_example_ids)));
 
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
