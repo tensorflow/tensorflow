@@ -46,12 +46,14 @@ is learning rate free and enjoys linear convergence rate.
 Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
 2012arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf
 
+  Loss objective = \sum f_{i}(wx_{i}) + l2 * |w|^2 + l1 * |w|
+
 loss_type: Type of the primal loss. Only logistic_loss and squared_loss
    are supported.
 num_sparse_features: Number of sparse feature groups to train on.
 num_dense_features: Number of dense feature groups to train on.
-l1: Per example symmetric l1 regularization strength.
-l2: Per example symmetric l2 regularization strength.
+l1: Symmetric l1 regularization strength.
+l2: Symmetric l2 regularization strength.
 duality_gap_threshold: Gap threshold at which we should stop training.
 container: Name of the Container that stores data across invocations of this
   Kernel. Together with SolverUUID form an isolation unit for this solver.

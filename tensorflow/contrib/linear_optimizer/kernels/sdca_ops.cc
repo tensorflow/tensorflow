@@ -412,6 +412,10 @@ class SdcaSolver : public OpKernel {
                    context->GetAttr("l1", &regularizations_.symmetric_l1));
     OP_REQUIRES_OK(context,
                    context->GetAttr("l2", &regularizations_.symmetric_l2));
+    // We enforce a minimal l2, required by the algorithm.
+    regularizations_.symmetric_l2 =
+        std::max(regularizations_.symmetric_l2, 1.0f);
+
     OP_REQUIRES_OK(context, context->GetAttr("duality_gap_threshold",
                                              &duality_gap_threshold_));
     OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
@@ -449,18 +453,11 @@ class SdcaSolver : public OpKernel {
     example_weights_sum.device(context->eigen_cpu_device()) =
         example_weights.sum();
     const float weighted_examples = example_weights_sum();
-
     const int64 num_examples = example_weights.size();
+
     OP_REQUIRES(context, weighted_examples > 0,
                 errors::InvalidArgument("No weighted examples in ",
                                         num_examples, " training examples"));
-
-    // We scale regularizations up by weighted examples and enforce a minimal
-    // l2, required by the algorithm.
-    regularizations_.symmetric_l1 =
-        regularizations_.symmetric_l1 * weighted_examples;
-    regularizations_.symmetric_l2 =
-        std::max(regularizations_.symmetric_l2 * weighted_examples, 1.0f);
 
     Tensor primal_loss_t;
     OP_REQUIRES_OK(context,

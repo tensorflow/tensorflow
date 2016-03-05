@@ -115,7 +115,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss',
                      prior=0.0)
@@ -162,7 +162,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       # Only use examples 0 and 2
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
@@ -194,7 +194,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
@@ -217,7 +217,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
@@ -274,7 +274,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(3, 1)
-      options = dict(symmetric_l2_regularization=0.25,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss',
                      prior=-1.09861)
@@ -306,7 +306,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.25,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='logistic_loss')
       tf.initialize_all_variables().run()
@@ -370,7 +370,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss',
                      prior=0.0)
@@ -408,7 +408,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=4.0,
+      options = dict(symmetric_l2_regularization=16,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss',
                      prior=0.0)
@@ -442,7 +442,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       examples = make_example_dict(example_protos, example_weights)
 
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss',
                      prior=0.0)
@@ -482,7 +482,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                        primal_loss=tf.Variable(tf.zeros(
                            [],
                            dtype=tf.float64)))
-      options = dict(symmetric_l2_regularization=0.5,
+      options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss',
                      prior=0.0)
