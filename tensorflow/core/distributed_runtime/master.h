@@ -69,7 +69,7 @@ class Master {
   // shutdown_ is set to true by the dtor.
   condition_variable shutdown_cv_;
   bool shutdown_ GUARDED_BY(mu_) = false;
-  Notification gc_stopped_;
+  Thread* gc_thread_;
 
   // Maps session handles to sessions.
   std::unordered_map<string, MasterSessionInterface*> sessions_ GUARDED_BY(mu_);

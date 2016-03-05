@@ -24,7 +24,6 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
 from tensorflow.python.ops import sparse_ops
 
 
@@ -205,7 +204,7 @@ def sparse_vs_dense_xent_benchmark(batch_size, num_entries, use_gpu):
   # Using sparse_to_dense and softmax_cross_entropy_with_logits
   with tf.Session(config=config) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         ops = _sparse_vs_dense_xent_benchmark_dense(labels, logits)
     else:
       ops = _sparse_vs_dense_xent_benchmark_dense(labels, logits)
@@ -214,7 +213,7 @@ def sparse_vs_dense_xent_benchmark(batch_size, num_entries, use_gpu):
   # Using sparse_softmax_cross_entropy_with_logits
   with tf.Session(config=config) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         ops = _sparse_vs_dense_xent_benchmark_sparse(labels, logits)
     else:
       ops = _sparse_vs_dense_xent_benchmark_sparse(labels, logits)

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bias_op.h"
+#include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
@@ -29,42 +30,160 @@ typedef Eigen::GpuDevice GPUDevice;
 
 // Definition of the GPU implementations declared in bias_op.cc.
 
-namespace functor {
-
 template <typename T>
-__global__ void BiasOpCustomKernel(int nthreads, const T* input, const T* bias,
-                                   int bias_size, int replicate_count,
-                                   T* output) {
+__global__ void BiasNHWCKernel(int32 nthreads, const T* input, const T* bias,
+                               T* output, int32 bias_size) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int bias_offset = index % bias_size;
+    int32 bias_offset = index % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
 }
 
-template <typename T, int Dims>
-struct Bias<GPUDevice, T, Dims> {
-  typedef GPUDevice Device;
-  // Add "bias" to "input", broadcasting it on all dimensions but the last one.
-  void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-                  typename TTypes<T>::ConstVec bias,
-                  typename TTypes<T, Dims>::Tensor output) {
-    const int bias_size = bias.dimension(0);
-    const int rest_size = input.size() / bias_size;
-    CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-    BiasOpCustomKernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(config.virtual_thread_count,
-                                       input.data(), bias.data(), bias_size,
-                                       rest_size, output.data());
+template <typename T>
+__global__ void BiasNCHWKernel(int32 nthreads, const T* input, const T* bias,
+                               T* output, int32 bias_size, int32 image_size) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    int32 index2 = index / image_size;
+    int32 bias_offset = index2 % bias_size;
+    output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
-};
+}
 
-}  // namespace functor
+// Add "bias" to "input", broadcasting it on all dimensions but the bias
+// dimension.
+template <typename T>
+void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
+                         T* output, int32 batch, int32 height, int32 width,
+                         int32 channel, TensorFormat data_format) {
+  const int32 bias_size = channel;
+  const int32 image_size = height * width;
+  const int32 total_count = batch * bias_size * image_size;
+  CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+  if (data_format == FORMAT_NHWC) {
+    BiasNHWCKernel<
+        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+        config.virtual_thread_count, input, bias, output, bias_size);
+  } else {
+    BiasNCHWKernel<
+        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+        config.virtual_thread_count, input, bias, output, bias_size,
+        image_size);
+  }
+}
 
-#define DEFINE_GPU_SPECS(T)                       \
-  template struct functor::Bias<GPUDevice, T, 2>; \
-  template struct functor::Bias<GPUDevice, T, 3>; \
-  template struct functor::Bias<GPUDevice, T, 4>; \
-  template struct functor::Bias<GPUDevice, T, 5>;
+// A naive implementation that is functional on all cases.
+template <typename T>
+__global__ void BiasGradNHWC_Naive(int32 nthreads, const T* output_backprop,
+                                   T* bias_backprop, int32 bias_size) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    int32 bias_offset = index % bias_size;
+    CudaAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
+  }
+}
+
+// A naive implementation that is functional on all cases.
+template <typename T>
+__global__ void BiasGradNCHW_Naive(int32 nthreads, const T* output_backprop,
+                                   T* bias_backprop, int32 bias_size,
+                                   int32 image_size) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    int32 index2 = index / image_size;
+    int32 bias_offset = index2 % bias_size;
+    CudaAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
+  }
+}
+
+extern __shared__ char s_buf[];
+
+template <typename T>
+__global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
+                                           const T* output_backprop,
+                                           T* bias_backprop, int32 bias_size) {
+  T* s_data = reinterpret_cast<T*>(s_buf);
+  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+    s_data[index] = 0;
+  }
+  __syncthreads();
+
+  for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
+       index += blockDim.x * gridDim.x) {
+    int32 bias_offset = index % bias_size;
+    CudaAtomicAdd(s_data + bias_offset, ldg(output_backprop + index));
+  }
+  __syncthreads();
+
+  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+    CudaAtomicAdd(bias_backprop + index, s_data[index]);
+  }
+}
+
+template <typename T>
+__global__ void BiasGradNCHW_SharedAtomics(int32 nthreads,
+                                           const T* output_backprop,
+                                           T* bias_backprop, int32 bias_size,
+                                           int32 image_size) {
+  T* s_data = reinterpret_cast<T*>(s_buf);
+  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+    s_data[index] = 0;
+  }
+  __syncthreads();
+
+  for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
+       index += blockDim.x * gridDim.x) {
+    int32 index2 = index / image_size;
+    int32 bias_offset = index2 % bias_size;
+    CudaAtomicAdd(s_data + bias_offset, ldg(output_backprop + index));
+  }
+  __syncthreads();
+
+  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+    CudaAtomicAdd(bias_backprop + index, s_data[index]);
+  }
+}
+
+template <typename T>
+void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
+                             T* bias_backprop, int32 batch, int32 height,
+                             int32 width, int32 channel,
+                             TensorFormat data_format) {
+  const int32 bias_size = channel;
+  const int32 image_size = height * width;
+  const int32 total_count = batch * bias_size * image_size;
+  CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+
+  const int32 shared_memory_size = bias_size * sizeof(T);
+  // Check if we have enough shared memory.
+  if (shared_memory_size <= d.sharedMemPerBlock()) {
+    if (data_format == FORMAT_NHWC) {
+      BiasGradNHWC_SharedAtomics<
+          T><<<config.block_count, config.thread_per_block, shared_memory_size,
+               d.stream()>>>(total_count, output_backprop, bias_backprop,
+                             bias_size);
+    } else {
+      BiasGradNCHW_SharedAtomics<
+          T><<<config.block_count, config.thread_per_block, shared_memory_size,
+               d.stream()>>>(total_count, output_backprop, bias_backprop,
+                             bias_size, image_size);
+    }
+  } else {
+    // Note that even if we don't have enough shared memory to fit the entire
+    // output block, it is possible to process one group of elements at a time.
+    // But for now, we simply fall back to the naive implementation.
+    if (data_format == FORMAT_NHWC) {
+      BiasGradNHWC_Naive<
+          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          total_count, output_backprop, bias_backprop, bias_size);
+    } else {
+      BiasGradNCHW_Naive<
+          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          total_count, output_backprop, bias_backprop, bias_size, image_size);
+    }
+  }
+}
+
+#define DEFINE_GPU_SPECS(T)   \
+  template struct BiasGPU<T>; \
+  template struct BiasGradGPU<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 

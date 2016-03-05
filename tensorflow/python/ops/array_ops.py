@@ -94,6 +94,13 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
+# DEPRECATED use init_ops.zeros_initializer
+# TODO(irving) Move it to init_ops.py
+def zeros_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return zeros(shape, dtype)
+
+
 # pylint: disable=undefined-variable,protected-access
 def _SliceHelper(tensor, slice_spec):
   """Overload for Tensor.__getitem__.
@@ -668,11 +675,6 @@ def ones_like(tensor, dtype=None, name=None):
     return ret
 
 
-def zeros_initializer(shape, dtype=dtypes.float32):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
-
-
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to 1.
 
@@ -842,6 +844,35 @@ def _DiagShape(op):
   input_shape = op.inputs[0].get_shape().with_rank_at_most(3)
   return [input_shape.concatenate(input_shape)]
 
+@ops.RegisterShape("DiagPart")
+def _DiagPartShape(op):
+  """Shape function for array_ops.diag_part.
+
+  This op has one input (of rank k = 2, 4, or 6), and one output (of rank k/2),
+  where the shape of the output is the diagonal of the input shape.
+
+  Args:
+    op: A DiagPart Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If input has odd rank or greater than 6
+
+  """
+  shape = op.inputs[0].get_shape()
+  rank = len(shape)
+  mid = rank // 2
+  if rank % 2 or rank > 6:
+    raise ValueError("Input must have even rank <= 6, input rank is " +
+                     str(rank) + "." )
+  if shape[:mid] != shape[mid:]:
+    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
+                     " and shape[mid:] " + str(shape[mid:]) +
+                     " do not match ")
+  input_shape = shape.with_rank_at_most(6)
+  return [input_shape[:len(input_shape) // 2]]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):

@@ -126,7 +126,7 @@ $ python
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
 >>> tf.sysconfig.get_lib()
 '/usr/local/lib/python2.7/site-packages/tensorflow/core'
->>> 
+>>>
 
 ```
 
@@ -152,10 +152,13 @@ the [`tensorflow/core/user_ops`][user_ops] directory.
 cc_binary(
     name = "zero_out.so",
     srcs = ["zero_out.cc"],
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//third_party/tensorflow:darwin": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [
@@ -271,7 +274,7 @@ function on error.
 
 ## Op registration
 
-### Attrs 
+### Attrs
 
 Ops can have attrs, whose values are set when the Op is added to a graph. These
 are used to configure the Op, and their values can be accessed both within the

@@ -19,9 +19,9 @@ limitations under the License.
 
 #include <atomic>
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace gpu = ::perftools::gputools;
 

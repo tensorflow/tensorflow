@@ -172,7 +172,7 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
       // Grab the index and check its validity.  An earlier version of the
       // code checked it and then grabbed it from memory a second time, which
       // was a security risk since it could have changed in between.
-      const Index index = indices(i);
+      const Index index = internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Copy last Ndim-1 dimensions of updates[i] to params[index]
       Assign<op>::Run(params.template chip<0>(index),

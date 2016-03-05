@@ -1221,5 +1221,87 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     self.assertEqual(300, weight_params_total.value)
 
 
+class ColocationGroupTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = constant_op.constant(3.0)
+    c = constant_op.constant(4.0)
+    self.assertEqual(["loc:@a"], a.op.colocation_groups())
+    self.assertEqual(["loc:@a"], b.op.colocation_groups())
+    with self.assertRaises(ValueError):
+      c.op.get_attr("_class")
+
+  def testColocationDeviceInteraction(self):
+    with ops.device("/cpu:0"):
+      with ops.device("/gpu:0"):
+        a = constant_op.constant([2.0], name="a")
+      with ops.colocate_with(a.op):
+        # 'b' is created in the scope of /cpu:0, but but it is
+        # colocated with 'a', which is on '/gpu:0'.  colocate_with
+        # overrides devices because it is a stronger constraint.
+        b = constant_op.constant(3.0)
+    self.assertEqual(["loc:@a"], b.op.colocation_groups())
+    self.assertEqual(a.op.device, b.op.device)
+
+  def testLocationOverrides(self):
+    with ops.device("/cpu:0"):
+      with ops.device("/gpu:0"):
+        a = constant_op.constant([2.0], name="a")
+        # Note that this colocation is "redundant", since we are
+        # within the scope of "/gpu:0".  However, we would like to
+        # preserve in the GraphDef that these two ops should be
+        # colocated in a portable way.
+        with ops.colocate_with(a.op):
+          b = constant_op.constant(3.0)
+        c = constant_op.constant(4.0)
+      d = constant_op.constant(5.0)
+
+    self.assertEqual(["loc:@a"], b.op.colocation_groups())
+    self.assertEqual("/device:GPU:0", a.op.device)
+    self.assertEqual(a.op.device, b.op.device)
+
+    # Test that device function stack is restored.
+    self.assertEqual("/device:GPU:0", c.op.device)
+    self.assertEqual("/device:CPU:0", d.op.device)
+
+  def testNestedColocateWith(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = constant_op.constant(3.0)
+      with ops.colocate_with(b.op):
+        c = constant_op.constant(4.0)
+    self.assertEqual(["loc:@a"], b.op.colocation_groups())
+    self.assertEqual(["loc:@a"], c.op.colocation_groups())
+
+  def testMultiColocationGroups(self):
+    a = constant_op.constant([2.0], name="a")
+    b = constant_op.constant(3.0, name="b")
+    with ops.colocate_with(a.op):
+      with ops.colocate_with(b.op):
+        c = constant_op.constant(4.0)
+    self.assertEqual(set(["loc:@a", "loc:@b"]), set(c.op.colocation_groups()))
+
+  def testColocateVariables(self):
+    a = variables.Variable([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = variables.Variable([3.0], name="b")
+    self.assertEqual(["loc:@a"], b.op.colocation_groups())
+
+  def testInconsistentDeviceWithinColocate(self):
+    with ops.device("/gpu:0"):
+      a = constant_op.constant([2.0], name="a")
+      with ops.colocate_with(a.op):
+        # This is allowed due to legacy but clearly wrong, since we
+        # should really be colocating with 'a'.  We allow devices to
+        # override colocate_with, but we log warnings to suggest that
+        # this is probably unintentional or misguided.
+        with ops.device("/cpu:0"):
+          b = constant_op.constant([3.0], name="b")
+
+    self.assertEqual("/device:CPU:0", b.device)
+
+
 if __name__ == "__main__":
   googletest.main()

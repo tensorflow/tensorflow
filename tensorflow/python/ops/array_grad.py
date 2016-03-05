@@ -175,7 +175,7 @@ ops.NoGradient("ZerosLike")
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   # op.inputs[0] can be large, so colocate the shape calculation with it.
-  with ops.device(op.inputs[0].device):
+  with ops.colocate_with(op.inputs[0]):
     dense_shape = array_ops.shape(op.inputs[0])
     values_shape = array_ops.concat(0, [[-1], dense_shape[1:]])
 

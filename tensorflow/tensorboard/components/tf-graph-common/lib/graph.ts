@@ -20,6 +20,14 @@ module tf.graph {
 export const NAMESPACE_DELIM = "/";
 export const ROOT_NAME = "__root__";
 
+/** Attribute key used for storing attributes that are too large. */
+export const LARGE_ATTRS_KEY = "_too_large_attrs";
+/**
+ * Maximum allowed size in bytes, before the attribute is considered large
+ * and filtered out of the graph.
+ */
+export const LIMIT_ATTR_SIZE = 1024;
+
 // Separator between the source and the destination name of the edge.
 export const EDGE_KEY_DELIM = "--";
 
@@ -618,8 +626,8 @@ class MetaedgeImpl implements Metaedge {
     this.totalSize += MetaedgeImpl.computeSizeOfEdge(edge, h);
   }
 
-  private static computeSizeOfEdge(edge: BaseEdge, h: hierarchy.Hierarchy)
-      : number {
+  private static computeSizeOfEdge(edge: BaseEdge, h: hierarchy.Hierarchy):
+      number {
     let opNode = <OpNode> h.node(edge.v);
     if (opNode.outputShapes == null) {
       // No shape information. Asssume a single number. This gives

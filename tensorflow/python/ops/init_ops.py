@@ -46,6 +46,15 @@ def _assert_float_dtype(dtype):
   return dtype
 
 
+# TODO(irving) Move array_ops.zeros_initializer here.
+zeros_initializer = array_ops.zeros_initializer
+
+
+def ones_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for ones() to match the Initializer spec."""
+  return array_ops.ones(shape, dtype)
+
+
 def constant_initializer(value=0.0, dtype=dtypes.float32):
   """Returns an initializer that generates tensors with a single value.
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "grpc++/alarm.h"
 #include "grpc++/server_builder.h"
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -53,12 +54,37 @@ static Tensor empty_tensor(DT_FLOAT);
 class GrpcWorkerService : public AsyncServiceInterface {
  public:
   GrpcWorkerService(WorkerEnv* env, ::grpc::ServerBuilder* builder)
-      : env_(env), cancellation_manager_(new CancellationManager) {
+      : env_(env),
+        cancellation_manager_(new CancellationManager),
+        is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
     cq_ = builder->AddCompletionQueue().release();
   }
 
-  ~GrpcWorkerService() { delete cq_; }
+  ~GrpcWorkerService() {
+    delete shutdown_alarm_;
+    delete cq_;
+    delete cancellation_manager_;
+  }
+
+  void Shutdown() override {
+    bool did_shutdown = false;
+    {
+      mutex_lock l(shutdown_mu_);
+      if (!is_shutdown_) {
+        LOG(INFO) << "Shutting down GrpcWorkerService.";
+        is_shutdown_ = true;
+        did_shutdown = true;
+      }
+    }
+    if (did_shutdown) {
+      // NOTE(mrry): This enqueues a special event (with a null tag)
+      // that causes the completion queue to be shut down on the
+      // polling thread.
+      shutdown_alarm_ =
+          new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+    }
+  }
 
 // This macro creates a new request for the given RPC method name
 // (e.g., `ENQUEUE_REQUEST(GetStatus);`), and enqueues it on
@@ -71,13 +97,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method)                                             \
-  do {                                                                      \
-    Call<GrpcWorkerService, grpc::WorkerService::AsyncService,              \
-         method##Request, method##Response>::                               \
-        EnqueueRequest(&worker_service_, cq_,                               \
-                       &grpc::WorkerService::AsyncService::Request##method, \
-                       &GrpcWorkerService::method##Handler);                \
+#define ENQUEUE_REQUEST(method)                                               \
+  do {                                                                        \
+    mutex_lock l(shutdown_mu_);                                               \
+    if (!is_shutdown_) {                                                      \
+      Call<GrpcWorkerService, grpc::WorkerService::AsyncService,              \
+           method##Request, method##Response>::                               \
+          EnqueueRequest(&worker_service_, cq_,                               \
+                         &grpc::WorkerService::AsyncService::Request##method, \
+                         &GrpcWorkerService::method##Handler);                \
+    }                                                                         \
   } while (0)
 
   // This method blocks forever handling requests from the completion queue.
@@ -104,11 +133,18 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
     void* tag;
     bool ok;
+
     while (cq_->Next(&tag, &ok)) {
       UntypedCall<GrpcWorkerService>::Tag* callback_tag =
           static_cast<UntypedCall<GrpcWorkerService>::Tag*>(tag);
-      callback_tag->OnCompleted(this, ok);
-      delete callback_tag;
+      if (callback_tag) {
+        callback_tag->OnCompleted(this, ok);
+        delete callback_tag;
+      } else {
+        // NOTE(mrry): A null `callback_tag` indicates that this is
+        // the shutdown alarm.
+        cq_->Shutdown();
+      }
     }
   }
 
@@ -120,6 +156,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   mutex mu_;
   CancellationManager* cancellation_manager_ GUARDED_BY(mu_);
+
+  mutex shutdown_mu_;
+  bool is_shutdown_ GUARDED_BY(shutdown_mu_);
+  ::grpc::Alarm* shutdown_alarm_;
 
   // The following section contains one request handler method per
   // RPC. The The `FooHandler` method is called (indirectly) by

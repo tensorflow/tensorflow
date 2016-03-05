@@ -25,6 +25,7 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
 
 class FIFOQueueTest(tf.test.TestCase):
@@ -1148,6 +1149,21 @@ class FIFOQueueTest(tf.test.TestCase):
 
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
+
+
+class FIFOQueueWithTimeoutTest(tf.test.TestCase):
+
+  def testDequeueWithTimeout(self):
+    with self.test_session(
+        config=tf.ConfigProto(operation_timeout_in_ms=20)) as sess:
+      q = tf.FIFOQueue(10, tf.float32)
+      dequeued_t = q.dequeue()
+
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaisesRegexp(StatusNotOK,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t)
 
 
 if __name__ == "__main__":

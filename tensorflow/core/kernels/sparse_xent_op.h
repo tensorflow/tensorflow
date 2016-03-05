@@ -75,32 +75,33 @@ class SparseXentLossGenerator {
 };
 
 // Generator for calculation of the sparse Xent gradient.
-// This generator takes the logits, the sum of the exponentiated
-// logits, and the label indices.  For each minibatch entry, ignoring
-// the batch index b, it calculates:
+// This generator takes the exponentiated logits, their sums, and the label
+// indices. For each minibatch entry, ignoring the batch index b, it calculates:
 //
-//   exp(logits[j]) / sum_exp_logits - 1{ j == label }
+//   exp_logits[j] / sum_exp_logits - 1{ j == label }
 //
 // for j = 0 .. num_classes.
 template <typename T>
 class SparseXentGradGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentGradGenerator(
-      typename TTypes<const T, 2>::Tensor32Bit logits,
+      typename TTypes<const T, 2>::Tensor32Bit exp_logits,
       typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits,
       TTypes<const int64, 1>::Tensor32Bit labels)
-      : logits_(logits), sum_exp_logits_(sum_exp_logits), labels_(labels) {}
+      : exp_logits_(exp_logits),
+        sum_exp_logits_(sum_exp_logits),
+        labels_(labels) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const Eigen::array<int, 2>& coords) const {
     int batch = coords[0];
     int depth = coords[1];
     T subtract = (depth == labels_(batch)) ? T(1.0) : T(0.0);
-    return std::exp(logits_(coords)) / sum_exp_logits_(batch) - subtract;
+    return exp_logits_(coords) / sum_exp_logits_(batch) - subtract;
   };
 
  private:
-  typename TTypes<const T, 2>::Tensor32Bit logits_;
+  typename TTypes<const T, 2>::Tensor32Bit exp_logits_;
   typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits_;
   TTypes<const int64, 1>::Tensor32Bit labels_;
 };
@@ -190,6 +191,7 @@ struct SparseXentEigenImpl {
 
     // backprop: prob - labels, where
     //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
+    To32Bit(backprop).device(d) = To32Bit(backprop).exp();
     generator::SparseXentGradGenerator<T> sparse_xent_grad_gen(
         sparse_xent_helpers::To32BitConst<T>(backprop),
         sparse_xent_helpers::To32BitConst<T>(scratch), To32Bit(labels));

@@ -63,8 +63,8 @@ class ErrorsTest(tf.test.TestCase):
         exc = tf.errors._make_specific_exception(None, None, None, error_code)
         # pylint: enable=protected-access
       self.assertEqual(0, len(w))  # No warning is raised.
-      self.assertTrue(isinstance(exc, tf.errors.OpError))
-      self.assertTrue(tf.errors.OpError in exc.__class__.__bases__)
+      self.assertTrue(isinstance(exc, tf.OpError))
+      self.assertTrue(tf.OpError in exc.__class__.__bases__)
 
   def testUnknownErrorCodeCausesWarning(self):
     with warnings.catch_warnings(record=True) as w:
@@ -73,7 +73,7 @@ class ErrorsTest(tf.test.TestCase):
       # pylint: enable=protected-access
     self.assertEqual(1, len(w))
     self.assertTrue("Unknown error code: 37" in str(w[0].message))
-    self.assertTrue(isinstance(exc, tf.errors.OpError))
+    self.assertTrue(isinstance(exc, tf.OpError))
 
 
 if __name__ == "__main__":

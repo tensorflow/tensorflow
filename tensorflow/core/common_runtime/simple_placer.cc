@@ -87,24 +87,30 @@ Status ParseColocatedNodeName(const Node& node,
 // Returns the name of the colocation group of the node by inspecting
 // the "_class" attribute of the NodeDef.  Returns "" if it doesn't
 // exist.
-Status ColocationGroup(const Node& node, string* colocation_group) {
-  string class_spec;
+Status ColocationGroups(const Node& node,
+                        std::vector<string>* colocation_groups) {
+  std::vector<string> class_specs;
   // TODO(vrv): We should consider adding a GetNodeAttr that returns a
   // StringPiece, to avoid a copy.
-  Status s = GetNodeAttr(node.def(), "_class", &class_spec);
+  Status s = GetNodeAttr(node.def(), "_class", &class_specs);
   if (!s.ok()) {
     // No "_class" attribute is equivalent to the empty colocation_group.
-    *colocation_group = "";
+    *colocation_groups = {strings::StrCat("loc:@", node.name())};
     return Status::OK();
   }
 
-  StringPiece spec(class_spec);
-  if (!spec.Consume("loc:")) {
-    return errors::InvalidArgument("Node had an invalid _class attribute: ",
-                                   class_spec);
+  bool found_spec = false;
+  for (const string& class_spec : class_specs) {
+    StringPiece spec(class_spec);
+    if (spec.Consume("loc:@")) {
+      found_spec = true;
+      colocation_groups->emplace_back(class_spec);
+    }
   }
 
-  *colocation_group = spec.ToString();
+  if (!found_spec) {
+    *colocation_groups = {strings::StrCat("loc:@", node.name())};
+  }
   return Status::OK();
 }
 
@@ -162,18 +168,22 @@ class ColocationGraph {
 
     // When adding the node, identify whether it is part of a
     // colocation group.
-    string colocation_group;
-    TF_RETURN_IF_ERROR(ColocationGroup(node, &colocation_group));
-    if (!colocation_group.empty()) {
-      // Node has a colocation group specified.
+    std::vector<string> colocation_groups;
+    TF_RETURN_IF_ERROR(ColocationGroups(node, &colocation_groups));
+    Status s;
+    for (const string& colocation_group : colocation_groups) {
       auto it = colocation_group_root_.find(colocation_group);
       if (it == colocation_group_root_.end()) {
         // This is the first node of the colocation group, so
         // designate this node as the 'root' of that colocation group.
         colocation_group_root_[colocation_group] = &node;
       } else {
-        // Colocate this node with the root.
-        ColocateNodes(node, *(it->second));
+        // Try to colocate the node with the root.  If there is an
+        // error, return it.
+        s = ColocateNodes(node, *(it->second));
+        if (!s.ok()) {
+          return s;
+        }
       }
     }
 

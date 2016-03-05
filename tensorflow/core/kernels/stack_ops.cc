@@ -181,14 +181,19 @@ class StackPushOp : public AsyncOpKernel {
     // Push the tensor onto the stack. Swap the tensor to CPU if instructed.
     const Tensor& tensor = ctx->input(1);
     AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
-    static constexpr int copy_threshold = 2048;
+    DeviceContext* device_ctxt = ctx->op_device_context();
+    auto device = static_cast<tensorflow::Device*>(ctx->device());
+    Allocator* allocator = device->GetAllocator(alloc_attrs);
+    AllocatorStats stats;
+    allocator->GetStats(&stats);
+    static constexpr int kCopyThreshold = 2048;
+    static constexpr double kOccupancy = 0.7;
     if (swap_memory_ && !alloc_attrs.on_host() &&
         std::is_same<Device, GPUDevice>::value &&
-        tensor.TotalBytes() > copy_threshold) {
+        stats.bytes_in_use > (stats.bytes_limit * kOccupancy) &&
+        tensor.TotalBytes() > kCopyThreshold) {
       // Asynchronously copy the tensor from GPU to CPU memory.
-      // TODO(yuanbyu): Swap only when there is mmeory pressure.
-      DeviceContext* device_ctxt = ctx->op_device_context();
-      auto device = static_cast<tensorflow::Device*>(ctx->device());
+      // TODO(yuanbyu): Swap the oldest tensor first.
       AllocatorAttributes host_alloc_attrs;
       host_alloc_attrs.set_gpu_compatible(true);
       host_alloc_attrs.set_on_host(true);

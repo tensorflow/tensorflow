@@ -61,12 +61,12 @@ class DirectSession : public Session {
                            std::vector<Tensor>* outputs) override;
 
   // NOTE: Experimental and subject to change.
-  ::tensorflow::Status RunWithOpts(const RunOptions& run_options,
-                                   const NamedTensorList& inputs,
-                                   const std::vector<string>& output_names,
-                                   const std::vector<string>& target_nodes,
-                                   std::vector<Tensor>* outputs,
-                                   RunOutputs* run_outputs) override;
+  ::tensorflow::Status Run(const ::tensorflow::RunOptions& run_options,
+                           const NamedTensorList& inputs,
+                           const std::vector<string>& output_names,
+                           const std::vector<string>& target_nodes,
+                           std::vector<Tensor>* outputs,
+                           RunOutputs* run_outputs) override;
 
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
@@ -121,7 +121,8 @@ class DirectSession : public Session {
   // is "notified" when all executors are done. 'pending_inputs' are the set
   // of pending feeds and 'pending_outputs' are the set of pending fetches.
   struct RunState {
-    Status status;
+    mutex mu_;
+    Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
     Notification executors_done;
     std::unordered_set<string> pending_inputs;
@@ -194,6 +195,10 @@ class DirectSession : public Session {
       const std::vector<string>& fetches,
       const ExecutorsAndKeys* executors_and_keys, const RunState* run_state);
 
+  // Use the appropriate WaitForNotification function based on whether
+  // operation_timeout_in_ms is greater than 0.
+  void WaitForNotification(RunState* run_state, int64 timeout_in_ms);
+
   const SessionOptions options_;
 
   // Device structures.
@@ -241,6 +246,9 @@ class DirectSession : public Session {
 
   // For generating step ids that are unique across all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
+
+  // Global timeout for all blocking operations in this session.
+  const int64 operation_timeout_in_ms_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };

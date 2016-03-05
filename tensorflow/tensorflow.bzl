@@ -13,7 +13,6 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:example/feature.proto",
         "//tensorflow/core:framework/allocation_description.proto",
         "//tensorflow/core:framework/attr_value.proto",
-        "//tensorflow/core:framework/config.proto",
         "//tensorflow/core:framework/device_attributes.proto",
         "//tensorflow/core:framework/function.proto",
         "//tensorflow/core:framework/graph.proto",
@@ -29,6 +28,7 @@ def tf_android_core_proto_sources():
         "//tensorflow/core:framework/types.proto",
         "//tensorflow/core:framework/versions.proto",
         "//tensorflow/core:lib/core/error_codes.proto",
+        "//tensorflow/core:protobuf/config.proto",
         "//tensorflow/core:protobuf/saver.proto",
         "//tensorflow/core:util/saved_tensor_slice.proto",
   ]

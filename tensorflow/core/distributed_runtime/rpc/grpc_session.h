@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -52,13 +54,22 @@ class GrpcSession : public Session {
   // the graph computation defined by "graph", and will have version
   // number "initial_version".
   Status Create(const GraphDef& graph) override;
+  Status Create(const RunOptions& run_options, const GraphDef& graph) override;
 
+  // Runs with and without RunOptions.
   Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
-             const std::vector<string>& output_names,
-             const std::vector<string>& target_nodes,
+             const std::vector<string>& output_tensor_names,
+             const std::vector<string>& target_node_names,
              std::vector<Tensor>* outputs) override;
+  Status Run(const RunOptions& run_options,
+             const std::vector<std::pair<string, Tensor> >& inputs,
+             const std::vector<string>& output_tensor_names,
+             const std::vector<string>& target_node_names,
+             std::vector<Tensor>* outputs, RunOutputs* run_outputs);
 
   Status Extend(const GraphDef& graph) override;
+  Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
+
   Status Close() override;
 
   // NOTE: This API is still experimental and may change.
@@ -87,7 +98,12 @@ class GrpcSession : public Session {
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
 
-  Status RunProto(RunStepRequest* req, RunStepResponse* resp);
+  Status RunProto(CallOptions* call_options, RunStepRequest* req,
+                  RunStepResponse* resp);
+
+  // Implementations for all the public interfaces.
+  Status CreateImpl(CallOptions* call_options, const GraphDef& graph);
+  Status ExtendImpl(CallOptions* call_options, const GraphDef& graph);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcSession);
 };

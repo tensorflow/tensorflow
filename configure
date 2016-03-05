@@ -99,7 +99,7 @@ while true; do
   else
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${CUDNNEXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${TF_CUDNN_EXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
     break
   fi
   CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"

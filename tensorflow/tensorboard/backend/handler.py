@@ -36,13 +36,13 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 
-from google.protobuf import text_format
-
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import float_wrapper
+from tensorflow.tensorboard.backend import process_graph
+
 
 DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
@@ -244,8 +244,25 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       self.send_response(404)
       return
 
+    limit_attr_size = query_params.get('limit_attr_size', None)
+    if limit_attr_size is not None:
+      try:
+        limit_attr_size = int(limit_attr_size)
+      except ValueError:
+        self.send_error(400, 'The query param `limit_attr_size` must be'
+                        'an integer')
+        return
+
+    large_attrs_key = query_params.get('large_attrs_key', None)
+    try:
+      process_graph.prepare_graph_for_ui(graph, limit_attr_size,
+                                         large_attrs_key)
+    except ValueError as e:
+      self.send_error(400, e.message)
+      return
+
     # Serialize the graph to pbtxt format.
-    graph_pbtxt = text_format.MessageToString(graph)
+    graph_pbtxt = str(graph)
     # Gzip it and send it to the user.
     self._send_gzip_response(graph_pbtxt, 'text/plain')
 

@@ -295,7 +295,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   #
   # But then calling `print op.device` returns:
   # ==> "/job:worker_train/task:1" -- a device that doesn't exist in this case!
-  with ops.device(None), ops.device(data.device):
+  with ops.colocate_with(data):
     if isinstance(data, ops.Tensor):
       if not data.dtype.is_ref_dtype:
         return switch(data, pred, name=name)
@@ -1669,7 +1669,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   """
   with ops.op_scope(dependencies + [output_tensor], name,
                     "control_dependency") as name:
-    with ops.device(output_tensor.device):
+    with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
         if isinstance(output_tensor, ops.Tensor):
@@ -1729,6 +1729,7 @@ def group(*inputs, **kwargs):
       # 1-level tree. The root node is the returned NoOp node.
       (dev, deps), = ops_on_device.items()
       return _GroupControlDeps(dev, deps, name=name)
+
     # 2-level tree. The root node is the returned NoOp node.
     # deps contains 1 NoOp node for each device.
     deps = []
@@ -1738,7 +1739,9 @@ def group(*inputs, **kwargs):
       return "" if dev is None else dev
     for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
-    return _GroupControlDeps(None, deps, name=name)
+
+    with ops.control_dependencies(deps):
+      return no_op(name=name)
 
 
 def tuple(tensors, name=None, control_inputs=None):
@@ -1932,13 +1935,14 @@ def map_fn(fn, elems, dtype=None, name=None):
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
-    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=0,
-                                            dynamic_size=True)
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
     elems_ta = elems_ta.unpack(elems)
 
-    n = elems_ta.size()
     i = constant_op.constant(0)
-    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n)
+    acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n,
+                                          dynamic_size=False)
     def compute(i, a):
       a = a.write(i, fn(elems_ta.read(i)))
       i = math_ops.add(i, 1)
@@ -2083,14 +2087,14 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
         prev_case_seq = None
-        for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
+        for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
           prev_case_seq = cond(
               cp, fn,
               default if i == 0 else lambda: prev_case_seq,
               name="If_%d" % i)
     else:
       prev_case_seq = None
-      for i, (cp, fn) in enumerate(zip(case_preds, fns)[::-1]):
+      for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
         prev_case_seq = cond(
             cp, fn,
             default if i == 0 else lambda: prev_case_seq,

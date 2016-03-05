@@ -498,6 +498,60 @@ class ImportGraphDefTest(tf.test.TestCase):
           return_elements=['A'], name='imported_graph')
       self.assertEqual(a.name, 'imported_graph/A')
 
+  def testNamePrefixColocationAttrs(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with tf.Graph().as_default():
+      b, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='imported_graph')
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' }
+          node { name: 'imported_graph/B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+  def testNamePrefixColocationAttrsMultipleImport(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with tf.Graph().as_default():
+      b, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='')
+      _, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='')
+      self.assertProtoEqualsVersion("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'A_1' op: 'None' }
+          node { name: 'B_1' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A_1' } }
+          } }""", b.graph.as_graph_def())
+
+  def testNamePrefixColocationAttrsNotFound(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, 'does not exist during import'):
+        tf.import_graph_def(original_graph_def,
+                            return_elements=['B'], name='imported_graph')
+
   def testEmptyGraph(self):
     with tf.Graph().as_default() as g:
       init_version = g.version

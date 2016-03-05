@@ -152,6 +152,15 @@ class StringInputProducerTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testSharedName(self):
+    with self.test_session():
+      strings = [b"to", b"be", b"or", b"not", b"to", b"be"]
+      queue = tf.train.string_input_producer(
+          strings, shared_name="SHARED_NAME_XYZ", name="Q")
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          queue.queue_ref.op.node_def.attr["shared_name"])
+
 
 class RangeInputProducerTest(tf.test.TestCase):
 
@@ -213,6 +222,15 @@ class RangeInputProducerTest(tf.test.TestCase):
         dequeue.eval()
       for thread in threads:
         thread.join()
+
+  def testSharedName(self):
+    with self.test_session():
+      range_size = 5
+      queue = tf.train.range_input_producer(
+          range_size, shared_name="SHARED_NAME_XYZ", name="Q")
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          queue.queue_ref.op.node_def.attr["shared_name"])
 
 
 class SliceInputProducerTest(tf.test.TestCase):
@@ -279,6 +297,17 @@ class SliceInputProducerTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testSharedName(self):
+    with self.test_session():
+      source_strings = ["A", "B", "D", "G"]
+      source_ints = [7, 3, 5, 2]
+      slices = tf.train.slice_input_producer(
+          [source_strings, source_ints], shared_name="SHARED_NAME_XYZ",
+          name="sip")
+
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          slices[0].op.inputs[1].op.inputs[0].op.node_def.attr["shared_name"])
 
 class BatchTest(tf.test.TestCase):
 
@@ -357,6 +386,21 @@ class BatchTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testSharedName(self):
+    with self.test_session():
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      batched = tf.train.batch(
+          [counter, "string"], batch_size=batch_size,
+          shared_name="SHARED_NAME_XYZ", name="Q")
+
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
 
 class BatchJoinTest(tf.test.TestCase):
 
@@ -411,6 +455,21 @@ class BatchJoinTest(tf.test.TestCase):
         sess.run(batched)
       for thread in threads:
         thread.join()
+
+  def testSharedName(self):
+    with self.test_session():
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      batched = tf.train.batch_join(
+          [[counter, "string"]], batch_size=batch_size,
+          shared_name="SHARED_NAME_XYZ", name="Q")
+
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          batched[0].op.inputs[0].op.node_def.attr["shared_name"])
 
 
 class ShuffleBatchTest(tf.test.TestCase):
@@ -478,6 +537,23 @@ class ShuffleBatchTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testSharedName(self):
+    with self.test_session():
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      batched = tf.train.shuffle_batch(
+          [counter, "string"], batch_size=batch_size,
+          capacity=32,
+          min_after_dequeue=10,
+          shared_name="SHARED_NAME_XYZ", name="Q")
+
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
 
 class ShuffleBatchJoinTest(tf.test.TestCase):
 
@@ -537,6 +613,23 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
         sess.run(batched)
       for thread in threads:
         thread.join()
+
+  def testSharedName(self):
+    with self.test_session():
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      batched = tf.train.shuffle_batch_join(
+          [[counter, "string"]], batch_size=batch_size,
+          capacity=32,
+          min_after_dequeue=10,
+          shared_name="SHARED_NAME_XYZ", name="Q")
+
+      self.assertProtoEquals(
+          "s: 'SHARED_NAME_XYZ'",
+          batched[0].op.inputs[0].op.node_def.attr["shared_name"])
 
 
 if __name__ == "__main__":
