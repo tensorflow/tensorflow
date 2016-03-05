@@ -292,7 +292,9 @@ class Optimizer(object):
       for grad, var in grads_and_vars:
         if not grad:
           continue
-        with ops.name_scope("update_" + var.op.name), ops.device(var.device):
+        # We colocate all ops created in _apply_dense or _apply_sparse
+        # on the same device as the variable.
+        with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
           if isinstance(grad, ops.Tensor):
             update_ops.append(self._apply_dense(grad, var))
           else:
