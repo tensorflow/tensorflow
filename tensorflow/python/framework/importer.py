@@ -236,7 +236,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       output_types = _OutputTypes(node, op_dict)
       name_to_op[node.name] = g.create_op(
           node.op, [], output_types, name=node.name, attrs=node.attr,
-          compute_shapes=False, compute_device=False)
+          compute_shapes=False, compute_device=False,
+          op_def=op_def)
 
     # 2. Add inputs to the operations.
     for node in graph_def.node:
