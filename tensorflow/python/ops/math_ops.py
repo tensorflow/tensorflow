@@ -63,6 +63,7 @@ mathematical functions for matrices to your graph.
 
 @@diag
 @@diag_part
+@@trace
 @@transpose
 
 @@matmul
@@ -920,6 +921,39 @@ def reduce_any(input_tensor, reduction_indices=None, keep_dims=False,
                                                         reduction_indices),
                            keep_dims, name=name)
 
+def trace(x, name=None):
+  """ Compte the trace of a tensor `x`.
+
+  `trace(x)` returns the sum of along the diagonal.
+  
+  For example:
+
+  ```python
+  # 'x' is [[1, 1],
+  #         [1, 1]]
+  tf.trace(x) ==> 2
+  
+  # 'x' is [[1,2,3],
+  #         [4,5,6],
+  #         [7,8,9]]
+  tf.trace(x) ==> 15
+  ```
+
+  Args:
+    input_tensor: Rank 2 tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    The trace of input tensor.
+  """
+  #if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
+  #  raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
+  with ops.op_scope([x], name, "Trace") as name: 
+    x = ops.convert_to_tensor(x, name="x")
+    if len(x.get_shape()) != 2:
+      raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
+                       % len(x.get_shape()))
+    return reduce_sum(array_ops.diag_part(x), name=name)
 
 def matmul(a, b,
            transpose_a=False, transpose_b=False,
