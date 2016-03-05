@@ -484,8 +484,8 @@ $ sudo easy_install -U numpy
 $ sudo easy_install wheel
 ```
 
-We also recommend the [ipython](https://ipython.org) enhanced python shell, so
-best install that too:
+We also recommend the [ipython](https://ipython.org) enhanced python shell,
+which you can install as follows:
 
 ```bash
 $ sudo easy_install ipython
