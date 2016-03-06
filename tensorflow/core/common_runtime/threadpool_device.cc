@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -26,6 +25,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -53,12 +56,13 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 }
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
+#if GOOGLE_CUDA
   ProcessState* ps = ProcessState::singleton();
   if (attr.gpu_compatible()) {
     return ps->GetCUDAHostAllocator(0);
-  } else {
-    return allocator_;
   }
+#endif  // GOOGLE_CUDA
+  return allocator_;
 }
 
 Status ThreadPoolDevice::MakeTensorFromProto(

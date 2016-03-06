@@ -963,8 +963,11 @@ tf_cuda_library(
         ],
     ),
     copts = tf_copts(),
-    deps = [
+    cuda_deps = [
         ":core_gpu_internal",
+        ":stream_executor",
+    ],
+    deps = [
         ":framework",
         ":framework_internal",
         ":function_ops_op_lib",
@@ -973,7 +976,6 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        ":stream_executor",
         "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
     ],
