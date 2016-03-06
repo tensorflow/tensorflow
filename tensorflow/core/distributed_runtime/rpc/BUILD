@@ -138,6 +138,7 @@ cc_library(
         ":grpc_call",
         ":grpc_util",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_gpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_lib",
         "//tensorflow/core:gpu_runtime",
