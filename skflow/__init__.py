@@ -25,13 +25,10 @@ from skflow.io import data_feeder
 from skflow import models
 from skflow.trainer import TensorFlowTrainer
 
+__version__, SKLEARN_VERSION, TF_VERSION = \
+[pkg_rs.get_distribution(pkg).version for pkg in ['skflow', 'scikit-learn', 'tensorflow']]
 
-__version__ = pkg_rs.get_distribution("skflow").version
-
-sklearn_version = pkg_rs.get_distribution("scikit-learn").version
-tensorflow_version = pkg_rs.get_distribution("tensorflow").version
-
-if sklearn_version < '0.16.0':
+if SKLEARN_VERSION < '0.16.0':
     raise ImportError("Your scikit-learn version needs to be at least 0.16. ")
-if tensorflow_version < '0.7.0':
+if TF_VERSION < '0.7.0':
     raise ImportError("Your tensorflow version needs to be at least 0.7. ")
