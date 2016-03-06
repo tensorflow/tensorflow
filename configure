@@ -1,30 +1,5 @@
 #!/bin/bash
 
-## Set up python-related environment settings
-while true; do
-  fromuser=""
-  if [ -z "$PYTHON_BIN_PATH" ]; then
-    default_python_bin_path=$(which python)
-    read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
-    fromuser="1"
-    if [ -z "$PYTHON_BIN_PATH" ]; then
-      PYTHON_BIN_PATH=$default_python_bin_path
-    fi
-  fi
-  if [ -e "$PYTHON_BIN_PATH" ]; then
-    break
-  fi
-  echo "Invalid python path. ${PYTHON_BIN_PATH} cannot be found" 1>&2
-  if [ -z "$fromuser" ]; then
-    exit 1
-  fi
-  PYTHON_BIN_PATH=""
-  # Retry
-done
-
-# Invoke python_config and set up symlinks to python includes
-(./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
-
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do

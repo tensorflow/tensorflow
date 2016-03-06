@@ -5,6 +5,7 @@
 
 load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
+load("@local_tf_py_config//util/python:version.bzl", "PY_VERSION")
 
 # List of proto files for android builds
 def tf_android_core_proto_sources():
@@ -426,6 +427,7 @@ def py_tests(name,
                    srcs=[src],
                    main=src,
                    tags=tags,
+                   default_python_version = PY_VERSION,
                    visibility=["//tensorflow:internal"],
                    shard_count=shard_count,
                    data=data,
