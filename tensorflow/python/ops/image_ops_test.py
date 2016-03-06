@@ -745,7 +745,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
   def availableGPUModes(self, opt, nptype):
     if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR \
-            and nptype == np.float32:
+            and nptype in [np.float32, np.float64]:
       return [True, False]
     else:
       return [False]
@@ -978,7 +978,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     input_shape = [1, 5, 6, 3]
     target_height = 8
     target_width = 12
-    for nptype in [np.float32]:
+    for nptype in [np.float32, np.float64]:
       for align_corners in [True, False]:
         img_np = np.arange(0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
         with self.test_session(use_gpu=True):

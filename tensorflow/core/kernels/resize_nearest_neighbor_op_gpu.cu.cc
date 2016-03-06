@@ -78,7 +78,7 @@ bool ResizeNearestNeighbor(const T* bottom_data, const int batch,
                                const float width_scale, T* top_data,               \
                                const Eigen::GpuDevice& d);
 
-DECLARE_GPU_SPEC(float);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 }  // end namespace tensorflow
