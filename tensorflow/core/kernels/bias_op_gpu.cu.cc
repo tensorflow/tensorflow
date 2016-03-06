@@ -121,9 +121,11 @@ template <typename T>
 __global__ void BiasGradNCHW_SharedAtomics(int32 nthreads,
                                            const T* output_backprop,
                                            T* bias_backprop, int32 bias_size,
-                                           int32 image_size) {
+                                           int32 image_size,
+                                           int32 shared_replicas) {
   T* s_data = reinterpret_cast<T*>(s_buf);
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+  int32 s_data_size = bias_size * shared_replicas;
+  for (int32 index = threadIdx.x; index < s_data_size; index += blockDim.x) {
     s_data[index] = 0;
   }
   __syncthreads();
@@ -131,13 +133,16 @@ __global__ void BiasGradNCHW_SharedAtomics(int32 nthreads,
   for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
        index += blockDim.x * gridDim.x) {
     int32 index2 = index / image_size;
-    int32 bias_offset = index2 % bias_size;
+    int32 bias_slot_index = index2 % bias_size;
+    int32 bias_slot_offset = index % shared_replicas;
+    int32 bias_offset = bias_slot_index * shared_replicas + bias_slot_offset;
     CudaAtomicAdd(s_data + bias_offset, ldg(output_backprop + index));
   }
   __syncthreads();
 
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
-    CudaAtomicAdd(bias_backprop + index, s_data[index]);
+  for (int32 index = threadIdx.x; index < s_data_size; index += blockDim.x) {
+    int bias_slot_index = index / shared_replicas;
+    CudaAtomicAdd(bias_backprop + bias_slot_index, s_data[index]);
   }
 }
 
@@ -151,9 +156,25 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   const int32 total_count = batch * bias_size * image_size;
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
-  const int32 shared_memory_size = bias_size * sizeof(T);
+  const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
+  int32 shared_memory_size = bias_size * sizeof(T);
+  int shared_replicas = 1;
+  if (data_format == FORMAT_NCHW) {
+    // For NCHW, the reduction in the HW dimensions all go to the same locaiton,
+    // which causes a lot of bank conflicts. So having a number of them can
+    // improve the performance. But we also want to limit their usage so the
+    // warp occupancy does not decrease.
+    if (shared_memory_size <= max_shared_memory_size) {
+      // We need enough shared memory to avoid bank conflict. But not too much
+      // so that it would reduce occupancy.
+      static constexpr int kMaxSharedReplicas = 8;
+      shared_replicas = std::min(kMaxSharedReplicas,
+                                 max_shared_memory_size / shared_memory_size);
+      shared_memory_size *= shared_replicas;
+    }
+  }
   // Check if we have enough shared memory.
-  if (shared_memory_size <= d.sharedMemPerBlock()) {
+  if (shared_memory_size <= max_shared_memory_size) {
     if (data_format == FORMAT_NHWC) {
       BiasGradNHWC_SharedAtomics<
           T><<<config.block_count, config.thread_per_block, shared_memory_size,
@@ -163,7 +184,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
       BiasGradNCHW_SharedAtomics<
           T><<<config.block_count, config.thread_per_block, shared_memory_size,
                d.stream()>>>(total_count, output_backprop, bias_backprop,
-                             bias_size, image_size);
+                             bias_size, image_size, shared_replicas);
     }
   } else {
     // Note that even if we don't have enough shared memory to fit the entire

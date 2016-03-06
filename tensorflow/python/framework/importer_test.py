@@ -172,6 +172,9 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(c.name, 'import/C')
       self.assertEqual(d.name, 'import/D')
 
+      # Check that the op_def is still available.
+      self.assertNotEqual(None, a.op_def)
+
   def testInputMap(self):
     with tf.Graph().as_default():
       feed_a_0 = tf.constant(0, dtype=tf.int32)

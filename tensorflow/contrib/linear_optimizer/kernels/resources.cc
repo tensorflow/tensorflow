@@ -21,14 +21,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-DualsByExample::DualsByExample(const string& container,
-                               const string& solver_uuid)
+DataByExample::DataByExample(const string& container, const string& solver_uuid)
     : container_(container), solver_uuid_(solver_uuid) {}
 
-DualsByExample::~DualsByExample() {}
+DataByExample::~DataByExample() {}
 
 // static
-DualsByExample::Key DualsByExample::MakeKey(const string& example_id) {
+DataByExample::Key DataByExample::MakeKey(const string& example_id) {
   // Platform agnostic and collision resistant key-generation function.
   // The current probability of at least one collision for 1B example_ids is
   // approximately 10^-11 (ie 2^60 / 2^97).
@@ -44,17 +43,16 @@ DualsByExample::Key DualsByExample::MakeKey(const string& example_id) {
       Hash64(example_id.data(), example_id.size(), kSeed2) & 0xFFFFFFFF);
 }
 
-float& DualsByExample::operator[](const Key& key) {
+DataByExample::Data& DataByExample::operator[](const Key& key) {
   mutex_lock l(mu_);
   return duals_by_key[key];
 }
 
-string DualsByExample::DebugString() {
-  return strings::StrCat("DualsByExample(", container_, ", ", solver_uuid_,
-                         ")");
+string DataByExample::DebugString() {
+  return strings::StrCat("DataByExample(", container_, ", ", solver_uuid_, ")");
 }
 
-size_t DualsByExample::KeyHash::operator()(const Key& key) const {
+size_t DataByExample::KeyHash::operator()(const Key& key) const {
   // Since key.first is already a Hash64 it suffices.
   return key.first;
 }

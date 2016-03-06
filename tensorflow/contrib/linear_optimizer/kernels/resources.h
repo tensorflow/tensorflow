@@ -27,23 +27,28 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Resource for storing dual variable per example across many sessions.
+// Resource for storing per-example data across many sessions.
 // This class is thread-safe.
-class DualsByExample : public ResourceBase {
+class DataByExample : public ResourceBase {
  public:
   // The container and solver_uuid are only used for debugging purposes.
-  DualsByExample(const string& container, const string& solver_uuid);
+  DataByExample(const string& container, const string& solver_uuid);
 
-  virtual ~DualsByExample();
+  virtual ~DataByExample();
 
   using Key = std::pair<uint64, uint32>;
 
   // Makes a key for the supplied example_id, for compact storage.
   static Key MakeKey(const string& example_id);
 
+  struct Data {
+    // TODO(rohananil): Add extra data needed for duality gap computation here.
+    float dual;
+  };
+
   // Accessor and mutator for the entry at Key. Creates an entry with default
   // value (0) if the key is not present.
-  float& operator[](const Key& key);
+  Data& operator[](const Key& key);
 
   string DebugString() override;
 
@@ -60,9 +65,9 @@ class DualsByExample : public ResourceBase {
 
   // Backing container.
   //
-  // sizeof(EntryPayload) = sizeof(Key) + sizeof(float) = 16.
+  // sizeof(EntryPayload) = sizeof(Key) + sizeof(Data) = 16.
   // So on average we use ~35 bytes per entry in this table.
-  std::unordered_map<Key, float, KeyHash> duals_by_key;  // Guarded by mu_.
+  std::unordered_map<Key, Data, KeyHash> duals_by_key;  // Guarded by mu_.
 };
 
 }  // namespace tensorflow

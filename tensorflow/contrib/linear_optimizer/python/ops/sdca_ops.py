@@ -315,5 +315,7 @@ class SdcaModel(object):
          'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
-      return self._l1_loss() + self._l2_loss() + self.unregularized_loss(
-          examples)
+      weights = convert_to_tensor(examples['example_weights'])
+      return ((
+          (self._l1_loss() + self._l2_loss()) / math_ops.reduce_sum(weights)) +
+              self.unregularized_loss(examples))
