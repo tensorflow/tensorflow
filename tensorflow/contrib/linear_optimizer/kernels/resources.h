@@ -17,17 +17,22 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_RESOURCES_H_
 
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Resource for storing per-example data across many sessions.
+// Resource for storing per-example data across many sessions. The data is
+// operated on in a modify or append fashion (data can be modified or added, but
+// never deleted).
+//
 // This class is thread-safe.
 class DataByExample : public ResourceBase {
  public:
@@ -43,12 +48,34 @@ class DataByExample : public ResourceBase {
 
   struct Data {
     // TODO(rohananil): Add extra data needed for duality gap computation here.
-    float dual;
+    float dual = 0;
+
+    // Comparison operators for ease of testing.
+    bool operator==(const Data& other) const { return dual == other.dual; }
+    bool operator!=(const Data& other) const { return !(*this == other); }
   };
 
-  // Accessor and mutator for the entry at Key. Creates an entry with default
-  // value (0) if the key is not present.
-  Data& operator[](const Key& key);
+  // Accessor and mutator for the entry at Key. Accessor creates an entry with
+  // default value (default constructed object) if the key is not present and
+  // returns it.
+  inline Data Get(const Key& key) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    return data_by_key_[key];
+  }
+  inline void Set(const Key& key, const Data& data) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    data_by_key_[key] = data;
+  }
+
+  // Visits all elements in this resource. The view of each element (Data) is
+  // atomic, but the entirety of the visit is not (ie the visitor might see
+  // different versions of the Data across elements).
+  //
+  // Returns OK on success or ABORTED if the number of elements in this
+  // container has changed since the beginning of the visit (in which case the
+  // visit cannot be completed and is aborted early).
+  Status Visit(std::function<void(const Data& data)> visitor) const
+      LOCKS_EXCLUDED(mu_);
 
   string DebugString() override;
 
@@ -57,17 +84,23 @@ class DataByExample : public ResourceBase {
     size_t operator()(const Key& key) const;
   };
 
-  const string container_;
-  const string solver_uuid_;
-
-  // TODO(katsiapis): Come up with a more efficient locking scheme.
-  mutex mu_;
-
   // Backing container.
   //
   // sizeof(EntryPayload) = sizeof(Key) + sizeof(Data) = 16.
   // So on average we use ~35 bytes per entry in this table.
-  std::unordered_map<Key, Data, KeyHash> duals_by_key;  // Guarded by mu_.
+  using DataByKey = std::unordered_map<Key, Data, KeyHash>;
+
+  // TODO(katsiapis): Benchmark and/or optimize this.
+  static const size_t kVisitChunkSize = 100;
+
+  const string container_;
+  const string solver_uuid_;
+
+  // TODO(katsiapis): Come up with a more efficient locking scheme.
+  mutable mutex mu_;
+  DataByKey data_by_key_ GUARDED_BY(mu_);
+
+  friend class DataByExampleTest;
 };
 
 }  // namespace tensorflow
