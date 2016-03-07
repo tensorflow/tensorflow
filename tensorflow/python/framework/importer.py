@@ -251,8 +251,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           class_values = value.list
           new_class_values = []
           for class_value in class_values.s:
-            if class_value.startswith('loc:@'):
-              op_to_bind_to = class_value[5:]
+            if class_value.startswith(b'loc:@'):
+              op_to_bind_to = class_value[5:].decode()
               # Find the op by its original name.
               if op_to_bind_to not in name_to_op:
                 raise ValueError('Specified colocation to an op that '

@@ -218,7 +218,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     self.assertDeviceEqual("/job:dev_v0", ema.average(v0).device)
     self.assertDeviceEqual("/job:dev_v1", ema.average(v1).device)
     # However, the colocation property is maintained.
-    self.assertEqual(["loc:@v1"],
+    self.assertEqual([b"loc:@v1"],
                      ema.average(v1).op.colocation_groups())
     self.assertDeviceEqual("/job:default", ema.average(tensor2).device)
 
