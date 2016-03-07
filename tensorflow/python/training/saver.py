@@ -403,8 +403,8 @@ class BaseSaverBuilder(object):
           if slice_name is None:
             slice_name = variable._save_slice_info.full_name
           elif slice_name != variable._save_slice_info.full_name:
-            raise variable("Slices must all be from the same tensor: %s != %s"
-                           % (slice_name, variable._save_slice_info.full_name))
+            raise ValueError("Slices must all be from the same tensor: %s != %s"
+                             % (slice_name, variable._save_slice_info.full_name))
           self._AddVarToSave(vars_to_save, seen_variables,
                              variable, variable._save_slice_info.spec, name)
         # pylint: enable=protected-access
