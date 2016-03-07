@@ -201,7 +201,7 @@ class TensorboardServerTest(tf.test.TestCase):
     node1.name = 'a'
     node2 = graph_def.node.add()
     node2.name = 'b'
-    node2.attr['very_large_attr'].s = 'a' * 2048  # 2 KB attribute
+    node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
     writer.add_event(tf.Event(graph_def=graph_def.SerializeToString()))
 
     # 1x1 transparent GIF.
