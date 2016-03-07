@@ -21,7 +21,7 @@ import numpy
 import tensorflow as tf
 
 
-class GenerateIdentityTensorTest(tf.test.TestCase):
+class TraceTest(tf.test.TestCase):
 
   def setUp(self):
     x = numpy.random.seed(0)

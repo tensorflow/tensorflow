@@ -922,7 +922,7 @@ def reduce_any(input_tensor, reduction_indices=None, keep_dims=False,
                            keep_dims, name=name)
 
 def trace(x, name=None):
-  """ Compte the trace of a tensor `x`.
+  """ Compute the trace of a tensor `x`.
 
   `trace(x)` returns the sum of along the diagonal.
   
@@ -940,7 +940,7 @@ def trace(x, name=None):
   ```
 
   Args:
-    input_tensor: Rank 2 tensor.
+    input_tensor: 2-D tensor.
     name: A name for the operation (optional).
 
   Returns:
