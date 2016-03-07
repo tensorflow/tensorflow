@@ -898,7 +898,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = control_flow_ops.While(c, b, [n, v], parallel_iterations=1)
 
       r = tf.gradients(r[1], x)[0]
-      self.assertEqual(r.get_shape().as_list(), [None])
+      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
   def testWhileGrad_MultipleUses(self):

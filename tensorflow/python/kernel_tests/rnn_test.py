@@ -1082,7 +1082,7 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
-  for max_time in (1, 25, 50):
+  for max_time in (1, 25, 50, 100, 200):
     graph_creation_static_vs_dynamic_rnn_benchmark(max_time)
 
   print("Calculation: Static Unroll with Dynamic Flow LSTM "
