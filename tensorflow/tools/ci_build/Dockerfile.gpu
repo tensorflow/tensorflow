@@ -3,11 +3,10 @@ FROM nvidia/cuda:7.5-cudnn4-devel
 MAINTAINER Jan Prach <jendap@google.com>
 
 # Copy and run the install scripts.
-COPY install/install_deb_packages.sh /install/install_deb_packages.sh
+COPY install/*.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa
 RUN /install/install_deb_packages.sh
-COPY install/install_openjdk8_from_ppa.sh /install/install_openjdk8_from_ppa.sh
-RUN /install/install_openjdk8_from_ppa.sh
-COPY install/install_bazel.sh /install/install_bazel.sh
 RUN /install/install_bazel.sh
 
 # Set up bazelrc.
