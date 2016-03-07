@@ -33,6 +33,7 @@ apt-get install -y \
     python3-dev \
     python3-numpy \
     python3-pip \
+    sudo \
     swig \
     unzip \
     wget \
