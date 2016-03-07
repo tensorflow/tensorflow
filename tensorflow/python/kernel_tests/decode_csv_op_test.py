@@ -160,6 +160,15 @@ class DecodeCSVOpTest(tf.test.TestCase):
         args,
         expected_err_re="Unquoted fields cannot have quotes/CRLFs inside")
 
+  def testWrongDefaults(self):
+    args = {
+        "records": [",1", "0.2,2", "3.0adf,3"],
+        "record_defaults": [[1.0]]
+    }
+
+    self._test(args,
+               expected_err_re="Expect 1 fields but have 2 in record 0")
+
 
 if __name__ == "__main__":
   tf.test.main()
