@@ -79,7 +79,7 @@ def _reduce_batch(x, reduce_fn, name=None):
     elif ndims == 1:
       return x  # Don't include a useless reduction.
     elif ndims:
-      reduction_indices = range(1, ndims)
+      reduction_indices = list(range(1, ndims))
       shape = [x.get_shape().dims[0]]
     else:
       reduction_indices = math_ops.range(1, array_ops.size(array_ops.shape(x)))

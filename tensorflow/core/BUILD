@@ -963,6 +963,10 @@ tf_cuda_library(
         ],
     ),
     copts = tf_copts(),
+    cuda_deps = [
+        ":core_gpu_internal",
+        ":stream_executor",
+    ],
     deps = [
         ":framework",
         ":framework_internal",
@@ -976,6 +980,39 @@ tf_cuda_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+# This target should not link in any GPU runtime (CUDA) dependencies,
+# only libraries for interfacing with GPUs that can be safely linked
+# into CPU binaries.
+cc_library(
+    name = "core_gpu_internal",
+    srcs = [
+        "common_runtime/gpu/gpu_allocator_retry.cc",
+        "common_runtime/gpu/gpu_bfc_allocator.cc",
+        "common_runtime/gpu/gpu_debug_allocator.cc",
+        "common_runtime/gpu/gpu_init.cc",
+        "common_runtime/gpu/pool_allocator.cc",
+        "common_runtime/gpu/process_state.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_allocator_retry.h",
+        "common_runtime/gpu/gpu_bfc_allocator.h",
+        "common_runtime/gpu/gpu_debug_allocator.h",
+        "common_runtime/gpu/gpu_init.h",
+        "common_runtime/gpu/pool_allocator.h",
+        "common_runtime/gpu/process_state.h",
+        "common_runtime/gpu/visitable_allocator.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":stream_executor",
+    ],
 )
 
 cc_library(
@@ -1006,20 +1043,18 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_runtime",
-    srcs = glob(
-        [
-            "common_runtime/gpu/*.cc",
-        ],
-        exclude = [
-            "**/*main.cc",
-            "**/*test.cc",
-            "common_runtime/gpu/gpu_event_mgr.cc",
-        ],
-    ),
-    hdrs = glob(
-        ["common_runtime/gpu/*.h"],
-        exclude = ["common_runtime/gpu/gpu_event_mgr.h"],
-    ),
+    srcs = [
+        "common_runtime/gpu/gpu_device.cc",
+        "common_runtime/gpu/gpu_device_factory.cc",
+        "common_runtime/gpu/gpu_stream_util.cc",
+        "common_runtime/gpu/gpu_util.cc",
+        "common_runtime/gpu/gpu_util_platform_specific.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_device.h",
+        "common_runtime/gpu/gpu_stream_util.h",
+        "common_runtime/gpu/gpu_util.h",
+    ],
     copts = tf_copts(),
     cuda_deps = [
         ":cuda",
@@ -1028,6 +1063,7 @@ tf_cuda_library(
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
+        ":core_gpu_internal",
         ":framework",
         ":framework_internal",
         ":gpu_lib",

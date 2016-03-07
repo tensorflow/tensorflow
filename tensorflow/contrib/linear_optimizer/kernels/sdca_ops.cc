@@ -412,6 +412,10 @@ class SdcaSolver : public OpKernel {
                    context->GetAttr("l1", &regularizations_.symmetric_l1));
     OP_REQUIRES_OK(context,
                    context->GetAttr("l2", &regularizations_.symmetric_l2));
+    // We enforce a minimal l2, required by the algorithm.
+    regularizations_.symmetric_l2 =
+        std::max(regularizations_.symmetric_l2, 1.0f);
+
     OP_REQUIRES_OK(context, context->GetAttr("duality_gap_threshold",
                                              &duality_gap_threshold_));
     OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
@@ -420,22 +424,22 @@ class SdcaSolver : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Get a handle on a shared container across invocations of this Kernel.
-    // The shared container is intended to maintain state (values of dual
-    // variables) across invocations of the kernel on different input data.
+    // The shared container is intended to maintain state at the example level
+    // across invocations of the kernel on different input data.
     //
     // TODO(katsiapis): Replace this in-Kernel data structure with a first class
     // citizen mutable Dictionary in tensorflow proper, that we will initialize
     // and update externally.
-    DualsByExample* duals_by_example = nullptr;
+    DataByExample* data_by_example = nullptr;
     OP_REQUIRES_OK(context,
-                   context->resource_manager()->LookupOrCreate<DualsByExample>(
-                       container_, solver_uuid_, &duals_by_example,
-                       [this](DualsByExample** ret) {
-                         *ret = new DualsByExample(container_, solver_uuid_);
+                   context->resource_manager()->LookupOrCreate<DataByExample>(
+                       container_, solver_uuid_, &data_by_example,
+                       [this](DataByExample** ret) {
+                         *ret = new DataByExample(container_, solver_uuid_);
                          return Status::OK();
                        }));
     OP_REQUIRES(
-        context, !duals_by_example->RefCountIsOne(),
+        context, !data_by_example->RefCountIsOne(),
         errors::Internal("Expected shared-ownership of duals_by_example."));
 
     const Tensor* example_weights_t;
@@ -445,6 +449,16 @@ class SdcaSolver : public OpKernel {
                 errors::InvalidArgument("example_weights should be a vector."));
     const auto example_weights = example_weights_t->vec<float>();
 
+    Eigen::Tensor<float, 0, Eigen::RowMajor> example_weights_sum;
+    example_weights_sum.device(context->eigen_cpu_device()) =
+        example_weights.sum();
+    const float weighted_examples = example_weights_sum();
+    const int64 num_examples = example_weights.size();
+
+    OP_REQUIRES(context, weighted_examples > 0,
+                errors::InvalidArgument("No weighted examples in ",
+                                        num_examples, " training examples"));
+
     Tensor primal_loss_t;
     OP_REQUIRES_OK(context,
                    context->mutable_input("primal_loss", &primal_loss_t,
@@ -452,23 +466,6 @@ class SdcaSolver : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(primal_loss_t.shape()),
                 errors::InvalidArgument("primal_loss should be a scalar."));
     auto primal_loss = primal_loss_t.scalar<double>();
-
-    Eigen::Tensor<float, 0, Eigen::RowMajor> example_weights_sum;
-    example_weights_sum.device(context->eigen_cpu_device()) =
-        example_weights.sum();
-    const float weighted_examples = example_weights_sum();
-
-    const int64 num_examples = example_weights.size();
-    OP_REQUIRES(context, weighted_examples > 0,
-                errors::InvalidArgument("No weighted examples in ",
-                                        num_examples, " training examples"));
-
-    // We scale regularizations up by weighted examples and enforce a minimal
-    // l2, required by the algorithm.
-    regularizations_.symmetric_l1 =
-        regularizations_.symmetric_l1 * weighted_examples;
-    regularizations_.symmetric_l2 =
-        std::max(regularizations_.symmetric_l2 * weighted_examples, 1.0f);
 
     OpInputList dense_features_inputs;
     OP_REQUIRES_OK(
@@ -501,6 +498,23 @@ class SdcaSolver : public OpKernel {
                     "The number of example ids (%ld) should match the number "
                     "of example weights (%lld).",
                     example_ids.size(), num_examples)));
+    const int64 num_duplicate_example_ids = [&] {
+      // TODO(katsiapis): Benchmark and/or optimize.
+      std::vector<StringPiece> scratch_storage;
+      scratch_storage.reserve(example_ids.size());
+      for (size_t i = 0; i < example_ids.size(); ++i) {
+        scratch_storage.emplace_back(example_ids(i));
+      }
+      std::sort(scratch_storage.begin(), scratch_storage.end());
+      return std::distance(
+          std::unique(scratch_storage.begin(), scratch_storage.end()),
+          scratch_storage.end());
+    }();
+    OP_REQUIRES(context, num_duplicate_example_ids == 0,
+                errors::InvalidArgument(strings::Printf(
+                    "Detected %lld duplicates in example_ids, which usually "
+                    "indicates a bug in the input data.",
+                    num_duplicate_example_ids)));
 
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
@@ -578,9 +592,9 @@ class SdcaSolver : public OpKernel {
           for (int64 offset = begin; offset < end; ++offset) {
             // Get example id, label, and weight.
             const int64 example_index = example_indices[offset];
-            const DualsByExample::Key example_key =
-                DualsByExample::MakeKey(example_ids(example_index));
-            const double current_dual = (*duals_by_example)[example_key];
+            const DataByExample::Key example_key =
+                DataByExample::MakeKey(example_ids(example_index));
+            const double current_dual = (*data_by_example)[example_key].dual;
             const double example_weight = example_weights(example_index);
             float example_label = example_labels(example_index);
             const Status conversion_status = convert_label_(&example_label);
@@ -626,7 +640,7 @@ class SdcaSolver : public OpKernel {
                                &dense_delta_weights_by_group);
 
             // Update dual variable.
-            (*duals_by_example)[example_key] = new_dual;
+            (*data_by_example)[example_key].dual = new_dual;
           }
           AtomicAdd(primal_loss_on_example_subset, &total_primal_loss);
           AtomicAdd(dual_loss_on_example_subset, &total_dual_loss);
@@ -658,7 +672,7 @@ class SdcaSolver : public OpKernel {
                   &dense_weights_by_group);
 
     // TODO(katsiapis): Use core::ScopedUnref once it's moved out of internal.
-    duals_by_example->Unref();
+    data_by_example->Unref();
   }
 
  private:

@@ -36,7 +36,7 @@ class GCSFileLoaderTest(tf.test.TestCase):
     self._stubs.CleanUp()
 
   def testLoad(self):
-    loader = gcs_file_loader.GCSFileLoader('/gs/some-fake-url')
+    loader = gcs_file_loader.GCSFileLoader('gs://some-fake-url')
     events = list(loader.Load())
     self.assertEqual(len(events), 1)
     self.assertEqual(events[0].file_version, 'brain.Event:1')

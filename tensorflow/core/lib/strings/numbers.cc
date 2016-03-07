@@ -254,7 +254,7 @@ bool HexStringToUint64(const StringPiece& s, uint64* result) {
   if (s.empty()) {
     return false;
   }
-  for (int i = 0; i < s.size(); i++) {
+  for (size_t i = 0; i < s.size(); i++) {
     char c = s[i];
     if (c >= '0' && c <= '9') {
       v = (v << 4) + (c - '0');

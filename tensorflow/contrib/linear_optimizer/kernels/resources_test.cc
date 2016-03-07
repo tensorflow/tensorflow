@@ -22,30 +22,30 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST(DualsByExample, MakeKeyIsCollisionResistent) {
-  const DualsByExample::Key key = DualsByExample::MakeKey("TheExampleId");
+TEST(DataByExample, MakeKeyIsCollisionResistent) {
+  const DataByExample::Key key = DataByExample::MakeKey("TheExampleId");
   EXPECT_NE(key.first, key.second);
   EXPECT_NE(key.first & 0xFFFFFFFF, key.second);
 }
 
-TEST(DualsByExample, ElementAccessAndMutationWorks) {
+TEST(DataByExample, ElementAccessAndMutationWorks) {
   const string container = "TheContainer";
   const string solver = "TheSolver";
   ResourceMgr rm;
   ASSERT_TRUE(
-      rm.Create(container, solver, new DualsByExample(container, solver)).ok());
+      rm.Create(container, solver, new DataByExample(container, solver)).ok());
 
-  DualsByExample* duals_by_example;
+  DataByExample* duals_by_example;
   ASSERT_TRUE(rm.Lookup(container, solver, &duals_by_example).ok());
 
-  const DualsByExample::Key key1 = DualsByExample::MakeKey("TheExampleId1");
-  EXPECT_EQ(0, (*duals_by_example)[key1]);
+  const DataByExample::Key key1 = DataByExample::MakeKey("TheExampleId1");
+  EXPECT_EQ(0, (*duals_by_example)[key1].dual);
 
-  (*duals_by_example)[key1] = 1;
-  EXPECT_EQ(1, (*duals_by_example)[key1]);
+  (*duals_by_example)[key1].dual = 1;
+  EXPECT_EQ(1, (*duals_by_example)[key1].dual);
 
-  const DualsByExample::Key key2 = DualsByExample::MakeKey("TheExampleId2");
-  EXPECT_NE((*duals_by_example)[key1], (*duals_by_example)[key2]);
+  const DataByExample::Key key2 = DataByExample::MakeKey("TheExampleId2");
+  EXPECT_NE((*duals_by_example)[key1].dual, (*duals_by_example)[key2].dual);
 
   // TODO(katsiapis): Use core::ScopedUnref once it's moved out of internal.
   duals_by_example->Unref();
