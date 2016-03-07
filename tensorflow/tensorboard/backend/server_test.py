@@ -26,10 +26,10 @@ import gzip
 import json
 import os
 import shutil
-import StringIO
 import threading
 import zlib
 
+from six import BytesIO
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -80,9 +80,9 @@ class TensorboardServerTest(tf.test.TestCase):
     content = response.read()
     if encoding in ('gzip', 'x-gzip', 'deflate'):
       if encoding == 'deflate':
-        data = StringIO.StringIO(zlib.decompress(content))
+        data = BytesIO(zlib.decompress(content))
       else:
-        data = gzip.GzipFile('', 'rb', 9, StringIO.StringIO(content))
+        data = gzip.GzipFile('', 'rb', 9, BytesIO(content))
       content = data.read()
     return content
 
