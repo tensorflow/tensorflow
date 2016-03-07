@@ -19,7 +19,7 @@ namespace tensorflow {
 // --------------------------------------------------------------------------
 
 REGISTER_OP("SdcaSolver")
-    .Attr("loss_type: {'logistic_loss', 'squared_loss'}")
+    .Attr("loss_type: {'logistic_loss', 'squared_loss', 'hinge_loss'}")
     .Attr("num_sparse_features: int >= 0")
     .Attr("num_dense_features: int >= 0")
     .Attr("l1: float >= 0")
@@ -48,8 +48,8 @@ Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
 
   Loss objective = \sum f_{i}(wx_{i}) + l2 * |w|^2 + l1 * |w|
 
-loss_type: Type of the primal loss. Only logistic_loss and squared_loss
-   are supported.
+loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
+  squared and hinge losses.
 num_sparse_features: Number of sparse feature groups to train on.
 num_dense_features: Number of dense feature groups to train on.
 l1: Symmetric l1 regularization strength.

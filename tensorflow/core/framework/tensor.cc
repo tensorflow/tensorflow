@@ -560,6 +560,8 @@ bool Tensor::CanUseDMA() const {
 
 string Tensor::SummarizeValue(int64 max_entries) const {
   string ret;
+  // TODO(irving): Don't call NumElements and flat every time around this
+  // loop.
   for (int64 i = 0; i < std::min(max_entries, NumElements()); ++i) {
     if (i > 0) strings::StrAppend(&ret, " ");
     switch (dtype()) {

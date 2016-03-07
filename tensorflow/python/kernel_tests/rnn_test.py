@@ -374,7 +374,8 @@ class LSTMTest(tf.test.TestCase):
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
-      inputs = max_length * [tf.placeholder(tf.float64)]
+      inputs = max_length * [
+          tf.placeholder(tf.float64, shape=(None, input_size))]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -405,7 +406,8 @@ class LSTMTest(tf.test.TestCase):
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      inputs = max_length * [tf.placeholder(tf.float32)]
+      inputs = max_length * [
+          tf.placeholder(tf.float32, shape=(None, input_size))]
       initializer = tf.constant_initializer(0.001)
 
       cell_noshard = tf.nn.rnn_cell.LSTMCell(
@@ -458,7 +460,8 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       sequence_length = tf.placeholder(tf.int64)
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      inputs = max_length * [tf.placeholder(tf.float64)]
+      inputs = max_length * [
+          tf.placeholder(tf.float64, shape=(None, input_size))]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -766,8 +769,9 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                       input_size,
                                       initializer=initializer)
     inputs = max_length * [
-        tf.placeholder(tf.float32,
-                       shape=(batch_size, input_size) if use_shape else None)
+        tf.placeholder(
+            tf.float32,
+            shape=(batch_size, input_size) if use_shape else (None, input_size))
     ]
     outputs, state_fw, state_bw = tf.nn.bidirectional_rnn(cell_fw,
                                                           cell_bw,
@@ -776,8 +780,9 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                                           sequence_length=sequence_length)
     self.assertEqual(len(outputs), len(inputs))
     for out in outputs:
-      self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
-                                                   else None, 2 * num_units])
+      self.assertEqual(
+          out.get_shape().as_list(),
+          [batch_size if use_shape else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
     outputs = tf.pack(outputs)

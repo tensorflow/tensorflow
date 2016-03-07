@@ -967,6 +967,17 @@ class SelectOpTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.select(c, xt, yt)
 
+  def testEmptyTensor(self):
+    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
+    x = np.random.rand(1, 3, 0) * 100
+    y = np.random.rand(1, 3, 0) * 100
+    z_expected = np.zeros((1, 3, 0), dtype=np.float32)
+    with self.test_session():
+      xt = x.astype(np.float32)
+      yt = y.astype(np.float32)
+      z = tf.select(c, xt, yt).eval()
+      self.assertAllEqual(z_expected, z)
+
 
 class BatchSelectOpTest(tf.test.TestCase):
   """Test broadcasting of Select when 'c' is a vec and 't' &'e' are rank2+."""

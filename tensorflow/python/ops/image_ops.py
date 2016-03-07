@@ -259,6 +259,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror = math_ops.less(array_ops.pack([uniform_random, 1.0, 1.0]), 0.5)
@@ -283,6 +284,7 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror = math_ops.less(array_ops.pack([1.0, uniform_random, 1.0]), 0.5)
@@ -345,6 +347,7 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
 
@@ -373,6 +376,7 @@ def central_crop(image, central_fraction):
   Returns:
     3-D float Tensor
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   if central_fraction <= 0.0 or central_fraction > 1.0:
     raise ValueError('central_fraction must be within (0, 1]')
@@ -422,6 +426,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
       `target_*` arguments
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=True)
   height, width, depth = _ImageDimensions(image)
 
@@ -478,6 +483,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
     `target_*` arguments
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=True)
   height, width, _ = _ImageDimensions(image)
 
@@ -521,6 +527,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     Cropped and/or padded image of shape
     `[target_height, target_width, channels]`
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=True)
   original_height, original_width, _ = _ImageDimensions(image)
 
@@ -609,6 +616,7 @@ def resize_images(images,
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
+  images = ops.convert_to_tensor(images, name='images')
   if images.get_shape().ndims is None:
     raise ValueError('\'images\' contains no shape.')
   # TODO(shlens): Migrate this functionality to the underlying Op's.
@@ -694,6 +702,7 @@ def per_image_whitening(image):
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   num_pixels = math_ops.reduce_prod(array_ops.shape(image))
 
@@ -795,6 +804,7 @@ def adjust_brightness(image, delta):
     A brightness-adjusted tensor of the same shape and type as `image`.
   """
   with ops.op_scope([image, delta], None, 'adjust_brightness') as name:
+    image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
@@ -832,6 +842,7 @@ def adjust_contrast(images, contrast_factor):
     The contrast-adjusted image or images.
   """
   with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
+    images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
     flt_images = convert_image_dtype(images, dtypes.float32)
@@ -926,7 +937,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   Returns:
     `image`, converted to `dtype`.
   """
-
+  image = ops.convert_to_tensor(image, name='image')
   if dtype == image.dtype:
     return image
 
@@ -991,6 +1002,7 @@ def rgb_to_grayscale(images):
     The converted grayscale image(s).
   """
   with ops.op_scope([images], None, 'rgb_to_grayscale'):
+    images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
     flt_image = convert_image_dtype(images, dtypes.float32)
@@ -1019,6 +1031,7 @@ def grayscale_to_rgb(images):
     The converted grayscale image(s).
   """
   with ops.op_scope([images], None, 'grayscale_to_rgb'):
+    images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = (
         [array_ops.ones(rank_1,
@@ -1097,6 +1110,7 @@ def adjust_hue(image, delta, name=None):
     Adjusted image(s), same shape and DType as `image`.
   """
   with ops.op_scope([image], name, 'adjust_hue') as name:
+    image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
@@ -1171,6 +1185,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     Adjusted image(s), same shape and DType as `image`.
   """
   with ops.op_scope([image], name, 'adjust_saturation') as name:
+    image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
