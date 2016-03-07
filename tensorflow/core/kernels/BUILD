@@ -28,16 +28,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "bounds_check",
-    hdrs = ["bounds_check.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
-)
-
 tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
@@ -197,6 +187,18 @@ cc_library(
     hdrs = ["typed_queue.h"],
     deps = [
         ":queue_base",
+    ],
+)
+
+# Private support libraries ---------------------------------------------------
+
+cc_library(
+    name = "bounds_check",
+    hdrs = ["bounds_check.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
     ],
 )
 
@@ -652,6 +654,7 @@ tf_kernel_libraries(
         "sparse_matmul_op",
     ],
     deps = [
+        ":bounds_check",
         ":fill_functor",
         ":transpose_functor",
         "//tensorflow/core:core_cpu",
