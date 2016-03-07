@@ -921,6 +921,7 @@ def reduce_any(input_tensor, reduction_indices=None, keep_dims=False,
                                                         reduction_indices),
                            keep_dims, name=name)
 
+
 def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
@@ -946,14 +947,13 @@ def trace(x, name=None):
   Returns:
     The trace of input tensor.
   """
-  #if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
-  #  raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
   with ops.op_scope([x], name, "Trace") as name: 
     x = ops.convert_to_tensor(x, name="x")
     if len(x.get_shape()) != 2:
       raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
                        % len(x.get_shape()))
     return reduce_sum(array_ops.diag_part(x), name=name)
+
 
 def matmul(a, b,
            transpose_a=False, transpose_b=False,

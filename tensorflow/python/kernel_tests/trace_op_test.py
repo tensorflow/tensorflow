@@ -66,5 +66,6 @@ class TraceTest(tf.test.TestCase):
     x = numpy.random.rand(2, 2, 2, 2)
     self.assertRaises(ValueError, self.traceOp, x, numpy.float32, 0)
 
+
 if __name__ == "__main__":
   tf.test.main()
