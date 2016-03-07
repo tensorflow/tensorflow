@@ -1234,7 +1234,7 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   }
 
 #define OP_REQUIRES(CTX, EXP, STATUS) \
-  if (!(EXP)) {                       \
+  if (!TF_PREDICT_TRUE(EXP)) {        \
     (CTX)->CtxFailure((STATUS));      \
     return;                           \
   }
@@ -1242,14 +1242,14 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 #define OP_REQUIRES_OK(CTX, STATUS)     \
   do {                                  \
     ::tensorflow::Status _s(STATUS);    \
-    if (!_s.ok()) {                     \
+    if (!TF_PREDICT_TRUE(_s.ok())) {    \
       (CTX)->CtxFailureWithWarning(_s); \
       return;                           \
     }                                   \
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \
-  if (!(EXP)) {                                       \
+  if (!TF_PREDICT_TRUE(EXP)) {                        \
     (CTX)->CtxFailure((STATUS));                      \
     (CALLBACK)();                                     \
     return;                                           \
@@ -1258,7 +1258,7 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 #define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK) \
   do {                                              \
     ::tensorflow::Status _s(STATUS);                \
-    if (!_s.ok()) {                                 \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                \
       (CTX)->CtxFailureWithWarning(_s);             \
       (CALLBACK)();                                 \
       return;                                       \
