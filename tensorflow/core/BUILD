@@ -1247,6 +1247,7 @@ tf_cc_tests(
         ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
+        ":core_gpu_internal",
         ":direct_session",
         ":framework",
         ":framework_internal",
