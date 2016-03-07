@@ -1259,12 +1259,12 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       d = constant_op.constant(5.0)
 
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
-    self.assertEqual(b"/device:GPU:0", a.op.device)
+    self.assertEqual("/device:GPU:0", a.op.device)
     self.assertEqual(a.op.device, b.op.device)
 
     # Test that device function stack is restored.
-    self.assertEqual(b"/device:GPU:0", c.op.device)
-    self.assertEqual(b"/device:CPU:0", d.op.device)
+    self.assertEqual("/device:GPU:0", c.op.device)
+    self.assertEqual("/device:CPU:0", d.op.device)
 
   def testNestedColocateWith(self):
     a = constant_op.constant([2.0], name="a")
@@ -1300,7 +1300,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
         with ops.device("/cpu:0"):
           b = constant_op.constant([3.0], name="b")
 
-    self.assertEqual(b"/device:CPU:0", b.device)
+    self.assertEqual("/device:CPU:0", b.device)
 
 
 if __name__ == "__main__":
