@@ -16,9 +16,9 @@
 
 set -e
 
-# Install openjdk 8 for bazel from PPA (it is not available in 14.04).
-add-apt-repository -y ppa:openjdk-r/ppa
+# Install bootstrap dependencies from ubuntu deb repository.
 apt-get update
-apt-get install -y openjdk-8-jdk openjdk-8-jre-headless
+apt-get install -y \
+    software-properties-common
 apt-get clean
 rm -rf /var/lib/apt/lists/*
