@@ -33,6 +33,19 @@ EIGEN_ALWAYS_INLINE bool FastBoundsCheck(Index index, Index limit) {
                          static_cast<UIndex>(limit));
 }
 
+// Upcasting specializations when the index and bounds do not match;
+// always move to the larger type.
+
+EIGEN_ALWAYS_INLINE bool FastBoundsCheck(int64 index, int32 limit) {
+  return TF_PREDICT_TRUE(static_cast<uint64>(index) <
+                         static_cast<uint64>(limit));
+}
+
+EIGEN_ALWAYS_INLINE bool FastBoundsCheck(int32 index, int64 limit) {
+  return TF_PREDICT_TRUE(static_cast<uint64>(index) <
+                         static_cast<uint64>(limit));
+}
+
 namespace internal {
 // Ensure that the compiler cannot elide a copy into a local, for
 // bounds checking on source tensors that might be updated asynchronously.

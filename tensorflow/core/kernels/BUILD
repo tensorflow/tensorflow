@@ -737,6 +737,7 @@ tf_kernel_libraries(
         "xent_op",
     ],
     deps = [
+        ":bounds_check",
         ":conv_2d",
         ":conv_ops",
         ":depthwise_conv_op",
