@@ -31,9 +31,9 @@ namespace {
 template <typename T>
 __global__ void ResizeNearestNeighborNHWC(const int nthreads, const T* bottom_data,
                                           const int in_height, const int in_width,
-                                          const int channels, const float height_scale,
-                                          const float width_scale, const int out_height,
-                                          const int out_width, T* top_data) {
+                                          const int channels, const int out_height,
+                                          const int out_width, const float height_scale,
+                                          const float width_scale, T* top_data) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -46,8 +46,8 @@ __global__ void ResizeNearestNeighborNHWC(const int nthreads, const T* bottom_da
     const T* bottom_data_n = bottom_data + n * channels * in_height * in_width;
     const int in_x = min(static_cast<int>(floorf(out_x * width_scale)), in_width - 1);
     const int in_y = min(static_cast<int>(floorf(out_y * height_scale)), in_height - 1);
-    const int idx = (in_y * in_height + in_x) * channels + c;
-    top_data[index] = bottom_data_n[idx];
+    const int idx = (in_y * in_width + in_x) * channels + c;
+    top_data[index] = ldg(bottom_data_n + idx);
   }
 }
 
@@ -78,7 +78,7 @@ bool ResizeNearestNeighbor(const T* bottom_data, const int batch,
                                const float width_scale, T* top_data,               \
                                const Eigen::GpuDevice& d);
 
-DECLARE_GPU_SPEC(float);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 }  // end namespace tensorflow

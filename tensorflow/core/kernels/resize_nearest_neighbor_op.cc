@@ -281,9 +281,7 @@ class ResizeNearestNeighborGPUOp : public OpKernel {
                               .HostMemory("size"),                \
                           ResizeNearestNeighborGPUOp<T>);
 
-REGISTER_KERNEL(float);
-// TODO(panmari): Fix kernel for double.
-//REGISTER_KERNEL(double);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
