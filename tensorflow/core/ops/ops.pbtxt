@@ -4665,6 +4665,31 @@ op {
   description: "I.e., \\\\(y = \\log_e x\\\\)."
 }
 op {
+  name: "LogSoftmax"
+  input_arg {
+    name: "logits"
+    description: "2-D with shape `[batch_size, num_classes]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "logsoftmax"
+    description: "Same shape as `logits`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes log softmax activations."
+  description: "For each batch `i` and class `j` we have\n\n    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))"
+}
+op {
   name: "LogUniformCandidateSampler"
   input_arg {
     name: "true_classes"

@@ -32,8 +32,8 @@ namespace functor {
 template <typename T>
 struct SoftmaxFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<T>::Matrix softmax) {
-    SoftmaxEigenImpl<GPUDevice, T>::Compute(d, logits, softmax);
+                  typename TTypes<T>::Matrix softmax, const bool log) {
+    SoftmaxEigenImpl<GPUDevice, T>::Compute(d, logits, softmax, log);
   }
 };
 }  // end namespace functor
