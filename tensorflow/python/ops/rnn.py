@@ -78,7 +78,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Raises:
     TypeError: If "cell" is not an instance of RNNCell.
-    ValueError: If inputs is None or an empty list.
+    ValueError: If inputs is None or an empty list, or if the input depth
+      cannot be inferred from inputs via shape inference.
   """
 
   if not isinstance(cell, rnn_cell.RNNCell):
@@ -96,7 +97,17 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
-    fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
+    # Temporarily avoid EmbeddingWrapper and seq2seq badness
+    # TODO(lukaszkaiser): remove EmbeddingWrapper
+    if inputs[0].get_shape().ndims != 1:
+      (fixed_batch_size, input_size) = inputs[0].get_shape().with_rank(2)
+      if input_size.value is None:
+        raise ValueError(
+            "Input size (second dimension of inputs[0]) must be accessible via "
+            "shape inference, but saw value None.")
+    else:
+      fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
+
     if fixed_batch_size.value:
       batch_size = fixed_batch_size.value
     else:
@@ -250,8 +261,10 @@ def _reverse_seq(input_seq, lengths):
   if lengths is None:
     return list(reversed(input_seq))
 
+  input_shape = tensor_shape.matrix(None, None)
   for input_ in input_seq:
-    input_.set_shape(input_.get_shape().with_rank(2))
+    input_shape.merge_with(input_.get_shape())
+    input_.set_shape(input_shape)
 
   # Join into (time, batch_size, depth)
   s_joined = array_ops.pack(input_seq)
@@ -260,6 +273,8 @@ def _reverse_seq(input_seq, lengths):
   s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
   # Split again into list
   result = array_ops.unpack(s_reversed)
+  for r in result:
+    r.set_shape(input_shape)
   return result
 
 
@@ -462,16 +477,25 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
       A `Tensor` of shape [time, batch_size, depth]`.
     final_state:
       A `Tensor` of shape [batch_size, depth].
+
+  Raises:
+    ValueError: If the input depth cannot be inferred via shape inference
+      from the inputs.
   """
   state = initial_state
   assert isinstance(parallel_iterations, int), "parallel_iterations must be int"
 
   # Construct an initial output
   input_shape = array_ops.shape(inputs)
-  (time_steps, batch_size, unused_depth) = array_ops.unpack(input_shape, 3)
+  (time_steps, batch_size, _) = array_ops.unpack(input_shape, 3)
 
   inputs_got_shape = inputs.get_shape().with_rank(3)
   (const_time_steps, const_batch_size, const_depth) = inputs_got_shape.as_list()
+
+  if const_depth is None:
+    raise ValueError(
+        "Input size (depth of inputs) must be accessible via shape inference, "
+        "but saw value None.")
 
   # Prepare dynamic conditional copying of state & output
   zero_output = array_ops.zeros(
