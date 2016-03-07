@@ -146,6 +146,10 @@ void SparseSlice::Initialize(const ConstMatrixMap& mat, int col_offset) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
       idx3.m = static_cast<uint8>(row);
+      // Safety note: The following code has a race, since it checks whether
+      // *curr is nonzero and then reads it again on use.  However, the result
+      // of the race is only that some of the "nonzeros" in the resulting sparse
+      // representation may actually be zero, which is harmless.
       const float* start =
           Transpose ? &mat(col_offset, row) : &mat(row, col_offset);
       const float* curr = start;
