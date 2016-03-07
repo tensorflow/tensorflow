@@ -14,6 +14,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
+load("@local_tf_py_config//util/python:version.bzl", "PY_VERSION")
 
 py_library(
     name = "python",
@@ -82,8 +83,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
-        "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
+        "@local_tf_py_config//third_party/py/numpy:headers",
+        "@local_tf_py_config//util/python:python_headers",
     ],
 )
 
@@ -123,6 +124,7 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 cc_library(
@@ -250,6 +252,7 @@ py_test(
         ":framework_test_lib",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -261,6 +264,7 @@ py_test(
         ":framework_test_lib",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 tf_gen_op_wrapper_py(
@@ -298,6 +302,7 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -311,6 +316,7 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 tf_gen_op_wrapper_py(
@@ -340,6 +346,7 @@ py_test(
         ":test_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -352,6 +359,7 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -364,6 +372,7 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -376,6 +385,7 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -389,6 +399,7 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -402,6 +413,7 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -415,6 +427,7 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -426,6 +439,7 @@ py_test(
         ":framework_test_lib",
         ":ops",
     ],
+    default_python_version = PY_VERSION,
 )
 
 tf_gen_op_wrapper_py(
@@ -859,6 +873,7 @@ py_test(
         ":platform_test",
         ":util",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -873,6 +888,7 @@ py_test(
         ":lib",
         ":platform_test",
     ],
+    default_python_version = PY_VERSION,
 )
 
 tf_cuda_library(
@@ -887,8 +903,8 @@ tf_cuda_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
-        "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
+        "@local_tf_py_config//third_party/py/numpy:headers",
+        "@local_tf_py_config//util/python:python_headers",
     ],
 )
 
@@ -916,7 +932,7 @@ tf_py_wrap_cc(
         ":python_op_gen",
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-        "//util/python:python_headers",
+        "@local_tf_py_config//util/python:python_headers",
     ],
 )
 
@@ -962,6 +978,7 @@ py_test(
         ":framework_test_lib",
         ":session",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_test(
@@ -973,6 +990,7 @@ py_test(
         ":framework_test_lib",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 py_library(
@@ -1159,6 +1177,7 @@ py_binary(
         ":docs",
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )
 
 filegroup(
@@ -1183,4 +1202,5 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    default_python_version = PY_VERSION,
 )

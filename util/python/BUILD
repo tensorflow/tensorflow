@@ -1,24 +1,8 @@
-licenses(["restricted"])
-
-package(default_visibility = ["//visibility:public"])
-
+# This is a placeholder for python headers. Projects needing to use
+# fast cpp protos in protobuf's python interface should build with
+# --define=use_fast_cpp_protos=true, and in addition, provide
+# //util/python:python_headers dependency that in turn provides Python.h.
 cc_library(
     name = "python_headers",
-    hdrs = glob([
-        "python_include/**/*.h",
-    ]),
-    data = [":python_checked"],
-    includes = ["python_include"],
-)
-
-genrule(
-    name = "python_check",
-    srcs = [
-        "python_config.sh",
-    ],
-    outs = [
-        "python_checked",
-    ],
-    cmd = "OUTPUTDIR=\"$(@D)/\"; $(location :python_config.sh) --check && touch $$OUTPUTDIR/python_checked",
-    local = 1,
+    visibility = ["//visibility:public"],
 )

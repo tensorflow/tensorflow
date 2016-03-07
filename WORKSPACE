@@ -15,6 +15,9 @@
 load("//tensorflow:workspace.bzl", "tf_workspace")
 tf_workspace()
 
+load("//util/python:py_configure.bzl", "tf_py_configure")
+tf_py_configure()
+
 # grpc expects //external:protobuf_clib and //external:protobuf_compiler
 # to point to the protobuf's compiler library.
 bind(
