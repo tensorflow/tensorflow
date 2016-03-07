@@ -72,6 +72,18 @@ def make_example_dict(example_protos, example_weights):
               example_ids=['%d' % i for i in xrange(0, len(example_protos))])
 
 
+def make_dense_examples_dict(dense_feature_values, weights, labels):
+  dense_feature_tensors = ([
+      tf.convert_to_tensor(values,
+                           dtype=tf.float32) for values in dense_feature_values
+  ])
+  return dict(sparse_features=[],
+              dense_features=dense_feature_tensors,
+              example_weights=weights,
+              example_labels=labels,
+              example_ids=['%d' % i for i in xrange(0, len(labels))])
+
+
 def make_variable_dict(max_age, max_gender):
   # TODO(dbaylor):  Figure out how to derive max_age & max_gender from
   # examples_dict.
@@ -82,6 +94,32 @@ def make_variable_dict(max_age, max_gender):
               dense_features_weights=[],
               primal_loss=primal_loss)
 
+
+def make_dense_variable_dict(num_dense_features, num_examples):
+  feature_weights = ([
+      tf.Variable(tf.zeros([1],
+                           dtype=tf.float32))
+      for _ in xrange(0, num_dense_features)
+  ])
+  return dict(sparse_features_weights=[],
+              dense_features_weights=feature_weights,
+              dual=tf.Variable(tf.zeros(
+                  [num_examples],
+                  dtype=tf.float32)),
+              primal_loss=tf.Variable(tf.zeros(
+                  [],
+                  dtype=tf.float64)))
+
+
+def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
+  return tf.cast(
+      tf.greater_equal(predictions, tf.ones_like(predictions) * cutoff),
+      tf.float32)
+
+
+def get_binary_predictions_for_hinge(predictions):
+  all_ones = tf.ones_like(predictions)
+  return tf.add(tf.sign(predictions), all_ones) / 2
 
 # Setup the single container shared across all tests. This is testing proper
 # isolation across optimizers instantiated in each of the tests below.
@@ -123,7 +161,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
-      prediction = lr.predictions(examples)
+      predictions = lr.predictions(examples)
       self.assertAllClose(0.693147, unregularized_loss.eval())
       self.assertAllClose(0.693147, loss.eval())
       lr.minimize().run()
@@ -131,9 +169,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                           rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.657446, loss.eval(),
                           rtol=3e-2, atol=3e-2)
-      predicted_labels = tf.cast(
-          tf.greater_equal(prediction,
-                           tf.ones_like(prediction) * 0.5), tf.float32)
+      predicted_labels = get_binary_predictions_for_logistic(predictions)
       self.assertAllEqual([0, 1], predicted_labels.eval())
 
   def testSomeUnweightedExamples(self):
@@ -169,15 +205,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
-      prediction = lr.predictions(examples)
+      predictions = lr.predictions(examples)
       lr.minimize().run()
       self.assertAllClose(0.395226, unregularized_loss.eval(),
                           rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.657446, loss.eval(),
                           rtol=3e-2, atol=3e-2)
-      predicted_labels = tf.cast(
-          tf.greater_equal(prediction,
-                           tf.ones_like(prediction) * 0.5), tf.float32)
+      predicted_labels = get_binary_predictions_for_logistic(predictions)
       self.assertAllClose([0, 1, 1, 1], predicted_labels.eval())
 
   def testFractionalLogisticExample(self):
@@ -282,14 +316,12 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
-      prediction = lr.predictions(examples)
+      predictions = lr.predictions(examples)
       lr.minimize().run()
       self.assertAllClose(0.331710, unregularized_loss.eval(),
                           rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.591295, loss.eval(), rtol=3e-2, atol=3e-2)
-      predicted_labels = tf.cast(
-          tf.greater_equal(prediction,
-                           tf.ones_like(prediction) * 0.5), tf.float32)
+      predicted_labels = get_binary_predictions_for_logistic(predictions)
       self.assertAllEqual([0, 0, 0, 1], predicted_labels.eval())
 
   def testImbalancedWithExampleWeights(self):
@@ -313,14 +345,12 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       lr = SdcaModel(CONTAINER, examples, variables, options)
       unregularized_loss = lr.unregularized_loss(examples)
       loss = lr.regularized_loss(examples)
-      prediction = lr.predictions(examples)
+      predictions = lr.predictions(examples)
       lr.minimize().run()
       self.assertAllClose(0.266189, unregularized_loss.eval(),
                           rtol=3e-2, atol=3e-2)
       self.assertAllClose(0.571912, loss.eval(), rtol=3e-2, atol=3e-2)
-      predicted_labels = tf.cast(
-          tf.greater_equal(prediction,
-                           tf.ones_like(prediction) * 0.5), tf.float32)
+      predicted_labels = get_binary_predictions_for_logistic(predictions)
       self.assertAllEqual([0, 1], predicted_labels.eval())
 
   def testInstancesOfOneClassOnly(self):
@@ -460,28 +490,11 @@ class SdcaOptimizerTest(TensorFlowTestCase):
 
   def testLinearDenseFeatures(self):
     with self._single_threaded_test_session():
-      examples = dict(
-          sparse_features=[],
-          dense_features=[tf.convert_to_tensor(
-              [-2.0, 0.0],
-              dtype=tf.float32), tf.convert_to_tensor(
-                  [0.0, 2.0],
-                  dtype=tf.float32)],
-          example_weights=[1.0, 1.0],
-          example_labels=[-10.0, 14.0],
-          example_ids=['%d' % i for i in xrange(2)])
-      variables = dict(sparse_features_weights=[],
-                       dense_features_weights=[tf.Variable(tf.zeros(
-                           [1],
-                           dtype=tf.float32)), tf.Variable(tf.zeros(
-                               [1],
-                               dtype=tf.float32))],
-                       dual=tf.Variable(tf.zeros(
-                           [2],
-                           dtype=tf.float32)),
-                       primal_loss=tf.Variable(tf.zeros(
-                           [],
-                           dtype=tf.float64)))
+      examples = make_dense_examples_dict(
+          dense_feature_values=[[-2.0, 0.0], [0.0, 2.0]],
+          weights=[1.0, 1.0],
+          labels=[-10.0, 14.0])
+      variables = make_dense_variable_dict(2, 2)
       options = dict(symmetric_l2_regularization=1,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss',
@@ -503,6 +516,131 @@ class SdcaOptimizerTest(TensorFlowTestCase):
           (4.0 + 7.84 + 16.0 + 31.36) / 2,
           loss.eval(),
           rtol=0.01)
+
+  def testSimpleHinge(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, 0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self.test_session(use_gpu=False):
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=1.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='hinge_loss',
+                     prior=0.0)
+      tf.initialize_all_variables().run()
+      model = SdcaModel(CONTAINER, examples, variables, options)
+
+      # Before minimization, the weights default to zero. There is no loss due
+      # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
+      predictions = model.predictions(examples)
+      self.assertAllClose([0.0, 0.0], predictions.eval())
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      self.assertAllClose(1.0, unregularized_loss.eval())
+      self.assertAllClose(1.0, regularized_loss.eval())
+
+      # After minimization, the model separates perfectly the data points. There
+      # are 4 sparse weights: 2 for age (say w1, w2) and 2 for gender (say w3
+      # and w4). Solving the system w1 + w3 = 1.0, w2 + w4 = -1.0 and minimizing
+      # wrt to \|\vec{w}\|_2, gives w1=w3=1/2 and w2=w4=-1/2. This gives 0.0
+      # unregularized loss and 0.5 L2 loss.
+      model.minimize().run()
+      binary_predictions = get_binary_predictions_for_hinge(predictions)
+      self.assertAllEqual([-1.0, 1.0], predictions.eval())
+      self.assertAllEqual([0.0, 1.0], binary_predictions.eval())
+      self.assertAllClose(0.0, unregularized_loss.eval())
+      self.assertAllClose(0.5, regularized_loss.eval(), atol=0.05)
+
+  def testHingeDenseFeaturesPerfectlySeparable(self):
+    with self._single_threaded_test_session():
+      examples = make_dense_examples_dict(
+          dense_feature_values=[[1.0, 1.0], [1.0, -1.0]],
+          weights=[1.0, 1.0],
+          labels=[1.0, 0.0])
+      variables = make_dense_variable_dict(2, 2)
+      options = dict(symmetric_l2_regularization=1.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='hinge_loss')
+      tf.initialize_all_variables().run()
+      model = SdcaModel(CONTAINER, examples, variables, options)
+      predictions = model.predictions(examples)
+      binary_predictions = get_binary_predictions_for_hinge(predictions)
+      model.minimize().run()
+      self.assertAllClose([1.0, -1.0], predictions.eval(), atol=0.05)
+      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+
+      # (1.0, 1.0) and (1.0, -1.0) are perfectly separable by x-axis (that is,
+      # the SVM's functional margin >=1), so the unregularized loss is ~0.0.
+      # There is only loss due to l2-regularization. For these datapoints, it
+      # turns out that w_1~=0.0 and w_2~=1.0 which means that l2 loss is ~0.5.
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      self.assertAllClose(0.0, unregularized_loss.eval(), atol=0.02)
+      self.assertAllClose(0.5, regularized_loss.eval(), atol=0.02)
+
+  def testHingeDenseFeaturesSeparableWithinMargins(self):
+    with self._single_threaded_test_session():
+      examples = make_dense_examples_dict(
+          dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
+          weights=[1.0, 1.0],
+          labels=[1.0, 0.0])
+      variables = make_dense_variable_dict(2, 2)
+      options = dict(symmetric_l2_regularization=1.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='hinge_loss')
+      tf.initialize_all_variables().run()
+      model = SdcaModel(CONTAINER, examples, variables, options)
+      predictions = model.predictions(examples)
+      binary_predictions = get_binary_predictions_for_hinge(predictions)
+      model.minimize().run()
+
+      # (1.0, 0.5) and (1.0, -0.5) are separable by x-axis but the datapoints
+      # are within the margins so there is unregularized loss (1/2 per example).
+      # For these datapoints, optimal weights are w_1~=0.0 and w_2~=1.0 which
+      # gives an L2 loss of ~0.5.
+      self.assertAllClose([0.5, -0.5], predictions.eval(), rtol=0.05)
+      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      self.assertAllClose(0.5, unregularized_loss.eval(), atol=0.02)
+      self.assertAllClose(1.0, regularized_loss.eval(), atol=0.02)
+
+  def testHingeDenseFeaturesWeightedExamples(self):
+    with self._single_threaded_test_session():
+      examples = make_dense_examples_dict(
+          dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
+          weights=[3.0, 1.0],
+          labels=[1.0, 0.0])
+      variables = make_dense_variable_dict(2, 2)
+      options = dict(symmetric_l2_regularization=1.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='hinge_loss')
+      tf.initialize_all_variables().run()
+      model = SdcaModel(CONTAINER, examples, variables, options)
+      predictions = model.predictions(examples)
+      binary_predictions = get_binary_predictions_for_hinge(predictions)
+      model.minimize().run()
+
+      # Point (1.0, 0.5) has higher weight than (1.0, -0.5) so the model will
+      # try to increase the margin from (1.0, 0.5). Due to regularization,
+      # (1.0, -0.5) will be within the margin. For these points and example
+      # weights, the optimal weights are w_1~=0.4 and w_2~=1.2 which give an L2
+      # loss of 0.25 * 1.6 = 0.4. The binary predictions will be correct, but
+      # the boundary will be much closer to the 2nd point than the first one.
+      self.assertAllClose([1.0, -0.2], predictions.eval(), atol=0.05)
+      self.assertAllClose([1.0, 0.0], binary_predictions.eval(), atol=0.05)
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      self.assertAllClose(0.2, unregularized_loss.eval(), atol=0.02)
+      self.assertAllClose(0.6, regularized_loss.eval(), atol=0.02)
 
 if __name__ == '__main__':
   googletest.main()

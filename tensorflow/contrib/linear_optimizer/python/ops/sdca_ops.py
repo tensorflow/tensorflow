@@ -20,7 +20,6 @@ from __future__ import print_function
 import os.path
 import uuid
 
-from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
@@ -29,9 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.platform import resource_loader
 
-
 __all__ = ['SdcaModel']
-
 
 _sdca_ops = None
 
@@ -58,6 +55,7 @@ class SdcaModel(object):
     Loss functions supported:
      * Binary logistic loss
      * Squared loss
+     * Hinge loss
 
     This class defines an optimizer API to train a linear model.
 
@@ -117,8 +115,8 @@ class SdcaModel(object):
     if not container or not examples or not variables or not options:
       raise ValueError('All arguments must be specified.')
 
-    losses = ('logistic_loss', 'squared_loss')
-    if options['loss_type'] not in losses:
+    supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss')
+    if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
     self._assertSpecified(
@@ -155,7 +153,7 @@ class SdcaModel(object):
         raise ValueError(x + ' must be a list.')
 
   def _l1_loss(self):
-    """"Computes the l1 loss of the model."""
+    """Computes the l1 loss of the model."""
     with name_scope('l1_loss'):
       sparse_weights = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
@@ -170,7 +168,7 @@ class SdcaModel(object):
       return loss
 
   def _l2_loss(self):
-    """"Computes the l2 loss of the model."""
+    """Computes the l2 loss of the model."""
     with name_scope('l2_loss'):
       sparse_weights = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
@@ -211,18 +209,20 @@ class SdcaModel(object):
     return predictions
 
   def predictions(self, examples):
-    """Add operations to compute predictions by the model. If logistic_loss
-       is being used, predicted probabilities are returned.
+    """Add operations to compute predictions by the model.
 
-        Args:
-          examples: Examples to compute prediction on.
+    If logistic_loss is being used, predicted probabilities are returned.
+    Otherwise, (raw) linear predictions (w*x) are returned.
 
-        Returns:
-          An Operation that computes the predictions for examples.
+    Args:
+      examples: Examples to compute predictions on.
 
-        Raises:
-          ValueError: if examples are not well defined.
-        """
+    Returns:
+      An Operation that computes the predictions for examples.
+
+    Raises:
+      ValueError: if examples are not well defined.
+    """
     self._assertSpecified(
         ['example_weights', 'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
@@ -237,9 +237,9 @@ class SdcaModel(object):
   def minimize(self):
     """Add operations to train a linear model by minimizing the loss function.
 
-        Returns:
-          An Operation that updates the variables passed in the constructor.
-        """
+    Returns:
+      An Operation that updates the variables passed in the constructor.
+    """
     with name_scope('sdca/minimize'):
       sparse_features_indices = []
       sparse_features_weights = []
@@ -268,15 +268,16 @@ class SdcaModel(object):
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
 
-        Args:
-          examples: Examples to compute unregularized loss on.
+    Args:
+      examples: Examples to compute unregularized loss on.
 
-        Returns:
-          An Operation that computes mean (unregularized) loss for given set of
-          examples.
-        Raises:
-          ValueError: if examples are not well defined.
-        """
+    Returns:
+      An Operation that computes mean (unregularized) loss for given set of
+      examples.
+
+    Raises:
+      ValueError: if examples are not well defined.
+    """
     self._assertSpecified(
         ['example_labels', 'example_weights', 'sparse_features',
          'dense_features'], examples)
@@ -291,6 +292,20 @@ class SdcaModel(object):
             sigmoid_cross_entropy_with_logits(
                 predictions, labels), weights)) / math_ops.reduce_sum(weights)
 
+      if self._options['loss_type'] == 'hinge_loss':
+        # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to
+        # first convert 0/1 labels into -1/1 labels.
+        all_ones = array_ops.ones_like(predictions)
+        adjusted_labels = math_ops.sub(2 * labels, all_ones)
+        all_zeros = array_ops.zeros_like(predictions)
+        # Tensor that contains (unweighted) error (hinge loss) per
+        # example.
+        error = math_ops.maximum(all_zeros, math_ops.sub(
+            all_ones, math_ops.mul(adjusted_labels, predictions)))
+        weighted_error = math_ops.mul(error, weights)
+        return math_ops.reduce_sum(weighted_error) / math_ops.reduce_sum(
+            weights)
+
       # squared loss
       err = math_ops.sub(labels, predictions)
 
@@ -301,15 +316,15 @@ class SdcaModel(object):
   def regularized_loss(self, examples):
     """Add operations to compute the loss with regularization loss included.
 
-        Args:
-          examples: Examples to compute loss on.
+    Args:
+      examples: Examples to compute loss on.
 
-        Returns:
-          An Operation that computes mean (regularized) loss for given set of
+    Returns:
+      An Operation that computes mean (regularized) loss for given set of
           examples.
-        Raises:
-          ValueError: if examples are not well defined.
-        """
+    Raises:
+      ValueError: if examples are not well defined.
+    """
     self._assertSpecified(
         ['example_labels', 'example_weights', 'sparse_features',
          'dense_features'], examples)

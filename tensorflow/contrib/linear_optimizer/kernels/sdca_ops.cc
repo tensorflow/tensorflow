@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/resources.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
@@ -396,10 +397,17 @@ class SdcaSolver : public OpKernel {
       compute_primal_loss_ = squared_loss::ComputePrimalLoss;
       compute_dual_update_ = squared_loss::ComputeUpdatedDual;
       convert_label_ = squared_loss::ConvertLabel;
+    } else if (loss_type == "hinge_loss") {
+      compute_dual_loss_ = hinge_loss::ComputeDualLoss;
+      compute_primal_loss_ = hinge_loss::ComputePrimalLoss;
+      compute_dual_update_ = hinge_loss::ComputeUpdatedDual;
+      // Label conversion is identical for hinge and logistic loss.
+      convert_label_ = logistic_loss::ConvertLabel;
     } else {
       OP_REQUIRES(context, false, errors::InvalidArgument(
                                       "Unsupported loss type: ", loss_type));
     }
+
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features",
                                              &num_sparse_features_));
     OP_REQUIRES_OK(
