@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -25,6 +25,7 @@ namespace tensorflow {
 // when no calls are made against the server.
 TEST(Server, StopAfterNoop) {
   ServerDef def;
+  def.set_protocol("grpc");
   def.set_job_name("localhost");
   def.set_task_index(0);
   JobDef* job_def = def.mutable_cluster()->add_job();
@@ -42,6 +43,7 @@ TEST(Server, StopAfterNoop) {
 // when a simple call is made against the server.
 TEST(Server, StopAfterCall) {
   ServerDef def;
+  def.set_protocol("grpc");
   def.set_job_name("localhost");
   def.set_task_index(0);
   JobDef* job_def = def.mutable_cluster()->add_job();

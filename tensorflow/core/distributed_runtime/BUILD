@@ -269,6 +269,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "server_lib",
+    srcs = ["server_lib.cc"],
+    hdrs = ["server_lib.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
 tf_cc_tests(
