@@ -169,6 +169,12 @@ class DecodeCSVOpTest(tf.test.TestCase):
     self._test(args,
                expected_err_re="Expect 1 fields but have 2 in record 0")
 
+  def testShortQuotedString(self):
+    args = {"records": ["\""], "record_defaults": [["default"]],}
+
+    self._test(args,
+               expected_err_re="Quoted field has to end with quote followed.*")
+
 
 if __name__ == "__main__":
   tf.test.main()
