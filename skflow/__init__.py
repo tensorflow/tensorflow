@@ -29,6 +29,8 @@ __version__, SKLEARN_VERSION, TF_VERSION = \
 [pkg_rs.get_distribution(pkg).version for pkg in ['skflow', 'scikit-learn', 'tensorflow']]
 
 if SKLEARN_VERSION < '0.16.0':
-    raise ImportError("Your scikit-learn version needs to be at least 0.16. ")
+    raise ImportError("Your scikit-learn version needs to be at least 0.16. "
+                      "Your current version is %s. " % SKLEARN_VERSION)
 if TF_VERSION < '0.7.0':
-    raise ImportError("Your tensorflow version needs to be at least 0.7. ")
+    raise ImportError("Your tensorflow version needs to be at least 0.7. "
+                      "Your current version is %s. " % TF_VERSION)
