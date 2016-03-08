@@ -19,19 +19,19 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/contrib/linear_optimizer/kernels/loss.h"
 
 namespace tensorflow {
-struct squared_loss {
+
+class SquaredLossUpdater : public DualLossUpdater {
+ public:
   // Closed form solution that decreases the dual squared loss.
   // See page 23 of http://arxiv.org/pdf/1309.2375v2.pdf
-  inline static double ComputeUpdatedDual(const double label,
-                                          const double example_weight,
-                                          const double current_dual,
-                                          const double wx,
-                                          const double weighted_example_norm,
-                                          const double primal_loss_unused,
-                                          const double dual_loss_unused) {
+  double ComputeUpdatedDual(const double label, const double example_weight,
+                            const double current_dual, const double wx,
+                            const double weighted_example_norm,
+                            const double primal_loss_unused,
+                            const double dual_loss_unused) const final {
     const double delta_numerator = (label - current_dual - wx) * example_weight;
     const double delta_denominator =
         1 + weighted_example_norm * example_weight * example_weight * 0.5;
@@ -40,27 +40,26 @@ struct squared_loss {
 
   // Dual of squared loss function.
   // https://en.wikipedia.org/wiki/Convex_conjugate
-  inline static double ComputeDualLoss(const double current_dual,
-                                       const double example_label,
-                                       const double example_weight) {
+  double ComputeDualLoss(const double current_dual, const double example_label,
+                         const double example_weight) const final {
     // Dual of the squared loss function = b * (y + b/2), where b is the
     // dual variable and y is the label.  This is Dual(-b).
     return current_dual * (0.5 * current_dual - example_label) * example_weight;
   }
 
   // Squared loss for linear regression.
-  inline static double ComputePrimalLoss(const double wx,
-                                         const double example_label,
-                                         const double example_weight) {
+  double ComputePrimalLoss(const double wx, const double example_label,
+                           const double example_weight) const final {
     const double error = wx - example_label;
     return error * error * example_weight * 0.5;
   }
 
   // Labels don't require conversion for linear regression.
-  inline static Status ConvertLabel(float* const example_label) {
+  Status ConvertLabel(float* const example_label) const final {
     return Status::OK();
   }
 };
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SQUARED_LOSS_H_

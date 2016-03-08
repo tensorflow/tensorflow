@@ -81,8 +81,8 @@ Status DataByExample::Visit(
     // be successful if and only if the size of the backing store hasn't
     // changed (since the body of this while-loop is under lock).
     if (data_by_key_.size() != state.size) {
-      return errors::Aborted("The number of elements for ", solver_uuid_,
-                             " has changed which nullifies a visit.");
+      return errors::Unavailable("The number of elements for ", solver_uuid_,
+                                 " has changed which nullifies a visit.");
     }
     for (size_t i = 0; i < kVisitChunkSize && state.num_visited < state.size;
          ++i, ++state.num_visited, ++state.it) {

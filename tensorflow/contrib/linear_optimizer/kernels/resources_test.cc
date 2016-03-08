@@ -103,7 +103,7 @@ TEST_F(DataByExampleTest, VisitMany) {
       (kNumElements - 1) * kNumElements / 2.0, total_dual);
 }
 
-TEST_F(DataByExampleTest, VisitAborted) {
+TEST_F(DataByExampleTest, VisitUnavailable) {
   // Populate enough entries so that Visiting will be chunked.
   for (size_t i = 0; i < 2 * VisitChunkSize(); ++i) {
     data_by_example_->Get(DataByExample::MakeKey(strings::StrCat(i)));
@@ -151,7 +151,7 @@ TEST_F(DataByExampleTest, VisitAborted) {
   });
   wait(&completed_visit);
   EXPECT_FALSE(thread_pool.HasPendingClosures());
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(errors::IsUnavailable(status));
 }
 
 }  // namespace tensorflow

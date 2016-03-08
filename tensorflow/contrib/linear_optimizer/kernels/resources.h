@@ -47,8 +47,10 @@ class DataByExample : public ResourceBase {
   static Key MakeKey(const string& example_id);
 
   struct Data {
-    // TODO(rohananil): Add extra data needed for duality gap computation here.
     float dual = 0;
+    float primal_loss = 0;
+    float dual_loss = 0;
+    float example_weight = 0;
 
     // Comparison operators for ease of testing.
     bool operator==(const Data& other) const { return dual == other.dual; }
@@ -65,9 +67,10 @@ class DataByExample : public ResourceBase {
   // atomic, but the entirety of the visit is not (ie the visitor might see
   // different versions of the Data across elements).
   //
-  // Returns OK on success or ABORTED if the number of elements in this
+  // Returns OK on success or UNAVAILABLE if the number of elements in this
   // container has changed since the beginning of the visit (in which case the
-  // visit cannot be completed and is aborted early).
+  // visit cannot be completed and is aborted early, and computation can be
+  // restarted).
   Status Visit(std::function<void(const Data& data)> visitor) const
       LOCKS_EXCLUDED(mu_);
 
@@ -80,8 +83,11 @@ class DataByExample : public ResourceBase {
 
   // Backing container.
   //
-  // sizeof(EntryPayload) = sizeof(Key) + sizeof(Data) = 16.
-  // So on average we use ~35 bytes per entry in this table.
+  // sizeof(EntryPayload) =
+  // sizeof(Key) + sizeof(Data) =
+  // 12 + 16 = 28.
+  //
+  // So on average we use ~47.5 (28 + 19.5) bytes per entry in this table.
   using DataByKey = std::unordered_map<Key, Data, KeyHash>;
 
   // TODO(katsiapis): Benchmark and/or optimize this.
