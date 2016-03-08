@@ -279,23 +279,23 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     TypeError: if data is not a Tensor or IndexedSlices
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, name="data")
-  # NOTE(mrry): ops.device(None) below addresses the following scenario.
+  # NOTE(vrv): ops.colocate_with(data, ignore_existing=True) below
+  # addresses the following scenario.
   #
   # Assume you execute Optimizer.apply_gradients() in a branch of a cond().
   #
-  # 1. The update op is created inside a `with tf.device(var.device):` block
-  #    say var.device = "/job:ps/task:1".
+  # 1. The update op is created inside a `with ops.colocate(var):` block
   #
   # 2. Some tensor `data` is captured and a switch is created in a
-  #    `with tf.device(data.device):` block (data.device = "/job:worker_train").
+  #    `with ops.colocate_with(data):` block.
   #
-  # with tf.device("/job:ps/task:1"):
-  #  with tf.device("/job:worker_train"):
+  # with ops.colocate_with(var):
+  #  with ops.colocate_with(data):
   #    op = ...
   #
-  # But then calling `print op.device` returns:
-  # ==> "/job:worker_train/task:1" -- a device that doesn't exist in this case!
-  with ops.colocate_with(data):
+  # var and data may be pinned to different devices, so we want to ops
+  # created within ops.colocate_with(data) to ignore the existing stack.
+  with ops.colocate_with(data, ignore_existing=True):
     if isinstance(data, ops.Tensor):
       if not data.dtype.is_ref_dtype:
         return switch(data, pred, name=name)
