@@ -308,6 +308,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   return array_ops.reverse(image, [False, True, False])
 
@@ -329,6 +330,7 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
+  image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   return array_ops.reverse(image, [True, False, False])
 
