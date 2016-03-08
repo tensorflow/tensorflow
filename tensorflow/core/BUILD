@@ -117,7 +117,6 @@ tf_proto_library_cc(
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
     cc_libs = [":protos_all_cc"],
-    py_api_version = 2,
     visibility = [
         "//tensorflow:internal",
     ],
@@ -131,7 +130,6 @@ tf_proto_library_cc(
     cc_grpc_version = 1,
     cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
-    py_api_version = 2,
     visibility = [
         "//tensorflow:internal",
     ],
