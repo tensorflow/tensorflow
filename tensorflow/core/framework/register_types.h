@@ -63,14 +63,16 @@ limitations under the License.
   m(int16);                                   \
   m(int8)
 
-// Call "m" for all number types, including complex64.
+// Call "m" for all number types, including complex64 and complex128.
 #define TF_CALL_NUMBER_TYPES(m) \
   TF_CALL_REAL_NUMBER_TYPES(m); \
-  m(complex64)
+  m(complex64);                 \
+  m(complex128)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) \
   TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m); \
-  m(complex64)
+  m(complex64);                          \
+  m(complex128)
 
 #define TF_CALL_POD_TYPES(m) \
   TF_CALL_NUMBER_TYPES(m);   \
