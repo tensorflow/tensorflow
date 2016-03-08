@@ -95,7 +95,7 @@ that the training accuracy is based on images that the network has been able
 to learn from so the network can overfit to the noise in the training data. A
 true measure of the performance of the network is to measure its performance on
 a data set not contained in the training data -- this is measured by the
-validation accuracy. If the test accuracy is high but the validation remains
+validation accuracy. If the training accuracy is high but the validation remains
 low, that means the network is overfitting and memorizing particular features
 in the training images that aren't helpful more generally. Cross entropy is a
 loss function which gives a glimpse into how well the learning process is
