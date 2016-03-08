@@ -636,10 +636,12 @@ def zeros_like(tensor, dtype=None, name=None):
   """
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ret = gen_array_ops._zeros_like(tensor)
-    if (dtype is not None) and (tensor.dtype != dtype):
-      ret = gen_math_ops.cast(ret, dtype)
-    return ret
+    if dtype is not None and tensor.dtype != dtype:
+      ret = zeros(shape(tensor), dtype, name=name)
+      ret.set_shape(tensor.get_shape())
+      return ret
+    else:
+      return gen_array_ops._zeros_like(tensor, name=name)
 
 
 def ones_like(tensor, dtype=None, name=None):
