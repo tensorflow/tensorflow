@@ -14,7 +14,7 @@
 
 #import "AppDelegate.h"
 
-#import "UrlGetViewController.h"
+#import "RunModelViewController.h"
 
 @implementation AppDelegate
 
@@ -23,7 +23,7 @@
 
   UITabBarController *bar = [[UITabBarController alloc] init];
   [bar setViewControllers:
-      @[[[UrlGetViewController alloc] init]]];
+      @[[[RunModelViewController alloc] init]]];
   bar.selectedIndex = 0;
   self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   self.window.rootViewController = bar;

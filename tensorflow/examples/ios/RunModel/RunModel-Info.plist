@@ -24,7 +24,7 @@
 	<key>CFBundleExecutable</key>
 	<string>ios-app</string>
 	<key>CFBundleIdentifier</key>
-	<string>Google.UrlGet</string>
+	<string>Google.RunModel</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

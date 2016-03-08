@@ -128,7 +128,8 @@ bool PortableReadFileToProto(const std::string& file_name,
 NSString* FilePathForResourceName(NSString* name, NSString* extension) {
   NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
   if (file_path == NULL) {
-    LOG(FATAL) << "Couldn't find " << [name UTF8String] << " in bundle.";
+    LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "."
+	       << [extension UTF8String] << "' in bundle.";
   }
   return file_path;
 }

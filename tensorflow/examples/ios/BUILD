@@ -14,11 +14,11 @@ objc_library(
     name = "RunModelClasses",
     srcs = [
         "RunModel/AppDelegate.mm",
-        "RunModel/UrlGetViewController.mm",
+        "RunModel/RunModelViewController.mm",
 	"RunModel/ios_image_load.mm",
     ],
     hdrs = glob(["RunModel/*.h"]),
-    xibs = ["RunModel/UrlGetViewController.xib"],
+    xibs = ["RunModel/RunModelViewController.xib"],
     deps = [
 	"//google/protobuf:protobuf",
 	"//google/protobuf:protobuf_lite",
@@ -44,7 +44,7 @@ objc_binary(
 ios_application(
     name = "ios-app",
     binary = ":ios-app-binary",
-    infoplist = "RunModel/UrlGet-Info.plist",
+    infoplist = "RunModel/RunModel-Info.plist",
 )
 
 objc_binary(

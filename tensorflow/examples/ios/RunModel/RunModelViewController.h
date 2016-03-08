@@ -14,7 +14,7 @@
 
 #import <UIKit/UIKit.h>
 
-@interface UrlGetViewController : UIViewController
+@interface RunModelViewController : UIViewController
 
 - (IBAction)getUrl:(id)sender;
 

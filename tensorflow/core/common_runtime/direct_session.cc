@@ -873,8 +873,6 @@ class DirectSessionRegistrar {
   }
 };
 
-void CreateDirectSessionFactory() {
-  static DirectSessionRegistrar direct_session_registrar;
-}
+static DirectSessionRegistrar registrar;
 
 }  // namespace tensorflow
