@@ -58,14 +58,8 @@ class DataByExample : public ResourceBase {
   // Accessor and mutator for the entry at Key. Accessor creates an entry with
   // default value (default constructed object) if the key is not present and
   // returns it.
-  inline Data Get(const Key& key) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    return data_by_key_[key];
-  }
-  inline void Set(const Key& key, const Data& data) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    data_by_key_[key] = data;
-  }
+  Data Get(const Key& key) LOCKS_EXCLUDED(mu_);
+  void Set(const Key& key, const Data& data) LOCKS_EXCLUDED(mu_);
 
   // Visits all elements in this resource. The view of each element (Data) is
   // atomic, but the entirety of the visit is not (ie the visitor might see

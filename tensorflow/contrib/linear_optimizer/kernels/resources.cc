@@ -44,6 +44,16 @@ DataByExample::Key DataByExample::MakeKey(const string& example_id) {
       Hash64(example_id.data(), example_id.size(), kSeed2) & 0xFFFFFFFF);
 }
 
+DataByExample::Data DataByExample::Get(const Key& key) {
+  mutex_lock l(mu_);
+  return data_by_key_[key];
+}
+
+void DataByExample::Set(const Key& key, const Data& data) {
+  mutex_lock l(mu_);
+  data_by_key_[key] = data;
+}
+
 Status DataByExample::Visit(
     std::function<void(const Data& data)> visitor) const {
   struct State {
