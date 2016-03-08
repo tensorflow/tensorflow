@@ -12,14 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="graph.ts" />
-/// <reference path="hierarchy.ts" />
-
 /**
  * Package for the Render Hierarchy for TensorFlow graph.
  */
-
 module tf.graph.render {
 
 export type Point = {x: number, y: number};

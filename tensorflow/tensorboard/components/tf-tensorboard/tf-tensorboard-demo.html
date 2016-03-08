@@ -9,6 +9,7 @@ json data from a "dataDir" rather than connecting to a live backend.
     <tf-tensorboard
       id="tensorboard"
       router="[[_demoRouter]]"
+      no-hash="[[noHash]]"
     ></tf-tensorboard>
     <style>
       :host {
@@ -23,15 +24,27 @@ json data from a "dataDir" rather than connecting to a live backend.
       properties: {
         _demoRouter: {
           type: Object,
-          computed: "_makeDemoRouter(dataDir)",
+          computed: "_makeDemoRouter(dataDir, oldVersion)",
         },
         dataDir: {
           type: String,
           value: "data",
         },
+        // To use the old version of the router which can serve the
+        // demo/data folder that is checked into the repository.
+        oldVersion: {
+          type: Boolean,
+          value: false
+        },
+        // If true, tab switching in TensorBoard will not update
+        // location hash. Hash update interferes with selenium tests.
+        noHash: {
+          type: Boolean,
+          value: false
+        }
       },
-      _makeDemoRouter: function(dataDir) {
-        return TF.Urls.demoRouter(dataDir);
+      _makeDemoRouter: function(dataDir, oldVersion) {
+        return TF.Urls.demoRouter(dataDir, oldVersion);
       },
     });
   </script>
