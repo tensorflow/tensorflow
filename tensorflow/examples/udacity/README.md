@@ -6,7 +6,7 @@ Course information can be found at https://www.udacity.com/course/deep-learning-
 Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
-    docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments
+    docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments:0.3.0
 
 Accessing the Notebooks
 -----------------------
@@ -61,9 +61,9 @@ This will allow you to save work and have access to generated files on the host 
 Pushing a Google Cloud release
 ------------------------------
 
-    V=0.2.0
+    V=0.3.0
     docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:$V
-    docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
+    docker tag -f $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
     gcloud docker push b.gcr.io/tensorflow-udacity/assignments
 
 History
@@ -71,3 +71,4 @@ History
 
 * 0.1.0: Initial release.
 * 0.2.0: Many fixes, including lower memory footprint and support for Python 3.
+* 0.3.0: Use 0.7.1 release.
