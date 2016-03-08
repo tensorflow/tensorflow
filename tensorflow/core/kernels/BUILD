@@ -983,6 +983,8 @@ filegroup(
     ],
 )
 
+# Core kernels we want on Android. Only a subset of kernels to keep
+# base library small.
 filegroup(
     name = "android_core_ops",
     srcs = [
@@ -1039,6 +1041,22 @@ filegroup(
     ],
 )
 
+# Other kernels we may want on Android.
+#
+# The kernels can be consumed as a whole or in two groups for
+# supporting separate compilation. Note that the split into groups
+# is entirely for improving compilation time, and not for
+# organizational reasons; you should not depend on any
+# of those groups independently.
+filegroup(
+    name = "android_extended_ops",
+    srcs = [
+        ":android_extended_ops_group1",
+        ":android_extended_ops_group2",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "android_extended_ops_headers",
     srcs = [
@@ -1092,6 +1110,7 @@ filegroup(
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
         "dynamic_partition_op.cc",
+        ":android_extended_ops_headers",
     ],
 )
 
@@ -1124,6 +1143,7 @@ filegroup(
         "transpose_op.cc",
         "where_op.cc",
         "xent_op.cc",
+        ":android_extended_ops_headers",
     ],
 )
 

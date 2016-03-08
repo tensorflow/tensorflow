@@ -36,10 +36,6 @@
 #
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
-# filegroup ":android_core_ops" - Essential kernels
-# filegroup ":android_extended_ops" - Optional kernels
-# filegroup ":android_extended_ops_group1" - Optional kernels, first batch
-# filegroup ":android_extended_ops_group2" - Optional kernels, second batch
 # cc_library ":android_tensorflow_lib" - Native library
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
@@ -609,57 +605,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Core kernels we want on Android. Only a subset of kernels to keep
-# base library small.
-filegroup(
-    name = "android_core_ops",
-    srcs = [
-        "//tensorflow/core/kernels:android_core_ops",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-# Other kernels we may want on Android.
-#
-# The kernels can be consumed as a whole or in two groups for
-# supporting separate compilation. Note that the split into groups
-# is entirely for improving compilation time, and not for
-# organizational reasons; you should not depend on any
-# of those groups independently.
-filegroup(
-    name = "android_extended_ops",
-    srcs = [
-        ":android_extended_ops_group1",
-        ":android_extended_ops_group2",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "android_extended_ops_headers",
-    srcs = [
-        "//tensorflow/core/kernels:android_extended_ops_headers",
-    ],
-)
-
-filegroup(
-    name = "android_extended_ops_group1",
-    srcs = [
-        ":android_extended_ops_headers",
-        "//tensorflow/core/kernels:android_extended_ops_group1",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "android_extended_ops_group2",
-    srcs = [
-        ":android_extended_ops_headers",
-        "//tensorflow/core/kernels:android_extended_ops_group2",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -716,8 +661,8 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = [
-        "//tensorflow/core:android_core_ops",
-        "//tensorflow/core:android_extended_ops",
+        "//tensorflow/core/kernels:android_core_ops",
+        "//tensorflow/core/kernels:android_extended_ops",
     ],
     copts = select({
         ":android": ANDROID_TF_COPTS,
@@ -736,6 +681,7 @@ cc_library(
     ],
 )
 
+# -----------------------------------------------------------------------------
 # Libraries for GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
