@@ -285,7 +285,7 @@ def main(argv=None):  # pylint: disable=unused-argument
       batch_data = train_data[offset:(offset + BATCH_SIZE), ...]
       batch_labels = train_labels[offset:(offset + BATCH_SIZE)]
       # This dictionary maps the batch data (as a numpy array) to the
-      # node in the graph is should be fed to.
+      # node in the graph it should be fed to.
       feed_dict = {train_data_node: batch_data,
                    train_labels_node: batch_labels}
       # Run the graph and fetch some of the nodes.
