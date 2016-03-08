@@ -33,7 +33,7 @@
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
-#include "tensorflow/examples/ios/UrlGet/ios_image_load.h"
+#include "tensorflow/examples/ios/RunModel/ios_image_load.h"
 
 NSString* RunInferenceOnImage();
 
@@ -125,6 +125,14 @@ bool PortableReadFileToProto(const std::string& file_name,
   return proto->ParseFromCodedStream(&coded_stream);
 }
 
+NSString* FilePathForResourceName(NSString* name, NSString* extension) {
+  NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
+  if (file_path == NULL) {
+    LOG(FATAL) << "Couldn't find " << [name UTF8String] << " in bundle.";
+  }
+  return file_path;
+}
+
 NSString* RunInferenceOnImage() {
   tensorflow::SessionOptions options;
 
@@ -141,12 +149,8 @@ NSString* RunInferenceOnImage() {
   tensorflow::GraphDef tensorflow_graph;
   LOG(INFO) << "Graph created.";
 
-  NSString* networkPath = [[NSBundle mainBundle] pathForResource:@"tensorflow_inception_graph" ofType:@"pb"];
-  if (networkPath == NULL) {
-    fprintf(stderr, "Couldn't find the neural network parameters file - did you add it as a resource to your application?\n");
-    assert(false);
-  }
-  PortableReadFileToProto([networkPath UTF8String], &tensorflow_graph);
+  NSString* network_path = FilePathForResourceName(@"tensorflow_inception_graph", @"pb");
+  PortableReadFileToProto([network_path UTF8String], &tensorflow_graph);
 
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
@@ -156,15 +160,10 @@ NSString* RunInferenceOnImage() {
   }
 
   // Read the label list
-  NSString* labelsPath = [[NSBundle mainBundle] pathForResource:@"imagenet_comp_graph_label_strings" ofType:@"txt"];
-  if (labelsPath == NULL) {
-    fprintf(stderr, "Couldn't find the network labels file - did you add it as a resource to your application?\n");
-    assert(false);
-  }
-
+  NSString* labels_path = FilePathForResourceName(@"imagenet_comp_graph_label_strings", @"txt");
   std::vector<std::string> label_strings;
   std::ifstream t;
-  t.open([labelsPath UTF8String]);
+  t.open([labels_path UTF8String]);
   std::string line;
   while(t){
     std::getline(t, line);
@@ -173,17 +172,12 @@ NSString* RunInferenceOnImage() {
   t.close();
 
   // Read the Grace Hopper image.
-  NSString* imagePath = [[NSBundle mainBundle] pathForResource:@"grace_hopper" ofType:@"jpg"];
-  if (imagePath == NULL) {
-    fprintf(stderr, "Couldn't find the image file - did you add it as a resource to your application?\n");
-    assert(false);
-  }
-
+  NSString* image_path = FilePathForResourceName(@"grace_hopper", @"jpg");
   int image_width;
   int image_height;
   int image_channels;
   std::vector<tensorflow::uint8> image_data = LoadImageFromFile(
-	[imagePath UTF8String], &image_width, &image_height, &image_channels);
+	[image_path UTF8String], &image_width, &image_height, &image_channels);
   const int wanted_channels = 3;
   assert(image_channels >= wanted_channels);
   tensorflow::Tensor image_tensor(
@@ -200,19 +194,15 @@ NSString* RunInferenceOnImage() {
     }
   }
 
-  NSString* result = [networkPath stringByAppendingString: @" - loaded!"];
+  NSString* result = [network_path stringByAppendingString: @" - loaded!"];
   result = [NSString stringWithFormat: @"%@ - %d, %s - %dx%d", result,
 	label_strings.size(), label_strings[0].c_str(), image_width, image_height];
-
-  fprintf(stderr, "a\n");
 
   std::string input_layer = "DecodeJpeg";
   std::string output_layer = "softmax";
   std::vector<tensorflow::Tensor> outputs;
-  fprintf(stderr, "b\n");
   tensorflow::Status run_status = session->Run({{input_layer, image_tensor}},
 				               {output_layer}, {}, &outputs);
-  fprintf(stderr, "c\n");
   if (!run_status.ok()) {
     LOG(ERROR) << "Running model failed: " << run_status;
   }

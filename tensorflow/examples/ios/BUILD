@@ -11,16 +11,15 @@ load("//google/protobuf:protobuf.bzl", "cc_proto_library")
 load("//google/protobuf:protobuf.bzl", "py_proto_library")
 
 objc_library(
-    name = "UrlGetClasses",
+    name = "RunModelClasses",
     srcs = [
-        "UrlGet/AppDelegate.mm",
-        "UrlGet/UrlGetViewController.mm",
-	"UrlGet/ios_image_load.mm",
+        "RunModel/AppDelegate.mm",
+        "RunModel/UrlGetViewController.mm",
+	"RunModel/ios_image_load.mm",
     ],
-    hdrs = glob(["UrlGet/*.h"]),
-    xibs = ["UrlGet/UrlGetViewController.xib"],
+    hdrs = glob(["RunModel/*.h"]),
+    xibs = ["RunModel/UrlGetViewController.xib"],
     deps = [
-	":proto_smoke_test",
 	"//google/protobuf:protobuf",
 	"//google/protobuf:protobuf_lite",
 	"//tensorflow/core:android_tensorflow_lib",
@@ -34,10 +33,10 @@ objc_library(
 objc_binary(
     name = "ios-app-binary",
     srcs = [
-        "UrlGet/main.mm",
+        "RunModel/main.mm",
     ],
     deps = [
-        ":UrlGetClasses",
+        ":RunModelClasses",
     ],
     copts = ["-Wl,--whole-archive", "-Wl,-all_load", "-femit-all-decls", "-O3"],
 )
@@ -45,16 +44,16 @@ objc_binary(
 ios_application(
     name = "ios-app",
     binary = ":ios-app-binary",
-    infoplist = "UrlGet/UrlGet-Info.plist",
+    infoplist = "RunModel/UrlGet-Info.plist",
 )
 
 objc_binary(
     name = "ios-app-binary-cc",
     srcs = [
-        "UrlGet/main.mm",
+        "RunModel/main.mm",
     ],
     deps = [
-        ":UrlGetClasses",
+        ":RunModelClasses",
 	"//google/protobuf:protobuf",
 	"//google/protobuf:protobuf_lite",
     ],
@@ -64,46 +63,4 @@ objc_binary(
         "data/tensorflow_inception_graph.pb",
     ],
     copts = ["-Wl,--whole-archive", "-femit-all-decls"],
-)
-
-config_setting(
-    name = "ios_armv7",
-    values = {
-        "ios_cpu": "armv7",
-    },
-)
-
-config_setting(
-    name = "ios_armv7s",
-    values = {
-        "ios_cpu": "armv7s",
-    },
-)
-
-config_setting(
-    name = "ios_arm64",
-    values = {
-        "ios_cpu": "arm64",
-    },
-)
-
-IOS_ARM_TF_COPTS = [
-    "-DOS_IOS",
-    "-miphoneos-version-min=7.0",
-    "-arch armv7",
-    "-arch armv7s",
-    "-arch arm64",
-    "-D__thread=",
-    "-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.2.sdk/",
-]
-
-cc_proto_library(
-    name = "proto_smoke_test",
-    srcs = ["UrlGet/test.proto"],
-    copts = select({
-        ":ios_armv7": IOS_ARM_TF_COPTS,
-        ":ios_armv7s": IOS_ARM_TF_COPTS,
-        ":ios_arm64": IOS_ARM_TF_COPTS,
-        "//conditions:default": [],
-    }),
 )
