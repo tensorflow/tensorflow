@@ -201,7 +201,7 @@ See examples folder for:
    :target: http://www.apache.org/licenses/LICENSE-2.0.html
 .. |Join the chat at https://gitter.im/tensorflow/skflow| image:: https://badges.gitter.im/Join%20Chat.svg
    :target: https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
-.. |Text classification RNN Graph| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_graph.png
-.. |Text classification RNN Loss| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/docs/images/text_classification_rnn_loss.png
+.. |Text classification RNN Graph| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/g3doc/images/text_classification_rnn_graph.png
+.. |Text classification RNN Loss| image:: https://raw.githubusercontent.com/tensorflow/skflow/master/g3doc/images/text_classification_rnn_loss.png
 .. |PyPI version| image:: https://badge.fury.io/py/skflow.svg
    :target: http://badge.fury.io/py/skflow
