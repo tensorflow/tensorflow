@@ -1,0 +1,7 @@
+[run]
+branch = True
+
+[report]
+omit = 
+        */tests/*
+        */ops/batch_norm_ops.py

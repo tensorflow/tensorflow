@@ -1,0 +1,9 @@
+[MASTER]
+
+ignore=tests
+
+disable=invalid-name,wildcard-import,too-many-arguments,attribute-defined-outside-init,no-member,too-many-instance-attributes,too-few-public-methods,import-error,super-on-old-class,fixme,protected-access,locally-disabled,cyclic-import,too-many-locals,duplicate-code
+
+dummy-variables-rgx=(unused|)_.*
+
+reports=no
