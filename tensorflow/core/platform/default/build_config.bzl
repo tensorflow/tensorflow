@@ -27,12 +27,12 @@ def tf_deps(deps, suffix):
 
 def tf_proto_library_cc(name, srcs = [], has_services = None,
                         deps = [], visibility = [], testonly = 0,
-                        cc_libs = [],
+                        cc_libs = [], copts = [],
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         cc_api_version = 2, go_api_version = 2,
                         java_api_version = 2,
-                        py_api_version = 2, copts = []):
+                        py_api_version = 2):
   native.filegroup(name=name + "_proto_srcs",
                    srcs=srcs + tf_deps(deps, "_proto_srcs"),
                    testonly=testonly,)
@@ -46,8 +46,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                    cc_libs = cc_libs + ["//google/protobuf:protobuf"],
                    use_grpc_plugin = use_grpc_plugin,
                    testonly=testonly,
-		   copts = copts,
-                   visibility=visibility,)
+  		   copts = copts,
+                   visibility=visibility)
 
 def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
                         srcs_version="PY2AND3"):
@@ -60,7 +60,7 @@ def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
 
 def tf_proto_library(name, srcs = [], has_services = None,
                      deps = [], visibility = [], testonly = 0,
-                     cc_libs = [],
+                     cc_libs = [], copts = [],
                      cc_api_version = 2, go_api_version = 2,
                      java_api_version = 2,
                      py_api_version = 2):
