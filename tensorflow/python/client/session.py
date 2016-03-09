@@ -20,11 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import sys
 import threading
 
 import numpy as np
-import six
 
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
@@ -570,22 +568,21 @@ class BaseSession(SessionInterface):
     try:
       return fn(*args)
     except tf_session.StatusNotOK as e:
-      e_type, e_value, e_traceback = sys.exc_info()
       error_message = compat.as_text(e.error_message)
       m = BaseSession._NODEDEF_NAME_RE.search(error_message)
+      node_def = None
+      op = None
       if m is not None:
         node_name = m.group(1)
-        node_def = None
         try:
           op = self._graph.get_operation_by_name(node_name)
           node_def = op.node_def
         except KeyError:
-          op = None
-        # pylint: disable=protected-access
-        raise errors._make_specific_exception(node_def, op, error_message,
-                                              e.code)
-        # pylint: enable=protected-access
-      six.reraise(e_type, e_value, e_traceback)
+          pass
+      # pylint: disable=protected-access
+      raise errors._make_specific_exception(node_def, op, error_message,
+                                            e.code)
+      # pylint: enable=protected-access
 
   def _extend_graph(self):
     # Ensure any changes to the graph are reflected in the runtime.

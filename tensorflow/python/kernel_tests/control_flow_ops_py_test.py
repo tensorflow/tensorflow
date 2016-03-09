@@ -31,7 +31,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
 def check_op_order(graph):
   """Sanity check on the ordering of op id."""
@@ -137,7 +136,8 @@ class ControlFlowTest(tf.test.TestCase):
       dead_branch = tf.identity(switch_op[0])
 
       with self.assertRaisesWithPredicateMatch(
-          StatusNotOK, lambda e: "The tensor returned for" in str(e)):
+          tf.errors.InvalidArgumentError,
+          lambda e: "The tensor returned for" in str(e)):
         dead_branch.eval()
 
   def testSwitchMergeLess(self):

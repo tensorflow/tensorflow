@@ -38,7 +38,8 @@ class OpError(Exception):
     """Creates a new `OpError` indicating that a particular op failed.
 
     Args:
-      node_def: The `graph_pb2.NodeDef` proto representing the op that failed.
+      node_def: The `graph_pb2.NodeDef` proto representing the op that failed,
+        if known; otherwise None.
       op: The `ops.Operation` that failed, if known; otherwise None.
       message: The message string describing the failure.
       error_code: The `error_codes_pb2.Code` describing the error.
