@@ -540,6 +540,7 @@ tf_cc_tests(
         "adjust_contrast_op_benchmark_test",
         "adjust_contrast_op_test",
         "colorspace_op_test",
+        "resize_bicubic_op_test",
         "resize_bilinear_op_test",
         "resize_nearest_neighbor_op_test",
     ],
