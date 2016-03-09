@@ -76,6 +76,8 @@ class Index(Document):
     Args:
       f: The output file.
     """
+    print("---", file=f)
+    print("---", file=f)
     print("<!-- This file is machine generated: DO NOT EDIT! -->", file=f)
     print("", file=f)
     print("# TensorFlow Python reference documentation", file=f)
@@ -89,10 +91,10 @@ class Index(Document):
       # TODO: This is a hack that should be removed as soon as the website code
       # allows it.
       full_filename = self._path_prefix + filename
-      links = ["[`%s`](%s#%s)" % (name, full_filename, anchor_f(name))
+      links = ["[`%s`](%s#%s)" % (name, full_filename[:-3], anchor_f(name))
                for name in member_names]
       if links:
-        print("* **[%s](%s)**:" % (library.title, full_filename), file=f)
+        print("* **[%s](%s)**:" % (library.title, full_filename[:-3]), file=f)
         for link in links:
           print("  * %s" % link, file=f)
         print("", file=f)
@@ -459,6 +461,8 @@ class Library(Document):
     Returns:
       Dictionary of documented members.
     """
+    print("---", file=f)
+    print("---", file=f)
     print("<!-- This file is machine generated: DO NOT EDIT! -->", file=f)
     print("", file=f)
     # TODO(touts): Do not insert these.  Let the doc writer put them in

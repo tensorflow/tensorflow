@@ -20,7 +20,7 @@ set -e
 DOC_DIR="g3doc/api_docs"
 
 if [ ! -f gen_docs.sh ]; then
-  echo "This script must be run from inside the skflow/tools/docs directory."
+  echo "This script must be run from inside the skflow/scripts/docs directory."
   exit 1
 fi
 
@@ -29,6 +29,6 @@ pushd ../..
 BASE=$(pwd)
 
 # Make Python docs
-python tools/docs/gen_docs_combined.py --out_dir=$BASE/$DOC_DIR/python
+python scripts/docs/gen_docs_combined.py --out_dir=$BASE/$DOC_DIR/python
 
 popd
