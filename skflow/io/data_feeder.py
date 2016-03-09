@@ -165,14 +165,19 @@ class DataFeeder(object):
 
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
+        y_dtype = np.int64 if n_classes > 1 else np.float32
         self.X = check_array(X, ensure_2d=False,
                              allow_nd=True, dtype=x_dtype)
-        self.y = check_array(y, ensure_2d=False, dtype=np.float32)
+        self.y = check_array(y, ensure_2d=False, dtype=y_dtype)
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.input_shape, self.output_shape = _get_in_out_shape(
             self.X.shape, self.y.shape, n_classes, batch_size)
-        self.input_dtype, self.output_dtype = self.X.dtype, self.y.dtype
+        # Input dtype matches dtype of X.
+        self.input_dtype = self.X.dtype
+        # Output dtype always float32 (because for classification we use
+        # one-hot vectors.
+        self.output_dtype = np.float32
         self.random_state = np.random.RandomState(42) if random_state is None else random_state
         self.indices = self.random_state.permutation(self.X.shape[0])
         self.offset = 0

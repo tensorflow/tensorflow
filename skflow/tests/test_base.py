@@ -38,7 +38,7 @@ class BaseTest(tf.test.TestCase):
     def testIris(self):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
-        classifier.fit(iris.data, iris.target)
+        classifier.fit(iris.data, [float(x) for x in iris.target])
         score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 
