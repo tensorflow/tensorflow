@@ -329,7 +329,6 @@ tf_cc_tests(
     tags = tf_cuda_tests_tags() + ["exclusive"],
     tests = [
         "grpc_channel_test.cc",
-        "grpc_server_lib_test.cc",
         "grpc_session_test.cc",
         "rpc_rendezvous_mgr_test.cc",
     ],
