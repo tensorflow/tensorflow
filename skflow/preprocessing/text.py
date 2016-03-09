@@ -16,6 +16,7 @@
 from __future__ import division, print_function, absolute_import
 
 import re
+import cPickle
 import six
 
 import numpy as np
@@ -194,4 +195,24 @@ class VocabularyProcessor(object):
             for class_id in item:
                 output.append(self.vocabulary_.reverse(class_id))
             yield ' '.join(output)
+
+    def save(self, filename):
+        """Saves vocabulary processor into given file.
+
+        Args:
+            filename: Path to output file.
+        """
+        open(filename, 'w').write(cPickle.dumps(self))
+
+    @classmethod
+    def restore(cls, filename):
+        """Restores vocabulary processor from given file.
+
+        Args:
+            filename: Path to file to load from.
+
+        Returns:
+            VocabularyProcessor object.
+        """
+        return cPickle.loads(open(filename).read())
 

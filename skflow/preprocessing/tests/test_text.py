@@ -58,6 +58,18 @@ class TextTest(tf.test.TestCase):
         self.assertAllEqual(list(tokens),
                             [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
 
+    def testVocabularyProcessorSaveRestore(self):
+        filename = tf.test.get_temp_dir() + 'test.vocab'
+        vocab_processor = text.VocabularyProcessor(
+            max_document_length=4,
+            min_frequency=1)
+        tokens = vocab_processor.fit_transform(
+            ["a b c", "a\nb\nc", "a, b - c"])
+        vocab_processor.save(filename)
+        new_vocab = text.VocabularyProcessor.restore(filename)
+        tokens = new_vocab.transform(["a b c"])
+        self.assertAllEqual(list(tokens), [[1, 2, 3, 0]])
+
     def testExistingVocabularyProcessor(self):
         vocab = CategoricalVocabulary()
         vocab.get("A")
