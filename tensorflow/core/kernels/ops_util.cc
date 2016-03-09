@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -119,9 +119,17 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
 }
 
 string SanitizeThreadSuffix(string suffix) {
-  static RE2 re("[^A-Za-z0-9_-]");
-  re.GlobalReplace(&suffix, re, "_");
-  return suffix;
+  string clean;
+  for (int i = 0; i < suffix.size(); ++i) {
+    const char ch = suffix[i];
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+      clean += ch;
+    } else {
+      clean += '_';
+    }
+  }
+  return clean;
 }
 
 }  // namespace tensorflow

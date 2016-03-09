@@ -738,6 +738,7 @@ cc_library(
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
         "lib/strings/regexp.h",
+        "lib/strings/scanner.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",

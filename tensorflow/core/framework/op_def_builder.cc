@@ -15,80 +15,99 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
+#include <limits>
 #include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/regexp.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+
+using ::tensorflow::strings::Scanner;
 
 namespace tensorflow {
 
 namespace {
 
-bool RE2Consume(StringPiece* sp, const RE2& pattern) {
-  RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
-  bool r = RE2::Consume(&base_sp, pattern);
-  *sp = FromRegexpStringPiece(base_sp);
-  return r;
-}
-
-bool RE2Consume(StringPiece* sp, const RE2& pattern, StringPiece* out) {
-  RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
-  RegexpStringPiece base_out;
-  bool r = RE2::Consume(&base_sp, pattern, &base_out);
-  *sp = FromRegexpStringPiece(base_sp);
-  *out = FromRegexpStringPiece(base_out);
-  return r;
-}
-
-bool RE2Consume(StringPiece* sp, const RE2& pattern, int64* out) {
-  RegexpStringPiece base_sp = ToRegexpStringPiece(*sp);
-  bool r = RE2::Consume(&base_sp, pattern, out);
-  *sp = FromRegexpStringPiece(base_sp);
-  return r;
-}
-
 string AttrError(StringPiece orig, const string& op_name) {
   return strings::StrCat(" from Attr(\"", orig, "\") for Op ", op_name);
 }
 
-const RE2& AttrNameRE() {
-  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*");
-  return pattern;
+bool ConsumeAttrName(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .AnySpace()
+      .OneLiteral(":")
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& AttrListPrefixRE() {
-  static RE2 pattern("list\\s*\\(\\s*");
-  return pattern;
+bool ConsumeListPrefix(StringPiece* sp) {
+  return Scanner(*sp)
+      .OneLiteral("list")
+      .AnySpace()
+      .OneLiteral("(")
+      .AnySpace()
+      .GetResult(sp);
 }
 
-const RE2& SpacesRE() {
-  static RE2 pattern("\\s*");
-  return pattern;
+bool ConsumeQuotedString(char quote_ch, StringPiece* sp, StringPiece* out) {
+  const string quote_str(1, quote_ch);
+  return Scanner(*sp)
+      .OneLiteral(quote_str.c_str())
+      .RestartCapture()
+      .ScanEscapedUntil(quote_ch)
+      .StopCapture()
+      .OneLiteral(quote_str.c_str())
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& AttrDoubleQuotedRE() {
-  static RE2 pattern(R"xx("((?:[^"\\]|\\.)*)"\s*)xx");
-  return pattern;
+bool ConsumeAttrType(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .Many(Scanner::LOWERLETTER_DIGIT)
+      .StopCapture()
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& AttrSingleQuotedRE() {
-  static RE2 pattern(R"xx('((?:[^'\\]|\\.)*)'\s*)xx");
-  return pattern;
-}
+bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
+  Scanner scan(*sp);
+  StringPiece match;
+  StringPiece remaining;
 
-const RE2& AttrTypeRE() {
-  static RE2 pattern("([a-z0-9]+)\\s*");
-  return pattern;
-}
-
-const RE2& AttrNumberRE() {
-  static RE2 pattern("\\s*(-?\\d+)\\s*");
-  return pattern;
+  scan.AnySpace();
+  bool is_negative = false;
+  if (scan.Peek() == '-') {
+    is_negative = true;
+    scan.OneLiteral("-");
+  }
+  if (!scan.RestartCapture()
+           .Many(Scanner::DIGIT)
+           .StopCapture()
+           .AnySpace()
+           .GetResult(&remaining, &match)) {
+    return false;
+  }
+  uint64 val = 0;
+  if (!str_util::ConsumeLeadingDigits(&match, &val)) return false;
+  if (is_negative) {
+    const int64 final_val = static_cast<int64>(val) * -1;
+    if (final_val > 0) return false;
+    *out = final_val;
+  } else {
+    if (val > static_cast<uint64>(std::numeric_limits<int64>::max())) {
+      return false;
+    }
+    *out = val;
+  }
+  *sp = remaining;
+  return true;
 }
 
 #define VERIFY(expr, ...)                                                 \
@@ -107,12 +126,11 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 
   // Parse "<name>:" at the beginning.
   StringPiece tmp_name;
-  VERIFY(RE2Consume(&spec, AttrNameRE(), &tmp_name),
-         "Trouble parsing '<name>:'");
+  VERIFY(ConsumeAttrName(&spec, &tmp_name), "Trouble parsing '<name>:'");
   attr->set_name(tmp_name.data(), tmp_name.size());
 
   // Read "<type>" or "list(<type>)".
-  bool is_list = RE2Consume(&spec, AttrListPrefixRE());
+  bool is_list = ConsumeListPrefix(&spec);
   string type;
   if (spec.Consume("string")) {
     type = "string";
@@ -151,14 +169,14 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
     }
   } else if (spec.Consume("{")) {
     // e.g. "{ int32, float, bool }" or "{ \"foo\", \"bar\" }"
-    RE2Consume(&spec, SpacesRE());
+    str_util::RemoveLeadingWhitespace(&spec);
     AttrValue* allowed = attr->mutable_allowed_values();
     if (spec.starts_with("\"") || spec.starts_with("'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
         StringPiece escaped_string;
-        VERIFY((RE2Consume(&spec, AttrDoubleQuotedRE(), &escaped_string) ||
-                RE2Consume(&spec, AttrSingleQuotedRE(), &escaped_string)),
+        VERIFY(ConsumeQuotedString('"', &spec, &escaped_string) ||
+                   ConsumeQuotedString('\'', &spec, &escaped_string),
                "Trouble parsing allowed string at '", spec, "'");
         string unescaped;
         string error;
@@ -167,7 +185,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
                error);
         allowed->mutable_list()->add_s(unescaped);
         if (spec.Consume(",")) {
-          RE2Consume(&spec, SpacesRE());
+          str_util::RemoveLeadingWhitespace(&spec);
           if (spec.Consume("}")) break;  // Allow ending with ", }".
         } else {
           VERIFY(spec.Consume("}"),
@@ -179,14 +197,14 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
       type = "type";
       while (true) {
         StringPiece type_string;
-        VERIFY(RE2Consume(&spec, AttrTypeRE(), &type_string),
+        VERIFY(ConsumeAttrType(&spec, &type_string),
                "Trouble parsing type string at '", spec, "'");
         DataType dt;
         VERIFY(DataTypeFromString(type_string, &dt),
                "Unrecognized type string '", type_string, "'");
         allowed->mutable_list()->add_type(dt);
         if (spec.Consume(",")) {
-          RE2Consume(&spec, SpacesRE());
+          str_util::RemoveLeadingWhitespace(&spec);
           if (spec.Consume("}")) break;  // Allow ending with ", }".
         } else {
           VERIFY(spec.Consume("}"),
@@ -198,12 +216,12 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   } else {
     VERIFY(false, "Trouble parsing type string at '", spec, "'");
   }
-  RE2Consume(&spec, SpacesRE());
+  str_util::RemoveLeadingWhitespace(&spec);
 
   // Write the type into *attr.
   if (is_list) {
     VERIFY(spec.Consume(")"), "Expected ) to close 'list(', not: '", spec, "'");
-    RE2Consume(&spec, SpacesRE());
+    str_util::RemoveLeadingWhitespace(&spec);
     attr->set_type(strings::StrCat("list(", type, ")"));
   } else {
     attr->set_type(type);
@@ -212,7 +230,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   // Read optional minimum constraint at the end.
   if ((is_list || type == "int") && spec.Consume(">=")) {
     int64 min_limit = -999;
-    VERIFY(RE2Consume(&spec, AttrNumberRE(), &min_limit),
+    VERIFY(ConsumeAttrNumber(&spec, &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
            "' instead");
     attr->set_has_minimum(true);
@@ -221,7 +239,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
 
   // Parse default value, if present.
   if (spec.Consume("=")) {
-    RE2Consume(&spec, SpacesRE());
+    str_util::RemoveLeadingWhitespace(&spec);
     VERIFY(ParseAttrValue(attr->type(), spec, attr->mutable_default_value()),
            "Could not parse default value '", spec, "'");
   } else {
@@ -236,29 +254,49 @@ string InOutError(bool is_output, StringPiece orig, const string& op_name) {
                          "\") for Op ", op_name);
 }
 
-const RE2& InOutNameRE() {
-  static RE2 pattern("([a-z][a-z0-9_]*)\\s*:\\s*");
-  return pattern;
+bool ConsumeInOutName(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LOWERLETTER)
+      .Any(Scanner::LOWERLETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .AnySpace()
+      .OneLiteral(":")
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& InOutRefOpenRE() {
-  static RE2 pattern("Ref\\s*\\(\\s*");
-  return pattern;
+bool ConsumeInOutRefOpen(StringPiece* sp) {
+  return Scanner(*sp)
+      .OneLiteral("Ref")
+      .AnySpace()
+      .OneLiteral("(")
+      .AnySpace()
+      .GetResult(sp);
 }
 
-const RE2& InOutRefCloseRE() {
-  static RE2 pattern("\\)\\s*");
-  return pattern;
+bool ConsumeInOutRefClose(StringPiece* sp) {
+  return Scanner(*sp).OneLiteral(")").AnySpace().GetResult(sp);
 }
 
-const RE2& InOutNameOrTypeRE() {
-  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*");
-  return pattern;
+bool ConsumeInOutNameOrType(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& InOutTimesTypeRE() {
-  static RE2 pattern("[*]\\s*([a-zA-Z][a-zA-Z0-9_]*)\\s*");
-  return pattern;
+bool ConsumeInOutTimesType(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .OneLiteral("*")
+      .AnySpace()
+      .RestartCapture()
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
 #define VERIFY(expr, ...)                                             \
@@ -279,20 +317,19 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 
   // Parse "<name>:" at the beginning.
   StringPiece tmp_name;
-  VERIFY(RE2Consume(&spec, InOutNameRE(), &tmp_name),
-         "Trouble parsing 'name:'");
+  VERIFY(ConsumeInOutName(&spec, &tmp_name), "Trouble parsing 'name:'");
   arg->set_name(tmp_name.data(), tmp_name.size());
 
   // Detect "Ref(...)".
-  if (RE2Consume(&spec, InOutRefOpenRE())) {
+  if (ConsumeInOutRefOpen(&spec)) {
     arg->set_is_ref(true);
   }
 
   {  // Parse "<name|type>" or "<name>*<name|type>".
     StringPiece first, second, type_or_attr;
-    VERIFY(RE2Consume(&spec, InOutNameOrTypeRE(), &first),
+    VERIFY(ConsumeInOutNameOrType(&spec, &first),
            "Trouble parsing either a type or an attr name at '", spec, "'");
-    if (RE2Consume(&spec, InOutTimesTypeRE(), &second)) {
+    if (ConsumeInOutTimesType(&spec, &second)) {
       arg->set_number_attr(first.data(), first.size());
       type_or_attr = second;
     } else {
@@ -317,7 +354,7 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 
   // Closing ) for Ref(.
   if (arg->is_ref()) {
-    VERIFY(RE2Consume(&spec, InOutRefCloseRE()),
+    VERIFY(ConsumeInOutRefClose(&spec),
            "Did not find closing ')' for 'Ref(', instead found: '", spec, "'");
   }
 
@@ -354,14 +391,19 @@ int num_leading_spaces(StringPiece s) {
   return i;
 }
 
-const RE2& DocNameColonRE() {
-  static RE2 pattern("^[a-zA-Z][a-zA-Z0-9_]*\\s*:");
-  return pattern;
+bool ConsumeDocNameColon(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .AnySpace()
+      .OneLiteral(":")
+      .AnySpace()
+      .GetResult(sp, out);
 }
 
-const RE2& DocNameColonSpacesRE() {
-  static RE2 pattern("([a-zA-Z][a-zA-Z0-9_]*)\\s*:\\s*");
-  return pattern;
+bool IsDocNameColon(StringPiece s) {
+  return ConsumeDocNameColon(&s, nullptr /* out */);
 }
 
 void FinalizeDoc(const string& text, OpDef* op_def,
@@ -384,8 +426,7 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 
   // Lines until we see name: -> description.
   int start_l = l;
-  while (static_cast<size_t>(l) < lines.size() &&
-         !RE2::PartialMatch(lines[l], DocNameColonRE())) {
+  while (static_cast<size_t>(l) < lines.size() && !IsDocNameColon(lines[l])) {
     ++l;
   }
   int end_l = l;
@@ -403,10 +444,9 @@ void FinalizeDoc(const string& text, OpDef* op_def,
   while (static_cast<size_t>(l) < lines.size()) {
     description.clear();
     description.push_back(lines[l]);
-    RE2Consume(&description.back(), DocNameColonSpacesRE(), &name);
+    ConsumeDocNameColon(&description.back(), &name);
     ++l;
-    while (static_cast<size_t>(l) < lines.size() &&
-           !RE2::PartialMatch(lines[l], DocNameColonRE())) {
+    while (static_cast<size_t>(l) < lines.size() && !IsDocNameColon(lines[l])) {
       description.push_back(lines[l]);
       ++l;
     }
