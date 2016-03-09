@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -99,6 +101,12 @@ class TF_ManagedBuffer : public TensorBuffer {
 };
 
 void deallocate_realigned_buffer(void* data, size_t len, void* arg) {
+  if (tensorflow::LogMemory::IsEnabled()) {
+    tensorflow::LogMemory::RecordRawDeallocation(
+        "TensorFlow C Api",
+        tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,
+        tensorflow::cpu_allocator(), false);
+  }
   tensorflow::cpu_allocator()->DeallocateRaw(data);
 }
 }  // namespace
@@ -125,6 +133,12 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, tensorflow::int64* dims,
     // requirements.
     buf->data_ =
         tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
+    if (tensorflow::LogMemory::IsEnabled()) {
+      tensorflow::LogMemory::RecordRawAllocation(
+          "TF_NewTensor",
+          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, len,
+          buf->data_, tensorflow::cpu_allocator());
+    }
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_realigned_buffer;
     buf->deallocator_arg_ = nullptr;

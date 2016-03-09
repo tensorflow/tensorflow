@@ -25,8 +25,8 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.core.framework import config_pb2
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -750,8 +750,9 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(c_list[1], out[1].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'Registered factories are {DIRECT_SESSION}'):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        'No session factory registered for the given session options.'):
       session.Session('INVALID_TARGET')
 
   def testFetchByNameDifferentStringTypes(self):

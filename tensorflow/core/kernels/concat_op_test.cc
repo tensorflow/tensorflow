@@ -40,7 +40,6 @@ namespace {
 template <typename T>
 static void ConcatHelper(int iters, int concat_dimension, int dim2) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   DataType dt = DataTypeToEnum<T>::v();
@@ -92,7 +91,6 @@ BENCHMARK(BM_ConcatDim1bfloat16)->Arg(1000)->Arg(100000)->Arg(1000000);
 template <typename T>
 static void ConcatManyHelper(int iters, int concat_dimension, int dim2) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   DataType dt = DataTypeToEnum<T>::v();

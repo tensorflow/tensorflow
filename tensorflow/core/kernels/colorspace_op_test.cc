@@ -32,7 +32,6 @@ namespace tensorflow {
 class RGBToHSVOpTest : public OpsTestBase {
  protected:
   RGBToHSVOpTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("rgb_to_hsv_op", "RGBToHSV")
                      .Input(FakeInput(DT_FLOAT))
                      .Finalize(node_def()));
@@ -128,7 +127,6 @@ TEST_F(RGBToHSVOpTest, CheckNegativeDifference) {
 class HSVToRGBOpTest : public OpsTestBase {
  protected:
   HSVToRGBOpTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("hsv_to_rgb_op", "HSVToRGB")
                      .Input(FakeInput(DT_FLOAT))
                      .Finalize(node_def()));

@@ -54,18 +54,61 @@ from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
-def _stripped_op_list_for_graph(graph_def):
-  """Returns OpDefs of ops used in graph_def."""
-  op_set = set()
+def stripped_op_list_for_graph(graph_def):
+  """Collect the ops used by a graph.
+
+  This function computes the `stripped_op_list` field of `MetaGraphDef` and
+  similar protos.  The result can be communicated from the producer to the
+  consumer, which can then use the C++ function
+  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
+
+  Args:
+    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
+
+  Returns:
+    An `OpList` of ops used by the graph.
+
+  Raises:
+    ValueError: If an unregistered op is used.
+  """
+  # This is the Python equivalent of StrippedOpListForGraph in C++.
+  # Unfortunately, since the Python op registry can differ from that in C++, we
+  # can't remove the duplication using swig (at least naively).
+  # TODO(irving): Support taking graphs directly.
+
+  # Map function names to definitions
+  name_to_function = {}
+  for fun in graph_def.library.function:
+    name_to_function[fun.signature.name] = fun
+
+  # Collect the list of op names.  Since functions can reference functions, we
+  # need a recursive traversal.
+  used_ops = set()  # Includes both primitive ops and functions
+  functions_to_process = []  # A subset of used_ops
+  def mark_op_as_used(op):
+    if op not in used_ops and op in name_to_function:
+      functions_to_process.append(name_to_function[op])
+    used_ops.add(op)
+  for node in graph_def.node:
+    mark_op_as_used(node.op)
+  while functions_to_process:
+    fun = functions_to_process.pop()
+    for node in fun.node:
+      mark_op_as_used(node.op)
+
+  # Verify that all used ops are registered.
   registered_ops = op_def_registry.get_registered_ops()
-  for n in graph_def.node:
-    if n.op in registered_ops:
-      op_set.add(n.op)
-  for func in graph_def.library.function:
-    for n in func.node:
-      if n.op in registered_ops:
-        op_set.add(n.op)
-  return op_def_pb2.OpList(op=[registered_ops[x] for x in sorted(op_set)])
+  # These internal ops used by functions are not registered, so we need to
+  # whitelist them.  # TODO(irving): Do something better here.
+  op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
+  for op in used_ops:
+    if (op not in name_to_function and op not in registered_ops and
+        op not in op_whitelist):
+      raise ValueError("Op %s is used by the graph, but is not registered" % op)
+
+  # Build the stripped op list in sorted order
+  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
+                               if op in registered_ops])
 
 
 class BaseSaverBuilder(object):
@@ -218,7 +261,7 @@ class BaseSaverBuilder(object):
           values = array_ops.reshape(values, shape)
 
       # Assign on the same device as the variable.
-      with ops.device(v.device):
+      with ops.colocate_with(v):
         assign_ops.append(state_ops.assign(v,
                                            values,
                                            validate_shape=not reshape))
@@ -360,8 +403,8 @@ class BaseSaverBuilder(object):
           if slice_name is None:
             slice_name = variable._save_slice_info.full_name
           elif slice_name != variable._save_slice_info.full_name:
-            raise variable("Slices must all be from the same tensor: %s != %s"
-                           % (slice_name, variable._save_slice_info.full_name))
+            raise ValueError("Slices must all be from the same tensor: %s != %s"
+                             % (slice_name, variable._save_slice_info.full_name))
           self._AddVarToSave(vars_to_save, seen_variables,
                              variable, variable._save_slice_info.spec, name)
         # pylint: enable=protected-access
@@ -418,8 +461,10 @@ class BaseSaverBuilder(object):
         Variable nodes.
       max_to_keep: Maximum number of checkpoints to keep.  As new checkpoints
         are created, old ones are deleted.  If None or 0, no checkpoints are
-        deleted.  Presently the number is only roughly enforced.  For example
-        in case of restarts more than max_to_keep checkpoints may be kept.
+        deleted from the filesystem but only the last one is kept in the
+        `checkpoint` file.  Presently the number is only roughly enforced.  For
+        example in case of restarts more than max_to_keep checkpoints may be
+        kept.
       keep_checkpoint_every_n_hours: How often checkpoints should be kept.
         Defaults to 10,000 hours.
       name: String.  Optional name to use as a prefix when adding operations.
@@ -1030,7 +1075,12 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
+
+    Raises:
+      ValueError: If the given `save_path` does not point to a file.
     """
+    if not gfile.Glob(save_path):
+      raise ValueError("Restore called with invalid save path %s" % save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
@@ -1178,7 +1228,7 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   # pylint: disable=g-explicit-length-test
   if len(meta_graph_def.meta_info_def.stripped_op_list.op) == 0:
     meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-        _stripped_op_list_for_graph(meta_graph_def.graph_def))
+        stripped_op_list_for_graph(meta_graph_def.graph_def))
   # pylint: enable=g-explicit-length-test
 
   # Adds saver_def.

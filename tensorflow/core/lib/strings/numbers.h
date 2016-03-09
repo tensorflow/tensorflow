@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -80,6 +81,16 @@ string FpToString(Fprint fp);
 // successful, stores the fingerprint in *fp and returns true.  Otherwise,
 // returns false.
 bool StringToFp(const string& s, Fprint* fp);
+
+// Convert a 64-bit fingerprint value to an ASCII representation that
+// is terminated by a '\0'.
+// Buf must point to an array of at least kFastToBufferSize characters
+StringPiece Uint64ToHexString(uint64 v, char* buf);
+
+// Attempt to parse a uint64 in the form encoded by FastUint64ToHexString.  If
+// successful, stores the value in *v and returns true.  Otherwise,
+// returns false.
+bool HexStringToUint64(const StringPiece& s, uint64* v);
 
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.

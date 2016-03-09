@@ -24,10 +24,12 @@ collected in the graph.
 
 @@all_variables
 @@trainable_variables
+@@local_variables
 @@moving_average_variables
 
 @@initialize_all_variables
 @@initialize_variables
+@@initialize_local_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
@@ -59,6 +61,7 @@ create variables contingent on certain conditions.
 @@random_uniform_initializer
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
+@@ones_initializer
 
 ## Sparse Variable Updates
 
@@ -167,7 +170,7 @@ def init_variable(v, init, name="init"):
   """
   with ops.op_scope([v, init], None, v.op.name + "/"):
     with ops.name_scope(name) as scope:
-      with ops.device(v.device):
+      with ops.colocate_with(v):
         if callable(init):
           assert v.get_shape().is_fully_defined(), "Variable shape unknown."
           # TODO(mrry): Convert to v.shape when the property and

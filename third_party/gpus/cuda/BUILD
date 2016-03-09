@@ -10,14 +10,14 @@ package(default_visibility = ["//visibility:public"])
 
 config_setting(
     name = "cuda_crosstool_condition",
-    values = {"crosstool_top": "//third_party/gpus/crosstool"},
+    values = {"define": "using_cuda=true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "using_gcudacc",
     values = {
-        "crosstool_top": "//third_party/gpus/crosstool",
+        "define": "using_cuda=true",
         "copt": "--use_gcudacc",
     },
     visibility = ["//visibility:public"],
@@ -26,7 +26,7 @@ config_setting(
 config_setting(
     name = "using_nvcc",
     values = {
-        "crosstool_top": "//third_party/gpus/crosstool",
+        "define": "using_cuda=true",
         "copt": "--use_nvcc",
     },
 )

@@ -61,7 +61,11 @@ class UnaryOpTest(tf.test.TestCase):
       if tf_func in (tf.digamma,):
         return  # Return early
 
-      if x.dtype == np.float32:
+      if x.dtype == np.complex64 and tf_func in (
+          tf.abs, _ABS, tf.sqrt, tf.rsqrt, tf.log):
+        return  # Return early
+
+      if x.dtype == np.float32 or x.dtype == np.complex64:
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -962,6 +966,17 @@ class SelectOpTest(tf.test.TestCase):
       yt = y.astype(t)
       with self.assertRaises(ValueError):
         tf.select(c, xt, yt)
+
+  def testEmptyTensor(self):
+    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
+    x = np.random.rand(1, 3, 0) * 100
+    y = np.random.rand(1, 3, 0) * 100
+    z_expected = np.zeros((1, 3, 0), dtype=np.float32)
+    with self.test_session():
+      xt = x.astype(np.float32)
+      yt = y.astype(np.float32)
+      z = tf.select(c, xt, yt).eval()
+      self.assertAllEqual(z_expected, z)
 
 
 class BatchSelectOpTest(tf.test.TestCase):

@@ -6,6 +6,7 @@ node_modules
 /bazel-tensorflow
 /bazel-testlogs
 /bazel-tf
+/tensorflow/contrib/cmake/build
 /third_party/gpus/cuda/bin
 /third_party/gpus/cuda/cuda.config
 /third_party/gpus/cuda/include
@@ -17,3 +18,5 @@ node_modules
 /util/python/python_include
 /util/python/python_lib
 /pip_test
+/_python_build
+*.pyc

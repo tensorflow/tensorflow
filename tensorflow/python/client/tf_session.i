@@ -263,7 +263,7 @@ tensorflow::ImportNumpy();
     if target is not None:
       _TF_SetTarget(opts, target)
     if config is not None:
-      from tensorflow.core.framework import config_pb2
+      from tensorflow.core.protobuf import config_pb2
       if not isinstance(config, config_pb2.ConfigProto):
         raise TypeError("Expected config_pb2.ConfigProto, "
                         "but got %s" % type(config))

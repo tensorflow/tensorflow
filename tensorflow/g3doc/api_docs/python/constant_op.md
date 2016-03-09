@@ -176,9 +176,8 @@ Creates a constant tensor.
  elements specified by `shape`, the last element in the list will be used
  to fill the remaining entries.
 
- The argument `shape` is optional. If present, it specifies the dimensions
- of the resulting tensor. If not present, then the tensor is a scalar (0-D)
- if `value` is a scalar, or 1-D otherwise.
+ The argument `shape` is optional. If present, it specifies the dimensions of
+ the resulting tensor. If not present, the shape of `value` is used.
 
  If the argument `dtype` is not specified, then the type is inferred from
  the type of `value`.

@@ -93,6 +93,10 @@ var datasets = [
     statsPath: "mnist_train_stats.json"
   },
   {
+    name: "Mnist Train (with shapes)",
+    path: "mnist_train_shapes.pbtxt",
+  },
+  {
     name: "Inception Train (huge)",
     path: "inception_train.pbtxt",
   },
@@ -117,7 +121,7 @@ var datasets = [
     path: "ptb_word_lstm_test_eval.pbtxt",
   },
   {
-    name: "Cifar10 Train",
+    name: "Cifar10 Train (with shapes)",
     path: "cifar10_train.pbtxt",
   },
   {
@@ -166,7 +170,7 @@ Polymer({
     },
     selectedDataset: {
       type: Number,
-      value: 1
+      value: 9 // Cifar train with shapes.
     },
     _progress: Object
   },

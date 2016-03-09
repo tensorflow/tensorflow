@@ -104,8 +104,42 @@ def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
 
 
 # pylint: disable=protected-access
-def bias_add(value, bias, name=None):
+def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
+
+  This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
+  Broadcasting is supported, so `value` may have any number of dimensions.
+  Unlike `tf.add`, the type of `bias` is allowed to differ from `value` in the
+  case where both types are quantized.
+
+  Args:
+    value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
+      `int16`, `int8`, or `complex64`.
+    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+      Must be the same type as `value` unless `value` is a quantized type,
+      in which case a different quantized type may be used.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+  """
+  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+    value = ops.convert_to_tensor(value, name="input")
+    bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
+    return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
+
+ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
+
+
+# pylint: disable=protected-access
+def bias_add_v1(value, bias, name=None):
+  """Adds `bias` to `value`.
+
+  This is a deprecated version of bias_add and will soon to be removed.
 
   This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
   Broadcasting is supported, so `value` may have any number of dimensions.
@@ -123,13 +157,16 @@ def bias_add(value, bias, name=None):
   Returns:
     A `Tensor` with the same type as `value`.
   """
-  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+  with ops.op_scope([value, bias], name, "BiasAddV1") as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops._bias_add(value, bias, name=name)
+    return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
 
 
@@ -247,7 +284,7 @@ def _SoftmaxCrossEntropyWithLogitsShape(op):
   return [tensor_shape.vector(batch_size.value), input_shape]
 
 
-def avg_pool(value, ksize, strides, padding, name=None):
+def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the average pooling on the input.
 
   Each entry in `output` is the mean of the corresponding size `ksize`
@@ -262,6 +299,7 @@ def avg_pool(value, ksize, strides, padding, name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -271,10 +309,11 @@ def avg_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._avg_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 
-def max_pool(value, ksize, strides, padding, name=None):
+def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
   Args:
@@ -285,6 +324,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW" are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -294,6 +334,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._max_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 
@@ -398,6 +439,8 @@ def _BatchNormGradShape(op):
 
 
 ops.RegisterShape("Conv2D")(common_shapes.conv2d_shape)
+ops.RegisterShape("DepthwiseConv2dNative")(
+    common_shapes.depthwise_conv2d_native_shape)
 ops.RegisterShape("AvgPool")(common_shapes.avg_pool_shape)
 ops.RegisterShape("MaxPool")(common_shapes.max_pool_shape)
 
@@ -447,6 +490,26 @@ def _Conv2DBackpropInputShape(op):
     # gradients and the attrs, but if we do not know input_shape
     # statically, then we are unlikely to know the shape of the
     # gradients either.
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
+def _DepthwiseConv2dNativeBackpropFilterShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropFilter op."""
+  filter_shape = tensor_util.constant_value(op.inputs[1])
+  if filter_shape is not None:
+    return [tensor_shape.TensorShape(filter_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
+def _DepthwiseConv2dNativeBackpropInputShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropInput op."""
+  input_shape = tensor_util.constant_value(op.inputs[0])
+  if input_shape is not None:
+    return [tensor_shape.TensorShape(input_shape.tolist())]
+  else:
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
@@ -532,6 +595,30 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     biases = ops.convert_to_tensor(biases, name="biases")
     mm = math_ops.matmul(x, weights)
     return bias_add(mm, biases, name=name)
+
+
+def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(x, weights) + biases.
+
+  This is a deprecated version of that will soon be removed.
+
+  Args:
+    x: a 2D tensor.  Dimensions typically: batch, in_units
+    weights: a 2D tensor.  Dimensions typically: in_units, out_units
+    biases: a 1D tensor.  Dimensions: out_units
+    name: A name for the operation (optional).  If not specified
+      "xw_plus_b_v1" is used.
+
+  Returns:
+    A 2-D Tensor computing matmul(x, weights) + biases.
+    Dimensions typically: batch, out_units.
+  """
+  with ops.op_scope([x, weights, biases], name, "xw_plus_b_v1") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    weights = ops.convert_to_tensor(weights, name="weights")
+    biases = ops.convert_to_tensor(biases, name="biases")
+    mm = math_ops.matmul(x, weights)
+    return bias_add_v1(mm, biases, name=name)
 
 
 # pylint: disable=invalid-name

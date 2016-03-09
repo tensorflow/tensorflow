@@ -126,7 +126,7 @@ $ python
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
 >>> tf.sysconfig.get_lib()
 '/usr/local/lib/python2.7/site-packages/tensorflow/core'
->>> 
+>>>
 
 ```
 
@@ -145,23 +145,32 @@ $ g++ -std=c++11 -shared zero_out.cc -o zero_out.so \
 ### With TensorFlow source installation
 
 If you have TensorFlow sources installed, you can make use of TensorFlow's build
-system to compile your Op. The following Bazel build rule would build
-`zero_out.so`.
+system to compile your Op. Place a BUILD file with following Bazel build rule in
+the [`tensorflow/core/user_ops`][user_ops] directory.
 
 ```python
 cc_binary(
     name = "zero_out.so",
     srcs = ["zero_out.cc"],
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        "//third_party/tensorflow:darwin": [],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [
         "//third_party/tensorflow/core:framework",
     ],
 )
+```
+
+Run the following command to build `zero_out.so`.
+
+```bash
+$ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
 
 ## Using the Op in Python
@@ -265,7 +274,7 @@ function on error.
 
 ## Op registration
 
-### Attrs 
+### Attrs
 
 Ops can have attrs, whose values are set when the Op is added to a graph. These
 are used to configure the Op, and their values can be accessed both within the

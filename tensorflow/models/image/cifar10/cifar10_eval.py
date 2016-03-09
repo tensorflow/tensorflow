@@ -136,7 +136,7 @@ def evaluate():
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
 
-    graph_def = tf.get_default_graph().as_graph_def()
+    graph_def = tf.get_default_graph().as_graph_def(add_shapes=True)
     summary_writer = tf.train.SummaryWriter(FLAGS.eval_dir,
                                             graph_def=graph_def)
 

@@ -106,7 +106,6 @@ def all_libraries(module_to_name, members, documented):
                                "lrn", "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
                                "all_candidate_sampler",
-                               "embedding_lookup_sparse",
                                "rnn", "state_saving_rnn", "bidirectional_rnn",
                                "dynamic_rnn", "seq2seq", "rnn_cell"],
               prefix=PREFIX_TEXT),
@@ -124,12 +123,12 @@ def all_libraries(module_to_name, members, documented):
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
-                   "GPUOptions", "GraphOptions", "SessionInterface",
-                   "BaseSession", "NameAttrList", "AttrValue",
-                   "TensorArray", "OptimizerOptions",
+                   "GPUOptions", "GraphOptions", "RunOptions", "RunOutputs",
+                   "SessionInterface", "BaseSession", "NameAttrList",
+                   "AttrValue", "TensorArray", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
-                   "SaverDef", "VariableDef", "TestCase",
-                  ]
+                   "SaverDef", "VariableDef", "TestCase", "GrpcServer",
+                   "ClusterDef", "JobDef", "ServerDef"]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

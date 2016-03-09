@@ -85,6 +85,11 @@ TensorShape::TensorShape() {
   num_elements_ = 1;
 }
 
+void TensorShape::DestructorOutOfLine() {
+  DCHECK(tag() == REP_OUT_OF_LINE);
+  delete as64()->dims_;
+}
+
 void TensorShape::SlowCopyFrom(const TensorShape& b) {
   if (b.tag() != REP_OUT_OF_LINE) {
     if (tag() == REP_OUT_OF_LINE) {
@@ -106,6 +111,18 @@ void TensorShape::SlowCopyFrom(const TensorShape& b) {
       set_tag(REP_OUT_OF_LINE);
       as64()->dims_ = new gtl::InlinedVector<int64, 4>(*(b.as64()->dims_));
     }
+  }
+}
+
+int64 TensorShape::dim_size(int d) const {
+  DCHECK_GE(d, 0);
+  DCHECK_LT(d, dims());
+  if (tag() == REP16) {
+    return as16()->dims_[d];
+  } else if (tag() == REP32) {
+    return as32()->dims_[d];
+  } else {
+    return (*as64()->dims_)[d];
   }
 }
 

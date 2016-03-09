@@ -42,10 +42,27 @@ class ReluOp : public UnaryElementWiseOp<T, ReluOp<Device, T>> {
   }
 };
 
+// Out of line check to save code space (we have this code once, rather
+// than once for every NDIMS * NumTypes * Num_different_relu_variants
+// functions.
+static void ValidateSameSizeHelper(OpKernelContext* context, const Tensor& g,
+                                   const Tensor& a) {
+  OP_REQUIRES(context, a.IsSameSize(g),
+              errors::InvalidArgument("g and a must be the same size"));
+}
+static bool ValidateSameSize(OpKernelContext* context, const Tensor& g,
+                             const Tensor& a) {
+  ValidateSameSizeHelper(context, g, a);
+  return context->status().ok();
+}
+
 template <typename Device, typename T>
 class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, ReluGradOp<Device, T>>::BinaryElementWiseOp;
+
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
 
   // INPUTS:
   //   g (gradients): backpropagated gradients
@@ -56,13 +73,19 @@ class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
   template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::ReluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void ReluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                              const Tensor& g, const Tensor& a,
+                                              Tensor* output) {
+  if (!ValidateSameSize(context, g, a)) return;
+  functor::ReluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 template <typename Device, typename T>
 class Relu6Op : public UnaryElementWiseOp<T, Relu6Op<Device, T>> {
@@ -81,6 +104,9 @@ class Relu6GradOp : public BinaryElementWiseOp<T, Relu6GradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, Relu6GradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): inputs that were passed to Relu6Op()
@@ -89,13 +115,19 @@ class Relu6GradOp : public BinaryElementWiseOp<T, Relu6GradOp<Device, T>> {
   template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::Relu6Grad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void Relu6GradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                               const Tensor& g, const Tensor& a,
+                                               Tensor* output) {
+  if (!ValidateSameSize(context, g, a)) return;
+  functor::Relu6Grad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 template <typename Device, typename T>
 class EluOp : public UnaryElementWiseOp<T, EluOp<Device, T>> {
@@ -114,6 +146,9 @@ class EluGradOp : public BinaryElementWiseOp<T, EluGradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, EluGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (outputs): outputs of the EluOp()
@@ -122,13 +157,19 @@ class EluGradOp : public BinaryElementWiseOp<T, EluGradOp<Device, T>> {
   template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::EluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void EluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                             const Tensor& g, const Tensor& a,
+                                             Tensor* output) {
+  if (!ValidateSameSize(context, g, a)) return;
+  functor::EluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 #define REGISTER_RELU_KERNELS(type)                                   \
   REGISTER_KERNEL_BUILDER(                                            \

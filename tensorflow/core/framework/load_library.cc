@@ -65,7 +65,7 @@ Status LoadLibrary(const char* library_filename, void** result,
   string str;
   GetOpList(&str);
   char* str_buf = reinterpret_cast<char*>(operator new(str.length()));
-  strncpy(str_buf, str.data(), str.length());
+  memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();
 

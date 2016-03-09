@@ -87,24 +87,15 @@ class TensorShape {
 
   /// Return the number of dimensions in the tensor.
   int dims() const {
-    return (tag() == REP_OUT_OF_LINE) ? (*as64()->dims_).size() : ndims_byte();
+    DCHECK(tag() != REP_OUT_OF_LINE || (*as64()->dims_).size() == ndims_byte());
+    return ndims_byte();
   }
 
   /// \brief Returns the number of elements in dimension `d`.
   /// REQUIRES: `0 <= d < dims()`
   // TODO(touts): Rename to `dimension()` to match
   // `Eigen::Tensor::dimension()`?
-  int64 dim_size(int d) const {
-    DCHECK_GE(d, 0);
-    DCHECK_LT(d, dims());
-    if (tag() == REP16) {
-      return as16()->dims_[d];
-    } else if (tag() == REP32) {
-      return as32()->dims_[d];
-    } else {
-      return (*as64()->dims_)[d];
-    }
-  }
+  int64 dim_size(int d) const;
 
   /// Returns sizes of all dimensions.
   gtl::InlinedVector<int64, 4> dim_sizes() const;
@@ -146,6 +137,7 @@ class TensorShape {
 
   void DumpRep() const;  // XXX
  private:
+  void DestructorOutOfLine();
   void ClearAllButDataType();
   void SlowCopyFrom(const TensorShape& b);
 
@@ -332,7 +324,7 @@ inline TensorShape::TensorShape(const TensorShape& b) {
 
 inline TensorShape::~TensorShape() {
   if (tag() == REP_OUT_OF_LINE) {
-    delete as64()->dims_;
+    DestructorOutOfLine();
   }
 }
 

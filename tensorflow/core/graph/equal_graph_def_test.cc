@@ -47,7 +47,6 @@ class EqualGraphDefTest : public ::testing::Test {
   EqualGraphDefTest()
       : e_(GraphDefBuilder::kFailImmediately),
         a_(GraphDefBuilder::kFailImmediately) {
-    RequireDefaultOps();
   }
 
   bool Match() {
@@ -294,6 +293,19 @@ TEST_F(EqualGraphDefTest, AttrMismatch) {
       "Node named 'A' has attr 'baz' with value: 5 that does not match "
       "expected: 42",
       diff_);
+}
+
+TEST_F(EqualGraphDefTest, IgnoreInternalAttrs) {
+  Node* a = Input(e_.opts().WithName("A"));
+  NodeDef actual(a->def());
+  AddNodeAttr("foo", "bar", &actual);
+  // Internal attrs are ignored.
+  AddNodeAttr("_class", 5, &actual);
+
+  NodeDef expected(a->def());
+  AddNodeAttr("foo", "bar", &expected);
+  AddNodeAttr("_kernel", "eigen", &actual);
+  EXPECT_TRUE(EqualNodeDef(actual, expected, &diff_));
 }
 
 }  // namespace

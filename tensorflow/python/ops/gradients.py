@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import warnings
 
 import numpy as np
@@ -140,23 +141,6 @@ def _GatherInputs(to_ops, reached_ops):
   return inputs
 
 
-def _GetGradsDevice(op, colocate_gradients_with_ops):
-  """Gets the device to which to assign gradients of "op".
-
-  Args:
-    op: an Operation.
-    colocate_gradients_with_ops: If True, try colocating gradients with the
-      corresponding op.
-
-  Returns:
-    A device string.
-  """
-  if colocate_gradients_with_ops and op.device:
-    return op.device
-  else:
-    return ""
-
-
 def _PendingCount(graph, to_ops, from_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
@@ -239,7 +223,7 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     grad_y = grad_ys[i]
     y = ys[i]
     if grad_y is None:
-      with ops.device(_GetGradsDevice(y.op, colocate_gradients_with_ops)):
+      with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y),
             constant_op.constant(1, dtype=y.dtype))
@@ -308,6 +292,16 @@ def _StopOps(from_ops, pending_count):
     if is_stop_op:
       stop_ops.add(op._id)
   return stop_ops
+
+
+@contextlib.contextmanager
+def _maybe_colocate_with(op, colocate_gradients_with_ops):
+  """Context to colocate with `op` if `colocate_gradients_with_ops`."""
+  if colocate_gradients_with_ops:
+    with ops.colocate_with(op):
+      yield
+  else:
+    yield
 
 
 def gradients(ys,
@@ -431,18 +425,18 @@ def gradients(ys,
     while queue:
       # generate gradient subgraph for op.
       op = queue.popleft()
-      with ops.device(_GetGradsDevice(op, colocate_gradients_with_ops)):
+      with _maybe_colocate_with(op, colocate_gradients_with_ops):
         if loop_state:
-          loop_state.EnterGradWhileContext(op)
+          loop_state.EnterGradWhileContext(op, before=True)
         out_grads = _AggregatedGrads(grads, op, loop_state, aggregation_method)
-        grad_fn = None
+        if loop_state:
+          loop_state.ExitGradWhileContext(op, before=True)
 
+        grad_fn = None
         # pylint: disable=protected-access
         is_func_call = ops.get_default_graph()._is_function(op.type)
-        # pylint: enable=protected-access
-
         if not is_func_call and any(out_grads) and op._id not in stop_ops:
-        # pylint: enable=protected-access
+          # pylint: enable=protected-access
           # A grad_fn must be defined, either as a function or as None
           # for ops that do not have gradients.
           try:
@@ -451,6 +445,9 @@ def gradients(ys,
             raise LookupError(
                 "No gradient defined for operation '%s' (op type: %s)" %
                 (op.name, op.type))
+
+        if loop_state:
+          loop_state.EnterGradWhileContext(op, before=False)
         if (grad_fn or is_func_call) and any(out_grads):
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
@@ -467,9 +464,6 @@ def gradients(ys,
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):
               # pylint: enable=protected-access
-              wrapped_op = op
-              if loop_state:
-                wrapped_op = loop_state.MakeWrapper(op)
               if is_func_call:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
@@ -480,7 +474,7 @@ def gradients(ys,
                     f_in, f_types, op.type))
                 # pylint: enable=protected-access
               else:
-                in_grads = _AsList(grad_fn(wrapped_op, *out_grads))
+                in_grads = _AsList(grad_fn(op, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
@@ -497,7 +491,7 @@ def gradients(ys,
           if in_grad:
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
-          loop_state.ExitGradWhileContext(op)
+          loop_state.ExitGradWhileContext(op, before=False)
 
       # update pending count for the inputs of op.
       # pylint: disable=protected-access

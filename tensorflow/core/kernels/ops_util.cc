@@ -17,18 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
-
-void RequireDefaultOps() {
-// TODO(opensource): Use a more generic sounding preprocessor name than
-// GOOGLE_CUDA (maybe SUPPORT_CUDA?)
-#if GOOGLE_CUDA
-  void RequireGPUDevice();
-  RequireGPUDevice();
-#endif
-}
 
 Status Get2dOutputSize(const int in_height, const int in_width,
                        int filter_height, int filter_width, int row_stride,
@@ -125,4 +117,11 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
   }
   return Status::OK();
 }
+
+string SanitizeThreadSuffix(string suffix) {
+  static RE2 re("[^A-Za-z0-9_-]");
+  re.GlobalReplace(&suffix, re, "_");
+  return suffix;
+}
+
 }  // namespace tensorflow

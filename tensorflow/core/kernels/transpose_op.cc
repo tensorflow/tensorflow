@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/transpose_op_functor.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -169,7 +169,7 @@ Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                               .TypeConstraint<T>("T") \
                               .HostMemory("perm"),    \
                           TransposeGpuOp);
-TF_CALL_NUMBER_TYPES(REGISTER);
+TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER
 #endif
 

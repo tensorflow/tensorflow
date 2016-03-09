@@ -31,10 +31,19 @@ import six
 
 from google.protobuf.any_pb2 import Any
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
+
+
+def _TestDir(test_name):
+  test_dir = os.path.join(tf.test.get_temp_dir(), test_name)
+  if os.path.exists(test_dir):
+    shutil.rmtree(test_dir)
+  gfile.MakeDirs(test_dir)
+  return test_dir
 
 
 class SaverTest(tf.test.TestCase):
@@ -349,12 +358,7 @@ class SaveRestoreShardedTest(tf.test.TestCase):
 class MaxToKeepTest(tf.test.TestCase):
 
   def testNonSharded(self):
-    save_dir = os.path.join(self.get_temp_dir(), "max_to_keep_non_sharded")
-    try:
-      gfile.DeleteRecursively(save_dir)
-    except OSError:
-      pass                      # Ignore
-    gfile.MakeDirs(save_dir)
+    save_dir = _TestDir("max_to_keep_non_sharded")
 
     with self.test_session() as sess:
       v = tf.Variable(10.0, name="v")
@@ -456,12 +460,7 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
 
   def testSharded(self):
-    save_dir = os.path.join(self.get_temp_dir(), "max_to_keep_sharded")
-    try:
-      gfile.DeleteRecursively(save_dir)
-    except OSError:
-      pass                      # Ignore
-    gfile.MakeDirs(save_dir)
+    save_dir = _TestDir("max_to_keep_sharded")
 
     with tf.Session(
         target="",
@@ -495,17 +494,39 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual(2, len(gfile.Glob(s3)))
       self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
 
+  def testNoMaxToKeep(self):
+    save_dir = _TestDir("no_max_to_keep")
+    save_dir2 = _TestDir("max_to_keep_0")
+
+    with self.test_session() as sess:
+      v = tf.Variable(10.0, name="v")
+      tf.initialize_all_variables().run()
+
+      # Test max_to_keep being None.
+      save = tf.train.Saver({"v": v}, max_to_keep=None)
+      self.assertEqual([], save.last_checkpoints)
+      s1 = save.save(sess, os.path.join(save_dir, "s1"))
+      self.assertEqual([], save.last_checkpoints)
+      self.assertTrue(gfile.Exists(s1))
+      s2 = save.save(sess, os.path.join(save_dir, "s2"))
+      self.assertEqual([], save.last_checkpoints)
+      self.assertTrue(gfile.Exists(s2))
+
+      # Test max_to_keep being 0.
+      save2 = tf.train.Saver({"v": v}, max_to_keep=0)
+      self.assertEqual([], save2.last_checkpoints)
+      s1 = save2.save(sess, os.path.join(save_dir2, "s1"))
+      self.assertEqual([], save2.last_checkpoints)
+      self.assertTrue(gfile.Exists(s1))
+      s2 = save2.save(sess, os.path.join(save_dir2, "s2"))
+      self.assertEqual([], save2.last_checkpoints)
+      self.assertTrue(gfile.Exists(s2))
+
 
 class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
 
   def testNonSharded(self):
-    save_dir = os.path.join(self.get_temp_dir(),
-                            "keep_checkpoint_every_n_hours")
-    try:
-      gfile.DeleteRecursively(save_dir)
-    except OSError:
-      pass                      # Ignore
-    gfile.MakeDirs(save_dir)
+    save_dir = _TestDir("keep_checkpoint_every_n_hours")
 
     with self.test_session() as sess:
       v = tf.Variable([10.0], name="v")
@@ -685,15 +706,8 @@ class LatestCheckpointWithRelativePaths(tf.test.TestCase):
 
 class CheckpointStateTest(tf.test.TestCase):
 
-  def _TestDir(self, test_name):
-    test_dir = os.path.join(self.get_temp_dir(), test_name)
-    if os.path.exists(test_dir):
-      shutil.rmtree(test_dir)
-    gfile.MakeDirs(test_dir)
-    return test_dir
-
   def testAbsPath(self):
-    save_dir = self._TestDir("abs_paths")
+    save_dir = _TestDir("abs_paths")
     abs_path = os.path.join(save_dir, "model-0")
     ckpt = tf.train.generate_checkpoint_state_proto(save_dir, abs_path)
     self.assertEqual(ckpt.model_checkpoint_path, abs_path)
@@ -712,7 +726,7 @@ class CheckpointStateTest(tf.test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], new_rel_path)
 
   def testAllModelCheckpointPaths(self):
-    save_dir = self._TestDir("all_models_test")
+    save_dir = _TestDir("all_models_test")
     abs_path = os.path.join(save_dir, "model-0")
     for paths in [None, [], ["model-2"]]:
       ckpt = tf.train.generate_checkpoint_state_proto(
@@ -726,7 +740,7 @@ class CheckpointStateTest(tf.test.TestCase):
       self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
 
   def testUpdateCheckpointState(self):
-    save_dir = self._TestDir("update_checkpoint_state")
+    save_dir = _TestDir("update_checkpoint_state")
     os.chdir(save_dir)
     # Make a temporary train directory.
     train_dir = "train"
@@ -746,15 +760,8 @@ class CheckpointStateTest(tf.test.TestCase):
 
 class MetaGraphTest(tf.test.TestCase):
 
-  def _TestDir(self, test_name):
-    test_dir = os.path.join(self.get_temp_dir(), test_name)
-    if os.path.exists(test_dir):
-      shutil.rmtree(test_dir)
-    gfile.MakeDirs(test_dir)
-    return test_dir
-
   def testAddCollectionDef(self):
-    test_dir = self._TestDir("good_collection")
+    test_dir = _TestDir("good_collection")
     filename = os.path.join(test_dir, "metafile")
     with self.test_session():
       # Creates a graph.
@@ -819,7 +826,7 @@ class MetaGraphTest(tf.test.TestCase):
       self.assertEqual(len(meta_graph_def.collection_def), 0)
 
   def _testMultiSaverCollectionSave(self):
-    test_dir = self._TestDir("saver_collection")
+    test_dir = _TestDir("saver_collection")
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
@@ -894,7 +901,7 @@ class MetaGraphTest(tf.test.TestCase):
     self._testMultiSaverCollectionRestore()
 
   def testBinaryAndTextFormat(self):
-    test_dir = self._TestDir("binary_and_text")
+    test_dir = _TestDir("binary_and_text")
     filename = os.path.join(test_dir, "metafile")
     with self.test_session(graph=tf.Graph()):
       # Creates a graph.
@@ -924,7 +931,7 @@ class MetaGraphTest(tf.test.TestCase):
         tf.train.import_meta_graph(filename)
 
   def testSliceVariable(self):
-    test_dir = self._TestDir("slice_saver")
+    test_dir = _TestDir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
     with self.test_session():
       v1 = tf.Variable([20.0], name="v1")
@@ -946,7 +953,7 @@ class MetaGraphTest(tf.test.TestCase):
       self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
 
   def _testGraphExtensionSave(self):
-    test_dir = self._TestDir("graph_extension")
+    test_dir = _TestDir("graph_extension")
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     with self.test_session(graph=tf.Graph()) as sess:
@@ -1045,6 +1052,55 @@ class MetaGraphTest(tf.test.TestCase):
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
                              "RestoreSlice", "SaveSlices", "Sub", "Variable"])
+
+      # Test calling stripped_op_list_for_graph directly
+      op_list = tf.contrib.util.stripped_op_list_for_graph(
+          meta_graph_def.graph_def)
+      self.assertEqual(ops, [o.name for o in op_list.op])
+      for o in op_list.op:
+        self.assertEqual(o.summary, "")
+        self.assertEqual(o.description, "")
+
+  def testStrippedOpListNestedFunctions(self):
+    with self.test_session():
+      # Square two levels deep
+      def f0(x):
+        return tf.square(x)
+      f0 = function.define_function(f0, {"x": tf.int32})
+      def f1(x):
+        return function.call_function(f0, x)
+      f1 = function.define_function(f1, {"x": tf.int32})
+
+      # At this point we've defined two functions but haven't called them, so
+      # there should be no used ops.
+      op_list = tf.contrib.util.stripped_op_list_for_graph(
+          tf.get_default_graph().as_graph_def())
+      self.assertEquals(len(op_list.op), 0)
+
+      # If we call the function on a constant, there should be two ops
+      function.call_function(f1, tf.constant(7))
+      op_list = tf.contrib.util.stripped_op_list_for_graph(
+          tf.get_default_graph().as_graph_def())
+      self.assertEquals(["Const", "Square"], [op.name for op in op_list.op])
+
+  def testStrippedOpListRecursiveFunctions(self):
+    # The function module doesn't support recursive functions, so we build a
+    # recursive function situation by ourselves: A calls B calls A and Const.
+    graph = graph_pb2.GraphDef()
+    a = graph.library.function.add()
+    b = graph.library.function.add()
+    a.signature.name = "A"
+    b.signature.name = "B"
+    a.node.add().op = "B"
+    b.node.add().op = "Const"
+    b.node.add().op = "A"
+
+    # Use A in the graph
+    graph.node.add().op = "A"
+
+    # The stripped op list should contain just Const.
+    op_list = tf.contrib.util.stripped_op_list_for_graph(graph)
+    self.assertEquals(["Const"], [op.name for op in op_list.op])
 
 
 if __name__ == "__main__":

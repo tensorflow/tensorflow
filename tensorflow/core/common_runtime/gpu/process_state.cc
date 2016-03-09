@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -155,9 +157,15 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
-    cpu_allocators_.push_back(new PoolAllocator(
-        100 /*pool_size_limit*/, true /*auto_resize*/, new BasicCPUAllocator(),
-        new NoopRounder, "cpu_pool"));
+    Allocator* allocator =
+        new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
+                          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+    if (LogMemory::IsEnabled()) {
+      // Wrap the allocator to track allocation ids for better logging
+      // at the cost of performance.
+      allocator = new TrackingAllocator(allocator, true);
+    }
+    cpu_allocators_.push_back(allocator);
   }
   return cpu_allocators_[0];
 }
@@ -178,9 +186,15 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
     gpu::Platform* gpu_platform = GPUMachineManager();
     gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
     CHECK(se);
-    cuda_host_allocators_.push_back(new PoolAllocator(
+    Allocator* allocator = new PoolAllocator(
         100 /*pool_size_limit*/, true /*auto_resize*/,
-        new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host"));
+        new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+    if (LogMemory::IsEnabled()) {
+      // Wrap the allocator to track allocation ids for better logging
+      // at the cost of performance.
+      allocator = new TrackingAllocator(allocator, true);
+    }
+    cuda_host_allocators_.push_back(allocator);
     if (FLAGS_brain_gpu_record_mem_types) {
       MemDesc md;
       md.loc = MemDesc::CPU;

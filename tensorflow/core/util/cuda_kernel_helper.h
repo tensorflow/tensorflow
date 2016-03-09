@@ -123,6 +123,16 @@ WRAPPED_ATOMIC_SUB(double);
 #undef USE_CUDA_ATOMIC
 #undef CUDA_ATOMIC_WRAPPER
 
+template <typename T>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_min(const T& x, const T& y) {
+  return x > y ? y : x;
+}
+
+template <typename T>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_max(const T& x, const T& y) {
+  return x < y ? y : x;
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

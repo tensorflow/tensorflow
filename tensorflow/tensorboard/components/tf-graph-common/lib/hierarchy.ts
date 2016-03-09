@@ -12,10 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="graph.ts" />
-/// <reference path="template.ts" />
-
 /**
  * Package for the Graph Hierarchy for TensorFlow graph.
  */
@@ -150,7 +146,7 @@ class HierarchyImpl implements Hierarchy {
 
             // Copy the BaseEdge from the parent's Metaedge into this
             // bridgegraph Metaedge.
-            bridgeMetaedge.addBaseEdge(baseEdge);
+            bridgeMetaedge.addBaseEdge(baseEdge, this);
           });
         })
         .value(); // force lodash chain execution.
@@ -250,16 +246,14 @@ class HierarchyImpl implements Hierarchy {
   getOneWayEdges(node: GroupNode|OpNode, inEdges: boolean) {
     let edges = { control: [], regular: [] };
     // A node with no parent cannot have any edges.
-    if (!node.parentNode) {
-    return edges;
+    if (!node.parentNode || !node.parentNode.isGroupNode) {
+      return edges;
     }
-    if (node.parentNode.isGroupNode) {
-      let parentNode = <GroupNode>node.parentNode;
-      let metagraph = parentNode.metagraph;
-      let bridgegraph = this.getBridgegraph(parentNode.name);
-      findEdgeTargetsInGraph(metagraph, node, inEdges, edges);
-      findEdgeTargetsInGraph(bridgegraph, node, inEdges, edges);
-    }
+    let parentNode = <GroupNode> node.parentNode;
+    let metagraph = parentNode.metagraph;
+    let bridgegraph = this.getBridgegraph(parentNode.name);
+    findEdgeTargetsInGraph(metagraph, node, inEdges, edges);
+    findEdgeTargetsInGraph(bridgegraph, node, inEdges, edges);
     return edges;
   }
 
@@ -365,20 +359,23 @@ class HierarchyImpl implements Hierarchy {
 function findEdgeTargetsInGraph(
     graph: graphlib.Graph<GroupNode|OpNode, Metaedge>,
     node: Node, inbound: boolean, targets: Edges): void {
-  _.each(<Metaedge[]> graph.edges(), e => {
-    let [selfName, otherName] = inbound ? [e.w, e.v] : [e.v, e.w];
-    if (selfName === node.name) {
-      if (node.isGroupNode) {
-        let targetList = graph.edge(e).numRegularEdges
-          ? targets.regular : targets.control;
-        targetList.push(otherName);
-      } else {
-        _.each(graph.edge(e).baseEdgeList, baseEdge => {
-          let targetList = baseEdge.isControlDependency
-            ? targets.control : targets.regular;
-          targetList.push(inbound ? baseEdge.v : baseEdge.w);
-        });
-      }
+  let edges = inbound ? graph.inEdges(node.name) : graph.outEdges(node.name);
+  _.each(edges, e => {
+    let otherName = inbound ? e.v : e.w;
+    let metaedge = graph.edge(e);
+
+    if (node.isGroupNode && metaedge.baseEdgeList.length > 1) {
+      let targetList = metaedge.numRegularEdges
+        ? targets.regular : targets.control;
+      targetList.push(otherName);
+    } else {
+      // Enumerate all the base edges if the node is an OpNode, or the
+      // metaedge has only 1 edge in it.
+      _.each(metaedge.baseEdgeList, (baseEdge: BaseEdge) => {
+        let targetList = baseEdge.isControlDependency
+          ? targets.control : targets.regular;
+        targetList.push(inbound ? baseEdge.v : baseEdge.w);
+      });
     }
   });
 }
@@ -428,8 +425,6 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   })
   .then(() => {
     return h;
-  }).catch(function(reason) {
-    throw new Error("Failure creating graph hierarchy");
   });
 };
 
@@ -552,10 +547,8 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
         !baseEdge.isControlDependency) {
       sharedAncestorNode.hasNonControlEdges = true;
     }
-    metaedge.addBaseEdge(baseEdge);
-
+    metaedge.addBaseEdge(baseEdge, h);
   });
-
 };
 
 /**
@@ -745,7 +738,7 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
  * @param metagraph
  */
 function addSeriesToDict(seriesNodes: SeriesNode[],
-    seriesDict: {[seriesName: string] : SeriesNode},
+    seriesDict: {[seriesName: string]: SeriesNode},
     clusterId: number,
     metagraph: graphlib.Graph<GroupNode|OpNode, Metaedge>) {
   if (seriesNodes.length > 1) {

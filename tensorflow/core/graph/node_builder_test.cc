@@ -28,7 +28,6 @@ REGISTER_OP("Source").Output("o: out_types").Attr("out_types: list(type)");
 REGISTER_OP("Sink").Input("i: T").Attr("T: type");
 
 TEST(NodeBuilderTest, Simple) {
-  RequireDefaultOps();
   Graph graph(OpRegistry::Global());
   Node* source_node;
   TF_EXPECT_OK(NodeBuilder("source_op", "Source")

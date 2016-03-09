@@ -12,14 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="graph.ts" />
-/// <reference path="hierarchy.ts" />
-
 /**
  * Package for the Render Hierarchy for TensorFlow graph.
  */
-
 module tf.graph.render {
 
 export type Point = {x: number, y: number};
@@ -53,7 +48,7 @@ export let MetanodeColors = {
    * Standard hue values for node color palette.
    */
   HUES: [220, 100, 180, 40, 20, 340, 260, 300, 140, 60],
-  STRUCTURE_PALETTE: function(id: number, lightened? : boolean) {
+  STRUCTURE_PALETTE: function(id: number, lightened?: boolean) {
     // The code below is a flexible way to computationally create a set
     // of colors that go well together.
     let hues = MetanodeColors.HUES;
@@ -78,6 +73,18 @@ export let SeriesNodeColors = {
   DEFAULT_FILL: "white",
   DEFAULT_STROKE: "#b2b2b2"
 };
+
+/** The minimum stroke width of an edge. */
+const MIN_EDGE_WIDTH = 0.75;
+
+/** The maximum stroke width of an edge. */
+const MAX_EDGE_WIDTH = 12;
+
+/** The exponent used in the power scale for edge thickness. */
+const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
+
+/** The domain (min and max value) for the edge width. */
+const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
 
 /**
  * Parameters that affect how the graph is rendered on the screen.
@@ -158,6 +165,7 @@ export class RenderGraphInfo {
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
+  edgeWidthScale: d3.scale.Pow<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -172,6 +180,12 @@ export class RenderGraphInfo {
         .domain(hierarchy.devices)
         .range(_.map(d3.range(hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
+
+    this.edgeWidthScale = d3.scale.pow()
+      .exponent(EDGE_WIDTH_SCALE_EXPONENT)
+      .domain(DOMAIN_EDGE_WIDTH_SCALE)
+      .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
+      .clamp(true);
 
     let topLevelGraph = hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
@@ -215,6 +229,13 @@ export class RenderGraphInfo {
    */
   getRenderNodeByName(nodeName: string): RenderNodeInfo {
     return this.index[nodeName];
+  }
+
+  /**
+   * Get the underlying node in the hierarchical graph by its name.
+   */
+  getNodeByName(nodeName: string): Node {
+    return this.hierarchy.node(nodeName);
   }
 
   /**

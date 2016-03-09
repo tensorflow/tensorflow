@@ -32,6 +32,7 @@ from six.moves import socketserver
 
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import gcs
 from tensorflow.tensorboard.backend import handler
 
 # How many elements to store per tag, by tag type
@@ -69,16 +70,20 @@ def ParseEventFilesSpec(logdir):
   if logdir is None:
     return files
   for specification in logdir.split(','):
+    # If it's a gcs path, don't split on colon
+    if gcs.IsGCSPath(specification):
+      run_name = None
+      path = specification
     # If the spec looks like /foo:bar/baz, then we assume it's a path with a
     # colon.
-    if ':' in specification and specification[0] != '/':
+    elif ':' in specification and specification[0] != '/':
       # We split at most once so run_name:/path:with/a/colon will work.
-      run_name, path = specification.split(':', 1)
+      run_name, _, path = specification.partition(':')
     else:
       run_name = None
       path = specification
 
-    if not os.path.isabs(path):
+    if not os.path.isabs(path) and not gcs.IsGCSPath(path):
       # Create absolute path out of relative one.
       path = os.path.join(os.path.realpath('.'), path)
 
@@ -124,6 +129,14 @@ def StartMultiplexerReloadingThread(multiplexer,
   # Ensure the Multiplexer initializes in a loaded state before it adds runs
   # So it can handle HTTP requests while runs are loading
   multiplexer.Reload()
+
+  for path in path_to_run.keys():
+    if gcs.IsGCSPath(path):
+      gcs.CheckIsSupported()
+      logging.info(
+          'Assuming %s is intended to be a Google Cloud Storage path because '
+          'it starts with %s. If it isn\'t, prefix it with \'/.\' (i.e., use '
+          '/.%s instead)', path, gcs.PATH_PREFIX, path)
 
   def _ReloadForever():
     while True:

@@ -120,7 +120,7 @@ class QueueBase : public QueueInterface {
   // of the *_attempts_ queues.
   void FlushUnlocked();
 
-  ~QueueBase() override {}
+  ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
@@ -33,6 +34,26 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+
+// Static routines not in the templated class to reduce code size
+static void SegmentReductionValidationHelper(OpKernelContext* context,
+                                             const Tensor& input,
+                                             const Tensor& segment_ids) {
+  OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
+              errors::InvalidArgument("segment_ids should be a vector."));
+  const int64 num_indices = segment_ids.NumElements();
+  OP_REQUIRES(context, num_indices == input.dim_size(0),
+              errors::InvalidArgument(
+                  "segment_ids should be the same size as dimension 0 of"
+                  " input."));
+}
+
+static bool SegmentReductionDoValidation(OpKernelContext* c,
+                                         const Tensor& input,
+                                         const Tensor& segment_ids) {
+  SegmentReductionValidationHelper(c, input, segment_ids);
+  return c->status().ok();
+}
 
 // This operator handles reducing segments along the first dimension.
 // See core/ops/math_ops.cc for more details.
@@ -46,14 +67,11 @@ class SegmentReductionOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-    const int64 num_indices = segment_ids.NumElements();
-    OP_REQUIRES(context, num_indices == input.dim_size(0),
-                errors::InvalidArgument(
-                    "segment_ids should be the same size as dimension 0 of"
-                    " input."));
+    if (!SegmentReductionDoValidation(context, input, segment_ids)) {
+      return;
+    }
 
+    const int64 num_indices = segment_ids.NumElements();
     auto input_flat = input.flat_outer_dims<T>();
     const int64 num_col = input_flat.dimension(1);
 
@@ -61,7 +79,9 @@ class SegmentReductionOp : public OpKernel {
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
     const Index output_rows =
-        num_indices > 0 ? segment_vec(num_indices - 1) + 1 : 0;
+        num_indices > 0
+            ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
+            : 0;
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
@@ -99,8 +119,16 @@ class SegmentReductionOp : public OpKernel {
       // Process segment [start, end)
       const T* in_slice_ptr = &input_flat(start, 0);
       typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
-                               Eigen::Unaligned> OutT;
-      T* out_slice_ptr = &output_flat(segment_vec(start), 0);
+                               Eigen::Unaligned>
+          OutT;
+
+      Index out_index = internal::SubtleMustCopy(segment_vec(start));
+      OP_REQUIRES(
+          context, FastBoundsCheck(out_index, output_rows),
+          errors::InvalidArgument(
+              "Segment id ", out_index, " out of range [0, ", output_rows,
+              "), probably because 'segment_ids' input is not sorted."));
+      T* out_slice_ptr = &output_flat(out_index, 0);
       OutT out_slice(out_slice_ptr, out_slice_shape);
       // We don't use out_slice.device(context->eigen_device<Device>)
       // because these pieces of work are likely to be very small and
@@ -108,14 +136,16 @@ class SegmentReductionOp : public OpKernel {
       // using another thread to do this work.
       if (start == end - 1) {
         typedef Eigen::TensorMap<Eigen::Tensor<const T, 1, Eigen::RowMajor>,
-                                 Eigen::Unaligned> InT;
+                                 Eigen::Unaligned>
+            InT;
         InT in_slice(in_slice_ptr, out_slice_shape);
         out_slice = in_slice;
       } else {
         Eigen::DSizes<Eigen::DenseIndex, 2> in_slice_shape(end - start,
                                                            num_col);
         typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                                 Eigen::Unaligned> InT;
+                                 Eigen::Unaligned>
+            InT;
         InT in_slice(in_slice_ptr, in_slice_shape);
 
         out_slice = in_slice.reduce(dims_to_reduce, Reducer());
@@ -188,7 +218,6 @@ class UnsortedSegmentSumOp : public OpKernel {
         context, IsLegacyScalar(num_segments.shape()),
         errors::InvalidArgument("num_segments should be a scalar, not shape ",
                                 num_segments.shape().DebugString()));
-
     OP_REQUIRES(
         context,
         TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
@@ -198,15 +227,11 @@ class UnsortedSegmentSumOp : public OpKernel {
 
     const auto segment_flat = segment_ids.flat<Index>();
     const int32 N = segment_flat.dimension(0);
-    const int32 output_rows = num_segments.scalar<int32>()();
-
-    for (int i = 0; i < N; i++) {
-      int j = segment_flat(i);
-      OP_REQUIRES(context, 0 <= j && j < output_rows,
-                  errors::InvalidArgument(
-                      "segment_ids", SliceDebugString(segment_ids.shape(), i),
-                      " = ", j, " is out of range [0, ", output_rows, ")"));
-    }
+    const Index output_rows =
+        internal::SubtleMustCopy(num_segments.scalar<int32>()());
+    OP_REQUIRES(context, output_rows >= 0,
+                errors::InvalidArgument("Input num_segments == ", output_rows,
+                                        " must not be negative."));
 
     TensorShape output_shape;
     output_shape.AddDim(output_rows);
@@ -222,8 +247,12 @@ class UnsortedSegmentSumOp : public OpKernel {
     if (data.NumElements() > 0) {
       auto data_flat = data.shaped<T, 2>({N, data.NumElements() / N});
       for (int i = 0; i < N; ++i) {
-        output_flat.template chip<0>(segment_flat(i)) +=
-            data_flat.template chip<0>(i);
+        Index j = internal::SubtleMustCopy(segment_flat(i));
+        OP_REQUIRES(context, FastBoundsCheck(j, output_rows),
+                    errors::InvalidArgument(
+                        "segment_ids", SliceDebugString(segment_ids.shape(), i),
+                        " = ", j, " is out of range [0, ", output_rows, ")"));
+        output_flat.template chip<0>(j) += data_flat.template chip<0>(i);
       }
     }
   }

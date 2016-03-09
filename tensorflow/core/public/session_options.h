@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_PUBLIC_SESSION_OPTIONS_H_
 
 #include <string>
-#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

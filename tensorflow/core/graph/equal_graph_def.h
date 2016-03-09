@@ -30,8 +30,10 @@ namespace tensorflow {
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
                    string* diff);
 
-// Determines if actual and expected are equal, ignoring ordering of
-// attrs and control inputs.  If the NodeDefs are different and
+// Determines if actual and expected are equal, ignoring: ordering of
+// attrs, internal attributes, and control inputs.
+//
+// If the NodeDefs are different and
 // diff != nullptr, *diff is set to an explanation of the difference.
 bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff);
 

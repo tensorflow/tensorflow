@@ -65,7 +65,8 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 // compatible. If not nulllptr, the op/attr pairs that were removed
 // are added to '*op_attr_removed'.
 //
-// Expected usage:
+// Expected usage, for a producer that wants to prepare a graph for
+// a consumer:
 // // For each consumer, update 'graph_def':
 //   OpListOpRegistry consumer_op_registry(consumer_server_op_list);
 //   std::unordered_set<std::pair<string, string>> op_attr_removed;
@@ -77,10 +78,32 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 //       graph_def, consumer_op_registry));
 // // Consumer can use 'graph_def', and 'op_attr_removed' summarizes
 // // what changes had to be made to 'graph_def' for it to work.
+//
+// Expected usage, for a consumer that has a graph and a
+// (optionally-stripped) op_list from a producer (say from a call to
+// StrippedOpListForGraph(), or in the MetaGraphDef):
+//   OpListOpRegistry producer_op_registry(producer_stripped_op_list);
+//   TF_RETURN_IF_ERROR(RemoveNewDefaultAttrsFromGraphDef(
+//       &graph_def, *OpRegistry::Global(), producer_op_registry, nullptr));
 Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed);
+
+// Collect the ops used by a graph.
+//
+// This function computes the stripped_op_list field of MetaGraphDef
+// and similar protos.  The op_registry should contain the ops used to
+// produce graph_def.  The resulting stripped_op_list can be
+// communicated from the producer to the consumer, which can use
+// RemoveNewDefaultAttrsFromGraphDef() to improve forwards compatibility
+// (using an OpListOpRegistry as indicated in the example above).
+//
+// Most users will pass *OpRegistry::Global() for op_registry to strip against
+// the list of ops registered in this process.
+Status StrippedOpListForGraph(const GraphDef& graph_def,
+                              const OpRegistryInterface& op_registry,
+                              OpList* stripped_op_list);
 
 }  // namespace tensorflow
 

@@ -39,7 +39,6 @@ namespace {
 class ScatterUpdateOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType variable_ref_type, DataType index_type) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterUpdate")
                      .Input(FakeInput(variable_ref_type))
                      .Input(FakeInput(index_type))
@@ -171,8 +170,8 @@ TEST_F(ScatterUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Index 99 at offset 2 in indices is out of range"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString()).contains("indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 

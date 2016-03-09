@@ -184,7 +184,6 @@ module TF.Backend {
     };
   };
 
-
   // The following interfaces (TupleData, HistogramTuple, CompressedHistogramTuple,
   // and ImageMetadata) describe how the data is sent over from the backend, and thus
   // wall_time, step, value

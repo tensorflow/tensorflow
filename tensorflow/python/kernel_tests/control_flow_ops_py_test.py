@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -887,6 +888,19 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
 
+  def testWhileGrad_Shape(self):
+    with self.test_session():
+      x = tf.placeholder(tf.float32, shape=[None])
+      v = tf.constant(2.0, name="v")
+      n = tf.constant(0, name="n")
+      c = lambda i, v: tf.less(i, 5)
+      b = lambda i, v: [i + 1, tf.mul(x, v)]
+      r = control_flow_ops.While(c, b, [n, v], parallel_iterations=1)
+
+      r = tf.gradients(r[1], x)[0]
+      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
+      self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
+
   def testWhileGrad_MultipleUses(self):
     with self.test_session():
       v = tf.constant(2.0, name="v")
@@ -1184,7 +1198,7 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
       elems = tf.constant(nums, name="data")
-      r = control_flow_ops.map(
+      r = control_flow_ops.map_fn(
           lambda x: tf.mul(tf.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
@@ -1217,6 +1231,50 @@ class ControlFlowTest(tf.test.TestCase):
       i = tf.cond(tf.equal(d, 2), l2, l1)
       self.assertAllClose(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
+
+  def testCase(self):
+    with self.test_session():
+      x = tf.constant(1)
+      y = tf.constant(2)
+      z = tf.constant(3)
+      f1 = lambda: tf.constant(17)
+      f2 = lambda: tf.constant(23)
+      f3 = lambda: tf.constant(-1)
+
+      r1 = tf.case({x < y: f1, x > z: f2}, default=f3, exclusive=True)
+      self.assertAllEqual(r1.eval(), 17)
+
+      r2 = tf.case([(y > z, f1), (y > x, f2)], default=f3)
+      self.assertAllEqual(r2.eval(), 23)
+
+      # Duplicate events can happen, first one is selected
+      r3 = tf.case([(x < y, f1), (x < y, f2)], default=f3)
+      self.assertAllEqual(r3.eval(), 17)
+
+      # Duplicate events cause an error if exclusive = True
+      r4 = tf.case([(x < y, f1), (x < y, f2)], default=f3, exclusive=True)
+      with self.assertRaisesOpError(
+          "More than one condition evaluated as True but exclusive=True."):
+        r4.eval()
+
+      # Check that the default is called if none of the others are
+      r5 = tf.case({x > y: f1}, default=f3)
+      self.assertAllEqual(r5.eval(), -1)
+
+      ran_once = [False, False, False]
+
+      def break_run_twice(ix):
+        def _break():
+          assert not ran_once[ix]
+          ran_once[ix] = True
+          return tf.constant(ix)
+        return _break
+
+      # Should not fail - each conditional gets called exactly once
+      r6 = tf.case([(x < y, break_run_twice(0)), (x > y, break_run_twice(1))],
+                   default=break_run_twice(2))
+
+      self.assertAllEqual(r6.eval(), 0)
 
   def testOneOpCond(self):
     with self.test_session():
@@ -1333,11 +1391,14 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
-      vdef = tf.Variable([0.0])
+      vdef = tf.Variable([0.0], name="vdef")
       with tf.device("/job:worker/gpu:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
-        self.assertDeviceEqual("/job:worker/gpu:1", with_vdef_dep.device)
+        # The device is empty, but the colocation constraint is set.
+        self.assertDeviceEqual("", with_vdef_dep.device)
+        self.assertEqual([b"loc:@vdef"],
+                         with_vdef_dep.op.colocation_groups())
 
   def testGroup(self):
     with self.test_session() as sess:

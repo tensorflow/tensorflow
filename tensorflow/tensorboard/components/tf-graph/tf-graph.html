@@ -214,6 +214,10 @@ Polymer({
     this.set('highlightedNode', null);
   },
   _nodeToggleExpand: function(event) {
+    // Immediately select the node that is about to be expanded.
+    this._nodeSelected(event);
+
+    // Compute the sub-hierarchy scene.
     var nodeName = event.detail.name;
     var renderNode = this.renderHierarchy.getRenderNodeByName(nodeName);
     // Op nodes are not expandable.
@@ -222,9 +226,13 @@ Polymer({
     }
     this.renderHierarchy.buildSubhierarchy(nodeName);
     renderNode.expanded = !renderNode.expanded;
-    this.querySelector('#scene').setNodeExpanded(renderNode);
-    // Also select the expanded node.
-    this._nodeSelected(event);
+
+    // Expand the node with some delay so that the user can immediately see
+    // the visual effect of selecting that node, before the expansion is
+    // done.
+    this.async(function() {
+      this.querySelector('#scene').setNodeExpanded(renderNode);
+    }, 75);
   },
   _nodeToggleExtract: function(event) {
     // Toggle the include setting of the specified node appropriately.

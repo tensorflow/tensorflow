@@ -22,6 +22,8 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
@@ -474,13 +476,25 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
       // requirements for tensorflow::Tensor. We hard code this here to
       // avoid taking a dependency on Eigen in the client code.
       void* data = tensorflow::cpu_allocator()->AllocateRaw(32, size);
+      if (tensorflow::LogMemory::IsEnabled()) {
+        LogMemory::RecordRawAllocation(
+            "Python session helper",
+            tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, size,
+            data, tensorflow::cpu_allocator());
+      }
       std::memcpy(data, PyArray_DATA(array), size);
-      inputs_safe.emplace_back(make_safe(
-          TF_NewTensor(dtype, dims.data(), dims.size(), data, size,
-                       [](void* data, size_t len, void* arg) {
-                         tensorflow::cpu_allocator()->DeallocateRaw(data);
-                       },
-                       nullptr)));
+      inputs_safe.emplace_back(make_safe(TF_NewTensor(
+          dtype, dims.data(), dims.size(), data, size,
+          [](void* data, size_t len, void* arg) {
+            if (tensorflow::LogMemory::IsEnabled()) {
+              LogMemory::RecordRawDeallocation(
+                  "Python session helper",
+                  tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
+                  data, tensorflow::cpu_allocator(), false);
+            }
+            tensorflow::cpu_allocator()->DeallocateRaw(data);
+          },
+          nullptr)));
       // The destruction of the numpy array will now be handled by the
       // inputs_safe destructor.
       py_inputs_safe[i].reset();

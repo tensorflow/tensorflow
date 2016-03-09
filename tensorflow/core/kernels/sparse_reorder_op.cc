@@ -62,7 +62,7 @@ class SparseReorderOp : public OpKernel {
     // Check if the sparse tensor is already ordered correctly
     sparse::SparseTensor input_sp(input_ind, input_val, input_shape, std_order);
 
-    if (input_sp.IndicesValid()) {
+    if (input_sp.IndicesValid().ok()) {
       context->set_output(0, input_sp.indices());
       context->set_output(1, input_sp.values());
     } else {

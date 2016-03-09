@@ -60,6 +60,7 @@ or join multiple tensors together.
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
+@@one_hot
 
 """
 from __future__ import absolute_import
@@ -91,6 +92,13 @@ _baseslice = slice
 
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
+
+
+# DEPRECATED use init_ops.zeros_initializer
+# TODO(irving) Move it to init_ops.py
+def zeros_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return zeros(shape, dtype)
 
 
 # pylint: disable=undefined-variable,protected-access
@@ -628,10 +636,12 @@ def zeros_like(tensor, dtype=None, name=None):
   """
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ret = gen_array_ops._zeros_like(tensor)
-    if (dtype is not None) and (tensor.dtype != dtype):
-      ret = gen_math_ops.cast(ret, dtype)
-    return ret
+    if dtype is not None and tensor.dtype != dtype:
+      ret = zeros(shape(tensor), dtype, name=name)
+      ret.set_shape(tensor.get_shape())
+      return ret
+    else:
+      return gen_array_ops._zeros_like(tensor, name=name)
 
 
 def ones_like(tensor, dtype=None, name=None):
@@ -665,11 +675,6 @@ def ones_like(tensor, dtype=None, name=None):
     ret = ones(ones_shape, dtype=dtype, name=name)
     ret.set_shape(tensor.get_shape())
     return ret
-
-
-def zeros_initializer(shape, dtype=dtypes.float32):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
 
 
 def ones(shape, dtype=dtypes.float32, name=None):
@@ -841,6 +846,35 @@ def _DiagShape(op):
   input_shape = op.inputs[0].get_shape().with_rank_at_most(3)
   return [input_shape.concatenate(input_shape)]
 
+@ops.RegisterShape("DiagPart")
+def _DiagPartShape(op):
+  """Shape function for array_ops.diag_part.
+
+  This op has one input (of rank k = 2, 4, or 6), and one output (of rank k/2),
+  where the shape of the output is the diagonal of the input shape.
+
+  Args:
+    op: A DiagPart Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If input has odd rank or greater than 6
+
+  """
+  shape = op.inputs[0].get_shape()
+  rank = len(shape)
+  mid = rank // 2
+  if rank % 2 or rank > 6:
+    raise ValueError("Input must have even rank <= 6, input rank is " +
+                     str(rank) + "." )
+  if shape[:mid] != shape[mid:]:
+    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
+                     " and shape[mid:] " + str(shape[mid:]) +
+                     " do not match ")
+  input_shape = shape.with_rank_at_most(6)
+  return [input_shape[:len(input_shape) // 2]]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
@@ -1442,3 +1476,34 @@ def _DepthToSpaceShape(op):
   new_depth = input_depth // (block_size * block_size)
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, new_depth])]
+
+
+@ops.RegisterShape("OneHot")
+def _OneHotShape(op):
+  """Shape function for the OneHot op.
+
+  It closely follows the code in the .cc implementation.
+
+  Args:
+    op: A OneHot Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: if axis < -1.
+  """
+  indices_shape = op.inputs[0].get_shape()
+  indices_dims = indices_shape.ndims
+  depth = tensor_util.constant_value(op.inputs[1])
+  axis = op.get_attr("axis")
+
+  if axis < -1:
+    raise ValueError("axis must be >= -1")
+
+  new_shape = None
+  if indices_dims is not None:
+    new_shape = indices_shape.as_list()
+    new_shape.insert(axis % (indices_dims + 1), depth)
+
+  return [tensor_shape.TensorShape(new_shape)]

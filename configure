@@ -99,7 +99,7 @@ while true; do
   else
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${CUDNNEXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${TF_CUDNN_EXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
     break
   fi
   CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
@@ -137,11 +137,11 @@ TF_CUDNN_VERSION=$TF_CUDNN_EXT
 EOF
 
 # Configure the Cuda toolkit version to work with.
-perl -pi -e "s,CUDA_VERSION = '[0-9\.]*',CUDA_VERSION = '$TF_CUDA_EXT',s" tensorflow/core/platform/default/build_config.bzl
+perl -pi -e "s,CUDA_VERSION = \"[0-9\.]*\",CUDA_VERSION = \"$TF_CUDA_EXT\",s" tensorflow/core/platform/default/build_config.bzl
 perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_EXT\",s" tensorflow/stream_executor/dso_loader.cc
 
 # Configure the Cudnn version to work with.
-perl -pi -e "s,CUDNN_VERSION = '[0-9\.]*',CUDNN_VERSION = '$TF_CUDNN_EXT',s" tensorflow/core/platform/default/build_config.bzl
+perl -pi -e "s,CUDNN_VERSION = \"[0-9\.]*\",CUDNN_VERSION = \"$TF_CUDNN_EXT\",s" tensorflow/core/platform/default/build_config.bzl
 perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_EXT\",s" tensorflow/stream_executor/dso_loader.cc
 
 # Configure the compute capabilities that TensorFlow builds for.

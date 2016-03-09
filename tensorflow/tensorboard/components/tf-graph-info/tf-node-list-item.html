@@ -9,6 +9,7 @@
     font-size: 11pt;
     font-weight: 400;
     position: relative;
+    display: inline-block;
   }
 
   #list-item:hover {
@@ -20,12 +21,18 @@
   }
 
   #list-item span {
-    display: block;
     margin-left: 40px;
   }
 
   #list-item.excluded span {
     color: #999;
+  }
+
+  #list-item span.edge-label {
+    float: right;
+    font-size: 10px;
+    margin-left: 3px;
+    margin-right: 5px;
   }
 
   .node-icon {
@@ -44,6 +51,7 @@
           node="[[itemNode]]" render-info="[[itemRenderInfo]]"
           template-index="[[templateIndex]]"></tf-graph-icon>
       <span title$="[[name]]">[[name]]</span>
+      <span class="edge-label">[[edgeLabel]]</span>
     </div>
   </template>
 
@@ -63,6 +71,8 @@
            * @type {tf.graph.Node}
            */
           itemNode: Object,
+          /** The edge label associated with this item. */
+          edgeLabel: String,
           /**
            * The render node information for the item node. Used by the graph
            * icon in determining fill color.
@@ -75,7 +85,7 @@
           },
           colorBy: String,
           colorByParams: Object,
-          templateIndex: Function,
+          templateIndex: Function
         },
 
         _itemTypeChanged: function() {
@@ -94,7 +104,6 @@
             type: this.itemType
           });
         }
-
       });
     })();
   </script>

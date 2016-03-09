@@ -51,7 +51,6 @@ y: A scalar in type T.
 static InstantiateAttrValueMap kNoAttrs;
 
 TEST(TFunc, SquarePlusOne) {
-  RequireDefaultOps();
   auto fdef = FDH::Define(
       // Name
       "SquarePlusOne",
