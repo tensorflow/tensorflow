@@ -74,7 +74,7 @@ class BaseMonitor(object):
         self.loss_expression_tensor = loss_expression_tensor
         self._set_last_loss_seen()
         if self.last_loss_seen < self.min_loss:
-            self.min_loss = training_loss
+            self.min_loss = self.last_loss_seen
             self.min_loss_i = self.steps
         self._set_epoch(feed_params_fn)
         self.report()
