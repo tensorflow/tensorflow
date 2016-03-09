@@ -1104,6 +1104,7 @@ filegroup(
         "cwise_op_minimum.cc",
         "cwise_op_mul.cc",
         "cwise_op_neg.cc",
+        "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
         "cwise_op_sqrt.cc",
