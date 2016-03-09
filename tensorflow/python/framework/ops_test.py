@@ -1283,6 +1283,14 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
         c = constant_op.constant(4.0)
     self.assertEqual(set([b"loc:@a", b"loc:@b"]), set(c.op.colocation_groups()))
 
+  def testColocationIgnoreStack(self):
+    a = constant_op.constant([2.0], name="a")
+    b = constant_op.constant(3.0, name="b")
+    with ops.colocate_with(a.op):
+      with ops.colocate_with(b.op, ignore_existing=True):
+        c = constant_op.constant(4.0)
+    self.assertEqual(set(["loc:@b"]), set(c.op.colocation_groups()))
+
   def testColocateVariables(self):
     a = variables.Variable([2.0], name="a")
     with ops.colocate_with(a.op):

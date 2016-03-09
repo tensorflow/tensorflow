@@ -26,10 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
@@ -56,12 +52,6 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 }
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
-#if GOOGLE_CUDA
-  ProcessState* ps = ProcessState::singleton();
-  if (attr.gpu_compatible()) {
-    return ps->GetCUDAHostAllocator(0);
-  }
-#endif  // GOOGLE_CUDA
   return allocator_;
 }
 

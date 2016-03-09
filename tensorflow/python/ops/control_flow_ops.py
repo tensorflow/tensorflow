@@ -279,23 +279,23 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     TypeError: if data is not a Tensor or IndexedSlices
   """
   data = ops.convert_to_tensor_or_indexed_slices(data, name="data")
-  # NOTE(mrry): ops.device(None) below addresses the following scenario.
+  # NOTE(vrv): ops.colocate_with(data, ignore_existing=True) below
+  # addresses the following scenario.
   #
   # Assume you execute Optimizer.apply_gradients() in a branch of a cond().
   #
-  # 1. The update op is created inside a `with tf.device(var.device):` block
-  #    say var.device = "/job:ps/task:1".
+  # 1. The update op is created inside a `with ops.colocate(var):` block
   #
   # 2. Some tensor `data` is captured and a switch is created in a
-  #    `with tf.device(data.device):` block (data.device = "/job:worker_train").
+  #    `with ops.colocate_with(data):` block.
   #
-  # with tf.device("/job:ps/task:1"):
-  #  with tf.device("/job:worker_train"):
+  # with ops.colocate_with(var):
+  #  with ops.colocate_with(data):
   #    op = ...
   #
-  # But then calling `print op.device` returns:
-  # ==> "/job:worker_train/task:1" -- a device that doesn't exist in this case!
-  with ops.colocate_with(data):
+  # var and data may be pinned to different devices, so we want to ops
+  # created within ops.colocate_with(data) to ignore the existing stack.
+  with ops.colocate_with(data, ignore_existing=True):
     if isinstance(data, ops.Tensor):
       if not data.dtype.is_ref_dtype:
         return switch(data, pred, name=name)
@@ -324,140 +324,19 @@ def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
-class ControlFlowOpWrapper(object):
-  """A wrapper class for Operation.
-
-  A wrapped op allows us to capture the uses of its inputs and outputs. In
-  gradients(), right before calling the gradient function of an op, we wrap
-  the op by calling MakeWrapper. So during the exection of the gradient
-  function of an op , any time when one of its inputs/outputs is used, we
-  generate code to remember its values for all iterations.
-  """
-
-  class _ControlFlowOpInputs(object):
-    """An indirection to capture the input tensors needed in backprop."""
-
-    def __init__(self, op, grad_state):
-      self._op = op
-      self._grad_state = grad_state
-      self._inputs = None
-
-    def __len__(self):
-      return len(self._op._inputs)
-
-    def __getitem__(self, index):
-      if self._inputs is None:
-        self._inputs = [None for _ in self._op.inputs]
-      if isinstance(index, int):
-        val = self._inputs[index]
-        if val is None:
-          f_val = self._op.inputs[index]
-          val = self._grad_state.GetRealValue(f_val)
-          self._inputs[index] = val
-        return val
-      elif isinstance(index, slice):
-        start, stop, step = index.indices(len(self))
-        vals = [self[i] for i in xrange(start, stop, step)]
-        return vals
-      else:
-        raise TypeError("index must be an integer or slice")
-
-  class _ControlFlowOpOutputs(object):
-    """An indirection to capture the output tensors needed in backprop."""
-
-    def __init__(self, op, grad_state):
-      self._op = op
-      self._grad_state = grad_state
-      self._outputs = None
-
-    def __len__(self):
-      return len(self._op._outputs)
-
-    def __getitem__(self, index):
-      if self._outputs is None:
-        self._outputs = [None for _ in self._op.outputs]
-      if isinstance(index, int):
-        val = self._outputs[index]
-        if val is None:
-          f_val = self._op.outputs[index]
-          val = self._grad_state.GetRealValue(f_val)
-          self._outputs[index] = val
-        return val
-      elif isinstance(index, slice):
-        start, stop, step = index.indices(len(self))
-        vals = [self[i] for i in xrange(start, stop, step)]
-        return vals
-      else:
-        raise TypeError("index must be an integer or slice")
-
-  def __init__(self, op, grad_state):
-    self._grad_state = grad_state   # The GradLoopState this op belongs to.
-    self._op = op
-    self._inputs = None
-    self._outputs = None
-
-  @property
-  def grad_state(self):
-    return self._grad_state
-
-  @property
-  def inputs(self):
-    if self._inputs is None:
-      self._inputs = self._ControlFlowOpInputs(self._op, self._grad_state)
-    return self._inputs
-
-  @property
-  def outputs(self):
-    if self._outputs is None:
-      self._outputs = self._ControlFlowOpOutputs(self._op, self._grad_state)
-    return self._outputs
-
-  @property
-  def op(self):
-    return self._op
-
-  @property
-  def name(self):
-    """Returns the name of this instance of op."""
-    return self._op.name
-
-  @property
-  def _id(self):
-    """Returns the unique id of this operation."""
-    return self._op._id
-
-  @property
-  def device(self):
-    """Returns the device of this operation.
-
-    Returns:
-      a string or None if the device was not set.
-    """
-    return self._op.device
-
-  @property
-  def type(self):
-    """Returns the type of the op."""
-    return self._op.type
-
-  @property
-  def graph(self):
-    """The `Graph` that contains this operation."""
-    return self._op.graph
-
-  def get_attr(self, name):
-    """Returns the value of the attr of this op with the given `name`."""
-    return self._op.get_attr(name)
-
-  def _get_control_flow_context(self):
-    """Returns the control flow context of this op."""
-    return self._op._get_control_flow_context()
-
-
 def _IsLoopConstantEnter(op):
-  """Returns true iff op is a loop invariant."""
+  """Return true iff op is a loop invariant."""
   is_enter = (op.type == "Enter" or op.type == "RefEnter")
   return is_enter and op.get_attr("is_constant")
+
+
+def _GetLoopConstantEnter(value):
+  """Return the enter op if we can infer `value` to be a loop invariant."""
+  id_ops = {"Switch", "RefSwitch", "Identity", "RefIdentity"}
+  op = value.op
+  while op.type in id_ops:
+    op = op.inputs[0].op
+  return op if _IsLoopConstantEnter(op) else None
 
 
 def _IsLoopExit(op):
@@ -531,7 +410,8 @@ class GradLoopState(object):
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
                                         forward_ctxt.swap_memory,
-                                        forward_ctxt.name)
+                                        forward_ctxt.name,
+                                        self)
       real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
       self._grad_index = self._grad_context.AddBackPropCounter(real_cnt)
       outer_grad_ctxt.Exit()
@@ -540,7 +420,8 @@ class GradLoopState(object):
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
                                         forward_ctxt.swap_memory,
-                                        forward_ctxt.name)
+                                        forward_ctxt.name,
+                                        self)
       self._grad_index = self._grad_context.AddBackPropCounter(cnt)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
 
@@ -629,55 +510,59 @@ class GradLoopState(object):
     edge from the push op to either `forward_index.op` or `forward_sync`.
 
     Args:
-      value: The tensor that is to be accumulated.
+      value: The source tensor in forward that is to be accumulated.
       dead_branch: True iff the tensor is on a dead branch of a cond.
 
     Returns:
       The stack that contains the accumulated history of the tensor.
     """
-    # TODO(yuanbyu): Make sure the colocation of stack ops and value.
-    # pylint: disable=protected-access
-    acc = gen_data_flow_ops._stack(value.dtype.base_dtype, name="f_acc")
-    # pylint: enable=protected-access
+    curr_ctxt = ops.get_default_graph()._get_control_flow_context()
+    with ops.control_dependencies(None):
+      if curr_ctxt: curr_ctxt.Enter()
+      with ops.colocate_with(value):
+        # pylint: disable=protected-access
+        acc = gen_data_flow_ops._stack(value.dtype.base_dtype, name="f_acc")
+        # pylint: enable=protected-access
+      if curr_ctxt: curr_ctxt.Exit()
 
-    # Make acc available in the forward context.
-    enter_acc = self.forward_context.AddValue(acc)
+      # Make acc available in the forward context.
+      enter_acc = self.forward_context.AddValue(acc)
 
-    # Add the stack_push op in the context of value.op.
-    swap_enabled = self.forward_context.swap_memory
-    value_ctxt = value.op._get_control_flow_context()
-    if _IsLoopExit(value.op):
-      value_ctxt = value_ctxt.outer_context
-    if value_ctxt == self.forward_context:
-      # value is not nested in the forward context.
-      self.forward_context.Enter()
-      push = gen_data_flow_ops._stack_push(enter_acc, value,
-                                           swap_memory=swap_enabled)
-      self.forward_context.Exit()
-      # Protect stack push and order it before forward_index.
-      self.forward_index.op._add_control_input(push.op)
-    else:
-      # value is in a cond context within the forward context.
-      assert isinstance(value_ctxt, CondContext)
-      if dead_branch:
-        # The special case for creating a zero tensor for a dead
-        # branch of a switch. See ControlFlowState.ZerosLike().
-        value_ctxt.outer_context.Enter()
-        push = gen_data_flow_ops._stack_push(enter_acc, value,
-                                             swap_memory=swap_enabled)
-        value_ctxt.outer_context.Exit()
-        push.op._set_control_flow_context(value_ctxt)
+      # Add the stack_push op in the context of value.op.
+      swap_enabled = self.forward_context.swap_memory
+      value_ctxt = value.op._get_control_flow_context()
+      if _IsLoopExit(value.op):
+        value_ctxt = value_ctxt.outer_context
+      if value_ctxt == self.forward_context:
+        # value is not nested in the forward context.
+        self.forward_context.Enter()
+        push = gen_data_flow_ops._stack_push(
+            enter_acc, value, swap_memory=swap_enabled)
+        self.forward_context.Exit()
+        # Protect stack push and order it before forward_index.
+        self.forward_index.op._add_control_input(push.op)
       else:
-        value_ctxt.Enter()
-        push = gen_data_flow_ops._stack_push(enter_acc, value,
-                                             swap_memory=swap_enabled)
-        value_ctxt.Exit()
-      # Protect stack push and order it before forward_sync.
-      self.forward_sync._add_control_input(push.op)
-    # Order stack push after the successor of forward_index
-    add_op = self.forward_index.op.inputs[0].op
-    push.op._add_control_input(add_op)
-    return acc
+        # value is in a cond context within the forward context.
+        assert isinstance(value_ctxt, CondContext)
+        if dead_branch:
+          # The special case for creating a zero tensor for a dead
+          # branch of a switch. See ControlFlowState.ZerosLike().
+          value_ctxt.outer_context.Enter()
+          push = gen_data_flow_ops._stack_push(
+              enter_acc, value, swap_memory=swap_enabled)
+          value_ctxt.outer_context.Exit()
+          push.op._set_control_flow_context(value_ctxt)
+        else:
+          value_ctxt.Enter()
+          push = gen_data_flow_ops._stack_push(
+              enter_acc, value, swap_memory=swap_enabled)
+          value_ctxt.Exit()
+        # Protect stack push and order it before forward_sync.
+        self.forward_sync._add_control_input(push.op)
+      # Order stack push after the successor of forward_index
+      add_op = self.forward_index.op.inputs[0].op
+      push.op._add_control_input(add_op)
+      return acc
 
   def AddBackPropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
@@ -704,60 +589,67 @@ class GradLoopState(object):
         cond_ctxt = value_ctxt
         break
       value_ctxt = value_ctxt.outer_context
-    if cond_ctxt:
-      # Guard stack pop with a switch if it is controlled by a cond
-      grad_state = self
-      pred = None
-      while not pred and grad_state:
-        pred = grad_state.history_map.get(cond_ctxt.pred.name)
-        grad_state = grad_state.outer_grad_state
-      branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
-      history_value = _SwitchRefOrTensor(history_value, pred)[branch]
-    pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
+    with ops.control_dependencies(None):
+      self.grad_context.Enter()
+      if cond_ctxt:
+        # Guard stack pop with a switch if it is controlled by a cond
+        grad_state = self
+        pred = None
+        while not pred and grad_state:
+          pred = grad_state.history_map.get(cond_ctxt.pred.name)
+          grad_state = grad_state.outer_grad_state
+        branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
+        history_value = _SwitchRefOrTensor(history_value, pred)[branch]
+      pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
+      self.grad_context.Exit()
     if self.grad_context.parallel_iterations > 1:
       # All pops are ordered after pivot_for_body and before grad_sync.
       self.grad_sync._add_control_input(pop.op)
     return pop
 
   def GetRealValue(self, value):
-    """Get the real value.
+    """Get the real value of `value`.
 
-    If backprop "uses" a value produced by forward inference, an
-    accumulator is added in the forward loop to accumulate its values.
-    We use the accumulated value.
+    If backprop "uses" a value produced by forward inference, an accumulator
+    is added in the forward loop to accumulate its values.  We use the
+    accumulated value. This method must be called in the grad loop context.
+    `value` must be in forward and needed for backprop.
 
     Args:
       value: A tensor to be captured.
 
     Returns:
-      The same tensor value from the saved history.
+      The same tensor obtained from the saved history.
     """
     assert value.op.type != "Variable"
     real_value = self._history_map.get(value.name)
     if real_value is None:
-      if _IsLoopConstantEnter(value.op):
-        # Special case for loop invariant.
-        if self._outer_grad_state:
-          # This is a nested loop so we record the history of this
-          # value in outer_forward_ctxt.
-          self._grad_context.Exit()
-          outer_value = value.op.inputs[0]
-          history_value = self._outer_grad_state.AddForwardAccumulator(
-              outer_value)
-          self._grad_context.Enter()
+      cur_value = value
+      cur_grad_state = self
+      while True:
+        enter_op = _GetLoopConstantEnter(cur_value)
+        if enter_op:
+          # Special case: cur_value comes from a constant Enter node.
+          cur_value = enter_op.inputs[0]
+          if self._outer_grad_state:
+            cur_grad_state = cur_grad_state.outer_grad_state
+          else:
+            # We are now outside all nested loops for this gradient(),
+            # so `value` is a loop invariant and there is no need to
+            # save the history of value.
+            real_value = self._grad_context.AddValue(cur_value)
+            break
         else:
-          # Just use the input value of this Enter node.
-          real_value = GetRealOp(value.op).inputs[0]
-      else:
-        # Record the history of this value in forward_ctxt.
-        # NOTE(yuanbyu): Don't record for constants.
-        self._grad_context.Exit()
-        history_value = self.AddForwardAccumulator(value)
-        self._grad_context.Enter()
+          # Record the history of this value in forward_ctxt.
+          # TODO(yuanbyu): Avoid recording constants.
+          self._grad_context.Exit()
+          h_value = cur_grad_state.AddForwardAccumulator(cur_value)
+          self._grad_context.Enter()
+          break
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = self.AddBackPropAccumulatedValue(history_value, value)
+        real_value = self.AddBackPropAccumulatedValue(h_value, value)
       self._history_map[value.name] = real_value
     return real_value
 
@@ -776,9 +668,9 @@ class ControlFlowState(object):
   def __init__(self):
     self._map = {}   # maps forward loop context to GradLoopState
 
-  def _GetGradState(self, op):
-    """Get the gradient loop state for this op if any."""
-    if _IsLoopExit(op):
+  def _GetGradState(self, op, before):
+    """Return the grad state for this op if it's in a forward loop context."""
+    if before and _IsLoopExit(op):
       forward_ctxt = op._get_control_flow_context()
       forward_ctxt = forward_ctxt.outer_context
       if forward_ctxt:
@@ -789,15 +681,6 @@ class ControlFlowState(object):
       return self._map.get(forward_ctxt)
     return None
 
-  def MakeWrapper(self, op):
-    """Make a wrapper for op if it is in a WhileContext."""
-    forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt:
-      grad_state = self._map.get(forward_ctxt)
-      if grad_state:
-        return ControlFlowOpWrapper(op, grad_state)
-    return op
-
   def GetAllLoopExits(self):
     """Return a list containing the exits of all the loops."""
     loop_exits = []
@@ -806,15 +689,15 @@ class ControlFlowState(object):
         loop_exits.append(loop_exit)
     return loop_exits
 
-  def EnterGradWhileContext(self, op):
+  def EnterGradWhileContext(self, op, before):
     """Enter the WhileContext for gradient computation."""
-    grad_state = self._GetGradState(op)
+    grad_state = self._GetGradState(op, before)
     if grad_state:
       grad_state.grad_context.Enter()
 
-  def ExitGradWhileContext(self, op):
+  def ExitGradWhileContext(self, op, before):
     """Exit the WhileContext for gradient computation."""
-    grad_state = self._GetGradState(op)
+    grad_state = self._GetGradState(op, before)
     if grad_state:
       grad_state.grad_context.Exit()
 
@@ -877,12 +760,18 @@ class ControlFlowState(object):
         result = array_ops.zeros(val_shape.dims, val.dtype)
         outer_grad_state.grad_context.Exit()
       else:
-        history_val = outer_grad_state.AddForwardAccumulator(val)
+        # Only the shape of value is needed for backprop.
+        forward_ctxt.outer_context.Enter()
+        shape = array_ops.shape(value)
+        forward_ctxt.outer_context.Exit()
+        # Save the shape to a stack.
+        history_shape = outer_grad_state.AddForwardAccumulator(shape)
+        # Get the shape back from the stack.
         outer_grad_ctxt = outer_grad_state.grad_context
         outer_grad_ctxt.Enter()
-        real_val = outer_grad_state.AddBackPropAccumulatedValue(
-            history_val, val)
-        result = array_ops.zeros_like(real_val)
+        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+            history_shape, shape)
+        result = array_ops.zeros(real_shape, value.dtype)
         outer_grad_ctxt.Exit()
     else:
       # This is not a nested loop.
@@ -943,21 +832,15 @@ class ControlFlowState(object):
 
       # Add forward accumulator for shape.
       grad_state.grad_context.Exit()
-      history_shape = grad_state.AddForwardAccumulator(zeros_shape, dead_branch)
+      h_shape = grad_state.AddForwardAccumulator(
+          zeros_shape, dead_branch=dead_branch)
       grad_state.grad_context.Enter()
 
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-          history_shape, zeros_shape, dead_branch)
+          h_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
-
-
-def GetRealOp(op):
-  """Get the real op by removing the wrapper."""
-  while isinstance(op, ControlFlowOpWrapper):
-    op = op.op
-  return op
 
 
 def MaybeCreateControlFlowState(between_op_list, between_ops):
@@ -1106,6 +989,9 @@ class CondContext(ControlFlowContext):
     return result
 
   def AddOp(self, op):
+    self._AddOpInternal(op)
+
+  def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
       # Add this op to the enclosing while context
@@ -1248,7 +1134,8 @@ def cond(pred, fn1, fn2, name=None):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations, back_prop, swap_memory, name):
+  def __init__(self, parallel_iterations, back_prop, swap_memory, name,
+               grad_state=None):
     ControlFlowContext.__init__(self)
     self._name = ops.get_default_graph().unique_name(name)
     self._parallel_iterations = parallel_iterations
@@ -1263,6 +1150,8 @@ class WhileContext(ControlFlowContext):
     self._pivot = None
     # The list of exit tensors for loop variables.
     self._loop_exits = None
+    # The gradient loop state
+    self._grad_state = grad_state
 
   @property
   def name(self):
@@ -1293,6 +1182,11 @@ class WhileContext(ControlFlowContext):
     """The list of exit tensors for loop variables."""
     return self._loop_exits
 
+  @property
+  def grad_state(self):
+    """The gradient loop state."""
+    return self._grad_state
+
   def GetWhileContext(self):
     return self
 
@@ -1306,6 +1200,22 @@ class WhileContext(ControlFlowContext):
     result = val
     if val.name not in self._values:
       self._values.add(val.name)
+
+      # If we are in a grad context and val is from its forward context,
+      # use GetRealValue(), which adds the logic to save the history of
+      # val in forward.
+      grad_ctxt = ops.get_default_graph()._get_control_flow_context()
+      if grad_ctxt:
+        grad_ctxt = grad_ctxt.GetWhileContext()
+        if grad_ctxt.grad_state:
+          forward_ctxt = _GetWhileContext(val.op)
+          if _IsLoopExit(val.op):
+            forward_ctxt = forward_ctxt.outer_context
+          if forward_ctxt == grad_ctxt.grad_state.forward_context:
+            real_val = grad_ctxt.grad_state.GetRealValue(val)
+            self._external_values[val.name] = real_val
+            return real_val
+
       if self._outer_context is not None:
         result = self._outer_context.AddValue(val)
       # Create an Enter to make `result` known to this loop context.
@@ -1327,7 +1237,27 @@ class WhileContext(ControlFlowContext):
     return result
 
   def AddOp(self, op):
-    """Adds `op` to the current context."""
+    """Add `op` to the current context."""
+    # For a reduction op, if op is in a grad context and its input is from
+    # its forward context, moving op to the forward context means we would
+    # store the tensor after the reduction as opposed to the tensor before
+    # reduction, and therefore could significantly reduce memory consumption.
+    # For now, we do this only for a few ops.
+    if op.type in {"Shape", "Size", "Rank"}:
+      grad_ctxt = ops.get_default_graph()._get_control_flow_context()
+      if grad_ctxt:
+        grad_ctxt = grad_ctxt.GetWhileContext()
+        if grad_ctxt.grad_state:
+          op_input_forward_ctxt = _GetWhileContext(op.inputs[0].op)
+          if op_input_forward_ctxt == grad_ctxt.grad_state.forward_context:
+            op_input_ctxt = op.inputs[0].op._get_control_flow_context()
+            op._set_control_flow_context(op_input_ctxt)
+            op_input_ctxt._AddOpInternal(op)
+            return
+    self._AddOpInternal(op)
+
+  def _AddOpInternal(self, op):
+    """Add `op` to the current context."""
     if not op.inputs:
       if not op.control_inputs:
         # Add a control edge from the control pivot to this op.
@@ -1863,7 +1793,6 @@ def foldr(fn, elems, initializer=None, name=None):
     fn: The function to be performed.
     elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
     initializer: (optional) The initial value for the accumulator.
-    use_tensor_array: (optional) use tensor_array if true.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:

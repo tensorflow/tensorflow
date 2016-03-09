@@ -560,7 +560,7 @@ class LSTMTest(tf.test.TestCase):
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
-  def _testDynamicEquivalentToStaticRNN(self, use_gpu):
+  def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
     num_units = 3
     num_proj = 4
@@ -569,7 +569,10 @@ class LSTMTest(tf.test.TestCase):
 
     input_values = np.random.randn(time_steps, batch_size, input_size)
 
-    sequence_length = np.random.randint(0, time_steps, size=batch_size)
+    if use_sequence_length:
+      sequence_length = np.random.randint(0, time_steps, size=batch_size)
+    else:
+      sequence_length = None
 
     ########### Step 1: Run static graph and generate readouts
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -744,8 +747,14 @@ class LSTMTest(tf.test.TestCase):
     self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=True)
 
   def testDynamicEquivalentToStaticRNN(self):
-    self._testDynamicEquivalentToStaticRNN(use_gpu=False)
-    self._testDynamicEquivalentToStaticRNN(use_gpu=True)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=False, use_sequence_length=False)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=True, use_sequence_length=False)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=False, use_sequence_length=True)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=True, use_sequence_length=True)
 
 
 class BidirectionalRNNTest(tf.test.TestCase):
@@ -1091,7 +1100,7 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
-  for max_time in (1, 25, 50):
+  for max_time in (1, 25, 50, 100, 200):
     graph_creation_static_vs_dynamic_rnn_benchmark(max_time)
 
   print("Calculation: Static Unroll with Dynamic Flow LSTM "

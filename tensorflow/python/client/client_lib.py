@@ -51,6 +51,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# NOTE(mrry): Support for `tf.GrpcServer` is currently experimental.
+from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
+from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
+from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
+from tensorflow.python.client.server_lib import GrpcServer
+
 from tensorflow.python.client.session import InteractiveSession
 from tensorflow.python.client.session import Session
 

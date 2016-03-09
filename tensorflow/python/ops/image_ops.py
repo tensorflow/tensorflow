@@ -644,7 +644,8 @@ def resize_images(images,
   new_width_const = tensor_util.constant_value(new_width)
   new_height_const = tensor_util.constant_value(new_height)
 
-  if width == new_width_const and height == new_height_const:
+  if new_width_const is not None and new_height_const is not None and (
+      width == new_width_const and height == new_height_const):
     if not is_batch:
       images = array_ops.squeeze(images, squeeze_dims=[0])
     return images

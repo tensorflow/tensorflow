@@ -2526,8 +2526,10 @@ class Graph(object):
     return name
 
   @contextlib.contextmanager
-  def colocate_with(self, op):
+  def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
+
+    Note: this function is not for public use, only for internal libraries.
 
     For example:
 
@@ -2543,6 +2545,9 @@ class Graph(object):
 
     Args:
       op: The op to colocate all created ops with.
+      ignore_existing: If true, only applies colocation of this op within
+        the context, rather than applying all colocation properties
+        on the stack.
 
     Raises:
       ValueError: if op is None.
@@ -2569,6 +2574,10 @@ class Graph(object):
     device_fn_tmp = self._device_function_stack
     self._device_function_stack = []
 
+    if ignore_existing:
+      current_stack = self._colocation_stack
+      self._colocation_stack = []
+
     self._colocation_stack.append(op)
 
     try:
@@ -2577,6 +2586,10 @@ class Graph(object):
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
       self._colocation_stack.pop()
+
+      # Reset the colocation stack if requested.
+      if ignore_existing:
+        self._colocation_stack = current_stack
 
   @contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -3007,8 +3020,8 @@ def device(device_name_or_function):
   return get_default_graph().device(device_name_or_function)
 
 
-def colocate_with(op):
-  return get_default_graph().colocate_with(op)
+def colocate_with(op, ignore_existing=False):
+  return get_default_graph().colocate_with(op, ignore_existing)
 
 
 def name_scope(name):

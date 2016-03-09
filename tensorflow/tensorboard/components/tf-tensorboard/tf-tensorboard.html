@@ -20,11 +20,11 @@ allows the user to toggle between various dashboards.
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
-          <paper-tabs selected="0" noink class="tabs" id="tabs">
-            <paper-tab data-mode="events" on-click="changeMode">Events</paper-tab>
-            <paper-tab data-mode="images" on-click="changeMode">Images</paper-tab>
-            <paper-tab data-mode="graphs" on-click="changeMode">Graph</paper-tab>
-            <paper-tab data-mode="histograms" on-click="changeMode">Histograms</paper-tab>
+          <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
+            <paper-tab data-mode="events">Events</paper-tab>
+            <paper-tab data-mode="images">Images</paper-tab>
+            <paper-tab data-mode="graphs">Graph</paper-tab>
+            <paper-tab data-mode="histograms">Histograms</paper-tab>
           </paper-tabs>
         </div>
       </paper-toolbar>
@@ -111,14 +111,24 @@ allows the user to toggle between various dashboards.
           type: Object,
           value: TF.Urls.productionRouter(),
         },
+        // Which tab is selected (events, graph, images etc).
         mode: {
           type: String,
-          value: "events",
+          computed: '_getModeFromIndex(modeIndex)'
         },
+        // If true, tab switching in TensorBoard will not update
+        // location hash. Hash update interferes with selenium tests.
+        noHash: {
+          type: Boolean,
+          value: false
+        }
       },
-      changeMode: function(ev) {
-        var mode = ev.target.parentElement.getAttribute('data-mode');
-        this._changeMode(mode, true);
+      _getModeFromIndex: function(modeIndex) {
+        var mode = this.tabs[modeIndex];
+        if (!this.noHash) {
+          window.location.hash = mode;
+        }
+        return mode;
       },
       eventDashboard: function(mode) {
         return mode === "events";
@@ -132,36 +142,26 @@ allows the user to toggle between various dashboards.
       histogramDashboard: function(mode) {
         return mode === "histograms";
       },
-      loadPreviousMode: function() {
-        this._changeMode(this._getMode(), false);
-      },
       ready: function() {
-        this._changeMode(this._getMode(), true);
-
-        var self = this;
-        window.addEventListener('hashchange', function(){
-          self.loadPreviousMode();
+        this.tabs = [].slice.call(this.querySelectorAll('paper-tab')).map(function(a) {
+          return a.dataset.mode;
         });
+        this._getModeFromHash();
+        window.addEventListener('hashchange', function() {
+          this._getModeFromHash();
+        }.bind(this));
       },
-      _changeMode: function(mode, isNewState) {
-        this.mode = mode;
-
-        // Change the selected tab
-        this.$.tabs.selected = this._tabs().indexOf(mode);
-
-        if (isNewState){
-          window.location.hash = mode;
-        }
-      },
-      _getMode: function() {
+      _getModeFromHash: function() {
         // Return the mode as it is stored in the hash.
-        // If no mode can be found, default to the first tab.
-        var hash = window.location.hash;
-        return hash.length > 0 ? hash.slice(1, hash.length) : this._tabs()[0];
-      },
-      _tabs: function() {
-        var elts = Array.prototype.slice.call(this.querySelectorAll('paper-tab'));
-        return elts.map(function(elt){ return elt.getAttribute('data-mode')});
+        var tabName = window.location.hash.trim().slice(1);
+        var modeIndex = this.tabs.indexOf(tabName);
+        if (modeIndex == -1 && this.modeIndex == null) {
+          // Selecting the first tab as default.
+          this.set('modeIndex', 0);
+        }
+        if (modeIndex != -1 && modeIndex != this.modeIndex) {
+          this.set('modeIndex', modeIndex);
+        }
       },
     });
   </script>

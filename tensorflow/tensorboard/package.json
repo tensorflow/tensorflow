@@ -25,7 +25,7 @@
     "tslint": "^3.2.1",
     "typescript": "1.8.0",
     "vulcanize": "^1.14.0",
-    "web-component-tester": "~3.4.2",
+    "web-component-tester": "4.2.2",
     "gulp-header": "~1.7.1",
     "gulp-rename": "~1.2.2",
     "gulp-typings": "~1.1.0",

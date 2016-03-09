@@ -20,11 +20,16 @@ from __future__ import print_function
 import os.path
 import uuid
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.platform import resource_loader
 
@@ -99,11 +104,12 @@ class SdcaModel(object):
     the model, by resetting its (possibly shared) container.
 
     ```python
-    # Execute opt_op once to perform training, which continues until
-    convergence.
-      The op makes use of duality gap as a certificate for termination. Duality
-      gap is set to 0.01 as default.
-    opt_op.run()
+    # Execute opt_op and train for num_steps.
+    for _ in xrange(num_steps):
+      opt_op.run()
+
+    # You can also check for convergence by calling
+    # lr.approximate_duality_gap()
     ```
   """
 
@@ -125,8 +131,7 @@ class SdcaModel(object):
     self._assertList(['sparse_features', 'dense_features'], examples)
 
     self._assertSpecified(
-        ['sparse_features_weights', 'dense_features_weights',
-         'primal_loss'], variables)
+        ['sparse_features_weights', 'dense_features_weights'], variables)
     self._assertList(
         ['sparse_features_weights', 'dense_features_weights'], variables)
 
@@ -138,9 +143,26 @@ class SdcaModel(object):
     self._examples = examples
     self._variables = variables
     self._options = options
-    self._primal_loss = convert_to_tensor(self._variables['primal_loss'],
-                                          as_ref=True)
     self._solver_uuid = uuid.uuid4().hex
+    self._create_slots(variables)
+
+  # TODO(rohananil): Use optimizer interface to make use of slot creation
+  # logic
+  def _create_slots(self, variables):
+    self._slots = {}
+    # TODO(rohananil): Rename the slot keys to "unshrinked" weights.
+    self._slots['sparse_features_weights'] = []
+    self._slots['dense_features_weights'] = []
+    self._assign_ops = []
+    # Make an internal variable which has the updates before applying L1
+    # regularization.
+    for var_type in ['sparse_features_weights', 'dense_features_weights']:
+      for var in variables[var_type]:
+        if var is not None:
+          self._slots[var_type].append(var_ops.Variable(array_ops.zeros_like(
+              var.initialized_value(), dtypes.float32)))
+          self._assign_ops.append(state_ops.assign(var, self._slots[var_type][
+              -1]))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -160,7 +182,7 @@ class SdcaModel(object):
       dense_weights = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
       l1 = self._options['symmetric_l1_regularization']
-      loss = 0
+      loss = 0.0
       for w in sparse_weights:
         loss += l1 * math_ops.reduce_sum(abs(w))
       for w in dense_weights:
@@ -175,12 +197,13 @@ class SdcaModel(object):
       dense_weights = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
       l2 = self._options['symmetric_l2_regularization']
-      loss = 0
+      loss = 0.0
       for w in sparse_weights:
         loss += l2 * math_ops.reduce_sum(math_ops.square(w))
       for w in dense_weights:
         loss += l2 * math_ops.reduce_sum(math_ops.square(w))
-      return loss
+      # SDCA L2 regularization cost is 1/2 * l2 * sum(weights^2)
+      return loss / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -247,23 +270,52 @@ class SdcaModel(object):
         sparse_features_indices.append(convert_to_tensor(sf.indices))
         sparse_features_weights.append(convert_to_tensor(sf.values))
 
-      return _sdca_ops.sdca_solver(
+      step_op = _sdca_ops.sdca_solver(
           sparse_features_indices,
           sparse_features_weights,
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
           convert_to_tensor(self._examples['example_ids']),
-          self._convert_n_to_tensor(self._variables['sparse_features_weights'],
+          self._convert_n_to_tensor(self._slots['sparse_features_weights'],
                                     as_ref=True),
-          self._convert_n_to_tensor(self._variables['dense_features_weights'],
+          self._convert_n_to_tensor(self._slots['dense_features_weights'],
                                     as_ref=True),
-          self._primal_loss,
           l1=self._options['symmetric_l1_regularization'],
           l2=self._options['symmetric_l2_regularization'],
+          num_inner_iterations=2,
           loss_type=self._options['loss_type'],
           container=self._container,
           solver_uuid=self._solver_uuid)
+      with ops.control_dependencies([step_op]):
+        assign_ops = control_flow_ops.group(*self._assign_ops)
+        with ops.control_dependencies([assign_ops]):
+          return _sdca_ops.sdca_shrink_l1(
+              self._convert_n_to_tensor(
+                  self._variables['sparse_features_weights'],
+                  as_ref=True),
+              self._convert_n_to_tensor(
+                  self._variables['dense_features_weights'],
+                  as_ref=True),
+              l1=self._options['symmetric_l1_regularization'],
+              l2=self._options['symmetric_l2_regularization'])
+
+  def approximate_duality_gap(self):
+    """Add operations to compute the approximate duality gap.
+
+    Returns:
+      An Operation that computes the approximate duality gap over all
+      examples.
+    """
+    return _sdca_ops.compute_duality_gap(
+        self._convert_n_to_tensor(self._slots['sparse_features_weights'],
+                                  as_ref=True),
+        self._convert_n_to_tensor(self._slots['dense_features_weights'],
+                                  as_ref=True),
+        l1=self._options['symmetric_l1_regularization'],
+        l2=self._options['symmetric_l2_regularization'],
+        container=self._container,
+        solver_uuid=self._solver_uuid)
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
@@ -310,8 +362,9 @@ class SdcaModel(object):
       err = math_ops.sub(labels, predictions)
 
       weighted_squared_err = math_ops.mul(math_ops.square(err), weights)
+      # SDCA squared loss function is sum(err^2) / (2*sum(weights))
       return (math_ops.reduce_sum(weighted_squared_err) /
-              math_ops.reduce_sum(weights))
+              (2.0 * math_ops.reduce_sum(weights)))
 
   def regularized_loss(self, examples):
     """Add operations to compute the loss with regularization loss included.
@@ -321,7 +374,7 @@ class SdcaModel(object):
 
     Returns:
       An Operation that computes mean (regularized) loss for given set of
-          examples.
+      examples.
     Raises:
       ValueError: if examples are not well defined.
     """

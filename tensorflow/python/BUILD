@@ -821,6 +821,7 @@ py_library(
     deps = [
         ":framework",
         ":ops",
+        ":server_lib",
         ":session",
         ":training_ops",
     ],
@@ -897,6 +898,7 @@ tf_py_wrap_cc(
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/events_writer.i",
+        "client/server_lib.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
@@ -915,6 +917,8 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//util/python:python_headers",
     ],
@@ -937,6 +941,28 @@ py_library(
         ":framework",
         ":ops",
         ":pywrap_tensorflow",
+    ],
+)
+
+py_library(
+    name = "server_lib",
+    srcs = ["client/server_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+py_test(
+    name = "server_lib_test",
+    srcs = ["client/server_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extra_py_tests_deps",
+        ":framework",
+        ":framework_test_lib",
+        ":server_lib",
+        ":session",
     ],
 )
 

@@ -98,8 +98,7 @@ gulp.task('compile.all', ['typings'], function() {
 });
 
 gulp.task('test', ['tslint-strict', 'compile.all'], function(done) {
-  tester({suites: ['components/tf-test/'],
-          plugins: {local: {}, sauce: false}}, function(error) {
+  tester({}, function(error) {
     if (error) {
       // Pretty error for gulp.
       error = new Error(error.message || error);

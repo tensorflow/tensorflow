@@ -127,8 +127,8 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "SessionInterface", "BaseSession", "NameAttrList",
                    "AttrValue", "TensorArray", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
-                   "SaverDef", "VariableDef", "TestCase",
-                  ]
+                   "SaverDef", "VariableDef", "TestCase", "GrpcServer",
+                   "ClusterDef", "JobDef", "ServerDef"]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

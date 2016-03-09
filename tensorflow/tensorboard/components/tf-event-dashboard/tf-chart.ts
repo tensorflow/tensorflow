@@ -12,9 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="../plottable/plottable.d.ts" />
-
 module TF {
   type TFDatum = [number, number, number];
   type tooltipMap = {[run: string]: string};

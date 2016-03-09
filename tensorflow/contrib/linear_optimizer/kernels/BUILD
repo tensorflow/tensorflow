@@ -7,16 +7,27 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 cc_library(
-    name = "losses",
+    name = "loss_updaters",
     hdrs = [
         "hinge-loss.h",
         "logistic-loss.h",
+        "loss.h",
         "squared-loss.h",
     ],
     deps = ["//tensorflow/core:lib"],
 )
 
-# TODO(katsiapis): Add tests for losses.
+cc_test(
+    name = "loss_updaters_test",
+    srcs = ["loss_updaters_test.cc"],
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
 
 cc_library(
     name = "resources",
@@ -44,7 +55,7 @@ cc_library(
     name = "sdca_ops",
     srcs = ["sdca_ops.cc"],
     deps = [
-        ":losses",
+        ":loss_updaters",
         ":resources",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
