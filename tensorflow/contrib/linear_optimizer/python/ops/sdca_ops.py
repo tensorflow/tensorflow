@@ -182,7 +182,7 @@ class SdcaModel(object):
       dense_weights = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
       l1 = self._options['symmetric_l1_regularization']
-      loss = 0
+      loss = 0.0
       for w in sparse_weights:
         loss += l1 * math_ops.reduce_sum(abs(w))
       for w in dense_weights:
@@ -197,12 +197,13 @@ class SdcaModel(object):
       dense_weights = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
       l2 = self._options['symmetric_l2_regularization']
-      loss = 0
+      loss = 0.0
       for w in sparse_weights:
         loss += l2 * math_ops.reduce_sum(math_ops.square(w))
       for w in dense_weights:
         loss += l2 * math_ops.reduce_sum(math_ops.square(w))
-      return loss
+      # SDCA L2 regularization cost is 1/2 * l2 * sum(weights^2)
+      return loss / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -361,8 +362,9 @@ class SdcaModel(object):
       err = math_ops.sub(labels, predictions)
 
       weighted_squared_err = math_ops.mul(math_ops.square(err), weights)
+      # SDCA squared loss function is sum(err^2) / (2*sum(weights))
       return (math_ops.reduce_sum(weighted_squared_err) /
-              math_ops.reduce_sum(weights))
+              (2.0 * math_ops.reduce_sum(weights)))
 
   def regularized_loss(self, examples):
     """Add operations to compute the loss with regularization loss included.
