@@ -21,7 +21,7 @@ import numpy
 import tensorflow as tf
 
 
-class GenerateIdentityTensorTest(tf.test.TestCase):
+class DiagTest(tf.test.TestCase):
 
   def diagOp(self, diag, dtype, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
@@ -96,10 +96,11 @@ class GenerateIdentityTensorTest(tf.test.TestCase):
     self.diagOp(x, numpy.float32, expected_ans)
     self.diagOp(x, numpy.float64, expected_ans)
 
+
 class DiagPartOpTest(tf.test.TestCase):
 
   def setUp(self):
-    x = numpy.random.seed(0)
+    numpy.random.seed(0)
 
   def diagPartOp(self, tensor, dtpe, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
@@ -122,7 +123,7 @@ class DiagPartOpTest(tf.test.TestCase):
     expected_ans = x[i, j, i, j]
     self.diagPartOp(x, numpy.float32, expected_ans)
     self.diagPartOp(x, numpy.float64, expected_ans)
-    
+
   def testRankSixFloatTensor(self):
     x = numpy.random.rand(2, 2, 2, 2, 2, 2)
     i = numpy.arange(2)[:, None, None]
@@ -141,7 +142,7 @@ class DiagPartOpTest(tf.test.TestCase):
     self.assertRaises(ValueError, self.diagPartOp, x, numpy.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, y, numpy.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, z, numpy.float32, 0)
-    
+
   def testUnevenDimensions(self):
     w = numpy.random.rand(2, 5)
     x = numpy.random.rand(2, 1, 2, 3)
@@ -151,6 +152,42 @@ class DiagPartOpTest(tf.test.TestCase):
     self.assertRaises(ValueError, self.diagPartOp, x, numpy.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, y, numpy.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, z, numpy.float32, 0)
+
+
+class DiagGradOpTest(tf.test.TestCase):
+
+  def testDiagGrad(self):
+    numpy.random.seed(0)
+    shapes = ((3,), (3,3), (3,3,3))
+    dtypes = (tf.float32, tf.float64)
+    with self.test_session(use_gpu=False):
+      errors = []
+      for shape in shapes:
+        for dtype in dtypes:
+          x1 = tf.constant(numpy.random.rand(*shape), dtype=dtype)
+          y = tf.diag(x1)
+          error = tf.test.compute_gradient_error(x1, x1._shape_as_list(),
+                                                 y, y._shape_as_list())
+          tf.logging.info("error = %f", error)
+          self.assertLess(error, 1e-4)
+
+
+class DiagGradPartOpTest(tf.test.TestCase):
+
+  def testDiagPartGrad(self):
+    numpy.random.seed(0)
+    shapes = ((3,3), (3,3,3,3), (3,3,3,3,3,3))
+    dtypes = (tf.float32, tf.float64)
+    with self.test_session(use_gpu=False):
+      errors = []
+      for shape in shapes:
+        for dtype in dtypes:
+          x1 = tf.constant(numpy.random.rand(*shape), dtype=dtype)
+          y = tf.diag_part(x1)
+          error = tf.test.compute_gradient_error(x1, x1._shape_as_list(),
+                                                 y, y._shape_as_list())
+          tf.logging.info("error = %f", error)
+          self.assertLess(error, 1e-4)
 
 if __name__ == "__main__":
   tf.test.main()
