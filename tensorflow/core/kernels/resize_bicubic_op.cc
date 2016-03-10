@@ -16,8 +16,10 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 #define EIGEN_USE_THREADS
 
+#include <math.h>
 #include <algorithm>
-#include <memory>
+#include <array>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

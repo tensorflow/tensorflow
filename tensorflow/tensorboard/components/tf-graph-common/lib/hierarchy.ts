@@ -687,9 +687,6 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
         id = matches[2]; // the digits
       } else { // for node without "_<number>", make them zero-th items.
         prefix = isGroup ? leaf.substr(0, leaf.length - 1) : leaf;
-        if (prefix.charAt(prefix.length - 1) !== "_") {
-          prefix += "_";
-        }
         id = 0;
         suffix = isGroup ? "*" : "";
       }
