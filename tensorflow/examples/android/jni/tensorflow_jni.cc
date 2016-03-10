@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/examples/android/jni/jni_utils.h"
 
+using namespace tensorflow;
+
 // Global variables that holds the Tensorflow classifier.
 static std::unique_ptr<tensorflow::Session> session;
 
@@ -48,8 +50,6 @@ static int g_image_mean;  // The image mean.
 // For basic benchmarking.
 static int g_num_runs = 0;
 static int64 g_timing_total_us = 0;
-
-using namespace tensorflow;
 
 inline static int64 CurrentThreadTimeUs() {
   struct timeval tv;
