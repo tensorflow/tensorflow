@@ -821,8 +821,10 @@ def sequence_loss_by_example(logits, targets, weights,
     log_perp_list = []
     for logit, target, weight in zip(logits, targets, weights):
       if softmax_loss_function is None:
-        # We need to make target and int64-tensor and set its shape.
-        target = array_ops.reshape(math_ops.to_int64(target), [-1])
+        # TODO(irving,ebrevdo): This reshape is needed because
+        # sequence_loss_by_example is called with scalars sometimes, which
+        # violates our general scalar strictness policy.
+        target = array_ops.reshape(target, [-1])
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
             logit, target)
       else:
