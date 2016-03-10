@@ -30,31 +30,6 @@ def my_fact():
   """Example of overriding the generated code for an Op."""
   return gen_user_ops._fact()
 
-@ops.RegisterGradient("TriangularSolve")
-def _solve_grad(op, grad):
-    """The gradients for `solve`.
-    Args:
-    op: The `solve` `Operation` that we are differentiating, which we can use
-      to find the inputs and outputs of the original op.
-    grad: Gradient with respect to the output of the `solve` op.
-    
-    Returns:
-    Gradients with respect to the input of `solve`.
-    """
-    if op.get_attr('Case')=='lower':
-        outputGrad = triangular_solve( array_ops.transpose( op.inputs[0] ), grad, 'upper' )
-    else:
-        outputGrad = triangular_solve( array_ops.transpose( op.inputs[0] ), grad, 'lower' )        
-    return ( math_ops.matmul( math_ops.neg( outputGrad ), array_ops.transpose(op.outputs[0]) ), outputGrad )
-
-@ops.RegisterShape("TriangularSolve")
-def _solve_shape(op):
-  """Shape function for the Solve op.
-  produces an output
-  with the same shape as its second input.
-  """
-  return [op.inputs[1].get_shape()]
-  
 @ops.RegisterGradient("Cholesky")
 def _cholesky_grad(op, grad):
   return ( cholesky_grad( op.outputs[0] , grad ) )
@@ -63,62 +38,6 @@ def _cholesky_grad(op, grad):
 def _cholesky_grad_shape(op):
   return [op.inputs[0].get_shape()]  
   
-@ops.RegisterGradient("GetDiag")
-def _get_diag_grad(op,grad ):
-    return ( array_ops.diag(grad) )
-
-@ops.RegisterGradient("LogGamma")
-def _log_gamma_grad(op, grad):
-    """The gradients for `log_gamma`.
-    Args:
-    op: The `log_gamma` `Operation` that we are differentiating, which we can use
-      to find the inputs and outputs of the original op.
-    grad: Gradient with respect to the output of the `log_gamma` op.
-    
-    Returns:
-    Gradients with respect to the input of `log_gamma`.
-    """
-    return grad * digamma( op.inputs[0] )
-
-@ops.RegisterShape("LogGamma")
-def _log_gamma_shape(op):
-  """Shape function for the LogGamma op.
-  produces an output
-  with the same shape as its input.
-  """
-  return [op.inputs[0].get_shape()]
-
-@ops.RegisterGradient("Gamma")
-def _gamma_grad(op, grad):
-    """The gradients for `gamma`.
-    Args:
-    op: The `gamma` `Operation` that we are differentiating, which we can use
-      to find the inputs and outputs of the original op.
-    grad: Gradient with respect to the output of the `gamma` op.
-    
-    Returns:
-    Gradients with respect to the input of `gamma`.
-    """
-    #let f = log_gamma(x) , y = exp(f) , so that y = gamma(x)
-    #by chain rule dy/dx = dy/df * df/fx = exp(f) * digamma(x) = y * digamma(x).
-    return grad * digamma( op.inputs[0] ) * op.outputs[0]
-
-@ops.RegisterShape("Gamma")
-def _gamma_shape(op):
-  """Shape function for the Gamma op.
-  produces an output
-  with the same shape as its input.
-  """
-  return [op.inputs[0].get_shape()]
-  
-@ops.RegisterShape("Digamma")
-def _gamma_shape(op):
-  """Shape function for the Digamma op.
-  produces an output
-  with the same shape as its input.
-  """
-  return [op.inputs[0].get_shape()]
-
 @ops.RegisterGradient("Triangle")
 def _solve_grad(op, grad):
   if op.get_attr('Case')=='lower':
