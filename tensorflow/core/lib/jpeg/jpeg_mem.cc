@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace jpeg {
@@ -77,8 +77,13 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   int stride = flags.stride;            // may be 0
   int* const nwarn = argball->pnwarn_;  // may be NULL
 
-  // can't decode if the ratio is not recognized by libjpeg
+  // Can't decode if the ratio is not recognized by libjpeg
   if ((ratio != 1) && (ratio != 2) && (ratio != 4) && (ratio != 8)) {
+    return nullptr;
+  }
+
+  // Channels must be autodetect, grayscale, or rgb.
+  if (!(components == 0 || components == 1 || components == 3)) {
     return nullptr;
   }
 
@@ -105,8 +110,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   SetSrc(&cinfo, srcdata, datasize, flags.try_recover_truncated_jpeg);
   jpeg_read_header(&cinfo, TRUE);
 
-  // Set components automatically if desired
-  if (components == 0) components = cinfo.num_components;
+  // Set components automatically if desired, autoconverting cmyk to rgb.
+  if (components == 0) components = std::min(cinfo.num_components, 3);
 
   // set grayscale and ratio parameters
   switch (components) {
@@ -114,11 +119,10 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       cinfo.out_color_space = JCS_GRAYSCALE;
       break;
     case 3:
-    case 4:
       if (cinfo.jpeg_color_space == JCS_CMYK ||
           cinfo.jpeg_color_space == JCS_YCCK) {
-        // always use cmyk for output in a 4 channel jpeg. libjpeg has a builtin
-        // decoder.
+        // Always use cmyk for output in a 4 channel jpeg. libjpeg has a builtin
+        // decoder.  We will further convert to rgb below.
         cinfo.out_color_space = JCS_CMYK;
       } else {
         cinfo.out_color_space = JCS_RGB;
@@ -136,6 +140,21 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   // cinfo.dct_method = JDCT_IFAST;
 
   jpeg_start_decompress(&cinfo);
+
+  int64 total_size = static_cast<int64>(cinfo.output_height) *
+                     static_cast<int64>(cinfo.output_width);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << cinfo.output_width << " x "
+               << cinfo.output_height;
+    return nullptr;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    jpeg_destroy_decompress(&cinfo);
+    return nullptr;
+  }
 
   // check for compatible stride
   const int min_stride = cinfo.output_width * components * sizeof(JSAMPLE);
@@ -401,6 +420,19 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
                       const CompressFlags& flags, string* output) {
   output->clear();
   const int components = (static_cast<int>(flags.format) & 0xff);
+
+  int64 total_size = static_cast<int64>(width) * static_cast<int64>(height);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (width <= 0 || height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << width << " x " << height;
+    return false;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    return false;
+  }
+
   int in_stride = flags.stride;
   if (in_stride == 0) {
     in_stride = width * (static_cast<int>(flags.format) & 0xff);
@@ -540,7 +572,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
         row_pointer[0] = reinterpret_cast<JSAMPLE*>(const_cast<JSAMPLE*>(r));
       }
     }
-    CHECK_EQ(jpeg_write_scanlines(&cinfo, row_pointer, 1), 1);
+    CHECK_EQ(jpeg_write_scanlines(&cinfo, row_pointer, 1), 1u);
   }
   jpeg_finish_compress(&cinfo);
 

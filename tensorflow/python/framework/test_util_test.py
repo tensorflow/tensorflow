@@ -20,21 +20,54 @@ from __future__ import print_function
 
 import threading
 
-import tensorflow.python.platform
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import logging_ops
 
+
 class TestUtilTest(test_util.TensorFlowTestCase):
+
+  def test_assert_ops_in_graph(self):
+    with self.test_session():
+      constant_op.constant(["hello", "taffy"], name="hello")
+      test_util.assert_ops_in_graph({"hello": "Const"}, ops.get_default_graph())
+
+    self.assertRaises(
+        ValueError, test_util.assert_ops_in_graph, {"bye": "Const"},
+        ops.get_default_graph())
+
+    self.assertRaises(
+        ValueError, test_util.assert_ops_in_graph, {"hello": "Variable"},
+        ops.get_default_graph())
+
+  def test_assert_equal_graph_def(self):
+    with tf.Graph().as_default() as g:
+      def_empty = g.as_graph_def()
+      tf.constant(5, name="five")
+      tf.constant(7, name="seven")
+      def_57 = g.as_graph_def()
+    with tf.Graph().as_default() as g:
+      tf.constant(7, name="seven")
+      tf.constant(5, name="five")
+      def_75 = g.as_graph_def()
+    # Comparing strings is order dependent
+    self.assertNotEqual(str(def_57), str(def_75))
+    # assert_equal_graph_def doesn't care about order
+    tf.test.assert_equal_graph_def(def_57, def_75)
+    # Compare two unequal graphs
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"^Found unexpected node 'seven"):
+      tf.test.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):
     # The test doesn't assert anything. It ensures the py wrapper

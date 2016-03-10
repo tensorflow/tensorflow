@@ -23,10 +23,11 @@ import copy
 import re
 import textwrap
 
+import six
+
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.protobuf import compare_test_pb2
-import six
 
 from google.protobuf import text_format
 

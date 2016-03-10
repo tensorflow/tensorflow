@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -41,7 +39,7 @@ class FFT2DOpsTest(tf.test.TestCase):
     return np.fft.ifft2(x)
 
   def _Compare(self, x):
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       # GPU/Forward
       self.assertAllClose(
           self._npFFT2D(x),
@@ -74,13 +72,13 @@ class FFT2DOpsTest(tf.test.TestCase):
       self._Compare(gen(shape))
 
   def testEmpty(self):
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       x = np.zeros([40, 0]).astype(np.complex64)
       self.assertEqual(x.shape, self._tfFFT2D(x).shape)
       self.assertEqual(x.shape, self._tfIFFT2D(x).shape)
 
   def testError(self):
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       x = np.zeros([1, 2, 3]).astype(np.complex64)
       with self.assertRaisesOpError("Input is not a matrix"):
         self._tfFFT2D(x)
@@ -107,14 +105,14 @@ class FFT2DOpsTest(tf.test.TestCase):
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=1e-2, atol=1e-2)
 
   def testGrad_Simple(self):
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       re = np.array([[1., 0.], [0., 1.]]).astype(np.float32)
       im = np.array([[0., 0.], [0., 0.]]).astype(np.float32)
       self._checkGrad(tf.fft2d, re, im, use_gpu=True)
       self._checkGrad(tf.ifft2d, re, im, use_gpu=True)
 
   def testGrad_Random(self):
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       shape = (4, 8)
       np.random.seed(54321)
       re = np.random.rand(*shape).astype(np.float32) * 2 - 1

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -48,9 +49,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using tensorflow::Flag;
 using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
@@ -59,7 +61,8 @@ using tensorflow::int32;
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
 // of the result is a multiple of 16, because our model expects that.
-Status ReadLabelsFile(string file_name, std::vector<string>* result) {
+Status ReadLabelsFile(string file_name, std::vector<string>* result,
+                      size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
     return tensorflow::errors::NotFound("Labels file ", file_name,
@@ -70,6 +73,7 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
+  *found_label_count = result->size();
   const int padding = 16;
   while (result->size() % padding) {
     result->emplace_back();
@@ -145,7 +149,6 @@ Status LoadGraph(string graph_file_name,
     return tensorflow::errors::NotFound("Failed to load compute graph at '",
                                         graph_file_name, "'");
   }
-
   session->reset(tensorflow::NewSession(tensorflow::SessionOptions()));
   Status session_create_status = (*session)->Create(graph_def);
   if (!session_create_status.ok()) {
@@ -160,8 +163,9 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
                     Tensor* indices, Tensor* scores) {
   tensorflow::GraphDefBuilder b;
   string output_name = "top_k";
-  tensorflow::ops::TopK(tensorflow::ops::Const(outputs[0], b.opts()),
-                        how_many_labels, b.opts().WithName(output_name));
+  tensorflow::ops::TopKV2(tensorflow::ops::Const(outputs[0], b.opts()),
+                          tensorflow::ops::Const(how_many_labels, b.opts()),
+                          b.opts().WithName(output_name));
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -184,12 +188,14 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
                       string labels_file_name) {
   std::vector<string> labels;
-  Status read_labels_status = ReadLabelsFile(labels_file_name, &labels);
+  size_t label_count;
+  Status read_labels_status =
+      ReadLabelsFile(labels_file_name, &labels, &label_count);
   if (!read_labels_status.ok()) {
     LOG(ERROR) << read_labels_status;
     return read_labels_status;
   }
-  const int how_many_labels = 5;
+  const int how_many_labels = std::min(5, static_cast<int>(label_count));
   Tensor indices;
   Tensor scores;
   TF_RETURN_IF_ERROR(GetTopLabels(outputs, how_many_labels, &indices, &scores));
@@ -223,50 +229,6 @@ Status CheckTopLabel(const std::vector<Tensor>& outputs, int expected,
   return Status::OK();
 }
 
-namespace {
-
-bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                     string* dst) {
-  if (arg.Consume(flag) && arg.Consume("=")) {
-    *dst = arg.ToString();
-    return true;
-  }
-
-  return false;
-}
-
-bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                    int32* dst) {
-  if (arg.Consume(flag) && arg.Consume("=")) {
-    char extra;
-    return (sscanf(arg.data(), "%d%c", dst, &extra) == 1);
-  }
-
-  return false;
-}
-
-bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
-                   bool* dst) {
-  if (arg.Consume(flag)) {
-    if (arg.empty()) {
-      *dst = true;
-      return true;
-    }
-
-    if (arg == "=true") {
-      *dst = true;
-      return true;
-    } else if (arg == "=false") {
-      *dst = false;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-}  // namespace
-
 int main(int argc, char* argv[]) {
   // These are the command-line flags the program can understand.
   // They define where the graph and input data is located, and what kind of
@@ -283,51 +245,33 @@ int main(int argc, char* argv[]) {
   int32 input_height = 299;
   int32 input_mean = 128;
   int32 input_std = 128;
-
   string input_layer = "Mul";
   string output_layer = "softmax";
   bool self_test = false;
   string root_dir = "";
-
-  std::vector<char*> unknown_flags;
-  for (int i = 1; i < argc; ++i) {
-    if (string(argv[i]) == "--") {
-      while (i < argc) {
-        unknown_flags.push_back(argv[i]);
-        ++i;
-      }
-      break;
-    }
-
-    if (ParseStringFlag(argv[i], "--image", &image) ||
-        ParseStringFlag(argv[i], "--graph", &graph) ||
-        ParseStringFlag(argv[i], "--labels", &labels) ||
-        ParseInt32Flag(argv[i], "--input_width", &input_width) ||
-        ParseInt32Flag(argv[i], "--input_height", &input_height) ||
-        ParseInt32Flag(argv[i], "--input_mean", &input_mean) ||
-        ParseInt32Flag(argv[i], "--input_std", &input_std) ||
-        ParseStringFlag(argv[i], "--input_layer", &input_layer) ||
-        ParseStringFlag(argv[i], "--output_layer", &output_layer) ||
-        ParseBoolFlag(argv[i], "--self_test", &self_test) ||
-        ParseStringFlag(argv[i], "--root_dir", &root_dir)) {
-      continue;
-    }
-
-    fprintf(stderr, "Unknown flag: %s\n", argv[i]);
+  const bool parse_result = tensorflow::ParseFlags(
+      &argc, argv, {Flag("image", &image),                //
+                    Flag("graph", &graph),                //
+                    Flag("labels", &labels),              //
+                    Flag("input_width", &input_width),    //
+                    Flag("input_height", &input_height),  //
+                    Flag("input_mean", &input_mean),      //
+                    Flag("input_std", &input_std),        //
+                    Flag("input_layer", &input_layer),    //
+                    Flag("output_layer", &output_layer),  //
+                    Flag("self_test", &self_test),        //
+                    Flag("root_dir", &root_dir)});
+  if (!parse_result) {
+    LOG(ERROR) << "Error parsing command-line flags.";
     return -1;
   }
 
-  // Passthrough any extra flags.
-  int dst = 1;  // Skip argv[0]
-
-  for (char* f : unknown_flags) {
-    argv[dst++] = f;
-  }
-  argv[dst++] = nullptr;
-  argc = unknown_flags.size() + 1;
-
   // We need to call this to set up global state for TensorFlow.
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1];
+    return -1;
+  }
 
   // First we load and initialize the model.
   std::unique_ptr<tensorflow::Session> session;

@@ -38,8 +38,6 @@ from datetime import datetime
 import math
 import time
 
-import tensorflow.python.platform
-from tensorflow.python.platform import gfile
 import numpy as np
 import tensorflow as tf
 
@@ -138,7 +136,7 @@ def evaluate():
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
 
-    graph_def = tf.get_default_graph().as_graph_def()
+    graph_def = tf.get_default_graph().as_graph_def(add_shapes=True)
     summary_writer = tf.train.SummaryWriter(FLAGS.eval_dir,
                                             graph_def=graph_def)
 
@@ -151,9 +149,9 @@ def evaluate():
 
 def main(argv=None):  # pylint: disable=unused-argument
   cifar10.maybe_download_and_extract()
-  if gfile.Exists(FLAGS.eval_dir):
-    gfile.DeleteRecursively(FLAGS.eval_dir)
-  gfile.MakeDirs(FLAGS.eval_dir)
+  if tf.gfile.Exists(FLAGS.eval_dir):
+    tf.gfile.DeleteRecursively(FLAGS.eval_dir)
+  tf.gfile.MakeDirs(FLAGS.eval_dir)
   evaluate()
 
 

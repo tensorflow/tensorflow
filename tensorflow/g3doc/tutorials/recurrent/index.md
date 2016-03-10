@@ -10,7 +10,7 @@ for an introduction to recurrent neural networks and LSTMs in particular.
 
 In this tutorial we will show how to train a recurrent neural network on
 a challenging task of language modeling. The goal of the problem is to fit a
-probabilistic model which assigns probablities to sentences. It does so by
+probabilistic model which assigns probabilities to sentences. It does so by
 predicting next words in a text given a history of previous words. For this
 purpose we will use the Penn Tree Bank (PTB) dataset, which is a popular
 benchmark for measuring quality of these models, whilst being small and
@@ -21,8 +21,9 @@ recognition, machine translation, or image captioning. It is also fun, too --
 take a look [here] (http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
-[Zaremba et al., 2014] (http://arxiv.org/abs/1409.2329), which achieves very
-good results on the PTB dataset.
+[Zaremba et al., 2014] (http://arxiv.org/abs/1409.2329)
+([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good results
+on the PTB dataset.
 
 ## Tutorial Files
 
@@ -80,7 +81,7 @@ of unrolled steps.
 This is easy to implement by feeding inputs of length `num_steps` at a time and
 doing backward pass after each iteration.
 
-A simplifed version of the code for the graph creation for truncated
+A simplified version of the code for the graph creation for truncated
 backpropagation:
 
 ```python
@@ -91,7 +92,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 initial_state = state = tf.zeros([batch_size, lstm.state_size])
 
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = lstm(words[:, i], state)
 
@@ -129,7 +130,7 @@ word_embeddings = tf.nn.embedding_lookup(embedding_matrix, word_ids)
 The embedding matrix will be initialized randomly and the model will learn to
 differentiate the meaning of words just by looking at the data.
 
-### Loss Fuction
+### Loss Function
 
 We want to minimize the average negative log probability of the target words:
 
@@ -158,7 +159,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = stacked_lstm(words[:, i], state)
 

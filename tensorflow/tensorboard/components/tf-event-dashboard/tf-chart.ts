@@ -12,10 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="../../typings/tsd.d.ts" />
-/// <reference path="../plottable/plottable.d.ts" />
-
 module TF {
   type TFDatum = [number, number, number];
   type tooltipMap = {[run: string]: string};
@@ -85,7 +81,8 @@ module TF {
           let idx: number = _.sortedIndex(xs, x);
           if (idx === 0 || idx === data.length) {
             // Only find a point when the cursor is inside the range of the data
-            // if the cursor is to the left or right of all the data, don't attach.
+            // if the cursor is to the left or right of all the data, don't
+            // attach.
             return;
           }
           let previous = data[idx - 1];

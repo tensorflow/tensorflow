@@ -50,9 +50,11 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
   starter_learning_rate = 0.1
   learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                              100000, 0.96, staircase=True)
-  optimizer = tf.GradientDescentOptimizer(learning_rate)
   # Passing global_step to minimize() will increment it at each step.
-  optimizer.minimize(...my loss..., global_step=global_step)
+  learning_step = (
+      tf.GradientDescentOptimizer(learning_rate)
+      .minimize(...my loss..., global_step=global_step)
+  )
   ```
 
   Args:
@@ -65,7 +67,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
     decay_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The decay rate.
     staircase: Boolean.  It `True` decay the learning rate at discrete intervals.
-    name: string.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+    name: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed

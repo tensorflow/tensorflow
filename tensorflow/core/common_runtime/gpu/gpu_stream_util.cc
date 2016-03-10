@@ -61,7 +61,7 @@ Status AssignStreams(const Graph* graph, const AssignStreamsOpts& opts,
       }
     }
   }
-  // We perform stream assigmnent assuming a large number of
+  // We perform stream assignment assuming a large number of
   // stream IDs and then map these down to the required number of streams
   // using simple round-robin.
   // Stream Assignment strategy:

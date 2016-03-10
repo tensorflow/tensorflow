@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Macros to apply another macro to lists of supported types.  If you change
 // the lists of types, please also update the list in types.cc.
@@ -72,10 +72,13 @@ limitations under the License.
   TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m); \
   m(complex64)
 
+#define TF_CALL_POD_TYPES(m) \
+  TF_CALL_NUMBER_TYPES(m);   \
+  m(bool)
+
 // Call "m" on all types.
 #define TF_CALL_ALL_TYPES(m) \
-  TF_CALL_NUMBER_TYPES(m);   \
-  m(bool);                   \
+  TF_CALL_POD_TYPES(m);      \
   m(string)
 
 // Call "m" on all types supported on GPU.
@@ -100,6 +103,8 @@ limitations under the License.
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) m(float)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)
+
+#define TF_CALL_POD_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 
 #define TF_CALL_ALL_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 

@@ -20,7 +20,6 @@ limitations under the License.
 #define TENSORFLOW_CC_OPS_STANDARD_OPS_H_
 
 #include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/attention_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/sparse_ops.h"
 #include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/cc/ops/string_ops.h"
-#include "tensorflow/cc/ops/summary_ops.h"
 #include "tensorflow/cc/ops/training_ops.h"
 #include "tensorflow/cc/ops/user_ops.h"
 

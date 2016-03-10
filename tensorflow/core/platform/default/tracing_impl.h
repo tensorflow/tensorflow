@@ -21,10 +21,10 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/tracing.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace port {

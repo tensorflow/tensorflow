@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_LOOKUP_INTERFACE_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace lookup {

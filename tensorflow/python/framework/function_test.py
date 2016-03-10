@@ -18,17 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import time
+
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-
 from tensorflow.python.framework import function
-from tensorflow.python.ops.functional_ops import symbolic_gradient
+from tensorflow.python.ops import functional_ops
 
 
 class FunctionTest(tf.test.TestCase):
@@ -111,27 +108,46 @@ class FunctionTest(tf.test.TestCase):
       return x * x + 1.0
 
     def XSquarePlusOneGrad(x, dy):
-      dx = symbolic_gradient(input=[x, dy],
-                             Tout=[tf.float32],
-                             f="XSquarePlusOne",
-                             name="dx")
+      dx = functional_ops._symbolic_gradient(input=[x, dy],
+                                             Tout=[tf.float32],
+                                             f="XSquarePlusOne",
+                                             name="dx")
       return dx
 
     g = tf.Graph()
     with g.as_default():
-      f_def = function.define_function(XSquarePlusOne, {"x": tf.float32})
-      g._add_function(f_def)
-      g_def = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
-                                                            "dy": tf.float32})
-      g._add_function(g_def)
+      f = function.define_function(XSquarePlusOne, {"x": tf.float32})
+      g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
+                                                        "dy": tf.float32})
       epsilon = tf.constant([0.1])
       two = tf.constant([2.0])
-      call_f = function.call_function(f_def, two)
-      call_g = function.call_function(g_def, two, epsilon)
+      call_f = function.call_function(f, two)
+      call_g = function.call_function(g, two, epsilon)
 
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
         self.assertAllClose([0.4], sess.run(call_g))
+
+  def testTanhSymGrad(self):
+    g = tf.Graph()
+    with g.as_default():
+      @function.Defun(tf.float32)
+      def Forward(x):
+        return tf.reduce_sum(tf.tanh(x))
+      x = tf.placeholder(tf.float32)
+      y = Forward(x)
+      dx = tf.gradients([y], [x])
+
+    inp = np.array([-1, 1, 2, -2], dtype=np.float32)
+    feed = {x: inp}
+    cfg = tf.ConfigProto(
+        graph_options=tf.GraphOptions(
+            optimizer_options=tf.OptimizerOptions(
+                opt_level=tf.OptimizerOptions.L1,
+                do_function_inlining=True)))
+    with tf.Session(graph=g, config=cfg) as sess:
+      out, = sess.run(dx, feed)
+    self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
   def testSymGradShape(self):
     g = tf.Graph()
@@ -143,9 +159,9 @@ class FunctionTest(tf.test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = symbolic_gradient(input=[x, y, dz],
-                                 Tout=[tf.float32] * 2,
-                                 f="Foo")
+      dx, dy = functional_ops._symbolic_gradient(input=[x, y, dz],
+                                                 Tout=[tf.float32] * 2,
+                                                 f="Foo")
       self.assertEquals(x.get_shape(), dx.get_shape())
       self.assertEquals(y.get_shape(), dy.get_shape())
 
@@ -184,9 +200,6 @@ class FunctionTest(tf.test.TestCase):
     def NoResult():
       pass
 
-    def VarArgs(*unused_b):
-      return tf.constant([1])
-
     def DefaultArg(unused_a=12):
       return tf.constant([1])
 
@@ -199,11 +212,9 @@ class FunctionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
         function.define_function(NoResult, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
-        function.define_function(VarArgs, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(DefaultArg, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(KwArgs, {})
       with self.assertRaisesRegexp(ValueError, "specified input types"):
         function.define_function(PlusMinus, {})
@@ -260,12 +271,13 @@ class FunctionTest(tf.test.TestCase):
 
   def testFunctionDecorator(self):
 
-    @function.Defun(b=tf.int32)
-    def Minus1(b):
-      return b - 1
-
     with tf.Graph().as_default():
-      two = tf.constant([2])
+
+      @function.Defun(tf.float32)
+      def Minus1(b):
+        return b - 1.0
+
+      two = tf.constant([2.])
       call1 = Minus1(two)
       self.assertEquals("Minus1", call1.op.name)
       # pylint: disable=unexpected-keyword-arg
@@ -276,59 +288,169 @@ class FunctionTest(tf.test.TestCase):
         self.assertAllEqual([1], sess.run(call1))
         self.assertAllEqual([0], sess.run(call2))
 
+  def testNestedFunction(self):
+    with tf.Graph().as_default():
+
+      @function.Defun(tf.float32)
+      def Cube(x):
+        return x * x * x
+
+      @function.Defun(tf.float32, tf.float32)
+      def CubeXPlusY(x, y):
+        return Cube(x) + y
+
+      z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
+      with self.test_session():
+        self.assertAllEqual(z.eval(), 25.0)
+
+
+class UnrollLSTMTest(tf.test.TestCase):
+  BATCH_SIZE = 16
+  LSTM_DIMS = 32
+  NUM_UNROLL = 20
+
+  def _Weights(self):
+    dims = self.LSTM_DIMS
+    return tf.random_uniform([2 * dims, 4 * dims], -1, 1, seed=123456)
+
+  def _Input(self):
+    return tf.random_uniform(
+        [self.NUM_UNROLL, self.BATCH_SIZE, self.LSTM_DIMS],
+        seed=654321)
+
+  # Helper to construct a LSTM cell graph.
+  @classmethod
+  def LSTMCell(cls, x, mprev, cprev, weights):
+    xm = tf.concat(1, [x, mprev])
+    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
+    new_c = tf.clip_by_value(new_c, -50.0, 50.0)
+    new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
+    return new_m, new_c
+
+  def _BuildForward(self, weights, inp, mode="cell"):
+
+    def Loop(cell, w, i):
+      x = tf.unpack(i, self.NUM_UNROLL)
+      m = tf.zeros_like(x[0])
+      c = tf.zeros_like(x[0])
+      for i in range(self.NUM_UNROLL):
+        m, c = cell(x[i], m, c, w)
+      return m
+
+    cell = UnrollLSTMTest.LSTMCell
+    if mode == "complete":
+      # Constructs the complete graph in python.
+      return Loop(cell, weights, inp)
+
+    cell = function.Defun(x=tf.float32,
+                          mprev=tf.float32,
+                          cprev=tf.float32,
+                          weights=tf.float32)(cell)
+    if mode == "cell":
+      # Just represent the LSTM as a function.
+      return Loop(cell, weights, inp)
+
+    if mode == "loop":
+      # Wraps the whole loop as a function.
+      @function.Defun(tf.float32, tf.float32)
+      def LSTMLoop(w, i):
+        return Loop(cell, w, i)
+
+      return LSTMLoop(weights, inp)
+
+    if mode == "loop10":
+      # Wraps 10 lstm steps into one function, and the whole loop
+      # into another calling the formers.
+
+      # Groups 10 steps at a time.
+      @function.Defun(tf.float32, tf.float32, tf.float32,
+                      *([tf.float32] * 10))
+      def Loop10(w, m, c, *args):
+        for x in args:
+          m, c = cell(x, m, c, w)
+        return m, c
+
+      @function.Defun(tf.float32, tf.float32)
+      def LSTMLoop10(weights, inp):
+        x = tf.unpack(inp, self.NUM_UNROLL)
+        m = tf.zeros_like(x[0])
+        c = tf.zeros_like(x[0])
+        assert self.NUM_UNROLL % 10 == 0
+        for i in range(0, self.NUM_UNROLL, 10):
+          m, c = Loop10(weights, m, c, *x[i:i + 10])
+        return m
+
+      return LSTMLoop10(weights, inp)
+
+  def _OptimizerOptions(self):
+    ret = []
+    for cse in [False, True]:
+      for inline in [False, True]:
+        for cfold in [False, True]:
+          ret.append(tf.ConfigProto(graph_options=tf.GraphOptions(
+              optimizer_options=tf.OptimizerOptions(
+                  opt_level=tf.OptimizerOptions.L0,
+                  do_common_subexpression_elimination=cse,
+                  do_function_inlining=inline,
+                  do_constant_folding=cfold))))
+    return ret
+
   def testUnrollLSTM(self):
-
-    # Helper to construct a LSTM cell graph.
-    def LSTMCell(x, mprev, cprev, weights):
-      xm = tf.concat(1, [x, mprev])
-      i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
-      new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
-      new_c = tf.clip_by_value(new_c, -50.0, 50.0)
-      new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
-      return new_m, new_c
-
-    # Helper to construct a LSTM function.
-    @function.Defun(x=tf.float32,
-                    mprev=tf.float32,
-                    cprev=tf.float32,
-                    weights=tf.float32)
-    def LSTMCellFunc(x, mprev, cprev, weights):
-      return LSTMCell(x, mprev, cprev, weights)
-
-    batch_size = 16
-    lstm_dims = 32
-    num_unroll = 100
-
     # Run one step of the unrolled lstm graph.
-    def RunStep(cell):
+    def RunForward(mode, cfg=None):
+      print("mode = ", mode)
       g = tf.Graph()
       start = time.time()
       with g.as_default():
-        m = tf.zeros(shape=[batch_size, lstm_dims])
-        c = tf.zeros(shape=[batch_size, lstm_dims])
-        weights = tf.random_uniform(
-            [2 * lstm_dims, 4 * lstm_dims],
-            -1,
-            1,
-            seed=123456)
-        inputs = tf.random_uniform(
-            [num_unroll, batch_size, lstm_dims],
-            seed=654321)
-        x = tf.unpack(inputs)
-        for i in range(num_unroll):
-          m, c = cell(x[i], m, c, weights)
+        weights = self._Weights()
+        inp = self._Input()
+        m = self._BuildForward(weights, inp, mode)
       gdef = g.as_graph_def()
       finish = time.time()
       print("time: ", finish - start, " txt size: ", len(str(gdef)),
             "gdef bin size: ", len(gdef.SerializeToString()))
-      with g.as_default(), tf.Session() as sess:
-        mv, cv = sess.run([m, c])
-      return mv, cv
+      with g.as_default(), tf.Session(config=cfg) as sess:
+        return sess.run(m)
 
-    mv0, cv0 = RunStep(LSTMCell)
-    mv1, cv1 = RunStep(LSTMCellFunc)
-    self.assertAllClose(mv0, mv1)
-    self.assertAllClose(cv0, cv1)
+    mv0 = RunForward("complete")
+    for cfg in self._OptimizerOptions():
+      print("cfg = ", cfg)
+      mv1 = RunForward("cell", cfg)
+      mv2 = RunForward("loop", cfg)
+      mv3 = RunForward("loop10", cfg)
+      self.assertAllClose(mv0, mv1, rtol=1e-4)
+      self.assertAllClose(mv0, mv2, rtol=1e-4)
+      self.assertAllClose(mv0, mv3, rtol=1e-4)
+
+  def testUnrollLSTMGrad(self):
+    # Run one step of the unrolled lstm graph.
+    def RunForwardBackward(mode, cfg=None):
+      print("mode = ", mode)
+      g = tf.Graph()
+      start = time.time()
+      with g.as_default():
+        weights = self._Weights()
+        inp = self._Input()
+        m = self._BuildForward(weights, inp, mode)
+        loss = tf.reduce_sum(tf.square(m))
+        dw = tf.gradients([loss], [weights])
+      gdef = g.as_graph_def()
+      finish = time.time()
+      print("time: ", finish - start, " txt size: ", len(str(gdef)),
+            "gdef bin size: ", len(gdef.SerializeToString()))
+      with g.as_default(), tf.Session(config=cfg) as sess:
+        return sess.run(dw)
+
+    d0 = RunForwardBackward("complete")
+    for cfg in self._OptimizerOptions():
+      print("cfg = ", cfg)
+      d1 = RunForwardBackward("cell", cfg)
+      d2 = RunForwardBackward("loop", cfg)
+      d3 = RunForwardBackward("loop10", cfg)
+      self.assertAllClose(d0, d1, rtol=1e-4)
+      self.assertAllClose(d0, d2, rtol=1e-4)
+      self.assertAllClose(d0, d3, rtol=1e-4)
 
 
 if __name__ == "__main__":

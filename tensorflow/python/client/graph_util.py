@@ -21,12 +21,12 @@ from __future__ import division
 from __future__ import print_function
 import copy
 
-import tensorflow.python.platform
-
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import logging
 
 _VARIABLE_OPS = {
@@ -34,10 +34,10 @@ _VARIABLE_OPS = {
     "AssignAdd",
     "AssignSub",
     "Queue",
-    "RandomParameters",
     "ScatterAdd",
     "ScatterSub",
     "ScatterUpdate",
+    "TruncatedNormal",
     "Variable",
 }
 
@@ -196,7 +196,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     seq += 1
 
   for d in dest_nodes:
-    assert d in name_to_node_map, "%d is not in graph" % d
+    assert d in name_to_node_map, "%s is not in graph" % d
 
   nodes_to_keep = set()
   # Breadth first search to find all the nodes that we should keep.
@@ -217,3 +217,65 @@ def extract_sub_graph(graph_def, dest_nodes):
     out.node.extend([copy.deepcopy(name_to_node_map[n])])
 
   return out
+
+
+def tensor_shape_from_node_def_name(graph, input_name):
+  """Convenience function to get a shape from a NodeDef's input string."""
+  # To get a tensor, the name must be in the form <input>:<port>, for example
+  # 'Mul:0'. The GraphDef input strings don't always have the port specified
+  # though, so if there isn't a colon we need to add a default ':0' to the end.
+  if ":" not in input_name:
+    canonical_name = input_name + ":0"
+  else:
+    canonical_name = input_name
+  tensor = graph.get_tensor_by_name(canonical_name)
+  shape = tensor.get_shape()
+  return shape
+
+
+def convert_variables_to_constants(sess, input_graph_def, output_node_names):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  If you have a trained graph containing Variable ops, it can be convenient to
+  convert them all to Const ops holding the same values. This makes it possible
+  to describe the network fully with a single GraphDef file, and allows the
+  removal of a lot of ops related to loading and saving the variables.
+
+  Args:
+    sess: Active TensorFlow session containing the variables.
+    input_graph_def: GraphDef object holding the network.
+    output_node_names: List of name strings for the result nodes of the graph.
+
+  Returns:
+    GraphDef containing a simplified version of the original.
+  """
+  found_variables = {}
+  for node in input_graph_def.node:
+    if node.op == "Assign":
+      variable_name = node.input[0]
+      found_variables[variable_name] = sess.run(variable_name + ":0")
+
+  # This graph only includes the nodes needed to evaluate the output nodes, and
+  # removes unneeded nodes like those involved in saving and assignment.
+  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
+
+  output_graph_def = graph_pb2.GraphDef()
+  how_many_converted = 0
+  for input_node in inference_graph.node:
+    output_node = graph_pb2.NodeDef()
+    if input_node.name in found_variables:
+      output_node.op = "Const"
+      output_node.name = input_node.name
+      dtype = input_node.attr["dtype"]
+      data = found_variables[input_node.name]
+      output_node.attr["dtype"].CopyFrom(dtype)
+      output_node.attr["value"].CopyFrom(attr_value_pb2.AttrValue(
+          tensor=tensor_util.make_tensor_proto(data,
+                                               dtype=dtype.type,
+                                               shape=data.shape)))
+      how_many_converted += 1
+    else:
+      output_node.CopyFrom(input_node)
+    output_graph_def.node.extend([output_node])
+  print("Converted %d variables to const ops." % how_many_converted)
+  return output_graph_def

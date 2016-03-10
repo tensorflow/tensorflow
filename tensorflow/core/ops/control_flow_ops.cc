@@ -97,6 +97,28 @@ output: Will be set to the available input tensor.
 value_index: The index of the chosen input tensor in `inputs`.
 )doc");
 
+REGISTER_OP("RefMerge")
+    .Input("inputs: Ref(N * T)")
+    .Output("output: Ref(T)")
+    .Output("value_index: int32")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .Doc(R"doc(
+Forwards the value of an available tensor from `inputs` to `output`.
+
+`Merge` waits for at least one of the tensors in `inputs` to become available.
+It is usually combined with `Switch` to implement branching.
+
+`Merge` forwards the first tensor for become available to `output`, and sets
+`value_index` to its index in `inputs`.
+
+It is an error if more than one tensor in `inputs` is available.
+
+inputs: The input tensors, exactly one of which will become available.
+output: Will be set to the available input tensor.
+value_index: The index of the chosen input tensor in `inputs`.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Enter")
     .Input("data: T")
@@ -158,10 +180,34 @@ data: The tensor to be made available to the parent frame.
 output: The same tensor as `data`.
 )doc");
 
+REGISTER_OP("RefExit")
+    .Input("data: Ref(T)")
+    .Output("output: Ref(T)")
+    .Attr("T: type")
+    .Doc(R"doc(
+Exits the current frame to its parent frame.
+
+Exit makes its input `data` available to the parent frame.
+
+data: The tensor to be made available to the parent frame.
+output: The same tensor as `data`.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Makes its input available to the next iteration.
+
+data: The tensor to be made available to the next iteration.
+output: The same tensor as `data`.
+)doc");
+
+REGISTER_OP("RefNextIteration")
+    .Input("data: Ref(T)")
+    .Output("output: Ref(T)")
     .Attr("T: type")
     .Doc(R"doc(
 Makes its input available to the next iteration.
@@ -180,7 +226,7 @@ Forwards the input to the output.
 This operator represents the loop termination condition used by the
 "pivot" switches of a loop.
 
-input:= A boolean scalar, representing the branch predicate of the Switch op.
+input: A boolean scalar, representing the branch predicate of the Switch op.
 output: The same tensor as `input`.
 )doc");
 

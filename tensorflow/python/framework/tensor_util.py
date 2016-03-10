@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 # TODO(opensource): Add support for pyx_library in the open-source build.
@@ -47,6 +47,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
       np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
@@ -92,6 +93,7 @@ else:
       np.int32: SlowAppendIntArrayToTensorProto,
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
+      np.uint16: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplexArrayToTensorProto,
@@ -124,19 +126,6 @@ def GetNumpyAppendFn(dtype):
     else:
       return SlowAppendObjectArrayToTensorProto
   return GetFromNumpyDTypeDict(_NP_TO_APPEND_FN, dtype)
-
-
-def MakeTensorShapeProto(shape):
-  """Create a TensorShapeProto.
-
-  Args:
-    shape: List of integers representing the dimensions of the tensor.
-
-  Returns:
-    A TensorShapeProto.
-  """
-  return tensor_shape_pb2.TensorShapeProto(
-      dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
 
 
 def TensorShapeProtoToList(shape):
@@ -246,6 +235,7 @@ _TF_TO_IS_OK = {
     dtypes.float64: _FilterFloat,
     dtypes.int32: _FilterInt,
     dtypes.uint8: _FilterInt,
+    dtypes.uint16: _FilterInt,
     dtypes.int16: _FilterInt,
     dtypes.int8: _FilterInt,
     dtypes.string: _FilterStr,
@@ -368,9 +358,12 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
-      tensor_shape=MakeTensorShapeProto(shape))
+      tensor_shape=tensor_shape.as_shape(shape).as_proto())
 
   if is_same_size and numpy_dtype in _TENSOR_CONTENT_TYPES and shape_size > 1:
+    if nparray.size * nparray.itemsize >= (1 << 31):
+      raise ValueError(
+          "Cannot create a tensor proto whose content is larger than 2GB.")
     tensor_proto.tensor_content = nparray.tostring()
     return tensor_proto
 
@@ -430,8 +423,8 @@ def MakeNdarray(tensor):
                        num_elements).reshape(shape)
     else:
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.int16, dtypes.int8,
-                        dtypes.qint32, dtypes.quint8, dtypes.qint8,
+  elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16,
+                        dtypes.int8, dtypes.qint32, dtypes.quint8, dtypes.qint8,
                         dtypes.bfloat16]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
@@ -494,7 +487,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def ConstantValue(tensor):
+def constant_value(tensor):
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
@@ -539,29 +532,29 @@ def ConstantValue(tensor):
     else:
       return None
   elif tensor.op.type == "Range":
-    start = ConstantValue(tensor.op.inputs[0])
+    start = constant_value(tensor.op.inputs[0])
     if start is None:
       return None
-    limit = ConstantValue(tensor.op.inputs[1])
+    limit = constant_value(tensor.op.inputs[1])
     if limit is None:
       return None
-    delta = ConstantValue(tensor.op.inputs[2])
+    delta = constant_value(tensor.op.inputs[2])
     if delta is None:
       return None
     return np.arange(start, limit, delta, dtype=tensor.dtype.as_numpy_dtype)
   elif tensor.op.type == "Cast":
-    pre_cast = ConstantValue(tensor.op.inputs[0])
+    pre_cast = constant_value(tensor.op.inputs[0])
     if pre_cast is None:
       return None
     cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
     return pre_cast.astype(cast_dtype.as_numpy_dtype)
   elif tensor.op.type == "Concat":
-    dim = ConstantValue(tensor.op.inputs[0])
+    dim = constant_value(tensor.op.inputs[0])
     if dim is None:
       return None
     values = []
     for x in tensor.op.inputs[1:]:
-      value = ConstantValue(x)
+      value = constant_value(x)
       if value is None:
         return None
       values.append(value)

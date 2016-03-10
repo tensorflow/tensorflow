@@ -23,8 +23,9 @@ import os
 import re
 import tarfile
 
-from tensorflow.python.platform import gfile
 from six.moves import urllib
+
+from tensorflow.python.platform import gfile
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = "_PAD"
@@ -65,7 +66,7 @@ def gunzip_file(gz_path, new_path):
   """Unzips from gz_path into new_path."""
   print("Unpacking %s to %s" % (gz_path, new_path))
   with gzip.open(gz_path, "rb") as gz_file:
-    with open(new_path, "w") as new_file:
+    with open(new_path, "wb") as new_file:
       for line in gz_file:
         new_file.write(line)
 
@@ -255,7 +256,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
       (3) path to the token-ids for English development data-set,
       (4) path to the token-ids for French development data-set,
       (5) path to the English vocabulary file,
-      (6) path to the French vocabluary file.
+      (6) path to the French vocabulary file.
   """
   # Get wmt data to the specified directory.
   train_path = get_wmt_enfr_train_set(data_dir)

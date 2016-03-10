@@ -26,13 +26,8 @@ namespace tensorflow {
 
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
                    string* diff) {
-  if (actual.version() != expected.version()) {
-    if (diff != nullptr) {
-      *diff = strings::StrCat("Expected version ", expected.version(),
-                              ", got version ", actual.version());
-    }
-    return false;
-  }
+  // Intentionally do not check that versions match so that this routine can
+  // be used for less brittle golden file tests.
 
   std::unordered_map<string, const NodeDef*> actual_index;
   for (const NodeDef& node : actual.node()) {
@@ -161,9 +156,16 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected,
 
   std::unordered_set<string> actual_attr;
   for (const auto& a : actual.attr()) {
+    if (!a.first.empty() && a.first[0] == '_') {
+      continue;
+    }
     actual_attr.insert(a.first);
   }
   for (const auto& e : expected.attr()) {
+    if (!e.first.empty() && e.first[0] == '_') {
+      continue;
+    }
+
     if (actual_attr.erase(e.first) == 0) {
       if (diff != nullptr) {
         *diff = strings::StrCat("Node named '", actual.name(),

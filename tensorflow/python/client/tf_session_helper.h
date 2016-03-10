@@ -33,9 +33,10 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/status.h"
 #include "tensorflow/core/public/tensor_c_api.h"
 
 namespace tensorflow {
@@ -64,7 +65,7 @@ typedef std::vector<Safe_PyObjectPtr> Safe_PyObjectVector;
 Safe_PyObjectPtr make_safe(PyObject* o);
 
 // Run the graph associated with the session starting with the
-// supplied inputs[].  Regardless of success of failure, inputs[] are
+// supplied inputs[].  Regardless of success or failure, inputs[] are
 // stolen by the implementation (i.e. the implementation will
 // eventually call Py_DECREF on each array input).
 //
@@ -79,10 +80,44 @@ void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
                     const NameVector& target_nodes, Status* out_status,
                     PyObjectVector* out_values);
 
+// Set up the graph with the intended feeds and fetches for partial run.
+// *out_handle is owned by the caller.
+//
+// On success, returns a handle that is used for subsequent PRun calls.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+//
+// NOTE: This is EXPERIMENTAL and subject to change.
+void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
+                          const NameVector& output_names,
+                          const NameVector& target_nodes, Status* out_status,
+                          char** out_handle);
+
+// Continue to run the graph with additional feeds and fetches. The
+// execution state is uniquely identified by the handle.
+//
+// On success,  the tensors corresponding to output_names[0,noutputs-1]
+// are placed in out_values[], and these outputs[] become the property
+// of the caller (the caller must eventually call Py_DECREF on them).
+//
+// On failure,  out_status contains a tensorflow::Status with an error
+// message.
+//
+// NOTE: This is EXPERIMENTAL and subject to change.
+void TF_PRun_wrapper(TF_Session* session, const char* handle,
+                     const FeedVector& inputs, const NameVector& output_names,
+                     Status* out_status, PyObjectVector* out_values);
+
 // Import numpy.  This wrapper function exists so that the
 // PY_ARRAY_UNIQUE_SYMBOL can be safely defined in a .cc file to
 // avoid weird linking issues.
 void ImportNumpy();
+
+// Convenience wrapper around EqualGraphDef to make it easier to wrap.
+// Returns an explanation if a difference is found, or the empty string
+// for no difference.
+string EqualGraphDefWrapper(const string& actual, const string& expected);
 
 }  // namespace tensorflow
 

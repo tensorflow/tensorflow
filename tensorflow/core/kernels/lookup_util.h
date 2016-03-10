@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
 
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,4 +43,4 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
 }  // namespace lookup
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_

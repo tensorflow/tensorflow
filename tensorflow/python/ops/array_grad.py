@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -66,14 +67,14 @@ def _ConcatGrad(op, grad):
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
-    sizes = [array_ops.shape(x) for x in op.inputs[1:]]
-    mask, begin = _CreateDenseMaskAndBegin(sizes, concat_dim)
-    for size in sizes:
+    sizes = array_ops.shape_n(op.inputs[1:])
+    # pylint: disable=protected-access
+    offset = gen_array_ops._concat_offset(concat_dim, sizes)
+    # pylint: enable=protected-access
+    for (begin, size) in zip(offset, sizes):
       out_grads.append(array_ops.slice(grad, begin, size))
-      # Lint complains begin = begin + ...
-      begin = math_ops.add(begin, size * mask)
   elif isinstance(grad, ops.IndexedSlices):
-    concat_dim_static = tensor_util.ConstantValue(concat_dim)
+    concat_dim_static = tensor_util.constant_value(concat_dim)
     if concat_dim_static is None:
       raise ValueError("Can only compute IndexedSlices gradient with "
                        "statically-known concat_dim")
@@ -118,6 +119,9 @@ def _ConcatGrad(op, grad):
     raise TypeError("Expected Tensor or IndexedSlices, got %s" % type(grad))
 
   return [None] + out_grads
+
+
+ops.NoGradient("ConcatOffset")
 
 
 @ops.RegisterGradient("Slice")
@@ -165,10 +169,13 @@ def _FillGrad(_, grad):
   return None, math_ops.reduce_sum(grad)
 
 
+ops.NoGradient("ZerosLike")
+
+
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   # op.inputs[0] can be large, so colocate the shape calculation with it.
-  with ops.device(op.inputs[0].device):
+  with ops.colocate_with(op.inputs[0]):
     dense_shape = array_ops.shape(op.inputs[0])
     values_shape = array_ops.concat(0, [[-1], dense_shape[1:]])
 
@@ -221,6 +228,9 @@ def _TransposeGrad(op, grad):
 
 
 ops.NoGradient("Shape")
+
+
+ops.NoGradient("ShapeN")
 
 
 ops.NoGradient("Rank")
@@ -288,3 +298,20 @@ def _ReverseSequenceGrad(op, grad):
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
   return array_ops.reverse(grad, reverse_dims), None
+
+
+@ops.RegisterGradient("SpaceToDepth")
+def _SpaceToDepthGrad(op, grad):
+  # Its gradient is the opposite op: DepthToSpace.
+  block_size = op.get_attr("block_size")
+  return array_ops.depth_to_space(grad, block_size)
+
+
+@ops.RegisterGradient("DepthToSpace")
+def _DepthToSpaceGrad(op, grad):
+  # Its gradient is the opposite op: SpaceToDepth.
+  block_size = op.get_attr("block_size")
+  return array_ops.space_to_depth(grad, block_size)
+
+
+ops.NoGradient("OneHot")

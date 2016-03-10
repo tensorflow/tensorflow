@@ -14,19 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // This file declares the functions and structures for memory I/O with libjpeg
-// These functions are not meant to be used directly, see jpeg_mem.h isntead.
+// These functions are not meant to be used directly, see jpeg_mem.h instead.
 
 #ifndef TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
 #define TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
 
-extern "C" {
-#include "external/jpeg_archive/jpeg-9a/jerror.h"
-#include "external/jpeg_archive/jpeg-9a/jinclude.h"
-#include "external/jpeg_archive/jpeg-9a/jpeglib.h"
-#include "external/jpeg_archive/jpeg-9a/transupp.h"  // for rotations
-}
-
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/jpeg.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace jpeg {

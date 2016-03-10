@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -24,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -40,16 +41,17 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
   //
   // "src_incarnation" is used to distinguish a worker when it
   // restarts.
-  return strings::StrCat(src_device, ";", strings::FpToString(src_incarnation),
-                         ";", dst_device, ";", name, ";", frame_iter.frame_id,
-                         ":", frame_iter.iter_id);
+  char buf[strings::kFastToBufferSize];
+  return strings::StrCat(
+      src_device, ";", strings::Uint64ToHexString(src_incarnation, buf), ";",
+      dst_device, ";", name, ";", frame_iter.frame_id, ":", frame_iter.iter_id);
 }
 
 // Return the prefix of "*s" up to the next occurrence of "delim", or
 // the whole remaining string if "delim" is not found.  "*s" is advanced
 // past the string returned plus the delimiter (if found).
 static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
-  for (int offset = 0; offset < s->size(); offset++) {
+  for (size_t offset = 0; offset < s->size(); offset++) {
     if ((*s)[offset] == delim) {
       StringPiece result(s->data(), offset);
       s->remove_prefix(offset + 1);  // +1: remove delim, as well
@@ -72,7 +74,7 @@ Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
   if (s.empty() &&          // Consumed the whole string
       !parts[4].empty() &&  // Exactly five parts
       DeviceNameUtils::ParseFullName(parts[0], &out->src) &&
-      strings::StringToFp(parts[1].ToString(), &out->src_incarnation) &&
+      strings::HexStringToUint64(parts[1], &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
     out->src_device.assign(parts[0].data(), parts[0].size());

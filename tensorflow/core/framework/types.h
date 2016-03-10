@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -71,6 +71,7 @@ extern const char* const DEVICE_CPU;  // "CPU"
 extern const char* const DEVICE_GPU;  // "GPU"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
+typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
 typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
 typedef gtl::ArraySlice<DataType> DataTypeSlice;
@@ -167,6 +168,7 @@ typedef Eigen::QUInt16 quint16;
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
 MATCH_TYPE_AND_ENUM(int32, DT_INT32);
+MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
 MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
 MATCH_TYPE_AND_ENUM(int16, DT_INT16);
 MATCH_TYPE_AND_ENUM(int8, DT_INT8);
@@ -186,6 +188,9 @@ MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 bool DataTypeCanUseMemcpy(DataType dt);
 
 bool DataTypeIsQuantized(DataType dt);
+
+// Returns a 0 on failure
+int DataTypeSize(DataType dt);
 
 }  // namespace tensorflow
 

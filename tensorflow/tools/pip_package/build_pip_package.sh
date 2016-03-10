@@ -33,8 +33,16 @@ function main() {
     exit 1
   fi
   cp -R \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
     ${TMPDIR}
+  # protobuf pip package doesn't ship with header files. Copy the headers
+  # over so user defined ops can be compiled.
+  rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/google \
+    ${TMPDIR}
+  rsync -a \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/third_party/eigen3 \
+    ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}

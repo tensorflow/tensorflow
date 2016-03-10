@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -27,7 +25,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import init_ops
 
 
-# Returns true iff the two initalizers produce the same tensor to
+# Returns true iff the two initializers produce the same tensor to
 # within a tiny tolerance.
 def identicaltest(tc, init1, init2, use_gpu):
   """Tests if two initializations are identical to within tiny tolerances.
@@ -87,6 +85,39 @@ def _init_sampler(tc, init, num, use_gpu):
     with tc.test_session(use_gpu=use_gpu):
       return init([num]).eval()
   return func
+
+
+class ConstantInitializersTest(tf.test.TestCase):
+
+  def testZerosInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape, initializer=tf.zeros_initializer)
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.zeros(shape))
+
+  def testOnesInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape, initializer=tf.ones_initializer)
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.ones(shape))
+
+  def testConstantZeroInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape,
+                          initializer=tf.constant_initializer(0.0))
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.zeros(shape))
+
+  def testConstantOneInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable("x", shape=shape,
+                          initializer=tf.constant_initializer(1.0))
+      x.initializer.run()
+      self.assertAllEqual(x.eval(), np.ones(shape))
 
 
 class RandomNormalInitializationTest(tf.test.TestCase):
@@ -288,15 +319,15 @@ class DeviceTest(tf.test.TestCase):
   def testNoDevice(self):
     with tf.Graph().as_default():
       var = tf.Variable([[1.0, 1.0]])
-    self.assertEqual(None, var.device)
-    self.assertEqual(None, var.initializer.device)
+    self.assertDeviceEqual(None, var.device)
+    self.assertDeviceEqual(None, var.initializer.device)
 
   def testDevice(self):
     with tf.Graph().as_default():
       with tf.device("/job:ps"):
         var = tf.Variable([[1.0, 1.0]])
-    self.assertEqual("/job:ps", var.device)
-    self.assertEqual("/job:ps", var.initializer.device)
+    self.assertDeviceEqual("/job:ps", var.device)
+    self.assertDeviceEqual("/job:ps", var.initializer.device)
 
 
 if __name__ == "__main__":

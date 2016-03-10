@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 #include <Python.h>
 

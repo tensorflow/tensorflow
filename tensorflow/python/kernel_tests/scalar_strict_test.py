@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -52,7 +50,7 @@ class ScalarStrictTest(tf.test.TestCase):
     # Test various GraphDef versions
     for version in strict + lenient:
       with tf.Graph().as_default() as g:
-        g.graph_def_version = version
+        g.graph_def_versions.producer = version
         with self.test_session(graph=g) as sess:
           feed = {}
           xs = placeholders(args, feed)

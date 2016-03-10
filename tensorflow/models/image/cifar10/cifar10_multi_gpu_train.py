@@ -44,14 +44,10 @@ import os.path
 import re
 import time
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-from tensorflow.python.platform import gfile
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.models.image.cifar10 import cifar10
-# pylint: disable=unused-import,g-bad-import-order
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -95,7 +91,7 @@ def tower_loss(scope):
   loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
   loss_averages_op = loss_averages.apply(losses + [total_loss])
 
-  # Attach a scalar summmary to all individual losses and the total loss; do the
+  # Attach a scalar summary to all individual losses and the total loss; do the
   # same for the averaged version of the losses.
   for l in losses + [total_loss]:
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
@@ -243,8 +239,9 @@ def train():
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
 
+    graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=sess.graph_def)
+                                            graph_def=graph_def)
 
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()
@@ -275,9 +272,9 @@ def train():
 
 def main(argv=None):  # pylint: disable=unused-argument
   cifar10.maybe_download_and_extract()
-  if gfile.Exists(FLAGS.train_dir):
-    gfile.DeleteRecursively(FLAGS.train_dir)
-  gfile.MakeDirs(FLAGS.train_dir)
+  if tf.gfile.Exists(FLAGS.train_dir):
+    tf.gfile.DeleteRecursively(FLAGS.train_dir)
+  tf.gfile.MakeDirs(FLAGS.train_dir)
   train()
 
 

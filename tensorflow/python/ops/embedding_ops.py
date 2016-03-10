@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -27,7 +28,8 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-def embedding_lookup(params, ids, partition_strategy="mod", name=None):
+def embedding_lookup(params, ids, partition_strategy="mod", name=None,
+                     validate_indices=True):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -63,6 +65,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
     name: A name for the operation (optional).
+    validate_indices: Whether or not to validate gather indices.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -78,8 +81,9 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
     np = len(params)  # Number of partitions
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
-      with ops.device(params[0].device):
-        return array_ops.gather(params[0], ids, name=name)
+      with ops.colocate_with(params[0]):
+        return array_ops.gather(params[0], ids, name=name,
+                                validate_indices=validate_indices)
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
@@ -101,7 +105,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
         else:
           dim_0_sizes = []
           for p in xrange(np):
-            with ops.device(params[p].device):
+            with ops.colocate_with(params[p]):
               dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
@@ -135,15 +139,17 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
       for p in xrange(np):
-        with ops.device(params[p].device):
-          partitioned_result.append(array_ops.gather(params[p], gather_ids[p]))
+        with ops.colocate_with(params[p]):
+          partitioned_result.append(array_ops.gather(
+              params[p], gather_ids[p],
+              validate_indices=validate_indices))
       # Stitch these back together
       ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
                                          name=name)
       # Reshape to reverse the flattening of ids.
       # It's important that we compute params[0].shape on the right device
       # to avoid data motion.
-      with ops.device(params[0].device):
+      with ops.colocate_with(params[0]):
         params_shape = array_ops.shape(params[0])
       ret = array_ops.reshape(ret, array_ops.concat(0, [
           array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))

@@ -91,6 +91,7 @@ print(sess.run(var))
 @@truncated_normal
 @@random_uniform
 @@random_shuffle
+@@random_crop
 @@set_random_seed
 
 """
@@ -101,7 +102,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -125,9 +125,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
    elements specified by `shape`, the last element in the list will be used
    to fill the remaining entries.
 
-   The argument `shape` is optional. If present, it specifies the dimensions
-   of the resulting tensor. If not present, then the tensor is a scalar (0-D)
-   if `value` is a scalar, or 1-D otherwise.
+   The argument `shape` is optional. If present, it specifies the dimensions of
+   the resulting tensor. If not present, the shape of `value` is used.
 
    If the argument `dtype` is not specified, then the type is inferred from
    the type of `value`.

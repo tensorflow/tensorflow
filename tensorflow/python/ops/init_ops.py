@@ -46,6 +46,15 @@ def _assert_float_dtype(dtype):
   return dtype
 
 
+# TODO(irving) Move array_ops.zeros_initializer here.
+zeros_initializer = array_ops.zeros_initializer
+
+
+def ones_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for ones() to match the Initializer spec."""
+  return array_ops.ones(shape, dtype)
+
+
 def constant_initializer(value=0.0, dtype=dtypes.float32):
   """Returns an initializer that generates tensors with a single value.
 
@@ -161,7 +170,8 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None,
   A similar calculation for convolutional networks gives an analogous result
   with `dim` equal to the product of the first 3 dimensions.  When
   nonlinearities are present, we need to multiply this by a constant `factor`.
-  See <https://arxiv.org/pdf/1412.6558v3.pdf> for deeper motivation, experiments
+  See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
+  ([pdf](http://arxiv.org/pdf/1412.6558.pdf)) for deeper motivation, experiments
   and the calculation of constants. In section 2.3 there, the constants were
   numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 

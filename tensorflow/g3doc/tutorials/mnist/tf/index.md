@@ -390,7 +390,7 @@ summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
 ```
 
 Lastly, the events file will be updated with new summary values every time the
-`summary_op` is run and the ouput passed to the writer's `add_summary()`
+`summary_op` is run and the output passed to the writer's `add_summary()`
 function.
 
 ```python

@@ -77,6 +77,26 @@ format:
     1443857105.704628,3438,0.5427092909812927
     1443857225.705133,5417,0.5457325577735901
 
+## '/scalars?[sample_count=10]'
+
+Without any parameters, returns a dictionary mapping from run name to a
+dictionary mapping from tag name to a sampled list of scalars from that run and
+tag. The values are given in the same format as when the run and tag are
+specified. For example:
+
+    {
+      "train_run": {
+        "my_tag": [
+          [1443856985.705543, 1448, 0.7461960315704346],
+          [1443857105.704628, 3438, 0.5427092909812927],
+          [1443857225.705133, 5417, 0.5457325577735901]
+        ]
+      }
+    }
+
+The samples are distributed uniformly over the list of values. The sample_count
+parameter is optional and defaults to 10; it must be at least 2. The first and
+the last value will always be sampled.
 
 ## '/histograms?run=foo&tag=bar'
 
@@ -167,13 +187,27 @@ replaced with other images. (See Notes for details on the reservoir sampling.)
 An example call to this route would look like this:
 /individualImage?index=0&tagname=input%2Fimage%2F2&run=train
 
-## `/graph?run=foo`
+## `/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
 
 Returns the graph definition for the given run in gzipped pbtxt format. The
 graph is composed of a list of nodes, where each node is a specific TensorFlow
 operation which takes as inputs other nodes (operations).
 
-An example pbtxt response of graph with 3 nodes:
+The query parameters `limit_attr_size` and `large_attrs_key` are optional.
+
+`limit_attr_size` specifies the maximum allowed size in bytes, before the
+attribute is considered large and filtered out of the graph. If specified,
+it must be an int and > 0. If not specified, no filtering is applied.
+
+`large_attrs_key` is the attribute key that will be used for storing
+attributes that are too large. The value of this key (list of strings)
+should be used by the client in order to determine which attributes
+have been filtered. Must be specified if `limit_attr_size` is specified.
+
+For the query `/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large`,
+here is an example pbtxt response of a graph with 3 nodes, where the second
+node had two large attributes "a" and "b" that were filtered out (size > 1024):
+
 node {
   op: "Input"
   name: "A"
@@ -181,12 +215,47 @@ node {
 node {
   op: "Input"
   name: "B"
+  attr {
+    key: "small_attr"
+    value: {
+      s: "some string"
+    }
+  }
+  attr {
+    key: "_too_large"
+    value {
+      list {
+        s: "a"
+        s: "b"
+      }
+    }
+  }
 }
 node {
   op: "MatMul"
   name: "C"
   input: "A"
   input: "B"
+}
+
+Prior to filtering, the original node "B" had the following content:
+node {
+  op: "Input"
+  name: "B"
+  attr {
+    key: "small_attr"
+    value: {
+      s: "some string"
+    }
+  }
+  attr {
+    key: "a"
+    value { Very large object... }
+  }
+  attr {
+    key: "b"
+    value { Very large object... }
+  }
 }
 
 ## Notes

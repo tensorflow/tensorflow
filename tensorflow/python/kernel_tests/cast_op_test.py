@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -175,6 +173,24 @@ class SparseTensorCastTest(tf.test.TestCase):
       self.assertAllEqual(st_cast.values.eval(),
                           np.array([1, 2, 3], np.float32))
       self.assertAllEqual(st_cast.shape.eval(), [3])
+
+
+class SaturateCastTest(tf.test.TestCase):
+
+  def testSaturate(self):
+    in_types = tf.float32,
+    out_types = tf.int8, tf.uint8, tf.int16, tf.float32
+    with self.test_session() as sess:
+      for in_type in in_types:
+        for out_type in out_types:
+          lo, hi = in_type.min, in_type.max
+          x = tf.constant([lo, lo + 1, lo // 2, hi // 2, hi - 1, hi],
+                          dtype=in_type)
+          y = tf.saturate_cast(x, dtype=out_type)
+          self.assertEqual(y.dtype, out_type)
+          x, y = sess.run([x, y])
+          correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
+          self.assertAllEqual(correct, y)
 
 
 if __name__ == "__main__":

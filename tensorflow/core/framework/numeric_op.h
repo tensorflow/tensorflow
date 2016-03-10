@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_NUMERIC_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 

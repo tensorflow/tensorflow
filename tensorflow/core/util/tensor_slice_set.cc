@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -34,15 +35,24 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
   string str = slice.DebugString();
-  // We check if there is any intersection between this slice and any of the
-  // registered slices.
-  for (const auto x : slices_) {
-    if (slice.Overlaps(x.second.slice)) {
-      return errors::Internal("Overlapping slices: existing slice = ", x.first,
-                              ", new slice = ", str);
+
+  if (slices_.empty()) {
+    slices_hull_ = slice;
+  } else {
+    // We check if there is any intersection between this slice and any of the
+    // registered slices.
+    if (slices_hull_.Overlaps(slice)) {
+      for (const auto x : slices_) {
+        if (slice.Overlaps(x.second.slice)) {
+          return errors::Internal("Overlapping slices: existing slice = ",
+                                  x.first, ", new slice = ", str);
+        }
+      }
     }
+    // No overlap: we can now insert the slice
+    slices_hull_.UpdateToCover(slice);
   }
-  // No overlap: we can now insert the slice
+
   TensorSliceSet::SliceInfo info = {slice, tag, data,
                                     result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));
@@ -61,8 +71,8 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
     }
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
-    // mutliple existing slices can be patched together to output the slice.
+    // We didn't find any exact match but there is still a possibility that
+    // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these
     // intersections cover the entire slice. We rely on the fact that the
@@ -118,7 +128,7 @@ bool TensorSliceSet::QueryMeta(
     results->emplace_back(std::make_pair(info->slice, info->tag));
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
+    // We didn't find any exact match but there is still a possibility that
     // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these

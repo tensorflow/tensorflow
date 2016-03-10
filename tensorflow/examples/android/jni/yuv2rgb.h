@@ -19,7 +19,7 @@ limitations under the License.
 #ifndef ORG_TENSORFLOW_JNI_IMAGEUTILS_YUV2RGB_H_
 #define ORG_TENSORFLOW_JNI_IMAGEUTILS_YUV2RGB_H_
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 using namespace tensorflow;
 

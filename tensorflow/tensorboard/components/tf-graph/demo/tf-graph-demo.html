@@ -60,6 +60,7 @@ Example
         out-graph-name="{{graphName}}"
         has-stats="{{hasStats}}"
         progress="{{_progress}}"
+        out-hierarchy-params="{{_hierarchyParams}}"
     ></tf-graph-loader>
   </div>
   <div class="main">
@@ -71,6 +72,7 @@ Example
         progress="[[_progress]]"
         color-by="[[colorBy]]"
         color-by-params="{{colorByParams}}"
+        hierarchy-params="[[_hierarchyParams]]"
     ></tf-graph-board>
   </div>
 </div>
@@ -89,6 +91,10 @@ var datasets = [
     name: "Mnist Train (with stats)",
     path: "mnist_train.pbtxt",
     statsPath: "mnist_train_stats.json"
+  },
+  {
+    name: "Mnist Train (with shapes)",
+    path: "mnist_train_shapes.pbtxt",
   },
   {
     name: "Inception Train (huge)",
@@ -115,7 +121,7 @@ var datasets = [
     path: "ptb_word_lstm_test_eval.pbtxt",
   },
   {
-    name: "Cifar10 Train",
+    name: "Cifar10 Train (with shapes)",
     path: "cifar10_train.pbtxt",
   },
   {
@@ -164,7 +170,7 @@ Polymer({
     },
     selectedDataset: {
       type: Number,
-      value: 1
+      value: 9 // Cifar train with shapes.
     },
     _progress: Object
   },

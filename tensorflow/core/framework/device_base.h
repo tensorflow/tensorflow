@@ -20,12 +20,12 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -42,13 +42,16 @@ namespace tensorflow {
 class Device;
 class Env;
 class EventMgr;
+class OpKernelContext;
 class ResourceMgr;
 
 namespace thread {
 class ThreadPool;
 }
 
-// A wrapper for an Eigen Gpu Device that includes per-op state
+// A wrapper for an Eigen Gpu Device that includes per-op state. The
+// class is defined even for non-GPU devices since the
+// OpKernelContext::Params structure wants to fill it in.
 class PerOpGpuDevice {
  public:
   virtual ~PerOpGpuDevice() {}
@@ -95,7 +98,7 @@ class DeviceBase {
   // Override this to return true for devices that require an Op's
   // compute method to save references to the temporary tensors it
   // allocates until the Op execution completes
-  virtual bool SaveTemporaryTensors() const { return false; }
+  virtual bool RequiresRecordingAccessedTensors() const { return false; }
 
   struct CpuWorkerThreads {
     int num_threads = 0;
@@ -161,14 +164,17 @@ class DeviceBase {
     return eigen_cpu_device_;
   }
 
-  // The caller owns the returned device and must free it by calling
-  // DisposeGpuDevice below
-  virtual const PerOpGpuDevice* MakeGpuDevice(DeviceContext* /*dc*/,
-                                              Allocator* /*allocator*/) {
-    // The OpKernelContext calls this even for devices that do not
-    // implement an eigen_gpu_device
-    return nullptr;
-  }
+  // Caller owns the return value. The OpKernelContext calls this even
+  // for devices that do not implement an eigen_gpu_device. Overridden
+  // by GPU devices to return a derived type.
+  virtual PerOpGpuDevice* MakeGpuDevice() { return nullptr; }
+
+  // This is overridden by GPU devices to reinitialize the derived
+  // type returned by MakeGpuDevice.
+  virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,
+                                     PerOpGpuDevice* /*device*/,
+                                     DeviceContext* /*dc*/,
+                                     Allocator* /*allocator*/) {}
 
   virtual const DeviceAttributes& attributes() const {
     LOG(FATAL) << "Device does not implement attributes()";

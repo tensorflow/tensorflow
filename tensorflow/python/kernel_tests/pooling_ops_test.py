@@ -18,12 +18,52 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_nn_ops
+
+
+def NHWCToNCHW(input_tensor):
+  """Convert the input from NHWC format to NCHW.
+
+  Args:
+    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+  Returns:
+    the converted tensor or a shape array
+  """
+  if isinstance(input_tensor, tf.Tensor):
+    return tf.transpose(input_tensor, [0, 3, 1, 2])
+  else:
+    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
+
+
+def NCHWToNHWC(input_tensor):
+  """Convert the input from NCHW format to NHWC.
+
+  Args:
+    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+  Returns:
+    the converted tensor or a shape array
+  """
+  if isinstance(input_tensor, tf.Tensor):
+    return tf.transpose(input_tensor, [0, 2, 3, 1])
+  else:
+    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
+
+
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [("NHWC", False), ("NHWC", True)]
+  if test_util.IsGoogleCudaEnabled():
+    # "NCHW" format is not currently supported on CPU.
+    test_configs += [("NCHW", True)]
+  return test_configs
 
 
 def GetInceptionMaxPoolShapes():
@@ -49,6 +89,41 @@ def GetInceptionMaxPoolShapes():
 
 class PoolingTest(tf.test.TestCase):
 
+  def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
+                     data_format, expected, use_gpu):
+    """Verifies the output values of the pooling function.
+
+    Args:
+      pool_func: Function to be called, co.MaxPool, co.AvgPool,
+        or the Lua version.
+      input_sizes: Input tensor dimensions.
+      ksize: The kernel size dimensions
+      strides: The stride dimensions
+      padding: Padding type.
+      data_format: The data format we use to run the pooling operation.
+      expected: An array containing the expected operation outputs.
+      use_gpu: Whether we are running on GPU.
+    """
+    total_size = 1
+    for s in input_sizes:
+      total_size *= s
+    # Initializes the input tensor with array containing incrementing
+    # numbers from 1.
+    x = [f * 1.0 for f in range(1, total_size + 1)]
+    with self.test_session(use_gpu=use_gpu) as sess:
+      t = tf.constant(x, shape=input_sizes)
+      if data_format == "NCHW":
+        t = NHWCToNCHW(t)
+        ksize = NHWCToNCHW(ksize)
+        strides = NHWCToNCHW(strides)
+      t = pool_func(t, ksize=ksize, strides=strides, padding=padding,
+                    data_format=data_format)
+      if data_format == "NCHW":
+        t = NCHWToNHWC(t)
+      actual = t.eval()
+      self.assertAllClose(expected, actual.flatten())
+      self.assertShapeEqual(actual, t)
+
   def _VerifyValues(self, pool_func, input_sizes, ksize, strides, padding,
                     expected, use_gpu):
     """Verifies the output values of the pooling function.
@@ -63,18 +138,10 @@ class PoolingTest(tf.test.TestCase):
       expected: An array containing the expected operation outputs.
       use_gpu: Whether we are running on GPU.
     """
-    total_size = 1
-    for s in input_sizes:
-      total_size *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
-      t = tf.constant(x, shape=input_sizes)
-      t = pool_func(t, ksize=ksize, strides=strides, padding=padding)
-      actual = t.eval()
-      self.assertAllClose(expected, actual.flatten())
-      self.assertShapeEqual(actual, t)
+    for (data_format, use_gpu_2) in GetTestConfigs():
+      if use_gpu_2 == use_gpu:
+        self._VerifyOneTest(pool_func, input_sizes, ksize, strides, padding,
+                            data_format, expected, use_gpu)
 
   def _testAvgPoolValidPadding(self, use_gpu):
     expected_output = [7.0, 8.0, 9.0]
@@ -309,7 +376,7 @@ class PoolingTest(tf.test.TestCase):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 1, 1, 3],
         [1, 1, 1, 3], "evenly divide")
-    if tf.test.IsBuiltWithCuda():
+    if tf.test.is_built_with_cuda():
       with self.test_session(use_gpu=True):
         t = tf.constant(1.0, shape=[1, 2, 2, 4])
         with self.assertRaisesOpError("for CPU devices"):
@@ -359,7 +426,7 @@ class PoolingTest(tf.test.TestCase):
 
   def testMaxPoolingWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.test_session(use_gpu=True) as sess:
@@ -377,7 +444,7 @@ class PoolingTest(tf.test.TestCase):
 
   def testMaxPoolingGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
@@ -397,7 +464,7 @@ class PoolingTest(tf.test.TestCase):
 
   def _ConstructAndTestGradient(self, pool_func, input_sizes, output_sizes,
                                 window_rows, window_cols, row_stride,
-                                col_stride, padding, use_gpu,
+                                col_stride, padding, data_format, use_gpu,
                                 x_init_value=None):
     """Verifies the gradients of the avg pooling function.
 
@@ -411,6 +478,7 @@ class PoolingTest(tf.test.TestCase):
       row_stride: Row Stride.
       col_stride: Col Stride.
       padding: Padding type.
+      data_format: Data format.
       use_gpu: whether we are running on GPU
       x_init_value: Values to be passed to the gradient checker.
     """
@@ -432,9 +500,19 @@ class PoolingTest(tf.test.TestCase):
               dtype=np.float32).reshape(input_sizes)
         func_name = "max_pool"
         err_margin = 1e-3
-      t = pool_func(input_tensor, ksize=[1, window_rows, window_rows, 1],
-                    strides=[1, row_stride, col_stride, 1],
-                    padding=padding, name=func_name)
+      if data_format == "NCHW":
+        ksize = [1, 1, window_rows, window_rows]
+        strides = [1, 1, row_stride, col_stride]
+        t = NHWCToNCHW(input_tensor)
+      else:
+        ksize = [1, window_rows, window_rows, 1]
+        strides = [1, row_stride, col_stride, 1]
+        t = input_tensor
+      t = pool_func(t, ksize=ksize, strides=strides, padding=padding,
+                    data_format=data_format, name=func_name)
+      if data_format == "NCHW":
+        t = NCHWToNHWC(t)
+
       err = tf.test.compute_gradient_error(input_tensor,
                                            input_sizes,
                                            t,
@@ -444,64 +522,64 @@ class PoolingTest(tf.test.TestCase):
     print("%s gradient error = " % func_name, err)
     self.assertLess(err, err_margin)
 
-  def _testMaxPoolGradValidPadding1_1(self, use_gpu):
+  def _testMaxPoolGradValidPadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[1, 3, 3, 1],
         output_sizes=[1, 3, 3, 1], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradValidPadding2_1_6(self, use_gpu):
+  def _testMaxPoolGradValidPadding2_1_6(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 6, 6, 3],
         output_sizes=[2, 5, 5, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradValidPadding2_1_7(self, use_gpu):
+  def _testMaxPoolGradValidPadding2_1_7(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 7, 7, 3],
         output_sizes=[2, 6, 6, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradValidPadding2_2(self, use_gpu):
+  def _testMaxPoolGradValidPadding2_2(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 2, 2, 3],
         output_sizes=[2, 1, 1, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="VALID", use_gpu=use_gpu)
+        col_stride=2, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradSamePadding1_1(self, use_gpu):
+  def _testMaxPoolGradSamePadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradSamePadding2_1(self, use_gpu):
+  def _testMaxPoolGradSamePadding2_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradSamePadding2_2(self, use_gpu):
+  def _testMaxPoolGradSamePadding2_2(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 1, 2, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="SAME", use_gpu=use_gpu)
+        col_stride=2, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testMaxPoolGradSamePadding3_1(self, use_gpu):
+  def _testMaxPoolGradSamePadding3_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.max_pool, input_sizes=[1, 7, 7, 1],
         output_sizes=[1, 7, 7, 1], window_rows=3, window_cols=3, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
   def testMaxPoolGrad(self):
-    for use_gpu in True, False:
-      self._testMaxPoolGradValidPadding1_1(use_gpu=use_gpu)
-      self._testMaxPoolGradValidPadding2_1_6(use_gpu=use_gpu)
-      self._testMaxPoolGradValidPadding2_1_7(use_gpu=use_gpu)
-      self._testMaxPoolGradValidPadding2_2(use_gpu=use_gpu)
-      self._testMaxPoolGradSamePadding1_1(use_gpu=use_gpu)
-      self._testMaxPoolGradSamePadding2_1(use_gpu=use_gpu)
-      self._testMaxPoolGradSamePadding2_2(use_gpu=use_gpu)
-      self._testMaxPoolGradSamePadding3_1(use_gpu=use_gpu)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._testMaxPoolGradValidPadding1_1(data_format, use_gpu)
+      self._testMaxPoolGradValidPadding2_1_6(data_format, use_gpu)
+      self._testMaxPoolGradValidPadding2_1_7(data_format, use_gpu)
+      self._testMaxPoolGradValidPadding2_2(data_format, use_gpu)
+      self._testMaxPoolGradSamePadding1_1(data_format, use_gpu)
+      self._testMaxPoolGradSamePadding2_1(data_format, use_gpu)
+      self._testMaxPoolGradSamePadding2_2(data_format, use_gpu)
+      self._testMaxPoolGradSamePadding3_1(data_format, use_gpu)
 
   def _MaxPoolGrad(self, orig_input, orig_output, grad, window_rows,
                    window_cols, row_stride, col_stride, padding):
@@ -641,7 +719,7 @@ class PoolingTest(tf.test.TestCase):
         window_rows=2, window_cols=2, row_stride=1, col_stride=1,
         padding="VALID", use_gpu=False)
 
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -675,7 +753,7 @@ class PoolingTest(tf.test.TestCase):
         window_rows=2, window_cols=2, row_stride=1, col_stride=1,
         padding="VALID", use_gpu=False)
 
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -699,56 +777,56 @@ class PoolingTest(tf.test.TestCase):
     self._testMaxPoolGradDirectWithNans2_2()
 
   def testAvgPoolGrad(self):
-    for use_gpu in False, True:
-      self._testAvgPoolGradValidPadding1_1(use_gpu)
-      self._testAvgPoolGradValidPadding2_1(use_gpu)
-      self._testAvgPoolGradValidPadding2_2(use_gpu)
-      self._testAvgPoolGradSamePadding1_1(use_gpu)
-      self._testAvgPoolGradSamePadding2_1(use_gpu)
-      self._testAvgPoolGradSamePadding2_2(use_gpu)
-      self._testAvgPoolGradSamePadding3_1(use_gpu)
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradValidPadding2_1(data_format, use_gpu)
+      self._testAvgPoolGradValidPadding2_2(data_format, use_gpu)
+      self._testAvgPoolGradSamePadding1_1(data_format, use_gpu)
+      self._testAvgPoolGradSamePadding2_1(data_format, use_gpu)
+      self._testAvgPoolGradSamePadding2_2(data_format, use_gpu)
+      self._testAvgPoolGradSamePadding3_1(data_format, use_gpu)
 
-  def _testAvgPoolGradValidPadding1_1(self, use_gpu):
+  def _testAvgPoolGradValidPadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 3, 3, 3],
         output_sizes=[2, 3, 3, 3], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradValidPadding2_1(self, use_gpu):
+  def _testAvgPoolGradValidPadding2_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 3, 3, 3],
         output_sizes=[2, 2, 2, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="VALID", use_gpu=use_gpu)
+        col_stride=1, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradValidPadding2_2(self, use_gpu):
+  def _testAvgPoolGradValidPadding2_2(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 2, 2, 3],
         output_sizes=[2, 1, 1, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="VALID", use_gpu=use_gpu)
+        col_stride=2, padding="VALID", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradSamePadding1_1(self, use_gpu):
+  def _testAvgPoolGradSamePadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=1, window_cols=1, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradSamePadding2_1(self, use_gpu):
+  def _testAvgPoolGradSamePadding2_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 2, 4, 3], window_rows=2, window_cols=2, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradSamePadding2_2(self, use_gpu):
+  def _testAvgPoolGradSamePadding2_2(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[2, 2, 4, 3],
         output_sizes=[2, 1, 2, 3], window_rows=2, window_cols=2, row_stride=2,
-        col_stride=2, padding="SAME", use_gpu=use_gpu)
+        col_stride=2, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
-  def _testAvgPoolGradSamePadding3_1(self, use_gpu):
+  def _testAvgPoolGradSamePadding3_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
         tf.nn.avg_pool, input_sizes=[1, 7, 7, 1],
         output_sizes=[1, 7, 7, 1], window_rows=3, window_cols=3, row_stride=1,
-        col_stride=1, padding="SAME", use_gpu=use_gpu)
+        col_stride=1, padding="SAME", data_format=data_format, use_gpu=use_gpu)
 
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
@@ -813,7 +891,7 @@ class PoolingTest(tf.test.TestCase):
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
   def Test(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     self._CompareMaxPoolingFwd(input_size, filter_size, strides, padding)
   return Test
@@ -822,7 +900,7 @@ def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
 def GetMaxPoolGradTest(input_size, filter_size, output_size, strides, padding):
   def Test(self):
     # MaxPoolWithArgMax is implemented only on GPU.
-    if not tf.test.IsBuiltWithCuda():
+    if not tf.test.is_built_with_cuda():
       return
     self._CompareMaxPoolingBk(input_size, output_size,
                               filter_size, strides, padding)

@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 
-#include <gtest/gtest.h>
+#include <vector>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -166,6 +167,26 @@ TEST(ConsumeLeadingDigits, Basic) {
   // 2^64-1
   TestConsumeLeadingDigits("18446744073709551615xyz", 18446744073709551615ull,
                            "xyz");
+}
+
+void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
+                              StringPiece remaining) {
+  StringPiece v;
+  StringPiece input(s);
+  if (str_util::ConsumeNonWhitespace(&input, &v)) {
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(input, remaining);
+  } else {
+    EXPECT_EQ(expected, "");
+    EXPECT_EQ(input, remaining);
+  }
+}
+
+TEST(ConsumeNonWhitespace, Basic) {
+  TestConsumeNonWhitespace("", "", "");
+  TestConsumeNonWhitespace(" ", "", " ");
+  TestConsumeNonWhitespace("abc", "abc", "");
+  TestConsumeNonWhitespace("abc ", "abc", " ");
 }
 
 TEST(ConsumePrefix, Basic) {

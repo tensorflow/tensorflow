@@ -31,7 +31,7 @@ namespace lookup {
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified.
 //
-// This table is recommened for any variations to key values.
+// This table is recommended for any variations to key values.
 //
 // For look up, the table is required to be initialized (allocated
 // and populated). Once the table is marked as initialized it becomes read-only.
@@ -76,7 +76,7 @@ class HashTable : public InitializableLookupTable {
 
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
-    for (size_t i = 0; i < key_values.size(); ++i) {
+    for (int i = 0; i < key_values.size(); ++i) {
       const K& key = key_values(i);
       const V& value = value_values(i);
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
@@ -95,7 +95,7 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    for (size_t i = 0; i < key_values.size(); ++i) {
+    for (int i = 0; i < key_values.size(); ++i) {
       value_values(i) =
           gtl::FindWithDefault(*table_, key_values(i), default_val);
     }

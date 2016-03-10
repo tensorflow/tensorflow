@@ -17,9 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
 namespace internal {
@@ -78,13 +79,8 @@ struct FillFunctor<GPUDevice, T> {
 };
 
 #define DEFINE_FILL_GPU(T) template struct FillFunctor<GPUDevice, T>
-DEFINE_FILL_GPU(float);
-DEFINE_FILL_GPU(double);
-DEFINE_FILL_GPU(int32);
-DEFINE_FILL_GPU(uint8);
-DEFINE_FILL_GPU(int16);
-DEFINE_FILL_GPU(int8);
-DEFINE_FILL_GPU(int64);
+TF_CALL_REAL_NUMBER_TYPES(DEFINE_FILL_GPU);
+DEFINE_FILL_GPU(bool);
 #undef DEFINE_FILL_GPU
 
 // Partial specialization of FillFunctor<Device=GPUDevice, T>.
@@ -97,6 +93,7 @@ struct SetZeroFunctor<GPUDevice, T> {
 
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>
 DEFINE_SETZERO_GPU(float);
+DEFINE_SETZERO_GPU(double);
 #undef DEFINE_SETZERO_GPU
 
 }  // end namespace functor

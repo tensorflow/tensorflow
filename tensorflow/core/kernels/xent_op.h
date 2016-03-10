@@ -92,7 +92,7 @@ struct XentEigenImpl {
     // sum(exp(logits - max_logits)) along classes.
     scratch.reshape(batch_only).device(d) = backprop.exp().sum(along_class);
 
-    // NOTE(keveman): Eigen on GPU dispatches to an optimized implementaion
+    // NOTE(keveman): Eigen on GPU dispatches to an optimized implementation
     // for an expression of the form lhs = rhs.sum().
     // lhs = -rhs.sum() doesn't match the above pattern, so folding in the
     // negation before calling sum().

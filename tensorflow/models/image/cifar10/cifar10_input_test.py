@@ -21,8 +21,6 @@ from __future__ import print_function
 
 import os
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from tensorflow.models.image.cifar10 import cifar10_input

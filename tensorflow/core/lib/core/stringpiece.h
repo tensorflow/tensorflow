@@ -31,7 +31,7 @@ limitations under the License.
 #include <string.h>
 #include <iosfwd>
 #include <string>
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

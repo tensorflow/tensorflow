@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ENV_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ENV_H_
 
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 

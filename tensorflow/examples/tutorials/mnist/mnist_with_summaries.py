@@ -13,15 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A very simple MNIST classifer, modified to display data in TensorBoard.
+"""A very simple MNIST classifier, modified to display data in TensorBoard.
 
 See extensive documentation for the original model at
 http://tensorflow.org/tutorials/mnist/beginners/index.md
 
-See documentaion on the TensorBoard specific pieces at
+See documentation on the TensorBoard specific pieces at
 http://tensorflow.org/how_tos/summaries_and_tensorboard/index.md
 
-If you modify this file, please update the exerpt in
+If you modify this file, please update the excerpt in
 how_tos/summaries_and_tensorboard/index.md.
 
 """
@@ -29,9 +29,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
+
+from tensorflow.examples.tutorials.mnist import input_data
+
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -39,53 +40,56 @@ flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                      'for unit testing.')
 flags.DEFINE_integer('max_steps', 1000, 'Number of steps to run trainer.')
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
+flags.DEFINE_string('data_dir', '/tmp/data', 'Directory for storing data')
+flags.DEFINE_string('summaries_dir', '/tmp/mnist_logs', 'Summaries directory')
 
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets('/tmp/data/', one_hot=True,
+  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True,
                                     fake_data=FLAGS.fake_data)
 
   sess = tf.InteractiveSession()
 
   # Create the model
-  x = tf.placeholder('float', [None, 784], name='x-input')
+  x = tf.placeholder(tf.float32, [None, 784], name='x-input')
   W = tf.Variable(tf.zeros([784, 10]), name='weights')
-  b = tf.Variable(tf.zeros([10], name='bias'))
+  b = tf.Variable(tf.zeros([10]), name='bias')
 
-  # use a name scope to organize nodes in the graph visualizer
+  # Use a name scope to organize nodes in the graph visualizer
   with tf.name_scope('Wx_b'):
     y = tf.nn.softmax(tf.matmul(x, W) + b)
 
   # Add summary ops to collect data
-  _ = tf.histogram_summary('weights', W)
-  _ = tf.histogram_summary('biases', b)
-  _ = tf.histogram_summary('y', y)
+  tf.histogram_summary('weights', W)
+  tf.histogram_summary('biases', b)
+  tf.histogram_summary('y', y)
 
   # Define loss and optimizer
-  y_ = tf.placeholder('float', [None, 10], name='y-input')
+  y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
   with tf.name_scope('xent'):
     cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
-    _ = tf.scalar_summary('cross entropy', cross_entropy)
+    tf.scalar_summary('cross entropy', cross_entropy)
   with tf.name_scope('train'):
     train_step = tf.train.GradientDescentOptimizer(
         FLAGS.learning_rate).minimize(cross_entropy)
 
   with tf.name_scope('test'):
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, 'float'))
-    _ = tf.scalar_summary('accuracy', accuracy)
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    tf.scalar_summary('accuracy', accuracy)
 
-  # Merge all the summaries and write them out to /tmp/mnist_logs
+  # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.merge_all_summaries()
-  writer = tf.train.SummaryWriter('/tmp/mnist_logs', sess.graph_def)
+  writer = tf.train.SummaryWriter(FLAGS.summaries_dir,
+                                  sess.graph.as_graph_def(add_shapes=True))
   tf.initialize_all_variables().run()
 
   # Train the model, and feed in test data and record summaries every 10 steps
 
   for i in range(FLAGS.max_steps):
-    if i % 10 == 0:  # Record summary data, and the accuracy
+    if i % 10 == 0:  # Record summary data and the accuracy
       if FLAGS.fake_data:
         batch_xs, batch_ys = mnist.train.next_batch(
             100, fake_data=FLAGS.fake_data)

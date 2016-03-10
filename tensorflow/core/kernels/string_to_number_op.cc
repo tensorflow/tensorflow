@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -48,7 +48,7 @@ class StringToNumberOp : public OpKernel {
                                             &output_tensor));
     auto output_flat = output_tensor->flat<OutputType>();
 
-    for (std::size_t i = 0; i < input_flat.size(); ++i) {
+    for (int i = 0; i < input_flat.size(); ++i) {
       const char* s = input_flat(i).data();
       Convert(s, &output_flat(i), context);
     }

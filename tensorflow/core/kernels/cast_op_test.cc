@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/fake_input.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -39,13 +39,12 @@ static Graph* Cast(int num) {
 class CastOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType src, DataType dst) {
-    RequireDefaultOps();
-    EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
-                  .Input(FakeInput(src))
-                  .Attr("SrcT", src)
-                  .Attr("DstT", dst)
-                  .Finalize(node_def()));
-    EXPECT_OK(InitOp());
+    TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
+                     .Input(FakeInput(src))
+                     .Attr("SrcT", src)
+                     .Attr("DstT", dst)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
   }
 
   template <typename IN, typename OUT>
@@ -54,7 +53,7 @@ class CastOpTest : public OpsTestBase {
     DataType out_type = DataTypeToEnum<OUT>::v();
     MakeOp(in_type, out_type);
     AddInputFromArray<IN>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-    ASSERT_OK(RunOpKernel());
+    TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), out_type, TensorShape({1, 2, 2, 1}));
     test::FillValues<OUT>(&expected, {1, 2, 3, 4});
     test::ExpectTensorEqual<OUT>(expected, *GetOutput(0));
@@ -66,6 +65,7 @@ class CastOpTest : public OpsTestBase {
 
 #define TEST_ALL_CASTS_FROM(in) \
   TEST_CAST(in, uint8);         \
+  TEST_CAST(in, uint16);        \
   TEST_CAST(in, int16);         \
   TEST_CAST(in, int32);         \
   TEST_CAST(in, int64);         \
@@ -73,6 +73,7 @@ class CastOpTest : public OpsTestBase {
   TEST_CAST(in, double)
 
 TEST_ALL_CASTS_FROM(uint8)
+TEST_ALL_CASTS_FROM(uint16)
 TEST_ALL_CASTS_FROM(int16)
 TEST_ALL_CASTS_FROM(int32)
 TEST_ALL_CASTS_FROM(int64)

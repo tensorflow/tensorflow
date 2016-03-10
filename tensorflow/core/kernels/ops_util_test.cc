@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/ops_util.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -274,6 +274,10 @@ TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_2) {
   for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
     VerifyBcastValues(bcast[i]);
   }
+}
+
+TEST_F(OpsUtilTest, SanitizeThreadSuffix) {
+  EXPECT_EQ("_aBc123_-___", SanitizeThreadSuffix("/aBc123_-  /"));
 }
 
 }  // namespace

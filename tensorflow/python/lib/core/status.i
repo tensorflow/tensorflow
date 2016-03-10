@@ -21,7 +21,7 @@ limitations under the License.
 %apply int { tensorflow::error::Code };  // Treat the enum as an integer.
 
 %{
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 %}
 
 %typemap(out, fragment="StatusNotOK") tensorflow::Status {
@@ -49,7 +49,7 @@ if (pywrap_status) {
 %}
 
 %fragment("StatusNotOK", "header") %{
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace {
 // Initialized on the first call to RaiseStatusNotOK().
@@ -118,6 +118,6 @@ void RaiseStatusNotOK(const tensorflow::Status& status, swig_type_info *type) {
 %unignore tensorflow::Status::~Status;
 %ignore tensorflow::Status::operator=;
 
-%include "tensorflow/core/public/status.h"
+%include "tensorflow/core/lib/core/status.h"
 
 %unignoreall

@@ -13,15 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/function.h"
-
-#include <unordered_set>
-
-#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
 
@@ -29,6 +21,7 @@ REGISTER_OP("_Arg")
     .Output("output: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
+    .SetIsStateful()
     .Doc(R"doc(
 A graph node which represents an argument to a function.
 
@@ -40,6 +33,7 @@ REGISTER_OP("_Retval")
     .Input("input: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
+    .SetIsStateful()
     .Doc(R"doc(
 A graph node which represents a return value of a function.
 

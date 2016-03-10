@@ -93,7 +93,7 @@ struct Relu6Grad {
 // Functor used by EluOp to do the computations.
 template <typename Device, typename T>
 struct Elu {
-  // Computes Relu activation.
+  // Computes Elu activation.
   //
   // features: any shape.
   // activations: same shape as "features".

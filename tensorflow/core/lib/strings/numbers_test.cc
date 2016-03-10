@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 
 #include <string>
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace strings {
@@ -39,6 +39,23 @@ TEST(FpToString, Ints) {
   EXPECT_FALSE(StringToFp("", &dummy));
   EXPECT_FALSE(StringToFp("xyz", &dummy));
   EXPECT_FALSE(StringToFp("0000000000000000xyz", &dummy));
+}
+
+TEST(Uint64ToHexString, Ints) {
+  for (int s = 0; s < 64; s++) {
+    for (int delta = -1; delta <= 1; delta++) {
+      uint64 fp = (1ull << s) + delta;
+      char buf[kFastToBufferSize];
+      StringPiece s = Uint64ToHexString(fp, buf);
+      uint64 fp2;
+      EXPECT_TRUE(HexStringToUint64(s, &fp2));
+      EXPECT_EQ(fp, fp2) << s;
+    }
+  }
+  uint64 dummy;
+  EXPECT_FALSE(HexStringToUint64("", &dummy));
+  EXPECT_FALSE(HexStringToUint64("xyz", &dummy));
+  EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
 }
 
 TEST(HumanReadableNumBytes, Bytes) {

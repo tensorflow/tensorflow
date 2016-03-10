@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <unordered_set>
+#include <vector>
 
 #include "tensorflow/core/graph/graph.h"
 
@@ -29,10 +30,16 @@ namespace tensorflow {
 extern void DFS(const Graph& g, std::function<void(Node*)> enter,
                 std::function<void(Node*)> leave);
 
+// Perform a reverse depth-first-search on g starting at the sink node.
+// If enter is not empty, calls enter(n) before visiting any parents of n.
+// If leave is not empty, calls leave(n) after visiting all parents of n.
+extern void ReverseDFS(const Graph& g, std::function<void(Node*)> enter,
+                       std::function<void(Node*)> leave);
+
 // Stores in *order the post-order numbering of all nodes
 // in graph found via a depth first search starting at the source node.
 //
-// Note that this is equivalent to topological sorting when the
+// Note that this is equivalent to reverse topological sorting when the
 // graph does not have cycles.
 //
 // REQUIRES: order is not NULL.
@@ -48,7 +55,9 @@ void PruneForReverseReachability(Graph* g,
 
 // Connect all nodes with no incoming edges to source.
 // Connect all nodes with no outgoing edges to sink.
-void FixupSourceAndSinkEdges(Graph* g);
+//
+// Returns true if and only if 'g' is mutated.
+bool FixupSourceAndSinkEdges(Graph* g);
 
 }  // namespace tensorflow
 

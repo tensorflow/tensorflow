@@ -17,14 +17,14 @@ limitations under the License.
 
 #include <stddef.h>  // for NULL
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -115,7 +115,7 @@ bool EventsWriter::Flush() {
   // recordio_writer_->Sync() can return true even if the underlying
   // file has been deleted.  EventWriter.FileDeletionBeforeWriting
   // demonstrates this and will fail if the FileHasDisappeared()
-  // conditon is removed.
+  // condition is removed.
   // Also, we deliberately attempt to Sync() before checking for a
   // disappearing file, in case for some file system File::Exists() is
   // false after File::Open() but before File::Sync().

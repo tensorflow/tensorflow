@@ -59,6 +59,7 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 @@FixedLenSequenceFeature
 @@parse_example
 @@parse_single_example
+@@decode_json_example
 
 ## Queues
 

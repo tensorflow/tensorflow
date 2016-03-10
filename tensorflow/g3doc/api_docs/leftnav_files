@@ -13,7 +13,11 @@ python/python_io.md
 python/nn.md
 python/client.md
 python/train.md
-### [C++ API](/api_docs/cc/index.md)
+python/script_ops.md
+python/test.md
+python/contrib.layers.md
+python/contrib.util.md
+>>> [C++ API](/api_docs/cc/index.md)
 cc/ClassEnv.md
 cc/ClassRandomAccessFile.md
 cc/ClassWritableFile.md
@@ -26,5 +30,7 @@ cc/ClassTensor.md
 cc/ClassTensorShape.md
 cc/StructTensorShapeDim.md
 cc/ClassTensorShapeUtils.md
+cc/ClassPartialTensorShape.md
+cc/ClassPartialTensorShapeUtils.md
 cc/ClassThread.md
 cc/StructThreadOptions.md

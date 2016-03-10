@@ -69,7 +69,7 @@ class TFRecordWriter(object):
 
   def __enter__(self):
     """Enter a `with` block."""
-    pass
+    return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     """Exit a `with` block, closing the file."""

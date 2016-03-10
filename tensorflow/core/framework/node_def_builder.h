@@ -17,15 +17,16 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
 
 #include <functional>
+#include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 

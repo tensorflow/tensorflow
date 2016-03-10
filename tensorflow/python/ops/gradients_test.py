@@ -20,26 +20,26 @@ from __future__ import print_function
 
 import warnings
 
-import tensorflow.python.platform
-
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-# pylint: disable=unused-import
-from tensorflow.python.ops import array_grad
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import data_flow_grad
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad
-from tensorflow.python.ops import state_grad
-# pylint: enable=unused-import
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.constant_op import constant
+from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
+
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -161,7 +161,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       with g.device("/gpu:0"):
         wx = math_ops.matmul(w, x)
       gw = gradients.gradients(wx, [w], colocate_gradients_with_ops=True)[0]
-    self.assertEquals("/gpu:0", gw.device)
+    self.assertEqual(gw.op.colocation_groups(), wx.op.colocation_groups())
 
   def testColocateGradientsWithAggregation(self):
     with ops.Graph().as_default() as g:
@@ -173,10 +173,12 @@ class GradientsTest(test_util.TensorFlowTestCase):
       wy = math_ops.matmul(w, y)
       with g.device("/gpu:0"):
         z = wx + wy
+
       gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
-      self.assertEquals("/gpu:1", gw1.device)
+      self.assertEqual(gw1.op.colocation_groups(), w.op.colocation_groups())
+
       gw2 = gradients.gradients(z, [w], colocate_gradients_with_ops=False)[0]
-      self.assertEquals(None, gw2.device)
+      self.assertTrue(w.op.colocation_groups() != gw2.op.colocation_groups())
 
   def testBoundaryStop(self):
     # Test that we don't differentiate 'x'. The gradient function for 'x' is
@@ -257,6 +259,42 @@ class GradientsTest(test_util.TensorFlowTestCase):
       w = z * 3.0
       grads = gradients.gradients(z, [c])
       self.assertTrue(isinstance(grads[0], ops.Tensor))
+
+
+class FunctionGradientsTest(test_util.TensorFlowTestCase):
+
+  @classmethod
+  def XSquarePlusB(cls, x, b):
+    return x * x + b
+
+  def testFunctionGradientsBasic(self):
+    g = ops.Graph()
+    with g.as_default():
+      f = function.Defun(x=tf.float32, b=tf.float32)(self.XSquarePlusB)
+      x = tf.constant([2.0], name="x")
+      b = tf.constant([1.0], name="b")
+
+      y = f(x, b)
+      # Build gradient graph (should add SymbolicGradient node for function).
+      grads = gradients.gradients(y, [x, b])
+      with self.test_session() as sess:
+        self.assertAllEqual([4.0], sess.run(grads)[0])
+        self.assertAllEqual([1.0], sess.run(grads)[1])
+
+  def testFunctionGradientsComposition(self):
+    with ops.Graph().as_default():
+      f = function.Defun(x=tf.float32, b=tf.float32)(self.XSquarePlusB)
+      x = tf.constant([2.0], name="x")
+      b1 = tf.constant([1.0], name="b1")
+      b2 = tf.constant([1.0], name="b2")
+
+      y = f(f(x, b1), b2)
+      # Build gradient graph (should add SymbolicGradient node for function).
+      grads = gradients.gradients(y, [x, b1])
+
+      with self.test_session() as sess:
+        self.assertAllEqual([40.0], sess.run(grads)[0])
+        self.assertAllEqual([10.0], sess.run(grads)[1])
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

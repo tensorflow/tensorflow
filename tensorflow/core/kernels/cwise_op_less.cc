@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(BinaryOp, CPU, "Less", functor::less, float, double, int32, int64);
+REGISTER7(BinaryOp, CPU, "Less", functor::less, float, double, int32, int64,
+          uint8, int8, int16);
 #if GOOGLE_CUDA
-REGISTER3(BinaryOp, GPU, "Less", functor::less, float, double, int64);
-#endif
+REGISTER6(BinaryOp, GPU, "Less", functor::less, float, double, int64, uint8,
+          int8, int16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -31,5 +32,6 @@ REGISTER_KERNEL_BUILDER(Name("Less")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::less<int32>>);
+#endif
 
 }  // namespace tensorflow

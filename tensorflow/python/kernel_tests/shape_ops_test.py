@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 
 import tensorflow as tf
@@ -34,6 +32,15 @@ class ShapeOpsTest(tf.test.TestCase):
       result = tf_ans.eval()
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
+
+  def _compareShapeN(self, x, use_gpu=False):
+    np_ans = np.array(np.shape(x))
+    with self.test_session(use_gpu=use_gpu) as sess:
+      tf_ans = tf.shape_n([x, x, x])
+      result = sess.run(tf_ans)
+    for i in range(3):
+      self.assertAllEqual(np_ans, result[i])
+      self.assertShapeEqual(np_ans, tf_ans[i])
 
   def _compareRank(self, x, use_gpu=False):
     np_ans = np.asarray(np.ndim(x))
@@ -53,11 +60,13 @@ class ShapeOpsTest(tf.test.TestCase):
 
   def _testCpu(self, x):
     self._compareShape(x, use_gpu=False)
+    self._compareShapeN(x, use_gpu=False)
     self._compareRank(x, use_gpu=False)
     self._compareSize(x, use_gpu=False)
 
   def _testGpu(self, x):
     self._compareShape(x, use_gpu=True)
+    self._compareShapeN(x, use_gpu=True)
     self._compareRank(x, use_gpu=True)
     self._compareSize(x, use_gpu=True)
 
@@ -211,6 +220,19 @@ class ShapeOpsTest(tf.test.TestCase):
 
       err = tf.test.compute_gradient_error(a, [4, 1, 2, 1], squeezed, [4, 2, 1])
     self.assertLess(err, 1e-3)
+
+  def testSqueezeWithUnknownShape(self):
+    with self.test_session():
+      a = tf.placeholder(tf.float32, shape=[2, None])
+
+      squeezed = tf.squeeze(a, [1])
+      self.assertEqual([2], squeezed.get_shape().as_list())
+
+      squeezed = tf.squeeze(a)
+      self.assertEqual(None, squeezed.get_shape())
+
+      self.assertRaises(ValueError, tf.squeeze, a, [0])
+      self.assertRaises(ValueError, tf.squeeze, a, [100])
 
 
 class TileTest(tf.test.TestCase):

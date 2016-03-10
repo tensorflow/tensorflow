@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/numbers.h"
 
+#include <ctype.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace strings {
@@ -33,7 +34,7 @@ char* FastInt32ToBufferLeft(int32 i, char* buffer) {
   if (i < 0) {
     *buffer++ = '-';
     // We need to do the negation in modular (i.e., "unsigned")
-    // arithmetic; MSVC++ apprently warns for plain "-u", so
+    // arithmetic; MSVC++ apparently warns for plain "-u", so
     // we write the equivalent expression "0 - u" instead.
     u = 0 - u;
   }
@@ -235,6 +236,38 @@ bool StringToFp(const string& s, Fprint* fp) {
   } else {
     return false;
   }
+}
+
+StringPiece Uint64ToHexString(uint64 v, char* buf) {
+  static const char* hexdigits = "0123456789abcdef";
+  const int num_byte = 16;
+  buf[num_byte] = '\0';
+  for (int i = num_byte - 1; i >= 0; i--) {
+    buf[i] = hexdigits[v & 0xf];
+    v >>= 4;
+  }
+  return StringPiece(buf, num_byte);
+}
+
+bool HexStringToUint64(const StringPiece& s, uint64* result) {
+  uint64 v = 0;
+  if (s.empty()) {
+    return false;
+  }
+  for (size_t i = 0; i < s.size(); i++) {
+    char c = s[i];
+    if (c >= '0' && c <= '9') {
+      v = (v << 4) + (c - '0');
+    } else if (c >= 'a' && c <= 'f') {
+      v = (v << 4) + 10 + (c - 'a');
+    } else if (c >= 'A' && c <= 'F') {
+      v = (v << 4) + 10 + (c - 'A');
+    } else {
+      return false;
+    }
+  }
+  *result = v;
+  return true;
 }
 
 string HumanReadableNumBytes(int64 num_bytes) {

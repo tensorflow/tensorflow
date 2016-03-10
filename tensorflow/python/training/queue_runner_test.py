@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import time
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 

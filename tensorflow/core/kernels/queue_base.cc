@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/queue_base.h"
 
+#include <vector>
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -32,8 +33,8 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);
     return errors::Internal(
-        "Cannot copy slice: number of elements does not match.  Shapes are: "
-        "[element]: ",
+        "HandleSliceToElement Cannot copy slice: number of elements does not "
+        "match.  Shapes are: [element]: ",
         element->shape().DebugString(), ", [parent slice]: ",
         chip_shape.DebugString());
   }
@@ -50,8 +51,8 @@ Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
     TensorShape chip_shape = parent->shape();
     chip_shape.RemoveDim(0);
     return errors::Internal(
-        "Cannot copy slice: number of elements does not match.  Shapes are: "
-        "[element]: ",
+        "HandleElementToSlice Cannot copy slice: number of elements does not "
+        "match.  Shapes are: [element]: ",
         element.shape().DebugString(), ", [parent slice]: ",
         chip_shape.DebugString());
   }
@@ -70,6 +71,8 @@ QueueBase::QueueBase(int32 capacity, const DataTypeVector& component_dtypes,
       component_shapes_(component_shapes),
       name_(name),
       closed_(false) {}
+
+QueueBase::~QueueBase() {}
 
 Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
   if (tuple.size() != static_cast<size_t>(num_components())) {
@@ -93,7 +96,7 @@ string QueueBase::ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.ShortDebugString());
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
     first = false;
   }
   strings::StrAppend(&result, "]");
@@ -156,11 +159,11 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
   if (specified_shapes()) {
     for (size_t i = 0; i < tuple.size(); ++i) {
-      if (!tuple[i].shape().IsSameSize(component_shapes_[i])) {
+      if (!component_shapes_[i].IsSameSize(tuple[i].shape())) {
         return errors::InvalidArgument(
             "Shape mismatch in tuple component ", i, ". Expected ",
-            component_shapes_[i].ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+            component_shapes_[i].DebugString(), ", got ",
+            tuple[i].shape().DebugString());
       }
     }
   }
@@ -176,11 +179,11 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
     for (size_t i = 0; i < tuple.size(); ++i) {
       // Expected shape is [batch_size] + component_shapes_[i]
       const TensorShape expected_shape = ManyOutShape(i, batch_size);
-      if (!tuple[i].shape().IsSameSize(expected_shape)) {
-        return errors::InvalidArgument(
-            "Shape mismatch in tuple component ", i, ". Expected ",
-            expected_shape.ShortDebugString(), ", got ",
-            tuple[i].shape().ShortDebugString());
+      if (!expected_shape.IsSameSize(tuple[i].shape())) {
+        return errors::InvalidArgument("Shape mismatch in tuple component ", i,
+                                       ". Expected ",
+                                       expected_shape.DebugString(), ", got ",
+                                       tuple[i].shape().DebugString());
       }
     }
   } else {
@@ -196,7 +199,8 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
   return Status::OK();
 }
 
-void QueueBase::Cancel(Action action, CancellationToken token) {
+void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,
+                       CancellationToken token) {
   DoneCallback callback = nullptr;
   {
     mutex_lock lock(mu_);
@@ -204,7 +208,8 @@ void QueueBase::Cancel(Action action, CancellationToken token) {
         action == kEnqueue ? &enqueue_attempts_ : &dequeue_attempts_;
 
     for (Attempt& attempt : *attempts) {
-      if (attempt.cancellation_token == token) {
+      if (attempt.cancellation_manager == cancellation_manager &&
+          attempt.cancellation_token == token) {
         if (!attempt.is_cancelled) {
           attempt.is_cancelled = true;
           if (action == kEnqueue) {
@@ -255,7 +260,7 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
     {
       mutex_lock lock(mu_);
       enqueue_attempts_.emplace_back(
-          0, callback, ctx, CancellationManager::kInvalidToken,
+          0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
           [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
@@ -280,9 +285,21 @@ bool QueueBase::TryAttemptLocked(Action action,
   while (!done && !attempts->empty()) {
     if (attempts->front().is_cancelled) {
       if (action == kEnqueue) {
-        LOG(INFO) << "Skipping cancelled enqueue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled enqueue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled enqueue attempt with queue not closed";
+        }
       } else {
-        LOG(INFO) << "Skipping cancelled dequeue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled dequeue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled dequeue attempt with queue not closed";
+        }
       }
       attempts->pop_front();
     } else {
@@ -331,7 +348,6 @@ void QueueBase::FlushUnlocked() {
   }
 }
 
-// Static method
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int index) {
 #define HANDLE_TYPE(DT)                                                   \
@@ -355,7 +371,8 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
-  return errors::Unimplemented("Unhandled data type: ", parent.dtype());
+  return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
+                               parent.dtype());
 }
 
 // Static method
@@ -382,7 +399,8 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
 #undef HANDLE_TYPE
-  return errors::Unimplemented("Unhandled data type: ", element.dtype());
+  return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
+                               element.dtype());
 }
 
 }  // namespace tensorflow

@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class SessionOptions;
+struct SessionOptions;
 
 // This class is shared by ThreadPoolDevice and GPUDevice and
 // initializes a shared Eigen compute device used by both.  This

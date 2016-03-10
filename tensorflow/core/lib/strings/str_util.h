@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
 #include <string>
+#include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Basic string utility routines
 namespace tensorflow {
@@ -64,6 +65,11 @@ size_t RemoveWhitespaceContext(StringPiece* text);
 // advance "*s" past the consumed number, and return true.  If
 // overflow occurred, returns false.  Otherwise, returns false.
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val);
+
+// Consume a leading token composed of non-whitespace characters only.
+// If *s starts with a non-zero number of non-whitespace characters, store
+// them in *val, advance *s past them, and return true.  Else return false.
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
@@ -128,7 +134,7 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p) {
   std::vector<string> result;
   int token_start = 0;
   if (!text.empty()) {
-    for (int i = 0; i < text.size() + 1; i++) {
+    for (size_t i = 0; i < text.size() + 1; i++) {
       if ((i == text.size()) || (text[i] == delim)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
