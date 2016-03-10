@@ -28,17 +28,18 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
 
-static const int64 tab_size = (1 << 10);
+static const int64 kTableSize = (1 << 10);
 
 const float* InitCoeffsTable() {
   // Allocate and initialize coefficients table using Bicubic
   // convolution algorithm.
   // https://en.wikipedia.org/wiki/Bicubic_interpolation
-  float* coeffs_tab = new float[(tab_size + 1) * 2];
+  float* coeffs_tab = new float[(kTableSize + 1) * 2];
   static const double A = -0.75;
-  for (int i = 0; i <= tab_size; ++i) {
-    float x = i * 1.0 / tab_size;
+  for (int i = 0; i <= kTableSize; ++i) {
+    float x = i * 1.0 / kTableSize;
     coeffs_tab[i * 2] = ((A + 2) * x - (A + 3)) * x * x + 1;
     x += 1.0;
     coeffs_tab[i * 2 + 1] = ((A * x - 5 * A) * x + 8 * A) * x - 4 * A;
@@ -51,6 +52,32 @@ const float* GetCoeffsTable() {
   static const float* coeffs_tab = InitCoeffsTable();
   return coeffs_tab;
 }
+
+inline int64 Bound(int64 val, int64 limit) {
+  return std::min(limit - 1ll, std::max(0ll, val));
+}
+
+inline void GetWeightsAndIndices(float scale, int64 out_loc, int64 limit,
+                                 std::array<float, 4>* weights,
+                                 std::array<int64, 4>* indices) {
+  const int64 in_loc = floor(scale * out_loc);
+  const float delta = scale * out_loc - in_loc;
+  const int64 offset = round(delta * kTableSize);
+  const float* coeffs_tab = GetCoeffsTable();
+  *weights = {{coeffs_tab[offset * 2 + 1], coeffs_tab[offset * 2],
+               coeffs_tab[(kTableSize - offset) * 2],
+               coeffs_tab[(kTableSize - offset) * 2 + 1]}};
+  *indices = {{Bound(in_loc - 1, limit), Bound(in_loc, limit),
+               Bound(in_loc + 1, limit), Bound(in_loc + 2, limit)}};
+}
+
+inline float Interpolate1D(const std::array<float, 4>& weights,
+                           const std::array<float, 4>& values) {
+  return values[0] * weights[0] + values[1] * weights[1] +
+         values[2] * weights[2] + values[3] * weights[3];
+}
+
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -106,40 +133,34 @@ class ResizeBicubicOp : public OpKernel {
             ? (in_width - 1) / static_cast<float>(out_width - 1)
             : in_width / static_cast<float>(out_width);
 
-    const float* coeffs_tab = GetCoeffsTable();
-
-    auto cal = [](const float* coeffs_tab, float v0, float v1, float v2,
-                  float v3, float dx) {
-      const int64 offset = round(dx * tab_size);
-      const float a0 = coeffs_tab[offset * 2 + 1];
-      const float a1 = coeffs_tab[offset * 2];
-      const float a2 = coeffs_tab[(tab_size - offset) * 2];
-      const float a3 = coeffs_tab[(tab_size - offset) * 2 + 1];
-      return a0 * v0 + a1 * v1 + a2 * v2 + a3 * v3;
-    };
-
-    float coeff[4] = {0.0};
+    std::array<float, 4> coeff = {{0.0, 0.0, 0.0, 0.0}};
     for (int64 b = 0; b < batch_size; ++b) {
       for (int64 y = 0; y < out_height; ++y) {
-        const int64 in_y = floor(height_scale * y);
-        const float dy = height_scale * y - in_y;
+        std::array<float, 4> y_weights;
+        std::array<int64, 4> y_indices;
+        GetWeightsAndIndices(height_scale, y, in_height, &y_weights,
+                             &y_indices);
         for (int64 x = 0; x < out_width; ++x) {
-          const int64 in_x = floor(width_scale * x);
-          const float dx = width_scale * x - in_x;
+          std::array<float, 4> x_weights;
+          std::array<int64, 4> x_indices;
+          GetWeightsAndIndices(width_scale, x, in_width, &x_weights,
+                               &x_indices);
           for (int64 c = 0; c < channels; ++c) {
+            // Use a 4x4 patch to compute the interpolated output value at
+            // (b, y, x, c).
             for (int64 i = 0; i < 4; ++i) {
-#define BOUND(val, limit) std::min(((limit)-1ll), (std::max(0ll, (val))))
-              int64 bound_y = BOUND(in_y - 1 + i, in_height);
-              coeff[i] =
-                  cal(coeffs_tab,
-                      input_data(b, bound_y, BOUND(in_x - 1, in_width), c),
-                      input_data(b, bound_y, BOUND(in_x, in_width), c),
-                      input_data(b, bound_y, BOUND(in_x + 1, in_width), c),
-                      input_data(b, bound_y, BOUND(in_x + 2, in_width), c), dx);
-#undef BOUND
+              const std::array<float, 4> values = {
+                  {static_cast<float>(
+                       input_data(b, y_indices[i], x_indices[0], c)),
+                   static_cast<float>(
+                       input_data(b, y_indices[i], x_indices[1], c)),
+                   static_cast<float>(
+                       input_data(b, y_indices[i], x_indices[2], c)),
+                   static_cast<float>(
+                       input_data(b, y_indices[i], x_indices[3], c))}};
+              coeff[i] = Interpolate1D(x_weights, values);
             }
-            output_data(b, y, x, c) =
-                cal(coeffs_tab, coeff[0], coeff[1], coeff[2], coeff[3], dy);
+            output_data(b, y, x, c) = Interpolate1D(y_weights, coeff);
           }
         }
       }

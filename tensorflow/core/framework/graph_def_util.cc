@@ -84,8 +84,9 @@ Status RemoveNewDefaultAttrsFromGraphDef(
     if (!s.ok()) return s;
 
     for (const auto& attr : node_def->attr()) {
-      // If the attr is not in consumer_op_def...
-      if (FindAttr(attr.first, *consumer_op_def) == nullptr) {
+      // If the attr is not in consumer_op_def and doesn't start with '_'...
+      if (!StringPiece(attr.first).starts_with("_") &&
+          FindAttr(attr.first, *consumer_op_def) == nullptr) {
         const OpDef::AttrDef* producer_attr_def =
             FindAttr(attr.first, *producer_op_def);
         if (producer_attr_def == nullptr) {

@@ -133,6 +133,36 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
   EXPECT_TRUE(op_attr_removed.empty());
 }
 
+// Attrs starting with underscores should not be removed.
+TEST(RemoveNewDefaultAttrsFromGraphDefTest, UnderscoreAttrs) {
+  OpList consumer_op_list;
+  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(consumer_op_list.add_op()));
+  OpListOpRegistry consumer_registry(&consumer_op_list);
+
+  OpList producer_op_list;
+  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(producer_op_list.add_op()));
+  // Add the _underscore attr manually since OpDefBuilder would complain
+  OpDef::AttrDef* attr = producer_op_list.mutable_op(0)->add_attr();
+  attr->set_name("_underscore");
+  attr->set_type("int");
+  attr->mutable_default_value()->set_i(17);
+  OpListOpRegistry producer_registry(&producer_op_list);
+
+  GraphDef produced_graph_def;
+  TF_ASSERT_OK(NodeDefBuilder("node", "Underscore", &producer_registry)
+                   .Attr("_underscore", 17)
+                   .Finalize(produced_graph_def.add_node()));
+  GraphDef expected_graph_def = produced_graph_def;
+
+  std::set<std::pair<string, string>> op_attr_removed;
+  TF_ASSERT_OK(
+      RemoveNewDefaultAttrsFromGraphDef(&produced_graph_def, consumer_registry,
+                                        producer_registry, &op_attr_removed));
+
+  TF_EXPECT_GRAPH_EQ(expected_graph_def, produced_graph_def);
+  EXPECT_EQ(op_attr_removed.size(), 0);
+}
+
 TEST(StrippedOpListForGraphTest, FlatTest) {
   // Make four ops
   OpList op_list;

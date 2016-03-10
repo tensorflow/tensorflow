@@ -876,6 +876,25 @@ py_test(
     ],
 )
 
+py_library(
+    name = "device_lib",
+    srcs = ["client/device_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+cuda_py_tests(
+    name = "device_lib_test",
+    srcs = [
+        "client/device_lib_test.py",
+    ],
+    additional_deps = [
+        ":device_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
@@ -897,6 +916,7 @@ tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
     swig_includes = [
+        "client/device_lib.i",
         "client/events_writer.i",
         "client/server_lib.i",
         "client/tf_session.i",
