@@ -194,7 +194,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
