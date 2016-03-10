@@ -81,31 +81,21 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
   StringPiece match;
   StringPiece remaining;
 
-  scan.AnySpace();
-  bool is_negative = false;
+  scan.AnySpace().RestartCapture();
   if (scan.Peek() == '-') {
-    is_negative = true;
     scan.OneLiteral("-");
   }
-  if (!scan.RestartCapture()
-           .Many(Scanner::DIGIT)
+  if (!scan.Many(Scanner::DIGIT)
            .StopCapture()
            .AnySpace()
            .GetResult(&remaining, &match)) {
     return false;
   }
-  uint64 val = 0;
-  if (!str_util::ConsumeLeadingDigits(&match, &val)) return false;
-  if (is_negative) {
-    const int64 final_val = static_cast<int64>(val) * -1;
-    if (final_val > 0) return false;
-    *out = final_val;
-  } else {
-    if (val > static_cast<uint64>(std::numeric_limits<int64>::max())) {
-      return false;
-    }
-    *out = val;
+  int64 value = 0;
+  if (!strings::safe_strto64(match.ToString().c_str(), &value)) {
+    return false;
   }
+  *out = value;
   *sp = remaining;
   return true;
 }
