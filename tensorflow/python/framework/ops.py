@@ -576,25 +576,25 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
                                         as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
-  If `value` is an `IndexedSlices` it is returned
+  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
   `convert_to_tensor()`.
 
   Args:
-    value: An `IndexedSlices` or an object that can be consumed by
-      `convert_to_tensor()`.
+    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name to use if a new `Tensor` is created.
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor` or an `IndexedSlices` based on `value`.
+    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, IndexedSlices):
+  if isinstance(value, (IndexedSlices, SparseTensor)):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
@@ -608,9 +608,12 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
                                           as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
+  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
+  unmodified.
+
   Args:
-    values: A list of `None`, `IndexedSlices`, or objects that can be consumed
-      by `convert_to_tensor()`.
+    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor`
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is
@@ -619,7 +622,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor` and/or `IndexedSlices` objects.
+    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
