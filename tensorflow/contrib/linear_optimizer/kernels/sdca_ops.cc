@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -142,7 +143,7 @@ Status FillSparseExamplesByGroup(
         for (const auto& example_group : st.group({0})) {
           const TTypes<int64>::UnalignedConstMatrix indices =
               example_group.indices();
-          const int64 example_index = indices(0, 0);
+          const int64 example_index = internal::SubtleMustCopy(indices(0, 0));
           if (example_index < 0 || example_index >= num_examples) {
             mutex_lock l(mu);
             result = errors::Internal(strings::Printf(
@@ -252,7 +253,7 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
       const auto indices = sparse_indices_values[example_id]->feature_indices;
       const auto values = sparse_indices_values[example_id]->feature_values;
       for (int64 dim = 0; dim < indices.dimension(0); ++dim) {
-        const int64 index = indices(dim);
+        const int64 index = internal::SubtleMustCopy(indices(dim));
         const double weight = weights(index);
         const double value = values(dim);
         result.wx += Shrink(weight + delta_weights(index), shrink_by) * value;

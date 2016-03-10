@@ -60,6 +60,7 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:bounds_check",
     ],
     alwayslink = 1,
 )
