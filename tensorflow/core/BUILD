@@ -617,6 +617,7 @@ ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
     "-DMIN_LOG_LEVEL=0",
+    "-DTF_LEAN_BINARY",
     "-O2",
 ]
 

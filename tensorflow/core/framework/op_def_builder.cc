@@ -519,6 +519,7 @@ OpDefBuilder& OpDefBuilder::Output(StringPiece spec) {
   return *this;
 }
 
+#ifndef TF_LEAN_BINARY
 OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
   if (!doc_.empty()) {
     errors_.push_back(
@@ -528,6 +529,7 @@ OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
   }
   return *this;
 }
+#endif
 
 OpDefBuilder& OpDefBuilder::SetIsCommutative() {
   op_def_.set_is_commutative(true);
