@@ -23,6 +23,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <string>
+#include <unordered_set>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
@@ -575,15 +576,12 @@ class SdcaSolver : public OpKernel {
                     example_ids.size(), num_examples)));
     const int64 num_duplicate_example_ids = [&] {
       // TODO(katsiapis): Benchmark and/or optimize.
-      std::vector<StringPiece> scratch_storage;
-      scratch_storage.reserve(example_ids.size());
+      std::unordered_set<StringPiece, StringPiece::Hasher> unique_ids(
+          example_ids.size());
       for (size_t i = 0; i < example_ids.size(); ++i) {
-        scratch_storage.emplace_back(example_ids(i));
+        unique_ids.emplace(example_ids(i));
       }
-      std::sort(scratch_storage.begin(), scratch_storage.end());
-      return std::distance(
-          std::unique(scratch_storage.begin(), scratch_storage.end()),
-          scratch_storage.end());
+      return example_ids.size() - unique_ids.size();
     }();
     OP_REQUIRES(context, num_duplicate_example_ids == 0,
                 errors::InvalidArgument(strings::Printf(
