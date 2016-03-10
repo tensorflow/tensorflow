@@ -118,8 +118,8 @@ class CholeskyGradTest(tf.test.TestCase):
       b = tf.constant( raw_b )
       a = tf.cholesky( b )
       y = tf.constant( raw_y )
-      intermediate = tf.user_ops.triangular_solve(a,y,'lower')
-      linear_solution = tf.user_ops.triangular_solve(tf.transpose(a),intermediate,'upper') 
+      intermediate = tf.matrix_triangular_solve(a,y,lower=True)
+      linear_solution = tf.matrix_triangular_solve(tf.transpose(a),intermediate,lower=False) 
       x = tf.reduce_sum( linear_solution )
       grad_b = tf.gradients( x, b )[0]
       r= linalg.solve( raw_b, np.ones( nDim ) )      
@@ -138,7 +138,7 @@ class CholeskyGradTest(tf.test.TestCase):
     with self.test_session():
       a = tf.constant( raw_a )
       g = tf.constant( raw_g )
-      test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
+      test = tf.user_ops.cholesky_grad( a, g ).eval()
       temp = chol_rev( raw_a, raw_g ) 
       reference = 0.5*( temp + temp.T )
       self.assertTrue( (np.abs( test - reference) < 1e-4).all().all() )
@@ -151,7 +151,7 @@ class CholeskyGradTest(tf.test.TestCase):
     with self.test_session():
       a = tf.constant( raw_a )
       g = tf.constant( raw_g )
-      test = tf.user_ops.cholesky_grad( a, g, 'lower' ).eval()
+      test = tf.user_ops.cholesky_grad( a, g ).eval()
       temp = chol_rev( raw_a, raw_g, block_size=32 ) 
       reference = 0.5*( temp + temp.T )
       self.assertAllClose( test, reference  )
