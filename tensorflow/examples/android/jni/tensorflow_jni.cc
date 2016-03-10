@@ -45,6 +45,10 @@ static bool g_compute_graph_initialized = false;
 static int g_tensorflow_input_size;  // The image size for the mognet input.
 static int g_image_mean;  // The image mean.
 
+// For basic benchmarking.
+static int g_num_runs = 0;
+static int64 g_timing_total_us = 0;
+
 using namespace tensorflow;
 
 inline static int64 CurrentThreadTimeUs() {
@@ -58,6 +62,9 @@ TENSORFLOW_METHOD(initializeTensorflow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager,
     jstring model, jstring labels,
     jint num_classes, jint mognet_input_size, jint image_mean) {
+  g_num_runs = 0;
+  g_timing_total_us = 0;
+
   //MutexLock input_lock(&g_compute_graph_mutex);
   if (g_compute_graph_initialized) {
     LOG(INFO) << "Compute graph already loaded. skipping.";
@@ -160,10 +167,7 @@ static void GetTopN(
 static std::string ClassifyImage(const RGBA* const bitmap_src,
                                  const int in_stride,
                                  const int width, const int height) {
-  // Very basic benchmarking functionality.
-  static int num_runs = 0;
-  static int64 timing_total_us = 0;
-  ++num_runs;
+  ++g_num_runs;
 
   // Create input tensor
   tensorflow::Tensor input_tensor(
@@ -201,10 +205,10 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   const int64 end_time = CurrentThreadTimeUs();
 
   const int64 elapsed_time_inf = end_time - start_time;
-  timing_total_us += elapsed_time_inf;
+  g_timing_total_us += elapsed_time_inf;
   VLOG(0) << "End computing. Ran in " << elapsed_time_inf / 1000 << "ms ("
-          << (timing_total_us / num_runs / 1000) << "ms avg over " << num_runs
-          << " runs)";
+          << (g_timing_total_us / g_num_runs / 1000) << "ms avg over "
+          << g_num_runs << " runs)";
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
