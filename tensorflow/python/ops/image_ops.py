@@ -644,8 +644,11 @@ def resize_images(images,
   new_width_const = tensor_util.constant_value(new_width)
   new_height_const = tensor_util.constant_value(new_height)
 
-  if new_width_const is not None and new_height_const is not None and (
-      width == new_width_const and height == new_height_const):
+  # If we can determine that the height and width will be unmodified by this
+  # transformation, we avoid performing the resize.
+  if all(x is not None
+         for x in [new_width_const, width, new_height_const, height]) and (
+             width == new_width_const and height == new_height_const):
     if not is_batch:
       images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
