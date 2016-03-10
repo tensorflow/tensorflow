@@ -68,3 +68,16 @@ def _MatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   ainv = linalg_ops.matrix_inverse(a)
   return grad * c * array_ops.transpose(ainv)
+
+@ops.RegisterGradient("MatrixTriangularSolve")
+def _MatrixTriangularSolveGrad(op, grad):
+  """Gradient for MatrixTriangularSolve.
+
+  Returns:
+    gradient
+  Args:
+    op: op
+    grad: grad
+  """
+  outputGrad = linalg_ops.matrix_triangular_solve( array_ops.transpose( op.inputs[0] ), grad, not(op.get_attr('lower')) )    
+  return ( math_ops.matmul( math_ops.neg( outputGrad ), array_ops.transpose(op.outputs[0]) ), outputGrad )
