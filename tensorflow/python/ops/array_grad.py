@@ -315,3 +315,19 @@ def _DepthToSpaceGrad(op, grad):
 
 
 ops.NoGradient("OneHot")
+
+
+@ops.RegisterGradient("MirrorPad")
+def _MirrorPadGrad(op, grad):
+  mode = op.get_attr("mode")
+  # pylint: disable=protected-access
+  return [gen_array_ops._mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
+  # pylint: enable=protected-access
+
+
+@ops.RegisterGradient("MirrorPadGrad")
+def _MirrorPadGradGrad(op, grad):
+  mode = op.get_attr("mode")
+  # pylint: disable=protected-access
+  return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
+  # pylint: enable=protected-access

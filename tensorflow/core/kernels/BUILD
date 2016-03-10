@@ -216,6 +216,7 @@ tf_kernel_libraries(
         "gather_op",
         "identity_op",
         "listdiff_op",
+        "mirror_pad_op",
         "one_hot_op",
         "pack_op",
         "pad_op",
