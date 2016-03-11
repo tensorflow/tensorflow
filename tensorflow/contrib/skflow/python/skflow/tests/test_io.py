@@ -50,10 +50,11 @@ class IOTest(tf.test.TestCase):
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
     def test_string_data_formats(self):
-        with self.assertRaises(ValueError):
-            skflow.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
-        with self.assertRaises(ValueError):
-            skflow.io.extract_pandas_labels(pd.DataFrame({"Test": ["A", "B"]}))
+        if HAS_PANDAS:
+            with self.assertRaises(ValueError):
+                skflow.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
+            with self.assertRaises(ValueError):
+                skflow.io.extract_pandas_labels(pd.DataFrame({"Test": ["A", "B"]}))
    
     def test_dask_io(self):
         if HAS_DASK and HAS_PANDAS:

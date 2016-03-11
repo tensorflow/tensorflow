@@ -15,10 +15,10 @@
 #  limitations under the License.
 
 import numpy as np
-import pandas
 import tensorflow as tf
 
 from tensorflow.contrib.skflow.python.skflow.preprocessing import categorical
+from tensorflow.contrib.skflow.python.skflow.io import *
 
 
 class CategoricalTest(tf.test.TestCase):
@@ -35,10 +35,11 @@ class CategoricalTest(tf.test.TestCase):
             [0]])
 
     def testSingleCategoricalProcessorPandasSingleDF(self):
-        cat_processor = categorical.CategoricalProcessor()
-        data = pandas.DataFrame({"Gender": ["Male", "Female", "Male"]})
-        X = list(cat_processor.fit_transform(data))
-        self.assertAllEqual(list(X), [[1], [2], [1]]) 
+        if HAS_PANDAS:
+            cat_processor = categorical.CategoricalProcessor()
+            data = pd.DataFrame({"Gender": ["Male", "Female", "Male"]})
+            X = list(cat_processor.fit_transform(data))
+            self.assertAllEqual(list(X), [[1], [2], [1]]) 
 
     def testMultiCategoricalProcessor(self):
         cat_processor = categorical.CategoricalProcessor(
