@@ -246,6 +246,7 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
     }
   }
   for (size_t i = 0; i < dense_features_by_group.size(); ++i) {
+    // (0) and [0] access guaranteed to be ok due to ValidateDenseWeights().
     const double weight = dense_weights_by_group[i](0);
     const double value = dense_features_by_group[i](example_id);
     result.wx +=
@@ -265,22 +266,6 @@ void AddDeltaWeights(const DeltaWeightsByGroup& src,
     for (size_t i = 0; i < src[group].size(); ++i) {
       (*dst)[group](i) += src[group][i].load();
     }
-  }
-}
-
-// Apply L1 regularization on the weights,
-void ShrinkWeights(const Regularizations& regularizations,
-                   WeightsByGroup* const sparse_weights_by_group,
-                   WeightsByGroup* const dense_weights_by_group) {
-  // TODO(rohananil): Parallelize this.
-  const double shrink_by = ShrinkageFactor(regularizations);
-  for (TTypes<float>::Vec weights : *sparse_weights_by_group) {
-    for (int64 i = 0; i < weights.size(); ++i) {
-      weights(i) = Shrink(weights(i), shrink_by);
-    }
-  }
-  for (TTypes<float>::Vec weights : *dense_weights_by_group) {
-    weights(0) = Shrink(weights(0), shrink_by);
   }
 }
 
@@ -309,6 +294,7 @@ void UpdateDeltaWeights(
     std::vector<std::atomic<double>>& delta_weights =
         (*dense_delta_weights_by_group)[i];
     AtomicAdd(bounded_dual_delta * values(example_id) / l2_regularization,
+              // [0] access guaranteed to be ok due to ValidateDenseWeights().
               &delta_weights[0]);
   }
 }
@@ -413,6 +399,19 @@ Status FillRegularizations(OpKernelConstruction* const context,
                            Regularizations* const regularizations) {
   TF_RETURN_IF_ERROR(context->GetAttr("l1", &regularizations->symmetric_l1));
   TF_RETURN_IF_ERROR(context->GetAttr("l2", &regularizations->symmetric_l2));
+  return Status::OK();
+}
+
+// TODO(katsiapis): Support arbitrary dimensional dense weights and remove this.
+Status ValidateDenseWeights(const WeightsByGroup& weights_by_group) {
+  for (const TTypes<float>::Vec weights : weights_by_group) {
+    if (weights.size() != 1) {
+      return errors::InvalidArgument(strings::Printf(
+          "Dense weight vectors should have exactly one entry. Found (%ld). "
+          "This is probably due to a misconfiguration in the optimizer setup.",
+          weights.size()));
+    }
+  }
   return Status::OK();
 }
 
@@ -539,6 +538,7 @@ class SdcaSolver : public OpKernel {
                                                         &dense_weights_inputs));
     WeightsByGroup dense_weights_by_group =
         MakeWeightsFrom(&dense_weights_inputs);
+    OP_REQUIRES_OK(context, ValidateDenseWeights(dense_weights_by_group));
     DeltaWeightsByGroup dense_delta_weights_by_group =
         MakeZeroDeltaWeightsLike(dense_weights_by_group);
 
@@ -610,9 +610,19 @@ class SdcaShrinkL1 : public OpKernel {
                                                         &dense_weights_inputs));
     WeightsByGroup dense_weights_by_group =
         MakeWeightsFrom(&dense_weights_inputs);
+    OP_REQUIRES_OK(context, ValidateDenseWeights(dense_weights_by_group));
 
-    ShrinkWeights(regularizations_, &sparse_weights_by_group,
-                  &dense_weights_by_group);
+    // TODO(rohananil): Parallelize this.
+    const double shrink_by = ShrinkageFactor(regularizations_);
+    for (TTypes<float>::Vec weights : sparse_weights_by_group) {
+      for (int64 i = 0; i < weights.size(); ++i) {
+        weights(i) = Shrink(weights(i), shrink_by);
+      }
+    }
+    for (TTypes<float>::Vec weights : dense_weights_by_group) {
+      // (0) access guaranteed to be ok due to ValidateDenseWeights().
+      weights(0) = Shrink(weights(0), shrink_by);
+    }
   }
 
  private:
