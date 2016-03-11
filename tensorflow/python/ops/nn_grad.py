@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
 
 
@@ -289,3 +291,42 @@ def _L2LossGrad(op, grad):
     The gradient, which is (x * grad).
   """
   return op.inputs[0] * grad
+
+
+@ops.RegisterGradient("TopK")
+@ops.RegisterGradient("TopKV2")
+def _TopKGrad(op, grad, _):
+  """Return the gradients for TopK.
+
+  Args:
+    op: The TopKOp for which we need to generate gradients.
+    grad: Tensor. The gradients passed to the TopKOp.
+
+  Returns:
+    A list of two tensors, the first being the gradient w.r.t to the input and
+    TopK, and the second being the gradient w.r.t. to the indices (all zero).
+  """
+  in_shape = array_ops.shape(op.inputs[0])
+  ind_shape = array_ops.shape(op.outputs[1])
+
+  ind_lastdim = array_ops.gather(ind_shape, array_ops.size(ind_shape) - 1)
+  # Flatten indices to 2D.
+  ind_2d = array_ops.reshape(op.outputs[1], array_ops.pack([-1, ind_lastdim]))
+
+  in_lastdim = array_ops.gather(in_shape, array_ops.size(in_shape) - 1)
+  outerdim = array_ops.shape(ind_2d)[0]
+  # Compute linear indices (flattened to 1D).
+  ind = array_ops.reshape(ind_2d + array_ops.expand_dims(
+      math_ops.range(0, outerdim * in_lastdim, in_lastdim), -1), [-1])
+
+  # Substitute grad to appropriate locations and fill the rest with zeros,
+  # finally reshaping it to the original input shape.
+  return [array_ops.reshape(
+      sparse_ops.sparse_to_dense(ind,
+                                 array_ops.reshape(
+                                     math_ops.reduce_prod(in_shape), [1]),
+                                 array_ops.reshape(grad, [-1]),
+                                 validate_indices=False),
+      in_shape), array_ops.zeros(
+          [1],
+          dtype=dtypes.int32)]
