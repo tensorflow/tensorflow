@@ -26,6 +26,7 @@ import linecache
 import re
 import sys
 import threading
+import warnings
 import weakref
 
 import six
@@ -440,6 +441,43 @@ class Tensor(object):
     """
     raise TypeError("'Tensor' object is not iterable.")
 
+  def __bool__(self):
+    """Dummy method to warn when a tensor is being used as a Python `bool`.
+
+    NOTE(mrry): This overload produces a warning when the user
+    inadvertently treats a `Tensor` as a boolean (e.g. in an `if`
+    statement). For example:
+
+    ```python
+    if tf.constant(True):  # Will warn.
+      # ...
+
+    if tf.constant(5) < tf.constant(7):  # Will warn.
+      # ...
+    ```
+
+    This functionality is deprecated. In future it will raise a `TypeError`.
+
+    Returns:
+      `True`.
+    """
+    warnings.warn("Using a `tf.Tensor` as a Python `bool` is deprecated. "
+                  "Use `if t is None:` instead of `if t:` in new code. "
+                  "A `TypeError` will be raised in future versions.",
+                  DeprecationWarning)
+    return True
+
+  def __nonzero__(self):
+    """Dummy method to warn when a tensor is being used as a Python `bool`.
+
+    NOTE(mrry): This is the Python 2.x counterpart to `__bool__()`
+    above.
+
+    Returns:
+      `True`.
+    """
+    return self.__bool__()
+
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
 
@@ -783,7 +821,8 @@ class IndexedSlices(object):
   def __str__(self):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
-        (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
+        (", dense_shape=%s" % self._dense_shape)
+        if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -2137,7 +2176,9 @@ class Graph(object):
     else:
       raise ValueError("allow_tensor and allow_operation can't both be False.")
 
-    obj = _as_graph_element(obj) or obj
+    temp_obj = _as_graph_element(obj)
+    if temp_obj is not None:
+      obj = temp_obj
 
     # If obj appears to be a name...
     if isinstance(obj, compat.bytes_or_text_types):
@@ -3362,11 +3403,11 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     else:
       graph_element = _as_graph_element(op_input)
 
-    if graph_element:
+    if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
         graph = graph_element.graph
-      elif original_graph_element:
+      elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
         raise ValueError(

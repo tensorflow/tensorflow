@@ -190,7 +190,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       y = x + 1.0
       z = y + 1
       grads = gradients.gradients(z, [x])
-      self.assertTrue(all([x for x in grads]))
+      self.assertTrue(all(x is not None for x in grads))
 
   def testBoundaryContinue(self):
     # Test that we differentiate both 'x' and 'y' correctly when x is a
@@ -200,7 +200,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       y = x * 2.0
       z = y * 3.0
       grads = gradients.gradients(z, [x, y])
-      self.assertTrue(all([x for x in grads]))
+      self.assertTrue(all(x is not None for x in grads))
       self.assertEqual(6.0, grads[0].eval())
 
   def testAggregationMethodAccumulateN(self):
@@ -213,7 +213,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
           [x, y],
           aggregation_method=
           gradients.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
-      self.assertTrue(all([x for x in grads]))
+      self.assertTrue(all(x is not None for x in grads))
       self.assertEqual(20.0, grads[0].eval())
       self.assertEqual(10.0, grads[1].eval())
 
@@ -226,7 +226,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
           z,
           [x, y],
           aggregation_method=gradients.AggregationMethod.ADD_N)
-      self.assertTrue(all([x for x in grads]))
+      self.assertTrue(all(x is not None for x in grads))
       self.assertEqual(20.0, grads[0].eval())
       self.assertEqual(10.0, grads[1].eval())
 
@@ -239,7 +239,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
           z,
           [x, y],
           aggregation_method=gradients.AggregationMethod.EXPERIMENTAL_TREE)
-      self.assertTrue(all([x for x in grads]))
+      self.assertTrue(all(x is not None for x in grads))
       self.assertEqual(20.0, grads[0].eval())
       self.assertEqual(10.0, grads[1].eval())
 

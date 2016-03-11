@@ -128,7 +128,7 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
     will fail with an assertion if string_tensor becomes a null tensor.
   """
   not_null_err = "string_input_producer requires a non-null input tensor"
-  if not string_tensor:
+  if not isinstance(string_tensor, ops.Tensor) and not string_tensor:
     raise ValueError(not_null_err)
 
   with ops.op_scope([string_tensor], name, "input_producer") as name:

@@ -51,7 +51,7 @@ def _assert_same_base_type(items, expected_type=None):
   """
   original_item_str = None
   for item in items:
-    if item:
+    if item is not None:
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type

@@ -154,7 +154,7 @@ class _VariableStore(object):
     if regularizer:
       with ops.name_scope(name + "/Regularizer/"):
         loss = regularizer(v)
-      if loss:
+      if loss is not None:
         logging.info("Applied regularizer to %s and added the result %s to "
                      "REGULARIZATION_LOSSES.", v.name, loss.name)
         ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)

@@ -256,8 +256,8 @@ def merge(inputs, name=None):
       values, _ = _Merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = _Merge(
           [inp.indices for inp in inputs], name="indices")
-      if any(inp.dense_shape for inp in inputs):
-        if not all(inp.dense_shape for inp in inputs):
+      if any(inp.dense_shape is not None for inp in inputs):
+        if any(inp.dense_shape is None for inp in inputs):
           raise ValueError("Either all merged IndexedSlices must have a "
                            "dense_shape, or none must have a dense_shape.")
         dense_shape, _ = _Merge(
@@ -604,7 +604,7 @@ class GradLoopState(object):
         # Guard stack pop with a switch if it is controlled by a cond
         grad_state = self
         pred = None
-        while not pred and grad_state:
+        while pred is None and grad_state:
           pred = grad_state.history_map.get(cond_ctxt.pred.name)
           grad_state = grad_state.outer_grad_state
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
@@ -1200,7 +1200,7 @@ class WhileContext(ControlFlowContext):
     return self
 
   def GetControlPivot(self):
-    if self._pivot_for_body:
+    if self._pivot_for_body is not None:
       return self._pivot_for_body
     return self._pivot_for_pred
 
@@ -1715,7 +1715,7 @@ def tuple(tensors, name=None, control_inputs=None):
 
   """
   with ops.op_scope(tensors, name, "tuple") as name:
-    gating_ops = [t.op for t in tensors if t]
+    gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -1731,7 +1731,7 @@ def tuple(tensors, name=None, control_inputs=None):
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t:
+      if t is not None:
         tpl.append(with_dependencies([gate], t))
       else:
         tpl.append(None)

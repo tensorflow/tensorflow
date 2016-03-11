@@ -383,7 +383,7 @@ def define_function(func, input_types):
       outputs = func(*inputs)
     else:
       outputs = func(**kwargs)
-    if not outputs:
+    if not isinstance(outputs, ops.Tensor) and not outputs:
       raise ValueError("Function must return at least one tensor")
     # Convenience: if func only returned one value, make it a tuple.
     if not isinstance(outputs, (list, tuple)):
