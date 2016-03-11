@@ -1,5 +1,12 @@
 # Examples of Using skflow
 
+Scikit Flow is high level API that allows to create, 
+train and use deep learning models easily with well
+known Scikit Learn API.
+
+To run this exampels you need to have `scikit learn` library installed (`sudo pip install sklearn`).
+Some examples use `pandas` library for data processing (`sudo pip install pandas`).
+
 * [Deep Neural Network Regression with Boston Data](boston.py)
 * [Convolutional Neural Networks with Digits Data](digits.py)
 * [Deep Neural Network Classification with Iris Data](iris.py)
