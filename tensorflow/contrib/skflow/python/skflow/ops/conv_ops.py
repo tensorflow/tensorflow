@@ -16,7 +16,7 @@
 from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
-from skflow.ops.batch_norm_ops import batch_normalize
+from .batch_norm_ops import batch_normalize
 
 
 def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',

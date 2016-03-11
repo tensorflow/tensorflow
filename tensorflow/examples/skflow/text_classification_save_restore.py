@@ -19,7 +19,7 @@ import pandas
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn, rnn_cell
-import skflow
+from tensorflow.contrib import skflow
 
 ### Training data
 

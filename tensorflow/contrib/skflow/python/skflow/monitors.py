@@ -17,7 +17,7 @@ from __future__ import print_function
 import sys
 import numpy as np
 
-from skflow.io.data_feeder import setup_train_data_feeder
+from io.data_feeder import setup_train_data_feeder
 
 
 # pylint: disable=too-many-instance-attributes

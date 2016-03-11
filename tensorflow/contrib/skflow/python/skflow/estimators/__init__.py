@@ -1,4 +1,4 @@
-"""Scikit Flow Addons."""
+"""Scikit Flow Estimators."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,4 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from skflow.addons.config_addon import ConfigAddon
+from base import TensorFlowEstimator
+from linear import TensorFlowLinearClassifier
+from linear import TensorFlowClassifier
+from linear import TensorFlowLinearRegressor
+from linear import TensorFlowRegressor
+from dnn import TensorFlowDNNClassifier
+from dnn import TensorFlowDNNRegressor
+from rnn import TensorFlowRNNClassifier
+from rnn import TensorFlowRNNRegressor

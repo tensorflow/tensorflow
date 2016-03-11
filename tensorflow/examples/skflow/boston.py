@@ -15,7 +15,7 @@
 from sklearn import datasets, cross_validation, metrics
 from sklearn import preprocessing
 
-import skflow
+from tensorflow.contrib import skflow
 
 # Load dataset
 boston = datasets.load_boston()

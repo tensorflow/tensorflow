@@ -15,8 +15,8 @@
 from sklearn import datasets, cross_validation, metrics
 import tensorflow as tf
 
-import skflow
-from skflow import monitors
+from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow import monitors
 
 # Load dataset
 

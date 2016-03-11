@@ -1,4 +1,4 @@
-"""Various TensorFlow Ops."""
+"""Main Scikit Flow module."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,25 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+## Check existance of sklearn and it's version
 
-from skflow.ops.array_ops import *
-from skflow.ops.conv_ops import *
-from skflow.ops.dnn_ops import *
-from skflow.ops.dropout_ops import *
-from skflow.ops.embeddings_ops import *
-from skflow.ops.losses_ops import *
-from skflow.ops.seq2seq_ops import *
-from skflow.ops.batch_norm_ops import *
+try:
+    import sklearn
+except ImportError:
+    raise ImportError("Please install sklearn (pip install sklearn) to use "
+                      "skflow.")
+
+if sklearn.__version__ < '0.16.0':
+    raise ImportError("Your scikit-learn version needs to be at least 0.16. "
+                      "Your current version is %s. " % sklearn.VERSION)
+
+import numpy as np
+import tensorflow as tf
+
+from io import *
+from estimators import *
+import ops
+import preprocessing
+import models
+from trainer import TensorFlowTrainer
+

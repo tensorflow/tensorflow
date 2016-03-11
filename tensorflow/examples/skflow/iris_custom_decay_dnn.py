@@ -15,8 +15,8 @@
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
-import skflow
 import tensorflow as tf
+from tensorflow.contrib import skflow
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = train_test_split(iris.data,

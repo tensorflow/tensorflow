@@ -17,7 +17,7 @@ from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
 
-from skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
+from .ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 
 def linear_regression(X, y):

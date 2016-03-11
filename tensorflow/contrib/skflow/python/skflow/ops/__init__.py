@@ -1,3 +1,4 @@
+"""Various TensorFlow Ops."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,21 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from sklearn import datasets, metrics, cross_validation
 
-from tensorflow.contrib import skflow
-
-# Load dataset.
-iris = datasets.load_iris()
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
-    test_size=0.2, random_state=42)
-
-# Build 3 layer DNN with 10, 20, 10 units respecitvely.
-classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-    n_classes=3, steps=200)
-
-# Fit and predict.
-classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(y_test, classifier.predict(X_test))
-print('Accuracy: {0:f}'.format(score))
-
+from array_ops import *
+from conv_ops import *
+from dnn_ops import *
+from dropout_ops import *
+from embeddings_ops import *
+from losses_ops import *
+from seq2seq_ops import *
+from batch_norm_ops import *

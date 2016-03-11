@@ -17,7 +17,7 @@ from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
 
-from skflow.ops import array_ops
+from . import array_ops
 
 
 def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):

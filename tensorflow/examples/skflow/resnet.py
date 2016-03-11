@@ -21,15 +21,14 @@ to make this better.
 """
 
 import os
+from collections import namedtuple
+from math import sqrt
+
 from sklearn import metrics
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-
-import skflow
-
-from collections import namedtuple
-from math import sqrt
+from tensorflow.contrib import skflow
 
 
 def res_net(x, y, activation=tf.nn.relu):

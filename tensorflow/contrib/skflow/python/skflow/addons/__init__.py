@@ -1,4 +1,4 @@
-"""Tools to allow different io formats."""
+"""Scikit Flow Addons."""
 #  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,5 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from skflow.io.pandas_io import *
-from skflow.io.dask_io import *
+from config_addon import ConfigAddon

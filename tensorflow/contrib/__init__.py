@@ -24,6 +24,5 @@ from tensorflow.contrib import ctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import layers
 from tensorflow.contrib import linear_optimizer
-from tensorflow.contrib import skflow
 from tensorflow.contrib import testing
 from tensorflow.contrib import util

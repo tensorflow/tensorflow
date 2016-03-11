@@ -21,7 +21,7 @@ import six
 
 import numpy as np
 
-from skflow.preprocessing.categorical_vocabulary import CategoricalVocabulary
+from .categorical_vocabulary import CategoricalVocabulary
 
 TOKENIZER_RE = re.compile(
     r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+", re.UNICODE)

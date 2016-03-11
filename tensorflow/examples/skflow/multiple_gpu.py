@@ -12,9 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import skflow
-import tensorflow as tf
 from sklearn import datasets, metrics, cross_validation
+import tensorflow as tf
+from tensorflow.contrib import skflow
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,

@@ -13,5 +13,5 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from skflow.preprocessing.text import *
-from skflow.preprocessing.categorical import *
+from text import *
+from categorical import *

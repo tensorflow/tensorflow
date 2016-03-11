@@ -29,7 +29,7 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-import skflow
+from tensorflow.contrib import skflow
 
 ### Training data
 

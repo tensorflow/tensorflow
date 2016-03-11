@@ -17,7 +17,7 @@ from __future__ import division, print_function, absolute_import
 
 import tensorflow as tf
 
-import skflow
+from .dropout_ops import dropout
 
 
 def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
@@ -40,6 +40,6 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
                 if activation:
                     tensor_in = activation(tensor_in)
                 if keep_prob:
-                    tensor_in = skflow.ops.dropout(tensor_in, keep_prob)
+                    tensor_in = dropout(tensor_in, keep_prob)
         return tensor_in
 

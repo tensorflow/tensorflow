@@ -32,13 +32,13 @@ try:
 except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
-from skflow.trainer import TensorFlowTrainer, RestoredTrainer
-from skflow.io.data_feeder import setup_train_data_feeder
-from skflow.io.data_feeder import setup_predict_data_feeder
-from skflow.ops.dropout_ops import DROPOUTS
-from skflow import monitors
+from ..trainer import TensorFlowTrainer, RestoredTrainer
+from ..io.data_feeder import setup_train_data_feeder
+from ..io.data_feeder import setup_predict_data_feeder
+from ..ops.dropout_ops import DROPOUTS
+from .. import monitors
 
-from skflow.addons.config_addon import ConfigAddon
+from ..addons.config_addon import ConfigAddon
 
 
 def _write_with_backup(filename, content):
@@ -493,7 +493,7 @@ class TensorFlowEstimator(BaseEstimator):
 
         # To avoid cyclical dependencies, import inside the function instead of
         # the beginning of the file.
-        from skflow import estimators
+        from tensorflow.contrib.skflow import estimators
         # Estimator must be one of the defined estimators in the __init__ file.
         estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)

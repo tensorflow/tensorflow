@@ -17,8 +17,8 @@ from __future__ import division, print_function, absolute_import
 
 from sklearn.base import ClassifierMixin, RegressorMixin
 
-from skflow.estimators.base import TensorFlowEstimator
-from skflow import models
+from .base import TensorFlowEstimator
+from .. import models
 
 
 def null_input_op_fn(X):

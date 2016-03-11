@@ -13,4 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from python import *
+from skflow import * 

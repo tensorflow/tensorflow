@@ -21,8 +21,7 @@ import os
 import numpy as np
 
 import tensorflow as tf
-
-import skflow
+from tensorflow.contrib import skflow
 
 # Get training data
 

@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import skflow
+from tensorflow.contrib import skflow
 from sklearn import datasets, metrics, cross_validation
 
 iris = datasets.load_iris()

@@ -12,12 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from tensorflow.python.platform import googletest
-
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
-import skflow
+from tensorflow.contrib import skflow
 
 
 iris = datasets.load_iris()

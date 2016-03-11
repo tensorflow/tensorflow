@@ -16,8 +16,8 @@
 import math
 import numpy as np
 
-from skflow.preprocessing import categorical_vocabulary
-from skflow.io.data_feeder import setup_processor_data_feeder
+from . import categorical_vocabulary
+from ..io.data_feeder import setup_processor_data_feeder
 
 
 class CategoricalProcessor(object):

@@ -16,12 +16,21 @@
 from __future__ import division, print_function, absolute_import
 
 from six.moves import xrange   # pylint: disable=redefined-builtin
-import tensorflow as tf
+
+from tensorflow.python.training import training as train
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope as vs
+
 
 OPTIMIZER_CLS_NAMES = {
-    "SGD": tf.train.GradientDescentOptimizer,
-    "Adagrad": tf.train.AdagradOptimizer,
-    "Adam": tf.train.AdamOptimizer,
+    "SGD": train.GradientDescentOptimizer,
+    "Adagrad": train.AdagradOptimizer,
+    "Adam": train.AdamOptimizer,
 }
 
 
@@ -56,18 +65,18 @@ class TensorFlowTrainer(object):
         self.global_step = global_step
         # pylint: disable=redefined-variable-type
         if isinstance(learning_rate, float):
-            self._learning_rate = tf.get_variable(
+            self._learning_rate = vs.get_variable(
                 "learning_rate",
                 [],
-                initializer=tf.constant_initializer(learning_rate))
+                initializer=init_ops.constant_initializer(learning_rate))
         elif callable(learning_rate):
             self._learning_rate = learning_rate(self.global_step)
         else:
             raise ValueError("learning_rate should be a float or a callable function.")
-        params = tf.trainable_variables()
-        self.gradients = tf.gradients(loss, params)
+        params = variables.trainable_variables()
+        self.gradients = gradients.gradients(loss, params)
         if clip_gradients > 0.0:
-            self.gradients, self.gradients_norm = tf.clip_by_global_norm(
+            self.gradients, self.gradients_norm = clip_ops.clip_by_global_norm(
                 self.gradients, clip_gradients)
         grads_and_vars = zip(self.gradients, params)
         if isinstance(optimizer, str):
@@ -79,9 +88,9 @@ class TensorFlowTrainer(object):
                                                        global_step=global_step,
                                                        name="train")
         # Update ops during training, e.g. batch_norm_ops
-        self.trainer = tf.group(self.trainer, *tf.get_collection('update_ops'))
+        self.trainer = control_flow_ops.group(self.trainer, *ops.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
-        self._initializers = tf.initialize_all_variables()
+        self._initializers = variables.initialize_all_variables()
 
     def initialize(self, sess):
         """Initalizes all variables.
