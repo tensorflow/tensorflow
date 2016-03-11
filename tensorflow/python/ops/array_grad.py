@@ -313,5 +313,8 @@ def _DepthToSpaceGrad(op, grad):
   block_size = op.get_attr("block_size")
   return array_ops.space_to_depth(grad, block_size)
 
+@ops.RegisterGradient("DiagPart")
+def _DiagPartGrad(op, grad):
+  return ( array_ops.diag(grad) )    
 
 ops.NoGradient("OneHot")

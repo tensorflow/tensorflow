@@ -1,0 +1,8 @@
+TensorFlow fork for GPflow
+
+Changelog:
+
+v0.2
+
+Now require separate installation of boost. Removed boost library from bazel dependencies.
+Faster cholesky backpropagation using blocked algorithm of Murray.

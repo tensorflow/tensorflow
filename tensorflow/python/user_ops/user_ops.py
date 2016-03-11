@@ -21,8 +21,35 @@ from __future__ import print_function
 
 from tensorflow.python.ops import gen_user_ops
 from tensorflow.python.ops.gen_user_ops import *
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python import ops
 
 
 def my_fact():
   """Example of overriding the generated code for an Op."""
   return gen_user_ops._fact()
+
+@ops.RegisterGradient("Cholesky")
+def _cholesky_grad(op, grad):
+  return ( cholesky_grad( op.outputs[0] , grad ) )
+
+@ops.RegisterShape("CholeskyGrad")
+def _cholesky_grad_shape(op):
+  return [op.inputs[0].get_shape()]  
+  
+@ops.RegisterGradient("Triangle")
+def _solve_grad(op, grad):
+  if op.get_attr('Case')=='lower':
+    outputGrad = triangle(grad,'lower')
+  else:
+    outputGrad = triangle(grad,'upper')       
+  return ( outputGrad )
+    
+@ops.RegisterShape("Triangle")
+def _triangle_shape(op):
+    return [ op.inputs[0].get_shape() ]
+    
+@ops.RegisterGradient("GetDiag")
+def _get_diag_grad(op,grad ):
+    return ( array_ops.diag(grad) )
