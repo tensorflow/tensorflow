@@ -14,7 +14,10 @@ cc_library(
         "loss.h",
         "squared-loss.h",
     ],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
+    ],
 )
 
 cc_test(
@@ -34,8 +37,9 @@ cc_library(
     srcs = ["resources.cc"],
     hdrs = ["resources.h"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -57,10 +61,10 @@ cc_library(
     deps = [
         ":loss_updaters",
         ":resources",
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:bounds_check",
     ],
     alwayslink = 1,
 )

@@ -27,10 +27,24 @@ import tensorflow as tf
 
 """
 
+import ctypes
 import inspect
+import sys
 import traceback
 
 # pylint: disable=g-import-not-at-top
+
+# pywrap_tensorflow is a SWIG generated python library that dynamically loads
+# _pywrap_tensorflow.so. The default mode for loading keeps all the symbol
+# private and not visible to other libraries that may be loaded. Setting
+# the mode to RTLD_GLOBAL to make the symbols visible, so libraries such
+# as the ones implementing custom ops can have access to tensorflow
+# framework's symbols.
+_default_dlopen_flags = sys.getdlopenflags()
+sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+from tensorflow.python import pywrap_tensorflow
+sys.setdlopenflags(_default_dlopen_flags)
+
 try:
   from tensorflow.core.framework.graph_pb2 import *
 except ImportError:
