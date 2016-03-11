@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import threading
 import uuid
 
 from tensorflow.python.framework import dtypes
@@ -35,6 +36,7 @@ from tensorflow.python.platform import resource_loader
 __all__ = ['SdcaModel']
 
 _sdca_ops = None
+_sdca_ops_lock = threading.Lock()
 
 
 # Workaround for the fact that importing tensorflow imports contrib
@@ -43,11 +45,12 @@ _sdca_ops = None
 # In which case, "import tensorflow" will always crash, even for users that
 # never use contrib.
 def _maybe_load_sdca_ops():
-  global _sdca_ops
-  if not _sdca_ops:
-    _sdca_ops = load_op_library(os.path.join(
-        resource_loader.get_data_files_path(), '_sdca_ops.so'))
-    assert _sdca_ops is not None, 'Could not load _sdca_ops.so'
+  with _sdca_ops_lock:
+    if not _sdca_ops:
+      global _sdca_ops
+      _sdca_ops = load_op_library(os.path.join(
+          resource_loader.get_data_files_path(), '_sdca_ops.so'))
+      assert _sdca_ops, 'Could not load _sdca_ops.so'
 
 
 class SdcaModel(object):
