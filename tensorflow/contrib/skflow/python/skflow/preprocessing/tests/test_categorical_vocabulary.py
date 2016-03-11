@@ -16,7 +16,7 @@
 
 import tensorflow as tf
 
-from skflow.preprocessing import categorical_vocabulary
+from tensorflow.contrib.skflow.python.skflow.preprocessing import categorical_vocabulary
 
 
 class CategoricalVocabularyTest(tf.test.TestCase):

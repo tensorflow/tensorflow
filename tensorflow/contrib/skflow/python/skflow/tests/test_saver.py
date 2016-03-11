@@ -19,8 +19,7 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import tensorflow as tf
-
-import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 
 class SaverTest(tf.test.TestCase):

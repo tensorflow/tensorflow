@@ -15,7 +15,7 @@
 import numpy as np
 import tensorflow as tf
 
-from skflow import ops
+from tensorflow.contrib.skflow.python.skflow import ops
 
 
 class DropoutTest(tf.test.TestCase):

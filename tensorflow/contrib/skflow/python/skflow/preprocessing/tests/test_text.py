@@ -18,8 +18,8 @@ from __future__ import unicode_literals
 
 import tensorflow as tf
 
-from skflow.preprocessing import text
-from skflow.preprocessing import CategoricalVocabulary
+from tensorflow.contrib.skflow.python.skflow.preprocessing import text
+from tensorflow.contrib.skflow.python.skflow.preprocessing import CategoricalVocabulary
 
 
 class TextTest(tf.test.TestCase):

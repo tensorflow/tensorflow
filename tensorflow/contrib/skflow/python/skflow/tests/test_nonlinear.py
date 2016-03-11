@@ -18,8 +18,8 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 import tensorflow as tf
+from tensorflow.contrib.skflow.python import skflow
 
-import skflow
 
 class NonLinearTest(tf.test.TestCase):
 

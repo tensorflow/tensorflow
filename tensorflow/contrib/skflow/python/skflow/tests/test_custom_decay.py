@@ -19,7 +19,7 @@ import random
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
-import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 class CustomDecayTest(tf.test.TestCase):
 

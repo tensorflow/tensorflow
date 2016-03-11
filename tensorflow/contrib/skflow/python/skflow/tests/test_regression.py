@@ -18,9 +18,9 @@ from sklearn import datasets
 from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
 
 import numpy as np
-import tensorflow as tf
 
-import skflow
+import tensorflow as tf
+from tensorflow.contrib.skflow.python import skflow
 
 
 class RegressionTest(tf.test.TestCase):

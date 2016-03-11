@@ -493,7 +493,7 @@ class TensorFlowEstimator(BaseEstimator):
 
         # To avoid cyclical dependencies, import inside the function instead of
         # the beginning of the file.
-        from tensorflow.contrib.skflow import estimators
+        from tensorflow.contrib.skflow.python.skflow import estimators
         # Estimator must be one of the defined estimators in the __init__ file.
         estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)

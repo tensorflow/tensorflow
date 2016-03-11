@@ -18,7 +18,7 @@ import numpy as np
 import pandas
 import tensorflow as tf
 
-from skflow.preprocessing import categorical
+from tensorflow.contrib.skflow.python.skflow.preprocessing import categorical
 
 
 class CategoricalTest(tf.test.TestCase):

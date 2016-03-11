@@ -20,8 +20,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 
 import tensorflow as tf
 
-import skflow
-
+from tensorflow.contrib.skflow.python import skflow
 
 
 class GridSearchTest(tf.test.TestCase):

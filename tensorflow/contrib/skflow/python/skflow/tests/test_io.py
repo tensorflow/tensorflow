@@ -19,8 +19,8 @@ from sklearn.metrics import accuracy_score
 
 import tensorflow as tf
 
-from skflow.io import *
-import skflow
+from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow.io import *
 
 
 class IOTest(tf.test.TestCase):
