@@ -42,8 +42,16 @@ class TensorTest(test_util.TensorFlowTestCase):
                        [], [dtypes.float32])
     t = op.outputs[0]
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
+    self.assertIsNone(t.dims)
+    self.assertIsNone(t.ndims)
+    with self.assertRaises(AttributeError):
+      t.dims = None
+    with self.assertRaises(AttributeError):
+      t.ndims = None
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
+    self.assertEqual(t.dims, t.get_shape().dims)
+    self.assertEqual(t.ndims, t.get_shape().ndims)
 
   def testIterable(self):
     op = ops.Operation(

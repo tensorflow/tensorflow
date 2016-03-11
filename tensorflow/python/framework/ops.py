@@ -227,6 +227,11 @@ class Tensor(object):
     return self._op
 
   @property
+  def dims(self):
+    """Shortcut to return dims of the `TensorShape` of this Tensor."""
+    return self._shape.dims
+
+  @property
   def dtype(self):
     """The `DType` of elements in this tensor."""
     return self._dtype
@@ -242,6 +247,11 @@ class Tensor(object):
     if not self._op.name:
       raise ValueError("Operation was not named: %s" % self._op)
     return "%s:%d" % (self._op.name, self._value_index)
+
+  @property
+  def ndims(self):
+    """Shortcut to return ndims of the `TensorShape` of this `Tensor`."""
+    return self._shape.ndims
 
   @property
   def device(self):
