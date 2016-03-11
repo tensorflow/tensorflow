@@ -82,6 +82,11 @@ struct PerExampleData {
 // of WeightsByGroup is the number of feature groups.
 using WeightsByGroup = std::vector<TTypes<float>::Vec>;
 
+// DeltaWeights associated with a (sparse or dense) feature group, such that the
+// size of DeltaWeightsByGroup is the number of feature groups. Atomicity is
+// required when changing the weights in order to have transactional updates.
+using DeltaWeightsByGroup = std::vector<std::vector<std::atomic<double>>>;
+
 // SparseExamples represent sparse feature groups of each example.
 using SparseExamples =
     std::vector<std::unique_ptr<const PerExampleSparseIndicesWeights>>;
@@ -187,6 +192,14 @@ Status FillSparseExamplesByGroup(
   return result;
 }
 
+// Atomically add a double to a std::atomic<double>.
+inline void AtomicAdd(const double src, std::atomic<double>* const dst) {
+  // We use a strong version of compare-exchange, as weak version can spuriously
+  // fail.
+  for (double c = dst->load(); !dst->compare_exchange_strong(c, c + src);) {
+  }
+}
+
 // Compute the shrinkage factor for proximal sdca.
 inline double ShrinkageFactor(const Regularizations& regularizations) {
   return regularizations.symmetric_l1 / regularizations.symmetric_l2;
@@ -206,10 +219,10 @@ inline double Shrink(const double weight, const double shrink_by) {
 inline PerExampleData ComputeWxAndWeightedExampleNorm(
     const int64 example_id,  //
     const WeightsByGroup& sparse_weights_by_group,
-    const WeightsByGroup& sparse_delta_weights_by_group,
+    const DeltaWeightsByGroup& sparse_delta_weights_by_group,
     const SparseExamplesByGroup& sparse_examples_by_group,
     const WeightsByGroup& dense_weights_by_group,
-    const WeightsByGroup& dense_delta_weights_by_group,
+    const DeltaWeightsByGroup& dense_delta_weights_by_group,
     const DenseFeaturesByGroup& dense_features_by_group,
     const Regularizations& regularizations) {
   PerExampleData result;
@@ -217,7 +230,8 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
   for (size_t i = 0; i < sparse_examples_by_group.size(); ++i) {
     const SparseExamples& sparse_indices_values = sparse_examples_by_group[i];
     const TTypes<float>::Vec weights = sparse_weights_by_group[i];
-    const TTypes<float>::Vec delta_weights = sparse_delta_weights_by_group[i];
+    const std::vector<std::atomic<double>>& delta_weights =
+        sparse_delta_weights_by_group[i];
     if (sparse_indices_values[example_id]) {
       const auto indices = sparse_indices_values[example_id]->feature_indices;
       const auto values = sparse_indices_values[example_id]->feature_values;
@@ -225,7 +239,8 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
         const int64 index = internal::SubtleMustCopy(indices(dim));
         const double weight = weights(index);
         const double value = values(dim);
-        result.wx += Shrink(weight + delta_weights(index), shrink_by) * value;
+        result.wx +=
+            Shrink(weight + delta_weights[index].load(), shrink_by) * value;
       }
       result.norm += sparse_indices_values[example_id]->norm;
     }
@@ -234,31 +249,21 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
     const double weight = dense_weights_by_group[i](0);
     const double value = dense_features_by_group[i](example_id);
     result.wx +=
-        Shrink(weight + dense_delta_weights_by_group[i](0), shrink_by) * value;
+        Shrink(weight + dense_delta_weights_by_group[i][0].load(), shrink_by) *
+        value;
     result.norm += value * value;
   }
   result.norm /= regularizations.symmetric_l2;
   return result;
 }
 
-// Zeros out all the weights.
-void SetZeroDeltaWeights(WeightsByGroup* const sparse_delta_weights_by_group,
-                         WeightsByGroup* const dense_delta_weights_by_group) {
-  // TODO(rohananil): Parallelize this.
-  for (TTypes<float>::Vec delta_weights : *sparse_delta_weights_by_group) {
-    delta_weights.setZero();
-  }
-  for (TTypes<float>::Vec delta_weights : *dense_delta_weights_by_group) {
-    delta_weights.setZero();
-  }
-}
-
 // Add delta weights to original weights.
-void AddDeltaWeights(const WeightsByGroup& src, WeightsByGroup* const dst) {
+void AddDeltaWeights(const DeltaWeightsByGroup& src,
+                     WeightsByGroup* const dst) {
   // TODO(rohananil): Parallelize this.
   for (size_t group = 0; group < src.size(); ++group) {
     for (size_t i = 0; i < src[group].size(); ++i) {
-      (*dst)[group](i) += src[group](i);
+      (*dst)[group](i) += src[group][i].load();
     }
   }
 }
@@ -267,7 +272,7 @@ void AddDeltaWeights(const WeightsByGroup& src, WeightsByGroup* const dst) {
 void ShrinkWeights(const Regularizations& regularizations,
                    WeightsByGroup* const sparse_weights_by_group,
                    WeightsByGroup* const dense_weights_by_group) {
-  // TODO(rohananil): Parallelize shrinking.
+  // TODO(rohananil): Parallelize this.
   const double shrink_by = ShrinkageFactor(regularizations);
   for (TTypes<float>::Vec weights : *sparse_weights_by_group) {
     for (int64 i = 0; i < weights.size(); ++i) {
@@ -279,46 +284,32 @@ void ShrinkWeights(const Regularizations& regularizations,
   }
 }
 
-void UpdateDeltaWeights(const int64 example_id,
-                        const SparseExamplesByGroup& sparse_examples_by_group,
-                        const DenseFeaturesByGroup& dense_features_by_group,
-                        const double bounded_dual_delta,
-                        const double l2_regularization,
-                        WeightsByGroup* const sparse_delta_weights_by_group,
-                        WeightsByGroup* const dense_delta_weights_by_group) {
+void UpdateDeltaWeights(
+    const int64 example_id,
+    const SparseExamplesByGroup& sparse_examples_by_group,
+    const DenseFeaturesByGroup& dense_features_by_group,
+    const double bounded_dual_delta, const double l2_regularization,
+    DeltaWeightsByGroup* const sparse_delta_weights_by_group,
+    DeltaWeightsByGroup* const dense_delta_weights_by_group) {
   for (size_t i = 0; i < sparse_examples_by_group.size(); ++i) {
     const SparseExamples& sparse_examples = sparse_examples_by_group[i];
-    TTypes<float>::Vec delta_weights = (*sparse_delta_weights_by_group)[i];
+    std::vector<std::atomic<double>>& delta_weights =
+        (*sparse_delta_weights_by_group)[i];
     if (sparse_examples[example_id]) {
       const auto indices = sparse_examples[example_id]->feature_indices;
       const auto values = sparse_examples[example_id]->feature_values;
       for (int64 dim = 0; dim < indices.dimension(0); ++dim) {
-        // TODO(rohananil): Atomic updates provide better convergence guarantees
-        // However, casting float to atomic<float> is UB. We may consider
-        // sharded set of locks, or bring primal-dual relationship to consistent
-        // state after several epochs.
-        delta_weights(indices(dim)) +=
-            bounded_dual_delta * values(dim) / l2_regularization;
+        AtomicAdd(bounded_dual_delta * values(dim) / l2_regularization,
+                  &delta_weights[indices(dim)]);
       }
     }
   }
   for (size_t i = 0; i < dense_features_by_group.size(); ++i) {
     const auto values = dense_features_by_group[i];
-    TTypes<float>::Vec delta_weights = (*dense_delta_weights_by_group)[i];
-    // TODO(rohananil): Atomic updates provide better convergence guarantees
-    // However, casting float to atomic<float> is UB. We may consider
-    // sharded set of locks, or bring primal-dual relationship to consistent
-    // state after several epochs.
-    delta_weights(0) +=
-        bounded_dual_delta * values(example_id) / l2_regularization;
-  }
-}
-
-// Atomically add a double to a std::atomic<double>.
-inline void AtomicAdd(const double src, std::atomic<double>* const dst) {
-  // We use a strong version of compare-exchange, as weak version can spuriously
-  // fail.
-  for (double c = dst->load(); !dst->compare_exchange_strong(c, c + src);) {
+    std::vector<std::atomic<double>>& delta_weights =
+        (*dense_delta_weights_by_group)[i];
+    AtomicAdd(bounded_dual_delta * values(example_id) / l2_regularization,
+              &delta_weights[0]);
   }
 }
 
@@ -330,20 +321,13 @@ WeightsByGroup MakeWeightsFrom(OpMutableInputList* const input_list) {
   return result;
 }
 
-std::vector<Tensor> MakeTensorsLike(OpMutableInputList* const input_list) {
-  std::vector<Tensor> result;
-  for (int i = 0; i < input_list->size(); ++i) {
-    result.emplace_back(DT_FLOAT,
-                        input_list->at(i, /*lock_held=*/true).shape());
-    result.back().flat<float>().setZero();
-  }
-  return result;
-}
-
-WeightsByGroup MakeDeltaWeightsFrom(std::vector<Tensor>* const tensors) {
-  WeightsByGroup result;
-  for (auto& tensor : *tensors) {
-    result.emplace_back(tensor.flat<float>());
+DeltaWeightsByGroup MakeZeroDeltaWeightsLike(
+    const WeightsByGroup& weights_by_group) {
+  // TODO(katsiapis): Maybe parallelize this.
+  DeltaWeightsByGroup result;
+  for (const TTypes<float>::Vec weights : weights_by_group) {
+    result.emplace_back(weights.size());
+    std::fill(result.back().begin(), result.back().end(), 0);
   }
   return result;
 }
@@ -359,8 +343,8 @@ Status RunTrainStepsForMiniBatch(
     const WeightsByGroup& dense_weights_by_group,
     const DenseFeaturesByGroup& dense_features_by_group,
     const DualLossUpdater& loss_updater,
-    WeightsByGroup* const sparse_delta_weights_by_group,
-    WeightsByGroup* const dense_delta_weights_by_group,
+    DeltaWeightsByGroup* const sparse_delta_weights_by_group,
+    DeltaWeightsByGroup* const dense_delta_weights_by_group,
     DataByExample* const data_by_example) {
   // Process examples in parallel, in a partitioned fashion.
   mutex mu;
@@ -415,9 +399,6 @@ Status RunTrainStepsForMiniBatch(
       data.example_weight = example_weight;
       data_by_example->Set(example_key, data);
     }
-    // TODO(rohananil): We may in the future want to make the primal-dual
-    // relationship consistent as our current updates are not
-    // transactional.
   };
   // TODO(rohananil): Current multiplier 100000 works well empirically
   // but perhaps we can tune it better.
@@ -548,24 +529,18 @@ class SdcaSolver : public OpKernel {
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
                                 "sparse_weights", &sparse_weights_inputs));
-
     WeightsByGroup sparse_weights_by_group =
         MakeWeightsFrom(&sparse_weights_inputs);
-    std::vector<Tensor> sparse_delta_weights_by_group_backing_store =
-        MakeTensorsLike(&sparse_weights_inputs);
-    WeightsByGroup sparse_delta_weights_by_group =
-        MakeDeltaWeightsFrom(&sparse_delta_weights_by_group_backing_store);
+    DeltaWeightsByGroup sparse_delta_weights_by_group =
+        MakeZeroDeltaWeightsLike(sparse_weights_by_group);
 
     OpMutableInputList dense_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list("dense_weights",
                                                         &dense_weights_inputs));
-
     WeightsByGroup dense_weights_by_group =
         MakeWeightsFrom(&dense_weights_inputs);
-    std::vector<Tensor> dense_delta_weights_by_group_backing_store =
-        MakeTensorsLike(&dense_weights_inputs);
-    WeightsByGroup dense_delta_weights_by_group =
-        MakeDeltaWeightsFrom(&dense_delta_weights_by_group_backing_store);
+    DeltaWeightsByGroup dense_delta_weights_by_group =
+        MakeZeroDeltaWeightsLike(dense_weights_by_group);
 
     OpInputList sparse_features_indices_inputs;
     OP_REQUIRES_OK(context,
@@ -584,9 +559,6 @@ class SdcaSolver : public OpKernel {
             *context->device()->tensorflow_cpu_worker_threads(),
             &sparse_examples_by_group));
 
-    SetZeroDeltaWeights(&sparse_delta_weights_by_group,
-                        &dense_delta_weights_by_group);
-
     for (int i = 0; i < num_inner_iterations_; ++i) {
       OP_REQUIRES_OK(
           context,
@@ -599,11 +571,6 @@ class SdcaSolver : public OpKernel {
               &sparse_delta_weights_by_group, &dense_delta_weights_by_group,
               data_by_example));
     }
-
-    // TODO(rohananil): Change to atomic<float> as we are not exposing delta
-    // weights to users. This will allows us to simplify the code that currently
-    // keeps a backing store for the tensors. This also avoids losing updates
-    // when done in a lockless way.
     AddDeltaWeights(sparse_delta_weights_by_group, &sparse_weights_by_group);
     AddDeltaWeights(dense_delta_weights_by_group, &dense_weights_by_group);
 

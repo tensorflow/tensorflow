@@ -51,10 +51,6 @@ class DataByExample : public ResourceBase {
     float primal_loss = 0;
     float dual_loss = 0;
     float example_weight = 0;
-
-    // Comparison operators for ease of testing.
-    bool operator==(const Data& other) const { return dual == other.dual; }
-    bool operator!=(const Data& other) const { return !(*this == other); }
   };
 
   // Accessor and mutator for the entry at Key. Accessor creates an entry with
