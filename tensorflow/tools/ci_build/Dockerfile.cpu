@@ -8,6 +8,7 @@ RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa
 RUN /install/install_deb_packages.sh
 RUN /install/install_bazel.sh
+RUN /install/install_pip.sh
 
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
