@@ -49,3 +49,7 @@ def _solve_grad(op, grad):
 @ops.RegisterShape("Triangle")
 def _triangle_shape(op):
     return [ op.inputs[0].get_shape() ]
+    
+@ops.RegisterGradient("GetDiag")
+def _get_diag_grad(op,grad ):
+    return ( array_ops.diag(grad) )
