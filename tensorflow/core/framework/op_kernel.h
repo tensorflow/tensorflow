@@ -1022,17 +1022,31 @@ namespace register_kernel {
 typedef ::tensorflow::KernelDefBuilder Name;
 }  // namespace register_kernel
 
+#ifdef SELECTIVE_REGISTRATION
+// Experimental selective registration support to reduce binary size.
+// Files which are not included in the whitelist provided by this
+// graph-specific header file will not be allowed to register their
+// operators, thus resulting in them being stripped out during the link phase.
+#include "ops_to_register.h"
+#define SHOULD_REGISTER_OP(filename) \
+  (strstr(kNecessaryOpFiles, filename) != nullptr)
+#else
+#define SHOULD_REGISTER_OP(filename) true
+#endif
+
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, __VA_ARGS__)
 
 #define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
-#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)   \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar         \
-      registrar__body__##ctr##__object(                          \
-          ::tensorflow::register_kernel::kernel_builder.Build(), \
-          [](::tensorflow::OpKernelConstruction* context)        \
+#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
+  static ::tensorflow::kernel_factory::OpKernelRegistrar              \
+      registrar__body__##ctr##__object(                               \
+          SHOULD_REGISTER_OP(__FILE__)                                \
+              ? ::tensorflow::register_kernel::kernel_builder.Build() \
+              : nullptr,                                              \
+          [](::tensorflow::OpKernelConstruction* context)             \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
@@ -1052,7 +1066,16 @@ namespace kernel_factory {
 class OpKernelRegistrar {
  public:
   typedef OpKernel* (*Factory)(OpKernelConstruction*);
-  OpKernelRegistrar(const KernelDef* kernel_def, Factory factory);
+  OpKernelRegistrar(const KernelDef* kernel_def, Factory factory) {
+    // Perform the check in the header to allow compile-time optimization
+    // to a no-op, allowing the linker to remove the kernel symbols.
+    if (kernel_def != nullptr) {
+      InitInternal(kernel_def, factory);
+    }
+  }
+
+ private:
+  void InitInternal(const KernelDef* kernel_def, Factory factory);
 };
 
 }  // namespace kernel_factory
