@@ -50,13 +50,13 @@ namespace generator {
 //
 // for j = 0 .. num_classes.  This value must be summed over all j for
 // the final loss.
-template <typename T>
+template <typename T, typename Index>
 class SparseXentLossGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentLossGenerator(
       typename TTypes<const T, 2>::Tensor32Bit logits,
       typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits,
-      TTypes<const int64, 1>::Tensor32Bit labels)
+      typename TTypes<const Index, 1>::Tensor32Bit labels)
       : logits_(logits), sum_exp_logits_(sum_exp_logits), labels_(labels) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
@@ -71,7 +71,7 @@ class SparseXentLossGenerator {
  private:
   typename TTypes<const T, 2>::Tensor32Bit logits_;
   typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits_;
-  TTypes<const int64, 1>::Tensor32Bit labels_;
+  typename TTypes<const Index, 1>::Tensor32Bit labels_;
 };
 
 // Generator for calculation of the sparse Xent gradient.
@@ -81,13 +81,13 @@ class SparseXentLossGenerator {
 //   exp_logits[j] / sum_exp_logits - 1{ j == label }
 //
 // for j = 0 .. num_classes.
-template <typename T>
+template <typename T, typename Index>
 class SparseXentGradGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentGradGenerator(
       typename TTypes<const T, 2>::Tensor32Bit exp_logits,
       typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits,
-      TTypes<const int64, 1>::Tensor32Bit labels)
+      typename TTypes<const Index, 1>::Tensor32Bit labels)
       : exp_logits_(exp_logits),
         sum_exp_logits_(sum_exp_logits),
         labels_(labels) {}
@@ -103,7 +103,7 @@ class SparseXentGradGenerator {
  private:
   typename TTypes<const T, 2>::Tensor32Bit exp_logits_;
   typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits_;
-  TTypes<const int64, 1>::Tensor32Bit labels_;
+  typename TTypes<const Index, 1>::Tensor32Bit labels_;
 };
 
 }  // namespace generator
@@ -111,7 +111,7 @@ class SparseXentGradGenerator {
 namespace functor {
 
 // Functor used by SparseXentOp to do the computations.
-template <typename Device, typename T>
+template <typename Device, typename T, typename Index>
 struct SparseXentFunctor {
   // Computes Cross Entropy loss and backprop.
   //
@@ -121,7 +121,7 @@ struct SparseXentFunctor {
   // loss: output tensor for the loss, dims: batch_size.
   // backprop: output tensor for the backprop, dims: batch_size, num_classes.
   void operator()(const Device& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<int64>::ConstVec labels,
+                  typename TTypes<Index>::ConstVec labels,
                   typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop);
 };
@@ -129,10 +129,10 @@ struct SparseXentFunctor {
 // Eigen code implementing SparseXentFunctor::operator().
 // This code works for both CPU and GPU and is used by the functor
 // specializations for both device types.
-template <typename Device, typename T>
+template <typename Device, typename T, typename Index>
 struct SparseXentEigenImpl {
   static void Compute(const Device& d, typename TTypes<T>::ConstMatrix logits,
-                      typename TTypes<int64>::ConstVec labels,
+                      typename TTypes<Index>::ConstVec labels,
                       typename TTypes<T>::Vec scratch,
                       typename TTypes<T>::Vec loss,
                       typename TTypes<T>::Matrix backprop) {
@@ -183,7 +183,7 @@ struct SparseXentEigenImpl {
     //  sum(-labels *
     //     ((logits - max_logits) - log(sum(exp(logits - max_logits)))))
     //  along classes
-    generator::SparseXentLossGenerator<T> sparse_xent_loss_gen(
+    generator::SparseXentLossGenerator<T, Index> sparse_xent_loss_gen(
         sparse_xent_helpers::To32BitConst<T>(backprop),
         sparse_xent_helpers::To32BitConst<T>(scratch), To32Bit(labels));
     To32Bit(loss).device(d) =
@@ -192,7 +192,7 @@ struct SparseXentEigenImpl {
     // backprop: prob - labels, where
     //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
     To32Bit(backprop).device(d) = To32Bit(backprop).exp();
-    generator::SparseXentGradGenerator<T> sparse_xent_grad_gen(
+    generator::SparseXentGradGenerator<T, Index> sparse_xent_grad_gen(
         sparse_xent_helpers::To32BitConst<T>(backprop),
         sparse_xent_helpers::To32BitConst<T>(scratch), To32Bit(labels));
     To32Bit(backprop).device(d) =

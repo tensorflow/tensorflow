@@ -62,9 +62,9 @@ inline int64 Bound(int64 val, int64 limit) {
 inline void GetWeightsAndIndices(float scale, int64 out_loc, int64 limit,
                                  std::array<float, 4>* weights,
                                  std::array<int64, 4>* indices) {
-  const int64 in_loc = floor(scale * out_loc);
+  const int64 in_loc = scale * out_loc;
   const float delta = scale * out_loc - in_loc;
-  const int64 offset = round(delta * kTableSize);
+  const int64 offset = lrintf(delta * kTableSize);
   const float* coeffs_tab = GetCoeffsTable();
   *weights = {{coeffs_tab[offset * 2 + 1], coeffs_tab[offset * 2],
                coeffs_tab[(kTableSize - offset) * 2],

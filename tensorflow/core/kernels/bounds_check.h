@@ -26,24 +26,13 @@ namespace tensorflow {
 // Check that 0 <= index < limit using a single comparison, assuming
 // that 0 <= limit if Index is signed.  Intended for use in performance
 // critical contexts where 0 <= index < limit is almost always true.
-template <class Index>
-EIGEN_ALWAYS_INLINE bool FastBoundsCheck(Index index, Index limit) {
-  typedef typename std::make_unsigned<Index>::type UIndex;
+template <typename Ta, typename Tb>
+EIGEN_ALWAYS_INLINE bool FastBoundsCheck(const Ta index, const Tb limit) {
+  static_assert(std::is_integral<Ta>::value && std::is_integral<Tb>::value,
+                "FastBoundsCheck can only be used on integer types.");
+  typedef typename std::make_unsigned<decltype(index + limit)>::type UIndex;
   return TF_PREDICT_TRUE(static_cast<UIndex>(index) <
                          static_cast<UIndex>(limit));
-}
-
-// Upcasting specializations when the index and bounds do not match;
-// always move to the larger type.
-
-EIGEN_ALWAYS_INLINE bool FastBoundsCheck(int64 index, int32 limit) {
-  return TF_PREDICT_TRUE(static_cast<uint64>(index) <
-                         static_cast<uint64>(limit));
-}
-
-EIGEN_ALWAYS_INLINE bool FastBoundsCheck(int32 index, int64 limit) {
-  return TF_PREDICT_TRUE(static_cast<uint64>(index) <
-                         static_cast<uint64>(limit));
 }
 
 namespace internal {

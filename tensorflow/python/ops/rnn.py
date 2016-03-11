@@ -122,7 +122,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     if sequence_length is not None:
       sequence_length = math_ops.to_int32(sequence_length)
 
-    if sequence_length:  # Prepare variables
+    if sequence_length is not None:  # Prepare variables
       zero_output = array_ops.zeros(
           array_ops.pack([batch_size, cell.output_size]), inputs[0].dtype)
       zero_output.set_shape(
@@ -135,7 +135,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       # pylint: disable=cell-var-from-loop
       call_cell = lambda: cell(input_, state)
       # pylint: enable=cell-var-from-loop
-      if sequence_length:
+      if sequence_length is not None:
         (output, state) = _rnn_step(
             time, sequence_length, min_sequence_length, max_sequence_length,
             zero_output, state, call_cell)

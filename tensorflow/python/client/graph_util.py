@@ -250,10 +250,16 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
     GraphDef containing a simplified version of the original.
   """
   found_variables = {}
+  variable_names = []
+  variable_dict_names = []
   for node in input_graph_def.node:
     if node.op == "Assign":
       variable_name = node.input[0]
-      found_variables[variable_name] = sess.run(variable_name + ":0")
+      variable_dict_names.append(variable_name)
+      variable_names.append(variable_name + ":0")
+  returned_variables = sess.run(variable_names)
+  found_variables = dict(zip(variable_dict_names, returned_variables))
+  logging.info("Frozen %d variables." % len(returned_variables))
 
   # This graph only includes the nodes needed to evaluate the output nodes, and
   # removes unneeded nodes like those involved in saving and assignment.

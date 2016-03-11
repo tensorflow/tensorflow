@@ -663,7 +663,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
         keep_prob, dtype=x.dtype, name="keep_prob")
     keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-    noise_shape = noise_shape or array_ops.shape(x)
+    noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(

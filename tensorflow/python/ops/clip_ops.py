@@ -127,7 +127,7 @@ def global_norm(t_list, name=None):
         if t is not None else t
         for i, t in enumerate(t_list)]
     squared_norms = array_ops.pack(
-        [math_ops.reduce_sum(v * v) for v in values if v])
+        [math_ops.reduce_sum(v * v) for v in values if v is not None])
 
     norm = math_ops.sqrt(
         math_ops.reduce_sum(squared_norms), name="global_norm")

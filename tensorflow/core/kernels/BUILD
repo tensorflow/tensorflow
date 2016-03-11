@@ -11,6 +11,7 @@ load(
     "tf_cc_tests",
     "tf_kernel_libraries",
     "tf_kernel_library",
+    "cc_header_only_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -194,11 +195,16 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
+)
+
+cc_header_only_library(
+    name = "bounds_check_lib",
+    deps = [":bounds_check"],
 )
 
 # OpKernel libraries ----------------------------------------------------------
