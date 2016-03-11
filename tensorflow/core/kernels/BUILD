@@ -1089,6 +1089,7 @@ filegroup(
         "avgpooling_op.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
+        "check_numerics_op.cc",
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_ops.cc",

@@ -2859,6 +2859,33 @@ op {
   description: "Given a `diagonal`, this operation returns a tensor with the `diagonal` and\neverything else padded with zeros. The diagonal is computed as follows:\n\nAssume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of\nrank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:\n\n`output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.\n\nFor example:\n\n```prettyprint\n# \'diagonal\' is [1, 2, 3, 4]\ntf.diag(diagonal) ==> [[1, 0, 0, 0]\n                       [0, 2, 0, 0]\n                       [0, 0, 3, 0]\n                       [0, 0, 0, 4]]\n```"
 }
 op {
+  name: "DiagPart"
+  input_arg {
+    name: "input"
+    description: "Rank k tensor where k is 2, 4, or 6."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    description: "The extracted diagonal."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Returns the diagonal part of the tensor."
+  description: "This operation returns a tensor with the `diagonal` part\nof the `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a\ntensor of rank `k` with dimensions `[D1,..., Dk]` where:\n\n`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[1, 0, 0, 0]\n              [0, 2, 0, 0]\n              [0, 0, 3, 0]\n              [0, 0, 0, 4]]\n\ntf.diag_part(input) ==> [1, 2, 3, 4]\n```"
+}
+op {
   name: "Digamma"
   input_arg {
     name: "x"

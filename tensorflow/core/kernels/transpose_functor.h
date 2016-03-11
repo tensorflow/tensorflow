@@ -47,7 +47,7 @@ void ComputeStride(const TensorShape& shape, Index* strides) {
   }
 }
 
-// Device-specific naive implementation for tranpose.
+// Device-specific naive implementation for transpose.
 template <typename Device, typename T>
 void TransposeSimple(const Device& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out);

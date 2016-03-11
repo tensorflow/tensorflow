@@ -58,7 +58,7 @@ translation [Sutskever et al., 2014](http://arxiv.org/abs/1409.3215)
 In the basic model depicted above, every input has to be encoded into
 a fixed-size state vector, as that is the only thing passed to the decoder.
 To allow the decoder more direct access to the input, an *attention* mechanism
-was introduced in [Bahdanu et al., 2014](http://arxiv.org/abs/1409.0473)
+was introduced in [Bahdanau et al., 2014](http://arxiv.org/abs/1409.0473)
 ([pdf](http://arxiv.org/pdf/1409.0473.pdf)).
 We will not go into the details of the attention mechanism (see the paper),
 suffice it to say that it allows the decoder to peek into the input at every
@@ -176,8 +176,8 @@ projections are constructed by the following code in `seq2seq_model.py`.
 ```
 
 First, note that we only construct a sampled softmax if the number of samples
-(512 by default) is smaller that the target vocabulary size. For vocabularies
-smaller than 512 it might be a better idea to just use a standard softmax loss.
+(512 by default) is smaller than the target vocabulary size. For vocabularies
+smaller than 512, it might be a better idea to just use a standard softmax loss.
 
 Then, as you can see, we construct an output projection. It is a pair,
 consisting of a weight matrix and a bias vector. If used, the rnn cell

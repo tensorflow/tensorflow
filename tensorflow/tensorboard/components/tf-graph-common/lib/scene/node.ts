@@ -493,6 +493,7 @@ function position(nodeGroup, d: render.RenderNodeInfo) {
         scene.positionRect(shape, cx, d.y, d.coreBox.width, d.coreBox.height);
         labelPosition(nodeGroup, cx, d.y, d.labelOffset);
       }
+      break;
     }
     case NodeType.BRIDGE: {
       // position shape

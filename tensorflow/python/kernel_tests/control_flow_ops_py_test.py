@@ -1397,7 +1397,7 @@ class ControlFlowTest(tf.test.TestCase):
                                                            vdef)
         # The device is empty, but the colocation constraint is set.
         self.assertDeviceEqual("", with_vdef_dep.device)
-        self.assertEqual(["loc:@vdef"],
+        self.assertEqual([b"loc:@vdef"],
                          with_vdef_dep.op.colocation_groups())
 
   def testGroup(self):

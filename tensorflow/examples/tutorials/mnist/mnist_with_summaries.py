@@ -54,23 +54,23 @@ def main(_):
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784], name='x-input')
   W = tf.Variable(tf.zeros([784, 10]), name='weights')
-  b = tf.Variable(tf.zeros([10], name='bias'))
+  b = tf.Variable(tf.zeros([10]), name='bias')
 
   # Use a name scope to organize nodes in the graph visualizer
   with tf.name_scope('Wx_b'):
     y = tf.nn.softmax(tf.matmul(x, W) + b)
 
   # Add summary ops to collect data
-  _ = tf.histogram_summary('weights', W)
-  _ = tf.histogram_summary('biases', b)
-  _ = tf.histogram_summary('y', y)
+  tf.histogram_summary('weights', W)
+  tf.histogram_summary('biases', b)
+  tf.histogram_summary('y', y)
 
   # Define loss and optimizer
   y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
   with tf.name_scope('xent'):
     cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
-    _ = tf.scalar_summary('cross entropy', cross_entropy)
+    tf.scalar_summary('cross entropy', cross_entropy)
   with tf.name_scope('train'):
     train_step = tf.train.GradientDescentOptimizer(
         FLAGS.learning_rate).minimize(cross_entropy)
@@ -78,7 +78,7 @@ def main(_):
   with tf.name_scope('test'):
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    _ = tf.scalar_summary('accuracy', accuracy)
+    tf.scalar_summary('accuracy', accuracy)
 
   # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.merge_all_summaries()

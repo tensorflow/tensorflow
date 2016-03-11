@@ -54,6 +54,15 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "libtensorflow_cc.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
 py_library(
     name = "tensorflow_py",
     srcs = ["__init__.py"],

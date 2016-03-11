@@ -94,7 +94,7 @@ class MatrixSolveLsOp
     }
     if (fast_) {
       // The fast branch assumes that matrix is not rank deficient and
-      // not too ill-conditioned. Specifically, the reciprobal condition number
+      // not too ill-conditioned. Specifically, the reciprocal condition number
       // should be greater than the square root of the machine precision, i.e.
       //   1 / cond(matrix) > sqrt(std::numeric_limits<Scalar>::epsilon()).
       // This branch solves over- or underdetermined least-squares problems

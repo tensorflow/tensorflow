@@ -207,7 +207,7 @@ function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
   });
 
   // Some annotations (such as summary) are represented using a 12x12 image tag.
-  // Purposely ommited units (e.g. pixels) since the images are vector graphics.
+  // Purposely omitted units (e.g. pixels) since the images are vector graphics.
   // If there is an image, we adjust the location of the image to be vertically
   // centered with the node and horizontally centered between the arrow and the
   // text label.

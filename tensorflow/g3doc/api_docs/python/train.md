@@ -794,9 +794,11 @@ global_step = tf.Variable(0, trainable=False)
 starter_learning_rate = 0.1
 learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                            100000, 0.96, staircase=True)
-optimizer = tf.GradientDescentOptimizer(learning_rate)
 # Passing global_step to minimize() will increment it at each step.
-optimizer.minimize(...my loss..., global_step=global_step)
+learning_step = (
+    tf.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
 ```
 
 ##### Args:
@@ -2280,5 +2282,3 @@ device assignments have not changed.
 ##### Returns:
 
   A saver constructed rom `saver_def` in `MetaGraphDef`.
-
-

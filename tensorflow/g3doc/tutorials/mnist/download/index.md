@@ -50,7 +50,7 @@ unpacked (following the instructions available at the website) by the
 
 The image data is extracted into a 2d tensor of: `[image index, pixel index]`
 where each entry is the intensity value of a specific pixel in a specific
-image, rescaled from `[0, 255]` to `[-0.5, 0.5]`.  The "image index" corresponds
+image, rescaled from `[0, 255]` to `[0, 1]`.  The "image index" corresponds
 to an image in the dataset, counting up from zero to the size of the dataset.
 And the "pixel index" corresponds to a specific pixel in that image, ranging
 from zero to the number of pixels in the image.

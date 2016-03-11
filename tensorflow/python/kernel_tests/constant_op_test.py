@@ -155,7 +155,7 @@ class ConstantTest(tf.test.TestCase):
       large_array = np.zeros((512, 1024, 1024), dtype=np.float32)
       with self.assertRaisesRegexp(
           ValueError,
-          "Cannot create an Operation with a NodeDef larger than 2GB."):
+          "Cannot create a tensor proto whose content is larger than 2GB."):
         c = tf.constant(large_array)
 
   def testTooLargeGraph(self):

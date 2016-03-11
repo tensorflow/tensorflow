@@ -577,7 +577,7 @@ class TensorArrayConcatOp : public OpKernel {
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(values.size());
 
-    for (int i = 0; i < values.size(); ++i) {
+    for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
         input_tensors_flat.emplace_back(new ConstMatrix(

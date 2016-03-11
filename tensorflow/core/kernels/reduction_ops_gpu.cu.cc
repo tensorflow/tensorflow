@@ -84,6 +84,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
 DEFINE_FOR_ALL_REDUCERS(float);
+DEFINE_FOR_ALL_REDUCERS(double);
 #undef DEFINE_FOR_ALL_REDUCERS
 
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);

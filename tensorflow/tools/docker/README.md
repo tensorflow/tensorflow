@@ -38,7 +38,7 @@ NVidia libraries available on their system, as well as providing mappings so
 that the container can see the host's GPU. For most purposes, this can be
 accomplished via
 
-    $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | xargs -I{} echo '-v {}:{}')
+    $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
     $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES b.gcr.io/tensorflow/tensorflow-devel-gpu
 
