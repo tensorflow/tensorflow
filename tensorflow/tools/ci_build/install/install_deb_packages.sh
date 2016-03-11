@@ -30,9 +30,11 @@ apt-get install -y \
     python-numpy \
     python-pip \
     python-virtualenv \
+    python-scipy \
     python3-dev \
     python3-numpy \
     python3-pip \
+    python3-scipy \
     sudo \
     swig \
     unzip \

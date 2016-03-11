@@ -16,5 +16,4 @@
 
 set -e
 
-pip install scipy
 pip install sklearn
