@@ -46,8 +46,8 @@ _sdca_ops_lock = threading.Lock()
 # never use contrib.
 def _maybe_load_sdca_ops():
   with _sdca_ops_lock:
+    global _sdca_ops
     if not _sdca_ops:
-      global _sdca_ops
       _sdca_ops = load_op_library(os.path.join(
           resource_loader.get_data_files_path(), '_sdca_ops.so'))
       assert _sdca_ops, 'Could not load _sdca_ops.so'
