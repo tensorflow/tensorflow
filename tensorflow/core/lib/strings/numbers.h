@@ -95,12 +95,12 @@ bool HexStringToUint64(const StringPiece& s, uint64* v);
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto32(const char* str, int32* value);
+bool safe_strto32(StringPiece str, int32* value);
 
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(const char* str, int64* value);
+bool safe_strto64(StringPiece str, int64* value);
 
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.

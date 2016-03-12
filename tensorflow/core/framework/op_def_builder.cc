@@ -92,7 +92,7 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
     return false;
   }
   int64 value = 0;
-  if (!strings::safe_strto64(match.ToString().c_str(), &value)) {
+  if (!strings::safe_strto64(match, &value)) {
     return false;
   }
   *out = value;

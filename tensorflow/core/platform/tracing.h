@@ -81,8 +81,10 @@ class Tracing {
     ~ScopedActivity();
 
    private:
+#if defined(PLATFORM_GOOGLE)
     const bool enabled_;
     const int32 region_id_;
+#endif
 
     TF_DISALLOW_COPY_AND_ASSIGN(ScopedActivity);
   };

@@ -314,11 +314,6 @@ static string GetReturns(const OpDef& op_def,
   return result;
 }
 
-void PrintReturns(const OpDef& op_def,
-                  const std::vector<string>& output_type_string) {
-  printf("%s", GetReturns(op_def, output_type_string).c_str());
-}
-
 string StringToPython(const string& str) {
   return strings::StrCat("\"", str_util::CEscape(str), "\"");
 }

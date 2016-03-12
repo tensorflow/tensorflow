@@ -627,12 +627,12 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
           << " numa: " << desc.numa_node() << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
-  return CreateGPUDevice(options, name, allocated_bytes, bus_adjacency, gpu_id,
-                         GetShortDeviceDescription(gpu_id, desc),
-                         process_state->GetGPUAllocator(
-                             gpu_id, allocated_memory,
-                             options.config.gpu_options().allocator_type()),
-                         process_state->GetCPUAllocator(desc.numa_node()));
+  return CreateGPUDevice(
+      options, name, allocated_bytes, bus_adjacency, gpu_id,
+      GetShortDeviceDescription(gpu_id, desc),
+      process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
+                                     allocated_memory),
+      process_state->GetCPUAllocator(desc.numa_node()));
 }
 
 static int GetMinGPUMultiprocessorCount() {
@@ -667,9 +667,9 @@ struct CudaVersion {
     size_t dot_pos = version_name.find('.');
     CHECK(dot_pos != string::npos);
     string major_str = version_name.substr(0, dot_pos);
-    CHECK(strings::safe_strto32(major_str.c_str(), &major_part));
+    CHECK(strings::safe_strto32(major_str, &major_part));
     string minor_str = version_name.substr(dot_pos + 1);
-    CHECK(strings::safe_strto32(minor_str.c_str(), &minor_part));
+    CHECK(strings::safe_strto32(minor_str, &minor_part));
   }
   CudaVersion() {}
   bool operator<(const CudaVersion& other) const {

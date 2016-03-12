@@ -255,6 +255,7 @@ tf_cuda_library(
         "util/device_name_utils.h",
         "util/events_writer.h",
         "util/guarded_philox_random.h",
+        "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
         "util/saved_tensor_slice_util.h",
@@ -676,7 +677,6 @@ cc_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
-        "common_runtime/gpu_device_context.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -963,6 +963,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util_platform_specific.cc",
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
+        "common_runtime/gpu_device_context.h",
     ],
     hdrs = [
         "common_runtime/gpu/gpu_allocator_retry.h",

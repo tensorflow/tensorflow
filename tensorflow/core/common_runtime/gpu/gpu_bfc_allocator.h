@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -45,7 +46,9 @@ class GPUBFCAllocator : public VisitableAllocator {
  public:
   // 'device_id' refers to the StreamExecutor ID of the device within
   // the process and must reference a valid ID in the process.
-  explicit GPUBFCAllocator(int device_id, size_t total_memory);
+  GPUBFCAllocator(int device_id, size_t total_memory);
+  GPUBFCAllocator(int device_id, size_t total_memory,
+                  const GPUOptions& gpu_options);
   ~GPUBFCAllocator() override;
 
   string Name() override { return "gpu_bfc"; }
@@ -71,8 +74,6 @@ class GPUBFCAllocator : public VisitableAllocator {
 
  private:
   struct Bin;
-
-  void MaybeInitialize() EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
                             bool dump_log_on_failure);
@@ -140,6 +141,7 @@ class GPUBFCAllocator : public VisitableAllocator {
       return dbg;
     }
   };
+
   // A Bin is a collection of similar-sized free chunks.
   struct Bin {
     // All chunks in this bin have >= bin_size memory.
@@ -169,26 +171,44 @@ class GPUBFCAllocator : public VisitableAllocator {
     Bin(GPUBFCAllocator* allocator, size_t bs)
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
-  class PtrToChunkMap {
+
+  static const size_t kMinAllocationBits = 8;
+  static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
+
+  // AllocationRegion maps pointers to ChunkHandles for a single
+  // contiguous memory region.
+  //
+  // This class is thread-compatible.
+  class AllocationRegion {
    public:
-    explicit PtrToChunkMap(size_t memory_size, size_t min_allocation_size)
-        : base_ptr_(nullptr), memory_size_(memory_size) {
-      CHECK_EQ(min_allocation_size, 256);  // Otherwise shifts need to
-                                           // be adjusted in this class
+    AllocationRegion(void* ptr, size_t memory_size)
+        : ptr_(ptr),
+          memory_size_(memory_size),
+          end_ptr_(
+              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)) {
+      DCHECK_EQ(0, memory_size % kMinAllocationSize);
       const size_t n_handles =
-          (memory_size + min_allocation_size - 1) / min_allocation_size;
+          (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
       handles_ = new ChunkHandle[n_handles];
       for (size_t i = 0; i < n_handles; i++) {
         handles_[i] = kInvalidChunkHandle;
       }
     }
-    ~PtrToChunkMap() { delete[] handles_; }
 
-    void set_base_ptr(void* base_ptr) {
-      CHECK(base_ptr_ == nullptr);
-      base_ptr_ = base_ptr;
+    AllocationRegion() {}
+
+    ~AllocationRegion() { delete[] handles_; }
+
+    AllocationRegion(AllocationRegion&& other) { Swap(other); }
+
+    AllocationRegion& operator=(AllocationRegion&& other) {
+      Swap(other);
+      return *this;
     }
 
+    void* ptr() const { return ptr_; }
+    void* end_ptr() const { return end_ptr_; }
+    size_t memory_size() const { return memory_size_; }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -196,37 +216,130 @@ class GPUBFCAllocator : public VisitableAllocator {
     void erase(const void* p) { set_handle(p, kInvalidChunkHandle); }
 
    private:
+    void Swap(AllocationRegion& other) {
+      std::swap(ptr_, other.ptr_);
+      std::swap(memory_size_, other.memory_size_);
+      std::swap(end_ptr_, other.end_ptr_);
+      std::swap(handles_, other.handles_);
+    }
+
     int IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
-      std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(base_ptr_);
+      std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
       DCHECK_GE(p_int, base_int);
       DCHECK_LT(p_int, base_int + memory_size_);
-      return static_cast<int>(
-          ((p_int - base_int) >>
-           8));  // Shift by 8 because min_allocation_size is 256
+      return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
     }
-    void* base_ptr_;
-    size_t memory_size_;
-    // Array of size "memory_size / min_allocation_size".  It is
-    // indexed by (p-base) / min_allocation_size, contains ChunkHandle
+
+    // Metadata about the allocation region.
+    void* ptr_ = nullptr;
+    size_t memory_size_ = 0;
+    void* end_ptr_ = nullptr;
+
+    // Array of size "memory_size / kMinAllocationSize".  It is
+    // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
-    ChunkHandle* handles_;
+    ChunkHandle* handles_ = nullptr;
+
+    TF_DISALLOW_COPY_AND_ASSIGN(AllocationRegion);
   };
 
+  // RegionManager aggregates one or more "AllocationRegions" and provides
+  // a layer of indirection from pointers to the underlying ChunkHandle,
+  // allowing allocation across multiple discontiguous memory regions.
+  //
+  // This class is thread-compatible.
+  class RegionManager {
+   public:
+    RegionManager() {}
+    ~RegionManager() {}
+
+    void AddAllocationRegion(void* ptr, size_t memory_size) {
+      // Insert sorted by end_ptr
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+    }
+
+    ChunkHandle get_handle(const void* p) const {
+      return RegionFor(p)->get_handle(p);
+    }
+
+    void set_handle(const void* p, ChunkHandle h) {
+      return MutableRegionFor(p)->set_handle(p, h);
+    }
+    void erase(const void* p) { return MutableRegionFor(p)->erase(p); }
+
+    const std::vector<AllocationRegion>& regions() const { return regions_; }
+
+   private:
+    static bool Comparator(const void* ptr, const AllocationRegion& other) {
+      return ptr < other.end_ptr();
+    }
+
+    AllocationRegion* MutableRegionFor(const void* p) {
+      return const_cast<AllocationRegion*>(RegionFor(p));
+    }
+
+    const AllocationRegion* RegionFor(const void* p) const {
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), p, &Comparator);
+
+      if (entry != regions_.end()) {
+        return &(*entry);
+      }
+
+      LOG(FATAL) << "Could not find Region for " << p;
+      return nullptr;
+    }
+
+   private:
+    std::vector<AllocationRegion> regions_;
+  };
+
+  // Returns 'bytes' rounded up to the next highest kMinAllocationSize.
+  size_t RoundedBytes(size_t bytes);
+
+  // Try to add a new memory region that can satisfy an allocation of
+  // 'rounded_bytes' bytes.  Returns true on success and false on
+  // failure.
+  bool Extend(size_t rounded_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Returns a pointer to an underlying allocated chunk of size
+  // 'rounded_bytes'.
+  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Splits the chunk specified by 'h' into two chunks, one at least
+  // of size 'num_bytes'.
   void SplitChunk(ChunkHandle h, size_t num_bytes)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Merges the two chunk handles.  Requires that the chunks are
+  // contiguous in their allocation.
   void Merge(ChunkHandle h, ChunkHandle h2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Frees the memory represented by 'h', coalescing the chunk if
+  // possible.
   void FreeAndMaybeCoalesce(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Adds the chunk 'h' to the proper free bin.
   void InsertFreeChunkIntoBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Removes the free chunk pointed to by 'c' from the set free_chunks.
   void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
                                   const Bin::FreeChunkSet::iterator& c)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Removes a free chunk from the bin.
   void RemoveFreeChunkFromBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Removes the chunk metadata represented by 'h'.
   void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   void RenderRegion(char* rendered, size_t resolution, const void* ptr,
-                    size_t offset, size_t size, char c)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+                    const AllocationRegion& region, size_t offset, size_t size,
+                    char c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
   string RenderOccupancy() EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
@@ -239,8 +352,6 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   // Structures immutable after construction
   const int device_id_;
-  // The base pointer where all the GPU memory begins.
-  void* base_ptr_ = nullptr;
   size_t gpu_memory_size_ = 0;
   inline int Log2FloorNonZero(uint64 n) {
 #if defined(__GNUC__)
@@ -263,7 +374,7 @@ class GPUBFCAllocator : public VisitableAllocator {
     return static_cast<size_t>(256) << index;
   }
   BinNum BinNumForSize(size_t bytes) {
-    uint64 v = std::max<size_t>(bytes, 256) >> 8;
+    uint64 v = std::max<size_t>(bytes, 256) >> kMinAllocationBits;
     int b = std::min(kNumBins - 1, Log2FloorNonZero(v));
     return b;
   }
@@ -273,9 +384,19 @@ class GPUBFCAllocator : public VisitableAllocator {
 
   perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
 
+  // The size of the current region allocation.
+  size_t curr_region_allocation_bytes_;
+
+  // The total number of allocated bytes by the allocator.
+  size_t total_region_allocated_bytes_ = 0;
+
+  // An indicator that expansion of a region has hit the limits
+  // of the available GPU memory.
+  bool started_backpedal_ = false;
+
   // Structures mutable after construction
   mutable mutex lock_;
-  PtrToChunkMap ptr_to_chunk_map_ GUARDED_BY(lock_);
+  RegionManager region_manager_ GUARDED_BY(lock_);
 
   std::vector<Chunk> chunks_;
   ChunkHandle free_chunks_list_;  // Ptr to head of linked list of free Chunks

@@ -103,83 +103,84 @@ char* DoubleToBuffer(double value, char* buffer) {
   return buffer;
 }
 
-bool safe_strto64(const char* str, int64* value) {
-  if (!str) return false;
+namespace {
+char SafeFirstChar(StringPiece str) {
+  if (str.empty()) return '\0';
+  return str[0];
+}
+}  // namespace
 
+bool safe_strto64(StringPiece str, int64* value) {
   // Skip leading space.
-  while (isspace(*str)) ++str;
+  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
 
   int64 vlimit = kint64max;
   int sign = 1;
-  if (*str == '-') {
+  if (str.Consume("-")) {
     sign = -1;
-    ++str;
     // Different limit for positive and negative integers.
     vlimit = kint64min;
   }
 
-  if (!isdigit(*str)) return false;
+  if (!isdigit(SafeFirstChar(str))) return false;
 
   int64 result = 0;
   if (sign == 1) {
     do {
-      int digit = *str - '0';
+      int digit = SafeFirstChar(str) - '0';
       if ((vlimit - digit) / 10 < result) {
         return false;
       }
       result = result * 10 + digit;
-      ++str;
-    } while (isdigit(*str));
+      str.remove_prefix(1);
+    } while (isdigit(SafeFirstChar(str)));
   } else {
     do {
-      int digit = *str - '0';
+      int digit = SafeFirstChar(str) - '0';
       if ((vlimit + digit) / 10 > result) {
         return false;
       }
       result = result * 10 - digit;
-      ++str;
-    } while (isdigit(*str));
+      str.remove_prefix(1);
+    } while (isdigit(SafeFirstChar(str)));
   }
 
   // Skip trailing space.
-  while (isspace(*str)) ++str;
+  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
 
-  if (*str) return false;
+  if (!str.empty()) return false;
 
   *value = result;
   return true;
 }
 
-bool safe_strto32(const char* str, int32* value) {
-  if (!str) return false;
-
+bool safe_strto32(StringPiece str, int32* value) {
   // Skip leading space.
-  while (isspace(*str)) ++str;
+  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
 
   int64 vmax = kint32max;
   int sign = 1;
-  if (*str == '-') {
+  if (str.Consume("-")) {
     sign = -1;
-    ++str;
     // Different max for positive and negative integers.
     ++vmax;
   }
 
-  if (!isdigit(*str)) return false;
+  if (!isdigit(SafeFirstChar(str))) return false;
 
   int64 result = 0;
   do {
-    result = result * 10 + *str - '0';
+    result = result * 10 + SafeFirstChar(str) - '0';
     if (result > vmax) {
       return false;
     }
-    ++str;
-  } while (isdigit(*str));
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
 
   // Skip trailing space.
-  while (isspace(*str)) ++str;
+  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
 
-  if (*str) return false;
+  if (!str.empty()) return false;
 
   *value = result * sign;
   return true;
