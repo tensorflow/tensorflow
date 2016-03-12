@@ -9,6 +9,9 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa
 RUN /install/install_deb_packages.sh
 RUN /install/install_bazel.sh
 
+# Pip install dependencies
+pip install sklearn
+
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
 ENV BAZELRC /root/.bazelrc
