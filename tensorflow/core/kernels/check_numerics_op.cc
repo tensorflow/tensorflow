@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 namespace tensorflow {
@@ -122,7 +121,7 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
                                 DT_INT32, TensorShape({abnormal_detected_size}),
                                 &abnormal_detected));
 
-    auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     perftools::gputools::DeviceMemoryBase abnormal_detected_ptr(
