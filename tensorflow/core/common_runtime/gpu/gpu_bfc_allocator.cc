@@ -553,20 +553,22 @@ int64 GPUBFCAllocator::AllocationId(void* ptr) {
   return c->allocation_id;
 }
 
-void GPUBFCAllocator::RenderRegion(char* rendered, const size_t resolution,
-                                   const void* ptr,
-                                   const AllocationRegion& region,
-                                   const size_t offset, const size_t size,
-                                   const char c) {
-  const char* base_ptr_c = static_cast<const char*>(region.ptr());
-  const char* ptr_c = static_cast<const char*>(ptr) + offset;
+namespace {
+
+void RenderRegion(char* rendered, const size_t resolution,
+                  const size_t total_render_size, const size_t offset,
+                  const void* base_ptr, const void* ptr, const size_t size,
+                  const char c) {
+  const char* base_ptr_c = static_cast<const char*>(base_ptr);
+  const char* ptr_c = static_cast<const char*>(ptr);
 
   size_t start_location =
-      ((ptr_c - base_ptr_c) * resolution) / region.memory_size();
+      ((ptr_c - base_ptr_c + offset) * resolution) / total_render_size;
   CHECK_GE(start_location, 0);
   CHECK_LT(start_location, resolution);
   size_t end_location =
-      ((ptr_c + size - 1 - base_ptr_c) * resolution) / region.memory_size();
+      ((ptr_c + size - 1 - base_ptr_c + offset) * resolution) /
+      total_render_size;
   CHECK_GE(end_location, 0);
   CHECK_LT(end_location, resolution);
 
@@ -575,16 +577,25 @@ void GPUBFCAllocator::RenderRegion(char* rendered, const size_t resolution,
   }
 }
 
+}  // namespace
+
 string GPUBFCAllocator::RenderOccupancy() {
   // Make a buffer for the ASCII-art representation.
   const size_t resolution = 100;
   char rendered[resolution];
 
+  // Compute the total region size to render over
+  size_t total_region_size = 0;
+  for (const auto& region : region_manager_.regions()) {
+    total_region_size += region.memory_size();
+  }
+
   // Start out with everything empty
+  RenderRegion(rendered, resolution, total_region_size, 0, nullptr, nullptr,
+               total_region_size, '_');
+
   size_t region_offset = 0;
   for (const auto& region : region_manager_.regions()) {
-    RenderRegion(rendered, resolution, region.ptr(), region, region_offset,
-                 region.memory_size(), '_');
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     // Then render each chunk left to right.
     while (h != kInvalidChunkHandle) {
@@ -593,16 +604,17 @@ string GPUBFCAllocator::RenderOccupancy() {
         // Render the wasted space
         size_t wasted = c->size - c->requested_size;
         if (wasted > 0) {
-          RenderRegion(rendered, resolution, c->ptr, region,
-                       region_offset + c->requested_size, wasted, 'x');
+          RenderRegion(rendered, resolution, total_region_size,
+                       region_offset + c->requested_size, region.ptr(), c->ptr,
+                       wasted, 'x');
         }
         // Then the occupied space
-        RenderRegion(rendered, resolution, c->ptr, region, region_offset,
-                     c->requested_size, '*');
+        RenderRegion(rendered, resolution, total_region_size, region_offset,
+                     region.ptr(), c->ptr, c->requested_size, '*');
       }
       h = c->next;
-      region_offset += region.memory_size();
     }
+    region_offset += region.memory_size();
   }
 
   return StringPiece(rendered, resolution).ToString();
