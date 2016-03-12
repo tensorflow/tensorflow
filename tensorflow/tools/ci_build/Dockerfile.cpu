@@ -10,7 +10,7 @@ RUN /install/install_deb_packages.sh
 RUN /install/install_bazel.sh
 
 # Pip install dependencies
-pip install sklearn
+RUN pip install sklearn
 
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
