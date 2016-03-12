@@ -31,16 +31,17 @@ def default_monitor():
 
 
 class BaseMonitor(object):
-    """ Base class for all learning monitors. Stores and reports training loss throughout learning
+    """Base class for all learning monitors. Stores and reports training loss throughout learning
 
-        Parameters:
+    Parameters:
         print_steps: Number of steps in between printing cost.
         early_stopping_rounds:  Activates early stopping if this is not None.
                                 Loss needs to decrease at least every every <early_stopping_rounds>
                                 round(s) to continue training. (default: None)
+        verbose: Level of verbosity of output.
 
     """
-    def __init__(self, print_steps=100, early_stopping_rounds=250, verbose=1):
+    def __init__(self, print_steps=100, early_stopping_rounds=None, verbose=1):
         self.print_steps = print_steps
         self.early_stopping_rounds = early_stopping_rounds
 
@@ -91,6 +92,8 @@ class BaseMonitor(object):
 
     def monitor_inducing_stop(self):
         """Returns True if the monitor requests the model stop (e.g. for early stopping)"""
+        if self.early_stopping_rounds is None:
+            return False
         stop_now = (self.steps - self.min_loss_i >= self.early_stopping_rounds)
         if stop_now:
             sys.stderr.write("Stopping. Best step:\n step {} with loss {}\n"
@@ -138,7 +141,8 @@ class ValidationMonitor(BaseMonitor):
                                 round(s) to continue training. (default: None)
 
     """
-    def __init__(self, val_X, val_y, n_classes=0, print_steps=100, early_stopping_rounds=250):
+    def __init__(self, val_X, val_y, n_classes=0, print_steps=100,
+                 early_stopping_rounds=None):
         super(ValidationMonitor, self).__init__(print_steps=print_steps,
                                                 early_stopping_rounds=early_stopping_rounds)
         self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
