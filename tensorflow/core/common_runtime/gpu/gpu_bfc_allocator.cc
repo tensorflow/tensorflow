@@ -32,12 +32,23 @@ namespace gpu = ::perftools::gputools;
 namespace tensorflow {
 
 GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
+    : GPUBFCAllocator(device_id, total_memory, GPUOptions()) {}
+
+GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory,
+                                 const GPUOptions& gpu_options)
     : device_id_(device_id),
-      ptr_to_chunk_map_(total_memory, 256),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
   // Get a pointer to the stream_executor for this device
   stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
+
+  if (gpu_options.allow_growth()) {
+    // 1MiB smallest initial allocation.
+    curr_region_allocation_bytes_ =
+        RoundedBytes(std::min(total_memory, 1uL << 20));
+  } else {
+    curr_region_allocation_bytes_ = RoundedBytes(total_memory);
+  }
 
   // Allocate the requested amount of memory.
   gpu_memory_size_ = total_memory;
@@ -50,8 +61,8 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
   // allocations up to (and including) the memory limit.
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
-    LOG(INFO) << "Creating bin of max chunk size "
-              << strings::HumanReadableNumBytes(bin_size);
+    VLOG(1) << "Creating bin of max chunk size "
+            << strings::HumanReadableNumBytes(bin_size);
     new (BinFromIndex(b)) Bin(this, bin_size);
     CHECK_EQ(BinForSize(bin_size), BinFromIndex(b));
     CHECK_EQ(BinForSize(bin_size + 255), BinFromIndex(b));
@@ -64,8 +75,10 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
 
 GPUBFCAllocator::~GPUBFCAllocator() {
   // Return memory back.
-  if (base_ptr_) {
-    gpu::DeviceMemoryBase gpu_ptr{base_ptr_};
+  VLOG(2) << "Number of regions allocated: "
+          << region_manager_.regions().size();
+  for (const auto& region : region_manager_.regions()) {
+    gpu::DeviceMemoryBase gpu_ptr{region.ptr()};
     stream_exec_->Deallocate(&gpu_ptr);
   }
 
@@ -78,6 +91,86 @@ GPUBFCAllocator::Chunk* GPUBFCAllocator::ChunkFromHandle(ChunkHandle h) {
   DCHECK_GE(h, 0);
   DCHECK_LT(h, static_cast<int>(chunks_.size()));
   return &(chunks_[h]);
+}
+
+bool GPUBFCAllocator::Extend(size_t rounded_bytes) {
+  // Do we have enough space to handle the client's request?
+  // If not, fail immediately.
+  if (total_region_allocated_bytes_ + rounded_bytes > gpu_memory_size_) {
+    return false;
+  }
+
+  // If curr_region_allocation_bytes_ is not enough to satisfy the
+  // allocation, keep multiplying by a power of two until that is
+  // sufficient.
+  bool increased_allocation = false;
+  while (rounded_bytes > curr_region_allocation_bytes_) {
+    curr_region_allocation_bytes_ *= 2;
+    increased_allocation = true;
+  }
+
+  // Try allocating.
+  size_t bytes = curr_region_allocation_bytes_;
+  gpu::DeviceMemory<char> gpu_mem = stream_exec_->AllocateArray<char>(bytes);
+  if (gpu_mem == nullptr && !started_backpedal_) {
+    // Only backpedal once.
+    started_backpedal_ = true;
+
+    static constexpr float kBackpedalFactor = 0.9;
+
+    // Try allocating less memory.
+    bytes = RoundedBytes(bytes * kBackpedalFactor);
+    while (gpu_mem == nullptr && bytes > rounded_bytes) {
+      gpu_mem = stream_exec_->AllocateArray<char>(bytes);
+      bytes = RoundedBytes(bytes * kBackpedalFactor);
+    }
+  }
+
+  if (gpu_mem == nullptr) {
+    return false;
+  }
+
+  if (!increased_allocation) {
+    // Increase the region size of the next required allocation.
+    curr_region_allocation_bytes_ *= 2;
+  }
+
+  VLOG(1) << "Extending allocation by " << strings::HumanReadableNumBytes(bytes)
+          << " bytes.";
+
+  total_region_allocated_bytes_ += bytes;
+  VLOG(1) << "Total allocated bytes: "
+          << strings::HumanReadableNumBytes(total_region_allocated_bytes_);
+
+  void* gpu_mem_base = gpu_mem.opaque();
+  VLOG(1) << "Allocated memory at " << gpu_mem_base << " to "
+          << static_cast<void*>(static_cast<char*>(gpu_mem_base) + bytes);
+  region_manager_.AddAllocationRegion(gpu_mem_base, bytes);
+
+  // Create one large chunk for the whole memory space that will
+  // be chunked later.
+  ChunkHandle h = AllocateChunk();
+  GPUBFCAllocator::Chunk* c = ChunkFromHandle(h);
+  c->ptr = gpu_mem_base;
+  c->size = bytes;
+  c->allocation_id = -1;
+  c->prev = kInvalidChunkHandle;
+  c->next = kInvalidChunkHandle;
+
+  region_manager_.set_handle(c->ptr, h);
+
+  // TODO(vrv): Try to merge this new region with an existing region,
+  // if the address space is contiguous, to avoid fragmentation
+  // across regions.
+
+  // Insert the chunk into the right bin.
+  InsertFreeChunkIntoBin(h);
+
+  // Invoke visitors on newly allocated region.
+  for (auto visitor : region_visitors_) {
+    visitor(gpu_mem_base, bytes);
+  }
+  return true;
 }
 
 GPUBFCAllocator::ChunkHandle GPUBFCAllocator::AllocateChunk() {
@@ -97,48 +190,6 @@ void GPUBFCAllocator::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
-}
-
-void GPUBFCAllocator::MaybeInitialize() {
-  if (base_ptr_ != nullptr) {
-    return;
-  }
-
-  LOG(INFO) << "Allocating " << strings::HumanReadableNumBytes(gpu_memory_size_)
-            << " bytes.";
-  gpu::DeviceMemory<char> gpu_mem =
-      stream_exec_->AllocateArray<char>(gpu_memory_size_);
-
-  QCHECK(gpu_mem != nullptr)
-      << " Could not allocate GPU device memory for device " << device_id_
-      << ". Tried to allocate "
-      << strings::HumanReadableNumBytes(gpu_memory_size_);
-  base_ptr_ = gpu_mem.opaque();
-  ptr_to_chunk_map_.set_base_ptr(base_ptr_);
-  LOG(INFO) << "GPU " << device_id_ << " memory begins at " << base_ptr_
-            << " extends to "
-            << static_cast<void*>(
-                   (static_cast<char*>(base_ptr_) + gpu_memory_size_));
-
-  // Create one large chunk for the whole memory space that will
-  // be chunked later.
-  ChunkHandle h = AllocateChunk();
-  GPUBFCAllocator::Chunk* c = ChunkFromHandle(h);
-  c->ptr = gpu_mem.opaque();
-  c->size = gpu_memory_size_;
-  c->allocation_id = -1;
-  c->prev = kInvalidChunkHandle;
-  c->next = kInvalidChunkHandle;
-
-  ptr_to_chunk_map_.set_handle(c->ptr, h);
-
-  // Insert the chunk into the right bin.
-  InsertFreeChunkIntoBin(h);
-
-  // Invoke visitors on newly allocated region.
-  for (auto visitor : region_visitors_) {
-    visitor(base_ptr_, gpu_memory_size_);
-  }
 }
 
 void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
@@ -184,6 +235,15 @@ void* GPUBFCAllocator::AllocateRaw(
   }
 }
 
+// static
+size_t GPUBFCAllocator::RoundedBytes(size_t bytes) {
+  size_t rounded_bytes =
+      (kMinAllocationSize *
+       ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
+  DCHECK_EQ(size_t{0}, rounded_bytes % kMinAllocationSize);
+  return rounded_bytes;
+}
+
 void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                            size_t num_bytes,
                                            bool dump_log_on_failure) {
@@ -191,20 +251,44 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
     LOG(ERROR) << "tried to allocate 0 bytes";
     return nullptr;
   }
-  // First, always allocate memory of at least 256 bytes, and always
-  // allocate multiples of 256 bytes so all memory addresses are
-  // nicely byte aligned.
-  size_t rounded_bytes = (256 * ((num_bytes + 255) / 256));
-  DCHECK_EQ(size_t{0}, rounded_bytes % 256);
+  // First, always allocate memory of at least kMinAllocationSize
+  // bytes, and always allocate multiples of kMinAllocationSize bytes
+  // so all memory addresses are nicely byte aligned.
+  size_t rounded_bytes = RoundedBytes(num_bytes);
 
   // The BFC allocator tries to find the best fit first.
-  //
-  // First identify the first bin that could satisfy rounded_bytes.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
   mutex_lock l(lock_);
-  MaybeInitialize();
+  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
+  if (ptr != nullptr) {
+    return ptr;
+  }
 
+  // Try to extend
+  if (Extend(rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
+    if (ptr != nullptr) {
+      return ptr;
+    }
+  }
+
+  // We searched all bins for an existing free chunk to use and
+  // couldn't find one.  This means we must have run out of memory,
+  // Dump the memory log for analysis.
+  if (dump_log_on_failure) {
+    DumpMemoryLog(rounded_bytes);
+    LOG(WARNING) << RenderOccupancy();
+    LOG(WARNING) << "Ran out of memory trying to allocate "
+                 << strings::HumanReadableNumBytes(num_bytes)
+                 << ".  See logs for memory state.";
+  }
+  return nullptr;
+}
+
+void* GPUBFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
+                                    size_t num_bytes) {
+  // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
@@ -253,16 +337,6 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
     }
   }
 
-  // We searched all bins for an existing free chunk to use and
-  // couldn't find one.  This means we must have run out of memory,
-  // Dump the memory log for analysis.
-  if (dump_log_on_failure) {
-    DumpMemoryLog(rounded_bytes);
-    LOG(WARNING) << RenderOccupancy();
-    LOG(WARNING) << "Ran out of memory trying to allocate "
-                 << strings::HumanReadableNumBytes(num_bytes)
-                 << ".  See logs for memory state.";
-  }
   return nullptr;
 }
 
@@ -277,7 +351,7 @@ void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::ChunkHandle h,
   // Create a new chunk starting num_bytes after c
   GPUBFCAllocator::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
-  ptr_to_chunk_map_.set_handle(new_chunk->ptr, h_new_chunk);
+  region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
 
   // Set the new sizes of the chunks.
   new_chunk->size = c->size - num_bytes;
@@ -315,7 +389,7 @@ void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
   mutex_lock l(lock_);
 
   // Find the chunk from the ptr.
-  GPUBFCAllocator::ChunkHandle h = ptr_to_chunk_map_.get_handle(ptr);
+  GPUBFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
 
   // Consider coalescing it.
@@ -361,7 +435,7 @@ void GPUBFCAllocator::DeleteChunk(ChunkHandle h) {
   // Delete h and cleanup all state
   Chunk* c = ChunkFromHandle(h);
   //  VLOG(4) << "Removing: " << c->ptr;
-  ptr_to_chunk_map_.erase(c->ptr);
+  region_manager_.erase(c->ptr);
   DeallocateChunk(h);
 }
 
@@ -445,8 +519,8 @@ void GPUBFCAllocator::AddAllocVisitor(Visitor visitor) {
   VLOG(1) << "AddVisitor";
   mutex_lock l(lock_);
   region_visitors_.push_back(visitor);
-  if (base_ptr_ != nullptr) {
-    visitor(base_ptr_, gpu_memory_size_);
+  for (const auto& region : region_manager_.regions()) {
+    visitor(region.ptr(), region.memory_size());
   }
 }
 
@@ -454,7 +528,7 @@ bool GPUBFCAllocator::TracksAllocationSizes() { return true; }
 
 size_t GPUBFCAllocator::RequestedSize(void* ptr) {
   mutex_lock l(lock_);
-  GPUBFCAllocator::ChunkHandle h = ptr_to_chunk_map_.get_handle(ptr);
+  GPUBFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
   GPUBFCAllocator::Chunk* c = ChunkFromHandle(h);
@@ -463,7 +537,7 @@ size_t GPUBFCAllocator::RequestedSize(void* ptr) {
 
 size_t GPUBFCAllocator::AllocatedSize(void* ptr) {
   mutex_lock l(lock_);
-  GPUBFCAllocator::ChunkHandle h = ptr_to_chunk_map_.get_handle(ptr);
+  GPUBFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
   GPUBFCAllocator::Chunk* c = ChunkFromHandle(h);
@@ -472,7 +546,7 @@ size_t GPUBFCAllocator::AllocatedSize(void* ptr) {
 
 int64 GPUBFCAllocator::AllocationId(void* ptr) {
   mutex_lock l(lock_);
-  GPUBFCAllocator::ChunkHandle h = ptr_to_chunk_map_.get_handle(ptr);
+  GPUBFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
   GPUBFCAllocator::Chunk* c = ChunkFromHandle(h);
@@ -480,17 +554,19 @@ int64 GPUBFCAllocator::AllocationId(void* ptr) {
 }
 
 void GPUBFCAllocator::RenderRegion(char* rendered, const size_t resolution,
-                                   const void* ptr, const size_t offset,
-                                   const size_t size, const char c) {
-  const char* base_ptr_c = static_cast<const char*>(base_ptr_);
+                                   const void* ptr,
+                                   const AllocationRegion& region,
+                                   const size_t offset, const size_t size,
+                                   const char c) {
+  const char* base_ptr_c = static_cast<const char*>(region.ptr());
   const char* ptr_c = static_cast<const char*>(ptr) + offset;
 
   size_t start_location =
-      ((ptr_c - base_ptr_c) * resolution) / gpu_memory_size_;
+      ((ptr_c - base_ptr_c) * resolution) / region.memory_size();
   CHECK_GE(start_location, 0);
   CHECK_LT(start_location, resolution);
   size_t end_location =
-      ((ptr_c + size - 1 - base_ptr_c) * resolution) / gpu_memory_size_;
+      ((ptr_c + size - 1 - base_ptr_c) * resolution) / region.memory_size();
   CHECK_GE(end_location, 0);
   CHECK_LT(end_location, resolution);
 
@@ -505,24 +581,28 @@ string GPUBFCAllocator::RenderOccupancy() {
   char rendered[resolution];
 
   // Start out with everything empty
-  RenderRegion(rendered, resolution, base_ptr_, 0, gpu_memory_size_, '_');
-
-  ChunkHandle h = ptr_to_chunk_map_.get_handle(base_ptr_);
-
-  // Then render each chunk left to right.
-  while (h != kInvalidChunkHandle) {
-    Chunk* c = ChunkFromHandle(h);
-    if (c->in_use()) {
-      // Render the wasted space
-      size_t wasted = c->size - c->requested_size;
-      if (wasted > 0) {
-        RenderRegion(rendered, resolution, c->ptr, c->requested_size, wasted,
-                     'x');
+  size_t region_offset = 0;
+  for (const auto& region : region_manager_.regions()) {
+    RenderRegion(rendered, resolution, region.ptr(), region, region_offset,
+                 region.memory_size(), '_');
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    // Then render each chunk left to right.
+    while (h != kInvalidChunkHandle) {
+      Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        // Render the wasted space
+        size_t wasted = c->size - c->requested_size;
+        if (wasted > 0) {
+          RenderRegion(rendered, resolution, c->ptr, region,
+                       region_offset + c->requested_size, wasted, 'x');
+        }
+        // Then the occupied space
+        RenderRegion(rendered, resolution, c->ptr, region, region_offset,
+                     c->requested_size, '*');
       }
-      // Then the occupied space
-      RenderRegion(rendered, resolution, c->ptr, 0, c->requested_size, '*');
+      h = c->next;
+      region_offset += region.memory_size();
     }
-    h = c->next;
   }
 
   return StringPiece(rendered, resolution).ToString();
@@ -581,22 +661,25 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // Next show the chunks that are in use, and also summarize their
   // number by size.
   std::map<size_t, int> in_use_by_size;
-  ChunkHandle h = ptr_to_chunk_map_.get_handle(base_ptr_);
-  while (h != kInvalidChunkHandle) {
-    const Chunk* c = ChunkFromHandle(h);
-    if (c->in_use()) {
-      in_use_by_size[c->size]++;
-      LOG(INFO) << "Chunk at " << c->ptr << " of size " << c->size;
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        in_use_by_size[c->size]++;
+        LOG(INFO) << "Chunk at " << c->ptr << " of size " << c->size;
+      }
+      h = c->next;
     }
-    h = c->next;
-  }
-  h = ptr_to_chunk_map_.get_handle(base_ptr_);
-  while (h != kInvalidChunkHandle) {
-    const Chunk* c = ChunkFromHandle(h);
-    if (!c->in_use()) {
-      LOG(INFO) << "Free at " << c->ptr << " of size " << c->size;
+
+    h = region_manager_.get_handle(region.ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (!c->in_use()) {
+        LOG(INFO) << "Free at " << c->ptr << " of size " << c->size;
+      }
+      h = c->next;
     }
-    h = c->next;
   }
 
   LOG(INFO) << "     Summary of in-use Chunks by size: ";

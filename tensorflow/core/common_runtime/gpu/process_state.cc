@@ -84,9 +84,10 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
   return MemDesc();
 }
 
-Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
-                                         const string& allocator_type) {
+Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                                         size_t total_bytes) {
 #if GOOGLE_CUDA
+  const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
   gpu::Platform* gpu_platform = GPUMachineManager();
 
@@ -108,7 +109,7 @@ Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
       return nullptr;
     }
 
-    gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes);
+    gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes, options);
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
