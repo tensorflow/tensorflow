@@ -201,7 +201,10 @@ class GPUBFCAllocator : public VisitableAllocator {
 
     AllocationRegion(AllocationRegion&& other) { Swap(other); }
 
-    AllocationRegion& operator=(AllocationRegion&& other) { Swap(other); }
+    AllocationRegion& operator=(AllocationRegion&& other) {
+      Swap(other);
+      return *this;
+    }
 
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
