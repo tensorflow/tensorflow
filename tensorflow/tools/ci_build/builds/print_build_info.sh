@@ -63,7 +63,7 @@ if [[ ! -z $(which swig) ]]; then
 fi
 
 # Information about TensorFlow source
-TF_FETCH_URL=$(git remote show origin | grep "Fetch URL:" | awk '{print $3}')
+TF_FETCH_URL=$(git config --get remote.origin.url)
 TF_HEAD=$(git rev-parse HEAD)
 
 # NVIDIA & CUDA info

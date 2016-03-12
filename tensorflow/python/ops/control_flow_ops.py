@@ -26,6 +26,15 @@ the execution of operations and add conditional dependencies to your graph.
 @@cond
 @@case
 
+## Higher Order Operators
+
+TensorFlow provides several higher order operators to simplify the common
+map-reduce programming patterns.
+
+@@map_fn
+@@foldl
+@@foldr
+
 ## Logical Operators
 
 TensorFlow provides several operations that you can use to add logical operators
@@ -247,8 +256,8 @@ def merge(inputs, name=None):
       values, _ = _Merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = _Merge(
           [inp.indices for inp in inputs], name="indices")
-      if any(inp.dense_shape for inp in inputs):
-        if not all(inp.dense_shape for inp in inputs):
+      if any(inp.dense_shape is not None for inp in inputs):
+        if any(inp.dense_shape is None for inp in inputs):
           raise ValueError("Either all merged IndexedSlices must have a "
                            "dense_shape, or none must have a dense_shape.")
         dense_shape, _ = _Merge(
@@ -595,7 +604,7 @@ class GradLoopState(object):
         # Guard stack pop with a switch if it is controlled by a cond
         grad_state = self
         pred = None
-        while not pred and grad_state:
+        while pred is None and grad_state:
           pred = grad_state.history_map.get(cond_ctxt.pred.name)
           grad_state = grad_state.outer_grad_state
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
@@ -1191,7 +1200,7 @@ class WhileContext(ControlFlowContext):
     return self
 
   def GetControlPivot(self):
-    if self._pivot_for_body:
+    if self._pivot_for_body is not None:
       return self._pivot_for_body
     return self._pivot_for_pred
 
@@ -1706,7 +1715,7 @@ def tuple(tensors, name=None, control_inputs=None):
 
   """
   with ops.op_scope(tensors, name, "tuple") as name:
-    gating_ops = [t.op for t in tensors if t]
+    gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -1722,7 +1731,7 @@ def tuple(tensors, name=None, control_inputs=None):
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t:
+      if t is not None:
         tpl.append(with_dependencies([gate], t))
       else:
         tpl.append(None)
@@ -1730,23 +1739,34 @@ def tuple(tensors, name=None, control_inputs=None):
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
-def foldl(fn, elems, initializer=None, name=None):
-  """The foldl operator on the unpacked tensors of a tensor.
+def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """The foldl operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This foldl operator applies the function `fn` to a sequence of elements
-  from left to right. The elements are made of the tensors unpacked from
-  `elems`. If `initializer` is None, `elems` must contain at least one
-  element.
+  This foldl operator repeatedly applies the function `fn` to a sequence
+  of elements from first to last. The elements are made of the tensors
+  unpacked from `elems` on dimension 0. The function fn takes two tensors as
+  arguments. The first argument is the accumulated value computed from the
+  preceding invocation of fn. If `initializer` is None, `elems` must contain
+  at least one element, and its first element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
 
   Args:
     fn: The function to be performed.
-    elems: A tensor to be unpacked.
+    elems: A tensor to be unpacked on dimension 0.
     initializer: (optional) The initial value for the accumulator.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables backprop support.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each
-    element/slice of `elems`, from left to right.
+    A tensor resulting from applying `fn` consecutively to the list of tensors
+    unpacked from `elems`, from first to last.
 
   Raises:
     TypeError: if `fn` is not callable.
@@ -1781,23 +1801,34 @@ def foldl(fn, elems, initializer=None, name=None):
     return r_a
 
 
-def foldr(fn, elems, initializer=None, name=None):
-  """The foldr operator operator on the unpacked tensors of a tensor.
+def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """The foldr operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This foldr operator applies the function `fn` to a sequence of elements
-  from right to left. The elements are made of the tensors unpacked from
-  `elems`. If `initializer` is None, `elems` must contain at least one
-  element.
+  This foldr operator repeatedly applies the function `fn` to a sequence
+  of elements from last to first. The elements are made of the tensors
+  unpacked from `elems`. The function fn takes two tensors as arguments.
+  The first argument is the accumulated value computed from the preceding
+  invocation of fn. If `initializer` is None, `elems` must contain at least
+  one element, and its first element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
 
   Args:
     fn: The function to be performed.
     elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
     initializer: (optional) The initial value for the accumulator.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables backprop support.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each
-    element/slice of `elems`, from right to left.
+    A tensor resulting from applying `fn` consecutively to the list of tensors
+    unpacked from `elems`, from last to first.
 
   Raises:
     TypeError: if `fn` is not callable.
@@ -1832,22 +1863,32 @@ def foldr(fn, elems, initializer=None, name=None):
     return r_a
 
 
-def map_fn(fn, elems, dtype=None, name=None):
-  """The map operator on the unpacked tensors of a tensor.
+def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
+           swap_memory=False, name=None):
+  """The map operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This map operator applies the function `fn` to a sequence of elements
-  from right to left. The elements are made of the tensors unpacked from
-  `elems`.
+  This map operator repeatedly applies the function `fn` to a sequence of
+  elements from first to last. The elements are made of the tensors unpacked
+  from `elems`. `dtype` is the data type of the return value of `fn`. Users
+  must provide `dtype` if it is different from the data type of `elems`.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(values[0]).shape`.
 
   Args:
     fn: The function to be performed.
     elems: A tensor to be unpacked to apply `fn`.
     dtype: (optional) The output type of `fn`.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables backprop support.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor that packs the results of applying `fn` on each element
-    of `elems`.
+    A tensor that packs the results of applying `fn` to the list of tensors
+    unpacked from `elems`, from first to last.
 
   Raises:
     TypeError: if `fn` is not callable.

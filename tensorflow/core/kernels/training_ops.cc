@@ -576,7 +576,6 @@ class SparseApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    const Device& device = ctx->template eigen_device<Device>();
     mutex* mu_var = ctx->input_ref_mutex(0);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
@@ -666,21 +665,42 @@ class SparseApplyFtrlOp : public OpKernel {
         auto accum_flat = accum.flat_outer_dims<T>();
         auto linear_flat = linear.flat_outer_dims<T>();
         auto grad_flat = grad.flat_outer_dims<T>();
+        T lr_scalar = lr.scalar<T>()();
+        T l1_scalar = l1.scalar<T>()();
+        T l2_scalar = l2.scalar<T>()();
+        T lr_power_scalar = lr_power.scalar<T>()();
 
         for (Tindex i = 0; i < N; i++) {
           const Tindex index = indices_vec(i);
-          typename TTypes<T>::Flat accum(&accum_flat(index, 0),
-                                         accum_flat.dimension(1));
-          typename TTypes<T>::Flat linear(&linear_flat(index, 0),
-                                          linear_flat.dimension(1));
-          typename TTypes<T>::Flat var(&var_flat(index, 0),
-                                       var_flat.dimension(1));
-          typename TTypes<T>::ConstFlat grad(&grad_flat(i, 0),
-                                             grad_flat.dimension(1));
+          auto accum = accum_flat.template chip<0>(index);
+          auto linear = linear_flat.template chip<0>(index);
+          auto grad = grad_flat.template chip<0>(i);
+          auto var = var_flat.template chip<0>(index);
 
-          functor::ApplyFtrl<Device, T>()(device, var, accum, linear, grad,
-                                          lr.scalar<T>(), l1.scalar<T>(),
-                                          l2.scalar<T>(), lr_power.scalar<T>());
+          auto new_accum = accum + grad.square();
+          if (lr_power_scalar == -0.5) {
+            linear +=
+                grad - (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;
+          } else {
+            linear += grad -
+                      (new_accum.pow(-lr_power_scalar) -
+                       accum.pow(-lr_power_scalar)) /
+                          lr_scalar * var;
+          }
+          auto x = (linear.constant(l1_scalar) * linear.sign() - linear);
+          if (lr_power_scalar == -0.5) {
+            auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +
+                     linear.constant(2 * l2_scalar);
+            var = x / y;
+          } else {
+            auto y = new_accum.pow(-lr_power_scalar) /
+                         new_accum.constant(lr_scalar) +
+                     linear.constant(2 * l2_scalar);
+            var = x / y;
+          }
+          var = (linear.abs() > linear.constant(l1_scalar))
+                    .select(var, var.constant(0));
+          accum += grad.square();
         }
       } else {
         CHECK_EQ(1, inner_dim);

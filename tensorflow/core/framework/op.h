@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_OP_H_
 #define TENSORFLOW_FRAMEWORK_OP_H_
 
+#include <functional>
 #include <unordered_map>
 
 #include <vector>
@@ -86,6 +87,23 @@ class OpRegistry : public OpRegistryInterface {
   // Get all registered ops.
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
 
+  // Watcher, a function object.
+  // watcher_, if not null, is called every time an op is registered via the
+  // Register function. watcher_ is passed the OpDef of the op getting
+  // registered.
+  typedef std::function<void(const OpDef&)> Watcher;
+
+  // An OpRegistry object has only one watcher. This interface is not thread
+  // safe, as different clients are free to set the watcher any time.
+  // Clients are expected to atomically perform the following sequence of
+  // operations :
+  // SetWatcher(a_watcher);
+  // Register some ops;
+  // SetWatcher(nullptr);
+  // Returns a non-OK status if a non-null watcher is over-written by another
+  // non-null watcher.
+  Status SetWatcher(const Watcher& watcher);
+
  private:
   // Ensures that all the functions in deferred_ get called, their OpDef's
   // registered, and returns with deferred_ empty.  Returns true the first
@@ -102,6 +120,9 @@ class OpRegistry : public OpRegistryInterface {
   mutable std::vector<OpDef> deferred_ GUARDED_BY(mu_);
   mutable std::unordered_map<string, OpDef*> registry_ GUARDED_BY(mu_);
   mutable bool initialized_ GUARDED_BY(mu_);
+
+  // Registry watcher.
+  mutable Watcher watcher_ GUARDED_BY(mu_);
 };
 
 // An adapter to allow an OpList to be used as an OpRegistryInterface.

@@ -347,36 +347,7 @@ Summarize activations, using `summarize_activation` to summarize.
 
 
 
-## Other Functions and Classes
-- - -
-
-### `tf.contrib.layers.absolute_loss(predicted, target, name=None)` {#absolute_loss}
-
-Computes and returns the per-example absolute loss.
-
-Computes the per-example absolute value of the difference between
-the target and predicted tensors. The tensors must have the same
-shape.
-
-##### Args:
-
-
-*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-    of predicted values.
-*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-    target values. The shape of the target tensor should match the
-    `predicted` tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `[batch_size, dim_1, ..., dim_n]` tensor of per-example absolute losses.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
-
+## Utilities
 
 - - -
 
@@ -434,6 +405,38 @@ Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 ### `tf.contrib.layers.is_numeric_tensor(tensor)` {#is_numeric_tensor}
 
 
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.contrib.layers.absolute_loss(predicted, target, name=None)` {#absolute_loss}
+
+Computes and returns the per-example absolute loss.
+
+Computes the per-example absolute value of the difference between
+the target and predicted tensors. The tensors must have the same
+shape.
+
+##### Args:
+
+
+*  <b>`predicted`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+    of predicted values.
+*  <b>`target`</b>: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+    target values. The shape of the target tensor should match the
+    `predicted` tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `[batch_size, dim_1, ..., dim_n]` tensor of per-example absolute losses.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `predicted` and `target` shapes do not match.
 
 
 - - -

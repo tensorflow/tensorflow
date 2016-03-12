@@ -620,6 +620,7 @@ the default graph.
 
 
 *  <b>`TypeError`</b>: if any of the inputs is not a `Tensor`.
+*  <b>`ValueError`</b>: if colocation conflicts with existing device assignment.
 
 ##### Returns:
 
@@ -639,7 +640,7 @@ For example:
 
 ```python
 @tf.RegisterGradient("CustomSquare")
-def _custom_square_grad(op, inputs):
+def _custom_square_grad(op, grad):
   # ...
 
 with tf.Graph().as_default() as g:
@@ -687,6 +688,45 @@ a collection several times. This function makes sure that duplicates in
 *  <b>`names`</b>: The keys for the collections to add to. The `GraphKeys` class
     contains many standard names for collections.
 *  <b>`value`</b>: The value to add to the collections.
+
+
+- - -
+
+#### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
+
+Returns a context manager that specifies an op to colocate with.
+
+Note: this function is not for public use, only for internal libraries.
+
+For example:
+
+```python
+a = tf.Variable([1.0])
+with g.colocate_with(a):
+  b = tf.constant(1.0)
+  c = tf.add(a, b)
+```
+
+`b` and `c` will always be colocated with `a`, no matter where `a`
+is eventually placed.
+
+##### Args:
+
+
+*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
+    the context, rather than applying all colocation properties
+    on the stack.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if op is None.
+
+##### Yields:
+
+  A context manager that specifies the op with which to colocate
+  newly created ops.
 
 
 - - -
@@ -884,6 +924,13 @@ regular expression:
     or if `inputs` are not tensors,
     or if `inputs` and `input_types` are incompatible.
 *  <b>`ValueError`</b>: if the `node_def` name is not valid.
+
+
+- - -
+
+#### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
+
+Returns the list of colocation groups of the op.
 
 
 - - -

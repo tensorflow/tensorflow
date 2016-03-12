@@ -104,7 +104,7 @@ def _MergeGrad(op, grad, _):
       # use the accumulated values as the predicate for this backprop switch.
       grad_state = grad_ctxt.grad_state
       real_pred = grad_state.history_map.get(pred.name)
-      if not real_pred:
+      if real_pred is None:
         # Remember the value of pred for every iteration.
         grad_ctxt = grad_state.grad_context
         grad_ctxt.Exit()

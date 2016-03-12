@@ -378,6 +378,55 @@ def transitive_hdrs(name, deps=[], **kwargs):
   native.filegroup(name=name,
                    srcs=[":" + name + "_gather"])
 
+
+# Create a header only library that includes all the headers exported by
+# the libraries in deps.
+def cc_header_only_library(name, deps=[], **kwargs):
+  _transitive_hdrs(name=name + "_gather",
+                   deps=deps)
+  native.cc_library(name=name,
+                    hdrs=[":" + name + "_gather"],
+                    **kwargs)
+
+
+# Helper to build a dynamic library (.so) from the sources containing
+# implementations of custom ops and kernels.
+def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
+  cuda_deps = [
+      "//tensorflow/core:stream_executor_headers_lib",
+      "//tensorflow/core/platform/default/build_config:cuda",
+  ]
+  deps = deps + [
+      "//third_party/eigen3",
+      "//tensorflow/core:framework_headers_lib",
+  ]
+  if gpu_srcs:
+    basename = name.split(".")[0]
+    cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
+                  "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+                  "--gcudacc_flag=-ftz=true"]
+
+    native.cc_library(
+        name = basename + "_gpu",
+        srcs = gpu_srcs,
+        copts = if_cuda(cuda_copts),
+        deps = deps + if_cuda(cuda_deps))
+    cuda_deps.extend([":" + basename + "_gpu"])
+
+  native.cc_binary(name=name,
+                   srcs=srcs,
+                   deps=deps + if_cuda(cuda_deps),
+                   linkshared=1,
+                   linkopts = select({
+                       "//conditions:default": [
+                           "-Wl,-Bsymbolic",
+                           "-lm",
+                       ],
+                       "//tensorflow:darwin": [],
+                   }),
+  )
+
+
 def tf_extension_linkopts():
   return []  # No extension link opts
 

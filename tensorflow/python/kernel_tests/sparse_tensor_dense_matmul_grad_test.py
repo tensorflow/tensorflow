@@ -32,7 +32,8 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
     x_values = x[non_zero]
     x_shape = x.shape
 
-    return tf.SparseTensor(indices=x_indices, values=x_values, shape=x_shape)
+    return tf.SparseTensor(
+        indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
   def _randomTensor(self, size, np_dtype, adjoint=False, sparse=False):
     n, m = size
@@ -48,7 +49,8 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
 
   def _testGradients(self, adjoint_a, adjoint_b, name, np_dtype, use_gpu=False):
     n, k, m = np.random.randint(1, 10, size=3)
-    sp_t = self._randomTensor([n, k], np_dtype, adjoint=adjoint_a, sparse=True)
+    sp_t, nnz = self._randomTensor(
+        [n, k], np_dtype, adjoint=adjoint_a, sparse=True)
     dense_t = self._randomTensor([k, m], np_dtype, adjoint=adjoint_b)
 
     matmul = tf.sparse_tensor_dense_matmul(
@@ -56,8 +58,10 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=use_gpu):
       dense_t_shape = [m, k] if adjoint_b else [k, m]
-      err = tf.test.compute_gradient_error(dense_t, dense_t_shape, matmul,
-                                           [n, m])
+      sp_t_val_shape = [nnz]
+      err = tf.test.compute_gradient_error([dense_t, sp_t.values],
+                                           [dense_t_shape, sp_t_val_shape],
+                                           matmul, [n, m])
       print("%s gradient err = %s" % (name, err))
       self.assertLess(err, 1e-3)
 

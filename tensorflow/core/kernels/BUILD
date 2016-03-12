@@ -11,6 +11,7 @@ load(
     "tf_cc_tests",
     "tf_kernel_libraries",
     "tf_kernel_library",
+    "cc_header_only_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -194,11 +195,16 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
+)
+
+cc_header_only_library(
+    name = "bounds_check_lib",
+    deps = [":bounds_check"],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -540,6 +546,7 @@ tf_cc_tests(
         "adjust_contrast_op_benchmark_test",
         "adjust_contrast_op_test",
         "colorspace_op_test",
+        "resize_bicubic_op_test",
         "resize_bilinear_op_test",
         "resize_nearest_neighbor_op_test",
     ],
@@ -1104,6 +1111,7 @@ filegroup(
         "cwise_op_minimum.cc",
         "cwise_op_mul.cc",
         "cwise_op_neg.cc",
+        "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
         "cwise_op_sqrt.cc",

@@ -23,6 +23,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Operators for testing convenience (for EQ and NE GUnit macros).
+bool operator==(const DataByExample::Data& lhs,
+                const DataByExample::Data& rhs) {
+  return lhs.dual == rhs.dual &&                //
+         lhs.primal_loss == rhs.primal_loss &&  //
+         lhs.dual_loss == rhs.dual_loss &&      //
+         lhs.example_weight == rhs.example_weight;
+}
+
+bool operator!=(const DataByExample::Data& lhs,
+                const DataByExample::Data& rhs) {
+  return !(lhs == rhs);
+}
+
 class DataByExampleTest : public ::testing::Test {
  protected:
   void SetUp() override {

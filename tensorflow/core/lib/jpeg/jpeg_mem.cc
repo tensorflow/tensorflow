@@ -141,6 +141,21 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 
   jpeg_start_decompress(&cinfo);
 
+  int64 total_size = static_cast<int64>(cinfo.output_height) *
+                     static_cast<int64>(cinfo.output_width);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << cinfo.output_width << " x "
+               << cinfo.output_height;
+    return nullptr;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    jpeg_destroy_decompress(&cinfo);
+    return nullptr;
+  }
+
   // check for compatible stride
   const int min_stride = cinfo.output_width * components * sizeof(JSAMPLE);
   if (stride == 0) {
@@ -405,6 +420,19 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
                       const CompressFlags& flags, string* output) {
   output->clear();
   const int components = (static_cast<int>(flags.format) & 0xff);
+
+  int64 total_size = static_cast<int64>(width) * static_cast<int64>(height);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (width <= 0 || height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << width << " x " << height;
+    return false;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    return false;
+  }
+
   int in_stride = flags.stride;
   if (in_stride == 0) {
     in_stride = width * (static_cast<int>(flags.format) & 0xff);

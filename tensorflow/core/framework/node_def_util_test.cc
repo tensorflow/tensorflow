@@ -308,12 +308,24 @@ TEST(NodeDefUtilTest, ValidSyntax) {
     )proto");
   ExpectInvalidSyntax(node_def_internal_name, "Illegal op name '_n'");
 
+  const NodeDef node_def_slash_in_name = ToNodeDef(R"proto(
+    name:'n\\' op:'AnyIn' input:'a' input:'b'
+    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
+    )proto");
+  ExpectInvalidSyntax(node_def_slash_in_name, "Illegal op name 'n\\'");
+
   const NodeDef node_def_internal_input_name = ToNodeDef(R"proto(
     name:'n' op:'AnyIn' input:'_a' input:'b'
     attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
     )proto");
   ExpectInvalidSyntax(node_def_internal_input_name,
                       "Illegal op input name '_a'");
+
+  const NodeDef node_def_input_name_slash = ToNodeDef(R"proto(
+    name:'n' op:'AnyIn' input:'a\\' input:'b'
+    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
+    )proto");
+  ExpectInvalidSyntax(node_def_input_name_slash, "Illegal op input name 'a\\'");
 
   const NodeDef node_def_invalid_control_input_name = ToNodeDef(R"proto(
     name:'n' op:'AnyIn' input:'a' input:'^b:0'
@@ -322,12 +334,33 @@ TEST(NodeDefUtilTest, ValidSyntax) {
   ExpectInvalidSyntax(node_def_invalid_control_input_name,
                       "Illegal op input name '^b:0'");
 
+  const NodeDef node_def_control_input_name_slash = ToNodeDef(R"proto(
+    name:'n' op:'AnyIn' input:'a' input:'^b\\'
+    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
+    )proto");
+  ExpectInvalidSyntax(node_def_control_input_name_slash,
+                      "Illegal op input name '^b\\'");
+
   const NodeDef node_def_data_input_after_control = ToNodeDef(R"proto(
     name:'n' op:'AnyIn' input:'^a' input:'b'
     attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
     )proto");
   ExpectInvalidSyntax(node_def_data_input_after_control,
                       "All control inputs must follow all data inputs");
+
+  const NodeDef node_def_data_input_invalid_port = ToNodeDef(R"proto(
+    name:'n' op:'AnyIn' input:'a:b' input:'b'
+    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
+    )proto");
+  ExpectInvalidSyntax(node_def_data_input_invalid_port,
+                      "Illegal op input name 'a:b");
+
+  const NodeDef node_def_data_input_invalid_port2 = ToNodeDef(R"proto(
+    name:'n' op:'AnyIn' input:'a:00' input:'b'
+    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
+    )proto");
+  ExpectInvalidSyntax(node_def_data_input_invalid_port2,
+                      "Illegal op input name 'a:00");
 }
 
 TEST(NameRangesForNodeTest, Simple) {

@@ -47,6 +47,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # For platform specific build config
 load(
@@ -269,22 +270,6 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
-)
-
-cc_binary(
-    name = "libtensorflow_framework.so",
-    srcs = [],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-Bsymbolic",
-            "-lm",
-        ],
-        "//tensorflow:darwin": [],
-    }),
-    linkshared = 1,
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [":framework"],
 )
 
 # Generates library per group of ops.
@@ -617,6 +602,7 @@ ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
     "-DMIN_LOG_LEVEL=0",
+    "-DTF_LEAN_BINARY",
     "-O2",
 ]
 
@@ -738,6 +724,7 @@ cc_library(
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
         "lib/strings/regexp.h",
+        "lib/strings/scanner.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
@@ -791,6 +778,20 @@ tf_cuda_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+cc_header_only_library(
+    name = "framework_headers_lib",
+    deps = [
+        ":framework",
+    ],
+)
+
+cc_header_only_library(
+    name = "stream_executor_headers_lib",
+    deps = [
+        ":stream_executor",
+    ],
 )
 
 filegroup(

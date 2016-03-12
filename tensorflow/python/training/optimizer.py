@@ -290,7 +290,7 @@ class Optimizer(object):
     with ops.op_scope([], name, self._name) as name:
       self._prepare()
       for grad, var in grads_and_vars:
-        if not grad:
+        if grad is None:
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
