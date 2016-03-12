@@ -667,9 +667,9 @@ struct CudaVersion {
     size_t dot_pos = version_name.find('.');
     CHECK(dot_pos != string::npos);
     string major_str = version_name.substr(0, dot_pos);
-    CHECK(strings::safe_strto32(major_str.c_str(), &major_part));
+    CHECK(strings::safe_strto32(major_str, &major_part));
     string minor_str = version_name.substr(dot_pos + 1);
-    CHECK(strings::safe_strto32(minor_str.c_str(), &minor_part));
+    CHECK(strings::safe_strto32(minor_str, &minor_part));
   }
   CudaVersion() {}
   bool operator<(const CudaVersion& other) const {
