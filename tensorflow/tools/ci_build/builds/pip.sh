@@ -22,10 +22,15 @@
 #   pip.sh CONTAINER_TYPE [--test_tutorials]
 #
 # When executing the Python unit tests, the script obeys the shell
-# variables: TF_BUILD_BAZEL_CLEAN, NO_TEST_ON_INSTALL
+# variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES, and
+# NO_TEST_ON_INSTALL
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
+#
+# TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
+# to be installed in virtualenv before test_installation.sh is called. Multiple
+# pakcage names are separated with spaces.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
@@ -34,6 +39,10 @@
 # tutorial tests (see test_tutorials.sh) after the PIP
 # installation and the Python unit tests-on-install step.
 #
+
+# Default configuration
+# Extra pacakges required by the test-on-install
+INSTALL_EXTRA_PIP_PACKAGES="scipy sklearn"
 
 # Helper functions
 # Get the absolute path from a path
@@ -111,7 +120,7 @@ PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(abs_path ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
 bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
-die "build_pip_package FAILED"
+    die "build_pip_package FAILED"
 
 # Perform installation
 WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
@@ -135,16 +144,29 @@ if [[ -z $(which virtualenv) ]]; then
   die "FAILED: virtualenv not available on path"
 fi
 
-virtualenv -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" ||
-die "FAILED: Unable to create virtualenv"
+virtualenv -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
+    die "FAILED: Unable to create virtualenv"
 
-source "${VENV_DIR}/bin/activate" ||
-die "FAILED: Unable to activate virtualenv"
+source "${VENV_DIR}/bin/activate" || \
+    die "FAILED: Unable to activate virtualenv"
+
 
 # Install the pip file in virtual env
 pip install -v ${WHL_PATH} \
 && echo "Successfully installed pip package ${WHL_PATH}" \
 || die "pip install (without --upgrade) FAILED"
+
+# Install extra pip packages required by the test-on-install
+if [[ ! -z "${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}" ]]; then
+  INSTALL_EXTRA_PIP_PACKAGES="${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
+fi
+
+for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
+  echo "Installing extra pip package required by test-on-install: ${PACKAGE}"
+
+  pip install ${PACKAGE} || \
+      die "pip install ${PACKAGE} FAILED"
+done
 
 # If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
 # tests-on-install and exit right away
@@ -158,14 +180,14 @@ fi
 # Call test_installation.sh to perform test-on-install
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/test_installation.sh" --virtualenv ||
-die "PIP tests-on-install FAILED"
+"${DIR}/test_installation.sh" --virtualenv || \
+    die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
-  "${DIR}/test_tutorials.sh" --virtualenv ||
-die "PIP tutorial tests-on-install FAILED"
+  "${DIR}/test_tutorials.sh" --virtualenv || \
+      die "PIP tutorial tests-on-install FAILED"
 fi
 
-deactivate ||
-die "FAILED: Unable to deactivate virtualenv"
+deactivate || \
+    die "FAILED: Unable to deactivate virtualenv"

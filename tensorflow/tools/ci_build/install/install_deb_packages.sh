@@ -23,6 +23,10 @@ apt-get install -y \
     build-essential \
     curl \
     git \
+    gfortran \
+    libatlas-base-dev \
+    libblas-dev \
+    liblapack-dev \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
