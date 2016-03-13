@@ -79,7 +79,7 @@ tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.s
 tensorflow/tools/ci_build/ci_build.sh ANDROID tensorflow/tools/ci_build/builds/android.sh
 
 # run bash inside the container
-CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
+CI_DOCKER_EXTRA_PARAMS='-it --rm' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
 ```
 
 **Note**: The set of jobs and how they are triggered is still evolving.
