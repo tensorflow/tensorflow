@@ -43,9 +43,10 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory,
   stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
 
   if (gpu_options.allow_growth()) {
-    // 1MiB smallest initial allocation.
+    // 1MiB smallest initial allocation, unless total memory available
+    // is less.
     curr_region_allocation_bytes_ =
-        RoundedBytes(std::min(total_memory, 1uL << 20));
+        RoundedBytes(std::min(total_memory, size_t{1048576}));
   } else {
     curr_region_allocation_bytes_ = RoundedBytes(total_memory);
   }
