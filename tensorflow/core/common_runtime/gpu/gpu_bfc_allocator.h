@@ -337,9 +337,6 @@ class GPUBFCAllocator : public VisitableAllocator {
   // Removes the chunk metadata represented by 'h'.
   void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  void RenderRegion(char* rendered, size_t resolution, const void* ptr,
-                    const AllocationRegion& region, size_t offset, size_t size,
-                    char c) EXCLUSIVE_LOCKS_REQUIRED(lock_);
   string RenderOccupancy() EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
