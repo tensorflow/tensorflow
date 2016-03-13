@@ -135,7 +135,7 @@ if [[ -z $(which virtualenv) ]]; then
   die "FAILED: virtualenv not available on path"
 fi
 
-virtualenv -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" ||
+virtualenv --system-site-packages -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" ||
 die "FAILED: Unable to create virtualenv"
 
 source "${VENV_DIR}/bin/activate" ||
