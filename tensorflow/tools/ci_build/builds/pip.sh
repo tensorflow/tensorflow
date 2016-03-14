@@ -163,10 +163,10 @@ source "${VENV_DIR}/bin/activate" || \
     die "FAILED: Unable to activate virtualenv"
 
 
-# Install the pip file in virtual env
-pip install -v --force-reinstall ${WHL_PATH} \
-&& echo "Successfully installed pip package ${WHL_PATH}" \
-|| die "pip install (without --upgrade) FAILED"
+# Install the pip file in virtualenv
+pip install -v --upgrade --force-reinstall ${WHL_PATH} || \
+    die "pip install FAILED"
+echo "Successfully installed pip package ${WHL_PATH}"
 
 # Install extra pip packages required by the test-on-install
 for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
