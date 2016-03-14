@@ -722,7 +722,7 @@ class BatchNormalizationTest(tf.test.TestCase):
             self.assertAllClose(
                 tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
 
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.000001):
+  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     m_val = np.random.random_sample(param_shape).astype(np.float32)
     v_val = np.random.random_sample(param_shape).astype(np.float32)
