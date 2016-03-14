@@ -159,8 +159,10 @@ from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
 from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
 
