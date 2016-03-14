@@ -460,6 +460,36 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 
+def tf_py_test(name, srcs, data=[], main=None, args=[],
+               tags=[], shard_count=1, additional_deps=[]):
+  native.py_test(
+      name=name,
+      srcs=srcs,
+      main=main,
+      args=args,
+      tags=tags,
+      visibility=["//tensorflow:internal"],
+      shard_count=shard_count,
+      data=data,
+      deps=[
+          "//tensorflow/python:extra_py_tests_deps",
+          "//tensorflow/python:kernel_tests/gradient_checker",
+      ] + additional_deps,
+      srcs_version="PY2AND3")
+
+
+def cuda_py_test(name, srcs, data=[], main="", args=[],
+                 shard_count=1, additional_deps=[]):
+  test_tags = tf_cuda_tests_tags()
+  tf_py_test(name=name,
+             srcs=srcs,
+             data=data,
+             main=main,
+             args=args,
+             tags=test_tags,
+             shard_count=shard_count,
+             additional_deps=additional_deps)
+
 def py_tests(name,
              srcs,
              additional_deps=[],
@@ -471,20 +501,16 @@ def py_tests(name,
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
       test_name = "%s_%s" % (prefix, test_name)
-    native.py_test(name=test_name,
-                   srcs=[src],
-                   main=src,
-                   tags=tags,
-                   visibility=["//tensorflow:internal"],
-                   shard_count=shard_count,
-                   data=data,
-                   deps=[
-                       "//tensorflow/python:extra_py_tests_deps",
-                       "//tensorflow/python:kernel_tests/gradient_checker",
-                   ] + additional_deps,
-                   srcs_version="PY2AND3")
+      tf_py_test(name=test_name,
+                 srcs=[src],
+                 main=src,
+                 tags=tags,
+                 shard_count=shard_count,
+                 data=data,
+                 additional_deps=additional_deps)
 
 
 def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
-  py_tests(name, srcs, additional_deps, data, test_tags, shard_count)
+  py_tests(name=name, srcs=srcs, additional_deps=additional_deps, data=data,
+           tags=test_tags, shard_count=shard_count)
