@@ -123,11 +123,25 @@ typedef struct TF_Status TF_Status;
 // Typically, the data consists of a serialized protocol buffer, but other data
 // may also be held in a buffer.
 //
-// TF_Buffer itself does not do any memory management of the pointed-to block.
+// By default, TF_Buffer itself does not do any memory management of the
+// pointed-to block.  If need be, users of this struct should specify how to
+// deallocate the block by setting the `data_deallocator` function pointer.
 typedef struct {
-  const void* data;
-  size_t length;
+  const void* data = nullptr;
+  size_t length = 0;
+  void (*data_deallocator)(void* data, size_t length) = nullptr;
 } TF_Buffer;
+
+// Makes a copy of the input and sets an appropriate deallocator.  Useful for
+// passing in read-only, input protobufs.
+extern TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len);
+
+// Useful for passing *out* a protobuf.
+extern TF_Buffer* TF_NewBuffer();
+
+extern void TF_DeleteBuffer(TF_Buffer*);
+
+extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
 // --------------------------------------------------------------------------
 // TF_Library holds information about dynamically loaded TensorFlow plugins.
@@ -172,7 +186,7 @@ typedef struct TF_Tensor TF_Tensor;
 // Return a new tensor that holds the bytes data[0,len-1].
 //
 // The data will be deallocated by a subsequent call to TF_DeleteTensor via:
-//      (*deallocator_fn)(data, len, deallocator_arg)
+//      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
 extern TF_Tensor* TF_NewTensor(TF_DataType, long long* dims, int num_dims,
@@ -252,6 +266,9 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // failure, inputs[] become the property of the implementation (the
 // implementation will eventually call TF_DeleteTensor on each input).
 //
+// The caller retains the ownership of both `run_options` and `run_outputs`, and
+// should manually call TF_DeleteBuffer on them.
+//
 // On success, the tensors corresponding to output_names[0,noutputs-1]
 // are placed in outputs[], and these outputs[] become the property
 // of the caller (the caller must eventually call TF_DeleteTensor on
@@ -259,6 +276,8 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 //
 // On failure, outputs[] contains nulls.
 extern void TF_Run(TF_Session*,
+                   // RunOptions
+                   const TF_Buffer* run_options,
                    // Input tensors
                    const char** input_names, TF_Tensor** inputs, int ninputs,
                    // Output tensors
@@ -266,6 +285,8 @@ extern void TF_Run(TF_Session*,
                    int noutputs,
                    // Target nodes
                    const char** target_node_names, int ntargets,
+                   // RunOutputs
+                   TF_Buffer* run_outputs,
                    // Output status
                    TF_Status*);
 

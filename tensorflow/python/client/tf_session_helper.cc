@@ -428,10 +428,11 @@ Safe_PyObjectPtr make_safe(PyObject* o) {
 }
 
 void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
+                           const TF_Buffer* run_options,
                            const FeedVector& inputs,
                            const NameVector& output_names,
                            const NameVector& target_nodes, Status* out_status,
-                           PyObjectVector* out_values) {
+                           PyObjectVector* out_values, TF_Buffer* run_outputs) {
   // 1. Convert the feed inputs to the appropriate form for TF_Run.
   NameVector input_names;
   Safe_PyObjectVector
@@ -527,11 +528,11 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
   // 3. Actually call TF_Run().
   Py_BEGIN_ALLOW_THREADS;
   if (handle == nullptr) {
-    TF_Run(session, input_names.data(), inputs_unsafe.data(),
+    TF_Run(session, run_options, input_names.data(), inputs_unsafe.data(),
            input_names.size(), const_cast<const char**>(output_names.data()),
            outputs.data(), output_names.size(),
            const_cast<const char**>(target_nodes.data()), target_nodes.size(),
-           status.get());
+           run_outputs, status.get());
   } else {
     TF_PRun(session, handle, input_names.data(), inputs_unsafe.data(),
             input_names.size(), const_cast<const char**>(output_names.data()),
@@ -583,12 +584,12 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
 // Wrapper for TF_Run that converts the arguments to appropriate types.
 // If *out_status is OK, the caller becomes the owner of the PyObjects
 // in *out_values.
-void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
-                    const NameVector& output_names,
+void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
+                    const FeedVector& inputs, const NameVector& output_names,
                     const NameVector& target_nodes, Status* out_status,
-                    PyObjectVector* out_values) {
-  TF_Run_wrapper_helper(session, nullptr, inputs, output_names, target_nodes,
-                        out_status, out_values);
+                    PyObjectVector* out_values, TF_Buffer* run_outputs) {
+  TF_Run_wrapper_helper(session, nullptr, run_options, inputs, output_names,
+                        target_nodes, out_status, out_values, run_outputs);
 }
 
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
@@ -619,8 +620,8 @@ void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
 void TF_PRun_wrapper(TF_Session* session, const char* handle,
                      const FeedVector& inputs, const NameVector& output_names,
                      Status* out_status, PyObjectVector* out_values) {
-  TF_Run_wrapper_helper(session, handle, inputs, output_names, NameVector(),
-                        out_status, out_values);
+  TF_Run_wrapper_helper(session, handle, nullptr, inputs, output_names,
+                        NameVector(), out_status, out_values, nullptr);
 }
 
 void ImportNumpy() { import_array1(); }
