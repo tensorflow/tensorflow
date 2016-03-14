@@ -501,13 +501,13 @@ def py_tests(name,
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
       test_name = "%s_%s" % (prefix, test_name)
-      tf_py_test(name=test_name,
-                 srcs=[src],
-                 main=src,
-                 tags=tags,
-                 shard_count=shard_count,
-                 data=data,
-                 additional_deps=additional_deps)
+    tf_py_test(name=test_name,
+               srcs=[src],
+               main=src,
+               tags=tags,
+               shard_count=shard_count,
+               data=data,
+               additional_deps=additional_deps)
 
 
 def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
