@@ -127,9 +127,9 @@ typedef struct TF_Status TF_Status;
 // pointed-to block.  If need be, users of this struct should specify how to
 // deallocate the block by setting the `data_deallocator` function pointer.
 typedef struct {
-  const void* data = nullptr;
-  size_t length = 0;
-  void (*data_deallocator)(void* data, size_t length) = nullptr;
+  const void* data;
+  size_t length;
+  void (*data_deallocator)(void* data, size_t length);
 } TF_Buffer;
 
 // Makes a copy of the input and sets an appropriate deallocator.  Useful for

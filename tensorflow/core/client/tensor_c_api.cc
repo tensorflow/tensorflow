@@ -186,7 +186,7 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
   }
 }
 // --------------------------------------------------------------------------
-TF_Buffer* TF_NewBuffer() { return new TF_Buffer; }
+TF_Buffer* TF_NewBuffer() { return new TF_Buffer{nullptr, 0, nullptr}; }
 
 TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
   void* copy = malloc(proto_len);
