@@ -1,11 +1,37 @@
 This directory contains *CMake* files that can be used to build TensorFlow
 core library.
 
+
+Current Status
+--------------
+
+CMake build is not yet ready for general usage!
+
+We are actively working on CMake support. Please help us improve it.
+Pull requests are welcomed!
+
+
+Linux CMake + Docker (very simple)
+----------------------------------
+
+```bash
+git clone --recursive https://github.com/tensorflow/tensorflow.git
+cd tensorflow
+tensorflow/tools/ci_build/ci_build.sh CPU tensorflow/tools/ci_build/builds/cmake.sh
+```
+
+That's it. Dependencies included. Otherwise read the rest of this readme...
+
+
+Prerequisites
+=============
+
 You need to have [CMake](http://www.cmake.org) and [Git](http://git-scm.com)
 installed on your computer before proceeding.
 
 Most of the instructions will be given to the *Сommand Prompt*, but the same
 actions can be performed using appropriate GUI tools.
+
 
 Environment Setup
 =================
