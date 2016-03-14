@@ -547,8 +547,6 @@ filegroup(
             "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "ops/**/*.cc",
-            "ops/**/*.h",
             "platform/*.h",
             "platform/*.cc",
             "platform/**/*.h",
@@ -648,6 +646,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = [
+        ":android_op_registrations_and_gradients",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ],
@@ -666,6 +665,23 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+)
+
+filegroup(
+    name = "android_op_registrations_and_gradients",
+    srcs = glob(
+        [
+            "ops/**/*.cc",
+            "ops/**/*.h",
+        ],
+        exclude = [
+            "**/*test.cc",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+        ],
+    ),
+    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

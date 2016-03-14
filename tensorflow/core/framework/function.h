@@ -366,6 +366,16 @@ class FunctionLibraryRuntime {
 //
 // TODO(zhifengc): Better documentation somewhere.
 
+#ifdef SELECTIVE_REGISTRATION
+// Experimental selective registration support to reduce binary size.
+// If kRequiresSymbolicGradients is false, then no gradient ops are registered
+// and their code will be stripped out during the link phase.
+#include "ops_to_register.h"
+#define SHOULD_REGISTER_OP_GRADIENT kRequiresSymbolicGradients
+#else
+#define SHOULD_REGISTER_OP_GRADIENT true
+#endif
+
 // Macros to define a gradient function factory for a primitive
 // operation.
 #define REGISTER_OP_GRADIENT(name, fn) \
@@ -377,8 +387,9 @@ class FunctionLibraryRuntime {
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn) \
-  static bool unused_grad_##ctr = ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
+  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
+                                  ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".
