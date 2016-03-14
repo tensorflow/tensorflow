@@ -551,15 +551,15 @@ class BatchNormalizationTest(tf.test.TestCase):
                 scale_after_normalization, shift_after_normalization)
             tf_bn_v2, tf_bn_v1bw, tf_bn_v1, ops_bn = sess.run(
                 [bn2, bn1bw, bn1, on])
-            self.assertAllClose(np_bn, ops_bn, atol=0.000001)
-            self.assertAllClose(np_bn, tf_bn_v2, atol=0.000001)
-            self.assertAllClose(tf_bn_v2, ops_bn, atol=0.000001)
+            self.assertAllClose(np_bn, ops_bn, atol=0.00001)
+            self.assertAllClose(np_bn, tf_bn_v2, atol=0.00001)
+            self.assertAllClose(tf_bn_v2, ops_bn, atol=0.00001)
             # shift_after_normalization=False is not supported in v1.
             if shift_after_normalization:
-              self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.000001)
-              self.assertAllClose(np_bn, tf_bn_v1, atol=0.000001)
-              self.assertAllClose(tf_bn_v1, ops_bn, atol=0.000001)
-              self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.000001)
+              self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.00001)
+              self.assertAllClose(np_bn, tf_bn_v1, atol=0.00001)
+              self.assertAllClose(tf_bn_v1, ops_bn, atol=0.00001)
+              self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.00001)
 
   def _testBatchNormGradient(self, param_index, tag, scale_after_normalization,
                              shift_after_normalization, version,
