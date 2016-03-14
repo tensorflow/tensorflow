@@ -46,6 +46,8 @@ using tensorflow::Session;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::SessionOptions;
+using tensorflow::RunOptions;
+using tensorflow::RunOutputs;
 using tensorflow::TensorShape;
 
 extern "C" {
@@ -183,6 +185,31 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
         tensorflow::errors::InvalidArgument("Unparseable ConfigProto");
   }
 }
+// --------------------------------------------------------------------------
+TF_Buffer* TF_NewBuffer() { return new TF_Buffer{nullptr, 0, nullptr}; }
+
+TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
+  void* copy = malloc(proto_len);
+  memcpy(copy, proto, proto_len);
+
+  TF_Buffer* buf = new TF_Buffer;
+  buf->data = copy;
+  buf->length = proto_len;
+  buf->data_deallocator = [](void* data, size_t length) {
+    delete reinterpret_cast<char*>(data);
+  };
+  return buf;
+}
+
+void TF_DeleteBuffer(TF_Buffer* buffer) {
+  if (buffer->data_deallocator != nullptr) {
+    (*buffer->data_deallocator)(const_cast<void*>(buffer->data),
+                                buffer->length);
+  }
+  delete buffer;
+}
+
+TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
 // --------------------------------------------------------------------------
 struct TF_Session {
@@ -331,6 +358,7 @@ Status LoadLibrary(const char* library_filename, void** result,
 }  // namespace tensorflow
 
 void TF_Run_Helper(TF_Session* s, const char* handle,
+                   const TF_Buffer* run_options,
                    // Input tensors
                    const char** c_input_names, TF_Tensor** c_inputs,
                    int ninputs,
@@ -339,7 +367,7 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
                    int noutputs,
                    // Target nodes
                    const char** c_target_node_names, int ntargets,
-                   TF_Status* status) {
+                   TF_Buffer* run_outputs, TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; i++) {
     c_outputs[i] = NULL;
@@ -380,10 +408,33 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
     target_node_names[i] = c_target_node_names[i];
   }
   Status result;
+
   if (handle == nullptr) {
-    result = s->session->Run(inputs, output_tensor_names, target_node_names,
-                             &outputs);
+    if (run_options == nullptr) {
+      result = s->session->Run(inputs, output_tensor_names, target_node_names,
+                               &outputs);
+    } else {
+      // Prepares (input) RunOptions and (output) RunOutputs params
+      RunOptions run_options_proto;
+      if (!run_options_proto.ParseFromArray(run_options->data,
+                                            run_options->length)) {
+        status->status =
+            tensorflow::errors::InvalidArgument("Unparseable RunOptions proto");
+      }
+      RunOutputs run_outputs_proto;
+
+      result = s->session->Run(run_options_proto, inputs, output_tensor_names,
+                               target_node_names, &outputs, &run_outputs_proto);
+
+      // Serialize back to upstream client, who now owns the new buffer
+      int proto_size = run_outputs_proto.ByteSize();
+      void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
+      run_outputs_proto.SerializeToArray(str_buf, proto_size);
+      run_outputs->data = str_buf;
+      run_outputs->length = proto_size;
+    }
   } else {
+    // NOTE(zongheng): PRun does not support RunOptions yet.
     result = s->session->PRun(handle, inputs, output_tensor_names, &outputs);
   }
   if (!result.ok()) {
@@ -413,17 +464,18 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
 
 extern "C" {
 
-void TF_Run(TF_Session* s,
+void TF_Run(TF_Session* s, const TF_Buffer* run_options,
             // Input tensors
             const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
             // Output tensors
             const char** c_output_tensor_names, TF_Tensor** c_outputs,
             int noutputs,
             // Target nodes
-            const char** c_target_node_names, int ntargets, TF_Status* status) {
-  TF_Run_Helper(s, nullptr, c_input_names, c_inputs, ninputs,
+            const char** c_target_node_names, int ntargets,
+            TF_Buffer* run_outputs, TF_Status* status) {
+  TF_Run_Helper(s, nullptr, run_options, c_input_names, c_inputs, ninputs,
                 c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
-                ntargets, status);
+                ntargets, run_outputs, status);
 }
 
 void TF_PRunSetup(TF_Session* s,
@@ -469,14 +521,10 @@ void TF_PRun(TF_Session* s, const char* handle,
              // Target nodes
              const char** c_target_node_names, int ntargets,
              TF_Status* status) {
-  TF_Run_Helper(s, handle, c_input_names, c_inputs, ninputs,
+  TF_Run_Helper(s, handle, nullptr, c_input_names, c_inputs, ninputs,
                 c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
-                ntargets, status);
+                ntargets, nullptr, status);
 }
-
-const void* TF_BufferData(TF_Buffer* buffer) { return buffer->data; }
-
-size_t TF_BufferLength(TF_Buffer* buffer) { return buffer->length; }
 
 TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   TF_Library* lib_handle = new TF_Library;
