@@ -335,7 +335,6 @@ class LooperThread(threading.Thread):
     looper.start()
     return looper
 
-  # pylint: disable=broad-except
   def run(self):
     with self._coord.stop_on_exception():
       self.start_loop()
@@ -349,10 +348,14 @@ class LooperThread(threading.Thread):
         while not self._coord.wait_for_stop(next_timer_time - time.time()):
           next_timer_time += self._timer_interval_secs
           self.run_loop()
-  # pylint: enable=broad-except
+      self.stop_loop()
 
   def start_loop(self):
     """Called when the thread starts."""
+    pass
+
+  def stop_loop(self):
+    """Called when the thread stops."""
     pass
 
   def run_loop(self):

@@ -50,8 +50,8 @@ limitations under the License.
 #define TF_PREDICT_FALSE(x) (__builtin_expect(x, 0))
 #define TF_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
 #else
-#define TF_PREDICT_FALSE(x) x
-#define TF_PREDICT_TRUE(x) x
+#define TF_PREDICT_FALSE(x) (x)
+#define TF_PREDICT_TRUE(x) (x)
 #endif
 
 // A macro to disallow the copy constructor and operator= functions

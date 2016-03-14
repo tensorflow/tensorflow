@@ -261,10 +261,11 @@ class BaseSaverBuilder(object):
           values = array_ops.reshape(values, shape)
 
       # Assign on the same device as the variable.
+      validate_shape = not reshape and v.get_shape().is_fully_defined()
       with ops.colocate_with(v):
         assign_ops.append(state_ops.assign(v,
                                            values,
-                                           validate_shape=not reshape))
+                                           validate_shape=validate_shape))
 
     # Create a Noop that has control dependencies from all the updates.
     return control_flow_ops.group(*assign_ops, name=name)
@@ -403,8 +404,8 @@ class BaseSaverBuilder(object):
           if slice_name is None:
             slice_name = variable._save_slice_info.full_name
           elif slice_name != variable._save_slice_info.full_name:
-            raise variable("Slices must all be from the same tensor: %s != %s"
-                           % (slice_name, variable._save_slice_info.full_name))
+            raise ValueError("Slices must all be from the same tensor: %s != %s"
+                             % (slice_name, variable._save_slice_info.full_name))
           self._AddVarToSave(vars_to_save, seen_variables,
                              variable, variable._save_slice_info.spec, name)
         # pylint: enable=protected-access

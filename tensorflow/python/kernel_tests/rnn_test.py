@@ -374,7 +374,8 @@ class LSTMTest(tf.test.TestCase):
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
-      inputs = max_length * [tf.placeholder(tf.float64)]
+      inputs = max_length * [
+          tf.placeholder(tf.float64, shape=(None, input_size))]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -405,7 +406,8 @@ class LSTMTest(tf.test.TestCase):
     num_unit_shards = 2
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      inputs = max_length * [tf.placeholder(tf.float32)]
+      inputs = max_length * [
+          tf.placeholder(tf.float32, shape=(None, input_size))]
       initializer = tf.constant_initializer(0.001)
 
       cell_noshard = tf.nn.rnn_cell.LSTMCell(
@@ -458,7 +460,8 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       sequence_length = tf.placeholder(tf.int64)
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      inputs = max_length * [tf.placeholder(tf.float64)]
+      inputs = max_length * [
+          tf.placeholder(tf.float64, shape=(None, input_size))]
 
       cell = tf.nn.rnn_cell.LSTMCell(
           num_units,
@@ -557,7 +560,7 @@ class LSTMTest(tf.test.TestCase):
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
-  def _testDynamicEquivalentToStaticRNN(self, use_gpu):
+  def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
     num_units = 3
     num_proj = 4
@@ -566,7 +569,10 @@ class LSTMTest(tf.test.TestCase):
 
     input_values = np.random.randn(time_steps, batch_size, input_size)
 
-    sequence_length = np.random.randint(0, time_steps, size=batch_size)
+    if use_sequence_length:
+      sequence_length = np.random.randint(0, time_steps, size=batch_size)
+    else:
+      sequence_length = None
 
     ########### Step 1: Run static graph and generate readouts
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
@@ -741,8 +747,14 @@ class LSTMTest(tf.test.TestCase):
     self._testDoubleInputWithDropoutAndDynamicCalculation(use_gpu=True)
 
   def testDynamicEquivalentToStaticRNN(self):
-    self._testDynamicEquivalentToStaticRNN(use_gpu=False)
-    self._testDynamicEquivalentToStaticRNN(use_gpu=True)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=False, use_sequence_length=False)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=True, use_sequence_length=False)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=False, use_sequence_length=True)
+    self._testDynamicEquivalentToStaticRNN(
+        use_gpu=True, use_sequence_length=True)
 
 
 class BidirectionalRNNTest(tf.test.TestCase):
@@ -766,8 +778,9 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                       input_size,
                                       initializer=initializer)
     inputs = max_length * [
-        tf.placeholder(tf.float32,
-                       shape=(batch_size, input_size) if use_shape else None)
+        tf.placeholder(
+            tf.float32,
+            shape=(batch_size, input_size) if use_shape else (None, input_size))
     ]
     outputs, state_fw, state_bw = tf.nn.bidirectional_rnn(cell_fw,
                                                           cell_bw,
@@ -776,8 +789,9 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                                           sequence_length=sequence_length)
     self.assertEqual(len(outputs), len(inputs))
     for out in outputs:
-      self.assertEqual(out.get_shape().as_list(), [batch_size if use_shape
-                                                   else None, 2 * num_units])
+      self.assertEqual(
+          out.get_shape().as_list(),
+          [batch_size if use_shape else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
     outputs = tf.pack(outputs)
@@ -1086,7 +1100,7 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
-  for max_time in (1, 25, 50):
+  for max_time in (1, 25, 50, 100, 200):
     graph_creation_static_vs_dynamic_rnn_benchmark(max_time)
 
   print("Calculation: Static Unroll with Dynamic Flow LSTM "

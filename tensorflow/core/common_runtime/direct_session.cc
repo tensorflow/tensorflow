@@ -396,8 +396,9 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
-  LOG(INFO) << "Step " << args.step_id << " is for handle "
-            << run_state_args.handle;
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordStep(args.step_id, run_state_args.handle);
+  }
 
   for (auto& item : executors_and_keys->items) {
     Executor* exec = item.executor;

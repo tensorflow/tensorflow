@@ -12,10 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="graph.ts" />
-/// <reference path="template.ts" />
-
 /**
  * Package for the Graph Hierarchy for TensorFlow graph.
  */
@@ -691,9 +687,6 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
         id = matches[2]; // the digits
       } else { // for node without "_<number>", make them zero-th items.
         prefix = isGroup ? leaf.substr(0, leaf.length - 1) : leaf;
-        if (prefix.charAt(prefix.length - 1) !== "_") {
-          prefix += "_";
-        }
         id = 0;
         suffix = isGroup ? "*" : "";
       }

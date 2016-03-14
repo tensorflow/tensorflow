@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -66,7 +65,7 @@ class FFT2DGPUBase : public OpKernel {
 
  private:
   void DoFFT(OpKernelContext* ctx, const Tensor& in, Tensor* out) {
-    auto* stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
     const TensorShape& shape = in.shape();

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import warnings
 
 import numpy as np
 import tensorflow as tf
@@ -893,6 +894,36 @@ class LogicalOpTest(tf.test.TestCase):
           ValueError, lambda e: "Incompatible shapes" in str(e)):
         f(x, y)
 
+  def testUsingAsPythonValueFails(self):
+    # TODO(mrry): Replace with `assertRaises(TypeError)` after this
+    # functionality is deprecated.
+    warnings.simplefilter("always")
+    # Ensure that we raise an error when the user attempts to treat a
+    # `Tensor` as a Python `bool`.
+    b = tf.constant(False)
+    with warnings.catch_warnings(record=True) as w:
+      if b:
+        pass
+    self.assertEqual(1, len(w))
+    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
+
+    x = tf.constant(3)
+    y = tf.constant(4)
+    with warnings.catch_warnings(record=True) as w:
+      if x > y:
+        pass
+    self.assertEqual(1, len(w))
+    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
+
+    z = tf.constant(7)
+
+    # The chained comparison should fail because Python computes `x <
+    # y` and short-circuits the comparison with `z` if it is `False`.
+    with warnings.catch_warnings(record=True) as w:
+      _ = x < y < z
+    self.assertEqual(1, len(w))
+    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
+
 
 class SelectOpTest(tf.test.TestCase):
 
@@ -966,6 +997,17 @@ class SelectOpTest(tf.test.TestCase):
       yt = y.astype(t)
       with self.assertRaises(ValueError):
         tf.select(c, xt, yt)
+
+  def testEmptyTensor(self):
+    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
+    x = np.random.rand(1, 3, 0) * 100
+    y = np.random.rand(1, 3, 0) * 100
+    z_expected = np.zeros((1, 3, 0), dtype=np.float32)
+    with self.test_session():
+      xt = x.astype(np.float32)
+      yt = y.astype(np.float32)
+      z = tf.select(c, xt, yt).eval()
+      self.assertAllEqual(z_expected, z)
 
 
 class BatchSelectOpTest(tf.test.TestCase):

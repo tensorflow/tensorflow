@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
 
@@ -36,8 +37,6 @@ ops.NoGradient("SparseReorder")
 def _SparseTensorDenseMatMulGrad(op, grad):
   """Gradients for the dense tensor in the SparseTensorDenseMatMul op.
 
-  Gradients are only provided for the dense tensor.
-
   If either input is complex, no gradient is provided.
 
   Args:
@@ -47,23 +46,47 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   Returns:
     Gradient for each of the 4 input tensors:
       (sparse_indices, sparse_values, sparse_shape, dense_tensor)
-    The sparse tensor gradients are always None.
+    The gradients for indices and shape are None.
+
+  Raises:
+    TypeError: When the two operands don't have the same type.
   """
   sp_t = ops.SparseTensor(*op.inputs[:3])
   adj_a = op.get_attr("adjoint_a")
   adj_b = op.get_attr("adjoint_b")
 
-  a_type = sp_t.values.dtype
-  b_type = op.inputs[3].dtype
-  assert a_type == b_type
+  a_type = sp_t.values.dtype.base_dtype
+  b_type = op.inputs[3].dtype.base_dtype
+  if a_type != b_type:
+    raise TypeError("SparseTensorDenseMatMul op received operands with "
+                    "different types: ", a_type, " and ", b_type)
   is_complex = a_type == ops.dtypes.complex64
   if is_complex:
     raise NotImplementedError("SparseTensorDenseMatMul op does not support "
                               "complex gradients.")
 
+  # gradient w.r.t. dense
   b_grad = sparse_ops.sparse_tensor_dense_matmul(sp_t, grad,
                                                  adjoint_a=not adj_a)
   if adj_b:
     b_grad = array_ops.transpose(b_grad)
 
-  return (None, None, None, b_grad)
+  # gradient w.r.t. sparse values
+  a_indices = op.inputs[0]
+  b = op.inputs[3]
+
+  rows = a_indices[:, 0]
+  cols = a_indices[:, 1]
+
+  # TODO(zongheng, ebrevdo): add conjugates in the right places when complex
+  # values are allowed.
+  # TODO(zongheng): these gather calls could potentially duplicate rows/cols in
+  # memory.  If there is a need, we should look into implementing this more
+  # intelligently to avoid duplicating data.
+  parts_a = array_ops.gather(grad, rows if not adj_a else cols)
+  parts_b = array_ops.gather(b if not adj_b else array_ops.transpose(b),
+                             cols if not adj_a else rows)
+  a_values_grad = math_ops.reduce_sum(parts_a * parts_b, reduction_indices=1)
+
+  # gradients w.r.t. (a_indices, a_values, a_shape, b)
+  return (None, a_values_grad, None, b_grad)

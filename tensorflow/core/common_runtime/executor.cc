@@ -1635,14 +1635,14 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
 
 void ExecutorState::DumpIterationState(IterationState* iteration) {
   // Dump any waiting nodes that are holding on to tensors.
-  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+  for (int i = 0; i < impl_->graph_->num_node_ids(); ++i) {
     if (iteration->node_state(i) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(i) == PendingCounts::PENDING_READY) {
       DumpPendingNodeState(i, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
-  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+  for (int i = 0; i < impl_->graph_->num_node_ids(); ++i) {
     if (iteration->node_state(i) == PendingCounts::STARTED) {
       DumpActiveNodeState(i, iteration->input_tensors);
     }

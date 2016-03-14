@@ -741,10 +741,11 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
              image_ops.ResizeMethod.AREA]
 
   TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
-           np.float, np.double]
+           np.float32, np.float64]
 
-  def availableGPUModes(self, opt):
-    if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR:
+  def availableGPUModes(self, opt, nptype):
+    if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR \
+            and nptype in [np.float32, np.float64]:
       return [True, False]
     else:
       return [False]
@@ -767,7 +768,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for opt in self.OPTIONS:
-        for use_gpu in self.availableGPUModes(opt):
+        for use_gpu in self.availableGPUModes(opt, nptype):
           with self.test_session(use_gpu=use_gpu) as sess:
             image = constant_op.constant(img_np, shape=img_shape)
             y = image_ops.resize_images(image, target_height, target_width, opt)
@@ -864,7 +865,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
         for opt in self.OPTIONS:
-          for use_gpu in self.availableGPUModes(opt):
+          for use_gpu in self.availableGPUModes(opt, nptype):
             with self.test_session(use_gpu=use_gpu):
               image = constant_op.constant(img_np, shape=img_shape)
               y = image_ops.resize_images(image, target_height, target_width, opt)
@@ -907,7 +908,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image_ops.ResizeMethod.BILINEAR,
           image_ops.ResizeMethod.NEAREST_NEIGHBOR,
           image_ops.ResizeMethod.AREA]:
-        for use_gpu in self.availableGPUModes(opt):
+        for use_gpu in self.availableGPUModes(opt, nptype):
           with self.test_session(use_gpu=use_gpu):
             img_np = np.array(data, dtype=nptype).reshape(img_shape)
             image = constant_op.constant(img_np, shape=img_shape)
@@ -974,21 +975,25 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
 
   def testCompareNearestNeighbor(self):
-    input_shape = [1, 5, 5, 3]
-    target_height = target_width = 10
-    for nptype in [np.float]:
-      img_np = np.arange(0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
-      with self.test_session(use_gpu=True):
-        image = constant_op.constant(img_np, shape=input_shape)
-        out_op = image_ops.resize_images(image, target_height, target_width,
-                                         image_ops.ResizeMethod.NEAREST_NEIGHBOR)
-        gpu_val = out_op.eval()
-      with self.test_session(use_gpu=False):
-        image = constant_op.constant(img_np, shape=input_shape)
-        out_op = image_ops.resize_images(image, target_height, target_width,
-                                         image_ops.ResizeMethod.NEAREST_NEIGHBOR)
-        cpu_val = out_op.eval()
-      self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
+    input_shape = [1, 5, 6, 3]
+    target_height = 8
+    target_width = 12
+    for nptype in [np.float32, np.float64]:
+      for align_corners in [True, False]:
+        img_np = np.arange(0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
+        with self.test_session(use_gpu=True):
+          image = constant_op.constant(img_np, shape=input_shape)
+          out_op = image_ops.resize_images(image, target_height, target_width,
+                                           image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+                                           align_corners=align_corners)
+          gpu_val = out_op.eval()
+        with self.test_session(use_gpu=False):
+          image = constant_op.constant(img_np, shape=input_shape)
+          out_op = image_ops.resize_images(image, target_height, target_width,
+                                           image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+                                           align_corners=align_corners)
+          cpu_val = out_op.eval()
+        self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
 
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):

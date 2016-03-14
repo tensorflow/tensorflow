@@ -119,8 +119,7 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
   }
 }
 
-AllSampler::AllSampler(int64 range)
-    : RangeSampler(range), inv_range_(1.0 / range) {}
+AllSampler::AllSampler(int64 range) : RangeSampler(range) {}
 
 void AllSampler::SampleBatchGetExpectedCountAvoid(
     random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,

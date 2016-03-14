@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+"""Tools for testing."""
 
-# Install openjdk 8 for bazel from PPA (it is not available in 14.04).
-add-apt-repository -y ppa:openjdk-r/ppa
-apt-get update
-apt-get install -y openjdk-8-jdk openjdk-8-jre-headless
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function

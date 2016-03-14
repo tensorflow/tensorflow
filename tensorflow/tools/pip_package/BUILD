@@ -31,7 +31,6 @@ sh_binary(
         ":other_headers",
         ":simple_console",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:libtensorflow_framework.so",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
         "//tensorflow/models/image/cifar10:all_files",

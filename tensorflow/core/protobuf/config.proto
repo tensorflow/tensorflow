@@ -29,6 +29,10 @@ message GPUOptions {
   // interactions with gpu driver code.  If 0, the system chooses
   // a reasonable default (several MBs).
   int64 deferred_deletion_bytes = 3;
+
+  // If true, the allocator does not pre-allocate the entire specified
+  // GPU memory region, instead starting small and growing as needed.
+  bool allow_growth = 4;
 };
 
 // Options passed to the graph optimizer

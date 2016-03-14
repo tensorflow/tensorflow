@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/image_ops.cc.
+#include <math.h>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -119,15 +120,14 @@ bool GenerateRandomCrop(int original_width, int original_height,
   const float max_area =
       max_relative_crop_area * original_width * original_height;
 
-  int height = static_cast<int>(round(sqrt(min_area / aspect_ratio)));
-  int max_height = static_cast<int>(round(sqrt(max_area / aspect_ratio)));
+  int height = lrintf(sqrt(min_area / aspect_ratio));
+  int max_height = lrintf(sqrt(max_area / aspect_ratio));
 
-  if (round(max_height * aspect_ratio) > original_width) {
+  if (lrintf(max_height * aspect_ratio) > original_width) {
     // We must find the smallest max_height satisfying
     // round(max_height * aspect_ratio) <= original_width:
     const float kEps = 0.0000001;
-    max_height =
-        static_cast<int>(floor((original_width + 0.5 - kEps) / aspect_ratio));
+    max_height = static_cast<int>((original_width + 0.5 - kEps) / aspect_ratio);
   }
 
   if (max_height > original_height) {
@@ -143,7 +143,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
     // [0, max_height - height].
     height += random->Uniform(max_height - height + 1);
   }
-  int width = static_cast<int>(round(height * aspect_ratio));
+  int width = lrintf(height * aspect_ratio);
   DCHECK_LE(width, original_width);
 
   // Let us not fail if rounding error causes the area to be
@@ -152,7 +152,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
   float area = static_cast<float>(width * height);
   if (area < min_area) {
     height += 1;
-    width = static_cast<int>(round(height * aspect_ratio));
+    width = lrintf(height * aspect_ratio);
     area = width * height;
   }
 
@@ -161,7 +161,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
   // Try first with a slightly smaller rectangle first.
   if (area > max_area) {
     height -= 1;
-    width = static_cast<int>(round(height * aspect_ratio));
+    width = lrintf(height * aspect_ratio);
     area = width * height;
   }
 
@@ -280,10 +280,10 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
                                       boxes(b, i)));
         }
 
-        const int32 x_min = static_cast<int32>(floor(boxes(b, 1) * width));
-        const int32 y_min = static_cast<int32>(floor(boxes(b, 0) * height));
-        const int32 x_max = static_cast<int32>(floor(boxes(b, 3) * width));
-        const int32 y_max = static_cast<int32>(floor(boxes(b, 2) * height));
+        const int32 x_min = static_cast<int32>(boxes(b, 1) * width);
+        const int32 y_min = static_cast<int32>(boxes(b, 0) * height);
+        const int32 x_max = static_cast<int32>(boxes(b, 3) * width);
+        const int32 y_max = static_cast<int32>(boxes(b, 2) * height);
 
         bounding_boxes.push_back(Rectangle(x_min, y_min, x_max, y_max));
       }

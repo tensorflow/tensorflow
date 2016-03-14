@@ -118,26 +118,51 @@ __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
 }
 
 template <typename T>
-__global__ void BiasGradNCHW_SharedAtomics(int32 nthreads,
-                                           const T* output_backprop,
-                                           T* bias_backprop, int32 bias_size,
-                                           int32 image_size) {
-  T* s_data = reinterpret_cast<T*>(s_buf);
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
+__global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
+                                           T* bias_backprop, int32 batch,
+                                           int32 bias_size, int32 image_size,
+                                           int group_size) {
+  // Initialize the shared memory.
+  __shared__ T s_data[32];
+  int32 s_data_size = sizeof(s_data) / sizeof(T);
+  for (int32 index = threadIdx.x; index < s_data_size; index += blockDim.x) {
     s_data[index] = 0;
   }
   __syncthreads();
 
-  for (int32 index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
-       index += blockDim.x * gridDim.x) {
-    int32 index2 = index / image_size;
-    int32 bias_offset = index2 % bias_size;
-    CudaAtomicAdd(s_data + bias_offset, ldg(output_backprop + index));
+  // Accumulate all the values within this thread. They all have the same bias
+  // index.
+  int32 bias_index = blockIdx.x % bias_size;
+  int32 group_index = blockIdx.x / bias_size;
+  int32 total_count = batch * image_size;
+  T sum = 0;
+  for (int32 index = group_index * blockDim.x + threadIdx.x;
+       index < total_count; index += blockDim.x * group_size) {
+    int32 image_offset = index % image_size;
+    int32 batch = index / image_size;
+    T val = ldg(output_backprop +
+                (batch * bias_size + bias_index) * image_size + image_offset);
+    sum += val;
   }
+
+  // Write the accumulated sum in this thread to the shared memory. Each thread
+  // shifts their write location to avoid bank conflict.
+  int bias_offset = threadIdx.x % 32;
+  CudaAtomicAdd(s_data + bias_offset, sum);
   __syncthreads();
 
-  for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
-    CudaAtomicAdd(bias_backprop + index, s_data[index]);
+  // Accumulate the results in the shared memory into the first element.
+  // No syncthreads is needed since this is only in the same warp.
+  int32 thread_index = threadIdx.x;
+  if (thread_index < 16) s_data[thread_index] += s_data[thread_index + 16];
+  if (thread_index < 8) s_data[thread_index] += s_data[thread_index + 8];
+  if (thread_index < 4) s_data[thread_index] += s_data[thread_index + 4];
+  if (thread_index < 2) s_data[thread_index] += s_data[thread_index + 2];
+  if (thread_index < 1) s_data[thread_index] += s_data[thread_index + 1];
+
+  // The first thread writes out the accumulated result to the global location.
+  if (thread_index == 0) {
+    CudaAtomicAdd(bias_backprop + bias_index, s_data[0]);
   }
 }
 
@@ -149,21 +174,32 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   const int32 bias_size = channel;
   const int32 image_size = height * width;
   const int32 total_count = batch * bias_size * image_size;
+  static constexpr int32 kWarpSize = 32;
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
-  const int32 shared_memory_size = bias_size * sizeof(T);
+  const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
+  int32 shared_memory_size = 0;
+  if (data_format == FORMAT_NHWC) {
+    shared_memory_size = bias_size * sizeof(T);
+  }
   // Check if we have enough shared memory.
-  if (shared_memory_size <= d.sharedMemPerBlock()) {
+  if (shared_memory_size <= max_shared_memory_size) {
     if (data_format == FORMAT_NHWC) {
       BiasGradNHWC_SharedAtomics<
           T><<<config.block_count, config.thread_per_block, shared_memory_size,
                d.stream()>>>(total_count, output_backprop, bias_backprop,
                              bias_size);
     } else {
+      // Round up the block count to multiple of bias_size.
+      int group_size = (config.block_count + bias_size - 1) / bias_size;
+      config.block_count = group_size * bias_size;
+      if (config.thread_per_block < kWarpSize) {
+        config.thread_per_block = kWarpSize;
+      }
       BiasGradNCHW_SharedAtomics<
-          T><<<config.block_count, config.thread_per_block, shared_memory_size,
-               d.stream()>>>(total_count, output_backprop, bias_backprop,
-                             bias_size, image_size);
+          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          output_backprop, bias_backprop, batch, bias_size, image_size,
+          group_size);
     }
   } else {
     // Note that even if we don't have enough shared memory to fit the entire

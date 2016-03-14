@@ -427,15 +427,17 @@ def gradients(ys,
       op = queue.popleft()
       with _maybe_colocate_with(op, colocate_gradients_with_ops):
         if loop_state:
-          loop_state.EnterGradWhileContext(op)
+          loop_state.EnterGradWhileContext(op, before=True)
         out_grads = _AggregatedGrads(grads, op, loop_state, aggregation_method)
-        grad_fn = None
+        if loop_state:
+          loop_state.ExitGradWhileContext(op, before=True)
 
+        grad_fn = None
         # pylint: disable=protected-access
         is_func_call = ops.get_default_graph()._is_function(op.type)
-        # pylint: enable=protected-access
-
-        if not is_func_call and any(out_grads) and op._id not in stop_ops:
+        if not is_func_call and any(
+            isinstance(g, ops.Tensor) or g for g in out_grads) and (
+                op._id not in stop_ops):
           # pylint: enable=protected-access
           # A grad_fn must be defined, either as a function or as None
           # for ops that do not have gradients.
@@ -445,12 +447,17 @@ def gradients(ys,
             raise LookupError(
                 "No gradient defined for operation '%s' (op type: %s)" %
                 (op.name, op.type))
-        if (grad_fn or is_func_call) and any(out_grads):
+
+        if loop_state:
+          loop_state.EnterGradWhileContext(op, before=False)
+        if (grad_fn or is_func_call) and any(
+            isinstance(g, ops.Tensor) or g for g in out_grads):
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if not out_grad and _IsFloat(op.outputs[i]):
+            if (not isinstance(out_grad, ops.Tensor)
+                and not out_grad) and _IsFloat(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
               if loop_state:
@@ -461,9 +468,6 @@ def gradients(ys,
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):
               # pylint: enable=protected-access
-              wrapped_op = op
-              if loop_state:
-                wrapped_op = loop_state.MakeWrapper(op)
               if is_func_call:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
@@ -474,24 +478,32 @@ def gradients(ys,
                     f_in, f_types, op.type))
                 # pylint: enable=protected-access
               else:
-                in_grads = _AsList(grad_fn(wrapped_op, *out_grads))
+                in_grads = _AsList(grad_fn(op, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
-              if gate_gradients and len(tuple(filter(None, in_grads))) > 1:
+              if gate_gradients and len(
+                  [x for x in in_grads if x is not None]) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
           logging.vlog(1, "Gradient for '" + op.name + "'")
+          def _FilterGrad(x):
+            if x is None:
+              return False
+            if isinstance(x, (list, tuple)):
+              return bool(x)
+            else:
+              return True
           logging.vlog(1, "  in  --> %s",
-                       ", ".join([x.name for x in out_grads if x]))
+                       ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
           logging.vlog(1, "  out --> %s",
-                       ", ".join([x.name for x in in_grads if x]))
+                       ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagates a list of None backwards.
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
-          if in_grad:
+          if in_grad is not None:
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
-          loop_state.ExitGradWhileContext(op)
+          loop_state.ExitGradWhileContext(op, before=False)
 
       # update pending count for the inputs of op.
       # pylint: disable=protected-access
@@ -621,12 +633,12 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         continue
     # Grads have to be Tensors or IndexedSlices
     if not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in out_grad if g]):
+                for g in out_grad if g is not None]):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.
     if out_grad:
-      if all([isinstance(g, ops.Tensor) for g in out_grad if g]):
+      if all([isinstance(g, ops.Tensor) for g in out_grad if g is not None]):
         tensor_shape = _AccumulatorShape(out_grad)
         if len(out_grad) < 2:
           used = "nop"
@@ -665,7 +677,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grad = math_ops._as_indexed_slices_list([g for g in out_grad if g])
+        out_grad = math_ops._as_indexed_slices_list([g for g in out_grad
+                                                     if g is not None])
         out_grad = [_HandleNestedIndexedSlices(x) for x in out_grad]
         # Form IndexedSlices out of the concatenated values and
         # indices.

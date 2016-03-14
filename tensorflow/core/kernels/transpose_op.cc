@@ -169,7 +169,7 @@ Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                               .TypeConstraint<T>("T") \
                               .HostMemory("perm"),    \
                           TransposeGpuOp);
-TF_CALL_NUMBER_TYPES(REGISTER);
+TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER
 #endif
 

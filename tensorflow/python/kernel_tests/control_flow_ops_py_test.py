@@ -31,7 +31,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
 def check_op_order(graph):
   """Sanity check on the ordering of op id."""
@@ -137,7 +136,8 @@ class ControlFlowTest(tf.test.TestCase):
       dead_branch = tf.identity(switch_op[0])
 
       with self.assertRaisesWithPredicateMatch(
-          StatusNotOK, lambda e: "The tensor returned for" in str(e)):
+          tf.errors.InvalidArgumentError,
+          lambda e: "The tensor returned for" in str(e)):
         dead_branch.eval()
 
   def testSwitchMergeLess(self):
@@ -898,7 +898,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = control_flow_ops.While(c, b, [n, v], parallel_iterations=1)
 
       r = tf.gradients(r[1], x)[0]
-      self.assertEqual(r.get_shape().as_list(), [None])
+      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
   def testWhileGrad_MultipleUses(self):
@@ -1397,7 +1397,7 @@ class ControlFlowTest(tf.test.TestCase):
                                                            vdef)
         # The device is empty, but the colocation constraint is set.
         self.assertDeviceEqual("", with_vdef_dep.device)
-        self.assertEqual(["loc:@vdef"],
+        self.assertEqual([b"loc:@vdef"],
                          with_vdef_dep.op.colocation_groups())
 
   def testGroup(self):

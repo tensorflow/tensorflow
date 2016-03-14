@@ -23,7 +23,7 @@ import subprocess
 from tensorflow.python.platform import logging
 
 # All GCS paths should start with this.
-PATH_PREFIX = '/gs/'
+PATH_PREFIX = 'gs://'
 
 # TODO(phurst): We should use the GCS Python API.
 
@@ -42,16 +42,15 @@ def CopyContents(gcs_path, byte_offset, local_file):
   """
   if byte_offset < 0:
     raise ValueError('byte_offset must not be negative')
-  command = ['gsutil', 'cat', '-r', '%d-' % byte_offset,
-             _ConvertToGCSURL(gcs_path)]
+  command = ['gsutil', 'cat', '-r', '%d-' % byte_offset, gcs_path]
   subprocess.check_call(command, stdout=local_file)
   local_file.flush()
 
 
 def ListDirectory(directory):
   """Lists all files in the given directory."""
-  command = ['gsutil', 'ls', _ConvertToGCSURL(directory)]
-  return map(_ConvertFromGCSURL, subprocess.check_output(command).splitlines())
+  command = ['gsutil', 'ls', directory]
+  return subprocess.check_output(command).splitlines()
 
 
 def ListRecursively(top):
@@ -100,27 +99,10 @@ def CheckIsSupported():
       instructions.
   """
   try:
-    subprocess.call(['gsutil'])
+    subprocess.check_output(['gsutil', 'version'])
   except OSError as e:
     logging.error('Error while checking for gsutil: %s', e)
     raise OSError(
         'Unable to execute the gsutil binary, which is required for Google '
         'Cloud Storage support. You can find installation instructions at '
         'https://goo.gl/sST520')
-
-# These are private because they're effectively an implementation detail; for
-# example, we could also use the HTTP API directly.
-
-_URL_PREFIX = 'gs://'
-
-
-def _ConvertToGCSURL(path):
-  if not IsGCSPath(path):
-    raise ValueError('%s is not a valid GCS path (must start with /gs/)' % path)
-  return _URL_PREFIX + path[len(PATH_PREFIX):]
-
-
-def _ConvertFromGCSURL(url):
-  if not url.startswith(_URL_PREFIX):
-    raise ValueError('%s is not a valid GCS URL' % url)
-  return PATH_PREFIX + url[len(_URL_PREFIX):]

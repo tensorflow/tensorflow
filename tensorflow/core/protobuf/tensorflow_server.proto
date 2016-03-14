@@ -105,4 +105,9 @@ message ServerDef {
 
   // The default configuration for sessions that run on this server.
   ConfigProto default_session_config = 4;
+
+  // The protocol to be used by this server.
+  //
+  // Acceptable values include: "grpc".
+  string protocol = 5;
 }

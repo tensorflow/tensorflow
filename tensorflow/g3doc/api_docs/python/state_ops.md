@@ -806,6 +806,11 @@ The `save_path` argument is typically a value previously returned from a
 *  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the given `save_path` does not point to a file.
+
 
 
 Other utility methods.
@@ -1548,6 +1553,13 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 ### `tf.zeros_initializer(shape, dtype=tf.float32)` {#zeros_initializer}
 
 An adaptor for zeros() to match the Initializer spec.
+
+
+- - -
+
+### `tf.ones_initializer(shape, dtype=tf.float32)` {#ones_initializer}
+
+An adaptor for ones() to match the Initializer spec.
 
 
 

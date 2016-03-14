@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -866,7 +865,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     bool rows_odd = (padding_rows % 2 != 0);
     bool cols_odd = (padding_cols % 2 != 0);
 
-    auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
@@ -1166,7 +1165,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     bool rows_odd = (padding_rows % 2 != 0);
     bool cols_odd = (padding_cols % 2 != 0);
 
-    auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
