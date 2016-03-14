@@ -1203,7 +1203,7 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   """
   # Type check.
   if meta_info_def and not isinstance(meta_info_def,
-                                      meta_graph_pb2.MetaInfoDef):
+                                      meta_graph_pb2.MetaGraphDef.MetaInfoDef):
     raise TypeError("meta_info_def must be of type MetaInfoDef, not %s",
                     type(meta_info_def))
   if graph_def and not isinstance(graph_def, graph_pb2.GraphDef):

@@ -394,7 +394,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   cuda_deps = [
       "//tensorflow/core:stream_executor_headers_lib",
-      "//tensorflow/core/platform/default/build_config:cuda",
+      "//third_party/gpus/cuda:cudart_static",
   ]
   deps = deps + [
       "//third_party/eigen3",
