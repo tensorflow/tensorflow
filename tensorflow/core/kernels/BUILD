@@ -197,7 +197,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
 )

@@ -252,10 +252,29 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static Status MakeShape(const int32* dims, int n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int n, TensorShape* out);
+  template <typename T>
+  static Status MakeShape(const T* dims, int n, TensorShape* out) {
+    *out = TensorShape();
+    for (int i = 0; i < n; ++i) {
+      if (dims[i] >= 0) {
+        out->AddDim(dims[i]);
+      } else {
+        return errors::InvalidArgument("Dimension ", dims[i], " must be >= 0");
+      }
+    }
+    return Status::OK();
+  }
 
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
+    string result = "[";
+    bool first = true;
+    for (const TensorShape& shape : shapes) {
+      strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+      first = false;
+    }
+    strings::StrAppend(&result, "]");
+    return result;
+  }
 
   static bool StartsWith(const TensorShape& shape0, const TensorShape& shape1);
 };

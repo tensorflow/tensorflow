@@ -775,7 +775,6 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
