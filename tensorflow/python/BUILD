@@ -1144,9 +1144,22 @@ cuda_py_tests(
     name = "training_tests",
     srcs = glob(
         ["training/*_test.py"],
-        exclude = ["training/input_test.py"],
+        exclude = [
+            "training/input_test.py",
+            "training/supervisor_test.py",
+        ],
     ),
     additional_deps = [
+        ":training",
+    ],
+)
+
+py_test(
+    name = "supervisor_test",
+    srcs = ["training/supervisor_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extra_py_tests_deps",
         ":training",
     ],
 )
