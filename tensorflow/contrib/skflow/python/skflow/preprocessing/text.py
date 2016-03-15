@@ -206,7 +206,8 @@ class VocabularyProcessor(object):
         Args:
             filename: Path to output file.
         """
-        open(filename, 'w').write(pickle.dumps(self))
+        with open(filename, 'wb') as f:
+            f.write(pickle.dumps(self))
 
     @classmethod
     def restore(cls, filename):
@@ -218,5 +219,6 @@ class VocabularyProcessor(object):
         Returns:
             VocabularyProcessor object.
         """
-        return pickle.loads(open(filename).read())
+        with open(filename) as f:
+            return pickle.loads(f.read())
 
