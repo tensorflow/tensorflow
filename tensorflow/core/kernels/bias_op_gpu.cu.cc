@@ -58,6 +58,9 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   const int32 bias_size = channel;
   const int32 image_size = height * width;
   const int32 total_count = batch * bias_size * image_size;
+  if (total_count == 0) {
+    return;
+  }
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
     BiasNHWCKernel<
@@ -174,6 +177,9 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   const int32 bias_size = channel;
   const int32 image_size = height * width;
   const int32 total_count = batch * bias_size * image_size;
+  if (total_count == 0) {
+    return;
+  }
   static constexpr int32 kWarpSize = 32;
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
