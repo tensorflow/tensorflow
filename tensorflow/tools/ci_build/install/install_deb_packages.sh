@@ -23,10 +23,6 @@ apt-get install -y \
     build-essential \
     curl \
     git \
-    gfortran \
-    libatlas-base-dev \
-    libblas-dev \
-    liblapack-dev \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
@@ -35,7 +31,6 @@ apt-get install -y \
     python-pip \
     python-scipy \
     python-virtualenv \
-    python-scipy \
     python3-dev \
     python3-numpy \
     python3-pip \
