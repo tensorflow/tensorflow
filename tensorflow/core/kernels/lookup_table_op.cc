@@ -96,8 +96,8 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int i = 0; i < key_values.size(); ++i) {
-      const K& key = key_values(i);
-      const V& value = value_values(i);
+      const K key = SubtleMustCopyUnlessString(key_values(i));
+      const V value = SubtleMustCopyUnlessString(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
       if (previous_value != value) {
         return errors::FailedPrecondition(
