@@ -957,7 +957,7 @@ def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
 
 def _timer(sess, ops):
   # Warm in
-  for _ in range(5):
+  for _ in range(2):
     sess.run(ops)
 
   # Timing run
@@ -1100,24 +1100,24 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
 def main(_):
   print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
   print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
-  for max_time in (1, 25, 50, 100, 200):
+  for max_time in (1, 25, 50):
     graph_creation_static_vs_dynamic_rnn_benchmark(max_time)
 
   print("Calculation: Static Unroll with Dynamic Flow LSTM "
         "vs. Dynamic Unroll LSTM")
   print("batch \t max_t \t units \t gpu \t dt(static) \t dt(dynamic) "
         "\t dt(dynamic)/dt(static)")
-  for use_gpu in (False, True):
-    for batch_size in (256, 512):
-      for max_time in (50, 100):
-        for num_units in (512, 256, 128):
+  for batch_size in (256,):
+    for max_time in (50,):
+      for num_units in (512, 256, 128):
+        for use_gpu in (False, True):
           static_vs_dynamic_rnn_benchmark(
               batch_size, max_time, num_units, use_gpu)
 
   print("Calculation: Dynamic LSTM No Memory Swap vs. Memory Swap")
   print("batch \t max_t \t units \t no_swap \t swap \t swap/no_swap")
   for batch_size in (256, 512):
-    for max_time in (50, 100):
+    for max_time in (100,):
       for num_units in (512, 256, 128):
         dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units)
 
