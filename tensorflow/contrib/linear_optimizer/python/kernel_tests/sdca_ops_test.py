@@ -172,33 +172,6 @@ class SdcaOptimizerTest(TensorFlowTestCase):
           'No examples found or all examples have zero weight.'):
         lr.approximate_duality_gap().eval()
 
-  def testDuplicateExampleIds(self):
-    # Setup test data with 1 positive, and 1 negative example.
-    example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
-    ]
-    example_weights = [1.0, 1.0]
-    with self._single_threaded_test_session():
-      examples = make_example_dict(example_protos, example_weights)
-      examples['example_ids'] = ['duplicate_id'
-                                 for _ in examples['example_ids']]
-      variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
-
-      lr = SdcaModel(CONTAINER, examples, variables, options)
-      tf.initialize_all_variables().run()
-      self.assertAllClose([0.0, 0.0], lr.predictions(examples).eval())
-      with self.assertRaisesOpError('Detected 1 duplicates in example_ids'):
-        lr.minimize().run()
-      self.assertAllClose([0.0, 0.0], lr.predictions(examples).eval())
-
 
 class SdcaWithLogisticLossTest(SdcaOptimizerTest):
   """SDCA optimizer test class for logistic loss."""
@@ -464,6 +437,8 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
                           rtol=1e-2,
                           atol=1e-2)
 
+  # TODO(katsiaspis): add a test for the case when examples at the end of an
+  # epoch are repeated, since example id may be duplicated.
 
 class SdcaWithLinearLossTest(SdcaOptimizerTest):
   """SDCA optimizer test class for linear (squared) loss."""
