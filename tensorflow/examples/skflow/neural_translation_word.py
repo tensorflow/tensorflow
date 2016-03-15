@@ -153,7 +153,7 @@ while True:
 
     xpred, ygold = [], []
     for _ in range(10):
-        idx = random.randint(0, len(X_test))
+        idx = random.randint(0, len(X_test) - 1)
         xpred.append(X_test[idx])
         ygold.append(y_test[idx])
     xpred = np.array(xpred)
