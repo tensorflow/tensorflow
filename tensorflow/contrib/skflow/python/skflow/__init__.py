@@ -28,10 +28,10 @@ if sklearn.__version__ < '0.16.0':
 import numpy as np
 import tensorflow as tf
 
-from io import *
-from estimators import *
-import ops
-import preprocessing
-import models
-from trainer import TensorFlowTrainer
+from tensorflow.contrib.skflow.python.skflow.io import *
+from tensorflow.contrib.skflow.python.skflow.estimators import *
+from tensorflow.contrib.skflow.python.skflow import ops
+from tensorflow.contrib.skflow.python.skflow import preprocessing
+from tensorflow.contrib.skflow.python.skflow import models
+from tensorflow.contrib.skflow.python.skflow.trainer import TensorFlowTrainer
 
