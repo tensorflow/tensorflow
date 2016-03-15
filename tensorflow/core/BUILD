@@ -685,7 +685,7 @@ filegroup(
 )
 
 # -----------------------------------------------------------------------------
-# Libraries for GPU facilities that are useful for writing kernels.
+# Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
     srcs = [
@@ -703,6 +703,14 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:cuda",
     ],
 )
 
@@ -939,21 +947,11 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
-    ],
-)
-
 tf_cuda_library(
     name = "direct_session",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
@@ -994,9 +992,6 @@ tf_cuda_library(
         "common_runtime/gpu/visitable_allocator.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu",

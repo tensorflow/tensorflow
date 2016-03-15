@@ -200,7 +200,8 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
           "//tensorflow/core:stream_executor",
-      ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+          "//tensorflow/core:cuda",
+      ]),
       alwayslink=1,
       **kwargs)
 
@@ -228,8 +229,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps) +
-          ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
@@ -262,7 +262,6 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     hdrs = []
   if not deps:
     deps = []
-  gpu_deps = deps + ["//tensorflow/core:cuda"]
 
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
@@ -279,7 +278,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
-        deps = gpu_deps,
+        deps = deps,
         **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
