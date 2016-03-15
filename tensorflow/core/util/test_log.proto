@@ -130,7 +130,7 @@ message MachineConfiguration {
 
 // Run-specific items such as arguments to the test / benchmark.
 message RunConfiguration {
-  repeated string arguments = 1;
+  repeated string argument = 1;
 }
 
 // The output of one benchmark / test run.  Each run contains a list of

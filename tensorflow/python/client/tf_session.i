@@ -48,10 +48,11 @@ tensorflow::ImportNumpy();
 
 // Proto input arguments to C API functions are passed as a (const
 // void*, size_t) pair. In Python, typemap these to a single string
-// argument.
+// argument.  This typemap does *not* make a copy of the input.
 %typemap(in) (const void* proto, size_t proto_len) {
   char* c_string;
   Py_ssize_t py_size;
+  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
   if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
     // Python has raised an error (likely TypeError or UnicodeEncodeError).
     SWIG_fail;
@@ -154,7 +155,6 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-
 // The wrapper has two outputs: a tensorflow::Status, and a vector of
 // PyObjects containing the fetch results (iff the status is OK). Since
 // the interpretation of the vector depends on the status, we define
@@ -222,10 +222,11 @@ tensorflow::ImportNumpy();
 // END TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
 
-// Typemaps for TF_GetOpList.
-// The wrapped function TF_GetOpList returns a TF_Buffer pointer. This typemap
-// creates a Python string from the TF_Buffer and returns it.
-%typemap(out) TF_Buffer TF_GetOpList {
+// Typemap for functions that return a TF_Buffer struct. This typemap creates a
+// Python string from the TF_Buffer and returns it. The TF_Buffer.data string
+// is not expected to be NULL-terminated, and TF_Buffer.length does not count
+// the terminator.
+%typemap(out) TF_Buffer (TF_GetOpList,TF_GetBuffer) {
 %#if PY_MAJOR_VERSION < 3
   $result = PyString_FromStringAndSize(
 %#else
@@ -238,6 +239,11 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore TF_Code;
 %unignore TF_Status;
+%unignore TF_Buffer;
+%unignore TF_NewBuffer;
+%unignore TF_NewBufferFromString;
+%unignore TF_DeleteBuffer;
+%unignore TF_GetBuffer;
 %unignore TF_NewStatus;
 %unignore TF_DeleteStatus;
 %unignore TF_GetCode;
