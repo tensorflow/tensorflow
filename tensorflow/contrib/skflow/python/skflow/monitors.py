@@ -13,11 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from __future__ import print_function
+from __future__ import division, print_function, absolute_import
+
 import sys
 import numpy as np
 
-from io.data_feeder import setup_train_data_feeder
+from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_data_feeder
 
 
 # pylint: disable=too-many-instance-attributes

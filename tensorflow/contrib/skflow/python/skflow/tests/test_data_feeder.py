@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
+
 from struct import Struct
 import numpy as np
 import six

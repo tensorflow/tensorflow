@@ -17,6 +17,8 @@ Can be used for categorical variables, sparse variables and words.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
+
 import collections
 import six
 
