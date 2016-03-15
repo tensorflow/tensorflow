@@ -61,6 +61,16 @@ tensorflow::ImportNumpy();
   $2 = static_cast<size_t>(py_size);
 }
 
+// The target input to TF_SetTarget() is passed as a null-terminated
+// const char*.
+%typemap(in) (const char* target) {
+  $1 = PyBytes_AsString($input);
+  if (!$1) {
+    // Python has raised an error.
+    SWIG_fail;
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
