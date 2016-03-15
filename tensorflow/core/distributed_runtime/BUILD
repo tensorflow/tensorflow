@@ -288,7 +288,7 @@ tf_cc_tests(
     tags = tf_cuda_tests_tags(),
     tests = [
         "executor_test.cc",
-        "master_test.cc",
+        #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
         "remote_device_test.cc",
     ],
     deps = [
