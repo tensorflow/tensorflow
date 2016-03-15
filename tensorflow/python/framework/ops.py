@@ -2119,10 +2119,11 @@ class Graph(object):
           # provide consistency between the device and the colocation
           # property.
           if ret.device and ret.device != colocation_op.device:
-            logging.warning("Tried to colocate with an op that had "
+            logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
-                            "Ignoring colocation property." % (
-                                ret.device, colocation_op.device))
+                            "Ignoring colocation property.",
+                            name, colocation_op.name,
+                            ret.device, colocation_op.device)
           else:
             ret._set_device(colocation_op.device)
 
