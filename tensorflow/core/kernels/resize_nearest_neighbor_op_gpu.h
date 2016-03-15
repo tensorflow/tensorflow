@@ -32,6 +32,12 @@ bool ResizeNearestNeighbor(const T* bottom_data, const int batch, const int in_h
                            const int out_width, const float height_scale, const float width_scale,
                            T* top_data, const Eigen::GpuDevice& d);
 
+template <typename T>
+bool ResizeNearestNeighborBackward(const T* top_diff, const int batch, const int in_height,
+                                   const int in_width, const int channels, const int out_height,
+                                   const int out_width, const float height_scale, const float width_scale,
+                                   T* bottom_diff, const Eigen::GpuDevice& d);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_GPU_H_
