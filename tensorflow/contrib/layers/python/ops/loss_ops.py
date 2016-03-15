@@ -79,7 +79,7 @@ def _reduce_batch(x, reduce_fn, name=None):
     elif ndims == 1:
       return x  # Don't include a useless reduction.
     elif ndims:
-      reduction_indices = list(range(1, ndims))
+      reduction_indices = math_ops.range(1, ndims)
       shape = [x.get_shape().dims[0]]
     else:
       reduction_indices = math_ops.range(1, array_ops.size(array_ops.shape(x)))
@@ -203,7 +203,6 @@ def squared_loss(predicted, target, name=None):
 
 
 def sum_squared_loss(predicted, target, name=None):
-  # pylint: disable=line-too-long
   """Calculates 1/2 the sum of the squared loss across batches.
 
   Computes the squared difference between the target and predicted
@@ -216,9 +215,10 @@ def sum_squared_loss(predicted, target, name=None):
 
   The tensors must have the same shape.
 
-  This function is equivalent to typical formulations of L2 loss, and similar
-  to TensorFlow's l2_loss function. It differs from the l2_loss function
-  by allowing the caller to specify both the predicted and target tensors.
+  This function is equivalent to typical formulations of L2 loss, and
+  similar to TensorFlow's l2_loss function. It differs from the
+  l2_loss function by allowing the caller to specify both the
+  predicted and target tensors.
 
   Args:
     predicted: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
@@ -236,7 +236,6 @@ def sum_squared_loss(predicted, target, name=None):
     ValueError: If `predicted` and `target` shapes do not match.
 
   """
-  # pylint: enable=line-too-long
   with ops.op_scope(
       [predicted, target],
       name,

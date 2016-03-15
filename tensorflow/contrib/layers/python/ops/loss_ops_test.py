@@ -184,15 +184,6 @@ class AbsoluteLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.absolute_loss(incompatible_shape, target)
 
-  def testAbsoluteLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.absolute_loss(predicted, target)
-      x_shape = [2, 2]
-      err = tf.test.compute_gradient_error(target, x_shape, result, x_shape)
-      err_tolerance = 1e-4
-      self.assertLess(err, err_tolerance)
-
 
 class SquaredLossTest(tf.test.TestCase):
 
@@ -222,15 +213,6 @@ class SquaredLossTest(tf.test.TestCase):
                                        name="incompatible_shape")
       with self.assertRaises(ValueError):
         tf.contrib.layers.squared_loss(incompatible_shape, target)
-
-  def testSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.squared_loss(predicted, target)
-      x_shape = [2, 2]
-      err = tf.test.compute_gradient_error(target, x_shape, result, x_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
 
 
 class SumSquaredLossTest(tf.test.TestCase):
@@ -267,17 +249,6 @@ class SumSquaredLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.sum_squared_loss(incompatible_shape, target)
 
-  def testSumSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.sum_squared_loss(predicted, target)
-      x_shape = [2, 2]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
-
 
 class MeanAbsoluteLossTest(tf.test.TestCase):
 
@@ -312,17 +283,6 @@ class MeanAbsoluteLossTest(tf.test.TestCase):
                                        name="incompatible_shape")
       with self.assertRaises(ValueError):
         tf.contrib.layers.mean_absolute_loss(incompatible_shape, target)
-
-  def testMeanAbsoluteLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.mean_absolute_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
 
 
 class MeanSquaredLossTest(tf.test.TestCase):
@@ -359,17 +319,6 @@ class MeanSquaredLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.mean_squared_loss(incompatible_shape, target)
 
-  def testMeanSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.mean_squared_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
-
 
 class RootMeanSquaredLossTest(tf.test.TestCase):
 
@@ -404,17 +353,6 @@ class RootMeanSquaredLossTest(tf.test.TestCase):
                                        name="incompatible_shape")
       with self.assertRaises(ValueError):
         tf.contrib.layers.root_mean_squared_loss(incompatible_shape, target)
-
-  def testRootMeanSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.root_mean_squared_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
 
 
 if __name__ == "__main__":
