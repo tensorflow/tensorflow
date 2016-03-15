@@ -22,12 +22,13 @@ from __future__ import print_function
 import numbers
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.platform import logging
 
 
-__all__ = ['l1_regularizer', 'l2_regularizer']
+__all__ = ['l1_regularizer', 'l2_regularizer', 'sum_regularizer']
 
 
 def l1_regularizer(scale):
@@ -107,3 +108,26 @@ def l2_regularizer(scale):
                                        name='scale')
       return standard_ops.mul(my_scale, nn.l2_loss(weights), name=scope)
   return l2
+
+
+def sum_regularizer(regularizer_list):
+  """Returns a function that applies the sum of multiple regularizers.
+
+  Args:
+    regularizer_list: A list of regularizers to apply.
+
+  Returns:
+    A function with signature `sum_reg(weights, name=None)` that applies the
+    sum of all the input regularizers.
+  """
+  regularizer_list = [reg for reg in regularizer_list if reg is not None]
+  if not regularizer_list:
+    return None
+
+  def sum_reg(weights, name=None):
+    """Applies the sum of all the input regularizers."""
+    with ops.op_scope([weights], name, 'sum_regularizer') as scope:
+      regularizer_tensors = [reg(weights) for reg in regularizer_list]
+      return math_ops.add_n(regularizer_tensors, name=scope)
+
+  return sum_reg
