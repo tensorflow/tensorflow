@@ -1,7 +1,7 @@
 # Description:
 # Tools for testing
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -61,7 +61,9 @@ cuda_py_test(
     ],
     args = [
         "--test_name=" + "//tensorflow/core/kernels:cast_op_test",
-        "--test_args=" + "'--benchmarks=BM_cpu_float'",
+        "--test_args=" + "'--benchmarks=BM_cpu_float_bfloat16'",
+        "--compilation_mode='$(COMPILATION_MODE)'",
+        "--cc_flags='$(CC_FLAGS)'",
     ],
     data = [
         "//tensorflow/core/kernels:cast_op_test",
