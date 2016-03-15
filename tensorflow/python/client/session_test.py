@@ -686,7 +686,8 @@ class SessionTest(test_util.TensorFlowTestCase):
                     dtypes.int8,
                     dtypes.int64,
                     dtypes.bool,
-                    dtypes.complex64]:
+                    dtypes.complex64,
+                    dtypes.complex128]:
         for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:
           np_dtype = dtype.as_numpy_dtype
 
@@ -697,6 +698,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
           if dtype == dtypes.bool:
             np_array = np_array > 0
+          elif dtype == dtypes.complex64:
+            np_array = np.sqrt(np_array.astype(np_dtype))
           elif dtype == dtypes.complex64:
             np_array = np.sqrt(np_array.astype(np_dtype))
           else:
