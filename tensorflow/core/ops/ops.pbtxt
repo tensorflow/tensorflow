@@ -1,4 +1,17 @@
 op {
+  name: "Abort"
+  attr {
+    name: "error_msg"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "A string which is the message associated with the exception."
+  }
+  summary: "Raise a exception to abort the process when called."
+  description: "Returns nothing but an exception."
+}
+op {
   name: "Abs"
   input_arg {
     name: "x"

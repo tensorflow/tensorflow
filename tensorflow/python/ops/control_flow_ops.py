@@ -2081,6 +2081,7 @@ ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)
+ops.RegisterShape("Abort")(common_shapes.no_outputs)
 
 
 @ops.RegisterShape("LoopCond")

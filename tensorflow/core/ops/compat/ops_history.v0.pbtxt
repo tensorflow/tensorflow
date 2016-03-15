@@ -1,4 +1,14 @@
 op {
+  name: "Abort"
+  attr {
+    name: "error_msg"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "Abs"
   input_arg {
     name: "x"
