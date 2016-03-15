@@ -15,6 +15,8 @@
 
 ## Check existance of sklearn and it's version
 
+from __future__ import division, print_function, absolute_import
+
 try:
     import sklearn
 except ImportError:

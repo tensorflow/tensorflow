@@ -13,12 +13,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import division, print_function, absolute_import
 
-from array_ops import *
-from conv_ops import *
-from dnn_ops import *
-from dropout_ops import *
-from embeddings_ops import *
-from losses_ops import *
-from seq2seq_ops import *
-from batch_norm_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.array_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.conv_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.dnn_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.dropout_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.embeddings_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.losses_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.seq2seq_ops import *
+from tensorflow.contrib.skflow.python.skflow.ops.batch_norm_ops import *

@@ -13,5 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from text import *
-from categorical import *
+from __future__ import division, print_function, absolute_import
+
+from tensorflow.contrib.skflow.python.skflow.preprocessing.text import *
+from tensorflow.contrib.skflow.python.skflow.preprocessing.categorical import *

@@ -13,4 +13,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from config_addon import ConfigAddon
+from __future__ import division, print_function, absolute_import
+
+from tensorflow.contrib.skflow.python.skflow.addons.config_addon import ConfigAddon

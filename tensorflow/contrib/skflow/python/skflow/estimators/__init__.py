@@ -13,12 +13,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from base import TensorFlowEstimator
-from linear import TensorFlowLinearClassifier
-from linear import TensorFlowClassifier
-from linear import TensorFlowLinearRegressor
-from linear import TensorFlowRegressor
-from dnn import TensorFlowDNNClassifier
-from dnn import TensorFlowDNNRegressor
-from rnn import TensorFlowRNNClassifier
-from rnn import TensorFlowRNNRegressor
+from __future__ import division, print_function, absolute_import
+
+from tensorflow.contrib.skflow.python.skflow.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.skflow.python.skflow.estimators.linear import TensorFlowLinearClassifier
+from tensorflow.contrib.skflow.python.skflow.estimators.linear import TensorFlowClassifier
+from tensorflow.contrib.skflow.python.skflow.estimators.linear import TensorFlowLinearRegressor
+from tensorflow.contrib.skflow.python.skflow.estimators.linear import TensorFlowRegressor
+from tensorflow.contrib.skflow.python.skflow.estimators.dnn import TensorFlowDNNClassifier
+from tensorflow.contrib.skflow.python.skflow.estimators.dnn import TensorFlowDNNRegressor
+from tensorflow.contrib.skflow.python.skflow.estimators.rnn import TensorFlowRNNClassifier
+from tensorflow.contrib.skflow.python.skflow.estimators.rnn import TensorFlowRNNRegressor

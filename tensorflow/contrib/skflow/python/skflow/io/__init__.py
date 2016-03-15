@@ -13,5 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from pandas_io import *
-from dask_io import *
+from __future__ import division, print_function, absolute_import
+
+from tensorflow.contrib.skflow.python.skflow.io.pandas_io import *
+from tensorflow.contrib.skflow.python.skflow.io.dask_io import *
