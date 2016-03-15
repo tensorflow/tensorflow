@@ -237,11 +237,7 @@ tensorflow::ImportNumpy();
 // is not expected to be NULL-terminated, and TF_Buffer.length does not count
 // the terminator.
 %typemap(out) TF_Buffer (TF_GetOpList,TF_GetBuffer) {
-%#if PY_MAJOR_VERSION < 3
-  $result = PyString_FromStringAndSize(
-%#else
-  $result = PyUnicode_FromStringAndSize(
-%#endif
+  $result = PyBytes_FromStringAndSize(
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
