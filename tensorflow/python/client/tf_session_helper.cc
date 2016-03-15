@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -121,7 +121,10 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       *out_tf_datatype = TF_BOOL;
       break;
     case NPY_COMPLEX64:
-      *out_tf_datatype = TF_COMPLEX;
+      *out_tf_datatype = TF_COMPLEX64;
+      break;
+    case NPY_COMPLEX128:
+      *out_tf_datatype = TF_COMPLEX128;
       break;
     case NPY_OBJECT:
       *out_tf_datatype = TF_STRING;
@@ -168,8 +171,11 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_BOOL:
       *out_pyarray_type = NPY_BOOL;
       break;
-    case TF_COMPLEX:
+    case TF_COMPLEX64:
       *out_pyarray_type = NPY_COMPLEX64;
+      break;
+    case TF_COMPLEX128:
+      *out_pyarray_type = NPY_COMPLEX128;
       break;
     case TF_STRING:
       *out_pyarray_type = NPY_OBJECT;
