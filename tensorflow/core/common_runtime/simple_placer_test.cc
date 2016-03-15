@@ -927,6 +927,32 @@ TEST_F(SimplePlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
       StringPiece(s.error_message())
           .contains(
               "Could not satisfy explicit device specification '/cpu:0'"));
+  EXPECT_TRUE(
+      StringPiece(s.error_message())
+          .contains("no supported kernel for CPU devices is available"));
+}
+
+// Test that placement fails when a node requests an explicit device that is not
+// supported by the registered kernels if allow_soft_placement is no set.
+TEST_F(SimplePlacerTest, TestNonExistentDevice) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableGPU",
+                  b.opts().WithName("var").WithDevice("/job:foo/replica:17"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(
+      StringPiece(s.error_message())
+          .contains("Could not satisfy explicit device specification "
+                    "'/job:foo/replica:17' "
+                    "because no devices matching that specification are "
+                    "registered in this process"));
 }
 
 TEST_F(SimplePlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {

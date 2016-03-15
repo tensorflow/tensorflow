@@ -18,7 +18,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {

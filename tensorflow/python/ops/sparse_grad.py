@@ -47,14 +47,19 @@ def _SparseTensorDenseMatMulGrad(op, grad):
     Gradient for each of the 4 input tensors:
       (sparse_indices, sparse_values, sparse_shape, dense_tensor)
     The gradients for indices and shape are None.
+
+  Raises:
+    TypeError: When the two operands don't have the same type.
   """
   sp_t = ops.SparseTensor(*op.inputs[:3])
   adj_a = op.get_attr("adjoint_a")
   adj_b = op.get_attr("adjoint_b")
 
-  a_type = sp_t.values.dtype
-  b_type = op.inputs[3].dtype
-  assert a_type == b_type
+  a_type = sp_t.values.dtype.base_dtype
+  b_type = op.inputs[3].dtype.base_dtype
+  if a_type != b_type:
+    raise TypeError("SparseTensorDenseMatMul op received operands with "
+                    "different types: ", a_type, " and ", b_type)
   is_complex = a_type == ops.dtypes.complex64
   if is_complex:
     raise NotImplementedError("SparseTensorDenseMatMul op does not support "

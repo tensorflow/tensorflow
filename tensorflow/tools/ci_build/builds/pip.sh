@@ -22,8 +22,8 @@
 #   pip.sh CONTAINER_TYPE [--test_tutorials]
 #
 # When executing the Python unit tests, the script obeys the shell
-# variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES, and
-# NO_TEST_ON_INSTALL
+# variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
+# TF_BUILD_NO_CACHING_VIRTUALENV, NO_TEST_ON_INSTALL
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -31,6 +31,10 @@
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
 # to be installed in virtualenv before test_installation.sh is called. Multiple
 # pakcage names are separated with spaces.
+#
+# TF_BUILD_NO_CACHING_VIRTUALENV: If set to any non-empty and non-0 value,
+# will cause the script to force remove any existing (cached) virtualenv
+# directory.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
@@ -40,9 +44,7 @@
 # installation and the Python unit tests-on-install step.
 #
 
-# Default configuration
-# Extra pacakges required by the test-on-install
-INSTALL_EXTRA_PIP_PACKAGES="scipy sklearn"
+INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
 
 # Helper functions
 # Get the absolute path from a path
@@ -134,17 +136,27 @@ echo "whl file path = ${WHL_PATH}"
 # Install, in user's local home folder
 echo "Installing pip whl file: ${WHL_PATH}"
 
-# Create temporary directory for install test
+# Create virtualenv directory for install test
 VENV_DIR="${PIP_TEST_ROOT}/venv"
-rm -rf "${VENV_DIR}" && mkdir -p "${VENV_DIR}"
-echo "Create directory for virtualenv: ${VENV_DIR}"
+if [[ -d "${VENV_DIR}" ]] &&
+   [[ ! -z "${TF_BUILD_NO_CACHING_VIRTUALENV}" ]] &&
+   [[ "${TF_BUILD_NO_CACHING_VIRTUALENV}" != "0" ]]; then
+  echo "TF_BUILD_NO_CACHING_VIRTUALENV=${TF_BUILD_NO_CACHING_VIRTUALENV}:"
+  echo "Removing existing virtualenv directory: ${VENV_DIR}"
+
+  rm -rf "${VENV_DIR}" || \
+      die "Failed to remove existing virtualenv directory: ${VENV_DIR}"
+fi
+
+mkdir -p ${VENV_DIR} || \
+    die "FAILED to create virtualenv directory: ${VENV_DIR}"
 
 # Verify that virtualenv exists
 if [[ -z $(which virtualenv) ]]; then
   die "FAILED: virtualenv not available on path"
 fi
 
-virtualenv -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
+virtualenv --system-site-packages -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
     die "FAILED: Unable to create virtualenv"
 
 source "${VENV_DIR}/bin/activate" || \
@@ -152,15 +164,11 @@ source "${VENV_DIR}/bin/activate" || \
 
 
 # Install the pip file in virtual env
-pip install -v ${WHL_PATH} \
+pip install -v --force-reinstall ${WHL_PATH} \
 && echo "Successfully installed pip package ${WHL_PATH}" \
 || die "pip install (without --upgrade) FAILED"
 
 # Install extra pip packages required by the test-on-install
-if [[ ! -z "${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}" ]]; then
-  INSTALL_EXTRA_PIP_PACKAGES="${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
-fi
-
 for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
   echo "Installing extra pip package required by test-on-install: ${PACKAGE}"
 

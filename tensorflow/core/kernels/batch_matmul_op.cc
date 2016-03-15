@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -130,7 +129,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     auto blas_transpose_a = trans[adj_x];
     auto blas_transpose_b = trans[adj_y];
 
-    auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     typedef perftools::gputools::DeviceMemory<Scalar> DeviceMemoryType;

@@ -21,6 +21,8 @@ import os.path
 import threading
 import uuid
 
+from six.moves import range
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
@@ -46,8 +48,8 @@ _sdca_ops_lock = threading.Lock()
 # never use contrib.
 def _maybe_load_sdca_ops():
   with _sdca_ops_lock:
+    global _sdca_ops
     if not _sdca_ops:
-      global _sdca_ops
       _sdca_ops = load_op_library(os.path.join(
           resource_loader.get_data_files_path(), '_sdca_ops.so'))
       assert _sdca_ops, 'Could not load _sdca_ops.so'
@@ -223,7 +225,7 @@ class SdcaModel(object):
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
-      for i in xrange(len(dense_variables)):
+      for i in range(len(dense_variables)):
         predictions += dense_features[i] * dense_variables[i]
     return predictions
 

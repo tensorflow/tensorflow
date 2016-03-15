@@ -255,6 +255,7 @@ tf_cuda_library(
         "util/device_name_utils.h",
         "util/events_writer.h",
         "util/guarded_philox_random.h",
+        "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
         "util/saved_tensor_slice_util.h",
@@ -346,7 +347,7 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["ops/array_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
@@ -359,7 +360,7 @@ cc_library(
 cc_library(
     name = "functional_grad",
     srcs = ["ops/functional_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -372,7 +373,7 @@ cc_library(
 cc_library(
     name = "math_grad",
     srcs = ["ops/math_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -385,7 +386,7 @@ cc_library(
 cc_library(
     name = "nn_grad",
     srcs = ["ops/nn_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -676,7 +677,6 @@ cc_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
-        "common_runtime/gpu_device_context.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -963,6 +963,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util_platform_specific.cc",
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
+        "common_runtime/gpu_device_context.h",
     ],
     hdrs = [
         "common_runtime/gpu/gpu_allocator_retry.h",

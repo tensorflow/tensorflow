@@ -5546,6 +5546,76 @@ op {
   is_commutative: true
 }
 op {
+  name: "MirrorPad"
+  input_arg {
+    name: "input"
+    description: "The input tensor to be padded."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "The padded tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    description: "Either `REFLECT` or `SYMMETRIC`. In reflect mode the padded regions\ndo not include the borders, while in symmetric mode the padded regions\ndo include the borders. For example, if `input` is `[1, 2, 3]` and `paddings`\nis `[0, 2]`, then the output is `[1, 2, 3, 2, 1]` in reflect mode, and\nit is `[1, 2, 3, 3, 2]` in symmetric mode."
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  summary: "Pads a tensor with mirrored values."
+  description: "This operation pads a `input` with mirrored values according to the `paddings`\nyou specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is\nthe rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many values to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many values to add after the contents of `input`\nin that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater\nthan `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true\n(if false, respectively).\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```prettyprint\n# \'t\' is [[1, 2, 3], [4, 5, 6]].\n# \'paddings\' is [[1, 1]], [2, 2]].\n# \'mode\' is SYMMETRIC.\n# rank of \'t\' is 2.\npad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]\n                      [2, 1, 1, 2, 3, 3, 2]\n                      [5, 4, 4, 5, 6, 6, 5]\n                      [5, 4, 4, 5, 6, 6, 5]]\n```"
+}
+op {
+  name: "MirrorPadGrad"
+  input_arg {
+    name: "input"
+    description: "The input tensor to be folded."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "The folded tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    description: "The mode used in the `MirrorPad` op."
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  summary: "Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor."
+  description: "This operation folds the padded areas of `input` by `MirrorPad` according to the\n`paddings` you specify. `paddings` must be the same as `paddings` argument\ngiven to the corresponding `MirrorPad` op.\n\nThe folded size of each dimension D of the output is:\n\n`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`\n\nFor example:\n\n```prettyprint\n# \'t\' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].\n# \'paddings\' is [[0, 1]], [0, 1]].\n# \'mode\' is SYMMETRIC.\n# rank of \'t\' is 2.\npad(t, paddings) ==> [[ 1,  5]\n                      [11, 28]]\n```"
+}
+op {
   name: "Mod"
   input_arg {
     name: "x"

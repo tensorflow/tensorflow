@@ -6599,6 +6599,64 @@ op {
   is_commutative: true
 }
 op {
+  name: "MirrorPad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+}
+op {
+  name: "MirrorPadGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+}
+op {
   name: "Mod"
   input_arg {
     name: "x"

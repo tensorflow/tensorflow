@@ -33,6 +33,7 @@ apt-get install -y \
     python-dev \
     python-numpy \
     python-pip \
+    python-scipy \
     python-virtualenv \
     python-scipy \
     python3-dev \

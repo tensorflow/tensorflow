@@ -88,7 +88,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
             } else {
               int32 value;
-              OP_REQUIRES(ctx, strings::safe_strto32(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto32(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int32: ",
                                                   fields[f]));
@@ -108,7 +108,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int64>()(i) = record_defaults[f].flat<int64>()(0);
             } else {
               int64 value;
-              OP_REQUIRES(ctx, strings::safe_strto64(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto64(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int64: ",
                                                   fields[f]));

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -248,7 +247,7 @@ struct LaunchConvOp<GPUDevice, T> {
                      const Tensor& input_param, const Tensor& filter,
                      int stride, const Eigen::PaddingType& padding,
                      Tensor* output, TensorFormat data_format) {
-    auto* stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn) {
