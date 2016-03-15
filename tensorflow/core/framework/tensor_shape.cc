@@ -74,8 +74,8 @@ TensorShape::TensorShape(gtl::ArraySlice<int64> dim_sizes) {
   set_ndims_byte(0);
   set_data_type(DT_INVALID);
   num_elements_ = 1;
-  for (auto s : dim_sizes) {
-    AddDim(s);
+  for (const int64& s : dim_sizes) {
+    AddDim(internal::SubtleMustCopy(s));
   }
 }
 
