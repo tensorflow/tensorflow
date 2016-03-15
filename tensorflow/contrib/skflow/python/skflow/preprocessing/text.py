@@ -16,8 +16,12 @@
 from __future__ import division, print_function, absolute_import
 
 import re
-import cPickle
 import six
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import numpy as np
 
@@ -202,7 +206,7 @@ class VocabularyProcessor(object):
         Args:
             filename: Path to output file.
         """
-        open(filename, 'w').write(cPickle.dumps(self))
+        open(filename, 'w').write(pickle.dumps(self))
 
     @classmethod
     def restore(cls, filename):
@@ -214,5 +218,5 @@ class VocabularyProcessor(object):
         Returns:
             VocabularyProcessor object.
         """
-        return cPickle.loads(open(filename).read())
+        return pickle.loads(open(filename).read())
 
