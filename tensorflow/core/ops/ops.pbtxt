@@ -6274,6 +6274,30 @@ op {
   description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
 }
 op {
+  name: "PlaceholderWithDefault"
+  input_arg {
+    name: "input"
+    description: "The default value to produce when `output` is not fed."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    description: "A placeholder tensor that defaults to `input` if it is not fed."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of elements in the tensor."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The (possibly partial) shape of the tensor."
+  }
+  summary: "A placeholder op that passes though `input` when its output is not fed."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
