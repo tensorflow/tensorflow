@@ -203,7 +203,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -1002,6 +1002,7 @@ filegroup(
     name = "android_srcs",
     srcs = [
         "avgpooling_op.h",
+        "bounds_check.h",
         "maxpooling_op.h",
         "ops_util.cc",
         "ops_util.h",
