@@ -43,7 +43,6 @@ class LOCKABLE mutex : public std::mutex {
 class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
  public:
   mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<std::mutex>(m) {}
-  mutex_lock(mutex_lock&&) = default;  // Restore move constructor.
   ~mutex_lock() RELEASE() {}
 };
 

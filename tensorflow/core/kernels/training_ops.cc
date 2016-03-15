@@ -129,35 +129,6 @@ struct ApplyRMSProp<CPUDevice, T> {
 
 }  // namespace functor
 
-// MaybeLockMutexesInOrder is a helper function to acquire mutexes in address
-// order to mitigate deadlock.  Returns a vector of acquired mutexes.
-// Safe to pass duplicates - will only lock each distinct mutex once.
-// If do_lock is false, returns immediately.
-std::vector<mutex_lock> MaybeLockMutexesInOrder(
-    OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids) {
-  std::vector<mutex_lock> locks;
-  if (!do_lock) {
-    return locks;
-  }
-  std::vector<mutex*> mutexes;
-  std::vector<int> acquire_order;
-  for (auto input : input_ids) {
-    auto* mutex = ctx->input_ref_mutex(input);
-    // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
-    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
-      acquire_order.push_back(input);
-      mutexes.push_back(mutex);
-    }
-  }
-  std::sort(acquire_order.begin(), acquire_order.end(),
-            [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
-
-  for (auto input : acquire_order) {
-    locks.push_back(mutex_lock(*ctx->input_ref_mutex(input)));
-  }
-  return locks;
-}
-
 template <typename Device, typename T>
 class ApplyGradientDescentOp : public OpKernel {
  public:
@@ -246,10 +217,20 @@ class ApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
+    if (use_exclusive_lock_) {
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      // Don't try to acquire a lock on the second ref as they share the same
+      // mutex.
+      //
+      // mutex_lock l2(*ctx->input_ref_mutex(1));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
@@ -358,7 +339,14 @@ class SparseApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    mutex* mu_var = ctx->input_ref_mutex(0);
+    // mu_accum is actually the same mutex as mu_var since currently we use a
+    // global mutex.
+    //
+    // mutex* mu_accum = ctx->input_ref_mutex(1);
+    if (use_exclusive_lock_) {
+      mu_var->lock();
+    }
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     OP_REQUIRES(
@@ -443,6 +431,9 @@ class SparseApplyAdagradOp : public OpKernel {
         }
       }
     }
+    if (use_exclusive_lock_) {
+      mu_var->unlock();
+    }
 
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
@@ -472,10 +463,20 @@ class ApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
+    if (use_exclusive_lock_) {
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      // Don't try to acquire a lock on the second ref as they share the same
+      // mutex.
+      //
+      // mutex_lock l2(*ctx->input_ref_mutex(1));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
@@ -575,7 +576,14 @@ class SparseApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    mutex* mu_var = ctx->input_ref_mutex(0);
+    // mu_accum is actually the same mutex as mu_var since currently we use a
+    // global mutex.
+    //
+    // mutex* mu_accum = ctx->input_ref_mutex(1);
+    if (use_exclusive_lock_) {
+      mu_var->lock();
+    }
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
@@ -724,6 +732,9 @@ class SparseApplyFtrlOp : public OpKernel {
         }
       }
     }
+    if (use_exclusive_lock_) {
+      mu_var->unlock();
+    }
 
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
@@ -753,10 +764,20 @@ class ApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
+    if (use_exclusive_lock_) {
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      // Don't try to acquire a lock on the second ref as they share the same
+      // mutex.
+      //
+      // mutex_lock l2(*ctx->input_ref_mutex(1));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
@@ -850,8 +871,14 @@ class SparseApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-
+    mutex* mu_var = ctx->input_ref_mutex(0);
+    // mu_accum is actually the same mutex as mu_var since currently we use a
+    // global mutex.
+    //
+    // mutex* mu_accum = ctx->input_ref_mutex(1);
+    if (use_exclusive_lock_) {
+      mu_var->lock();
+    }
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     OP_REQUIRES(
@@ -922,6 +949,9 @@ class SparseApplyMomentumOp : public OpKernel {
         v -= a.constant(lr_scalar) * a;
       }
     }
+    if (use_exclusive_lock_) {
+      mu_var->unlock();
+    }
 
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
@@ -951,10 +981,17 @@ class ApplyAdamOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
+    if (use_exclusive_lock_) {
+      // all input refs share the same mutex
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
@@ -1086,10 +1123,17 @@ class ApplyRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
+    if (use_exclusive_lock_) {
+      // all input refs share the same mutex
+      mutex_lock l1(*ctx->input_ref_mutex(0));
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    } else {
+      DoValidate(ctx);
+      if (!ctx->status().ok()) return;
+      DoCompute(ctx);
+    }
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
