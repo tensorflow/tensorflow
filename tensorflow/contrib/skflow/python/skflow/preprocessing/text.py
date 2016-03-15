@@ -219,6 +219,6 @@ class VocabularyProcessor(object):
         Returns:
             VocabularyProcessor object.
         """
-        with open(filename) as f:
+        with open(filename, 'rb') as f:
             return pickle.loads(f.read())
 
