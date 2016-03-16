@@ -102,6 +102,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -331,6 +332,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -423,6 +425,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -505,6 +508,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -560,6 +564,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -625,6 +630,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -706,6 +712,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -752,6 +759,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -789,6 +797,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -902,6 +911,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -952,6 +962,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1378,6 +1389,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1463,6 +1475,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1538,6 +1551,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1587,6 +1601,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1641,6 +1656,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1674,6 +1690,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1694,6 +1711,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -4320,6 +4338,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -5109,6 +5128,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -5419,6 +5439,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -5520,6 +5541,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -6420,6 +6442,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -8132,6 +8155,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -8197,6 +8221,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9146,6 +9171,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9243,6 +9269,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9324,6 +9351,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -10234,6 +10262,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
