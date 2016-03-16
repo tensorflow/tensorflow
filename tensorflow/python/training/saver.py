@@ -404,8 +404,9 @@ class BaseSaverBuilder(object):
           if slice_name is None:
             slice_name = variable._save_slice_info.full_name
           elif slice_name != variable._save_slice_info.full_name:
-            raise ValueError("Slices must all be from the same tensor: %s != %s"
-                             % (slice_name, variable._save_slice_info.full_name))
+            raise ValueError(
+                "Slices must all be from the same tensor: %s != %s"
+                % (slice_name, variable._save_slice_info.full_name))
           self._AddVarToSave(vars_to_save, seen_variables,
                              variable, variable._save_slice_info.spec, name)
         # pylint: enable=protected-access
@@ -1292,7 +1293,10 @@ def _import_meta_graph_def(meta_graph_def):
     meta_graph_def: `MetaGraphDef` protocol buffer.
 
   Returns:
-    A saver constructed rom `saver_def` in `meta_graph_def`.
+    A saver constructed from `saver_def` in `meta_graph_def` or None.
+
+    A None value is returned if no variables exist in the `meta_graph_def`
+    (i.e., no variables to restore).
   """
   # Gathers the list of nodes we are interested in.
   importer.import_graph_def(meta_graph_def.graph_def, name="")
@@ -1331,7 +1335,14 @@ def _import_meta_graph_def(meta_graph_def):
   if meta_graph_def.HasField("saver_def"):
     return Saver(saver_def=meta_graph_def.saver_def)
   else:
-    return Saver()
+    if variables.all_variables():
+      # Return the default saver instance for all graph variables.
+      return Saver()
+    else:
+      # If not graph variables exist, then a Saver cannot be constructed.
+      logging.info("Saver not created because there are no variables in the"
+                   " graph to restore")
+      return None
 
 
 def import_meta_graph(meta_graph_or_file):
@@ -1390,7 +1401,10 @@ def import_meta_graph(meta_graph_or_file):
       the path) containing a `MetaGraphDef`.
 
   Returns:
-    A saver constructed rom `saver_def` in `MetaGraphDef`.
+    A saver constructed rom `saver_def` in `MetaGraphDef` or None.
+
+    A None value is returned if no variables exist in the `MetaGraphDef`
+    (i.e., there are no variables to restore).
   """
   if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     return _import_meta_graph_def(meta_graph_or_file)

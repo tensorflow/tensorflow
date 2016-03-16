@@ -257,6 +257,7 @@ class SupervisorTest(tf.test.TestCase):
     # Create a new Graph and Supervisor and recover.
     with tf.Graph().as_default():
       new_saver = tf.train.import_meta_graph(".".join([filename, "meta"]))
+      self.assertIsNotNone(new_saver)
       sv2 = tf.train.Supervisor(logdir=logdir, saver=new_saver)
       sess = sv2.prepare_or_wait_for_session("")
       self.assertEquals(1, sess.run("v0:0"))
