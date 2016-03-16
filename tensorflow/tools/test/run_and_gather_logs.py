@@ -35,7 +35,7 @@ try:
   import psutil
 except ImportError as e:
   tf.logging.error("\n\n\nERROR: Unable to import necessary library: {}.  "
-                   "Issuing a soft exit.\n\n\n".format(e.message))
+                   "Issuing a soft exit.\n\n\n".format(e))
   sys.exit(0)
 # pylint: enable=g-bad-import-order
 # pylint: enable=unused-import

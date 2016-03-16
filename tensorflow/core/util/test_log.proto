@@ -51,7 +51,8 @@ message BenchmarkEntries {
 
 message BuildConfiguration {
   string mode = 1;               // opt, dbg, etc
-  repeated string cc_flags = 2;  // CC compiler flags
+  repeated string cc_flags = 2;  // CC compiler flags, if known
+  repeated string opts = 3;      // Bazel compilation options, if known
 };
 
 message CommitId {
