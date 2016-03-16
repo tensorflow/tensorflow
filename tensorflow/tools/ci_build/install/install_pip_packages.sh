@@ -16,30 +16,5 @@
 
 set -e
 
-# Install dependencies from ubuntu deb repository.
-apt-get update
-apt-get install -y \
-    bc \
-    build-essential \
-    curl \
-    git \
-    openjdk-8-jdk \
-    openjdk-8-jre-headless \
-    pkg-config \
-    python-dev \
-    python-numpy \
-    python-pip \
-    python-scipy \
-    python-virtualenv \
-    python3-dev \
-    python3-numpy \
-    python3-pip \
-    python3-scipy \
-    sudo \
-    swig \
-    unzip \
-    wget \
-    zip \
-    zlib1g-dev
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+pip install sklearn
+pip3 install scikit-learn

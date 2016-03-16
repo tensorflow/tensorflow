@@ -78,7 +78,8 @@ typedef enum {
   TF_INT16 = 5,
   TF_INT8 = 6,
   TF_STRING = 7,
-  TF_COMPLEX = 8,  // Single-precision complex
+  TF_COMPLEX64 = 8,  // Single-precision complex
+  TF_COMPLEX = 8,    // Old identifier kept for API backwards compatibility
   TF_INT64 = 9,
   TF_BOOL = 10,
   TF_QINT8 = 11,     // Quantized int8
@@ -88,6 +89,7 @@ typedef enum {
   TF_QINT16 = 15,    // Quantized int16
   TF_QUINT16 = 16,   // Quantized uint16
   TF_UINT16 = 17,
+  TF_COMPLEX128 = 18,  // Double-precision complex
 } TF_DataType;
 
 // --------------------------------------------------------------------------

@@ -21,6 +21,8 @@ import os.path
 import threading
 import uuid
 
+from six.moves import range
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
@@ -223,7 +225,7 @@ class SdcaModel(object):
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
-      for i in xrange(len(dense_variables)):
+      for i in range(len(dense_variables)):
         predictions += dense_features[i] * dense_variables[i]
     return predictions
 

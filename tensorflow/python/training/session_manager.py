@@ -326,7 +326,7 @@ class SessionManager(object):
       try:
         sess.run(self._ready_op)
         return None
-      except errors.FailedPreconditionError, e:
+      except errors.FailedPreconditionError as e:
         if "uninitialized" not in str(e):
           logging.warning("Model not ready raised: %s", str(e))
           raise  e
