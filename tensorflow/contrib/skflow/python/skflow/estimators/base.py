@@ -267,9 +267,14 @@ class TensorFlowEstimator(BaseEstimator):
         """
         return self.fit(X, y)
 
-    def _predict(self, X, axis=-1, batch_size=-1):
+    def _predict(self, X, axis=-1, batch_size=None):
         if not self._initialized:
             raise NotFittedError()
+
+        # Use the batch size for fitting if the user did not specify one.
+        if batch_size is None:
+            batch_size = self.batch_size
+
         self._graph.add_to_collection("IS_TRAINING", False)
         predict_data_feeder = setup_predict_data_feeder(
             X, batch_size=batch_size)
@@ -288,7 +293,7 @@ class TensorFlowEstimator(BaseEstimator):
 
         return np.concatenate(preds, axis=0)
 
-    def predict(self, X, axis=1, batch_size=-1):
+    def predict(self, X, axis=1, batch_size=None):
         """Predict class or regression for X.
 
         For a classification model, the predicted class for each sample in X is
@@ -301,7 +306,8 @@ class TensorFlowEstimator(BaseEstimator):
                   By default axis 1 (next after batch) is used.
                   Use 2 for sequence predictions.
             batch_size: If test set is too big, use batch size to split
-                        it into mini batches. By default full dataset is used.
+                        it into mini batches. By default the batch_size member
+                        variable is used.
 
         Returns:
             y: array of shape [n_samples]. The predicted classes or predicted
@@ -309,13 +315,14 @@ class TensorFlowEstimator(BaseEstimator):
         """
         return self._predict(X, axis=axis, batch_size=batch_size)
 
-    def predict_proba(self, X, batch_size=-1):
+    def predict_proba(self, X, batch_size=None):
         """Predict class probability of the input samples X.
 
         Args:
             X: array-like matrix, [n_samples, n_features...] or iterator.
             batch_size: If test set is too big, use batch size to split
-                        it into mini batches. By default full dataset is used.
+                        it into mini batches. By default the batch_size
+                        member variable is used.
 
         Returns:
             y: array of shape [n_samples, n_classes]. The predicted
