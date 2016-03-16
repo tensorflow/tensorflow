@@ -235,5 +235,81 @@ class HashTableOpTest(tf.test.TestCase):
                                                         values), default_val)
 
 
+class StringToIndexTest(tf.test.TestCase):
+
+  def test_string_to_index(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      feats = tf.constant(["salad", "surgery", "tarkus"])
+      indices = tf.contrib.lookup.string_to_index(feats,
+                                                  mapping=mapping_strings)
+
+      self.assertRaises(tf.OpError, indices.eval)
+      tf.initialize_all_tables().run()
+
+      self.assertAllEqual((1, 2, -1), indices.eval())
+
+  def test_duplicate_entries(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["hello", "hello"])
+      feats = tf.constant(["hello", "hola"])
+      indices = tf.contrib.lookup.string_to_index(feats,
+                                                  mapping=mapping_strings)
+
+      self.assertRaises(tf.OpError, tf.initialize_all_tables().run)
+
+  def test_string_to_index_with_default_value(self):
+    default_value = -42
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      feats = tf.constant(["salad", "surgery", "tarkus"])
+      indices = tf.contrib.lookup.string_to_index(feats,
+                                                  mapping=mapping_strings,
+                                                  default_value=default_value)
+      self.assertRaises(tf.OpError, indices.eval)
+
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((1, 2, default_value), indices.eval())
+
+
+class IndexToStringTest(tf.test.TestCase):
+
+  def test_index_to_string(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      indices = tf.constant([0, 1, 2, 3], tf.int64)
+      feats = tf.contrib.lookup.index_to_string(indices,
+                                                mapping=mapping_strings)
+
+      self.assertRaises(tf.OpError, feats.eval)
+      tf.initialize_all_tables().run()
+
+      self.assertAllEqual(("brain", "salad", "surgery", "UNK"), feats.eval())
+
+  def test_duplicate_entries(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["hello", "hello"])
+      indices = tf.constant([0, 1, 4], tf.int64)
+      feats = tf.contrib.lookup.index_to_string(indices,
+                                                mapping=mapping_strings)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual(("hello", "hello", "UNK"), feats.eval())
+
+      self.assertRaises(tf.OpError, tf.initialize_all_tables().run)
+
+  def test_index_to_string_with_default_value(self):
+    default_value = "NONE"
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      indices = tf.constant([1, 2, 4], tf.int64)
+      feats = tf.contrib.lookup.index_to_string(indices,
+                                                mapping=mapping_strings,
+                                                default_value=default_value)
+      self.assertRaises(tf.OpError, feats.eval)
+
+      tf.initialize_all_tables().run()
+      self.assertAllEqual(("salad", "surgery", default_value), feats.eval())
+
+
 if __name__ == "__main__":
   tf.test.main()

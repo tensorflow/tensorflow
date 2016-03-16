@@ -14,6 +14,8 @@
 # ==============================================================================
 """Ops for lookup operations.
 
+@@string_to_index
+@@index_to_string
 @@LookupInterface
 @@InitializableLookupTableBase
 @@HashTable
