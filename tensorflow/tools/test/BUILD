@@ -53,21 +53,23 @@ py_binary(
 
 # Unit test that calls run_and_gather_logs on a benchmark, and
 # prints the result.
-#cuda_py_test(
-#    name = "run_and_gather_logs_test",
-#    srcs = ["run_and_gather_logs.py"],
-#    additional_deps = [
-#        ":run_and_gather_logs",
-#    ],
-#    args = [
-#        "--test_name=" + "//tensorflow/core/kernels:cast_op_test",
-#        "--test_args=" + "'--benchmarks=BM_cpu_float'",
-#    ],
-#    data = [
-#        "//tensorflow/core/kernels:cast_op_test",
-#    ],
-#    main = "run_and_gather_logs.py",
-#)
+cuda_py_test(
+    name = "run_and_gather_logs_test",
+    srcs = ["run_and_gather_logs.py"],
+    additional_deps = [
+        ":run_and_gather_logs",
+    ],
+    args = [
+        "--test_name=" + "//tensorflow/core/kernels:cast_op_test",
+        "--test_args=" + "'--benchmarks=BM_cpu_float_bfloat16'",
+        "--compilation_mode='$(COMPILATION_MODE)'",
+        "--cc_flags='$(CC_FLAGS)'",
+    ],
+    data = [
+        "//tensorflow/core/kernels:cast_op_test",
+    ],
+    main = "run_and_gather_logs.py",
+)
 
 filegroup(
     name = "all_files",

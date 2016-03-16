@@ -151,7 +151,7 @@ TEST(NodeDefUtilTest, Out) {
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
                 "values: float, double, int64, int32, uint8, uint16, int16, "
-                "int8, complex64, complex128, qint8, quint8, qint32");
+                "int8, complex64, qint8, quint8, qint32");
 }
 
 TEST(NodeDefUtilTest, Enum) {

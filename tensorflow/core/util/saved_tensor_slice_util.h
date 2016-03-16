@@ -108,7 +108,6 @@ TENSOR_PROTO_EXTRACT_TYPE(bool, bool, bool);
 TENSOR_PROTO_EXTRACT_TYPE(float, float, float);
 TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
-TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int64, int64, int64);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);

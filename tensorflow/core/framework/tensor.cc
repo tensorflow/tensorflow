@@ -216,22 +216,6 @@ struct ProtoHelper<complex64> {
 };
 
 template <>
-struct ProtoHelper<complex128> {
-  typedef Helper<double>::RepeatedFieldType FieldType;
-  static const complex128* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const complex128*>(proto.dcomplex_val().data());
-  }
-  static size_t NumElements(const TensorProto& proto) {
-    return proto.dcomplex_val().size() / 2;
-  }
-  static void Fill(const complex128* data, size_t n, TensorProto* proto) {
-    const double* p = reinterpret_cast<const double*>(data);
-    FieldType copy(p, p + n * 2);
-    proto->mutable_dcomplex_val()->Swap(&copy);
-  }
-};
-
-template <>
 struct ProtoHelper<qint32> {
   typedef Helper<int32>::RepeatedFieldType FieldType;
   static const qint32* Begin(const TensorProto& proto) {
@@ -401,7 +385,6 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other,
     CASE(int8, SINGLE_ARG(STMTS))                     \
     CASE(string, SINGLE_ARG(STMTS))                   \
     CASE(complex64, SINGLE_ARG(STMTS))                \
-    CASE(complex128, SINGLE_ARG(STMTS))               \
     CASE(int64, SINGLE_ARG(STMTS))                    \
     CASE(bool, SINGLE_ARG(STMTS))                     \
     CASE(qint32, SINGLE_ARG(STMTS))                   \

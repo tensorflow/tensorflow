@@ -87,9 +87,6 @@ DEFINE_CONST(bool, bool_val);
 DEFINE_CONST_IMPL(complex64, proto.add_scomplex_val(t.begin()->real());
                   proto.add_scomplex_val(t.begin()->imag()););
 
-DEFINE_CONST_IMPL(complex128, proto.add_dcomplex_val(t.begin()->real());
-                  proto.add_dcomplex_val(t.begin()->imag()););
-
 Node* Const(StringPiece s, const GraphDefBuilder::Options& options) {
   if (options.HaveError()) return nullptr;
   NodeBuilder node_builder(options.GetNameForOp(OpName()), OpName(),

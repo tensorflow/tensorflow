@@ -99,9 +99,6 @@ Status TfDTypeToNpDType(const DataType& tf, int* np) {
     case DT_COMPLEX64:
       *np = NPY_COMPLEX64;
       break;
-    case DT_COMPLEX128:
-      *np = NPY_COMPLEX128;
-      break;
     case DT_STRING:
       *np = NPY_OBJECT;
       break;
@@ -212,9 +209,6 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
       break;
     case NPY_COMPLEX64:
       *tf = DT_COMPLEX64;
-      break;
-    case NPY_COMPLEX128:
-      *tf = DT_COMPLEX128;
       break;
     default:
       return errors::Unimplemented("Unsupported numpy type ", np);

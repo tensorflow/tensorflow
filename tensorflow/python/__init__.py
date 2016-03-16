@@ -181,7 +181,6 @@ __all__.extend([
     'bfloat16', 'bfloat16_ref',
     'bool', 'bool_ref',
     'complex64', 'complex64_ref',
-    'complex128', 'complex128_ref',
     'double', 'double_ref',
     'float32', 'float32_ref',
     'float64', 'float64_ref',

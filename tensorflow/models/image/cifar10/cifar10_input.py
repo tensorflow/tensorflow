@@ -172,7 +172,7 @@ def distorted_inputs(data_dir, batch_size):
   distorted_image = tf.image.random_flip_left_right(distorted_image)
 
   # Because these operations are not commutative, consider randomizing
-  # the order their operation.
+  # randomize the order their operation.
   distorted_image = tf.image.random_brightness(distorted_image,
                                                max_delta=63)
   distorted_image = tf.image.random_contrast(distorted_image,

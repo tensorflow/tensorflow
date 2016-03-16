@@ -306,7 +306,7 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
 fi
 
 # Write to the tmp script
-echo "#!/usr/bin/env bash" > ${TMP_SCRIPT}
+echo "#!/bin/bash" > ${TMP_SCRIPT}
 if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
   echo ${BAZEL_CLEAN_CMD} >> ${TMP_SCRIPT}

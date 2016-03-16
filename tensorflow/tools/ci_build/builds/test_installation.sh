@@ -166,8 +166,7 @@ cp -r tensorflow/core/lib/png ${PY_TEST_DIR}/tensorflow/core/lib
 
 # Run tests
 DIR0=$(pwd)
-ALL_PY_TESTS=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
-    -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
+ALL_PY_TESTS=$(find tensorflow/{contrib,examples,models,python,tensorboard} -name "*_test.py" | sort)
 # TODO(cais): Add tests in tensorflow/contrib
 
 PY_TEST_COUNT=$(echo ${ALL_PY_TESTS} | wc -w)
