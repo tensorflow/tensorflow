@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """## Loss operations for use in neural networks.
 
 The loss ops measure error for use in neural networks. These losses
@@ -32,6 +31,8 @@ their output can be used.
 @@mean_absolute_loss
 @@mean_squared_loss
 @@root_mean_squared_loss
+
+@@scalar_logistic_loss
 """
 
 from __future__ import absolute_import
@@ -41,11 +42,12 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-
+from tensorflow.python.ops import nn
 
 __all__ = ["reduce_batch_sum", "reduce_batch_mean", "absolute_loss",
            "squared_loss", "sum_squared_loss", "mean_absolute_loss",
-           "mean_squared_loss", "root_mean_squared_loss"]
+           "mean_squared_loss", "root_mean_squared_loss",
+           "scalar_logistic_loss"]
 
 
 def _reduce_batch(x, reduce_fn, name=None):
@@ -236,13 +238,11 @@ def sum_squared_loss(predicted, target, name=None):
     ValueError: If `predicted` and `target` shapes do not match.
 
   """
-  with ops.op_scope(
-      [predicted, target],
-      name,
-      "sum_squared_loss") as scope:
-    return math_ops.div(reduce_batch_sum(squared_loss(predicted, target)),
-                        2.0,
-                        name=scope)
+  with ops.op_scope([predicted, target], name, "sum_squared_loss") as scope:
+    return math_ops.div(
+        reduce_batch_sum(squared_loss(predicted, target)),
+        2.0,
+        name=scope)
 
 
 def mean_absolute_loss(predicted, target, name=None):
@@ -344,3 +344,32 @@ def root_mean_squared_loss(predicted, target, name=None):
                     "root_mean_squared_loss") as scope:
     return math_ops.sqrt(mean_squared_loss(predicted, target),
                          name=scope)
+
+
+def scalar_logistic_loss(logit, target, name=None):
+  """Calculates the logistic cross-entropy loss, averaged across batches.
+
+  **WARNING:** `logit` must be unscaled, while the `target` should be a
+  normalized probability prediction. See
+  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
+
+  Args:
+    logit: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
+      of predicted logit values.
+    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+      target values. The shape of the target tensor should match the
+      `predicted` tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A scalar `tensor` of the logistic cross-entropy loss, averaged across
+    batches.
+
+  Raises:
+    ValueError: If `logit` and `target` shapes do not match.
+  """
+  with ops.op_scope([logit, target], name,
+                    "scalar_logistic_loss") as scope:
+    batch_loss = reduce_batch_sum(nn.sigmoid_cross_entropy_with_logits(logit,
+                                                                       target))
+    return math_ops.reduce_mean(batch_loss, [0], name=scope)

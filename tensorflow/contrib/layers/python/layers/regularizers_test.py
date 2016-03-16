@@ -61,7 +61,6 @@ class RegularizerTest(tf.test.TestCase):
   def test_sum_regularizer(self):
     l1_function = tf.contrib.layers.l1_regularizer(.1)
     l2_function = tf.contrib.layers.l2_regularizer(.2)
-
     self.assertIsNone(tf.contrib.layers.sum_regularizer([]))
     self.assertIsNone(tf.contrib.layers.sum_regularizer([None]))
 
@@ -82,6 +81,25 @@ class RegularizerTest(tf.test.TestCase):
     self.assertAllClose(.1 * np.abs(values).sum() +
                         .2 * np.power(values, 2).sum() / 2.0,
                         l1_l2_result)
+
+  def test_apply_regularization(self):
+    dummy_regularizer = lambda x: tf.reduce_sum(2 * x)
+    array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
+    tensor_weights_list = [tf.constant(x) for x in array_weights_list]
+    expected = sum([2 * x for l in array_weights_list for x in l])
+    with self.test_session():
+      result = tf.contrib.layers.apply_regularization(dummy_regularizer,
+                                                      tensor_weights_list)
+      self.assertAllClose(expected, result.eval())
+
+  def test_apply_regularization_invalid_regularizer(self):
+    non_scalar_regularizer = lambda x: tf.tile(x, [2])
+    tensor_weights_list = [tf.constant(x)
+                           for x in [[1.5], [2, 3, 4.2], [10, 42, 666.6]]]
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        tf.contrib.layers.apply_regularization(non_scalar_regularizer,
+                                               tensor_weights_list)
 
 
 if __name__ == '__main__':

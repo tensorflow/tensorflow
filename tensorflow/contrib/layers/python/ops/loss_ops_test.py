@@ -355,5 +355,25 @@ class RootMeanSquaredLossTest(tf.test.TestCase):
         tf.contrib.layers.root_mean_squared_loss(incompatible_shape, target)
 
 
+class MeanScalarLogisticLossTest(tf.test.TestCase):
+
+  def _get_mean_sigmoid_logistic_loss(self, logit, target):
+    sigmoid = 1.0 / (1.0 + np.exp(-logit))
+    logistic_loss = (target * -np.log(sigmoid)) - (
+        (1.0 - target) * np.log(1.0 - sigmoid))
+    batch_losses = np.sum(logistic_loss, 1)
+
+    return np.sum(batch_losses) / len(batch_losses)
+
+  def test_mean__scalar_logistic_loss(self):
+    logit = np.array([[9.45, -42], [4.2, 1], [-0.6, 20]])
+    target = np.array([[0.8, 0.9], [0.45, 0.99999], [0.1, 0.0006]])
+    expected_loss = self._get_mean_sigmoid_logistic_loss(logit, target)
+    with self.test_session():
+      result = tf.contrib.layers.scalar_logistic_loss(
+          tf.constant(logit), tf.constant(target))
+      self.assertAllClose(expected_loss, result.eval())
+
+
 if __name__ == "__main__":
   tf.test.main()
