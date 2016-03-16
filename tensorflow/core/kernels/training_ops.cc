@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/training_ops.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -166,24 +167,9 @@ class ApplyGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    if (use_exclusive_lock_) {
-      mutex_lock l(*ctx->input_ref_mutex(0));
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    } else {
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    }
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
+    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
+
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -198,16 +184,16 @@ class ApplyGradientDescentOp : public OpKernel {
         errors::InvalidArgument("var and delta do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 delta.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    const Tensor& alpha = ctx->input(1);
-    const Tensor& delta = ctx->input(2);
     functor::ApplyGradientDescent<Device, T>()(
         device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>());
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 #define REGISTER_KERNELS(D, T)                                                \
@@ -247,16 +233,6 @@ class ApplyAdagradOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     OP_REQUIRES(
@@ -282,17 +258,16 @@ class ApplyAdagradOp : public OpKernel {
         errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
-    const Tensor& lr = ctx->input(2);
-    const Tensor& grad = ctx->input(3);
     functor::ApplyAdagrad<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                        lr.scalar<T>(), grad.flat<T>());
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -402,15 +377,7 @@ class SparseApplyAdagradOp : public OpKernel {
     if (N > 0) {
       if (inner_dim > 1) {
         const Tindex first_dim_size = var.dim_size(0);
-        // Validate all the indices are in range
         auto indices_vec = indices.vec<Tindex>();
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
-          OP_REQUIRES(ctx, index >= 0 && index < first_dim_size,
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
         auto var_flat = var.flat_outer_dims<T>();
         auto accum_flat = accum.flat_outer_dims<T>();
         auto grad_flat = grad.flat_outer_dims<T>();
@@ -419,7 +386,11 @@ class SparseApplyAdagradOp : public OpKernel {
         // Note(yonghui): It might be worth multi-threading square() and
         // rsqrt().
         for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
+                      errors::InvalidArgument(
+                          strings::StrCat("Index ", index, " at offset ", i,
+                                          " in indices is out of range")));
           auto a = accum_flat.template chip<0>(index);
           auto g = grad_flat.template chip<0>(i);
           auto v = var_flat.template chip<0>(index);
@@ -433,9 +404,14 @@ class SparseApplyAdagradOp : public OpKernel {
         auto accum_flat = accum.flat<T>();
         auto grad_flat = grad.flat<T>();
         T lr_scalar = lr.scalar<T>()();
+        const Tindex first_dim_size = accum_flat.size();
 
         for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
+                      errors::InvalidArgument(
+                          strings::StrCat("Index ", index, " at offset ", i,
+                                          " in indices is out of range")));
           T& a = accum_flat(index);
           const T& g = grad_flat(i);
           a += g * g;
@@ -473,16 +449,7 @@ class ApplyFtrlOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
 
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
@@ -535,23 +502,18 @@ class ApplyFtrlOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()),
                 errors::InvalidArgument("lr power is not a scalar: ",
                                         lr_power.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
-    Tensor linear = ctx->mutable_input(2, use_exclusive_lock_);
-    const Tensor& grad = ctx->input(3);
-    const Tensor& lr = ctx->input(4);
-    const Tensor& l1 = ctx->input(5);
-    const Tensor& l2 = ctx->input(6);
-    const Tensor& lr_power = ctx->input(7);
     functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                     linear.flat<T>(), grad.flat<T>(),
                                     lr.scalar<T>(), l1.scalar<T>(),
                                     l2.scalar<T>(), lr_power.scalar<T>());
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -644,15 +606,7 @@ class SparseApplyFtrlOp : public OpKernel {
     if (N > 0) {
       if (inner_dim > 1) {
         const Tindex first_dim_size = var.dim_size(0);
-        // Validate all the indices are in range
         auto indices_vec = indices.vec<Tindex>();
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
-          OP_REQUIRES(ctx, index >= 0 && index < first_dim_size,
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
         auto var_flat = var.flat_outer_dims<T>();
         auto accum_flat = accum.flat_outer_dims<T>();
         auto linear_flat = linear.flat_outer_dims<T>();
@@ -663,7 +617,11 @@ class SparseApplyFtrlOp : public OpKernel {
         T lr_power_scalar = lr_power.scalar<T>()();
 
         for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
+                      errors::InvalidArgument(
+                          strings::StrCat("Index ", index, " at offset ", i,
+                                          " in indices is out of range")));
           auto accum = accum_flat.template chip<0>(index);
           auto linear = linear_flat.template chip<0>(index);
           auto grad = grad_flat.template chip<0>(i);
@@ -705,9 +663,14 @@ class SparseApplyFtrlOp : public OpKernel {
         T l1_scalar = l1.scalar<T>()();
         T l2_scalar = l2.scalar<T>()();
         T lr_power_scalar = lr_power.scalar<T>()();
+        const Tindex first_dim_size = accum_flat.size();
 
         for (Tindex i = 0; i < N; i++) {
-          const Tindex index = indices_vec(i);
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
+                      errors::InvalidArgument(
+                          strings::StrCat("Index ", index, " at offset ", i,
+                                          " in indices is out of range")));
           T& a = accum_flat(index);
           T& l = linear_flat(index);
           T& v = var_flat(index);
@@ -754,16 +717,7 @@ class ApplyMomentumOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
 
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
     OP_REQUIRES(
@@ -794,19 +748,16 @@ class ApplyMomentumOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum.shape()),
                 errors::InvalidArgument("momentum is not a scalar: ",
                                         momentum.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    Tensor accum = ctx->mutable_input(1, use_exclusive_lock_);
-    const Tensor& lr = ctx->input(2);
-    const Tensor& grad = ctx->input(3);
-    const Tensor& momentum = ctx->input(4);
     functor::ApplyMomentum<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                         lr.scalar<T>(), grad.flat<T>(),
                                         momentum.scalar<T>());
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -897,16 +848,7 @@ class SparseApplyMomentumOp : public OpKernel {
 
     if (N > 0) {
       const Tindex first_dim_size = var.dim_size(0);
-      // Validate all the indices are in range
       auto indices_vec = indices.vec<Tindex>();
-      for (Tindex i = 0; i < N; i++) {
-        const Tindex index = indices_vec(i);
-        OP_REQUIRES(ctx, index >= 0 && index < first_dim_size,
-                    errors::InvalidArgument(
-                        strings::StrCat("Index ", index, " at offset ", i,
-                                        " in indices is out of range")));
-      }
-
       auto var_flat = var.flat_outer_dims<T>();
       auto accum_flat = accum.flat_outer_dims<T>();
       auto grad_flat = grad.flat_outer_dims<T>();
@@ -914,7 +856,11 @@ class SparseApplyMomentumOp : public OpKernel {
       T momentum_scalar = momentum.scalar<T>()();
 
       for (Tindex i = 0; i < N; i++) {
-        const Tindex index = indices_vec(i);
+        const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+        OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
+                    errors::InvalidArgument(
+                        strings::StrCat("Index ", index, " at offset ", i,
+                                        " in indices is out of range")));
         auto a = accum_flat.template chip<0>(index);
         auto g = grad_flat.template chip<0>(i);
         auto v = var_flat.template chip<0>(index);
@@ -952,16 +898,7 @@ class ApplyAdamOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
 
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor m = ctx->mutable_input(1, use_exclusive_lock_);
     Tensor v = ctx->mutable_input(2, use_exclusive_lock_);
@@ -1018,27 +955,19 @@ class ApplyAdamOp : public OpKernel {
         errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    Tensor m = ctx->mutable_input(1, use_exclusive_lock_);
-    Tensor v = ctx->mutable_input(2, use_exclusive_lock_);
-    const Tensor& beta1_power = ctx->input(3);
-    const Tensor& beta2_power = ctx->input(4);
-    const Tensor& lr = ctx->input(5);
-    const Tensor& beta1 = ctx->input(6);
-    const Tensor& beta2 = ctx->input(7);
-    const Tensor& epsilon = ctx->input(8);
-    const Tensor& grad = ctx->input(9);
-
     functor::ApplyAdam<Device, T>()(device, var.flat<T>(), m.flat<T>(),
                                     v.flat<T>(), beta1_power.scalar<T>(),
                                     beta2_power.scalar<T>(), lr.scalar<T>(),
                                     beta1.scalar<T>(), beta2.scalar<T>(),
                                     epsilon.scalar<T>(), grad.flat<T>());
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -1087,16 +1016,7 @@ class ApplyRMSPropOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-    DoValidate(ctx);
-    if (!ctx->status().ok()) return;
-    DoCompute(ctx);
-    ctx->forward_ref_input_to_ref_output(0, 0);
-  }
 
- private:
-  bool use_exclusive_lock_;
-
-  void DoValidate(OpKernelContext* ctx) {
     Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
     Tensor ms = ctx->mutable_input(1, use_exclusive_lock_);
     Tensor mom = ctx->mutable_input(2, use_exclusive_lock_);
@@ -1148,24 +1068,18 @@ class ApplyRMSPropOp : public OpKernel {
         errors::InvalidArgument("var and grad do not have the same shape",
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
-  }
 
-  void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
-    Tensor var = ctx->mutable_input(0, use_exclusive_lock_);
-    Tensor ms = ctx->mutable_input(1, use_exclusive_lock_);
-    Tensor mom = ctx->mutable_input(2, use_exclusive_lock_);
-    const Tensor& lr = ctx->input(3);
-    const Tensor& rho = ctx->input(4);
-    const Tensor& momentum = ctx->input(5);
-    const Tensor& epsilon = ctx->input(6);
-    const Tensor& grad = ctx->input(7);
-
     functor::ApplyRMSProp<Device, T>()(device, var.flat<T>(), ms.flat<T>(),
                                        mom.flat<T>(), lr.scalar<T>(),
                                        rho.scalar<T>(), momentum.scalar<T>(),
                                        epsilon.scalar<T>(), grad.flat<T>());
+
+    ctx->forward_ref_input_to_ref_output(0, 0);
   }
+
+ private:
+  bool use_exclusive_lock_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;

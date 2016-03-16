@@ -975,6 +975,7 @@ tf_kernel_library(
     name = "training_ops",
     prefix = "training_ops",
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",
