@@ -199,8 +199,8 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       hdrs = hdrs,
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
-          "//tensorflow/core:stream_executor",
           "//tensorflow/core:cuda",
+          "//tensorflow/core:gpu_lib",
       ]),
       alwayslink=1,
       **kwargs)
