@@ -402,6 +402,7 @@ tf_cuda_library(
         "common_runtime/device.h",
         "graph/algorithm.h",
         "graph/default_device.h",
+        "graph/gradients.h",
         "graph/graph.h",
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
