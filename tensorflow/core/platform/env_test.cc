@@ -53,7 +53,7 @@ TEST(EnvTest, ReadFileToString) {
 TEST(EnvTest, FileToReadonlyMemoryRegion) {
   Env* env = Env::Default();
   const string dir = testing::TmpDir();
-  for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
+  for (const int length : {1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
     const string filename = io::JoinPath(dir, strings::StrCat("file", length));
 
