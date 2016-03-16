@@ -23,6 +23,8 @@ import os
 import shutil
 import time
 
+from six.moves import range
+
 import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
@@ -58,7 +60,7 @@ class SupervisorTest(tf.test.TestCase):
       my_op = tf.constant(1.0)
       sv = tf.train.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
-      for _ in xrange(10):
+      for _ in range(10):
         sess.run(my_op)
       sess.close()
       sv.stop()
@@ -71,7 +73,7 @@ class SupervisorTest(tf.test.TestCase):
       sv = tf.train.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session(
           "", config=config_pb2.ConfigProto(device_count={"CPU": 2}))
-      for _ in xrange(10):
+      for _ in range(10):
         sess.run(my_op)
       sess.close()
       sv.stop()

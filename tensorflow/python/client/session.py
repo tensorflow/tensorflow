@@ -23,6 +23,7 @@ import re
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
@@ -100,6 +101,9 @@ class BaseSession(SessionInterface):
     self._target = target
 
     self._session = None
+
+    if six.PY3 and isinstance(target, six.binary_type):
+      target = target.decode("ascii")
 
     opts = tf_session.TF_NewSessionOptions(target=target, config=config)
     try:
