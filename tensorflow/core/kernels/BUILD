@@ -43,6 +43,7 @@ tf_kernel_library(
         "concat_lib.h",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],

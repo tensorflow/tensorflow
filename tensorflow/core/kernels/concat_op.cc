@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -49,14 +50,15 @@ class ConcatOp : public OpKernel {
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
             concat_dim_tensor->shape().DebugString()));
-    const int32 concat_dim = concat_dim_tensor->scalar<int32>()();
+    const int32 concat_dim =
+        internal::SubtleMustCopy(concat_dim_tensor->scalar<int32>()());
     OpInputList values;
     OP_REQUIRES_OK(c, c->input_list("values", &values));
     const int N = values.size();
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(
-        c, (0 <= concat_dim && concat_dim < input_dims) ||
+        c, FastBoundsCheck(concat_dim, input_dims) ||
                (allow_legacy_scalars() && concat_dim == 0),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
@@ -205,9 +207,9 @@ class ConcatOffsetOp : public OpKernel {
     const int32 N = ctx->num_inputs() - 1;
     const Tensor& inp0 = ctx->input(1);
     auto inp0_vec = inp0.vec<int32>();
-    const int32 cdim = concat_dim.scalar<int32>()();
-    const int32 dims = inp0.NumElements();
-    OP_REQUIRES(ctx, (0 <= cdim) && (cdim < dims),
+    const int64 cdim = internal::SubtleMustCopy(concat_dim.scalar<int32>()());
+    const int64 dims = inp0.NumElements();
+    OP_REQUIRES(ctx, FastBoundsCheck(cdim, dims),
                 errors::InvalidArgument("Concat dim is out of range: ", cdim,
                                         " vs. ", dims));
     int32 offset = 0;
@@ -221,7 +223,7 @@ class ConcatOffsetOp : public OpKernel {
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
       auto out_vec = out->vec<int32>();
-      for (int j = 0; j < dims; ++j) {
+      for (int64 j = 0; j < dims; ++j) {
         if (j == cdim) {
           out_vec(j) = offset;
           offset += inp_vec(j);
