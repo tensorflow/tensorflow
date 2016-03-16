@@ -46,6 +46,7 @@ mathematical functions to your graph.
 @@log
 @@ceil
 @@floor
+@@rint
 @@maximum
 @@minimum
 @@cos
@@ -1349,6 +1350,7 @@ ops.RegisterShape("Log")(common_shapes.unchanged_shape)
 ops.RegisterShape("LogicalNot")(common_shapes.unchanged_shape)
 ops.RegisterShape("Neg")(common_shapes.unchanged_shape)
 ops.RegisterShape("Real")(common_shapes.unchanged_shape)
+ops.RegisterShape("Rint")(common_shapes.unchanged_shape)
 ops.RegisterShape("Rsqrt")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sign")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sin")(common_shapes.unchanged_shape)

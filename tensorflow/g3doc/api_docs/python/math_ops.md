@@ -484,6 +484,24 @@ Returns element-wise largest integer not greater than x.
 
 - - -
 
+### `tf.rint(x, name=None)` {#rint}
+
+Returns element-wise integer closest to x.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+
 ### `tf.maximum(x, y, name=None)` {#maximum}
 
 Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
