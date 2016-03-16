@@ -20,8 +20,25 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import tensorflow as tf
+
+# pylint: disable=g-import-not-at-top
+# pylint: disable=g-bad-import-order
+# pylint: disable=unused-import
+# Note: cpuinfo and psutil are not installed for you in the TensorFlow
+# OSS tree.  They are installable via pip.
+try:
+  import cpuinfo
+  import psutil
+except ImportError as e:
+  tf.logging.error("\n\n\nERROR: Unable to import necessary library: {}.  "
+                   "Issuing a soft exit.\n\n\n".format(e))
+  sys.exit(0)
+# pylint: enable=g-bad-import-order
+# pylint: enable=unused-import
+
 
 from google.protobuf import text_format
 from tensorflow.tools.test import run_and_gather_logs_lib
