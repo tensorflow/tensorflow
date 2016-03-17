@@ -436,7 +436,10 @@ tf_gen_op_wrapper_py(
         "Concat",
         "Const",
         "EditDistance",
+        "MirrorPad",
+        "MirrorPadGrad",
         "Pack",
+        "Pad",
         "Placeholder",
         "RefIdentity",
         "Split",
@@ -821,6 +824,7 @@ py_library(
     deps = [
         ":framework",
         ":ops",
+        ":server_lib",
         ":session",
         ":training_ops",
     ],
@@ -875,6 +879,25 @@ py_test(
     ],
 )
 
+py_library(
+    name = "device_lib",
+    srcs = ["client/device_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+cuda_py_tests(
+    name = "device_lib_test",
+    srcs = [
+        "client/device_lib_test.py",
+    ],
+    additional_deps = [
+        ":device_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
@@ -896,7 +919,9 @@ tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
     swig_includes = [
+        "client/device_lib.i",
         "client/events_writer.i",
+        "client/server_lib.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
@@ -915,6 +940,8 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//util/python:python_headers",
     ],
@@ -937,6 +964,28 @@ py_library(
         ":framework",
         ":ops",
         ":pywrap_tensorflow",
+    ],
+)
+
+py_library(
+    name = "server_lib",
+    srcs = ["client/server_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+py_test(
+    name = "server_lib_test",
+    srcs = ["client/server_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extra_py_tests_deps",
+        ":framework",
+        ":framework_test_lib",
+        ":server_lib",
+        ":session",
     ],
 )
 
@@ -1095,9 +1144,22 @@ cuda_py_tests(
     name = "training_tests",
     srcs = glob(
         ["training/*_test.py"],
-        exclude = ["training/input_test.py"],
+        exclude = [
+            "training/input_test.py",
+            "training/supervisor_test.py",
+        ],
     ),
     additional_deps = [
+        ":training",
+    ],
+)
+
+py_test(
+    name = "supervisor_test",
+    srcs = ["training/supervisor_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extra_py_tests_deps",
         ":training",
     ],
 )

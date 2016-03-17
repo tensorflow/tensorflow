@@ -32,7 +32,9 @@ else
   export TF_NEED_CUDA=0
 fi
 
+pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 ./configure
+popd
 
 # Gather and print build information
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )

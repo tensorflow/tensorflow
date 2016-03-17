@@ -17,6 +17,7 @@ limitations under the License.
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -256,6 +257,19 @@ class PosixWritableFile : public WritableFile {
   }
 };
 
+class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
+ public:
+  PosixReadOnlyMemoryRegion(const void* address, uint64 length)
+      : address_(address), length_(length) {}
+  ~PosixReadOnlyMemoryRegion() { munmap(const_cast<void*>(address_), length_); }
+  const void* data() override { return address_; }
+  uint64 length() override { return length_; }
+
+ private:
+  const void* const address_;
+  const uint64 length_;
+};
+
 class StdThread : public Thread {
  public:
   // name and thread_options are both ignored.
@@ -308,6 +322,28 @@ class PosixEnv : public Env {
       s = IOError(fname, errno);
     } else {
       *result = new PosixWritableFile(fname, f);
+    }
+    return s;
+  }
+
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, ReadOnlyMemoryRegion** result) override {
+    *result = nullptr;
+    Status s = Status::OK();
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
+      s = IOError(fname, errno);
+    } else {
+      struct stat st;
+      ::fstat(fd, &st);
+      const void* address =
+          mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+      if (address == MAP_FAILED) {
+        s = IOError(fname, errno);
+      } else {
+        *result = new PosixReadOnlyMemoryRegion(address, st.st_size);
+      }
+      close(fd);
     }
     return s;
   }

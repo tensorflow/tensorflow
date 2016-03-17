@@ -23,15 +23,19 @@ apt-get install -y \
     build-essential \
     curl \
     git \
+    openjdk-8-jdk \
+    openjdk-8-jre-headless \
     pkg-config \
     python-dev \
     python-numpy \
     python-pip \
+    python-scipy \
     python-virtualenv \
     python3-dev \
     python3-numpy \
     python3-pip \
-    software-properties-common \
+    python3-scipy \
+    sudo \
     swig \
     unzip \
     wget \

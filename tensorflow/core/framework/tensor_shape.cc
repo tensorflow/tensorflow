@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -73,8 +74,8 @@ TensorShape::TensorShape(gtl::ArraySlice<int64> dim_sizes) {
   set_ndims_byte(0);
   set_data_type(DT_INVALID);
   num_elements_ = 1;
-  for (auto s : dim_sizes) {
-    AddDim(s);
+  for (const int64& s : dim_sizes) {
+    AddDim(internal::SubtleMustCopy(s));
   }
 }
 
@@ -325,6 +326,40 @@ bool TensorShapeUtils::StartsWith(const TensorShape& shape,
     if (shape.dim_size(i) != prefix.dim_size(i)) return false;
   }
   return true;
+}
+
+template <typename T>
+static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
+  *out = TensorShape();
+  for (int i = 0; i < n; ++i) {
+    const T dim = internal::SubtleMustCopy(dims[i]);
+    if (dim >= 0) {
+      out->AddDim(dim);
+    } else {
+      return errors::InvalidArgument("Dimension ", dim, " must be >= 0");
+    }
+  }
+  return Status::OK();
+}
+
+#define MAKE_SHAPE(T)                                                          \
+  Status TensorShapeUtils::MakeShape(const T* dims, int n, TensorShape* out) { \
+    return MakeShapeHelper(dims, n, out);                                      \
+  }
+MAKE_SHAPE(int32)
+MAKE_SHAPE(int64)
+#undef MAKE_SHAPE
+
+string TensorShapeUtils::ShapeListString(
+    const gtl::ArraySlice<TensorShape>& shapes) {
+  string result = "[";
+  bool first = true;
+  for (const TensorShape& shape : shapes) {
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    first = false;
+  }
+  strings::StrAppend(&result, "]");
+  return result;
 }
 
 }  // namespace tensorflow

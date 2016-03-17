@@ -357,7 +357,7 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
       z = tf.Relu(...)
-      summ = tf.scalar_summary('sparsity', tf.zero_fraction(z))
+      summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 
   Args:
     value: A tensor of numeric type.
@@ -688,7 +688,8 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (offset - mean * inv if offset else -mean * inv)
+    return x * inv + (
+        offset - mean * inv if offset is not None else -mean * inv)
 
 
 def batch_norm_with_global_normalization(t,

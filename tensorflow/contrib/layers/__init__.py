@@ -33,6 +33,7 @@ Regularization can help prevent overfitting. These have the signature
 
 @@l1_regularizer
 @@l2_regularizer
+@@sum_regularizer
 
 ## Initializers
 

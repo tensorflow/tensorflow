@@ -54,14 +54,6 @@ size_t StringPiece::rfind(char c, size_t pos) const {
   return npos;
 }
 
-bool StringPiece::Consume(StringPiece x) {
-  if (starts_with(x)) {
-    remove_prefix(x.size_);
-    return true;
-  }
-  return false;
-}
-
 StringPiece StringPiece::substr(size_t pos, size_t n) const {
   if (pos > size_) pos = size_;
   if (n > size_ - pos) n = size_ - pos;

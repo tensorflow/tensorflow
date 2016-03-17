@@ -311,9 +311,25 @@ class ColocationGraph {
             // The specified device and merged set device match, and
             // will appear in the GraphDef (for debugging), so just
             // print the specified device.
-            return errors::InvalidArgument(
-                "Could not satisfy explicit device specification '",
-                node->def().device(), "'");
+            std::vector<Device*> devices_matching_nodedef;
+            device_set_->FindMatchingDevices(specified_device_name,
+                                             &devices_matching_nodedef);
+            if (devices_matching_nodedef.empty()) {
+              return errors::InvalidArgument(
+                  "Could not satisfy explicit device specification '",
+                  node->def().device(),
+                  "' because no devices matching that specification "
+                  "are registered in this process");
+            } else if (specified_device_name.has_type) {
+              return errors::InvalidArgument(
+                  "Could not satisfy explicit device specification '",
+                  node->def().device(), "' because no supported kernel for ",
+                  specified_device_name.type, " devices is available");
+            } else {
+              return errors::InvalidArgument(
+                  "Could not satisfy explicit device specification '",
+                  node->def().device());
+            }
           } else {
             // The specified device may be a valid device but the
             // merged set device is different, so print both.

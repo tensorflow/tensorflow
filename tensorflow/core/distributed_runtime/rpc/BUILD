@@ -211,7 +211,7 @@ cc_library(
     srcs = [
         "grpc_server_lib.cc",
     ],
-    hdrs = ["grpc_server_lib.h"],
+    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         "@grpc//:grpc++_unsecure",
         ":async_service_interface",
@@ -230,8 +230,10 @@ cc_library(
         "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:master_session",
         "//tensorflow/core/distributed_runtime:process_util",
+        "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(
@@ -247,6 +249,7 @@ cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime:server_lib",
     ],
 )
 
@@ -276,6 +279,7 @@ cc_binary(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:server_lib",
     ],
 )
 
@@ -325,7 +329,6 @@ tf_cc_tests(
     tags = tf_cuda_tests_tags() + ["exclusive"],
     tests = [
         "grpc_channel_test.cc",
-        "grpc_server_lib_test.cc",
         "grpc_session_test.cc",
         "rpc_rendezvous_mgr_test.cc",
     ],
@@ -344,5 +347,6 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:process_util",
+        "//tensorflow/core/distributed_runtime:server_lib",
     ],
 )

@@ -128,9 +128,6 @@ class AllSampler : public RangeSampler {
       gtl::ArraySlice<int64> extras,
       gtl::MutableArraySlice<float> extras_expected_count,
       gtl::ArraySlice<int64> avoided_values) const override;
-
- private:
-  const float inv_range_;
 };
 
 class UniformSampler : public RangeSampler {

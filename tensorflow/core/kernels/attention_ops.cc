@@ -78,6 +78,10 @@ class ExtractGlimpseOp : public OpKernel {
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (output->NumElements() == 0) {
+      // Nothing else to do.
+      return;
+    }
 
     std::vector<Eigen::IndexPair<float> > offset_vec;
     offset_vec.reserve(batch_size);

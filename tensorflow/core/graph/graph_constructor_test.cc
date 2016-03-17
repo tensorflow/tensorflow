@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -127,12 +128,24 @@ REGISTER_OP("TestMul").Input("a: float").Input("b: float").Output("o: float");
 REGISTER_OP("TestInt").Input("a: int32");
 
 TEST_F(GraphConstructorTest, InvalidNodeName) {
-  ExpectError("node { name: 'a:b' op: 'ABC' }",
-              "Node 'a:b': Node name contains invalid characters");
-  ExpectError("node { name: '_abc' op: 'ABC' }",
-              // Can't start with '_'
-              "Node '_abc': Node name contains invalid characters");
+  auto expect_invalid_name = [this](const char* name) {
+    ExpectError(strings::StrCat("node { name: '", name, "' op: 'ABC' }"),
+                strings::StrCat("Node '", name,
+                                "': Node name contains invalid characters"));
+  };
+
+  expect_invalid_name("a:b");
+  expect_invalid_name("_abc");  // Can't start with '_'
+  // Name is a\b, but proto text format escapes slashes so we use a\\b here.
+  // This works for ExpectError too, since re2 also treats \\ as one slash.
+  expect_invalid_name(R"(a\\b)");
+  expect_invalid_name("/a");
+  expect_invalid_name("-a");
+
   ExpectOK("node { name: 'a-bc_' op: 'ABC' }");
+  ExpectOK("node { name: 'a-B.0/.c_' op: 'ABC' }");
+  ExpectOK("node { name: '0123' op: 'ABC' }");
+  ExpectOK("node { name: '.0123' op: 'ABC' }");
 }
 
 TEST_F(GraphConstructorTest, InvalidSourceNodeName) {

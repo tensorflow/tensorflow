@@ -28,7 +28,12 @@ struct Tile {
   void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
                   typename TTypes<T, NDIM>::ConstTensor in,
                   const Eigen::array<int32, NDIM>& broadcast_array) const {
-    out.device(d) = in.broadcast(broadcast_array);
+    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+      // Use 32bit indexing to speed up the computations
+      To32Bit(out).device(d) = To32Bit(in).broadcast(broadcast_array);
+    } else {
+      out.device(d) = in.broadcast(broadcast_array);
+    }
   }
 };
 

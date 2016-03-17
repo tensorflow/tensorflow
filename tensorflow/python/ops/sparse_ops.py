@@ -872,15 +872,13 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Will the SparseTensor A fit in memory if densified?
   * Is the column count of the product large (>> 1)?
   * Is the density of A larger than approximately 15%?
-  * Is backprop into A necessary?
 
   If the answer to several of these questions is yes, consider
   converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
 
-  This operation tends to perform well when A is more sparse, if the column
-  size of the product is small (e.g. matrix-vector multiplication),
-  if sp_a.shape takes on large values.  While gradients with respect to B
-  are supported, gradients with respect to A are not.
+  This operation tends to perform well when A is more sparse, if the column size
+  of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
+  takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
   labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

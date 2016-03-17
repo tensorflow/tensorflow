@@ -31,7 +31,11 @@ class SummaryImageOp : public OpKernel {
   typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
 
   explicit SummaryImageOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_));
+    int64 max_images_tmp;
+    OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_tmp));
+    OP_REQUIRES(context, max_images_tmp < (1LL << 31),
+                errors::InvalidArgument("max_images must be < 2^31"));
+    max_images_ = static_cast<int32>(max_images_tmp);
     const TensorProto* proto;
     OP_REQUIRES_OK(context, context->GetAttr("bad_color", &proto));
     OP_REQUIRES_OK(context, context->device()->MakeTensorFromProto(
@@ -58,11 +62,19 @@ class SummaryImageOp : public OpKernel {
                     tensor.shape().DebugString()));
     const string& base_tag = tags.scalar<string>()();
 
-    const int batch_size = tensor.dim_size(0);
-    const int h = tensor.dim_size(1);
-    const int w = tensor.dim_size(2);
+    OP_REQUIRES(c, tensor.dim_size(0) < (1LL << 31) &&
+                       tensor.dim_size(1) < (1LL << 31) &&
+                       tensor.dim_size(2) < (1LL << 31) &&
+                       (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
+                errors::InvalidArgument("Tensor too large for summary ",
+                                        tensor.shape().DebugString()));
+
+    // The casts and h * w cannot overflow because of the limits above.
+    const int batch_size = static_cast<int>(tensor.dim_size(0));
+    const int h = static_cast<int>(tensor.dim_size(1));
+    const int w = static_cast<int>(tensor.dim_size(2));
     const int hw = h * w;  // Compact these two dims for simplicity
-    const int depth = tensor.dim_size(3);
+    const int depth = static_cast<int>(tensor.dim_size(3));
 
     Summary s;
     if (tensor.dtype() == DT_UINT8) {
@@ -211,7 +223,7 @@ class SummaryImageOp : public OpKernel {
   }
 
  private:
-  int64 max_images_;
+  int32 max_images_;
   Tensor bad_color_;
 };
 

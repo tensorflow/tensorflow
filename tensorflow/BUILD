@@ -66,7 +66,8 @@ cc_binary(
     name = "libtensorflow_cc.so",
     linkshared = 1,
     deps = [
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/cc:cc_ops"
     ],
 )
+

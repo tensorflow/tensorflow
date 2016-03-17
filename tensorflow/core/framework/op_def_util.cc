@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -221,8 +221,16 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
 }
 
 Status ValidateOpDef(const OpDef& op_def) {
-  VALIDATE(RE2::FullMatch(op_def.name(), "(?:_.*|[A-Z][a-zA-Z0-9]*)"),
-           "Invalid name: ", op_def.name(), " (Did you use CamelCase?)");
+  using ::tensorflow::strings::Scanner;
+
+  if (!StringPiece(op_def.name()).starts_with("_")) {
+    VALIDATE(Scanner(op_def.name())
+                 .One(Scanner::UPPERLETTER)
+                 .Any(Scanner::LETTER_DIGIT)
+                 .Eos()
+                 .GetResult(),
+             "Invalid name: ", op_def.name(), " (Did you use CamelCase?)");
+  }
 
   std::set<string> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {

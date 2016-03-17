@@ -314,11 +314,6 @@ static string GetReturns(const OpDef& op_def,
   return result;
 }
 
-void PrintReturns(const OpDef& op_def,
-                  const std::vector<string>& output_type_string) {
-  printf("%s", GetReturns(op_def, output_type_string).c_str());
-}
-
 string StringToPython(const string& str) {
   return strings::StrCat("\"", str_util::CEscape(str), "\"");
 }
@@ -698,8 +693,8 @@ string GetAllPythonOps(const char* hidden, bool require_shapes) {
   return GetPythonOps(ops, hidden, require_shapes);
 }
 
-string GetPythonWrappers(const char* buf, size_t len) {
-  string op_list_str(buf, len);
+string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len) {
+  string op_list_str(op_wrapper_buf, op_wrapper_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
   return GetPythonOps(ops, "", false);

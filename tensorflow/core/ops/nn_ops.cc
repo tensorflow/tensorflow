@@ -753,10 +753,11 @@ backprop: backpropagated gradients (batch_size x num_classes matrix).
 
 REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Input("features: T")
-    .Input("labels: int64")
+    .Input("labels: Tlabels")
     .Output("loss: T")
     .Output("backprop: T")
     .Attr("T: {float, double}")
+    .Attr("Tlabels: {int32, int64} = DT_INT64")
     .Doc(R"doc(
 Computes softmax cross entropy cost and gradients to backpropagate.
 

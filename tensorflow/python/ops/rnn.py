@@ -78,7 +78,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Raises:
     TypeError: If "cell" is not an instance of RNNCell.
-    ValueError: If inputs is None or an empty list.
+    ValueError: If inputs is None or an empty list, or if the input depth
+      cannot be inferred from inputs via shape inference.
   """
 
   if not isinstance(cell, rnn_cell.RNNCell):
@@ -96,7 +97,17 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
-    fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
+    # Temporarily avoid EmbeddingWrapper and seq2seq badness
+    # TODO(lukaszkaiser): remove EmbeddingWrapper
+    if inputs[0].get_shape().ndims != 1:
+      (fixed_batch_size, input_size) = inputs[0].get_shape().with_rank(2)
+      if input_size.value is None:
+        raise ValueError(
+            "Input size (second dimension of inputs[0]) must be accessible via "
+            "shape inference, but saw value None.")
+    else:
+      fixed_batch_size = inputs[0].get_shape().with_rank_at_least(1)[0]
+
     if fixed_batch_size.value:
       batch_size = fixed_batch_size.value
     else:
@@ -111,7 +122,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     if sequence_length is not None:
       sequence_length = math_ops.to_int32(sequence_length)
 
-    if sequence_length:  # Prepare variables
+    if sequence_length is not None:  # Prepare variables
       zero_output = array_ops.zeros(
           array_ops.pack([batch_size, cell.output_size]), inputs[0].dtype)
       zero_output.set_shape(
@@ -124,7 +135,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       # pylint: disable=cell-var-from-loop
       call_cell = lambda: cell(input_, state)
       # pylint: enable=cell-var-from-loop
-      if sequence_length:
+      if sequence_length is not None:
         (output, state) = _rnn_step(
             time, sequence_length, min_sequence_length, max_sequence_length,
             zero_output, state, call_cell)
@@ -171,11 +182,11 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
 
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
-    zero_output, state, call_cell):
+    zero_output, state, call_cell, skip_conditionals=False):
   """Calculate one step of a dynamic RNN minibatch.
 
   Returns an (output, state) pair conditioned on the sequence_lengths.
-  The pseudocode is something like:
+  When skip_conditionals=False, the pseudocode is something like:
 
   if t >= max_sequence_length:
     return (zero_output, state)
@@ -205,6 +216,10 @@ def _rnn_step(
     call_cell: lambda returning tuple of (new_output, new_state) where
       new_output is a `Tensor` matrix of shape [batch_size, output_size]
       new_state is a `Tensor` matrix of shape [batch_size, state_size]
+    skip_conditionals: Python bool, whether to skip using the conditional
+      calculations.  This is useful for dynamic_rnn, where the input tensor
+      matches max_sequence_length, and using conditionals just slows
+      everything down.
 
   Returns:
     A tuple of (final_output, final_state) as given by the pseudocode above:
@@ -214,8 +229,15 @@ def _rnn_step(
   # Step 1: determine whether we need to call_cell or not
   empty_update = lambda: (zero_output, state)
   state_shape = state.get_shape()
-  output, new_state = control_flow_ops.cond(
-      time < max_sequence_length, call_cell, empty_update)
+
+  if skip_conditionals:
+    # Skip using conditionals: calculate the RNN step at all time
+    # steps.  This is faster for dynamic_rnn, where the time steps
+    # should cap out at max_sequence_length anyway.
+    output, new_state = call_cell()
+  else:
+    output, new_state = control_flow_ops.cond(
+        time < max_sequence_length, call_cell, empty_update)
 
   # Step 2: determine whether we need to copy through state and/or outputs
   existing_output_state = lambda: (output, new_state)
@@ -228,8 +250,17 @@ def _rnn_step(
     return (math_ops.select(copy_cond, zero_output, output),
             math_ops.select(copy_cond, state, new_state))
 
-  (output, state) = control_flow_ops.cond(
-      time < min_sequence_length, existing_output_state, copy_through)
+  # TODO(ebrevdo): skipping these conditionals may cause a slowdown,
+  # but benefits from removing cond() and its gradient.  We should
+  # profile with and without this switch here.
+  if skip_conditionals:
+    # Skip using conditionals: perform the selective copy at all time
+    # steps.  This is usually faster.
+    (output, state) = copy_through()
+  else:
+    (output, state) = control_flow_ops.cond(
+        time < min_sequence_length, existing_output_state, copy_through)
+
   output.set_shape(zero_output.get_shape())
   state.set_shape(state_shape)
   return (output, state)
@@ -250,16 +281,24 @@ def _reverse_seq(input_seq, lengths):
   if lengths is None:
     return list(reversed(input_seq))
 
+  input_shape = tensor_shape.matrix(None, None)
   for input_ in input_seq:
-    input_.set_shape(input_.get_shape().with_rank(2))
+    input_shape.merge_with(input_.get_shape())
+    input_.set_shape(input_shape)
 
   # Join into (time, batch_size, depth)
   s_joined = array_ops.pack(input_seq)
+
+  # TODO(schuster, ebrevdo): Remove cast when reverse_sequence takes int32
+  if lengths is not None:
+    lengths = math_ops.to_int64(lengths)
 
   # Reverse along dimension 0
   s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
   # Split again into list
   result = array_ops.unpack(s_reversed)
+  for r in result:
+    r.set_shape(input_shape)
   return result
 
 
@@ -331,9 +370,9 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   return (outputs, output_state_fw, output_state_bw)
 
 
-def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
-                parallel_iterations=None, swap_memory=False, time_major=False,
-                scope=None):
+def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
+                dtype=None, parallel_iterations=None, swap_memory=False,
+                time_major=False, scope=None):
   """Creates a recurrent neural network specified by RNNCell "cell".
 
   This function is functionally identical to the function `rnn` above, but
@@ -354,9 +393,9 @@ def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
         `[batch_size, max_time, cell.input_size]`.
       If time_major == True, this must be a tensor of shape:
         `[max_time, batch_size, cell.input_size]`.
-    sequence_length: An int32/int64 vector (tensor) size [batch_size].
+    sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
     initial_state: (optional) An initial state for the RNN.  This must be
-      a tensor of appropriate type and shape [batch_size x cell.state_size].
+      a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
     dtype: (optional) The data type for the initial state.  Required if
       initial_state is not provided.
     parallel_iterations: (Default: 32).  The number of iterations to run in
@@ -400,8 +439,10 @@ def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,D) => (T,B,D)
 
   parallel_iterations = parallel_iterations or 32
-  sequence_length = math_ops.to_int32(sequence_length)
-  sequence_length = array_ops.identity(sequence_length, name="sequence_length")
+  if sequence_length is not None:
+    sequence_length = math_ops.to_int32(sequence_length)
+    sequence_length = array_ops.identity(  # Just to find it in the graph.
+        sequence_length, name="sequence_length")
 
   # Create a new scope in which the caching device is either
   # determined by the parent scope, or is set to place the cached
@@ -427,15 +468,16 @@ def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    # Perform some shape validation
-    with ops.control_dependencies(
-        [_assert_has_shape(sequence_length, [batch_size])]):
-      sequence_length = array_ops.identity(sequence_length, name="CheckSeqLen")
+    if sequence_length is not None:
+      # Perform some shape validation
+      with ops.control_dependencies(
+          [_assert_has_shape(sequence_length, [batch_size])]):
+        sequence_length = array_ops.identity(
+            sequence_length, name="CheckSeqLen")
 
     (outputs, final_state) = _dynamic_rnn_loop(
-        cell, inputs, state, sequence_length,
-        parallel_iterations=parallel_iterations,
-        swap_memory=swap_memory)
+        cell, inputs, state, parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory, sequence_length=sequence_length)
 
     # Outputs of _dynamic_rnn_loop are always shaped [time, batch, depth].
     # If we are performing batch-major calculations, transpose output back
@@ -446,17 +488,18 @@ def dynamic_rnn(cell, inputs, sequence_length, initial_state=None, dtype=None,
     return (outputs, final_state)
 
 
-def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
-                      parallel_iterations, swap_memory):
+def _dynamic_rnn_loop(
+    cell, inputs, initial_state, parallel_iterations, swap_memory,
+    sequence_length=None):
   """Internal implementation of Dynamic RNN.
 
   Args:
     cell: An instance of RNNCell.
     inputs: A `Tensor` of shape [time, batch_size, depth].
     initial_state: A `Tensor` of shape [batch_size, depth].
-    sequence_length: An `int32` `Tensor` of shape [batch_size].
     parallel_iterations: Positive Python int.
     swap_memory: A Python boolean
+    sequence_length: (optional) An `int32` `Tensor` of shape [batch_size].
 
   Returns:
     Tuple (final_outputs, final_state).
@@ -464,22 +507,32 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
       A `Tensor` of shape [time, batch_size, depth]`.
     final_state:
       A `Tensor` of shape [batch_size, depth].
+
+  Raises:
+    ValueError: If the input depth cannot be inferred via shape inference
+      from the inputs.
   """
   state = initial_state
   assert isinstance(parallel_iterations, int), "parallel_iterations must be int"
 
   # Construct an initial output
   input_shape = array_ops.shape(inputs)
-  (time_steps, batch_size, unused_depth) = array_ops.unpack(input_shape, 3)
+  (time_steps, batch_size, _) = array_ops.unpack(input_shape, 3)
 
   inputs_got_shape = inputs.get_shape().with_rank(3)
   (const_time_steps, const_batch_size, const_depth) = inputs_got_shape.as_list()
 
+  if const_depth is None:
+    raise ValueError(
+        "Input size (depth of inputs) must be accessible via shape inference, "
+        "but saw value None.")
+
   # Prepare dynamic conditional copying of state & output
   zero_output = array_ops.zeros(
       array_ops.pack([batch_size, cell.output_size]), inputs.dtype)
-  min_sequence_length = math_ops.reduce_min(sequence_length)
-  max_sequence_length = math_ops.reduce_max(sequence_length)
+  if sequence_length is not None:
+    min_sequence_length = math_ops.reduce_min(sequence_length)
+    max_sequence_length = math_ops.reduce_max(sequence_length)
 
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
@@ -512,9 +565,20 @@ def _dynamic_rnn_loop(cell, inputs, initial_state, sequence_length,
     # Restore some shape information
     input_t.set_shape([const_batch_size, const_depth])
 
-    (output, new_state) = _rnn_step(
-        time, sequence_length, min_sequence_length, max_sequence_length,
-        zero_output, state, lambda: cell(input_t, state))
+    call_cell = lambda: cell(input_t, state)
+
+    if sequence_length is not None:
+      (output, new_state) = _rnn_step(
+          time=time,
+          sequence_length=sequence_length,
+          min_sequence_length=min_sequence_length,
+          max_sequence_length=max_sequence_length,
+          zero_output=zero_output,
+          state=state,
+          call_cell=call_cell,
+          skip_conditionals=True)
+    else:
+      (output, new_state) = call_cell()
 
     output_ta_t = output_ta_t.write(time, output)
 

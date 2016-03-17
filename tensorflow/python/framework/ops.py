@@ -26,6 +26,7 @@ import linecache
 import re
 import sys
 import threading
+import warnings
 import weakref
 
 import six
@@ -440,6 +441,43 @@ class Tensor(object):
     """
     raise TypeError("'Tensor' object is not iterable.")
 
+  def __bool__(self):
+    """Dummy method to warn when a tensor is being used as a Python `bool`.
+
+    NOTE(mrry): This overload produces a warning when the user
+    inadvertently treats a `Tensor` as a boolean (e.g. in an `if`
+    statement). For example:
+
+    ```python
+    if tf.constant(True):  # Will warn.
+      # ...
+
+    if tf.constant(5) < tf.constant(7):  # Will warn.
+      # ...
+    ```
+
+    This functionality is deprecated. In future it will raise a `TypeError`.
+
+    Returns:
+      `True`.
+    """
+    warnings.warn("Using a `tf.Tensor` as a Python `bool` is deprecated. "
+                  "Use `if t is None:` instead of `if t:` in new code. "
+                  "A `TypeError` will be raised in future versions.",
+                  DeprecationWarning)
+    return True
+
+  def __nonzero__(self):
+    """Dummy method to warn when a tensor is being used as a Python `bool`.
+
+    NOTE(mrry): This is the Python 2.x counterpart to `__bool__()`
+    above.
+
+    Returns:
+      `True`.
+    """
+    return self.__bool__()
+
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
 
@@ -576,25 +614,25 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
                                         as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
-  If `value` is an `IndexedSlices` it is returned
+  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
   `convert_to_tensor()`.
 
   Args:
-    value: An `IndexedSlices` or an object that can be consumed by
-      `convert_to_tensor()`.
+    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name to use if a new `Tensor` is created.
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor` or an `IndexedSlices` based on `value`.
+    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, IndexedSlices):
+  if isinstance(value, (IndexedSlices, SparseTensor)):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
@@ -608,9 +646,12 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
                                           as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
+  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
+  unmodified.
+
   Args:
-    values: A list of `None`, `IndexedSlices`, or objects that can be consumed
-      by `convert_to_tensor()`.
+    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor`
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is
@@ -619,7 +660,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor` and/or `IndexedSlices` objects.
+    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
@@ -780,7 +821,8 @@ class IndexedSlices(object):
   def __str__(self):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
-        (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
+        (", dense_shape=%s" % self._dense_shape)
+        if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -1800,6 +1842,8 @@ class Graph(object):
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     # Stack of colocate_with ops
     self._colocation_stack = []
+    # Set of tensors that are dangerous to feed!
+    self._unfeedable_tensors = set()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2075,10 +2119,11 @@ class Graph(object):
           # provide consistency between the device and the colocation
           # property.
           if ret.device and ret.device != colocation_op.device:
-            logging.warning("Tried to colocate with an op that had "
+            logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
-                            "Ignoring colocation property." % (
-                                ret.device, colocation_op.device))
+                            "Ignoring colocation property.",
+                            name, colocation_op.name,
+                            ret.device, colocation_op.device)
           else:
             ret._set_device(colocation_op.device)
 
@@ -2134,7 +2179,9 @@ class Graph(object):
     else:
       raise ValueError("allow_tensor and allow_operation can't both be False.")
 
-    obj = _as_graph_element(obj) or obj
+    temp_obj = _as_graph_element(obj)
+    if temp_obj is not None:
+      obj = temp_obj
 
     # If obj appears to be a name...
     if isinstance(obj, compat.bytes_or_text_types):
@@ -2526,8 +2573,10 @@ class Graph(object):
     return name
 
   @contextlib.contextmanager
-  def colocate_with(self, op):
+  def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
+
+    Note: this function is not for public use, only for internal libraries.
 
     For example:
 
@@ -2543,6 +2592,9 @@ class Graph(object):
 
     Args:
       op: The op to colocate all created ops with.
+      ignore_existing: If true, only applies colocation of this op within
+        the context, rather than applying all colocation properties
+        on the stack.
 
     Raises:
       ValueError: if op is None.
@@ -2569,6 +2621,10 @@ class Graph(object):
     device_fn_tmp = self._device_function_stack
     self._device_function_stack = []
 
+    if ignore_existing:
+      current_stack = self._colocation_stack
+      self._colocation_stack = []
+
     self._colocation_stack.append(op)
 
     try:
@@ -2577,6 +2633,10 @@ class Graph(object):
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
       self._colocation_stack.pop()
+
+      # Reset the colocation stack if requested.
+      if ignore_existing:
+        self._colocation_stack = current_stack
 
   @contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -2988,6 +3048,14 @@ class Graph(object):
           del self._gradient_override_map[op_type]
   # pylint: enable=g-doc-return-or-yield
 
+  def prevent_feeding(self, tensor):
+    """Marks the given `tensor` as unfeedable in this graph."""
+    self._unfeedable_tensors.add(tensor)
+
+  def is_feedable(self, tensor):
+    """Returns `True` if and only if `tensor` is feedable."""
+    return tensor not in self._unfeedable_tensors
+
 
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
@@ -3007,8 +3075,8 @@ def device(device_name_or_function):
   return get_default_graph().device(device_name_or_function)
 
 
-def colocate_with(op):
-  return get_default_graph().colocate_with(op)
+def colocate_with(op, ignore_existing=False):
+  return get_default_graph().colocate_with(op, ignore_existing)
 
 
 def name_scope(name):
@@ -3346,11 +3414,11 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     else:
       graph_element = _as_graph_element(op_input)
 
-    if graph_element:
+    if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
         graph = graph_element.graph
-      elif original_graph_element:
+      elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
         raise ValueError(

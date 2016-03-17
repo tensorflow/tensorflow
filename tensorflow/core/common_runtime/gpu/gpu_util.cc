@@ -388,7 +388,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       string buf;
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
-      Status s = dev_info->stream->parent()->SynchronousMemcpyD2H(
+      auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
           gpu_ptr, num_bytes, gtl::string_as_array(&buf));
       strings::StrAppend(&ret,
                          PrintMemory(gtl::string_as_array(&buf), num_bytes));

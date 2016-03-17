@@ -77,11 +77,12 @@ class SelectOp : public OpKernel {
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, then->shape(), &output));
-
-    functor::BatchSelectFunctor<Device, T> func;
-    func(ctx->eigen_device<Device>(), output->flat_outer_dims<T>(),
-         cond->vec<bool>(), then->flat_outer_dims<T>(),
-         else_->flat_outer_dims<T>());
+    if (output->NumElements() > 0) {
+      functor::BatchSelectFunctor<Device, T> func;
+      func(ctx->eigen_device<Device>(), output->flat_outer_dims<T>(),
+           cond->vec<bool>(), then->flat_outer_dims<T>(),
+           else_->flat_outer_dims<T>());
+    }
   }
 
   void ComputeElementwise(OpKernelContext* ctx, const Tensor* cond,
@@ -89,9 +90,11 @@ class SelectOp : public OpKernel {
     if (!ctx->ValidateInputsAreSameShape(this)) return;
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, then->shape(), &output));
-    functor::SelectFunctor<Device, T> func;
-    func(ctx->eigen_device<Device>(), output->flat<T>(), cond->flat<bool>(),
-         then->flat<T>(), else_->flat<T>());
+    if (output->NumElements() > 0) {
+      functor::SelectFunctor<Device, T> func;
+      func(ctx->eigen_device<Device>(), output->flat<T>(), cond->flat<bool>(),
+           then->flat<T>(), else_->flat<T>());
+    }
   }
 
  private:

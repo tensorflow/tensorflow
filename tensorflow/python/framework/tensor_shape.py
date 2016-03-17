@@ -411,10 +411,13 @@ class TensorShape(object):
     if dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
-      self._dims = [
-          # Protos store variable-size dimensions as -1
-          as_dimension(dim.size if dim.size != -1 else None)
-          for dim in dims.dim]
+      if dims.unknown_rank:
+        self._dims = None
+      else:
+        self._dims = [
+            # Protos store variable-size dimensions as -1
+            as_dimension(dim.size if dim.size != -1 else None)
+            for dim in dims.dim]
     else:
       try:
         dims_iter = iter(dims)
