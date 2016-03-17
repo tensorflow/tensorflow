@@ -560,5 +560,39 @@ class PlaceholderTest(tf.test.TestCase):
         "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>",
         repr(c))
 
+
+class PlaceholderWithDefaultTest(tf.test.TestCase):
+
+  def testFullShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
+      a = tf.identity(p)
+      self.assertAllEqual([[2, 2], [2, 2]], a.eval())
+      self.assertAllEqual([[3, 3], [3, 3]],
+                          a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
+
+      with self.assertRaises(ValueError):
+        a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
+
+  def testPartialShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([1, 2, 3], shape=[None])
+      a = tf.identity(p)
+      self.assertAllEqual([1, 2, 3], a.eval())
+      self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
+
+      with self.assertRaises(ValueError):
+        a.eval(feed_dict={p: [[2, 2], [2, 2]]})
+
+  def testNoShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([17], shape=None)
+      a = tf.identity(p)
+      self.assertAllEqual([17], a.eval())
+      self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
+      self.assertAllEqual([[3, 3], [3, 3]],
+                          a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
+
+
 if __name__ == "__main__":
   tf.test.main()

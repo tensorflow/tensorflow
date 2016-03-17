@@ -21,6 +21,7 @@ on execution.  For more info, see the section on [Feeding
 data](../../how_tos/reading_data/index.md#feeding).
 
 @@placeholder
+@@placeholder_with_default
 
 ## Readers
 

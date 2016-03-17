@@ -163,8 +163,8 @@ class SessionManager(object):
         sess.run(init_op, feed_dict=init_feed_dict)
         not_ready = self._model_not_ready(sess)
         if not_ready:
-          raise RuntimeError("Init operation '%s' did not make model ready: %s",
-                             init_op.name, not_ready)
+          raise RuntimeError("Init operation '%s' did not make model ready: %s"
+                             % (init_op.name, not_ready))
     return sess
 
   def recover_session(self, master, saver=None, checkpoint_dir=None,

@@ -284,7 +284,7 @@ class LSTMCell(RNNCell):
         projection matrix is stored across num_proj_shards.
     """
     self._num_units = num_units
-    self._input_size = num_units if input_size is None else input_size
+    self._input_size = input_size
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
     self._initializer = initializer
@@ -301,7 +301,7 @@ class LSTMCell(RNNCell):
 
   @property
   def input_size(self):
-    return self._input_size
+    return self._num_units if self._input_size is None else self._input_size
 
   @property
   def output_size(self):
@@ -328,6 +328,9 @@ class LSTMCell(RNNCell):
            num_units otherwise.
       - A 2D, batch x state_size, Tensor representing the new state of LSTM
         after reading "inputs" when previous state was "state".
+    Raises:
+      ValueError: if an input_size was specified and the provided inputs have
+        a different dimension.
     """
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
@@ -335,11 +338,14 @@ class LSTMCell(RNNCell):
     m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
     dtype = inputs.dtype
-
+    actual_input_size = inputs.get_shape().as_list()[1]
+    if self._input_size and self._input_size != actual_input_size:
+      raise ValueError("Actual input size not same as specified: %d vs %d." %
+                       actual_input_size, self._input_size)
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "LSTMCell"
       concat_w = _get_concat_variable(
-          "W", [self.input_size + num_proj, 4 * self._num_units],
+          "W", [actual_input_size + num_proj, 4 * self._num_units],
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(

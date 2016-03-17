@@ -184,15 +184,6 @@ class AbsoluteLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.absolute_loss(incompatible_shape, target)
 
-  def testAbsoluteLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.absolute_loss(predicted, target)
-      x_shape = [2, 2]
-      err = tf.test.compute_gradient_error(target, x_shape, result, x_shape)
-      err_tolerance = 1e-4
-      self.assertLess(err, err_tolerance)
-
 
 class SquaredLossTest(tf.test.TestCase):
 
@@ -222,15 +213,6 @@ class SquaredLossTest(tf.test.TestCase):
                                        name="incompatible_shape")
       with self.assertRaises(ValueError):
         tf.contrib.layers.squared_loss(incompatible_shape, target)
-
-  def testSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.squared_loss(predicted, target)
-      x_shape = [2, 2]
-      err = tf.test.compute_gradient_error(target, x_shape, result, x_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
 
 
 class SumSquaredLossTest(tf.test.TestCase):
@@ -267,17 +249,6 @@ class SumSquaredLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.sum_squared_loss(incompatible_shape, target)
 
-  def testSumSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.sum_squared_loss(predicted, target)
-      x_shape = [2, 2]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
-
 
 class MeanAbsoluteLossTest(tf.test.TestCase):
 
@@ -312,17 +283,6 @@ class MeanAbsoluteLossTest(tf.test.TestCase):
                                        name="incompatible_shape")
       with self.assertRaises(ValueError):
         tf.contrib.layers.mean_absolute_loss(incompatible_shape, target)
-
-  def testMeanAbsoluteLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.mean_absolute_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
 
 
 class MeanSquaredLossTest(tf.test.TestCase):
@@ -359,17 +319,6 @@ class MeanSquaredLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.mean_squared_loss(incompatible_shape, target)
 
-  def testMeanSquaredLossGradient(self):
-    with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.mean_squared_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
-
 
 class RootMeanSquaredLossTest(tf.test.TestCase):
 
@@ -405,16 +354,25 @@ class RootMeanSquaredLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.layers.root_mean_squared_loss(incompatible_shape, target)
 
-  def testRootMeanSquaredLossGradient(self):
+
+class MeanScalarLogisticLossTest(tf.test.TestCase):
+
+  def _get_mean_sigmoid_logistic_loss(self, logit, target):
+    sigmoid = 1.0 / (1.0 + np.exp(-logit))
+    logistic_loss = (target * -np.log(sigmoid)) - (
+        (1.0 - target) * np.log(1.0 - sigmoid))
+    batch_losses = np.sum(logistic_loss, 1)
+
+    return np.sum(batch_losses) / len(batch_losses)
+
+  def test_mean__scalar_logistic_loss(self):
+    logit = np.array([[9.45, -42], [4.2, 1], [-0.6, 20]])
+    target = np.array([[0.8, 0.9], [0.45, 0.99999], [0.1, 0.0006]])
+    expected_loss = self._get_mean_sigmoid_logistic_loss(logit, target)
     with self.test_session():
-      target, predicted, _ = self._getTestVectors()
-      result = tf.contrib.layers.root_mean_squared_loss(predicted, target)
-      x_shape = [2, 3]
-      result_shape = [2]
-      err = tf.test.compute_gradient_error(target, x_shape,
-                                           result, result_shape)
-      err_tolerance = 1e-3
-      self.assertLess(err, err_tolerance)
+      result = tf.contrib.layers.scalar_logistic_loss(
+          tf.constant(logit), tf.constant(target))
+      self.assertAllClose(expected_loss, result.eval())
 
 
 if __name__ == "__main__":

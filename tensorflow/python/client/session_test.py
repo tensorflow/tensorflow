@@ -70,7 +70,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testCreate(self):
     with session.Session():
-      inp = constant_op.constant(10.0, name='W1')
+      inp = constant_op.constant(10.0, shape=[2, 3], name='W1')
       copy = array_ops.identity(inp)
       # Test with feed.
       # TODO(mrry): Investigate why order='F' didn't work.
@@ -79,7 +79,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(arr, copy_val)
       # Test without feed.
       copy_val = copy.eval()
-      self.assertAllEqual(np.asarray(10.0, dtype=np.float32), copy_val)
+      self.assertAllEqual(np.asarray([[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
+                                     dtype=np.float32), copy_val)
 
   def testManyCPUs(self):
     # TODO(keveman): Implement ListDevices and test for the number of
@@ -933,6 +934,19 @@ class SessionTest(test_util.TensorFlowTestCase):
 
         step_stats.CopyFrom(run_outputs.step_stats)
         self.assertEquals(len(step_stats.dev_stats), 1)
+
+  def testFeedShapeCompatibility(self):
+    with session.Session() as sess:
+      some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
+      new_shape = constant_op.constant([2, 2])
+      reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
+
+      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
+        sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
+
+      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+        sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
+
 
 if __name__ == '__main__':
   googletest.main()

@@ -294,9 +294,7 @@ class TensorFlowTestCase(googletest.TestCase):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
         self._target(*self._args, **self._kwargs)
-# pylint: disable=broad-except
-      except Exception as e:
-        # pylint: enable=broad-except
+      except Exception as e:  # pylint: disable=broad-except
         self._exception = e
 
     def start(self):
@@ -495,9 +493,7 @@ class TensorFlowTestCase(googletest.TestCase):
     try:
       yield
       self.fail(exception_type.__name__ + " not raised")
-# pylint: disable=broad-except
-    except Exception as e:
-      # pylint: enable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
         raise AssertionError(e)
   # pylint: enable=g-doc-return-or-yield
