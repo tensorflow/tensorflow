@@ -1281,17 +1281,15 @@ class IsFiniteInfNanTest(tf.test.TestCase):
 class RoundingTest(tf.test.TestCase):
 
   def _compare(self, x, use_gpu):
-    np_floor, np_ceil, np_rint = np.floor(x), np.ceil(x), np.rint(x)
+    np_floor, np_ceil = np.floor(x), np.ceil(x)
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = tf.convert_to_tensor(x)
-      ofloor, oceil, orint = tf.floor(inx), tf.ceil(inx), tf.rint(inx)
-      tf_floor, tf_ceil, tf_rint = sess.run([ofloor, oceil, orint])
+      ofloor, oceil = tf.floor(inx), tf.ceil(inx)
+      tf_floor, tf_ceil = sess.run([ofloor, oceil])
     self.assertAllEqual(np_floor, tf_floor)
     self.assertAllEqual(np_ceil, tf_ceil)
-    self.assertAllEqual(np_rint, tf_rint)    
     self.assertShapeEqual(np_floor, ofloor)
     self.assertShapeEqual(np_ceil, oceil)
-    self.assertShapeEqual(np_rint, orint)    
 
   def _testDtype(self, dtype):
     data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)

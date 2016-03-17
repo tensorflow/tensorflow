@@ -285,14 +285,6 @@ REGISTER_OP("Ceil")
 Returns element-wise smallest integer in not less than x.
 )doc");
 
-REGISTER_OP("Rint")
-    .Input("x: T")
-    .Output("y: T")
-    .Attr("T: {float, double}")
-    .Doc(R"doc(
-Returns element-wise integer closest to x.
-)doc");
-  
 // Declares cwise binary operations signature: 't, 't -> 't.
 
 #define BINARY_MORE()                              \
