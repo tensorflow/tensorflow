@@ -40,37 +40,30 @@ static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 
-// Represents the index-th output of a node.
-struct Endpoint {
-  Node* node;
-  int index;
-
-  // Returns the string name represents this endpoint.
-  string name() const {
-    if (index == 0) {
-      return node->name();
-    } else {
-      return strings::StrCat(node->name(), ":", index);
-    }
+string NodeOut::name() const {
+  if (index == 0) {
+    return node->name();
+  } else {
+    return strings::StrCat(node->name(), ":", index);
   }
+}
 
-  DataType dtype() const { return node->output_type(index); }
-};
+DataType NodeOut::dtype() const { return node->output_type(index); }
 
-struct EndpointHash {
-  uint64 operator()(const Endpoint& x) const {
+struct NodeOutHash {
+  uint64 operator()(const NodeOut& x) const {
     return Hash64(reinterpret_cast<const char*>(&x.node), sizeof(Node*),
                   x.index);
   }
 };
 
-struct EndpointEq {
-  bool operator()(const Endpoint& x, const Endpoint& y) const {
+struct NodeOutEq {
+  bool operator()(const NodeOut& x, const NodeOut& y) const {
     return (x.node == y.node) && (x.index == y.index);
   }
 };
 
-static Node* AddZerosLike(Graph* g, Endpoint input) {
+static Node* AddZerosLike(Graph* g, NodeOut input) {
   DCHECK_LT(0, input.dtype());
   DCHECK_LT(input.dtype(), DT_FLOAT_REF);
   NodeDef ndef;
@@ -85,7 +78,7 @@ static Node* AddZerosLike(Graph* g, Endpoint input) {
   return ret;
 }
 
-static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
+static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
   const int num_x = n->num_inputs();
   const int num_y = n->num_outputs();
   CHECK_EQ(num_y, grads.size());
@@ -95,19 +88,19 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
   ndef.set_op(kGradientOp);
 
   // The gradient node should have num_x + num_y inputs.
-  std::vector<Endpoint> n_inputs(num_x);
+  std::vector<NodeOut> n_inputs(num_x);
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) continue;
     n_inputs[e->dst_input()] = {e->src(), e->src_output()};
   }
   DataTypeVector in_types;
-  for (const Endpoint& ep : n_inputs) {
-    ndef.add_input(ep.name());
-    in_types.push_back(ep.dtype());
+  for (const NodeOut& nout : n_inputs) {
+    ndef.add_input(nout.name());
+    in_types.push_back(nout.dtype());
   }
-  for (const Endpoint& ep : grads) {
-    ndef.add_input(ep.name());
-    in_types.push_back(ep.dtype());
+  for (const NodeOut& nout : grads) {
+    ndef.add_input(nout.name());
+    in_types.push_back(nout.dtype());
   }
   CHECK_EQ(ndef.input_size(), num_x + num_y);
 
@@ -128,34 +121,34 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
 
 class SymbolicGradientBuilder {
  public:
-  SymbolicGradientBuilder(gtl::ArraySlice<Node*> y_nodes,
-                          gtl::ArraySlice<Node*> x_nodes,
-                          gtl::ArraySlice<Node*> y_grad_nodes,
-                          std::vector<GradNodeOutput>* x_grad_nodes,
+  SymbolicGradientBuilder(gtl::ArraySlice<NodeOut> y_node_outputs,
+                          gtl::ArraySlice<NodeOut> x_node_outputs,
+                          gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+                          std::vector<NodeOut>* x_grad_node_outputs,
                           Graph* graph);
 
   Status Compute();
 
  private:
-  gtl::ArraySlice<Node*> y_nodes_;
-  gtl::ArraySlice<Node*> x_nodes_;
-  gtl::ArraySlice<Node*> y_grad_nodes_;
-  std::vector<GradNodeOutput>* x_grad_nodes_;
+  gtl::ArraySlice<NodeOut> y_node_outputs_;
+  gtl::ArraySlice<NodeOut> x_node_outputs_;
+  gtl::ArraySlice<NodeOut> y_grad_node_outputs_;
+  std::vector<NodeOut>* x_grad_node_outputs_;
   Graph* graph_;  // Not owned.
 
   // A vector of output endpoints which represents backpropagated
   // gradients
-  typedef std::vector<Endpoint> BackpropedGradients;
+  typedef std::vector<NodeOut> BackpropedGradients;
 
-  // backprops_ is a map from an output endpoint to its accumulated
-  // gradients.  When an output endpoint has accumulated all its
+  // backprops_ is a map from a node output to its accumulated
+  // gradients.  When a node output has accumulated all its
   // gradients, we add a node which sums them up.
-  std::unordered_map<Endpoint, BackpropedGradients, EndpointHash, EndpointEq>
+  std::unordered_map<NodeOut, BackpropedGradients, NodeOutHash, NodeOutEq>
       backprops_;
 
   // pending[i] is count-down counter for i-th node's expected
   // backprops.  When pending[i] becomes zero, we collected all
-  // backprop gradients for all output endpoint of the ith-node.
+  // backprop gradients for all outputs of the ith-node.
   std::vector<int> pending_;
 
   // 'ready' keeps track of nodes that have been completely
@@ -163,7 +156,8 @@ class SymbolicGradientBuilder {
   // add dy as an input of the gradient function.
   std::deque<Node*> ready_;
 
-  // The set of nodes at which to stop backprop (and populate 'x_grad_nodes_').
+  // The set of nodes at which to stop backprop.
+  // Maps from node.id -> index of 'x_node_outputs_'
   std::unordered_map<int, int> stop_nodes_;
 
   // Initialize pending_ and ready_.
@@ -173,33 +167,35 @@ class SymbolicGradientBuilder {
   // to 'dst', when the backprop algorithm constructs the node
   // 'dst_grad' which computes the gradient, we need to propagate it
   // to 'src'.
-  void BackpropAlongEdge(const Endpoint& dst_grad, const Endpoint& src);
-  void BackpropZerosAlongEdge(const Endpoint& src);
+  void BackpropAlongEdge(const NodeOut& dst_grad, const NodeOut& src);
+  void BackpropZerosAlongEdge(const NodeOut& src);
 
-  Endpoint SumGradients(const Endpoint& src);
+  NodeOut SumGradients(const NodeOut& src);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(
-    gtl::ArraySlice<Node*> y_nodes,
-    gtl::ArraySlice<Node*> x_nodes,
-    gtl::ArraySlice<Node*> y_grad_nodes,
-    std::vector<GradNodeOutput>* x_grad_nodes,
-    Graph* graph) : y_nodes_(y_nodes), x_nodes_(x_nodes),
-                    y_grad_nodes_(y_grad_nodes), x_grad_nodes_(x_grad_nodes),
-                    graph_(graph)  {
-  CHECK_EQ(y_nodes_.size(), y_grad_nodes.size());
-  x_grad_nodes_->clear();
-  x_grad_nodes_->resize(x_nodes_.size());
-  stop_nodes_.reserve(x_nodes_.size());
-  for (int i = 0; i < x_nodes_.size(); ++i) {
-    stop_nodes_.insert(std::make_pair(x_nodes_[i]->id(), i));
+    gtl::ArraySlice<NodeOut> y_node_outputs,
+    gtl::ArraySlice<NodeOut> x_node_outputs,
+    gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+    std::vector<NodeOut>* x_grad_node_outputs, Graph* graph)
+    : y_node_outputs_(y_node_outputs),
+      x_node_outputs_(x_node_outputs),
+      y_grad_node_outputs_(y_grad_node_outputs),
+      x_grad_node_outputs_(x_grad_node_outputs),
+      graph_(graph) {
+  CHECK_EQ(y_node_outputs_.size(), y_grad_node_outputs.size());
+  x_grad_node_outputs_->clear();
+  x_grad_node_outputs_->resize(x_node_outputs_.size());
+  stop_nodes_.reserve(x_node_outputs_.size());
+  for (int i = 0; i < x_node_outputs_.size(); ++i) {
+    stop_nodes_.insert(std::make_pair(x_node_outputs_[i].node->id(), i));
   }
 }
 
-void SymbolicGradientBuilder::BackpropAlongEdge(const Endpoint& dst_grad,
-                                                const Endpoint& src) {
+void SymbolicGradientBuilder::BackpropAlongEdge(const NodeOut& dst_grad,
+                                                const NodeOut& src) {
   CHECK_NOTNULL(src.node);
   auto iter = backprops_.find(src);
   if (iter != backprops_.end()) {
@@ -211,7 +207,7 @@ void SymbolicGradientBuilder::BackpropAlongEdge(const Endpoint& dst_grad,
   }
 }
 
-void SymbolicGradientBuilder::BackpropZerosAlongEdge(const Endpoint& src) {
+void SymbolicGradientBuilder::BackpropZerosAlongEdge(const NodeOut& src) {
   CHECK_NOTNULL(src.node);
   auto iter = backprops_.find(src);
   if (iter != backprops_.end()) {
@@ -227,9 +223,9 @@ void SymbolicGradientBuilder::InitBackprop() {
     backprops_.clear();
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
-    for (Node* n : x_nodes_) {
-      queue.push_back(n);
-      visited.insert(n);
+    for (const NodeOut& nout : x_node_outputs_) {
+      queue.push_back(nout.node);
+      visited.insert(nout.node);
     }
 
     // Going forward to figure out which endpoints need backprop-ed.
@@ -255,20 +251,19 @@ void SymbolicGradientBuilder::InitBackprop() {
   }
 
   {
-    const int num_y = y_grad_nodes_.size();
+    const int num_y = y_grad_node_outputs_.size();
     for (int i = 0; i < num_y; ++i) {
-      Node* y = y_nodes_[i];
-      Node* dy = y_grad_nodes_[i];
+      Node* y = y_node_outputs_[i].node;
       for (const Edge* e : y->in_edges()) {
         if (e->IsControlEdge()) continue;
-        BackpropAlongEdge({dy, e->dst_input()}, {e->src(), e->src_output()});
+        BackpropAlongEdge(y_grad_node_outputs_[i], {e->src(), e->src_output()});
       }
     }
   }
   CHECK(!ready_.empty());
 }
 
-Endpoint SymbolicGradientBuilder::SumGradients(const Endpoint& src) {
+NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   const DataType dtype = src.dtype();
   auto iter = backprops_.find(src);
   CHECK(iter != backprops_.end());
@@ -286,8 +281,8 @@ Endpoint SymbolicGradientBuilder::SumGradients(const Endpoint& src) {
   NodeDef ndef;
   ndef.set_name(graph_->NewName(kNodeLabel));
   ndef.set_op("AddN");  // N-way Add
-  for (const Endpoint& ep : grads) {
-    ndef.add_input(ep.name());
+  for (const NodeOut& nout : grads) {
+    ndef.add_input(nout.name());
   }
   AddNodeAttr("N", static_cast<int64>(grads.size()), &ndef);
   AddNodeAttr("T", dtype, &ndef);
@@ -295,8 +290,8 @@ Endpoint SymbolicGradientBuilder::SumGradients(const Endpoint& src) {
   Node* add = graph_->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   for (size_t i = 0; i < grads.size(); ++i) {
-    const Endpoint& ep = grads[i];
-    graph_->AddEdge(ep.node, ep.index, add, i);
+    const NodeOut& nout = grads[i];
+    graph_->AddEdge(nout.node, nout.index, add, i);
   }
   return {add, 0};
 }
@@ -312,7 +307,7 @@ Status SymbolicGradientBuilder::Compute() {
   InitBackprop();
 
   // Backward propagation.
-  gtl::InlinedVector<Endpoint, 8> dy;
+  gtl::InlinedVector<NodeOut, 8> dy;
   while (!ready_.empty()) {
     // n has collected all gradients.
     Node* n = ready_.front();
@@ -324,11 +319,11 @@ Status SymbolicGradientBuilder::Compute() {
 
     auto iter = stop_nodes_.find(n->id());
     if (iter != stop_nodes_.end()) {
-      // Stop backprop and add gradient sum to 'x_grad_nodes'.
+      // Stop backprop and add gradient sum to 'x_grad_node_outputs_'.
       // TODO(andydavis) Support stop nodes with more than one output.
       CHECK_EQ(1, num_y);
-      Endpoint grad = SumGradients({n, 0});
-      (*x_grad_nodes_)[iter->second] = {grad.node, grad.index};
+      const int index = iter->second;
+      (*x_grad_node_outputs_)[index] = SumGradients(x_node_outputs_[index]);
       continue;
     }
 
@@ -350,6 +345,7 @@ Status SymbolicGradientBuilder::Compute() {
 
     // Adds a gradient node with num_x + num_y inputs and num_x
     // outputs.
+    // TODO(andydavis) Support primitive gradient ops.
     Node* grad = AddSymGrad(graph_, n, dy);
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
@@ -369,12 +365,13 @@ Status SymbolicGradientBuilder::Compute() {
   return Status::OK();
 }
 
-Status AddSymbolicGradients(gtl::ArraySlice<Node*> y_nodes,
-                            gtl::ArraySlice<Node*> x_nodes,
-                            gtl::ArraySlice<Node*> y_grad_nodes,
-                            std::vector<GradNodeOutput>* x_grad_nodes,
+Status AddSymbolicGradients(gtl::ArraySlice<NodeOut> y_node_outputs,
+                            gtl::ArraySlice<NodeOut> x_node_outputs,
+                            gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+                            std::vector<NodeOut>* x_grad_node_outputs,
                             Graph* graph) {
-  SymbolicGradientBuilder builder(y_nodes, x_nodes, y_grad_nodes, x_grad_nodes,
+  SymbolicGradientBuilder builder(y_node_outputs, x_node_outputs,
+                                  y_grad_node_outputs, x_grad_node_outputs,
                                   graph);
   return builder.Compute();
 }
