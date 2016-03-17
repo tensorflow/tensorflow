@@ -28,24 +28,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
-class SoftmaxOp : public OpKernel {
- public:
-  explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& logits_in = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
-                errors::InvalidArgument("logits must be 2-dimensional"));
-    Tensor* softmax_out = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, logits_in.shape(), &softmax_out));
-    functor::SoftmaxFunctor<Device, T> functor;
-    functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-            softmax_out->matrix<T>());
-  }
-};
-
 // Partial specialization for a CPUDevice, that uses the Eigen implementation
 // from SoftmaxEigenImpl.
 namespace functor {
