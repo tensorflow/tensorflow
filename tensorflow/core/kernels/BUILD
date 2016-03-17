@@ -221,7 +221,6 @@ tf_kernel_libraries(
     prefixes = [
         "bcast_ops",
         "bitcast_op",
-        "depthtospace_op",
         "concat_op",
         "constant_op",
         "diag_op",
@@ -239,7 +238,6 @@ tf_kernel_libraries(
         "reverse_sequence_op",
         "shape_ops",
         "slice_op",
-        "spacetodepth_op",
         "split_op",
         "tile_ops",
         "transpose_op",
@@ -250,6 +248,7 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":concat_lib",
+        ":depth_space_ops",
         ":fill_functor",
         ":ops_util",
         ":split_lib",
@@ -828,6 +827,31 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
+)
+
+tf_kernel_library(
+    name = "depth_space_ops",
+    srcs = [
+        "depthtospace_op.cc",
+        "spacetodepth_op.cc",
+    ],
+    hdrs = [
+        "depthtospace_op.h",
+        "spacetodepth_op.h",
+    ],
+    gpu_srcs = [
+        "depthtospace_op.h",
+        "depthtospace_op_gpu.cu.cc",
+        "spacetodepth_op.h",
+        "spacetodepth_op_gpu.cu.cc",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
 )
 
 tf_kernel_libraries(
