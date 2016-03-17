@@ -1386,7 +1386,7 @@ def import_meta_graph(meta_graph_or_file):
   with tf.Session() as sess:
     new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
     new_saver.restore(sess, 'my-save-dir/my-model-10000')
-    # tf.get_collection() retrurns a list. In this example we only want the
+    # tf.get_collection() returns a list. In this example we only want the
     # first one.
     train_op = tf.get_collection('train_op')[0]
     for step in xrange(1000000):
@@ -1401,7 +1401,7 @@ def import_meta_graph(meta_graph_or_file):
       the path) containing a `MetaGraphDef`.
 
   Returns:
-    A saver constructed rom `saver_def` in `MetaGraphDef` or None.
+    A saver constructed from `saver_def` in `MetaGraphDef` or None.
 
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
