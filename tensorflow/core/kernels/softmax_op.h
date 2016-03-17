@@ -40,9 +40,11 @@ class SoftmaxOp : public OpKernel {
     Tensor* softmax_out = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, logits_in.shape(), &softmax_out));
-    functor::SoftmaxFunctor<Device, T> functor;
-    functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-            softmax_out->matrix<T>());
+    if (logits_in.NumElements()) {
+      functor::SoftmaxFunctor<Device, T> functor;
+      functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
+              softmax_out->matrix<T>());
+    }
   }
 };
 

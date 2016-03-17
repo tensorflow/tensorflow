@@ -77,6 +77,13 @@ class SoftmaxTest(tf.test.TestCase):
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
         use_gpu=False)
 
+  def testEmpty(self):
+    with self.test_session():
+      x = tf.constant([[]], shape=[0, 3])
+      self.assertEqual(0, tf.size(x).eval())
+      expected_y = np.array([]).reshape(0, 3)
+      np.testing.assert_array_equal(expected_y, tf.nn.softmax(x).eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -211,6 +211,18 @@ class FullyConnectedTest(tf.test.TestCase):
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     self.assertEqual(1, cnt[0])
 
+  def test_empty_x_results_in_empty_output(self):
+    # Empty x is common if someone masks their input with tf.boolean_mask in
+    # order to drop missing entries, and in a particular batch all entries are
+    # missing.
+    with self.test_session():
+      x = tf.constant([[]], shape=[0, 3])
+      self.assertEqual(0, tf.size(x).eval())
+      y = tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+      tf.initialize_all_variables().run()
+      expected_y = np.array([]).reshape(0,2)
+      np.testing.assert_array_equal(expected_y, y.eval())
+
 
 class Convolution2dTest(tf.test.TestCase):
 
