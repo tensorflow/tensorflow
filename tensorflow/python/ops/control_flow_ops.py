@@ -909,6 +909,14 @@ class ControlFlowContext(object):
     """Return the context containing this context."""
     return self._outer_context
 
+  @property
+  def grad_state(self):
+    raise NotImplementedError("Abstract method")
+
+  @property
+  def back_prop(self):
+    raise NotImplementedError("Abstract method")
+
   def AddName(self, name):
     self._values.add(name)
 
@@ -978,6 +986,18 @@ class CondContext(ControlFlowContext):
   @property
   def branch(self):
     return self._branch
+
+  @property
+  def grad_state(self):
+    if self.GetWhileContext():
+      return self.GetWhileContext().grad_state
+    return None
+
+  @property
+  def back_prop(self):
+    if self.GetWhileContext():
+      self.GetWhileContext().back_prop
+    return False
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
@@ -2081,6 +2101,7 @@ ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)
+ops.RegisterShape("Abort")(common_shapes.no_outputs)
 
 
 @ops.RegisterShape("LoopCond")

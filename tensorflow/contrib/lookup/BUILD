@@ -8,19 +8,23 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
-    name = "contrib_py",
-    srcs = glob(["**/*.py"]),
+    name = "lookup_py",
+    srcs = [
+        "__init__.py",
+        "lookup_ops.py",
+    ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+)
+
+py_test(
+    name = "lookup_ops_test",
+    srcs = ["lookup_ops_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/ctc:ctc_py",
-        "//tensorflow/contrib/distributions:distributions_py",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lookup:lookup_py",
-        "//tensorflow/contrib/skflow",
-        "//tensorflow/contrib/testing:testing_py",
-        "//tensorflow/contrib/util:util_py",
+        ":lookup_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
     ],
 )
 

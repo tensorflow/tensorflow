@@ -18,7 +18,7 @@ Some examples use `pandas` library for data processing (`sudo pip install pandas
 * [Using skflow with Pipeline](iris_with_pipeline.py)
 * [Example of Saving and Restoring Models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
-* [Improving Performance Using Early Stopping with Iris Data](iris_early_stopping.py)
+* [Improving Performance Using Early Stopping with Iris Data](iris_val_based_early_stopping.py)
 * [Out-of-core Data Classification Using Dask](out_of_core_data_classification.py)
 
 

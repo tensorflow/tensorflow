@@ -1,7 +1,7 @@
 # Description:
 # Tools for testing
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 

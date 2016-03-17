@@ -128,7 +128,7 @@ inline void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
 }
 
 template <>
-void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
+inline void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
   EXPECT_DOUBLE_EQ(a.real(), b.real()) << a << " vs. " << b;
   EXPECT_DOUBLE_EQ(a.imag(), b.imag()) << a << " vs. " << b;
 }

@@ -34,7 +34,7 @@ string GetPythonOps(const OpList& ops, const string& hidden_ops,
 // Get the python wrappers for a list of ops in a OpList.
 // buf should be a pointer to a buffer containing the binary encoded OpList
 // proto, and len should be the length of that buffer.
-string GetPythonWrappers(const char* buf, size_t len);
+string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len);
 
 }  // namespace tensorflow
 

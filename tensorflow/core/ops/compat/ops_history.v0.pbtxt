@@ -1,4 +1,14 @@
 op {
+  name: "Abort"
+  attr {
+    name: "error_msg"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "Abs"
   input_arg {
     name: "x"
@@ -8555,6 +8565,25 @@ op {
       shape {
       }
     }
+  }
+}
+op {
+  name: "PlaceholderWithDefault"
+  input_arg {
+    name: "input"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
   }
 }
 op {

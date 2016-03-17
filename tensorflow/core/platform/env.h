@@ -28,6 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 class RandomAccessFile;
+class ReadOnlyMemoryRegion;
 class Thread;
 class WritableFile;
 struct ThreadOptions;
@@ -88,6 +89,16 @@ class Env {
   /// The returned file will only be accessed by one thread at a time.
   virtual Status NewAppendableFile(const string& fname,
                                    WritableFile** result) = 0;
+
+  /// \brief Creates a readonly region of memory with the file context.
+  ///
+  /// On success, it returns a pointer to read-only memory region
+  /// from the content of file fname. The ownership of the region is passed to
+  /// the caller. On failure stores nullptr in *result and returns non-OK.
+  ///
+  /// The returned memory region can be accessed from many threads in parallel.
+  virtual Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, ReadOnlyMemoryRegion** result) = 0;
 
   /// Returns true iff the named file exists.
   virtual bool FileExists(const string& fname) = 0;
@@ -223,6 +234,18 @@ class WritableFile {
   void operator=(const WritableFile&);
 };
 
+/// \brief A readonly memmapped file abstraction.
+///
+/// The implementation must guarantee that all memory is accessable when the
+/// object exists, independently from the Env that created it.
+class ReadOnlyMemoryRegion {
+ public:
+  ReadOnlyMemoryRegion() {}
+  virtual ~ReadOnlyMemoryRegion() = default;
+  virtual const void* data() = 0;
+  virtual uint64 length() = 0;
+};
+
 /// \brief An implementation of Env that forwards all calls to another Env.
 ///
 /// May be useful to clients who wish to override just part of the
@@ -245,6 +268,10 @@ class EnvWrapper : public Env {
   }
   Status NewAppendableFile(const string& f, WritableFile** r) override {
     return target_->NewAppendableFile(f, r);
+  }
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, ReadOnlyMemoryRegion** result) override {
+    return target_->NewReadOnlyMemoryRegionFromFile(fname, result);
   }
   bool FileExists(const string& f) override { return target_->FileExists(f); }
   Status GetChildren(const string& dir, std::vector<string>* r) override {

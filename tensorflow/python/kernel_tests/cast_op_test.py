@@ -156,7 +156,7 @@ class CastOpTest(tf.test.TestCase):
           x = tf.constant(1.0, src_t)
           z = tf.identity(x)
           y = tf.cast(z, dst_t)
-          err = tf.test.compute_gradient_error(x, [1], y, [1])
+          err = tf.test.compute_gradient_error(x, [], y, [])
           self.assertLess(err, 1e-3)
 
 

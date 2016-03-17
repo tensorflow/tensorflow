@@ -21,7 +21,7 @@ import os.path
 import threading
 import uuid
 
-from six.moves import range
+from six.moves import range  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

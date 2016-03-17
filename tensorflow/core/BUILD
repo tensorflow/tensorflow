@@ -402,6 +402,7 @@ tf_cuda_library(
         "common_runtime/device.h",
         "graph/algorithm.h",
         "graph/default_device.h",
+        "graph/gradients.h",
         "graph/graph.h",
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
@@ -547,8 +548,6 @@ filegroup(
             "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "ops/**/*.cc",
-            "ops/**/*.h",
             "platform/*.h",
             "platform/*.cc",
             "platform/**/*.h",
@@ -648,6 +647,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = [
+        ":android_op_registrations_and_gradients",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ],
@@ -668,8 +668,25 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "android_op_registrations_and_gradients",
+    srcs = glob(
+        [
+            "ops/**/*.cc",
+            "ops/**/*.h",
+        ],
+        exclude = [
+            "**/*test.cc",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
-# Libraries for GPU facilities that are useful for writing kernels.
+# Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
     srcs = [
@@ -687,6 +704,14 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:cuda",
     ],
 )
 
@@ -775,6 +800,7 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -923,21 +949,11 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
-    ],
-)
-
 tf_cuda_library(
     name = "direct_session",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
@@ -978,9 +994,6 @@ tf_cuda_library(
         "common_runtime/gpu/visitable_allocator.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu",

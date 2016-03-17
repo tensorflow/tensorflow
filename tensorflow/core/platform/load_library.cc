@@ -22,6 +22,7 @@ namespace tensorflow {
 namespace internal {
 
 Status LoadLibrary(const char* library_filename, void** handle) {
+#if !defined(__ANDROID__)
   // Check to see if the library has been already loaded by the process, if so
   // return an error status. Note: dlopen with RTLD_NOLOAD flag returns a
   // non-null pointer if the library has already been loaded, and null
@@ -30,6 +31,7 @@ Status LoadLibrary(const char* library_filename, void** handle) {
   if (*handle) {
     return errors::AlreadyExists(library_filename, " has already been loaded");
   }
+#endif  // !defined(__ANDROID__)
 
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {

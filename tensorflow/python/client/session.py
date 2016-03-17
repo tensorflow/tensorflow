@@ -523,12 +523,13 @@ class BaseSession(SessionInterface):
                             'strings, lists, or numpy ndarrays.')
 
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
-          if subfeed_t.op.type == 'Placeholder':
-            if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
-              raise ValueError(
-                  'Cannot feed value of shape %r for Tensor %r, '
-                  'which has shape %r'
-                  % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+            raise ValueError(
+                'Cannot feed value of shape %r for Tensor %r, '
+                'which has shape %r'
+                % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not self.graph.is_feedable(subfeed_t):
+            raise ValueError('Tensor %s may not be fed.' % subfeed_t)
           feed_dict_string[compat.as_bytes(subfeed_t.name)] = np_val
 
     # Run request and get response.

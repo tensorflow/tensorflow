@@ -182,11 +182,11 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
 
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
-    zero_output, state, call_cell):
+    zero_output, state, call_cell, skip_conditionals=False):
   """Calculate one step of a dynamic RNN minibatch.
 
   Returns an (output, state) pair conditioned on the sequence_lengths.
-  The pseudocode is something like:
+  When skip_conditionals=False, the pseudocode is something like:
 
   if t >= max_sequence_length:
     return (zero_output, state)
@@ -216,6 +216,10 @@ def _rnn_step(
     call_cell: lambda returning tuple of (new_output, new_state) where
       new_output is a `Tensor` matrix of shape [batch_size, output_size]
       new_state is a `Tensor` matrix of shape [batch_size, state_size]
+    skip_conditionals: Python bool, whether to skip using the conditional
+      calculations.  This is useful for dynamic_rnn, where the input tensor
+      matches max_sequence_length, and using conditionals just slows
+      everything down.
 
   Returns:
     A tuple of (final_output, final_state) as given by the pseudocode above:
@@ -225,8 +229,15 @@ def _rnn_step(
   # Step 1: determine whether we need to call_cell or not
   empty_update = lambda: (zero_output, state)
   state_shape = state.get_shape()
-  output, new_state = control_flow_ops.cond(
-      time < max_sequence_length, call_cell, empty_update)
+
+  if skip_conditionals:
+    # Skip using conditionals: calculate the RNN step at all time
+    # steps.  This is faster for dynamic_rnn, where the time steps
+    # should cap out at max_sequence_length anyway.
+    output, new_state = call_cell()
+  else:
+    output, new_state = control_flow_ops.cond(
+        time < max_sequence_length, call_cell, empty_update)
 
   # Step 2: determine whether we need to copy through state and/or outputs
   existing_output_state = lambda: (output, new_state)
@@ -239,8 +250,17 @@ def _rnn_step(
     return (math_ops.select(copy_cond, zero_output, output),
             math_ops.select(copy_cond, state, new_state))
 
-  (output, state) = control_flow_ops.cond(
-      time < min_sequence_length, existing_output_state, copy_through)
+  # TODO(ebrevdo): skipping these conditionals may cause a slowdown,
+  # but benefits from removing cond() and its gradient.  We should
+  # profile with and without this switch here.
+  if skip_conditionals:
+    # Skip using conditionals: perform the selective copy at all time
+    # steps.  This is usually faster.
+    (output, state) = copy_through()
+  else:
+    (output, state) = control_flow_ops.cond(
+        time < min_sequence_length, existing_output_state, copy_through)
+
   output.set_shape(zero_output.get_shape())
   state.set_shape(state_shape)
   return (output, state)
@@ -549,8 +569,14 @@ def _dynamic_rnn_loop(
 
     if sequence_length is not None:
       (output, new_state) = _rnn_step(
-          time, sequence_length, min_sequence_length, max_sequence_length,
-          zero_output, state, call_cell)
+          time=time,
+          sequence_length=sequence_length,
+          min_sequence_length=min_sequence_length,
+          max_sequence_length=max_sequence_length,
+          zero_output=zero_output,
+          state=state,
+          call_cell=call_cell,
+          skip_conditionals=True)
     else:
       (output, new_state) = call_cell()
 

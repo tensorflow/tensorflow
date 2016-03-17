@@ -43,6 +43,7 @@ tf_kernel_library(
         "concat_lib.h",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -203,7 +204,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -975,6 +976,7 @@ tf_kernel_library(
     name = "training_ops",
     prefix = "training_ops",
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",
@@ -1002,6 +1004,7 @@ filegroup(
     name = "android_srcs",
     srcs = [
         "avgpooling_op.h",
+        "bounds_check.h",
         "maxpooling_op.h",
         "ops_util.cc",
         "ops_util.h",
@@ -1158,6 +1161,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "relu_op.cc",
+        "resize_nearest_neighbor_op.cc",
         "restore_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
