@@ -231,51 +231,104 @@ def _flatten(tensor_list_list):
   return [tensor for tensor_list in tensor_list_list for tensor in tensor_list]
 
 
+class _SparseMetaData(object):
+  """Store information about the Tensor: Is it sparse?, dtype, and rank."""
+
+  def __init__(self, sparse, dtype, rank):
+    self._sparse = sparse
+    self._dtype = dtype
+    self._rank = rank
+
+  def __eq__(self, other):
+    if self.sparse != other.sparse:
+      return False
+    if not self.sparse:
+      return True
+    if self.dtype != other.dtype:
+      return False
+    if not self.rank.is_compatible_with(other.rank):
+      return False
+    return True
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
+
+  def __str__(self):
+    return "[SparseMetaData(%s, %s, %s)]" % (self.sparse, self.dtype, self.rank)
+
+  def merge_with(self, other):
+    if self != other:
+      raise ValueError("SparseMetaData objects are incompatible: %s vs. %s"
+                       % (self, other))
+    if self.sparse:
+      self.rank.merge_with(other.rank)
+    return self
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  @property
+  def sparse(self):
+    return self._sparse
+
+  @property
+  def rank(self):
+    return self._rank
+
+
 def _serialize_sparse_tensors(tensor_list, enqueue_many):
   """Serialize SparseTensors for feeding into batch, etc."""
-  is_sparse_list = [isinstance(t, ops.SparseTensor) for t in tensor_list]
-  sparse_dtypes_list = [
-      t.dtype if isinstance(t, ops.SparseTensor) else None
+  sparse_info_list = [
+      _SparseMetaData(sparse=True,
+                      dtype=t.dtype,
+                      rank=t.shape.get_shape().with_rank(1)[0])
+      if isinstance(t, ops.SparseTensor)
+      else _SparseMetaData(False, None, None)
       for t in tensor_list]
 
-  def _maybe_serialize(t, is_sparse):
-    if not is_sparse:
+  def _maybe_serialize(t, sparse):
+    if not sparse:
       return t
     return (sparse_ops.serialize_many_sparse(t) if enqueue_many
             else sparse_ops.serialize_sparse(t))
+
   serialized_list = [
-      _maybe_serialize(t, is_sparse)
-      for (t, is_sparse) in zip(tensor_list, is_sparse_list)]
-  return serialized_list, is_sparse_list, sparse_dtypes_list
+      _maybe_serialize(t, info.sparse) for (t, info)
+      in zip(tensor_list, sparse_info_list)]
+
+  return serialized_list, sparse_info_list
 
 
 def _serialize_sparse_tensors_join(tensor_list_list, enqueue_many):
   """Serialize SparseTensors for feeding into batch_join, etc."""
-  (s0, is_sparse_list, sparse_dtypes_list) = _serialize_sparse_tensors(
+  (s0, sparse_info_list) = _serialize_sparse_tensors(
       tensor_list_list[0], enqueue_many)
   serialized_list_list = [s0]
   for tensor_list in tensor_list_list[1:]:
-    (s, is_sparse_candidate, sparse_dtypes_candidate) = (
-        _serialize_sparse_tensors(tensor_list, enqueue_many))
-    if is_sparse_candidate != is_sparse_list:
+    s, sparse_info_candidate = _serialize_sparse_tensors(
+        tensor_list, enqueue_many)
+    if sparse_info_list != sparse_info_candidate:
       raise ValueError("Inconsistent SparseTensors list: %s vs. %s"
                        % (tensor_list_list[0], tensor_list))
-    if sparse_dtypes_candidate != sparse_dtypes_list:
-      raise ValueError("Inconsistent SparseTensor dtypes in list: %s vs. %s"
-                       % (tensor_list_list[0], tensor_list))
+    sparse_info_list = [
+        info.merge_with(candidate)
+        for (info, candidate) in zip(sparse_info_list, sparse_info_candidate)]
     serialized_list_list.append(s)
-  return (serialized_list_list, is_sparse_list, sparse_dtypes_list)
+
+  return (serialized_list_list, sparse_info_list)
 
 
-def _deserialize_sparse_tensors(serialized_list, is_sparse_list, sparse_dtypes):
+def _deserialize_sparse_tensors(serialized_list, sparse_info_list):
   """Deserialize SparseTensors after dequeue in batch, batch_join, etc."""
   received_sequence = isinstance(serialized_list, collections.Sequence)
   if not received_sequence:
     serialized_list = (serialized_list,)
-  tensors = [sparse_ops.deserialize_many_sparse(s, sparse_dtype) if is_sparse
-             else s
-             for (s, is_sparse, sparse_dtype)
-             in zip(serialized_list, is_sparse_list, sparse_dtypes)]
+  tensors = [
+      sparse_ops.deserialize_many_sparse(s, info.dtype, info.rank.value)
+      if info.sparse else s
+      for (s, info)
+      in zip(serialized_list, sparse_info_list)]
   return tensors if received_sequence else tensors[0]
 
 
@@ -345,7 +398,8 @@ def _enqueue(queue, tensor_list, threads, enqueue_many):
 
 
 def batch(tensor_list, batch_size, num_threads=1, capacity=32,
-          enqueue_many=False, shapes=None, shared_name=None, name=None):
+          enqueue_many=False, shapes=None,
+          shared_name=None, name=None):
   """Creates batches of tensors in `tensor_list`.
 
   This function is implemented using a queue. A `QueueRunner` for the
@@ -394,7 +448,7 @@ def batch(tensor_list, batch_size, num_threads=1, capacity=32,
   """
   with ops.op_scope(tensor_list, name, "batch") as name:
     tensor_list = _validate(tensor_list)
-    tensor_list, is_sparse, sparse_dtypes = _serialize_sparse_tensors(
+    (tensor_list, sparse_info) = _serialize_sparse_tensors(
         tensor_list, enqueue_many)
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
@@ -407,7 +461,7 @@ def batch(tensor_list, batch_size, num_threads=1, capacity=32,
         math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
 
     dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, is_sparse, sparse_dtypes)
+    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return dequeued
 
 
@@ -478,8 +532,8 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
   """
   with ops.op_scope(_flatten(tensor_list_list), name, "batch_join") as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    tensor_list_list, is_sparse, sparse_dtypes = (
-        _serialize_sparse_tensors_join(tensor_list_list, enqueue_many))
+    tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
+        tensor_list_list, enqueue_many)
     types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
     # TODO(josh11b,mrry): Switch to BatchQueue once it is written.
@@ -491,7 +545,7 @@ def batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False,
         math_ops.cast(queue.size(), dtypes.float32) * (1. / capacity))
 
     dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, is_sparse, sparse_dtypes)
+    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return dequeued
 
 
@@ -567,7 +621,7 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
   """
   with ops.op_scope(tensor_list, name, "shuffle_batch") as name:
     tensor_list = _validate(tensor_list)
-    tensor_list, is_sparse, sparse_dtypes = _serialize_sparse_tensors(
+    tensor_list, sparse_info = _serialize_sparse_tensors(
         tensor_list, enqueue_many)
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many)
@@ -586,7 +640,7 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
     logging_ops.scalar_summary(summary_name, full)
 
     dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, is_sparse, sparse_dtypes)
+    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return dequeued
 
 
@@ -652,8 +706,8 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
   with ops.op_scope(
       _flatten(tensor_list_list), name, "shuffle_batch_join") as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    tensor_list_list, is_sparse, sparse_dtypes = (
-        _serialize_sparse_tensors_join(tensor_list_list, enqueue_many))
+    tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
+        tensor_list_list, enqueue_many)
     types = _dtypes(tensor_list_list)
     shapes = _shapes(tensor_list_list, shapes, enqueue_many)
     queue = data_flow_ops.RandomShuffleQueue(
@@ -671,5 +725,5 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
     logging_ops.scalar_summary(summary_name, full)
 
     dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _deserialize_sparse_tensors(dequeued, is_sparse, sparse_dtypes)
+    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return dequeued

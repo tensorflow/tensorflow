@@ -774,7 +774,7 @@ def _SerializeManySparseShape(op):  # pylint: disable=invalid-name
   return [tensor_shape.matrix(None, 3)]
 
 
-def deserialize_many_sparse(serialized_sparse, dtype, name=None):
+def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.
 
   The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where
@@ -823,6 +823,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
     serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
       The serialized and packed `SparseTensor' objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)
 
   Returns:
@@ -834,6 +835,10 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
   output_indices, output_values, output_shape = (
       gen_sparse_ops._deserialize_many_sparse(
           serialized_sparse, dtype, name=name))
+
+  # Feed rank data back in, if available
+  output_indices.set_shape([None, rank])
+  output_shape.set_shape([rank])
 
   return ops.SparseTensor(output_indices, output_values, output_shape)
 
