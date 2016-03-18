@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_CONV_2D_H_
 #define TENSORFLOW_KERNELS_CONV_2D_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
+#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
