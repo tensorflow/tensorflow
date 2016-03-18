@@ -233,6 +233,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "image_resizer_state",
+    hdrs = ["image_resizer_state.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_header_only_library(
+    name = "image_resizer_state_lib",
+    deps = [":image_resizer_state"],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 tf_kernel_libraries(
@@ -564,6 +579,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":eigen_helpers",
+        ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
@@ -1171,6 +1187,7 @@ filegroup(
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
+        "image_resizer_state.h",
         "maxpooling_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",

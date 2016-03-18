@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -92,62 +93,28 @@ class ResizeBicubicOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
-    const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
 
-    auto Svec = shape_t.vec<int32>();
-    // Initialize shape to the batch size of the input, then add
-    // the rest of the dimensions
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), Svec(0),
-                                                Svec(1), input.dim_size(3)}),
-                                &output));
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
-    const int64 out_height = output->dim_size(1);
-    const int64 out_width = output->dim_size(2);
-    CHECK_GT(in_height, 0);
-    CHECK_GT(in_width, 0);
-    CHECK_GT(channels, 0);
-    CHECK_GT(out_height, 0);
-    CHECK_GT(out_width, 0);
+    if (!context->status().ok()) return;
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<float, 4>::Tensor output_data = output->tensor<float, 4>();
-
-    const float height_scale =
-        (align_corners_ && out_height > 1)
-            ? (in_height - 1) / static_cast<float>(out_height - 1)
-            : in_height / static_cast<float>(out_height);
-    const float width_scale =
-        (align_corners_ && out_width > 1)
-            ? (in_width - 1) / static_cast<float>(out_width - 1)
-            : in_width / static_cast<float>(out_width);
+    typename TTypes<float, 4>::Tensor output_data =
+        st.output->tensor<float, 4>();
 
     std::array<float, 4> coeff = {{0.0, 0.0, 0.0, 0.0}};
-    for (int64 b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
+    for (int64 b = 0; b < st.batch_size; ++b) {
+      for (int64 y = 0; y < st.out_height; ++y) {
         std::array<float, 4> y_weights;
         std::array<int64, 4> y_indices;
-        GetWeightsAndIndices(height_scale, y, in_height, &y_weights,
+        GetWeightsAndIndices(st.height_scale, y, st.in_height, &y_weights,
                              &y_indices);
-        for (int64 x = 0; x < out_width; ++x) {
+        for (int64 x = 0; x < st.out_width; ++x) {
           std::array<float, 4> x_weights;
           std::array<int64, 4> x_indices;
-          GetWeightsAndIndices(width_scale, x, in_width, &x_weights,
+          GetWeightsAndIndices(st.width_scale, x, st.in_width, &x_weights,
                                &x_indices);
-          for (int64 c = 0; c < channels; ++c) {
+          for (int64 c = 0; c < st.channels; ++c) {
             // Use a 4x4 patch to compute the interpolated output value at
             // (b, y, x, c).
             for (int64 i = 0; i < 4; ++i) {
