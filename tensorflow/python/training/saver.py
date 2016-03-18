@@ -1284,7 +1284,7 @@ def _read_meta_graph_file(filename):
 
 
 def _import_meta_graph_def(meta_graph_def):
-  """Recreates a Graph saved in a a `MetaGraphDef` proto.
+  """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function adds all the nodes from the meta graph def proto to the current
   graph, recreates all the collections, and returns a saver from saver_def.
