@@ -84,20 +84,63 @@ def limit_epochs(tensor, num_epochs=None, name=None):
       return array_ops.identity(tensor, name=name)
 
 
-def _input_producer(input_tensor, dtype, num_epochs, shuffle, seed, capacity,
-                    shared_name, name, summary_name):
-  if shuffle:
-    input_tensor = random_ops.random_shuffle(input_tensor, seed=seed)
-  input_tensor = limit_epochs(input_tensor, num_epochs)
+def input_producer(input_tensor, element_shape=None, num_epochs=None,
+                   shuffle=True, seed=None, capacity=32, shared_name=None,
+                   summary_name=None, name=None):
+  """Output the rows of `input_tensor` to a queue for an input pipeline.
 
-  q = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=[dtype], shapes=[[]],
-                              shared_name=shared_name, name=name)
-  enq = q.enqueue_many([input_tensor])
-  queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
-  logging_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
-                             math_ops.cast(q.size(), dtypes.float32) *
-                             (1. / capacity))
-  return q
+  Args:
+    input_tensor: A tensor with the rows to produce. Must be at
+      one-dimensional. Must either have a fully-defined shape, or
+      `element_shape` must be defined.
+    element_shape: (Optional.) A `TensorShape` representing the shape of a
+      row of `input_tensor`, if it cannot be inferred.
+    num_epochs: (Optional.) An integer. If specified `input_producer` produces
+      each row of `input_tensor` `num_epochs` times before generating an
+      `OutOfRange` error. If not specified, `input_producer` can cycle through
+      the rows of `input_tensor` an unlimited number of times.
+    shuffle: (Optional.) A boolean. If true, the rows are randomly shuffled
+      within each eopch.
+    seed: (Optional.) An integer. The seed to use if `shuffle` is true.
+    capacity: (Optional.) The capacity of the queue to be used for buffering
+      the input.
+    shared_name: (Optional.) If set, this queue will be shared under the given
+      name across multiple sessions.
+    summary_name: (Optional.) If set, a scalar summary for the current queue
+      size will be generated, using this name as part of the tag.
+    name: (Optional.) A name for queue.
+
+  Returns:
+    A queue with the output rows.  A `QueueRunner` for the queue is
+    added to the current `QUEUE_RUNNER` collection of the current
+    graph.
+
+  Raises:
+    ValueError: If the shape of the input cannot be inferred from the arguments.
+  """
+  with ops.op_scope([input_tensor], name, "input_producer"):
+    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
+    element_shape = input_tensor.get_shape()[1:].merge_with(element_shape)
+    if not element_shape.is_fully_defined():
+      raise ValueError("Either `input_tensor` must have a fully defined shape "
+                       "or `element_shape` must be specified")
+
+    if shuffle:
+      input_tensor = random_ops.random_shuffle(input_tensor, seed=seed)
+
+    input_tensor = limit_epochs(input_tensor, num_epochs)
+
+    q = data_flow_ops.FIFOQueue(capacity=capacity,
+                                dtypes=[input_tensor.dtype.base_dtype],
+                                shapes=[element_shape],
+                                shared_name=shared_name, name=name)
+    enq = q.enqueue_many([input_tensor])
+    queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
+    if summary_name is not None:
+      logging_ops.scalar_summary("queue/%s/%s" % (q.name, summary_name),
+                                 math_ops.cast(q.size(), dtypes.float32) *
+                                 (1. / capacity))
+    return q
 
 
 def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
@@ -108,9 +151,9 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
     string_tensor: A 1-D string tensor with the strings to produce.
     num_epochs: An integer (optional). If specified, `string_input_producer`
       produces each string from `string_tensor` `num_epochs` times before
-      generating an OutOfRange error. If not specified, `string_input_producer`
-      can cycle through the strings in `string_tensor` an unlimited number of
-      times.
+      generating an `OutOfRange` error. If not specified,
+      `string_input_producer` can cycle through the strings in `string_tensor`
+      an unlimited number of times.
     shuffle: Boolean. If true, the strings are randomly shuffled within each
       epoch.
     seed: An integer (optional). Seed used if shuffle == True.
@@ -137,9 +180,9 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
         logging_ops.Assert(math_ops.greater(array_ops.size(string_tensor), 0),
                            [not_null_err])]):
       string_tensor = array_ops.identity(string_tensor)
-    return _input_producer(
+    return input_producer(
         input_tensor=string_tensor,
-        dtype=dtypes.string,
+        element_shape=[],
         num_epochs=num_epochs,
         shuffle=shuffle,
         seed=seed,
@@ -173,8 +216,8 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
   """
   with ops.op_scope([limit], name, "input_producer") as name:
     range_tensor = math_ops.range(limit)
-    return _input_producer(
-        range_tensor, dtypes.int32, num_epochs, shuffle, seed, capacity,
+    return input_producer(
+        range_tensor, [], num_epochs, shuffle, seed, capacity,
         shared_name, name, "fraction_of_%d_full" % capacity)
 
 

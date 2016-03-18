@@ -92,6 +92,7 @@ The "producer" functions add a queue to the graph and a corresponding
 
 @@match_filenames_once
 @@limit_epochs
+@@input_producer
 @@range_input_producer
 @@slice_input_producer
 @@string_input_producer
