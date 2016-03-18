@@ -147,7 +147,7 @@ To link to source code, use a link starting with:
 the file name starting at the github root. For instance, a link to this file
 should be written as
 `https://www.tensorflow.org/code/tensorflow/g3doc/how_tos/documentation/index.md`.
-This ensures that [tensorflow.org](tensorflow.org) can forward the link to the
+This ensures that [tensorflow.org](https://www.tensorflow.org/) can forward the link to the
 branch of the code corresponding to the version of the documentation you're
 viewing. Do not include url parameters in the URL.
 
