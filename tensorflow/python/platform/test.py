@@ -44,6 +44,7 @@ methods.  We will document these methods soon.
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
+@@is_built_with_gpu
 
 ## Gradient checking
 
@@ -87,6 +88,12 @@ def get_temp_dir():
   """
   return googletest.GetTempDir()
 
+def is_built_with_gpu():
+  """
+  Returns whether TensorFlow was built with GPU support.  Currently
+  only supports CUDA.
+  """
+  return is_built_with_cuda()
 
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
