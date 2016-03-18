@@ -72,6 +72,10 @@ from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
 
+# Import Benchmark class
+Benchmark = googletest.Benchmark  # pylint: disable=invalid-name
+
+
 def main():
   """Runs all unit tests."""
   return googletest.main()

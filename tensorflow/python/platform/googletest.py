@@ -21,7 +21,22 @@ from __future__ import print_function
 # pylint: disable=g-import-not-at-top
 # pylint: disable=wildcard-import
 from . import control_imports
+from tensorflow.python.platform import benchmark
+
+# Import the Benchmark class
+Benchmark = benchmark.Benchmark  # pylint: disable=invalid-name
+
 if control_imports.USE_OSS and control_imports.OSS_GOOGLETEST:
   from tensorflow.python.platform.default._googletest import *
+  from tensorflow.python.platform.default._googletest import main as g_main
 else:
   from tensorflow.python.platform.google._googletest import *
+  from tensorflow.python.platform.google._googletest import main as g_main
+
+
+# Redefine main to allow running benchmarks
+def main(*args, **kwargs):
+  (exit_early, args, kwargs) = benchmark.run_benchmarks(args, kwargs)
+  if exit_early:
+    return 0
+  return g_main(*args, **kwargs)

@@ -40,6 +40,7 @@ py_library(
     name = "platform",
     srcs = glob(["platform/**/*.py"]),
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/core:protos_all_py"],
 )
 
 py_library(
@@ -1034,6 +1035,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/attention_ops_test.py",
     "kernel_tests/barrier_ops_test.py",
     "kernel_tests/bcast_ops_test.py",
+    "kernel_tests/benchmark_test.py",
     "kernel_tests/candidate_sampler_ops_test.py",
     "kernel_tests/cholesky_op_test.py",
     "kernel_tests/clip_ops_test.py",
