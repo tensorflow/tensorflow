@@ -273,7 +273,8 @@ tensorflow::ImportNumpy();
   def TF_NewSessionOptions(target=None, config=None):
     opts = _TF_NewSessionOptions()
     if target is not None:
-      _TF_SetTarget(opts, target)
+      from tensorflow.python.util import compat
+      _TF_SetTarget(opts, compat.as_bytes(target))
     if config is not None:
       from tensorflow.core.protobuf import config_pb2
       if not isinstance(config, config_pb2.ConfigProto):
