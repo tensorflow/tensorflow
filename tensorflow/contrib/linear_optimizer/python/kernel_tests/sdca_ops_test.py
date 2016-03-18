@@ -112,12 +112,13 @@ def make_dense_variable_dict(num_dense_features, num_examples):
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
   return tf.cast(
       tf.greater_equal(predictions, tf.ones_like(predictions) * cutoff),
-      tf.float32)
+      dtype=tf.float32)
 
 
 def get_binary_predictions_for_hinge(predictions):
-  all_ones = tf.ones_like(predictions)
-  return tf.add(tf.sign(predictions), all_ones) / 2
+  return tf.cast(
+      tf.greater_equal(predictions, tf.zeros_like(predictions)),
+      dtype=tf.float32)
 
 
 # Setup the single container shared across all tests. This is testing proper
