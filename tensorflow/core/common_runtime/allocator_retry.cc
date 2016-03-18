@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
+#include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -21,9 +21,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GPUAllocatorRetry::GPUAllocatorRetry() : env_(Env::Default()) {}
+AllocatorRetry::AllocatorRetry() : env_(Env::Default()) {}
 
-void* GPUAllocatorRetry::AllocateRaw(
+void* AllocatorRetry::AllocateRaw(
     std::function<void*(size_t alignment, size_t num_bytes,
                         bool verbose_failure)>
         alloc_func,
