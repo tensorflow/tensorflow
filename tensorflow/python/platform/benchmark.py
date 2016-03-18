@@ -23,6 +23,7 @@ import numbers
 import os
 import re
 
+import six  # pylint: disable=unused-import
 
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
