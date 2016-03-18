@@ -48,10 +48,10 @@ filename = maybe_download('text8.zip', 31344016)
 
 # Read the data into a string.
 def read_data(filename):
-  f = zipfile.ZipFile(filename)
-  for name in f.namelist():
-    return f.read(name).split()
-  f.close()
+  """Extract the first file enclosed in a zip file as a list of words"""
+  with zipfile.ZipFile(filename) as f:
+    data = f.read(f.namelist()[0]).split()
+  return data
 
 words = read_data(filename)
 print('Data size', len(words))
