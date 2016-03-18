@@ -152,6 +152,7 @@ TensorFlow provides several operations that help you perform classification.
 
 @@sigmoid_cross_entropy_with_logits
 @@softmax
+@@log_softmax
 @@softmax_cross_entropy_with_logits
 @@sparse_softmax_cross_entropy_with_logits
 

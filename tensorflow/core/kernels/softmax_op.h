@@ -26,21 +26,23 @@ namespace functor {
 // Functor used by SoftmaxOp to do the computations.
 template <typename Device, typename T>
 struct SoftmaxFunctor {
-  // Computes Softmax activation.
+  // Computes Softmax or LogSoftmax activation.
   //
   // logits: dim: batch_size, num_classes.
   // softmax: dims: batch_size, num_classes.
+  // log: boolean
   void operator()(const Device& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<T>::Matrix softmax);
+                  typename TTypes<T>::Matrix softmax, const bool log);
 };
 
-// Eigen code implementing SoftmaxFunctor::operator().
+// Eigen code implementing SoftmaxFunctor::operator() or
+// LogSoftmaxFunctor::operator().
 // This code works for both CPU and GPU and is used by the functor
 // specializations for both device types.
 template <typename Device, typename T>
 struct SoftmaxEigenImpl {
   static void Compute(const Device& d, typename TTypes<T>::ConstMatrix logits,
-                      typename TTypes<T>::Matrix softmax) {
+                      typename TTypes<T>::Matrix softmax, const bool log) {
     const int kBatchDim = 0;
     const int kClassDim = 1;
 
@@ -61,22 +63,35 @@ struct SoftmaxEigenImpl {
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
     one_by_class.set(1, num_classes);
 #endif
-    // NOTE(touts): If you modify this implementation please run
-    // the ImageNetSoftmaxFwd benchmark in core_ops_test.cc.
-    //
-    // softmax = exp(logits - max(logits along classes));
-    softmax.device(d) = (logits -
-                         logits.maximum(along_class)
-                             .eval()
-                             .reshape(batch_by_one)
-                             .broadcast(one_by_class))
-                            .exp();
-    // softmax = softmax / sum(softmax along classes);
-    softmax.device(d) = (softmax /
-                         softmax.sum(along_class)
-                             .eval()
-                             .reshape(batch_by_one)
-                             .broadcast(one_by_class));
+    //shifted_logits = logits - max(logits along classes);
+    auto shifted_logits = (logits - logits.maximum(along_class)
+                                      .eval()
+                                      .reshape(batch_by_one)
+                                      .broadcast(one_by_class));
+    if (log) {
+      // Calculate the log of the softmax
+      // softmax = logits - max(logits along classes);
+      softmax.device(d) = shifted_logits;
+      // softmax = softmax - log(sum(exp(softmax along classes)));
+      softmax.device(d) = (softmax -
+                           softmax.exp().sum(along_class)
+                              .eval()
+                              .reshape(batch_by_one)
+                              .broadcast(one_by_class)
+                              .log());
+    } else {
+      // NOTE(touts): If you modify this implementation please run
+      // the BM_ImageNetSoftmaxFwd benchmark in nn_ops_test.cc.
+      //
+      // softmax = exp(logits - max(logits along classes));
+      softmax.device(d) = shifted_logits.exp();
+      // softmax = softmax / sum(softmax along classes);
+      softmax.device(d) = (softmax /
+                           softmax.sum(along_class)
+                               .eval()
+                               .reshape(batch_by_one)
+                               .broadcast(one_by_class));
+    }
   }
 };
 
