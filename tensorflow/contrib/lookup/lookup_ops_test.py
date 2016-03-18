@@ -284,7 +284,7 @@ class IndexToStringTest(tf.test.TestCase):
       self.assertRaises(tf.OpError, feats.eval)
       tf.initialize_all_tables().run()
 
-      self.assertAllEqual(("brain", "salad", "surgery", "UNK"), feats.eval())
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"), feats.eval())
 
   def test_duplicate_entries(self):
     with self.test_session():
@@ -293,12 +293,12 @@ class IndexToStringTest(tf.test.TestCase):
       feats = tf.contrib.lookup.index_to_string(indices,
                                                 mapping=mapping_strings)
       tf.initialize_all_tables().run()
-      self.assertAllEqual(("hello", "hello", "UNK"), feats.eval())
+      self.assertAllEqual((b"hello", b"hello", b"UNK"), feats.eval())
 
       self.assertRaises(tf.OpError, tf.initialize_all_tables().run)
 
   def test_index_to_string_with_default_value(self):
-    default_value = "NONE"
+    default_value = b"NONE"
     with self.test_session():
       mapping_strings = tf.constant(["brain", "salad", "surgery"])
       indices = tf.constant([1, 2, 4], tf.int64)
@@ -308,7 +308,7 @@ class IndexToStringTest(tf.test.TestCase):
       self.assertRaises(tf.OpError, feats.eval)
 
       tf.initialize_all_tables().run()
-      self.assertAllEqual(("salad", "surgery", default_value), feats.eval())
+      self.assertAllEqual((b"salad", b"surgery", default_value), feats.eval())
 
 
 if __name__ == "__main__":
