@@ -35,8 +35,6 @@ else:
 
 
 # Redefine main to allow running benchmarks
-def main(*args, **kwargs):
-  (exit_early, args, kwargs) = benchmark.run_benchmarks(args, kwargs)
-  if exit_early:
-    return 0
-  return g_main(*args, **kwargs)
+def main():
+  # Benchmarks determine whether to run tests or not, by calling g_main
+  benchmark.benchmarks_main(true_main=g_main)

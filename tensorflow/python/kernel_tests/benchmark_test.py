@@ -76,26 +76,8 @@ class BenchmarkTest(tf.test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
-    # Don't run any benchmarks.
-    (exit_early, args, kwargs) = benchmark.run_benchmarks(
-        ["--flag1", "--flag3"], {"a": 3})
-
-    self.assertEqual(exit_early, False)
-    self.assertEqual(args, ["--flag1", "--flag3"])
-    self.assertEqual(kwargs, {"a": 3})
-
-    # Validate that SomeBenchmark has not run yet
-    self.assertFalse(_ran_somebenchmark_1[0])
-    self.assertFalse(_ran_somebenchmark_2[0])
-    self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
-
     # Run other benchmarks, but this wont run the one we care about
-    (exit_early, args, kwargs) = benchmark.run_benchmarks(
-        ["--flag1", "--benchmarks=__unrelated__", "--flag3"], {"a": 3})
-
-    self.assertEqual(exit_early, True)
-    self.assertEqual(args, ["--flag1", "--flag3"])
-    self.assertEqual(kwargs, {"a": 3})
+    benchmark._run_benchmarks("unrelated")
 
     # Validate that SomeBenchmark has not run yet
     self.assertFalse(_ran_somebenchmark_1[0])
@@ -105,13 +87,7 @@ class BenchmarkTest(tf.test.TestCase):
     # Run all the benchmarks, avoid generating any reports
     if benchmark.TEST_REPORTER_TEST_ENV in os.environ:
       del os.environ[benchmark.TEST_REPORTER_TEST_ENV]
-    (exit_early, args, kwargs) = benchmark.run_benchmarks(
-        ["--flag1", "--benchmarks=.", "--flag3"], {"a": 3})
-
-    # Validate the output of run_benchmarks
-    self.assertEqual(exit_early, True)
-    self.assertEqual(args, ["--flag1", "--flag3"])
-    self.assertEqual(kwargs, {"a": 3})
+    benchmark._run_benchmarks("SomeRandom")
 
     # Validate that SomeRandomBenchmark ran correctly
     self.assertTrue(_ran_somebenchmark_1[0])

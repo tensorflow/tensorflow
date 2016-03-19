@@ -22,11 +22,13 @@ import inspect
 import numbers
 import os
 import re
+import sys
 
 import six  # pylint: disable=unused-import
 
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
+from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 
 # When a subclass of the Benchmark class is created, it is added to
@@ -169,36 +171,43 @@ def _run_specific_benchmark(benchmark_class):
     benchmark_fn()
 
 
-def run_benchmarks(args, kwargs):
+def _run_benchmarks(regex):
+  """Run benchmarks that match regex `regex`.
+
+  This function goes through the global benchmark registry, and matches
+  benchmark **classe names** of the form "module.name.BenchmarkClass" to
+  the given regex.  If a class matches, all of its benchmark methods
+  are run.
+
+  Args:
+    regex: The string regular expression to match Benchmark classes against.
+  """
+  registry = list(GLOBAL_BENCHMARK_REGISTRY)
+
+  # Match benchmarks in registry against regex
+  for benchmark in registry:
+    benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
+    if re.search(regex, benchmark_name):
+      # Found a match
+
+      _run_specific_benchmark(benchmark)
+
+
+def benchmarks_main(true_main=None):
   """Run benchmarks as declared in args.
 
   Args:
-    args: List of args to main()
-    kwargs: List of kwargs to main()
-
-  Returns:
-    Tuple (early_exit, new_args, kwargs), where
-    early_exit: Bool, whether main() should now exit
-    new_args: Updated args for the remainder (having removed benchmark flags)
-    kwargs: Same as input kwargs.
+    true_main: True main function to run if benchmarks are not requested.
   """
-  exit_early = False
+  argv = sys.argv
+  found_arg = [arg for arg in argv
+               if arg.startswith("--benchmarks=")
+               or arg.startswith("-benchmarks=")]
+  if found_arg:
+    # Remove --benchmarks arg from sys.argv
+    argv.remove(found_arg[0])
 
-  registry = list(GLOBAL_BENCHMARK_REGISTRY)
-
-  new_args = []
-  for arg in args:
-    if arg.startswith("--benchmarks="):
-      exit_early = True
-      regex = arg.split("=")[1]
-
-      # Match benchmarks in registry against regex
-      for benchmark in registry:
-        benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
-        if re.search(regex, benchmark_name):
-          # Found a match
-          _run_specific_benchmark(benchmark)
-    else:
-      new_args.append(arg)
-
-  return (exit_early, new_args, kwargs)
+    regex = found_arg[0].split("=")[1]
+    app.run(lambda _: _run_benchmarks(regex))
+  else:
+    true_main()
