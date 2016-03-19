@@ -109,8 +109,8 @@ class SpaceToDepthTest(tf.test.TestCase):
               [[9 * i, 10 * i, 11 * i, 12 * i],
                [13 * i, 14 * i, 15 * i, 16 * i]]]
     batch_size = 10
-    x_np = [batch_input_elt(i) for i in xrange(batch_size)]
-    x_out = [batch_output_elt(i) for i in xrange(batch_size)]
+    x_np = [batch_input_elt(i) for i in range(batch_size)]
+    x_out = [batch_output_elt(i) for i in range(batch_size)]
     self._testOne(x_np, block_size, x_out)
 
   # Tests for different width and height.
