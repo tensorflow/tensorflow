@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-import six  # pylint: disable=unused-import
+import six
 
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
@@ -106,7 +106,7 @@ class _BenchmarkRegistrar(type):
     return newclass
 
 
-class Benchmark(object):
+class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
   """Abstract class that provides helper functions for running benchmarks.
 
   Any class subclassing this one is immediately registered in the global
@@ -115,7 +115,6 @@ class Benchmark(object):
   Only methods whose names start with the word "benchmark" will be run during
   benchmarking.
   """
-  __metaclass__ = _BenchmarkRegistrar
 
   def _get_name(self, overwrite_name):
     """Returns full name of class and method calling report_benchmark."""
