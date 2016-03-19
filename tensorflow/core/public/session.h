@@ -139,7 +139,8 @@ class Session {
 
   /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
   /// to retrieve non-Tensor metadata output via a `RunOutputs` proto for this
-  /// step.
+  /// step.  `run_outputs` may be nullptr, in which case any metadata output is
+  /// discarded.
   /// NOTE: This API is still experimental and may change.
   virtual Status Run(const RunOptions& run_options,
                      const std::vector<std::pair<string, Tensor> >& inputs,
@@ -148,8 +149,8 @@ class Session {
                      std::vector<Tensor>* outputs, RunOutputs* run_outputs);
 
   /// \brief Sets up a graph for partial execution. All future feeds and
-  /// fetches are specified by 'input_names' and 'output_names'. Returns
-  /// 'handle' that can be used to perform a sequence of partial feeds and
+  /// fetches are specified by `input_names` and `output_names`. Returns
+  /// `handle` that can be used to perform a sequence of partial feeds and
   /// fetches.
   /// NOTE: This API is still experimental and may change.
   virtual Status PRunSetup(const std::vector<string>& input_names,
@@ -157,7 +158,7 @@ class Session {
                            const std::vector<string>& target_nodes,
                            string* handle);
 
-  /// \brief Continues the pending execution specified by 'handle' with the
+  /// \brief Continues the pending execution specified by `handle` with the
   /// provided input tensors and fills `outputs` for the endpoints specified
   /// in `output_names`.
   /// NOTE: This API is still experimental and may change.

@@ -39,8 +39,10 @@ void Shard(int num_workers, thread::ThreadPool* workers, int64 total,
   // much. Let us assume each cost unit is 1ns, kMinCostPerShard=10000
   // is 10us.
   static const int64 kMinCostPerShard = 10000;
-  const int num_shards = std::max(
-      1, std::min<int>(num_workers, total * cost_per_unit / kMinCostPerShard));
+  const int num_shards =
+      std::max<int>(1, std::min(static_cast<int64>(num_workers),
+                                total * cost_per_unit / kMinCostPerShard));
+
   // Each shard contains up to "block_size" units. [0, total) is sharded
   // into:
   //   [0, block_size), [block_size, 2*block_size), ...

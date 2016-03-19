@@ -556,15 +556,13 @@ class EmbeddingWrapper(RNNCell):
   feed into your RNN.
   """
 
-  def __init__(self, cell, embedding_classes=0, embedding=None,
-               initializer=None):
+  def __init__(self, cell, embedding_classes, embedding_size, initializer=None):
     """Create a cell with an added input embedding.
 
     Args:
       cell: an RNNCell, an embedding will be put before its inputs.
       embedding_classes: integer, how many symbols will be embedded.
-      embedding: Variable, the embedding to use; if None, a new embedding
-        will be created; if set, then embedding_classes is not required.
+      embedding_size: integer, the size of the vectors we embed into.
       initializer: an initializer to use when creating the embedding;
         if None, the initializer from variable scope or a default one is used.
 
@@ -574,21 +572,12 @@ class EmbeddingWrapper(RNNCell):
     """
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
-    if embedding_classes < 1 and embedding is None:
-      raise ValueError("Pass embedding or embedding_classes must be > 0: %d."
-                       % embedding_classes)
-    if embedding_classes > 0 and embedding is not None:
-      if embedding.size[0] != embedding_classes:
-        raise ValueError("You declared embedding_classes=%d but passed an "
-                         "embedding for %d classes." % (embedding.size[0],
-                                                        embedding_classes))
-      if embedding.size[1] != cell.input_size:
-        raise ValueError("You passed embedding with output size %d and a cell"
-                         " that accepts size %d." % (embedding.size[1],
-                                                     cell.input_size))
+    if embedding_classes <= 0 or embedding_size <= 0:
+      raise ValueError("Both embedding_classes and embedding_size must be > 0: "
+                       "%d, %d." % (embedding_classes, embedding_size))
     self._cell = cell
     self._embedding_classes = embedding_classes
-    self._embedding = embedding
+    self._embedding_size = embedding_size
     self._initializer = initializer
 
   @property
@@ -607,20 +596,17 @@ class EmbeddingWrapper(RNNCell):
     """Run the cell on embedded inputs."""
     with vs.variable_scope(scope or type(self).__name__):  # "EmbeddingWrapper"
       with ops.device("/cpu:0"):
-        if self._embedding:
-          embedding = self._embedding
+        if self._initializer:
+          initializer = self._initializer
+        elif vs.get_variable_scope().initializer:
+          initializer = vs.get_variable_scope().initializer
         else:
-          if self._initializer:
-            initializer = self._initializer
-          elif vs.get_variable_scope().initializer:
-            initializer = vs.get_variable_scope().initializer
-          else:
-            # Default initializer for embeddings should have variance=1.
-            sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-            initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-          embedding = vs.get_variable("embedding", [self._embedding_classes,
-                                                    self._cell.input_size],
-                                      initializer=initializer)
+          # Default initializer for embeddings should have variance=1.
+          sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
+          initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
+        embedding = vs.get_variable("embedding", [self._embedding_classes,
+                                                  self._embedding_size],
+                                    initializer=initializer)
         embedded = embedding_ops.embedding_lookup(
             embedding, array_ops.reshape(inputs, [-1]))
     return self._cell(embedded, state)

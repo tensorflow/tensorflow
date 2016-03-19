@@ -268,15 +268,26 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // failure, inputs[] become the property of the implementation (the
 // implementation will eventually call TF_DeleteTensor on each input).
 //
-// The caller retains the ownership of both `run_options` and `run_outputs`, and
-// should manually call TF_DeleteBuffer on them.
+// Any NULL and non-NULL value combinations for (`run_options`,
+// `run_outputs`) are valid.
+//
+//    - `run_options` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to a `TF_Buffer` containing the
+//      serialized representation of a `RunOptions` protocol buffer.
+//    - `run_output` may be NULL, in which case it will be ignored; or non-NULL,
+//      in which case it must point to an empty, freshly allocated `TF_Buffer`
+//      that may be updated to contain the serialized representation of a
+//      `RunOutput` protocol buffer.
+//
+// The caller retains the ownership of `run_options` and/or `run_outputs` (when
+// not NULL) and should manually call TF_DeleteBuffer on them.
 //
 // On success, the tensors corresponding to output_names[0,noutputs-1]
 // are placed in outputs[], and these outputs[] become the property
 // of the caller (the caller must eventually call TF_DeleteTensor on
 // them).
 //
-// On failure, outputs[] contains nulls.
+// On failure, outputs[] contains NULLs.
 extern void TF_Run(TF_Session*,
                    // RunOptions
                    const TF_Buffer* run_options,
@@ -341,7 +352,7 @@ extern void TF_PRun(TF_Session*, const char* handle,
 // On success, place OK in status and return the newly created library handle.
 // The caller owns the library handle.
 //
-// On failure, place an error status in status and return nullptr.
+// On failure, place an error status in status and return NULL.
 extern TF_Library* TF_LoadLibrary(const char* library_filename,
                                   TF_Status* status);
 

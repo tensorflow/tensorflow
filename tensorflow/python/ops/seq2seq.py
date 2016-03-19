@@ -311,7 +311,9 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   """
   with variable_scope.variable_scope(scope or "embedding_rnn_seq2seq"):
     # Encoder.
-    encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols)
+    encoder_cell = rnn_cell.EmbeddingWrapper(
+        cell, embedding_classes=num_encoder_symbols,
+        embedding_size=cell.input_size)
     _, encoder_state = rnn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
 
     # Decoder.
@@ -686,7 +688,9 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
   """
   with variable_scope.variable_scope(scope or "embedding_attention_seq2seq"):
     # Encoder.
-    encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols)
+    encoder_cell = rnn_cell.EmbeddingWrapper(
+        cell, embedding_classes=num_encoder_symbols,
+        embedding_size=cell.input_size)
     encoder_outputs, encoder_state = rnn.rnn(
         encoder_cell, encoder_inputs, dtype=dtype)
 
@@ -772,7 +776,9 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
 
   with variable_scope.variable_scope(scope or "one2many_rnn_seq2seq"):
     # Encoder.
-    encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols)
+    encoder_cell = rnn_cell.EmbeddingWrapper(
+        cell, embedding_classes=num_encoder_symbols,
+        embedding_size=cell.input_size)
     _, encoder_state = rnn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
 
     # Decoder.

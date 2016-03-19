@@ -23,8 +23,8 @@ import sys
 from tensorflow.python.platform import flags
 
 
-def run():
+def run(main=None):
   f = flags.FLAGS
   f._parse_flags()
-  main = sys.modules['__main__'].main
+  main = main or sys.modules['__main__'].main
   sys.exit(main(sys.argv))

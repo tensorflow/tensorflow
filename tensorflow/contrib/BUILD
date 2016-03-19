@@ -24,6 +24,14 @@ py_library(
     ],
 )
 
+cc_library(
+    name = "contrib_kernels",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

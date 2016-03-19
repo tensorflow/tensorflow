@@ -315,11 +315,20 @@ class ColocationGraph {
             device_set_->FindMatchingDevices(specified_device_name,
                                              &devices_matching_nodedef);
             if (devices_matching_nodedef.empty()) {
+              // Sometimes it is almost impossible to understand the problem
+              // without a list of available devices.
+              std::vector<string> device_names;
+              for (const Device* device : device_set_->devices()) {
+                device_names.push_back(device->name());
+              }
+              std::sort(device_names.begin(), device_names.end());
+
               return errors::InvalidArgument(
                   "Could not satisfy explicit device specification '",
                   node->def().device(),
                   "' because no devices matching that specification "
-                  "are registered in this process");
+                  "are registered in this process; available devices: ",
+                  str_util::Join(device_names, ", "));
             } else if (specified_device_name.has_type) {
               return errors::InvalidArgument(
                   "Could not satisfy explicit device specification '",

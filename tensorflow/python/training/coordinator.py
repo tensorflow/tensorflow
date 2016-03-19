@@ -131,12 +131,18 @@ class Coordinator(object):
     # Event set when threads must stop.
     self._stop_event = threading.Event()
     # Python exc_info to report.
+    # If not None, it should hold the returned value of sys.exc_info(), which is
+    # a tuple containing exception (type, value, traceback).
     self._exc_info_to_raise = None
 
   def request_stop(self, ex=None):
     """Request that the threads stop.
 
     After this is called, calls to `should_stop()` will return `True`.
+
+    Note: If an exception is being passed in, in must be in the context of
+    handling the exception (i.e. `try: ... except Exception as ex: ...`) and not
+    a newly created one.
 
     Args:
       ex: Optional `Exception`, or Python `exc_info` tuple as returned by
@@ -154,6 +160,22 @@ class Coordinator(object):
             logging.info("Error reported to Coordinator: %s",
                          compat.as_str_any(ex))
             self._exc_info_to_raise = sys.exc_info()
+          # self._exc_info_to_raise should contain a tuple containing exception
+          # (type, value, traceback)
+          if (len(self._exc_info_to_raise) != 3 or
+              not self._exc_info_to_raise[0] or
+              not self._exc_info_to_raise[1]):
+            # Raise, catch and record the exception here so that error happens
+            # where expected.
+            try:
+              raise ValueError(
+                  "ex must be a tuple or sys.exc_info must return the current "
+                  "exception: %s"
+                  % self._exc_info_to_raise)
+            except ValueError:
+              # Record this error so it kills the coordinator properly.
+              self._exc_info_to_raise = sys.exc_info()
+
         self._stop_event.set()
 
   def clear_stop(self):

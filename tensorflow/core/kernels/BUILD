@@ -214,6 +214,21 @@ cc_header_only_library(
     deps = [":bounds_check"],
 )
 
+cc_library(
+    name = "image_resizer_state",
+    hdrs = ["image_resizer_state.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_header_only_library(
+    name = "image_resizer_state_lib",
+    deps = [":image_resizer_state"],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 tf_kernel_libraries(
@@ -221,7 +236,6 @@ tf_kernel_libraries(
     prefixes = [
         "bcast_ops",
         "bitcast_op",
-        "depthtospace_op",
         "concat_op",
         "constant_op",
         "diag_op",
@@ -239,7 +253,6 @@ tf_kernel_libraries(
         "reverse_sequence_op",
         "shape_ops",
         "slice_op",
-        "spacetodepth_op",
         "split_op",
         "tile_ops",
         "transpose_op",
@@ -250,6 +263,7 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":concat_lib",
+        ":depth_space_ops",
         ":fill_functor",
         ":ops_util",
         ":split_lib",
@@ -545,6 +559,7 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
+        ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
@@ -830,6 +845,31 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "depth_space_ops",
+    srcs = [
+        "depthtospace_op.cc",
+        "spacetodepth_op.cc",
+    ],
+    hdrs = [
+        "depthtospace_op.h",
+        "spacetodepth_op.h",
+    ],
+    gpu_srcs = [
+        "depthtospace_op.h",
+        "depthtospace_op_gpu.cu.cc",
+        "spacetodepth_op.h",
+        "spacetodepth_op_gpu.cu.cc",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 tf_kernel_libraries(
     name = "parsing",
     prefixes = [
@@ -1062,6 +1102,7 @@ filegroup(
         "slice_op.h",
         "softmax_op.cc",
         "softmax_op.h",
+        "softmax_op_functor.h",
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
@@ -1095,10 +1136,12 @@ filegroup(
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
+        "image_resizer_state.h",
         "maxpooling_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
+        "relu_op_functor.h",
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",

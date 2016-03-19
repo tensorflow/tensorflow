@@ -184,7 +184,8 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 1], dtype=tf.int32)
         m = tf.zeros([1, 2])
         g, new_m = tf.nn.rnn_cell.EmbeddingWrapper(
-            tf.nn.rnn_cell.GRUCell(2), 3)(x, m)
+            tf.nn.rnn_cell.GRUCell(2),
+            embedding_classes=3, embedding_size=2)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1]]),
                                     m.name: np.array([[0.1, 0.1]])})

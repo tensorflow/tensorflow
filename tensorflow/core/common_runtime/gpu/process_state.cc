@@ -187,9 +187,17 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
     gpu::Platform* gpu_platform = GPUMachineManager();
     gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
     CHECK(se);
-    Allocator* allocator = new PoolAllocator(
-        100 /*pool_size_limit*/, true /*auto_resize*/,
-        new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+    Allocator* allocator = nullptr;
+    static constexpr bool kCudaHostMemoryUseBFC = true;
+    if (kCudaHostMemoryUseBFC) {
+      allocator =
+          new BFCAllocator(new CUDAHostAllocator(se), 1LL << 36 /*64GB max*/,
+                           true /*allow_growth*/, "cuda_host_bfc" /*name*/);
+    } else {
+      allocator = new PoolAllocator(
+          100 /*pool_size_limit*/, true /*auto_resize*/,
+          new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+    }
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.

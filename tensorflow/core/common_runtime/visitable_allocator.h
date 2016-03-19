@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_VISITABLE_ALLOCATOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_VISITABLE_ALLOCATOR_H_
+#ifndef TENSORFLOW_COMMON_RUNTIME_VISITABLE_ALLOCATOR_H_
+#define TENSORFLOW_COMMON_RUNTIME_VISITABLE_ALLOCATOR_H_
 
 #include <functional>
 #include "tensorflow/core/framework/allocator.h"
@@ -42,4 +42,4 @@ class VisitableAllocator : public Allocator {
   virtual void AddFreeVisitor(Visitor visitor) = 0;
 };
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_VISITABLE_ALLOCATOR_H_
+#endif  // TENSORFLOW_COMMON_RUNTIME_VISITABLE_ALLOCATOR_H_

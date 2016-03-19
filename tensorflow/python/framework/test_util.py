@@ -165,9 +165,8 @@ class TensorFlowTestCase(googletest.TestCase):
       text_format.Merge(expected_message_maybe_ascii, expected_message)
       self._AssertProtoEquals(expected_message, message)
     else:
-      assert False, ("Can't compare protos of type " +
-                     type(expected_message_maybe_ascii) + " and " +
-                     type(message))
+      assert False, ("Can't compare protos of type %s and %s" %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self, expected, actual, producer=versions.GRAPH_DEF_VERSION,

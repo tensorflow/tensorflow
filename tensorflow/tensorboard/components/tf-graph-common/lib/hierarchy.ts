@@ -515,6 +515,13 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
     let sourceAncestorIndex = getPath(graph.nodes[baseEdge.v], sourcePath);
     let destAncestorIndex = getPath(graph.nodes[baseEdge.w], destPath);
 
+    // If the hierarchical path cannot be found for either endpoint, then we
+    // cannot create the edge. This happens for example when a node has a
+    // control dependency on a summary node, which are embedded.
+    if (sourceAncestorIndex === -1 || destAncestorIndex === -1) {
+      return;
+    }
+
     // Find the lowest shared ancestor between source and dest by looking for
     // the highest nodes that differ between their ancestor paths.
     while (sourcePath[sourceAncestorIndex] === destPath[destAncestorIndex]) {

@@ -405,6 +405,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     ValueError:  If shapes do not conform.
 
   Examples:
+
   ```python
   # 2-D example
   a = [[1, 2], [3, 4], [5, 6]]

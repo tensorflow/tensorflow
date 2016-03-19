@@ -218,7 +218,7 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
-    """Enqueues zero or elements to this queue.
+    """Enqueues zero or more elements to this queue.
 
     This operation slices each component tensor along the 0th dimension to
     make multiple queue elements. All of the tensors in `vals` must have the
