@@ -321,15 +321,18 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInfo) {
 
   // in-extract
   let hasInExtract = renderNode.isolatedInExtract.length > 0;
+  let hasOutExtract = renderNode.isolatedOutExtract.length > 0;
+
   if (hasInExtract) {
+    let offset = layout.PARAMS.subscene.meta.extractXOffset;
     let inExtractX = renderNode.coreBox.width -
-      renderNode.inExtractBox.width / 2 - renderNode.outExtractBox.width;
+      renderNode.inExtractBox.width / 2 - renderNode.outExtractBox.width -
+          (hasOutExtract ? offset : 0);
     translate(selectChild(sceneGroup, "g", Class.Scene.INEXTRACT),
                     inExtractX, yTranslate);
   }
 
   // out-extract
-  let hasOutExtract = renderNode.isolatedOutExtract.length > 0;
   if (hasOutExtract) {
     let outExtractX = renderNode.coreBox.width -
       renderNode.outExtractBox.width / 2;

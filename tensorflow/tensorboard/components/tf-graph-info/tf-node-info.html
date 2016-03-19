@@ -195,7 +195,7 @@
                 </paper-icon-button>
                 Control dependencies
               </div>
-              <iron-collapse opened="{{_openedControlPred}}">
+              <iron-collapse opened="{{_openedControlPred}}" no-animation>
                 <template is="dom-if" if="{{_openedControlPred}}" restamp="true">
                   <iron-list class="sub-list" items="[[_predecessors.control]]">
                     <template>
@@ -246,7 +246,7 @@
                 </paper-icon-button>
                 Control dependencies
               </div>
-              <iron-collapse opened="{{_openedControlSucc}}">
+              <iron-collapse opened="{{_openedControlSucc}}" no-animation>
                 <template is="dom-if" if="{{_openedControlSucc}}" restamp="true">
                   <iron-list class="sub-list" items="[[_successors.control]]">
                     <template>

@@ -294,7 +294,7 @@ class BaseSession(SessionInterface):
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
     The optional `options` argument expects a [`RunOptions`] proto. The options
-    allow controling the behavior of this particular step (e.g. turning tracing
+    allow controlling the behavior of this particular step (e.g. turning tracing
     on).
 
     The optional `run_outputs` argument expects a [`RunOutputs`] proto. When

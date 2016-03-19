@@ -420,18 +420,26 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
                                             run_options->length)) {
         status->status =
             tensorflow::errors::InvalidArgument("Unparseable RunOptions proto");
+        return;
       }
-      RunOutputs run_outputs_proto;
+      if (run_outputs != nullptr && run_outputs->data != nullptr) {
+        status->status = tensorflow::errors::InvalidArgument(
+            "Passing non-empty run_outputs is invalid.");
+        return;
+      }
 
+      RunOutputs run_outputs_proto;
       result = s->session->Run(run_options_proto, inputs, output_tensor_names,
                                target_node_names, &outputs, &run_outputs_proto);
 
       // Serialize back to upstream client, who now owns the new buffer
-      int proto_size = run_outputs_proto.ByteSize();
-      void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
-      run_outputs_proto.SerializeToArray(str_buf, proto_size);
-      run_outputs->data = str_buf;
-      run_outputs->length = proto_size;
+      if (run_outputs != nullptr) {
+        int proto_size = run_outputs_proto.ByteSize();
+        void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
+        run_outputs_proto.SerializeToArray(str_buf, proto_size);
+        run_outputs->data = str_buf;
+        run_outputs->length = proto_size;
+      }
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.

@@ -25,7 +25,6 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -927,13 +926,32 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(constant_op.constant(1.0),
                  options=run_options,
                  run_outputs=run_outputs)
+
         self.assertTrue(run_outputs.HasField('step_stats'))
+        self.assertEquals(len(run_outputs.step_stats.dev_stats), 1)
 
-        step_stats = step_stats_pb2.StepStats()
-        self.assertEquals(len(step_stats.dev_stats), 0)
+  def testRunOptionsRunOutputs(self):
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_outputs = config_pb2.RunOutputs()
 
-        step_stats.CopyFrom(run_outputs.step_stats)
-        self.assertEquals(len(step_stats.dev_stats), 1)
+    with ops.device('/cpu:0'):
+      with session.Session() as sess:
+        # all combinations are valid
+        sess.run(constant_op.constant(1.0), options=None, run_outputs=None)
+        sess.run(constant_op.constant(1.0), options=None,
+                 run_outputs=run_outputs)
+        self.assertTrue(not run_outputs.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_outputs=None)
+        self.assertTrue(not run_outputs.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_outputs=run_outputs)
+
+        self.assertTrue(run_outputs.HasField('step_stats'))
+        self.assertEquals(len(run_outputs.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:

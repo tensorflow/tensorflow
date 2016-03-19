@@ -292,6 +292,15 @@ Allocator* cpu_allocator();
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
+// Abstract interface of an object that does the underlying suballoc/free of
+// memory for a higher-level allocator.
+class SubAllocator {
+ public:
+  virtual ~SubAllocator() {}
+  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  virtual void Free(void* ptr, size_t num_bytes) = 0;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_ALLOCATOR_H_

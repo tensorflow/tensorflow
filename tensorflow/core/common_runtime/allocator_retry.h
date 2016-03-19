@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ALLOCATOR_RETRY_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ALLOCATOR_RETRY_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_ALLOCATOR_RETRY_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_ALLOCATOR_RETRY_H_
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -23,9 +23,9 @@ limitations under the License.
 namespace tensorflow {
 
 // A retrying wrapper for a memory allocator.
-class GPUAllocatorRetry {
+class AllocatorRetry {
  public:
-  GPUAllocatorRetry();
+  AllocatorRetry();
 
   // Call 'alloc_func' to obtain memory.  On first call,
   // 'verbose_failure' will be false.  If return value is nullptr,
@@ -50,11 +50,11 @@ class GPUAllocatorRetry {
 };
 
 // Implementation details below
-inline void GPUAllocatorRetry::NotifyDealloc() {
+inline void AllocatorRetry::NotifyDealloc() {
   mutex_lock l(mu_);
   memory_returned_.notify_all();
 }
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ALLOCATOR_RETRY_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_ALLOCATOR_RETRY_H_

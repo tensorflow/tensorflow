@@ -968,7 +968,6 @@ tf_cuda_library(
 tf_cuda_library(
     name = "gpu_runtime",
     srcs = [
-        "common_runtime/gpu/gpu_allocator_retry.cc",
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -982,7 +981,6 @@ tf_cuda_library(
         "common_runtime/gpu_device_context.h",
     ],
     hdrs = [
-        "common_runtime/gpu/gpu_allocator_retry.h",
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
@@ -991,7 +989,6 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.h",
         "common_runtime/gpu/pool_allocator.h",
         "common_runtime/gpu/process_state.h",
-        "common_runtime/gpu/visitable_allocator.h",
     ],
     copts = tf_copts(),
     linkstatic = 1,
