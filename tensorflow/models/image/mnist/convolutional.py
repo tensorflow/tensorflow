@@ -150,7 +150,7 @@ def main(argv=None):  # pylint: disable=unused-argument
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   # The variables below hold all the trainable weights. They are passed an
-  # initial value which will be assigned when when we call:
+  # initial value which will be assigned when we call:
   # {tf.initialize_all_variables().run()}
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
