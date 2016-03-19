@@ -54,7 +54,6 @@ cc_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     deps = [
-        ":eigen_helpers",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -213,24 +212,6 @@ cc_library(
 cc_header_only_library(
     name = "bounds_check_lib",
     deps = [":bounds_check"],
-)
-
-cc_library(
-    name = "eigen_helpers",
-    hdrs = [
-        "eigen_activations.h",
-        "eigen_attention.h",
-        "eigen_backward_cuboid_convolutions.h",
-        "eigen_backward_spatial_convolutions.h",
-        "eigen_cuboid_convolution.h",
-        "eigen_patch_3d.h",
-        "eigen_pooling.h",
-        "eigen_softmax.h",
-        "eigen_spatial_convolutions.h",
-    ],
-    deps = [
-        "//third_party/eigen3",
-    ],
 )
 
 cc_library(
@@ -563,12 +544,12 @@ tf_kernel_libraries(
     name = "image",
     prefixes = [
         "adjust_contrast_op",
+        "attention_ops",
         "colorspace_op",
         "decode_jpeg_op",
         "decode_png_op",
         "draw_bounding_box_op",
         "encode_jpeg_op",
-        "attention_ops",
         "encode_png_op",
         "random_crop_op",
         "resize_area_op",
@@ -578,7 +559,6 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
-        ":eigen_helpers",
         ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
@@ -586,27 +566,6 @@ tf_kernel_libraries(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_tests(
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
-    tests = [
-        "eigen_activations_test",
-        "eigen_attention_test",
-        "eigen_backward_spatial_convolutions_test",
-        "eigen_pooling_test",
-        "eigen_softmax_test",
-        "eigen_spatial_convolutions_test",
-    ],
-    deps = [
-        ":eigen_helpers",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -877,7 +836,6 @@ tf_kernel_library(
     ],
     deps = [
         ":conv_2d",
-        ":eigen_helpers",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1087,15 +1045,6 @@ filegroup(
     srcs = [
         "avgpooling_op.h",
         "bounds_check.h",
-        "eigen_activations.h",
-        "eigen_attention.h",
-        "eigen_backward_cuboid_convolutions.h",
-        "eigen_backward_spatial_convolutions.h",
-        "eigen_cuboid_convolution.h",
-        "eigen_patch_3d.h",
-        "eigen_pooling.h",
-        "eigen_softmax.h",
-        "eigen_spatial_convolutions.h",
         "maxpooling_op.h",
         "ops_util.cc",
         "ops_util.h",
