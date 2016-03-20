@@ -46,7 +46,7 @@ def maybe_download(filename, expected_bytes):
 filename = maybe_download('text8.zip', 31344016)
 
 
-# Read the data into a string.
+# Read the data into a list of strings.
 def read_data(filename):
   """Extract the first file enclosed in a zip file as a list of words"""
   with zipfile.ZipFile(filename) as f:

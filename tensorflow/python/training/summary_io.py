@@ -116,7 +116,7 @@ class SummaryWriter(object):
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
-    [`Session.run()`](client.md#Session.run] or
+    [`Session.run()`](client.md#Session.run) or
     [`Tensor.eval()`](framework.md#Tensor.eval), to this
     function. Alternatively, you can pass a `tf.Summary` protocol
     buffer that you populate with your own data. The latter is
