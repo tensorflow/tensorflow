@@ -63,7 +63,7 @@ grads_and_vars = opt.compute_gradients(loss, <list of variables>)
 
 # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
 # need to the 'gradient' part, for example cap them, etc.
-capped_grads_and_vars = [(MyCapper(gv[0]), gv[1])) for gv in grads_and_vars]
+capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
 
 # Ask the optimizer to apply the capped gradients.
 opt.apply_gradients(capped_grads_and_vars)
@@ -1214,6 +1214,10 @@ Request that the threads stop.
 
 After this is called, calls to `should_stop()` will return `True`.
 
+Note: If an exception is being passed in, in must be in the context of
+handling the exception (i.e. `try: ... except Exception as ex: ...`) and not
+a newly created one.
+
 ##### Args:
 
 
@@ -1714,7 +1718,7 @@ training.
 
 - - -
 
-#### `tf.train.SummaryWriter.__init__(logdir, graph_def=None, max_queue=10, flush_secs=120)` {#SummaryWriter.__init__}
+#### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
 Creates a `SummaryWriter` and an event file.
 
@@ -1723,7 +1727,7 @@ This event file will contain `Event` protocol buffers constructed when you
 call one of the following functions: `add_summary()`, `add_session_log()`,
 `add_event()`, or `add_graph()`.
 
-If you pass a `graph_def` protocol buffer to the constructor it is added to
+If you pass a `Graph` to the constructor it is added to
 the event file. (This is equivalent to calling `add_graph()` later).
 
 TensorBoard will pick the graph from the file and display it graphically so
@@ -1734,8 +1738,8 @@ the graph from the session in which you launched it:
 ...create a graph...
 # Launch the graph in a session.
 sess = tf.Session()
-# Create a summary writer, add the 'graph_def' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph_def)
+# Create a summary writer, add the 'graph' to the event file.
+writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
 ```
 
 The other arguments to the constructor control the asynchronous writes to
@@ -1750,10 +1754,11 @@ the event file:
 
 
 *  <b>`logdir`</b>: A string. Directory where event file will be written.
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`max_queue`</b>: Integer. Size of the queue for pending events and summaries.
 *  <b>`flush_secs`</b>: Number. How often, in seconds, to flush the
     pending events and summaries to disk.
+*  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
 
 
 
@@ -1812,9 +1817,9 @@ Adds an event to the event file.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_graph(graph_def, global_step=None)` {#SummaryWriter.add_graph}
+#### `tf.train.SummaryWriter.add_graph(graph, global_step=None, graph_def=None)` {#SummaryWriter.add_graph}
 
-Adds a `GraphDef` protocol buffer to the event file.
+Adds a `Graph` to the event file.
 
 The graph described by the protocol buffer will be displayed by
 TensorBoard. Most users pass a graph in the constructor instead.
@@ -1822,9 +1827,15 @@ TensorBoard. Most users pass a graph in the constructor instead.
 ##### Args:
 
 
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`global_step`</b>: Number. Optional global step counter to record with the
     graph.
+*  <b>`graph_def`</b>: DEPRECATED. Use the `graph` parameter instead.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both graph and graph_def are passed to the method.
 
 
 
@@ -2281,4 +2292,9 @@ device assignments have not changed.
 
 ##### Returns:
 
-  A saver constructed rom `saver_def` in `MetaGraphDef`.
+  A saver constructed rom `saver_def` in `MetaGraphDef` or None.
+
+  A None value is returned if no variables exist in the `MetaGraphDef`
+  (i.e., there are no variables to restore).
+
+

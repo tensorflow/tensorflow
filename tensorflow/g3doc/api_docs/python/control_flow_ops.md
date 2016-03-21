@@ -190,10 +190,10 @@ Create a case operation.
 
 The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
 Each pair contains a boolean scalar tensor and a python callable that
-creates the tensors to be returned if the boolean evaluates to True. `default`
-is a callable generating a list of tensors. All the callables in
-`pred_fn_pairs` as well as `default` should return the same number and types
-of tensors.
+creates the tensors to be returned if the boolean evaluates to True.
+`default` is a callable generating a list of tensors. All the callables
+in `pred_fn_pairs` as well as `default` should return the same number
+and types of tensors.
 
 If `exclusive==True`, all predicates are evaluated, and a logging operation
 with an error is returned if more than one of the predicates evaluates to
@@ -289,7 +289,7 @@ of the result tensor is `[len(values)] + fn(values[0]).shape`.
 *  <b>`dtype`</b>: (optional) The output type of `fn`.
 *  <b>`parallel_iterations`</b>: (optional) The number of iterations allowed to run
                        in parallel.
-*  <b>`back_prop`</b>: (optional) True enables backprop support.
+*  <b>`back_prop`</b>: (optional) True enables back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 
@@ -308,6 +308,7 @@ of the result tensor is `[len(values)] + fn(values[0]).shape`.
   ```python
   elems = [1, 2, 3, 4, 5, 6]
   squares = map_fn(lambda x: x * x, elems)
+  # squares == [1, 4, 9, 16, 25, 36]
   ```
 
 
@@ -326,7 +327,7 @@ preceding invocation of fn. If `initializer` is None, `elems` must contain
 at least one element, and its first element is used as the initializer.
 
 Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
-of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+of the result tensor is fn(initializer, values[0]).shape`.
 
 ##### Args:
 
@@ -336,7 +337,7 @@ of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
 *  <b>`initializer`</b>: (optional) The initial value for the accumulator.
 *  <b>`parallel_iterations`</b>: (optional) The number of iterations allowed to run
                        in parallel.
-*  <b>`back_prop`</b>: (optional) True enables backprop support.
+*  <b>`back_prop`</b>: (optional) True enables back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 
@@ -355,6 +356,7 @@ of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
   ```python
   elems = [1, 2, 3, 4, 5, 6]
   sum = foldl(lambda a, x: a + x, elems)
+  # sum == 21
   ```
 
 
@@ -373,7 +375,7 @@ invocation of fn. If `initializer` is None, `elems` must contain at least
 one element, and its first element is used as the initializer.
 
 Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
-of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+of the result tensor is `fn(initializer, values[0]).shape`.
 
 ##### Args:
 
@@ -383,7 +385,7 @@ of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
 *  <b>`initializer`</b>: (optional) The initial value for the accumulator.
 *  <b>`parallel_iterations`</b>: (optional) The number of iterations allowed to run
                        in parallel.
-*  <b>`back_prop`</b>: (optional) True enables backprop support.
+*  <b>`back_prop`</b>: (optional) True enables back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 
@@ -402,6 +404,55 @@ of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
   ```python
   elems = [1, 2, 3, 4, 5, 6]
   sum = foldr(lambda a, x: a + x, elems)
+  # sum == 21
+  ```
+
+
+- - -
+
+### `tf.scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#scan}
+
+The scan operator on the list of tensors resulted from unpacking `elems`
+along the first dimension.
+
+This scan operator repeatedly applies the function `fn` to a sequence
+of elements from first to last. The elements are made of the tensors
+unpacked from `elems` on dimension 0. The function fn takes two tensors as
+arguments. The first argument is the accumulated value computed from the
+preceding invocation of fn. If `initializer` is None, `elems` must contain
+at least one element, and its first element is used as the initializer.
+
+Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+
+##### Args:
+
+
+*  <b>`fn`</b>: The function to be performed.
+*  <b>`elems`</b>: A tensor to be unpacked on dimension 0.
+*  <b>`initializer`</b>: (optional) The initial value for the accumulator.
+*  <b>`parallel_iterations`</b>: (optional) The number of iterations allowed to run
+                       in parallel.
+*  <b>`back_prop`</b>: (optional) True enables back propagation.
+*  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
+*  <b>`name`</b>: (optional) Name prefix for the returned tensors.
+
+##### Returns:
+
+  A tensor that packs the results of applying `fn` to the list of tensors
+  unpacked from `elems`, from first to last.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `fn` is not callable.
+
+##### Example:
+
+  ```python
+  elems = [1, 2, 3, 4, 5, 6]
+  sum = scan(lambda a, x: a + x, elems)
+  # sum == [1, 3, 6, 10, 15, 21]
   ```
 
 

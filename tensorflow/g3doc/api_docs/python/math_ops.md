@@ -213,7 +213,7 @@ Add all input tensors element wise.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
     Must all be the same size and shape.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -554,6 +554,35 @@ Computes sin of x element-wise.
 
 - - -
 
+### `tf.lbeta(x, name='lbeta')` {#lbeta}
+
+Computes `ln(|Beta(x)|)`, reducing along the last dimension.
+
+Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
+
+```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
+
+, and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
+`lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
+the last dimension is treated as the `z` vector.
+
+Note that if `z = [u, v]`, then
+`Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
+bivariate beta function.
+
+##### Args:
+
+
+*  <b>`x`</b>: A rank `n + 1` `Tensor` with type `float`, or `double`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The logarithm of `|Beta(x)|` reducing along the last dimension.
+
+
+- - -
+
 ### `tf.lgamma(x, name=None)` {#lgamma}
 
 Computes `ln(|gamma(x)|)` element-wise.
@@ -561,8 +590,7 @@ Computes `ln(|gamma(x)|)` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A Tensor with type `float`, or `double`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -580,8 +608,7 @@ Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A Tensor with type `float`, or `double`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -686,6 +713,75 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Returns:
 
   A `Tensor`. Has the same type as `diagonal`.
+
+
+- - -
+
+### `tf.diag_part(input, name=None)` {#diag_part}
+
+Returns the diagonal part of the tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+For example:
+
+```prettyprint
+# 'input' is [[1, 0, 0, 0]
+              [0, 2, 0, 0]
+              [0, 0, 3, 0]
+              [0, 0, 0, 4]]
+
+tf.diag_part(input) ==> [1, 2, 3, 4]
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+    Rank k tensor where k is 2, 4, or 6.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`. The extracted diagonal.
+
+
+- - -
+
+### `tf.trace(x, name=None)` {#trace}
+
+Compute the trace of a tensor `x`.
+
+`trace(x)` returns the sum of along the diagonal.
+
+For example:
+
+```python
+# 'x' is [[1, 1],
+#         [1, 1]]
+tf.trace(x) ==> 2
+
+# 'x' is [[1,2,3],
+#         [4,5,6],
+#         [7,8,9]]
+tf.trace(x) ==> 15
+```
+
+##### Args:
+
+
+*  <b>`input_tensor`</b>: 2-D tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The trace of input tensor.
 
 
 - - -
@@ -2098,7 +2194,7 @@ Returns the index with the smallest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -2118,7 +2214,7 @@ Returns the index with the largest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
