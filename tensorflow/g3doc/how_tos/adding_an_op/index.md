@@ -133,7 +133,7 @@ to compile your Op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -I $TF_INC
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
 ```
 
 ### With TensorFlow source installation
