@@ -1138,6 +1138,96 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
 }
 op {
+  name: "BatchFFT"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most dimension of\n`in` is replaced with its 1D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `in`."
+}
+op {
+  name: "BatchFFT2D"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions\nof `in` are replaced with their 2D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `in`."
+}
+op {
+  name: "BatchFFT3D"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions\nof `in` are replaced with their 3D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
+  description: "dimensions of `in`."
+}
+op {
+  name: "BatchIFFT"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most dimension of\n`in` is replaced with its inverse 1D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `in`."
+}
+op {
+  name: "BatchIFFT2D"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions\nof `in` are replaced with their inverse 2D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `in`."
+}
+op {
+  name: "BatchIFFT3D"
+  input_arg {
+    name: "in"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions\nof `in` are replaced with their inverse 3D Fourier Transform."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
+  description: "3 dimensions of `in`."
+}
+op {
   name: "BatchMatMul"
   input_arg {
     name: "x"
@@ -3530,6 +3620,20 @@ op {
   description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are"
 }
 op {
+  name: "FFT"
+  input_arg {
+    name: "in"
+    description: "A complex64 vector."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The 1D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 1-dimensional discrete Fourier Transform."
+}
+op {
   name: "FFT2D"
   input_arg {
     name: "in"
@@ -3542,6 +3646,20 @@ op {
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform."
+}
+op {
+  name: "FFT3D"
+  input_arg {
+    name: "in"
+    description: "A complex64 3-D tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The 3D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 3-dimensional discrete Fourier Transform."
 }
 op {
   name: "FIFOQueue"
@@ -4007,6 +4125,20 @@ op {
   description: "The generated\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
 }
 op {
+  name: "IFFT"
+  input_arg {
+    name: "in"
+    description: "A complex64 vector."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The inverse 1D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform."
+}
+op {
   name: "IFFT2D"
   input_arg {
     name: "in"
@@ -4019,6 +4151,20 @@ op {
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform."
+}
+op {
+  name: "IFFT3D"
+  input_arg {
+    name: "in"
+    description: "A complex64 3-D tensor."
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    description: "The inverse 3D Fourier Transform of `in`."
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform."
 }
 op {
   name: "Identity"

@@ -26,7 +26,6 @@ import linecache
 import re
 import sys
 import threading
-import warnings
 import weakref
 
 import six
@@ -442,41 +441,40 @@ class Tensor(object):
     raise TypeError("'Tensor' object is not iterable.")
 
   def __bool__(self):
-    """Dummy method to warn when a tensor is being used as a Python `bool`.
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
 
-    NOTE(mrry): This overload produces a warning when the user
-    inadvertently treats a `Tensor` as a boolean (e.g. in an `if`
-    statement). For example:
+    This overload raises a `TypeError` when the user inadvertently
+    treats a `Tensor` as a boolean (e.g. in an `if` statement). For
+    example:
 
     ```python
-    if tf.constant(True):  # Will warn.
+    if tf.constant(True):  # Will raise.
       # ...
 
-    if tf.constant(5) < tf.constant(7):  # Will warn.
+    if tf.constant(5) < tf.constant(7):  # Will raise.
       # ...
     ```
 
-    This functionality is deprecated. In future it will raise a `TypeError`.
-
-    Returns:
-      `True`.
+    Raises:
+      `TypeError`.
     """
-    warnings.warn("Using a `tf.Tensor` as a Python `bool` is deprecated. "
-                  "Use `if t is None:` instead of `if t:` in new code. "
-                  "A `TypeError` will be raised in future versions.",
-                  DeprecationWarning)
-    return True
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
 
   def __nonzero__(self):
-    """Dummy method to warn when a tensor is being used as a Python `bool`.
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
 
-    NOTE(mrry): This is the Python 2.x counterpart to `__bool__()`
-    above.
+    This is the Python 2.x counterpart to `__bool__()` above.
 
-    Returns:
-      `True`.
+    Raises:
+      `TypeError`.
     """
-    return self.__bool__()
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.

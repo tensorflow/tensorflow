@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import warnings
 
 import numpy as np
 import tensorflow as tf
@@ -895,34 +894,25 @@ class LogicalOpTest(tf.test.TestCase):
         f(x, y)
 
   def testUsingAsPythonValueFails(self):
-    # TODO(mrry): Replace with `assertRaises(TypeError)` after this
-    # functionality is deprecated.
-    warnings.simplefilter("always")
     # Ensure that we raise an error when the user attempts to treat a
     # `Tensor` as a Python `bool`.
     b = tf.constant(False)
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       if b:
         pass
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
     x = tf.constant(3)
     y = tf.constant(4)
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       if x > y:
         pass
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
     z = tf.constant(7)
 
     # The chained comparison should fail because Python computes `x <
     # y` and short-circuits the comparison with `z` if it is `False`.
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       _ = x < y < z
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
 
 class SelectOpTest(tf.test.TestCase):
