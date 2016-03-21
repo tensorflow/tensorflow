@@ -62,7 +62,7 @@ class UnaryOpTest(tf.test.TestCase):
         return  # Return early
 
       if x.dtype == np.complex64 and tf_func in (
-          tf.abs, _ABS, tf.sqrt, tf.rsqrt, tf.log):
+          tf.sign, tf.abs, _ABS, tf.sqrt, tf.rsqrt, tf.log):
         return  # Return early
 
       if x.dtype == np.float32 or x.dtype == np.complex64:
@@ -232,6 +232,11 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
     self._compareCpu(x, np.cos, tf.cos)
+
+    # Numpy uses an incorrect definition of sign; use the right one instead.
+    def complex_sign(x):
+      return x / np.abs(x)
+    self._compareCpu(y, complex_sign, tf.sign)
 
 
 class BinaryOpTest(tf.test.TestCase):

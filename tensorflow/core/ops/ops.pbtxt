@@ -8901,11 +8901,12 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_COMPLEX64
       }
     }
   }
   summary: "Returns an element-wise indication of the sign of a number."
-  description: "y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0."
+  description: "`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.\n\nFor complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`."
 }
 op {
   name: "Sin"

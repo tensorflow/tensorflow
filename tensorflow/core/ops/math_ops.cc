@@ -262,11 +262,13 @@ Returns which elements of x are finite.
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
 
-y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 )doc");
 
 REGISTER_OP("Floor")
