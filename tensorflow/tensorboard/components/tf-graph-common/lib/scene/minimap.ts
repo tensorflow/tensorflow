@@ -12,9 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="../common.ts" />
-
 module tf.scene {
 
 /** Show minimap when the viewpoint area is less than X% of the whole area. */
@@ -164,7 +161,9 @@ export class Minimap {
           continue;
         }
         for (let i = 0; i < cssRules.length; i++) {
-          stylesText += cssRules[i].cssText + "\n";
+          // Remove tf-* selectors from the styles.
+          stylesText += cssRules[i].cssText.replace(/ ?tf-[\w-]+ ?/g, "") +
+              "\n";
         }
       } catch (e) {
         if (e.name !== "SecurityError") {

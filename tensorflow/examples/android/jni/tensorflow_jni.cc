@@ -21,19 +21,24 @@ limitations under the License.
 
 #include <jni.h>
 #include <pthread.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <queue>
 #include <sstream>
 #include <string>
 
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/examples/android/jni/jni_utils.h"
+
+using namespace tensorflow;
 
 // Global variables that holds the Tensorflow classifier.
 static std::unique_ptr<tensorflow::Session> session;
@@ -45,7 +50,15 @@ static bool g_compute_graph_initialized = false;
 static int g_tensorflow_input_size;  // The image size for the mognet input.
 static int g_image_mean;  // The image mean.
 
-using namespace tensorflow;
+// For basic benchmarking.
+static int g_num_runs = 0;
+static int64 g_timing_total_us = 0;
+
+#ifdef SAVE_STEP_STATS
+static const bool kSaveStepStats = true;
+#else
+static const bool kSaveStepStats = false;
+#endif
 
 inline static int64 CurrentThreadTimeUs() {
   struct timeval tv;
@@ -58,6 +71,9 @@ TENSORFLOW_METHOD(initializeTensorflow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager,
     jstring model, jstring labels,
     jint num_classes, jint mognet_input_size, jint image_mean) {
+  g_num_runs = 0;
+  g_timing_total_us = 0;
+
   //MutexLock input_lock(&g_compute_graph_mutex);
   if (g_compute_graph_initialized) {
     LOG(INFO) << "Compute graph already loaded. skipping.";
@@ -160,10 +176,7 @@ static void GetTopN(
 static std::string ClassifyImage(const RGBA* const bitmap_src,
                                  const int in_stride,
                                  const int width, const int height) {
-  // Very basic benchmarking functionality.
-  static int num_runs = 0;
-  static int64 timing_total_us = 0;
-  ++num_runs;
+  ++g_num_runs;
 
   // Create input tensor
   tensorflow::Tensor input_tensor(
@@ -195,16 +208,35 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   std::vector<tensorflow::Tensor> output_tensors;
   std::vector<std::string> output_names({"output:0"});
 
-  const int64 start_time = CurrentThreadTimeUs();
-  tensorflow::Status s =
-      session->Run(input_tensors, output_names, {}, &output_tensors);
-  const int64 end_time = CurrentThreadTimeUs();
+  tensorflow::Status s;
+  int64 start_time, end_time;
 
+  if (kSaveStepStats) {
+    RunOptions run_options;
+    run_options.set_trace_level(RunOptions::FULL_TRACE);
+    RunOutputs run_outputs;
+    start_time = CurrentThreadTimeUs();
+    s = session->Run(run_options, input_tensors, output_names, {},
+                     &output_tensors, &run_outputs);
+    end_time = CurrentThreadTimeUs();
+    assert(run_outputs.has_step_stats());
+
+    const StepStats& stats = run_outputs.step_stats();
+
+    mkdir("/sdcard/tf/", 0755);
+    const string filename =
+        strings::Printf("/sdcard/tf/stepstats%05d.pb", g_num_runs);
+    WriteProtoToFile(filename.c_str(), stats);
+  } else {
+    start_time = CurrentThreadTimeUs();
+    s = session->Run(input_tensors, output_names, {}, &output_tensors);
+    end_time = CurrentThreadTimeUs();
+  }
   const int64 elapsed_time_inf = end_time - start_time;
-  timing_total_us += elapsed_time_inf;
+  g_timing_total_us += elapsed_time_inf;
   VLOG(0) << "End computing. Ran in " << elapsed_time_inf / 1000 << "ms ("
-          << (timing_total_us / num_runs / 1000) << "ms avg over " << num_runs
-          << " runs)";
+          << (g_timing_total_us / g_num_runs / 1000) << "ms avg over "
+          << g_num_runs << " runs)";
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;

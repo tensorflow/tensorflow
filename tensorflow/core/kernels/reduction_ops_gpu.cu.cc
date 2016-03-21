@@ -52,7 +52,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
     Index num_coeffs_to_reduce = 1;
     for (int i = 0; i < Eigen::internal::array_size<ReductionAxes>::value;
          ++i) {
-      num_coeffs_to_reduce *= in.dimension(i);
+      num_coeffs_to_reduce *= in.dimension(reduction_axes[i]);
     }
     T scale = T(1.0) / num_coeffs_to_reduce;
     out.device(d) = (in * scale).sum(reduction_axes);

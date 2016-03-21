@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
@@ -161,7 +160,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   ::grpc::Alarm* shutdown_alarm_;
 
   // The following section contains one request handler method per
-  // RPC. The The `FooHandler` method is called (indirectly) by
+  // RPC. The `FooHandler` method is called (indirectly) by
   // `HandleRPCsLoop()` when the next Foo RPC is received. Each
   // `FooHandler` call schedules a closure on `env_->compute_pool`,
   // and is responsible for requesting the next Foo call by calling

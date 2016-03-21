@@ -157,3 +157,17 @@ void ReadFileToVector(AAssetManager* const asset_manager,
   VLOG(0) << "Read " << str_vector->size() << " values from " << filename;
 }
 
+void WriteProtoToFile(const char* const filename,
+                      const google::protobuf::MessageLite& message) {
+  std::fstream outfile;
+  outfile.open(filename, std::fstream::binary | std::fstream::out);
+  if (outfile.fail()) {
+    LOG(WARNING) << "Failed to write proto to " << filename;
+    return;
+  } else {
+    google::protobuf::io::OstreamOutputStream raw_out(&outfile);
+    google::protobuf::io::CodedOutputStream coded_out(&raw_out);
+    message.SerializeToCodedStream(&coded_out);
+  }
+  VLOG(0) << "Wrote proto to " << filename;
+}

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -43,10 +44,7 @@ namespace {
 //         int form, keeping track of the flattened index of the input item that
 //         produces the max output. If a nullptr is passed in for mask, no mask
 //         will be produced.
-#define CUDA_1D_KERNEL_LOOP(i, n)                              \
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); \
-       i += blockDim.x * gridDim.x)
-
+//
 // To call the forward and backward functions, use e.g.:
 // const int kThreadsPerBlock = 1024
 // const int output_size = batch * channels * pooled_height * pooled_width;
@@ -199,11 +197,6 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
     atomicAdd(bottom_diff + image_id * bottom_offset + mask[index],
               top_diff[index]);
   }
-}
-
-template <typename dtype>
-__global__ void SetZero(const int nthreads, dtype* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(bottom_diff + index) = dtype(0); }
 }
 
 #undef CUDA_1D_KERNEL_LOOP

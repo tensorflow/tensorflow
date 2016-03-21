@@ -621,15 +621,9 @@ static string Key(const string& op_type, DeviceType device_type,
                          label);
 }
 
-extern "C" void RegisterKernels(void* registry_ptr) {
-  KernelRegistry* kernel_registry = static_cast<KernelRegistry*>(registry_ptr);
-  kernel_registry->insert(GlobalKernelRegistryTyped()->begin(),
-                          GlobalKernelRegistryTyped()->end());
-}
-
 namespace kernel_factory {
 
-OpKernelRegistrar::OpKernelRegistrar(const KernelDef* kernel_def,
+void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      Factory factory) {
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),

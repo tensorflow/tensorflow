@@ -23,6 +23,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Operators for testing convenience (for EQ and NE GUnit macros).
+bool operator==(const DataByExample::Data& lhs,
+                const DataByExample::Data& rhs) {
+  return lhs.dual == rhs.dual &&                //
+         lhs.primal_loss == rhs.primal_loss &&  //
+         lhs.dual_loss == rhs.dual_loss &&      //
+         lhs.example_weight == rhs.example_weight;
+}
+
+bool operator!=(const DataByExample::Data& lhs,
+                const DataByExample::Data& rhs) {
+  return !(lhs == rhs);
+}
+
 class DataByExampleTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -103,7 +117,7 @@ TEST_F(DataByExampleTest, VisitMany) {
       (kNumElements - 1) * kNumElements / 2.0, total_dual);
 }
 
-TEST_F(DataByExampleTest, VisitAborted) {
+TEST_F(DataByExampleTest, VisitUnavailable) {
   // Populate enough entries so that Visiting will be chunked.
   for (size_t i = 0; i < 2 * VisitChunkSize(); ++i) {
     data_by_example_->Get(DataByExample::MakeKey(strings::StrCat(i)));
@@ -151,7 +165,7 @@ TEST_F(DataByExampleTest, VisitAborted) {
   });
   wait(&completed_visit);
   EXPECT_FALSE(thread_pool.HasPendingClosures());
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(errors::IsUnavailable(status));
 }
 
 }  // namespace tensorflow

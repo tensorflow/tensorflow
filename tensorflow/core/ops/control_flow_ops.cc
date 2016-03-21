@@ -237,4 +237,15 @@ Does nothing. Serves as a control trigger for scheduling. Only useful as a
 placeholder for control edges.
 )doc");
 
+// --------------------------------------------------------------------------
+REGISTER_OP("Abort")
+    .Attr("error_msg: string = ''")
+    .Doc(R"doc(
+Raise a exception to abort the process when called.
+
+Returns nothing but an exception.
+
+error_msg: A string which is the message associated with the exception.
+)doc");
+
 }  // namespace tensorflow

@@ -1631,7 +1631,7 @@ If `value` is empty, the result is `nan`.
 This is useful in summaries to measure and report sparsity.  For example,
 
     z = tf.Relu(...)
-    summ = tf.scalar_summary('sparsity', tf.zero_fraction(z))
+    summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 
 ##### Args:
 
@@ -1767,7 +1767,7 @@ This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run] or
+[`Session.run()`](client.md#Session.run) or
 [`Tensor.eval()`](framework.md#Tensor.eval), to this
 function. Alternatively, you can pass a `tf.Summary` protocol
 buffer that you populate with your own data. The latter is
@@ -2159,6 +2159,13 @@ same thread object.
 #### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
 
 Called when the thread starts.
+
+
+- - -
+
+#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
+
+Called when the thread stops.
 
 
 

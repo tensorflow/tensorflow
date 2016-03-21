@@ -43,7 +43,8 @@ fi
 if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
   CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
 fi
-CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-tensorflow/tools/ci_build/builds/with_the_same_user tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
+CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
+CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user ${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
 
 # Helper function to traverse directories up until given file is found.
@@ -100,12 +101,13 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
-    -e "CI_BUILD_USER=${USER}" \
-    -e "CI_BUILD_UID=$(id -u $USER)" \
-    -e "CI_BUILD_GROUP=$(id -g --name $USER)" \
-    -e "CI_BUILD_GID=$(id -g $USER)" \
-    -v ${WORKSPACE}:/tensorflow \
-    -w /tensorflow \
+    -e "CI_BUILD_USER=$(id -u --name)" \
+    -e "CI_BUILD_UID=$(id -u)" \
+    -e "CI_BUILD_GROUP=$(id -g --name)" \
+    -e "CI_BUILD_GID=$(id -g)" \
+    -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
+    -v ${WORKSPACE}:/workspace \
+    -w /workspace \
     ${GPU_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${DOCKER_IMG_NAME}" \

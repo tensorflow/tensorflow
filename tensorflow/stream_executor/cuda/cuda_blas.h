@@ -93,7 +93,7 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &a_array, int lda,
       const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, T beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
-      int batch_count);
+      int batch_count, ScratchAllocator *scratch_allocator);
 
   // mutex that guards the cuBLAS handle for this device.
   mutex mu_;

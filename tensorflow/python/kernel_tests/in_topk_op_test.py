@@ -58,6 +58,14 @@ class InTopKTest(tf.test.TestCase):
     target = [0, 2]
     self._validateInTopK(predictions, target, 2, [False, False])
 
+  def testBadTarget(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    target = [0, 80000]
+    with self.test_session():
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "target.*out of range"):
+        tf.nn.in_top_k(predictions, target, 2).eval()
+
 
 if __name__ == "__main__":
   tf.test.main()

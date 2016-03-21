@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -295,7 +294,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     perftools::gputools::DeviceMemoryBase output_ptr(
         output->flat<T>().data(), output->NumElements() * sizeof(T));

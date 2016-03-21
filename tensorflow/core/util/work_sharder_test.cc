@@ -59,6 +59,25 @@ TEST(Shard, Basic) {
   }
 }
 
+TEST(Shard, OverflowTest) {
+  thread::ThreadPool threads(Env::Default(), "test", 3);
+  mutex mu;
+  for (auto workers : {1, 2, 3}) {
+    const int64 total_elements = 1LL << 32;
+    const int64 cost_per_unit = 10000;
+    int num_shards = 0;
+    int64 num_elements = 0;
+    Shard(workers, &threads, total_elements, cost_per_unit,
+          [&mu, &num_shards, &num_elements](int64 start, int64 limit) {
+            mutex_lock l(mu);
+            ++num_shards;
+            num_elements += limit - start;
+          });
+    EXPECT_EQ(num_shards, workers);
+    EXPECT_EQ(num_elements, total_elements);
+  }
+}
+
 void BM_Sharding(int iters, int arg) {
   thread::ThreadPool threads(Env::Default(), "test", 16);
   const int64 total = 1LL << 30;

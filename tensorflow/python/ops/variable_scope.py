@@ -154,7 +154,7 @@ class _VariableStore(object):
     if regularizer:
       with ops.name_scope(name + "/Regularizer/"):
         loss = regularizer(v)
-      if loss:
+      if loss is not None:
         logging.info("Applied regularizer to %s and added the result %s to "
                      "REGULARIZATION_LOSSES.", v.name, loss.name)
         ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
@@ -498,18 +498,18 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_op_scope(values, name, default_name, initializer=None,
-                      regularizer=None, caching_device=None):
+def variable_op_scope(values, name_or_scope, default_name, initializer=None,
+                      regularizer=None, caching_device=None, reuse=None):
   """Returns a context manager for defining an op that creates variables.
 
   This context manager validates that the given `values` are from the
   same graph, ensures that that graph is the default graph, and pushes a
   name scope and a variable scope.
 
-  If `name` is not None, it is used as is in the variable scope. If `name`
-  is None, then `default_name` is used.  In that case, if the same name has been
-  previously used in the same scope, it will made unique be appending `_N` to
-  it.
+  If `name_or_scope` is not None, it is used as is in the variable scope. If
+  `scope` is None, then `default_name` is used.  In that case, if the same name
+  has been previously used in the same scope, it will made unique be appending
+  `_N` to it.
 
   This is intended to be used when defining generic ops and so reuse is always
   inherited.
@@ -517,8 +517,8 @@ def variable_op_scope(values, name, default_name, initializer=None,
   For example, to define a new Python op called `my_op_with_vars`:
 
   ```python
-  def my_op_with_vars(a, b, name=None):
-    with tf.variable_op_scope([a, b], name, "MyOp") as scope:
+  def my_op_with_vars(a, b, scope=None):
+    with tf.variable_op_scope([a, b], scope, "MyOp") as scope:
       a = tf.convert_to_tensor(a, name="a")
       b = tf.convert_to_tensor(b, name="b")
       c = tf.get_variable('c')
@@ -528,13 +528,15 @@ def variable_op_scope(values, name, default_name, initializer=None,
 
   Args:
     values: The list of `Tensor` arguments that are passed to the op function.
-    name: The name argument that is passed to the op function, this name is not
-      uniquified in the variable scope.
-    default_name: The default name to use if the `name` argument is `None`, this
-      name will be uniquified.
+    name_or_scope: The name argument that is passed to the op function,
+      this name_or_scope is not uniquified in the variable scope.
+    default_name: The default name to use if the `name_or_scope` argument is
+      `None`, this name will be uniquified.
     initializer: The  default initializer to pass to variable scope.
     regularizer: The default regularizer for variables within this scope.
     caching_device: The default caching device for variables within this scope.
+    reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
+      well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 
 
   Returns:
@@ -549,12 +551,14 @@ def variable_op_scope(values, name, default_name, initializer=None,
     raise TypeError("default_name cannot be None")
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
   with g.as_default():
-    if name:
-      with variable_scope(name, initializer=initializer,
+    if name_or_scope:
+      with variable_scope(name_or_scope, reuse=reuse, initializer=initializer,
                           regularizer=regularizer,
                           caching_device=caching_device) as vs:
         yield vs
     else:
+      if reuse:
+        raise ValueError("reuse=True cannot be used without a name_or_scope")
       with ops.name_scope(default_name) as scope:
         count = len(default_name.split("/"))
         scoped_name = "/".join(scope.split("/")[-count - 1:-1])

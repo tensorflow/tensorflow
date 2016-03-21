@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operations for histograms."""
+# pylint: disable=g-short-docstring-punctuation
+"""## Histograms
+
+@@histogram_fixed_width
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,30 +28,34 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 
 
-def histogram_fixed_width(hist,
-                          new_values,
+def histogram_fixed_width(values,
                           value_range,
-                          use_locking=False,
-                          name='histogram_fixed_width'):
-  """Update histogram Variable with new values.
+                          nbins=100,
+                          use_locking=True,
+                          dtype=dtypes.int32,
+                          name=None):
+  """Return histogram of values.
 
-  This Op fills histogram with counts of values falling within fixed-width,
-  half-open bins.
+  Given the tensor `values`, this operation returns a rank 1 histogram counting
+  the number of entries in `values` that fell into every bin.  The bins are
+  equal width and determined by the arguments `value_range` and `nbins`.
 
   Args:
-    hist:  1-D mutable `Tensor`, e.g. a `Variable`.
-    new_values:  Numeric `Tensor`.
+    values:  Numeric `Tensor`.
     value_range:  Shape [2] `Tensor`.  new_values <= value_range[0] will be
       mapped to hist[0], values >= value_range[1] will be mapped to hist[-1].
       Must be same dtype as new_values.
+    nbins:  Integer number of bins in this histogram.
     use_locking:  Boolean.
       If `True`, use locking during the operation (optional).
-    name:  A name for this operation (optional).
+    dtype:  dtype for returned histogram.
+    name:  A name for this operation (defaults to 'histogram_fixed_width').
 
   Returns:
-    An op that updates `hist` with `new_values` when evaluated.
+    A `Variable` holding histogram of values.
 
   Examples:
   ```python
@@ -57,24 +65,21 @@ def histogram_fixed_width(hist,
   new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
 
   with tf.default_session() as sess:
-    hist = variables.Variable(array_ops.zeros(nbins, dtype=tf.int32))
-    hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                      value_range)
+    hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
     variables.initialize_all_variables().run()
-    sess.run(hist_update) => [2, 1, 1, 0, 2]
+    sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """
-  with ops.op_scope([hist, new_values, value_range], name) as scope:
-    new_values = ops.convert_to_tensor(new_values, name='new_values')
-    new_values = array_ops.reshape(new_values, [-1])
+  with variable_scope.variable_op_scope(
+      [values, value_range], name, 'histogram_fixed_width') as scope:
+    values = ops.convert_to_tensor(values, name='values')
+    values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
-    dtype = hist.dtype
 
     # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(new_values - value_range[0],
+    scaled_values = math_ops.truediv(values - value_range[0],
                                      value_range[1] - value_range[0],
                                      name='scaled_values')
-    nbins = math_ops.cast(hist.get_shape()[0], scaled_values.dtype)
 
     # map tensor values within the open interval value_range to {0,.., nbins-1},
     # values outside the open interval will be zero or less, or nbins or more.
@@ -87,9 +92,18 @@ def histogram_fixed_width(hist,
     # Dummy vector to scatter.
     # TODO(langmore) Replace non-ideal creation of large dummy vector once an
     # alternative to scatter is available.
-    updates = array_ops.ones([indices.get_shape()[0]], dtype=dtype)
-    return state_ops.scatter_add(hist,
-                                 indices,
-                                 updates,
-                                 use_locking=use_locking,
-                                 name=scope)
+    updates = array_ops.ones_like(indices, dtype=dtype)
+
+    hist = variable_scope.get_variable('hist',
+                                       initializer=array_ops.zeros_initializer(
+                                           [nbins],
+                                           dtype=dtype),
+                                       trainable=False)
+    hist_assign_zero = hist.assign(array_ops.zeros_like(hist))
+
+    with ops.control_dependencies([hist_assign_zero]):
+      return state_ops.scatter_add(hist,
+                                   indices,
+                                   updates,
+                                   use_locking=use_locking,
+                                   name=scope.name)

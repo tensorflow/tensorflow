@@ -10,26 +10,15 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
-cc_binary(
+tf_custom_op_library(
     name = "python/ops/_sdca_ops.so",
     srcs = [
         "ops/sdca_ops.cc",
     ],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-Bsymbolic",
-            "-lm",
-        ],
-        "//tensorflow:darwin": [],
-    }),
-    linkshared = 1,
-    linkstatic = 1,
     deps = [
         "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -47,6 +36,7 @@ py_test(
     name = "sdca_ops_test",
     srcs = ["python/kernel_tests/sdca_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # doesn't pass ASAN for some reason
     deps = [
         ":sdca_ops_py",
         "//tensorflow:tensorflow_py",

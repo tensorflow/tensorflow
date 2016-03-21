@@ -19,7 +19,7 @@ limitations under the License.
 #include "grpc++/security/credentials.h"
 #include "grpc++/server_builder.h"
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -31,10 +31,13 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 // This binary starts a TensorFlow server (master and worker).
+//
+// TODO(mrry): Replace with a py_binary that uses `tf.GrpcServer()`.
 namespace tensorflow {
 namespace {
 
 Status ParseFlagsForTask(int argc, char* argv[], ServerDef* options) {
+  options->set_protocol("grpc");
   string cluster_spec;
   int task_index = 0;
   const bool parse_result = ParseFlags(

@@ -774,7 +774,7 @@ def _SerializeManySparseShape(op):  # pylint: disable=invalid-name
   return [tensor_shape.matrix(None, 3)]
 
 
-def deserialize_many_sparse(serialized_sparse, dtype, name=None):
+def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.
 
   The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where
@@ -823,6 +823,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
     serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
       The serialized and packed `SparseTensor' objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)
 
   Returns:
@@ -834,6 +835,10 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
   output_indices, output_values, output_shape = (
       gen_sparse_ops._deserialize_many_sparse(
           serialized_sparse, dtype, name=name))
+
+  # Feed rank data back in, if available
+  output_indices.set_shape([None, rank])
+  output_shape.set_shape([rank])
 
   return ops.SparseTensor(output_indices, output_values, output_shape)
 
@@ -872,15 +877,13 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Will the SparseTensor A fit in memory if densified?
   * Is the column count of the product large (>> 1)?
   * Is the density of A larger than approximately 15%?
-  * Is backprop into A necessary?
 
   If the answer to several of these questions is yes, consider
   converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
 
-  This operation tends to perform well when A is more sparse, if the column
-  size of the product is small (e.g. matrix-vector multiplication),
-  if sp_a.shape takes on large values.  While gradients with respect to B
-  are supported, gradients with respect to A are not.
+  This operation tends to perform well when A is more sparse, if the column size
+  of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
+  takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
   labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

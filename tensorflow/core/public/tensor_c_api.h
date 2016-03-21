@@ -78,7 +78,8 @@ typedef enum {
   TF_INT16 = 5,
   TF_INT8 = 6,
   TF_STRING = 7,
-  TF_COMPLEX = 8,  // Single-precision complex
+  TF_COMPLEX64 = 8,  // Single-precision complex
+  TF_COMPLEX = 8,    // Old identifier kept for API backwards compatibility
   TF_INT64 = 9,
   TF_BOOL = 10,
   TF_QINT8 = 11,     // Quantized int8
@@ -88,6 +89,7 @@ typedef enum {
   TF_QINT16 = 15,    // Quantized int16
   TF_QUINT16 = 16,   // Quantized uint16
   TF_UINT16 = 17,
+  TF_COMPLEX128 = 18,  // Double-precision complex
 } TF_DataType;
 
 // --------------------------------------------------------------------------
@@ -123,11 +125,25 @@ typedef struct TF_Status TF_Status;
 // Typically, the data consists of a serialized protocol buffer, but other data
 // may also be held in a buffer.
 //
-// TF_Buffer itself does not do any memory management of the pointed-to block.
+// By default, TF_Buffer itself does not do any memory management of the
+// pointed-to block.  If need be, users of this struct should specify how to
+// deallocate the block by setting the `data_deallocator` function pointer.
 typedef struct {
   const void* data;
   size_t length;
+  void (*data_deallocator)(void* data, size_t length);
 } TF_Buffer;
+
+// Makes a copy of the input and sets an appropriate deallocator.  Useful for
+// passing in read-only, input protobufs.
+extern TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len);
+
+// Useful for passing *out* a protobuf.
+extern TF_Buffer* TF_NewBuffer();
+
+extern void TF_DeleteBuffer(TF_Buffer*);
+
+extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
 // --------------------------------------------------------------------------
 // TF_Library holds information about dynamically loaded TensorFlow plugins.
@@ -172,7 +188,7 @@ typedef struct TF_Tensor TF_Tensor;
 // Return a new tensor that holds the bytes data[0,len-1].
 //
 // The data will be deallocated by a subsequent call to TF_DeleteTensor via:
-//      (*deallocator_fn)(data, len, deallocator_arg)
+//      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
 extern TF_Tensor* TF_NewTensor(TF_DataType, long long* dims, int num_dims,
@@ -252,13 +268,29 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // failure, inputs[] become the property of the implementation (the
 // implementation will eventually call TF_DeleteTensor on each input).
 //
+// Any NULL and non-NULL value combinations for (`run_options`,
+// `run_outputs`) are valid.
+//
+//    - `run_options` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to a `TF_Buffer` containing the
+//      serialized representation of a `RunOptions` protocol buffer.
+//    - `run_output` may be NULL, in which case it will be ignored; or non-NULL,
+//      in which case it must point to an empty, freshly allocated `TF_Buffer`
+//      that may be updated to contain the serialized representation of a
+//      `RunOutput` protocol buffer.
+//
+// The caller retains the ownership of `run_options` and/or `run_outputs` (when
+// not NULL) and should manually call TF_DeleteBuffer on them.
+//
 // On success, the tensors corresponding to output_names[0,noutputs-1]
 // are placed in outputs[], and these outputs[] become the property
 // of the caller (the caller must eventually call TF_DeleteTensor on
 // them).
 //
-// On failure, outputs[] contains nulls.
+// On failure, outputs[] contains NULLs.
 extern void TF_Run(TF_Session*,
+                   // RunOptions
+                   const TF_Buffer* run_options,
                    // Input tensors
                    const char** input_names, TF_Tensor** inputs, int ninputs,
                    // Output tensors
@@ -266,6 +298,8 @@ extern void TF_Run(TF_Session*,
                    int noutputs,
                    // Target nodes
                    const char** target_node_names, int ntargets,
+                   // RunOutputs
+                   TF_Buffer* run_outputs,
                    // Output status
                    TF_Status*);
 
@@ -318,7 +352,7 @@ extern void TF_PRun(TF_Session*, const char* handle,
 // On success, place OK in status and return the newly created library handle.
 // The caller owns the library handle.
 //
-// On failure, place an error status in status and return nullptr.
+// On failure, place an error status in status and return NULL.
 extern TF_Library* TF_LoadLibrary(const char* library_filename,
                                   TF_Status* status);
 

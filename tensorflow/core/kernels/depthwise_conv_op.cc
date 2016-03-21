@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -411,7 +410,7 @@ struct LaunchDepthwiseConvOp<GPUDevice, T> {
                      const T* input, const T* filter, T* output) {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     DepthwiseConv2dGPULaunch<T>().Run(d, args, input, filter, output);
-    auto stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto stream = ctx->op_device_context()->stream();
     OP_REQUIRES(
         ctx, stream->ok(),
         errors::Internal(
@@ -725,7 +724,7 @@ struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, T> {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     DepthwiseConv2dBackpropInputGPULaunch<T>().Run(d, args, out_backprop,
                                                    filter, in_backprop);
-    auto stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream->ok(), errors::Internal("Launch of gpu kernel for "
                                                     "DepthwiseConv2dBackpropInp"
                                                     "utGPULaunch failed"));
@@ -893,7 +892,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, T> {
                      const T* out_backprop, const T* input,
                      T* filter_backprop) {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    auto stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto stream = ctx->op_device_context()->stream();
 
     // Initialize the results to 0.
     int num_filter_backprop =

@@ -168,9 +168,9 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(graph.node[1].name, 'b')
     # Make sure the second node has an attribute that was filtered out because
     # it was too large and was added to the "too large" attributes list.
-    self.assertEqual(graph.node[1].attr.keys(), ['_very_large_attrs'])
+    self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
-                     ['very_large_attr'])
+                     [b'very_large_attr'])
 
   def _GenerateTestData(self):
     """Generates the test data directory.

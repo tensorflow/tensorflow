@@ -265,7 +265,7 @@ class LSTMCell(RNNCell):
   def __init__(self, num_units, input_size=None,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None,
-               num_unit_shards=1, num_proj_shards=1):
+               num_unit_shards=1, num_proj_shards=1, forget_bias=1.0):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -282,15 +282,18 @@ class LSTMCell(RNNCell):
         matrix is stored across num_unit_shards.
       num_proj_shards: How to split the projection matrix.  If >1, the
         projection matrix is stored across num_proj_shards.
+      forget_bias: Biases of the forget gate are initialized by default to 1
+        in order to reduce the scale of forgetting at the beginning of the training.
     """
     self._num_units = num_units
-    self._input_size = num_units if input_size is None else input_size
+    self._input_size = input_size
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
     self._initializer = initializer
     self._num_proj = num_proj
     self._num_unit_shards = num_unit_shards
     self._num_proj_shards = num_proj_shards
+    self._forget_bias = forget_bias
 
     if num_proj:
       self._state_size = num_units + num_proj
@@ -301,7 +304,7 @@ class LSTMCell(RNNCell):
 
   @property
   def input_size(self):
-    return self._input_size
+    return self._num_units if self._input_size is None else self._input_size
 
   @property
   def output_size(self):
@@ -328,6 +331,9 @@ class LSTMCell(RNNCell):
            num_units otherwise.
       - A 2D, batch x state_size, Tensor representing the new state of LSTM
         after reading "inputs" when previous state was "state".
+    Raises:
+      ValueError: if an input_size was specified and the provided inputs have
+        a different dimension.
     """
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
@@ -335,11 +341,14 @@ class LSTMCell(RNNCell):
     m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
     dtype = inputs.dtype
-
+    actual_input_size = inputs.get_shape().as_list()[1]
+    if self._input_size and self._input_size != actual_input_size:
+      raise ValueError("Actual input size not same as specified: %d vs %d." %
+                       actual_input_size, self._input_size)
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "LSTMCell"
       concat_w = _get_concat_variable(
-          "W", [self.input_size + num_proj, 4 * self._num_units],
+          "W", [actual_input_size + num_proj, 4 * self._num_units],
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(
@@ -361,10 +370,10 @@ class LSTMCell(RNNCell):
             "W_O_diag", shape=[self._num_units], dtype=dtype)
 
       if self._use_peepholes:
-        c = (sigmoid(f + 1 + w_f_diag * c_prev) * c_prev +
+        c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
              sigmoid(i + w_i_diag * c_prev) * tanh(j))
       else:
-        c = (sigmoid(f + 1) * c_prev + sigmoid(i) * tanh(j))
+        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) * tanh(j))
 
       if self._cell_clip is not None:
         c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)
@@ -547,15 +556,13 @@ class EmbeddingWrapper(RNNCell):
   feed into your RNN.
   """
 
-  def __init__(self, cell, embedding_classes=0, embedding=None,
-               initializer=None):
+  def __init__(self, cell, embedding_classes, embedding_size, initializer=None):
     """Create a cell with an added input embedding.
 
     Args:
       cell: an RNNCell, an embedding will be put before its inputs.
       embedding_classes: integer, how many symbols will be embedded.
-      embedding: Variable, the embedding to use; if None, a new embedding
-        will be created; if set, then embedding_classes is not required.
+      embedding_size: integer, the size of the vectors we embed into.
       initializer: an initializer to use when creating the embedding;
         if None, the initializer from variable scope or a default one is used.
 
@@ -565,21 +572,12 @@ class EmbeddingWrapper(RNNCell):
     """
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
-    if embedding_classes < 1 and embedding is None:
-      raise ValueError("Pass embedding or embedding_classes must be > 0: %d."
-                       % embedding_classes)
-    if embedding_classes > 0 and embedding is not None:
-      if embedding.size[0] != embedding_classes:
-        raise ValueError("You declared embedding_classes=%d but passed an "
-                         "embedding for %d classes." % (embedding.size[0],
-                                                        embedding_classes))
-      if embedding.size[1] != cell.input_size:
-        raise ValueError("You passed embedding with output size %d and a cell"
-                         " that accepts size %d." % (embedding.size[1],
-                                                     cell.input_size))
+    if embedding_classes <= 0 or embedding_size <= 0:
+      raise ValueError("Both embedding_classes and embedding_size must be > 0: "
+                       "%d, %d." % (embedding_classes, embedding_size))
     self._cell = cell
     self._embedding_classes = embedding_classes
-    self._embedding = embedding
+    self._embedding_size = embedding_size
     self._initializer = initializer
 
   @property
@@ -598,20 +596,17 @@ class EmbeddingWrapper(RNNCell):
     """Run the cell on embedded inputs."""
     with vs.variable_scope(scope or type(self).__name__):  # "EmbeddingWrapper"
       with ops.device("/cpu:0"):
-        if self._embedding:
-          embedding = self._embedding
+        if self._initializer:
+          initializer = self._initializer
+        elif vs.get_variable_scope().initializer:
+          initializer = vs.get_variable_scope().initializer
         else:
-          if self._initializer:
-            initializer = self._initializer
-          elif vs.get_variable_scope().initializer:
-            initializer = vs.get_variable_scope().initializer
-          else:
-            # Default initializer for embeddings should have variance=1.
-            sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-            initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-          embedding = vs.get_variable("embedding", [self._embedding_classes,
-                                                    self._cell.input_size],
-                                      initializer=initializer)
+          # Default initializer for embeddings should have variance=1.
+          sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
+          initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
+        embedding = vs.get_variable("embedding", [self._embedding_classes,
+                                                  self._embedding_size],
+                                    initializer=initializer)
         embedded = embedding_ops.embedding_lookup(
             embedding, array_ops.reshape(inputs, [-1]))
     return self._cell(embedded, state)
@@ -683,7 +678,8 @@ def linear(args, output_size, bias, bias_start=0.0, scope=None):
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
-  assert args
+  if args is None or (isinstance(args, (list, tuple)) and not args):
+    raise ValueError("`args` must be specified")
   if not isinstance(args, (list, tuple)):
     args = [args]
 
