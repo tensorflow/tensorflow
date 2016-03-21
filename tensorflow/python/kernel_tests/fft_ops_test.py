@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 
 VALID_FFT_RANKS = (1, 2, 3)
