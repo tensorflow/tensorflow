@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -1022,17 +1023,6 @@ namespace register_kernel {
 typedef ::tensorflow::KernelDefBuilder Name;
 }  // namespace register_kernel
 
-#ifdef SELECTIVE_REGISTRATION
-// Experimental selective registration support to reduce binary size.
-// Files which are not included in the whitelist provided by this
-// graph-specific header file will not be allowed to register their
-// operators, thus resulting in them being stripped out during the link phase.
-#include "ops_to_register.h"
-#define SHOULD_REGISTER_OP(filename) \
-  (strstr(kNecessaryOpFiles, filename) != nullptr)
-#else
-#define SHOULD_REGISTER_OP(filename) true
-#endif
 
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, __VA_ARGS__)
@@ -1043,7 +1033,7 @@ typedef ::tensorflow::KernelDefBuilder Name;
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP(__FILE__)                                \
+          SHOULD_REGISTER_OP_KERNEL(__FILE__)                         \
               ? ::tensorflow::register_kernel::kernel_builder.Build() \
               : nullptr,                                              \
           [](::tensorflow::OpKernelConstruction* context)             \
