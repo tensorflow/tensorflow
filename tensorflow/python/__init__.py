@@ -144,7 +144,7 @@ __all__.extend([
     'OptimizerOptions',
     'PaddingFIFOQueue',
     'RunOptions',
-    'RunOutputs',
+    'RunMetadata',
     'ServerDef',
     'SessionLog',
     'Summary',

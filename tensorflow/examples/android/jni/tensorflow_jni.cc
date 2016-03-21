@@ -214,14 +214,14 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   if (kSaveStepStats) {
     RunOptions run_options;
     run_options.set_trace_level(RunOptions::FULL_TRACE);
-    RunOutputs run_outputs;
+    RunMetadata run_metadata;
     start_time = CurrentThreadTimeUs();
     s = session->Run(run_options, input_tensors, output_names, {},
-                     &output_tensors, &run_outputs);
+                     &output_tensors, &run_metadata);
     end_time = CurrentThreadTimeUs();
-    assert(run_outputs.has_step_stats());
+    assert(run_metadata.has_step_stats());
 
-    const StepStats& stats = run_outputs.step_stats();
+    const StepStats& stats = run_metadata.step_stats();
 
     mkdir("/sdcard/tf/", 0755);
     const string filename =

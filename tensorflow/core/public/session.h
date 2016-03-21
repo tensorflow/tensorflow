@@ -138,15 +138,15 @@ class Session {
   }
 
   /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
-  /// to retrieve non-Tensor metadata output via a `RunOutputs` proto for this
-  /// step.  `run_outputs` may be nullptr, in which case any metadata output is
+  /// to retrieve non-Tensor metadata output via a `RunMetadata` proto for this
+  /// step.  `run_metadata` may be nullptr, in which case any metadata output is
   /// discarded.
   /// NOTE: This API is still experimental and may change.
   virtual Status Run(const RunOptions& run_options,
                      const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
-                     std::vector<Tensor>* outputs, RunOutputs* run_outputs);
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
   /// \brief Sets up a graph for partial execution. All future feeds and
   /// fetches are specified by `input_names` and `output_names`. Returns

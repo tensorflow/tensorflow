@@ -254,9 +254,9 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
-  RunOutputs run_outputs;
+  RunMetadata run_metadata;
   return Run(RunOptions(), inputs, output_names, target_nodes, outputs,
-             &run_outputs);
+             &run_metadata);
 }
 
 Status DirectSession::Run(const RunOptions& run_options,
@@ -264,7 +264,7 @@ Status DirectSession::Run(const RunOptions& run_options,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs,
-                          RunOutputs* run_outputs) {
+                          RunMetadata* run_metadata) {
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {
@@ -316,7 +316,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   if (run_options.trace_level() == RunOptions::FULL_TRACE) {
     args.stats_collector =
-        new StepStatsCollector(run_outputs->mutable_step_stats());
+        new StepStatsCollector(run_metadata->mutable_step_stats());
   }
 
   for (const auto& item : executors_and_keys->items) {
