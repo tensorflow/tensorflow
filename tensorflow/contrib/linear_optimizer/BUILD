@@ -36,7 +36,7 @@ py_test(
     name = "sdca_ops_test",
     srcs = ["python/kernel_tests/sdca_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # doesn't pass ASAN for some reason
+    tags = ["noasan"],  # b/27757760
     deps = [
         ":sdca_ops_py",
         "//tensorflow:tensorflow_py",
