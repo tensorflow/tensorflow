@@ -47,7 +47,7 @@ enum JPEGErrors {
 // arguments in a struct struct.
 class FewerArgsForCompiler {
  public:
-  FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int* nwarn,
+  FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int64* nwarn,
                        std::function<uint8*(int, int, int)> allocate_output)
       : datasize_(datasize),
         flags_(flags),
@@ -61,7 +61,7 @@ class FewerArgsForCompiler {
 
   const int datasize_;
   const UncompressFlags flags_;
-  int* const pnwarn_;
+  int64* const pnwarn_;
   std::function<uint8*(int, int, int)> allocate_output_;
   float fraction_read_;  // fraction of scanline lines successfully read
   int height_;
@@ -75,7 +75,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   const int ratio = flags.ratio;
   int components = flags.components;
   int stride = flags.stride;            // may be 0
-  int* const nwarn = argball->pnwarn_;  // may be NULL
+  int64* const nwarn = argball->pnwarn_;  // may be NULL
 
   // Can't decode if the ratio is not recognized by libjpeg
   if ((ratio != 1) && (ratio != 2) && (ratio != 4) && (ratio != 8)) {
@@ -331,7 +331,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 //  parameters won't get clobbered by the longjmp.  So we help
 //  it out a little.
 uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int* nwarn,
+                  const UncompressFlags& flags, int64* nwarn,
                   std::function<uint8*(int, int, int)> allocate_output) {
   FewerArgsForCompiler argball(datasize, flags, nwarn, allocate_output);
   uint8* const dstdata = UncompressLow(srcdata, &argball);
@@ -357,7 +357,7 @@ uint8* Uncompress(const void* srcdata, int datasize,
 
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int* pwidth, int* pheight,
-                  int* pcomponents, int* nwarn) {
+                  int* pcomponents, int64* nwarn) {
   uint8* buffer = NULL;
   uint8* result =
       Uncompress(srcdata, datasize, flags, nwarn,
