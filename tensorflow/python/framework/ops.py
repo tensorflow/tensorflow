@@ -1842,6 +1842,8 @@ class Graph(object):
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     # Stack of colocate_with ops
     self._colocation_stack = []
+    # Set of tensors that are dangerous to feed!
+    self._unfeedable_tensors = set()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2117,10 +2119,11 @@ class Graph(object):
           # provide consistency between the device and the colocation
           # property.
           if ret.device and ret.device != colocation_op.device:
-            logging.warning("Tried to colocate with an op that had "
+            logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
-                            "Ignoring colocation property." % (
-                                ret.device, colocation_op.device))
+                            "Ignoring colocation property.",
+                            name, colocation_op.name,
+                            ret.device, colocation_op.device)
           else:
             ret._set_device(colocation_op.device)
 
@@ -3044,6 +3047,14 @@ class Graph(object):
         except KeyError:
           del self._gradient_override_map[op_type]
   # pylint: enable=g-doc-return-or-yield
+
+  def prevent_feeding(self, tensor):
+    """Marks the given `tensor` as unfeedable in this graph."""
+    self._unfeedable_tensors.add(tensor)
+
+  def is_feedable(self, tensor):
+    """Returns `True` if and only if `tensor` is feedable."""
+    return tensor not in self._unfeedable_tensors
 
 
 def device(device_name_or_function):

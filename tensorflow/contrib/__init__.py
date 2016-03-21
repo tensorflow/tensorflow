@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """contrib module containing volatile or experimental code."""
 
 from __future__ import absolute_import
@@ -24,5 +23,6 @@ from tensorflow.contrib import ctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import layers
 from tensorflow.contrib import linear_optimizer
+from tensorflow.contrib import lookup
 from tensorflow.contrib import testing
 from tensorflow.contrib import util

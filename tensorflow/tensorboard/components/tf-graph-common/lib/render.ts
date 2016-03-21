@@ -964,8 +964,6 @@ export class RenderNodeInfo {
 
   /** Label vertical offset from the center of node shape */
   labelOffset: number;
-  /** X-space between each extracted node and the core graph. */
-  extractXOffset: number;
   /** Rectangle radius (for making rounded rectangle) */
   radius: number;
 
@@ -1027,7 +1025,6 @@ export class RenderNodeInfo {
 
     // Params for node box.
     this.labelOffset = 0;
-    this.extractXOffset = 0;
     this.radius = 0;
 
     // Params for expanded node

@@ -21,14 +21,18 @@ import os.path
 import threading
 import uuid
 
+from six.moves import range  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
+from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.platform import resource_loader
@@ -53,6 +57,7 @@ def _maybe_load_sdca_ops():
       assert _sdca_ops, 'Could not load _sdca_ops.so'
 
 
+# TODO(rohananil): add op_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
@@ -223,7 +228,7 @@ class SdcaModel(object):
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
-      for i in xrange(len(dense_variables)):
+      for i in range(len(dense_variables)):
         predictions += dense_features[i] * dense_variables[i]
     return predictions
 
@@ -253,13 +258,20 @@ class SdcaModel(object):
         predictions = math_ops.sigmoid(predictions)
     return predictions
 
-  def minimize(self):
+  def minimize(self, global_step=None, name=None):
     """Add operations to train a linear model by minimizing the loss function.
+
+    Args:
+      global_step: Optional `Variable` to increment by one after the
+        variables have been updated.
+      name: Optional name for the returned operation.
 
     Returns:
       An Operation that updates the variables passed in the constructor.
     """
-    with name_scope('sdca/minimize'):
+    # Technically, the op depends on a lot more than the variables,
+    # but we'll keep the list short.
+    with op_scope([], name, 'sdca/minimize'):
       sparse_features_indices = []
       sparse_features_values = []
       for sf in self._examples['sparse_features']:
@@ -299,7 +311,7 @@ class SdcaModel(object):
             assign_ops.append(var.assign(slot_var))
         assign_group = control_flow_ops.group(*assign_ops)
         with ops.control_dependencies([assign_group]):
-          return _sdca_ops.sdca_shrink_l1(
+          shrink_l1 = _sdca_ops.sdca_shrink_l1(
               self._convert_n_to_tensor(
                   self._variables['sparse_features_weights'],
                   as_ref=True),
@@ -308,6 +320,11 @@ class SdcaModel(object):
                   as_ref=True),
               l1=self._options['symmetric_l1_regularization'],
               l2=self._symmetric_l2_regularization())
+      if not global_step:
+        return shrink_l1
+      with ops.control_dependencies([shrink_l1]):
+        with ops.colocate_with(global_step):
+          return state_ops.assign_add(global_step, 1, name=name).op
 
   def approximate_duality_gap(self):
     """Add operations to compute the approximate duality gap.

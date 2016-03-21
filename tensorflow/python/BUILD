@@ -40,6 +40,7 @@ py_library(
     name = "platform",
     srcs = glob(["platform/**/*.py"]),
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/core:protos_all_py"],
 )
 
 py_library(
@@ -1006,6 +1007,7 @@ py_test(
     name = "session_test",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -1034,12 +1036,12 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/attention_ops_test.py",
     "kernel_tests/barrier_ops_test.py",
     "kernel_tests/bcast_ops_test.py",
+    "kernel_tests/benchmark_test.py",
     "kernel_tests/candidate_sampler_ops_test.py",
     "kernel_tests/cholesky_op_test.py",
     "kernel_tests/clip_ops_test.py",
     "kernel_tests/decode_csv_op_test.py",
     "kernel_tests/decode_raw_op_test.py",
-    "kernel_tests/depthtospace_op_test.py",
     "kernel_tests/determinant_op_test.py",
     "kernel_tests/diag_op_test.py",
     "kernel_tests/edit_distance_op_test.py",
@@ -1069,7 +1071,6 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
     "kernel_tests/sparsemask_op_test.py",
-    "kernel_tests/spacetodepth_op_test.py",
     "kernel_tests/summary_ops_test.py",
     "kernel_tests/template_test.py",
     "kernel_tests/topk_op_test.py",
@@ -1144,9 +1145,22 @@ cuda_py_tests(
     name = "training_tests",
     srcs = glob(
         ["training/*_test.py"],
-        exclude = ["training/input_test.py"],
+        exclude = [
+            "training/input_test.py",
+            "training/supervisor_test.py",
+        ],
     ),
     additional_deps = [
+        ":training",
+    ],
+)
+
+py_test(
+    name = "supervisor_test",
+    srcs = ["training/supervisor_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extra_py_tests_deps",
         ":training",
     ],
 )

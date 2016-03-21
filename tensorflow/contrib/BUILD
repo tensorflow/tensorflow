@@ -17,8 +17,18 @@ py_library(
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/lookup:lookup_py",
+        "//tensorflow/contrib/skflow",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/util:util_py",
+    ],
+)
+
+cc_library(
+    name = "contrib_kernels",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
     ],
 )
 

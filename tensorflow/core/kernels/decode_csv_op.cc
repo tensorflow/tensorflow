@@ -45,7 +45,7 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("records", &records));
     OP_REQUIRES_OK(ctx, ctx->input_list("record_defaults", &record_defaults));
 
-    for (int i = 0; i < record_defaults.size(); ++i) {
+    for (int64 i = 0; i < record_defaults.size(); ++i) {
       OP_REQUIRES(ctx, record_defaults[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,
@@ -53,7 +53,7 @@ class DecodeCSVOp : public OpKernel {
     }
 
     auto records_t = records->flat<string>();
-    int records_size = records_t.size();
+    int64 records_size = records_t.size();
 
     OpOutputList output;
     OP_REQUIRES_OK(ctx, ctx->output_list("output", &output));
@@ -63,7 +63,7 @@ class DecodeCSVOp : public OpKernel {
       output.allocate(i, records->shape(), &out);
     }
 
-    for (int i = 0; i < records_size; ++i) {
+    for (int64 i = 0; i < records_size; ++i) {
       const StringPiece record(records_t(i));
       std::vector<string> fields;
       ExtractFields(ctx, record, &fields);
@@ -165,7 +165,7 @@ class DecodeCSVOp : public OpKernel {
 
   void ExtractFields(OpKernelContext* ctx, StringPiece input,
                      std::vector<string>* result) {
-    int current_idx = 0;
+    int64 current_idx = 0;
     if (!input.empty()) {
       while (static_cast<size_t>(current_idx) < input.size()) {
         if (input[current_idx] == '\n' || input[current_idx] == '\r') {

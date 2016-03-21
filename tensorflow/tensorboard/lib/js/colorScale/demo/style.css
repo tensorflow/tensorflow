@@ -1,0 +1,74 @@
+body {
+  font-family: roboto, sans-serif;
+}
+header {
+  /*background-color: hsl(0, 0%, 95%);*/
+  border-bottom: solid 1px rgba(0, 0, 0, 0.1);
+  padding: 60px 0;
+  margin: 0 0 40px 0;
+  z-index: 10;
+  position: relative;
+  color: hsla(0, 0%, 0%, 0.7);
+}
+header h1 {
+  font-size: 36px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  line-height: 1.2em;
+}
+header p {
+  font-size: 22px;
+  line-height: 1.6em;
+  font-weight: 300;
+  margin-bottom: 20px;
+  margin-top: 0;
+}
+.byline {
+  font-weight: 400;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.5);
+  display: none;
+}
+.byline .date {
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: solid 1px #ddd;
+}
+/* Text Styles */
+h3 {
+  color: rgba(0, 0, 0, 0.7);
+  margin-top: 40px;
+}
+a {
+  color: black;
+  text-decoration: none;
+  border-bottom: solid 1px black;
+}
+p {
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.8;
+  color: rgba(0, 0, 0, 0.7);
+}
+.trunk {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 600px;
+}
+.page {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 900px;
+}
+.screen {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.data-picker {
+  background: white;
+  padding: 5px 0;
+}
+
+.sticky-fixed .data-picker {
+}

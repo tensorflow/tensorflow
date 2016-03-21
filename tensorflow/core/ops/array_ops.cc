@@ -1005,6 +1005,21 @@ shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("PlaceholderWithDefault")
+    .Input("input: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Doc(R"doc(
+A placeholder op that passes though `input` when its output is not fed.
+
+input: The default value to produce when `output` is not fed.
+output: A placeholder tensor that defaults to `input` if it is not fed.
+dtype: The type of elements in the tensor.
+shape: The (possibly partial) shape of the tensor.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ExpandDims")
     .Input("input: T")
     .Input("dim: int32")

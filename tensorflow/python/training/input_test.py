@@ -69,6 +69,60 @@ class LimitEpochsTest(tf.test.TestCase):
         love_me_two_times.eval()
 
 
+class InputProducerTest(tf.test.TestCase):
+
+  def testNoShuffle(self):
+    with self.test_session():
+      input_tensor = [[1, 2, 3, 4],
+                      [5, 6, 7, 8],
+                      [9, 10, 11, 12]]
+      num_epochs = 2
+      queue = tf.train.input_producer(
+          input_tensor, num_epochs=num_epochs, shuffle=False)
+      dequeue_many = queue.dequeue_many(len(input_tensor) * num_epochs)
+      dequeue = queue.dequeue()
+      tf.initialize_all_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      # No randomness, so just see repeated copies of the input.
+      self.assertAllEqual(input_tensor * num_epochs, dequeue_many.eval())
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        dequeue.eval()
+      for thread in threads:
+        thread.join()
+
+  def testNoShapeInference(self):
+    with self.test_session():
+      # Disable shape inference for the input.
+      input_value = [[1, 2, 3, 4],
+                     [5, 6, 7, 8],
+                     [9, 10, 11, 12]]
+      input_tensor = tf.placeholder_with_default(input_value, shape=None)
+      num_epochs = 2
+      queue = tf.train.input_producer(
+          input_tensor, element_shape=[4], num_epochs=num_epochs, shuffle=False)
+      dequeue_many = queue.dequeue_many(len(input_value) * num_epochs)
+      dequeue = queue.dequeue()
+      tf.initialize_all_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      # No randomness, so just see repeated copies of the input.
+      self.assertAllEqual(input_value * num_epochs, dequeue_many.eval())
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        dequeue.eval()
+      for thread in threads:
+        thread.join()
+
+  def testShapeError(self):
+    input_tensor = tf.placeholder(tf.float32, None)
+    with self.assertRaisesRegexp(ValueError, "fully defined shape"):
+      _ = tf.train.input_producer(input_tensor)
+
+
 class StringInputProducerTest(tf.test.TestCase):
 
   def testNoShuffle(self):

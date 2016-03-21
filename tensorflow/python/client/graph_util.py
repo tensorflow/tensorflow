@@ -143,21 +143,6 @@ def pin_variables_on_cpu(op):
   return device
 
 
-def pin_to_cpu(op):
-  """Returns a CPU device for the given node."""
-  device = op.device if op.device is not None else ""
-  dev = pydev.from_string(device)
-
-  if not dev.device_type:
-    return set_cpu0(device)
-  if dev.device_type == "CPU":
-    return device
-
-  logging.info("Operation %s has been assigned to a non-CPU (%s), so "
-               "it will not be pinned to the CPU.", op.name, dev.device_type)
-  return device
-
-
 def _node_name(n):
   if n.startswith("^"):
     return n[1:]

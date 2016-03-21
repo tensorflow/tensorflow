@@ -199,8 +199,9 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       hdrs = hdrs,
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
-          "//tensorflow/core:stream_executor",
-      ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+          "//tensorflow/core:cuda",
+          "//tensorflow/core:gpu_lib",
+      ]),
       alwayslink=1,
       **kwargs)
 
@@ -228,8 +229,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps) +
-          ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
@@ -262,7 +262,6 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     hdrs = []
   if not deps:
     deps = []
-  gpu_deps = deps + ["//tensorflow/core:cuda"]
 
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
@@ -279,7 +278,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
-        deps = gpu_deps,
+        deps = deps,
         **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
@@ -288,7 +287,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       hdrs = hdrs,
       copts = tf_copts(),
       cuda_deps = cuda_deps,
-      linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+      linkstatic = 1,   # Needed since alwayslink is broken in bazel b/27630669
       alwayslink = alwayslink,
       deps = deps,
       **kwargs)
@@ -394,7 +393,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   cuda_deps = [
       "//tensorflow/core:stream_executor_headers_lib",
-      "//tensorflow/core/platform/default/build_config:cuda",
+      "//third_party/gpus/cuda:cudart_static",
   ]
   deps = deps + [
       "//third_party/eigen3",
@@ -460,6 +459,36 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 
+def tf_py_test(name, srcs, data=[], main=None, args=[],
+               tags=[], shard_count=1, additional_deps=[]):
+  native.py_test(
+      name=name,
+      srcs=srcs,
+      main=main,
+      args=args,
+      tags=tags,
+      visibility=["//tensorflow:internal"],
+      shard_count=shard_count,
+      data=data,
+      deps=[
+          "//tensorflow/python:extra_py_tests_deps",
+          "//tensorflow/python:kernel_tests/gradient_checker",
+      ] + additional_deps,
+      srcs_version="PY2AND3")
+
+
+def cuda_py_test(name, srcs, data=[], main="", args=[],
+                 shard_count=1, additional_deps=[]):
+  test_tags = tf_cuda_tests_tags()
+  tf_py_test(name=name,
+             srcs=srcs,
+             data=data,
+             main=main,
+             args=args,
+             tags=test_tags,
+             shard_count=shard_count,
+             additional_deps=additional_deps)
+
 def py_tests(name,
              srcs,
              additional_deps=[],
@@ -471,20 +500,16 @@ def py_tests(name,
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
       test_name = "%s_%s" % (prefix, test_name)
-    native.py_test(name=test_name,
-                   srcs=[src],
-                   main=src,
-                   tags=tags,
-                   visibility=["//tensorflow:internal"],
-                   shard_count=shard_count,
-                   data=data,
-                   deps=[
-                       "//tensorflow/python:extra_py_tests_deps",
-                       "//tensorflow/python:kernel_tests/gradient_checker",
-                   ] + additional_deps,
-                   srcs_version="PY2AND3")
+    tf_py_test(name=test_name,
+               srcs=[src],
+               main=src,
+               tags=tags,
+               shard_count=shard_count,
+               data=data,
+               additional_deps=additional_deps)
 
 
 def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
-  py_tests(name, srcs, additional_deps, data, test_tags, shard_count)
+  py_tests(name=name, srcs=srcs, additional_deps=additional_deps, data=data,
+           tags=test_tags, shard_count=shard_count)

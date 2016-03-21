@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -73,9 +74,10 @@ PartialTensorShape::PartialTensorShape(const TensorShapeProto& proto)
 PartialTensorShape::PartialTensorShape(gtl::ArraySlice<int64> dim_sizes)
     : is_unknown_(false) {
   dim_sizes_.reserve(dim_sizes.size());
-  for (auto s : dim_sizes) {
-    CHECK_GE(s, -1);
-    dim_sizes_.push_back(s);
+  for (const int64& s : dim_sizes) {
+    const int64 dim = internal::SubtleMustCopy(s);
+    CHECK_GE(dim, -1);
+    dim_sizes_.push_back(dim);
   }
 }
 
@@ -207,6 +209,58 @@ bool PartialTensorShape::IsCompatibleWith(const TensorShape& shape) const {
     if (dim_size(i) != shape.dim_size(i)) return false;
   }
   return true;
+}
+
+template <typename T>
+static Status CheckAndCopyDims(const T* dims, int n,
+                               gtl::InlinedVector<int64, 4>* out_dims) {
+  out_dims->reserve(n);
+  for (int i = 0; i < n; ++i) {
+    const int64 dim = internal::SubtleMustCopy(dims[i]);
+    if (dim >= -1) {
+      out_dims->push_back(dim);
+    } else {
+      return errors::InvalidArgument("Dimension ", dim, " must be >= -1");
+    }
+  }
+  return Status::OK();
+}
+
+#define MAKE_PARTIAL_SHAPE(T)                                            \
+  Status PartialTensorShape::MakePartialShape(const T* dims, int n,      \
+                                              PartialTensorShape* out) { \
+    out->is_unknown_ = false;                                            \
+    return CheckAndCopyDims(dims, n, &out->dim_sizes_);                  \
+  }
+MAKE_PARTIAL_SHAPE(int32)
+MAKE_PARTIAL_SHAPE(int64)
+#undef MAKE_PARTIAL_SHAPE
+
+string PartialTensorShapeUtils::PartialShapeListString(
+    const gtl::ArraySlice<PartialTensorShape>& shapes) {
+  string result = "[";
+  bool first = true;
+  for (const PartialTensorShape& shape : shapes) {
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    first = false;
+  }
+  strings::StrAppend(&result, "]");
+  return result;
+}
+
+bool PartialTensorShapeUtils::AreCompatible(
+    const gtl::ArraySlice<PartialTensorShape>& shapes0,
+    const gtl::ArraySlice<PartialTensorShape>& shapes1) {
+  if (shapes0.size() == shapes1.size()) {
+    for (size_t i = 0; i < shapes0.size(); ++i) {
+      if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return false;
+  }
 }
 
 }  // namespace tensorflow

@@ -492,6 +492,8 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
 // OD: output_depth
 // KR: kernel_rows
 // KC: kernel_cols
+// STR: stride
+// PAD: padding
 
 #define BM_ConvFloatDepthwiseFwd(BS, R, C, ID, DM, OD, KR, KC, STR, PAD,    \
                                  LABEL)                                     \
@@ -509,12 +511,25 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));         \
   }                                                                         \
+  static void BM_ConvFloatDepthwiseFwdGPU_##LABEL(int iters) {              \
+    BM_ConvFloatDepthwise(                                                  \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 1, STR, \
+        PAD, true,                                                          \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
+                        KR, "_", KC, "_", STR, "_", PAD, "_gpu"));          \
+  }                                                                         \
   BENCHMARK(BM_ConvFloatDepthwiseFwdCPU1_##LABEL);                          \
-  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU4_##LABEL)
+  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU4_##LABEL);                          \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdGPU_##LABEL);
 
-// TODO(andydavis,jmchen) Add more benchmarks.
+// The configurations below are mostly from mobilenet models.
 BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
 BM_ConvFloatDepthwiseFwd(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1);
+BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2);
+BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
+BM_ConvFloatDepthwiseFwd(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
+BM_ConvFloatDepthwiseFwd(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
+BM_ConvFloatDepthwiseFwd(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
 
 static void BM_LRNFloat(int iters, int depth, int cols, int rows,
                         int batch_size, int range, int num_threads,

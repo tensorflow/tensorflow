@@ -2086,7 +2086,7 @@ var TF;
             <p>
               Maybe data hasn't loaded yet, or maybe you need
               to add some <code>tf.scalar_summary</code> ops to your graph, and
-              serialize them using the <code>tf.training.summary_io.SummaryWriter</code>.
+              serialize them using the <code>tf.train.SummaryWriter</code>.
             </p>
           </div>
         </template>
@@ -2201,7 +2201,7 @@ var TF;
             <p>
               Maybe data hasn't loaded yet, or maybe you need
               to add some <code>tf.histogram_summary</code> ops to your graph, and
-              serialize them using the <code>tf.training.summary_io.SummaryWriter</code>.
+              serialize them using the <code>tf.train.SummaryWriter</code>.
             </p>
           </div>
         </template>
@@ -2476,7 +2476,7 @@ var TF;
           <p>
             Maybe data hasn't loaded yet, or maybe you need
             to add some <code>tf.image_summary</code> ops to your graph, and
-            serialize them using the <code>tf.training.summary_io.SummaryWriter</code>.
+            serialize them using the <code>tf.train.SummaryWriter</code>.
           </p>
         </div>
       </template>
@@ -11197,7 +11197,7 @@ function convertToHumanReadable(value, units, unitIndex) {
   </p>
   <p>
     To store a graph, create a
-    <code>tf.python.training.summary_io.SummaryWriter</code>
+    <code>tf.train.SummaryWriter</code>
     and pass the graph either via the constructor, or by calling its
     <code>add_graph()</code> method.
   </p>

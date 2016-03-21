@@ -1,4 +1,17 @@
 op {
+  name: "Abort"
+  attr {
+    name: "error_msg"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "A string which is the message associated with the exception."
+  }
+  summary: "Raise a exception to abort the process when called."
+  description: "Returns nothing but an exception."
+}
+op {
   name: "Abs"
   input_arg {
     name: "x"
@@ -89,6 +102,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -318,6 +332,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -410,6 +425,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -492,6 +508,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -547,6 +564,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -612,6 +630,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -693,6 +712,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -739,6 +759,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -776,6 +797,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -889,6 +911,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -939,6 +962,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1365,6 +1389,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1450,6 +1475,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1525,6 +1551,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1574,6 +1601,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1628,6 +1656,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1661,6 +1690,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -1681,6 +1711,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -2195,7 +2226,7 @@ op {
     }
   }
   summary: "Computes a 2-D convolution given 4-D `input` and `filter` tensors."
-  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, out_channels]`, this op\nperforms the following:\n\n1. Flattens the filter to a 2-D matrix with shape\n   `[filter_height * filter_width * in_channels, output_channels]`.\n2. Extracts image patches from the input tensor to form a *virtual*\n   tensor of shape `[batch, out_height, out_width,\n   filter_height * filter_width * in_channels]`.\n3. For each patch, right-multiplies the filter matrix and the image patch\n   vector.\n\nIn detail, with the default NCHW format,\n\n    output[b, i, j, k] =\n        sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *\n                        filter[di, dj, q, k]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
+  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, out_channels]`, this op\nperforms the following:\n\n1. Flattens the filter to a 2-D matrix with shape\n   `[filter_height * filter_width * in_channels, output_channels]`.\n2. Extracts image patches from the input tensor to form a *virtual*\n   tensor of shape `[batch, out_height, out_width,\n   filter_height * filter_width * in_channels]`.\n3. For each patch, right-multiplies the filter matrix and the image patch\n   vector.\n\nIn detail, with the default NHWC format,\n\n    output[b, i, j, k] =\n        sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *\n                        filter[di, dj, q, k]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
 op {
   name: "Conv2DBackpropFilter"
@@ -4307,6 +4338,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -4663,6 +4695,31 @@ op {
   }
   summary: "Computes natural logarithm of x element-wise."
   description: "I.e., \\\\(y = \\log_e x\\\\)."
+}
+op {
+  name: "LogSoftmax"
+  input_arg {
+    name: "logits"
+    description: "2-D with shape `[batch_size, num_classes]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "logsoftmax"
+    description: "Same shape as `logits`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes log softmax activations."
+  description: "For each batch `i` and class `j` we have\n\n    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))"
 }
 op {
   name: "LogUniformCandidateSampler"
@@ -5096,6 +5153,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -5406,6 +5464,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -5507,6 +5566,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -6261,6 +6321,30 @@ op {
   description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
 }
 op {
+  name: "PlaceholderWithDefault"
+  input_arg {
+    name: "input"
+    description: "The default value to produce when `output` is not fed."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    description: "A placeholder tensor that defaults to `input` if it is not fed."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of elements in the tensor."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The (possibly partial) shape of the tensor."
+  }
+  summary: "A placeholder op that passes though `input` when its output is not fed."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -6383,6 +6467,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -8095,6 +8180,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -8160,6 +8246,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9109,6 +9196,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9206,6 +9294,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -9287,6 +9376,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32
@@ -10197,6 +10287,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
         type: DT_QINT32

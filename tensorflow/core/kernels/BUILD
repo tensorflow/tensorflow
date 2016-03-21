@@ -1,6 +1,10 @@
 # Description:
 # Op kernel implementations for TensorFlow.
-
+#
+# Note: Any test that uses GPU support and which we would like to
+# benchmark should be linked statically so that it can be executed
+# from a py_binary or cuda_py_test test logger.
+#
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -16,6 +20,7 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
+    "tf_kernel_tests_linkstatic",
 )
 
 # Public support libraries ----------------------------------------------------
@@ -38,6 +43,7 @@ tf_kernel_library(
         "concat_lib.h",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -111,6 +117,7 @@ cc_library(
 
 tf_cc_test(
     name = "ops_util_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",
         "//tensorflow/core:test",
@@ -197,7 +204,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -207,6 +214,21 @@ cc_header_only_library(
     deps = [":bounds_check"],
 )
 
+cc_library(
+    name = "image_resizer_state",
+    hdrs = ["image_resizer_state.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_header_only_library(
+    name = "image_resizer_state_lib",
+    deps = [":image_resizer_state"],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 tf_kernel_libraries(
@@ -214,7 +236,6 @@ tf_kernel_libraries(
     prefixes = [
         "bcast_ops",
         "bitcast_op",
-        "depthtospace_op",
         "concat_op",
         "constant_op",
         "diag_op",
@@ -232,7 +253,6 @@ tf_kernel_libraries(
         "reverse_sequence_op",
         "shape_ops",
         "slice_op",
-        "spacetodepth_op",
         "split_op",
         "tile_ops",
         "transpose_op",
@@ -243,6 +263,7 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":concat_lib",
+        ":depth_space_ops",
         ":fill_functor",
         ":ops_util",
         ":split_lib",
@@ -259,6 +280,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "concat_op_test",
         "constant_op_test",
@@ -323,6 +345,7 @@ cc_library(
 
 tf_cc_test(
     name = "range_sampler_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":range_sampler",
         "//tensorflow/core:framework",
@@ -357,6 +380,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "control_flow_ops_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":control_flow_ops",
         ":ops_testutil",
@@ -405,6 +429,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "dynamic_partition_op_test",
         "dynamic_stitch_op_test",
@@ -495,6 +520,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "restore_op_test",
         "save_op_test",
@@ -533,6 +559,7 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
+        ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
@@ -543,6 +570,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "adjust_contrast_op_benchmark_test",
         "adjust_contrast_op_test",
@@ -625,6 +653,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "logging_ops_test",
         "summary_image_op_test",
@@ -675,6 +704,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "cast_op_test",
         "cross_op_test",
@@ -760,6 +790,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "lrn_op_test",
         "nn_ops_test",
@@ -814,6 +845,31 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "depth_space_ops",
+    srcs = [
+        "depthtospace_op.cc",
+        "spacetodepth_op.cc",
+    ],
+    hdrs = [
+        "depthtospace_op.h",
+        "spacetodepth_op.h",
+    ],
+    gpu_srcs = [
+        "depthtospace_op.h",
+        "depthtospace_op_gpu.cu.cc",
+        "spacetodepth_op.h",
+        "spacetodepth_op_gpu.cu.cc",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 tf_kernel_libraries(
     name = "parsing",
     prefixes = [
@@ -843,6 +899,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "random_op_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":random_ops",
         "//tensorflow/core:framework",
@@ -888,6 +945,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "sparse_tensor_dense_matmul_op_test",
         "sparse_to_dense_op_test",
@@ -928,6 +986,7 @@ tf_kernel_libraries(
 
 tf_cc_test(
     name = "scatter_op_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -957,6 +1016,7 @@ tf_kernel_library(
     name = "training_ops",
     prefix = "training_ops",
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",
@@ -966,6 +1026,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "training_ops_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",
         ":training_ops",
@@ -983,6 +1044,7 @@ filegroup(
     name = "android_srcs",
     srcs = [
         "avgpooling_op.h",
+        "bounds_check.h",
         "maxpooling_op.h",
         "ops_util.cc",
         "ops_util.h",
@@ -1040,6 +1102,7 @@ filegroup(
         "slice_op.h",
         "softmax_op.cc",
         "softmax_op.h",
+        "softmax_op_functor.h",
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
@@ -1073,10 +1136,12 @@ filegroup(
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
+        "image_resizer_state.h",
         "maxpooling_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
+        "relu_op_functor.h",
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
@@ -1139,6 +1204,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "relu_op.cc",
+        "resize_nearest_neighbor_op.cc",
         "restore_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",

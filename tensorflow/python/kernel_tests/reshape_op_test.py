@@ -72,10 +72,10 @@ class ReshapeTest(tf.test.TestCase):
   # reports errors.
 
   def testFloatReshapeGradThreeDimensions(self):
-    x = np.arange(1., 25.).reshape([1, 24]).astype(np.float32)
+    x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
     s = list(np.shape(x))
     with self.test_session():
-      input_tensor = tf.constant(x, shape=[2, 3, 4])
+      input_tensor = tf.constant(x)
       reshape_out = tf.reshape(input_tensor, [1, 8, 3])
       err = tf.test.compute_gradient_error(input_tensor,
                                            s,

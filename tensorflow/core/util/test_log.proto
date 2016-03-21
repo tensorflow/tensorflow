@@ -50,9 +50,9 @@ message BenchmarkEntries {
 }
 
 message BuildConfiguration {
-  string mode = 1;             // opt, dbg, etc
-  repeated string config = 2;  // asan, cuda, etc
-  repeated string copts = 3;   // -mavx, etc.
+  string mode = 1;               // opt, dbg, etc
+  repeated string cc_flags = 2;  // CC compiler flags, if known
+  repeated string opts = 3;      // Bazel compilation options, if known
 };
 
 message CommitId {
@@ -60,6 +60,9 @@ message CommitId {
     int64 changelist = 1;
     string hash = 2;
   }
+  // Hash of intermediate change between hash/changelist and what was tested.
+  // Not used if the build is from a commit without modifications.
+  string snapshot = 3;
 };
 
 message CPUInfo {
@@ -130,7 +133,7 @@ message MachineConfiguration {
 
 // Run-specific items such as arguments to the test / benchmark.
 message RunConfiguration {
-  repeated string arguments = 1;
+  repeated string argument = 1;
 }
 
 // The output of one benchmark / test run.  Each run contains a list of

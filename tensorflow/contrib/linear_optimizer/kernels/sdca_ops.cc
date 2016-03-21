@@ -510,20 +510,6 @@ class SdcaSolver : public OpKernel {
                     "The number of example ids (%ld) should match the number "
                     "of example weights (%d).",
                     example_ids.size(), num_examples)));
-    const int64 num_duplicate_example_ids = [&] {
-      // TODO(katsiapis): Benchmark and/or optimize.
-      std::unordered_set<StringPiece, StringPiece::Hasher> unique_ids(
-          example_ids.size());
-      for (size_t i = 0; i < example_ids.size(); ++i) {
-        unique_ids.emplace(example_ids(i));
-      }
-      return example_ids.size() - unique_ids.size();
-    }();
-    OP_REQUIRES(context, num_duplicate_example_ids == 0,
-                errors::InvalidArgument(strings::Printf(
-                    "Detected %lld duplicates in example_ids, which usually "
-                    "indicates a bug in the input data.",
-                    num_duplicate_example_ids)));
 
     OpMutableInputList sparse_weights_inputs;
     OP_REQUIRES_OK(context, context->mutable_input_list(
