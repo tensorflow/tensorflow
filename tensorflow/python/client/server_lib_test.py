@@ -22,28 +22,19 @@ import tensorflow as tf
 
 class GrpcServerTest(tf.test.TestCase):
 
-  def _localServer(self):
-    server_def = tf.ServerDef(protocol="grpc")
-    job_def = server_def.cluster.job.add()
-    job_def.name = "local"
-    job_def.tasks[0] = "localhost:0"
-    server_def.job_name = job_def.name
-    server_def.task_index = 0
-    return server_def
-
   def testRunStep(self):
-    server = tf.GrpcServer(self._localServer())
+    server = tf.GrpcServer.create_local_server()
     server.start()
 
     with tf.Session(server.target) as sess:
       c = tf.constant([[2, 1]])
       d = tf.constant([[1], [2]])
       e = tf.matmul(c, d)
-      print(sess.run(e))
+      self.assertAllEqual([[4]], sess.run(e))
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   def testMultipleSessions(self):
-    server = tf.GrpcServer(self._localServer())
+    server = tf.GrpcServer.create_local_server()
     server.start()
 
     c = tf.constant([[2, 1]])
@@ -53,12 +44,59 @@ class GrpcServerTest(tf.test.TestCase):
     sess_1 = tf.Session(server.target)
     sess_2 = tf.Session(server.target)
 
-    sess_1.run(e)
-    sess_2.run(e)
+    self.assertAllEqual([[4]], sess_1.run(e))
+    self.assertAllEqual([[4]], sess_2.run(e))
 
     sess_1.close()
     sess_2.close()
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
+
+
+class ServerDefTest(tf.test.TestCase):
+
+  def testLocalServer(self):
+    cluster_def = tf.make_cluster_def({"local": ["localhost:2222"]})
+    server_def = tf.ServerDef(cluster=cluster_def,
+                              job_name="local", task_index=0, protocol="grpc")
+
+    self.assertProtoEquals("""
+    cluster {
+      job { name: 'local' tasks { key: 0 value: 'localhost:2222' } }
+    }
+    job_name: 'local' task_index: 0 protocol: 'grpc'
+    """, server_def)
+
+  def testTwoProcesses(self):
+    cluster_def = tf.make_cluster_def({"local": ["localhost:2222",
+                                                 "localhost:2223"]})
+    server_def = tf.ServerDef(cluster=cluster_def,
+                              job_name="local", task_index=1, protocol="grpc")
+
+    self.assertProtoEquals("""
+    cluster {
+      job { name: 'local' tasks { key: 0 value: 'localhost:2222' }
+                          tasks { key: 1 value: 'localhost:2223' } }
+    }
+    job_name: 'local' task_index: 1 protocol: 'grpc'
+    """, server_def)
+
+  def testTwoJobs(self):
+    cluster_def = tf.make_cluster_def({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
+    server_def = tf.ServerDef(cluster=cluster_def,
+                              job_name="worker", task_index=2, protocol="grpc")
+
+    self.assertProtoEquals("""
+    cluster {
+      job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                       tasks { key: 1 value: 'ps1:2222' } }
+      job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
+                           tasks { key: 1 value: 'worker1:2222' }
+                           tasks { key: 2 value: 'worker2:2222' } }
+    }
+    job_name: 'worker' task_index: 2 protocol: 'grpc'
+    """, server_def)
 
 
 if __name__ == "__main__":

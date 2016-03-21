@@ -161,6 +161,7 @@ __all__.extend([
     'initialize_all_tables',
     'lin_space',
     'list_diff',
+    'make_cluster_def',
     'parse_single_sequence_example',
     'py_func',
     'scalar_mul',
