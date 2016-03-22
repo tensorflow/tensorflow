@@ -479,7 +479,7 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       srcs_version="PY2AND3")
 
 
-def cuda_py_test(name, srcs, size="medium", data=[], main="", args=[],
+def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                  shard_count=1, additional_deps=[]):
   test_tags = tf_cuda_tests_tags()
   tf_py_test(name=name,
