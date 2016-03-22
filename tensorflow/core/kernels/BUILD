@@ -938,6 +938,7 @@ tf_kernel_libraries(
 tf_kernel_libraries(
     name = "sparse",
     prefixes = [
+        "sparse_add_op",
         "sparse_concat_op",
         "sparse_reorder_op",
         "sparse_split_op",
@@ -959,6 +960,7 @@ tf_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
+        "sparse_add_op_test",
         "sparse_tensor_dense_matmul_op_test",
         "sparse_to_dense_op_test",
         "sparse_xent_op_test",
