@@ -204,7 +204,7 @@ class SdcaModel(object):
         for weights in self._convert_n_to_tensor(self._variables[name]):
           sum += math_ops.reduce_sum(math_ops.square(weights))
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
-      return l2 * sum / 2
+      return l2 * sum / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -215,22 +215,22 @@ class SdcaModel(object):
     with name_scope('sdca/prediction'):
       sparse_variables = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
-      predictions = 0
+      result = 0.0
       for st_i, sv in zip(examples['sparse_features'], sparse_variables):
         ei, fi = array_ops.split(1, 2, st_i.indices)
         ei = array_ops.reshape(ei, [-1])
         fi = array_ops.reshape(fi, [-1])
         fv = array_ops.reshape(st_i.values, [-1])
         # TODO(sibyl-Aix6ihai): This does not work if examples have empty features.
-        predictions += math_ops.segment_sum(
+        result += math_ops.segment_sum(
             math_ops.mul(
                 array_ops.gather(sv, fi), fv), array_ops.reshape(ei, [-1]))
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
       for i in range(len(dense_variables)):
-        predictions += dense_features[i] * dense_variables[i]
-    return predictions
+        result += dense_features[i] * dense_variables[i]
+    return result
 
   def predictions(self, examples):
     """Add operations to compute predictions by the model.
@@ -251,12 +251,12 @@ class SdcaModel(object):
         ['example_weights', 'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
 
-    predictions = self._linear_predictions(examples)
+    result = self._linear_predictions(examples)
     if self._options['loss_type'] == 'logistic_loss':
       # Convert logits to probability for logistic loss predictions.
       with name_scope('sdca/logistic_prediction'):
-        predictions = math_ops.sigmoid(predictions)
-    return predictions
+        result = math_ops.sigmoid(result)
+    return result
 
   def minimize(self, global_step=None, name=None):
     """Add operations to train a linear model by minimizing the loss function.
