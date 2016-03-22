@@ -55,6 +55,7 @@ py_library(
 
 py_tests(
     name = "default_platform_tests",
+    size = "small",
     srcs = glob(["platform/default/*_test.py"]),
     additional_deps = [
         ":platform",
@@ -65,6 +66,7 @@ py_tests(
 
 py_tests(
     name = "google_platform_tests",
+    size = "small",
     srcs = glob(["platform/google/*_test.py"]),
     additional_deps = [
         ":platform",
@@ -283,6 +285,7 @@ py_library(
 
 cuda_py_tests(
     name = "framework_function_test",
+    size = "small",
     srcs = ["framework/function_test.py"],
     additional_deps = [
         ":functional_ops_lib",
