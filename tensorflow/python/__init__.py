@@ -185,6 +185,8 @@ __all__.extend([
     'complex64', 'complex64_ref',
     'complex128', 'complex128_ref',
     'double', 'double_ref',
+    'half', 'half_ref',
+    'float16', 'float16_ref',
     'float32', 'float32_ref',
     'float64', 'float64_ref',
     'int16', 'int16_ref',
