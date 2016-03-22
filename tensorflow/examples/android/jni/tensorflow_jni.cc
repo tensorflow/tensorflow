@@ -54,6 +54,12 @@ static int g_image_mean;  // The image mean.
 static int g_num_runs = 0;
 static int64 g_timing_total_us = 0;
 
+// Improve benchmarking by limiting runs to predefined amount.
+// 0 (default) denotes infinite runs.
+#ifndef MAX_NUM_RUNS
+#define MAX_NUM_RUNS 0
+#endif
+
 #ifdef SAVE_STEP_STATS
 static const bool kSaveStepStats = true;
 #else
@@ -176,6 +182,16 @@ static void GetTopN(
 static std::string ClassifyImage(const RGBA* const bitmap_src,
                                  const int in_stride,
                                  const int width, const int height) {
+  // Force the app to quit if we've reached our run quota, to make
+  // benchmarks more reproducible.
+  if (MAX_NUM_RUNS > 0 && g_num_runs >= MAX_NUM_RUNS) {
+    LOG(INFO) << "Benchmark complete. "
+              << (g_timing_total_us / g_num_runs / 1000) << "ms/run avg over "
+              << g_num_runs << " runs.";
+    LOG(INFO) << "";
+    exit(0);
+  }
+
   ++g_num_runs;
 
   // Create input tensor
@@ -299,9 +315,8 @@ TENSORFLOW_METHOD(classifyImageBmp)(
   void* pixels;
   CHECK_EQ(AndroidBitmap_lockPixels(env, bitmap, &pixels),
            ANDROID_BITMAP_RESULT_SUCCESS);
-  LOG(INFO) << "Height: " << info.height;
-  LOG(INFO) << "Width: " << info.width;
-  LOG(INFO) << "Stride: " << info.stride;
+  LOG(INFO) << "Image dimensions: " << info.width << "x" << info.height
+            << " stride: " << info.stride;
   // TODO(jiayq): deal with other formats if necessary.
   if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
     return env->NewStringUTF(
