@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -24,7 +25,6 @@ class GrpcServerTest(tf.test.TestCase):
 
   def testRunStep(self):
     server = tf.GrpcServer.create_local_server()
-    server.start()
 
     with tf.Session(server.target) as sess:
       c = tf.constant([[2, 1]])
@@ -35,7 +35,6 @@ class GrpcServerTest(tf.test.TestCase):
 
   def testMultipleSessions(self):
     server = tf.GrpcServer.create_local_server()
-    server.start()
 
     c = tf.constant([[2, 1]])
     d = tf.constant([[1], [2]])
@@ -50,6 +49,35 @@ class GrpcServerTest(tf.test.TestCase):
     sess_1.close()
     sess_2.close()
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
+
+  def testLargeConstant(self):
+    server = tf.GrpcServer.create_local_server()
+    with tf.Session(server.target) as sess:
+      const_val = np.empty([10000, 10000], dtype=np.float32)
+      const_val.fill(0.5)
+      c = tf.constant(const_val)
+      shape_t = tf.shape(c)
+      self.assertAllEqual([10000, 10000], sess.run(shape_t))
+
+  def testLargeFetch(self):
+    server = tf.GrpcServer.create_local_server()
+    with tf.Session(server.target) as sess:
+      c = tf.fill([10000, 10000], 0.5)
+      expected_val = np.empty([10000, 10000], dtype=np.float32)
+      expected_val.fill(0.5)
+      self.assertAllEqual(expected_val, sess.run(c))
+
+  def testLargeFeed(self):
+    server = tf.GrpcServer.create_local_server()
+    with tf.Session(server.target) as sess:
+      feed_val = np.empty([10000, 10000], dtype=np.float32)
+      feed_val.fill(0.5)
+      p = tf.placeholder(tf.float32, shape=[10000, 10000])
+      min_t = tf.reduce_min(p)
+      max_t = tf.reduce_max(p)
+      min_val, max_val = sess.run([min_t, max_t], feed_dict={p: feed_val})
+      self.assertEqual(0.5, min_val)
+      self.assertEqual(0.5, max_val)
 
 
 class ServerDefTest(tf.test.TestCase):
