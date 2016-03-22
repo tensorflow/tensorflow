@@ -1065,7 +1065,6 @@ medium_kernel_test_list = glob([
 
 # TODO(irving): Can these be shrunk down to size = "small" after sharding?
 sharded_kernel_test_list = glob([
-    "kernel_tests/conv_ops_test.py",
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
     "kernel_tests/pooling_ops_test.py",
