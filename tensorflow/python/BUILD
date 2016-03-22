@@ -1127,7 +1127,7 @@ cuda_py_tests(
         "kernel_tests/linalg_grad_test.py",
         "kernel_tests/pooling_ops_test.py",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_tests(
