@@ -46,7 +46,7 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
     """
     with tf.op_scope([tensor_in, labels], name, "softmax_classifier"):
         logits = tf.nn.xw_plus_b(tensor_in, weights, biases)
-        if class_weight:
+        if class_weight is not None:
             logits = tf.mul(logits, class_weight)
         xent = tf.nn.softmax_cross_entropy_with_logits(logits,
                                                        labels,
@@ -54,4 +54,3 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
         loss = tf.reduce_mean(xent, name="xent")
         predictions = tf.nn.softmax(logits, name=name)
         return predictions, loss
-

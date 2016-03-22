@@ -35,6 +35,64 @@ use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+REGISTER_OP("ApplyAdadelta")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("accum_update: Ref(T)")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Doc(R"doc(
+Update '*var' according to the adadelta scheme.
+
+accum = rho() * accum + (1 - rho()) * grad.square();
+update = (update_accum + epsilon).sqrt() * (accum + epsilon()).rsqrt() * grad;
+update_accum = rho() * update_accum + (1 - rho()) * update.square();
+var -= update;
+
+var: Should be from a Variable().
+accum: Should be from a Variable().
+accum_update: Should be from a Variable().
+lr: Scaling factor. Must be a scalar.
+rho: Decay factor. Must be a scalar.
+epsilon: Constant factor. Must be a scalar.
+grad: The gradient.
+out: Same as "var".
+use_locking: If True, updating of the var, accum and update_accum tensors will be protected by
+a lock; otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
+REGISTER_OP("SparseApplyAdadelta")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("accum_update: Ref(T)")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Doc(R"doc(
+var: Should be from a Variable().
+accum_grad: Should be from a Variable().
+accum_update:: Should be from a Variable().
+lr: Learning rate. Must be a scalar.
+rho: Decay factor. Must be a scalar.
+epsilon: Constant factor. Must be a scalar.
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+out: Same as "var".
+use_locking: If True, updating of the var and accum tensors will be protected by
+a lock; otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
 REGISTER_OP("ApplyAdagrad")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")

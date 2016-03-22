@@ -32,6 +32,13 @@ limitations under the License.
   $1 = &temp;
 }
 
+// Handle string input into AddDevices
+%typemap(in, numinputs=0) const string& name_prefix (
+    string temp) {
+  // Always pass an empty name_prefix.
+  $1 = &temp;
+}
+
 %typemap(argout) std::vector<tensorflow::Device*>* devices {
   std::vector< std::unique_ptr<tensorflow::Device> > safe_devices;
   for (auto* device : *$1) safe_devices.emplace_back(device);
@@ -54,10 +61,10 @@ limitations under the License.
     %#if PY_MAJOR_VERSION < 3
       PyString_FromStringAndSize(
     %#else
-      PyUnicode_FromStringAndSize(
+      PyBytes_FromStringAndSize(
     %#endif
-    reinterpret_cast<const char*>(
-        attr_serialized.data()), attr_serialized.size()));
+        reinterpret_cast<const char*>(
+          attr_serialized.data()), attr_serialized.size()));
 
     if (PyList_Append(temp_string_list.get(), safe_attr_string.get()) == -1) {
       SWIG_fail;

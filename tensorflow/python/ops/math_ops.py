@@ -101,8 +101,18 @@ functions to your graph.
 @@conj
 @@imag
 @@real
+@@fft
+@@ifft
 @@fft2d
 @@ifft2d
+@@fft3d
+@@ifft3d
+@@batch_fft
+@@batch_ifft
+@@batch_fft2d
+@@batch_ifft2d
+@@batch_fft3d
+@@batch_ifft3d
 
 ## Reduction
 
@@ -948,7 +958,7 @@ def trace(x, name=None):
   Returns:
     The trace of input tensor.
   """
-  with ops.op_scope([x], name, "Trace") as name: 
+  with ops.op_scope([x], name, "Trace") as name:
     x = ops.convert_to_tensor(x, name="x")
     if len(x.get_shape()) != 2:
       raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
@@ -1362,8 +1372,18 @@ ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
 ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
+ops.RegisterShape("FFT")(common_shapes.unchanged_shape)
+ops.RegisterShape("IFFT")(common_shapes.unchanged_shape)
 ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)
 ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
+ops.RegisterShape("FFT3D")(common_shapes.unchanged_shape)
+ops.RegisterShape("IFFT3D")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchFFT")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchIFFT")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchFFT2D")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchIFFT2D")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchFFT3D")(common_shapes.unchanged_shape)
+ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("Add")
