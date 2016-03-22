@@ -85,7 +85,7 @@ def make_dense_examples_dict(dense_feature_values, weights, labels):
 
 
 def make_variable_dict(max_age, max_gender):
-  # TODO(dbaylor):  Figure out how to derive max_age & max_gender from
+  # TODO(sibyl-toe9oF2e):  Figure out how to derive max_age & max_gender from
   # examples_dict.
   age_weights = tf.Variable(tf.zeros([max_age + 1], dtype=tf.float32))
   gender_weights = tf.Variable(tf.zeros([max_gender + 1], dtype=tf.float32))
@@ -128,12 +128,12 @@ CONTAINER = uuid.uuid4().hex
 
 # Clear the shared container.
 def tearDown():
-  # TODO(katsiapis): Proper cleanup of Containers when possible.
+  # TODO(sibyl-Mooth6ku): Proper cleanup of Containers when possible.
   pass
 
 
-# TODO(katsiapis): Add tests that exercise L1 and Shrinking.
-# TODO(pmol): Refactor tests to avoid repetition of boilerplate code.
+# TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
+# TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaOptimizerTest(TensorFlowTestCase):
   """Base SDCA optimizer test class for any loss type."""
 

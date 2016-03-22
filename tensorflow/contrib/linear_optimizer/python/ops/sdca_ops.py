@@ -57,7 +57,7 @@ def _maybe_load_sdca_ops():
       assert _sdca_ops, 'Could not load _sdca_ops.so'
 
 
-# TODO(rohananil): add op_scope to appropriate methods.
+# TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
@@ -163,7 +163,7 @@ class SdcaModel(object):
     # Algorithmic requirement (for now) is to have minimal l2 of 1.0
     return max(self._options['symmetric_l2_regularization'], 1.0)
 
-  # TODO(rohananil): Use optimizer interface to make use of slot creation logic.
+  # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):
     # Make internal variables which have the updates before applying L1
     # regularization.
@@ -221,7 +221,7 @@ class SdcaModel(object):
         ei = array_ops.reshape(ei, [-1])
         fi = array_ops.reshape(fi, [-1])
         fv = array_ops.reshape(st_i.values, [-1])
-        # TODO(rohananil): This does not work if examples have empty features.
+        # TODO(sibyl-Aix6ihai): This does not work if examples have empty features.
         predictions += math_ops.segment_sum(
             math_ops.mul(
                 array_ops.gather(sv, fi), fv), array_ops.reshape(ei, [-1]))
@@ -293,7 +293,7 @@ class SdcaModel(object):
               as_ref=True),
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
-          # TODO(rohananil): Provide empirical evidence for this. It is better
+          # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
           # to run more than one iteration on single mini-batch as we want to
           # spend more time in compute. SDCA works better with larger
           # mini-batches and there is also recent work that shows its better to

@@ -1086,12 +1086,12 @@ def cond(pred, fn1, fn2, name=None):
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
-    fn1: The function to be performed if pred is true.
-    fn2: The function to be performed if pref is false.
+    fn1: The callable to be performed if pred is true.
+    fn2: The callable to be performed if pref is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:
-    Tensors returned by the call to either `fn1` or `fn2`. If the functions
+    Tensors returned by the call to either `fn1` or `fn2`. If the callables
     return a singleton list, the element is extracted from the list.
 
   Raises:
@@ -1515,8 +1515,8 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
-  `cond` is a function taking a list of tensors and returning a boolean scalar
-  tensor. `body` is a function taking a list of tensors and returning a list of
+  `cond` is a callable taking a list of tensors and returning a boolean scalar
+  tensor. `body` is a callable taking a list of tensors and returning a list of
   tensors of the same length and with the same types as the input. `loop_vars`
   is a list of tensors that is passed to both `cond` and `body`.
 
@@ -1528,7 +1528,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Args:
     cond: The termination condition of the loop.
-    body: A function that represents the loop body.
+    body: A callable that represents the loop body.
     loop_vars: The list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
@@ -1765,9 +1765,9 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   """The foldl operator on the list of tensors resulted from unpacking `elems`
   along the first dimension.
 
-  This foldl operator repeatedly applies the function `fn` to a sequence
+  This foldl operator repeatedly applies the callable `fn` to a sequence
   of elements from first to last. The elements are made of the tensors
-  unpacked from `elems` on dimension 0. The function fn takes two tensors as
+  unpacked from `elems` on dimension 0. The callable fn takes two tensors as
   arguments. The first argument is the accumulated value computed from the
   preceding invocation of fn. If `initializer` is None, `elems` must contain
   at least one element, and its first element is used as the initializer.
@@ -1776,7 +1776,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   of the result tensor is fn(initializer, values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor to be unpacked on dimension 0.
     initializer: (optional) The initial value for the accumulator.
     parallel_iterations: (optional) The number of iterations allowed to run
@@ -1830,9 +1830,9 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   """The foldr operator on the list of tensors resulted from unpacking `elems`
   along the first dimension.
 
-  This foldr operator repeatedly applies the function `fn` to a sequence
+  This foldr operator repeatedly applies the callable `fn` to a sequence
   of elements from last to first. The elements are made of the tensors
-  unpacked from `elems`. The function fn takes two tensors as arguments.
+  unpacked from `elems`. The callable fn takes two tensors as arguments.
   The first argument is the accumulated value computed from the preceding
   invocation of fn. If `initializer` is None, `elems` must contain at least
   one element, and its first element is used as the initializer.
@@ -1841,7 +1841,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   of the result tensor is `fn(initializer, values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
     initializer: (optional) The initial value for the accumulator.
     parallel_iterations: (optional) The number of iterations allowed to run
@@ -1895,7 +1895,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   """The map operator on the list of tensors resulted from unpacking `elems`
   along the first dimension.
 
-  This map operator repeatedly applies the function `fn` to a sequence of
+  This map operator repeatedly applies the callable `fn` to a sequence of
   elements from first to last. The elements are made of the tensors unpacked
   from `elems`. `dtype` is the data type of the return value of `fn`. Users
   must provide `dtype` if it is different from the data type of `elems`.
@@ -1904,7 +1904,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   of the result tensor is `[len(values)] + fn(values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor to be unpacked to apply `fn`.
     dtype: (optional) The output type of `fn`.
     parallel_iterations: (optional) The number of iterations allowed to run
@@ -1955,9 +1955,9 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   """The scan operator on the list of tensors resulted from unpacking `elems`
   along the first dimension.
 
-  This scan operator repeatedly applies the function `fn` to a sequence
+  This scan operator repeatedly applies the callable `fn` to a sequence
   of elements from first to last. The elements are made of the tensors
-  unpacked from `elems` on dimension 0. The function fn takes two tensors as
+  unpacked from `elems` on dimension 0. The callable fn takes two tensors as
   arguments. The first argument is the accumulated value computed from the
   preceding invocation of fn. If `initializer` is None, `elems` must contain
   at least one element, and its first element is used as the initializer.
@@ -1966,7 +1966,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor to be unpacked on dimension 0.
     initializer: (optional) The initial value for the accumulator.
     parallel_iterations: (optional) The number of iterations allowed to run

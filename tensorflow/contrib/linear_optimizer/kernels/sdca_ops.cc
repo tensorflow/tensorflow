@@ -183,7 +183,7 @@ Status FillSparseExamplesByGroup(
     // For each column, the cost of parsing it is O(num_examples). We use
     // num_examples here, as empirically Shard() creates the right amount of
     // threads based on the problem size.
-    // TODO(rohananil): Tune this as a function of dataset size.
+    // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
     const int64 kCostPerUnit = num_examples;
     Shard(worker_threads.num_threads, worker_threads.workers,
           num_sparse_features, kCostPerUnit, parse_partition);
@@ -261,7 +261,7 @@ inline PerExampleData ComputeWxAndWeightedExampleNorm(
 // Add delta weights to original weights.
 void AddDeltaWeights(const DeltaWeightsByGroup& src,
                      WeightsByGroup* const dst) {
-  // TODO(rohananil): Parallelize this.
+  // TODO(sibyl-Aix6ihai): Parallelize this.
   for (size_t group = 0; group < src.size(); ++group) {
     for (size_t i = 0; i < src[group].size(); ++i) {
       (*dst)[group](i) += src[group][i].load();
@@ -309,7 +309,7 @@ WeightsByGroup MakeWeightsFrom(OpMutableInputList* const input_list) {
 
 DeltaWeightsByGroup MakeZeroDeltaWeightsLike(
     const WeightsByGroup& weights_by_group) {
-  // TODO(katsiapis): Maybe parallelize this.
+  // TODO(sibyl-Mooth6ku): Maybe parallelize this.
   DeltaWeightsByGroup result;
   for (const TTypes<float>::Vec weights : weights_by_group) {
     result.emplace_back(weights.size());
@@ -386,7 +386,7 @@ Status RunTrainStepsForMiniBatch(
       data_by_example->Set(example_key, data);
     }
   };
-  // TODO(rohananil): Current multiplier 100000 works well empirically
+  // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
   // but perhaps we can tune it better.
   const int64 kCostPerUnit = 100000 * (sparse_examples_by_group.size() +
                                        dense_features_by_group.size());
@@ -402,7 +402,7 @@ Status FillRegularizations(OpKernelConstruction* const context,
   return Status::OK();
 }
 
-// TODO(katsiapis): Support arbitrary dimensional dense weights and remove this.
+// TODO(sibyl-Mooth6ku): Support arbitrary dimensional dense weights and remove this.
 Status ValidateDenseWeights(const WeightsByGroup& weights_by_group) {
   for (const TTypes<float>::Vec weights : weights_by_group) {
     if (weights.size() != 1) {
@@ -452,7 +452,7 @@ class SdcaSolver : public OpKernel {
     // The shared container is intended to maintain state at the example level
     // across invocations of the kernel on different input data.
     //
-    // TODO(katsiapis): Replace this in-Kernel data structure with a first class
+    // TODO(sibyl-Mooth6ku): Replace this in-Kernel data structure with a first class
     // citizen mutable Dictionary in tensorflow proper, that we will initialize
     // and update externally.
     DataByExample* data_by_example = nullptr;
@@ -560,12 +560,12 @@ class SdcaSolver : public OpKernel {
     AddDeltaWeights(sparse_delta_weights_by_group, &sparse_weights_by_group);
     AddDeltaWeights(dense_delta_weights_by_group, &dense_weights_by_group);
 
-    // TODO(katsiapis): Use core::ScopedUnref once it's moved out of internal.
+    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
     data_by_example->Unref();
   }
 
  private:
-  // TODO(rohananil): We could use the type-constraint on loss_type, and
+  // TODO(sibyl-Aix6ihai): We could use the type-constraint on loss_type, and
   // template the entire class to avoid the virtual table lookup penalty in
   // the inner loop.
   std::unique_ptr<DualLossUpdater> loss_updater_;
@@ -598,7 +598,7 @@ class SdcaShrinkL1 : public OpKernel {
         MakeWeightsFrom(&dense_weights_inputs);
     OP_REQUIRES_OK(context, ValidateDenseWeights(dense_weights_by_group));
 
-    // TODO(rohananil): Parallelize this.
+    // TODO(sibyl-Aix6ihai): Parallelize this.
     const double shrink_by = ShrinkageFactor(regularizations_);
     for (TTypes<float>::Vec weights : sparse_weights_by_group) {
       for (int64 i = 0; i < weights.size(); ++i) {
@@ -642,7 +642,7 @@ class SdcaTrainingStats : public OpKernel {
                      total_example_weight += data.example_weight;
                    }));
 
-    // TODO(katsiapis): Think about the most arithmetically stable way of
+    // TODO(sibyl-Mooth6ku): Think about the most arithmetically stable way of
     // computing (dual + primal) loss (if it matters).
 
     {
@@ -673,7 +673,7 @@ class SdcaTrainingStats : public OpKernel {
       tensor->scalar<double>()() = total_example_weight;
     }
 
-    // TODO(katsiapis): Use core::ScopedUnref once it's moved out of internal.
+    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
     data_by_example->Unref();
   }
 
