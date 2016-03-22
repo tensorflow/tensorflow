@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 tf_custom_op_library(
+    # TODO(sibyl-Mooth6ku): Understand why 'python/ops/_' is needed and fix it.
     name = "python/ops/_sdca_ops.so",
     srcs = [
         "ops/sdca_ops.cc",

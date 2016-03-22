@@ -24,10 +24,10 @@ py_library(
 )
 
 cc_library(
-    name = "contrib_kernels",
+    name = "contrib_ops",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
+        "//tensorflow/contrib/linear_optimizer:python/ops/_sdca_ops.so",
     ],
 )
 
