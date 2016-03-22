@@ -112,13 +112,13 @@ def make_dense_variable_dict(num_dense_features, num_examples):
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
   return tf.cast(
       tf.greater_equal(predictions, tf.ones_like(predictions) * cutoff),
-      dtype=tf.float32)
+      dtype=tf.int32)
 
 
 def get_binary_predictions_for_hinge(predictions):
   return tf.cast(
       tf.greater_equal(predictions, tf.zeros_like(predictions)),
-      dtype=tf.float32)
+      dtype=tf.int32)
 
 
 # Setup the single container shared across all tests. This is testing proper
@@ -655,7 +655,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
 
       binary_predictions = get_binary_predictions_for_hinge(predictions)
       self.assertAllEqual([-1.0, 1.0], predictions.eval())
-      self.assertAllEqual([0.0, 1.0], binary_predictions.eval())
+      self.assertAllEqual([0, 1], binary_predictions.eval())
       self.assertAllClose(0.0, unregularized_loss.eval())
       self.assertAllClose(0.25, regularized_loss.eval(), atol=0.05)
 
@@ -678,7 +678,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
         model.minimize().run()
 
       self.assertAllClose([1.0, -1.0], predictions.eval(), atol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+      self.assertAllEqual([1, 0], binary_predictions.eval())
 
       # (1.0, 1.0) and (1.0, -1.0) are perfectly separable by x-axis (that is,
       # the SVM's functional margin >=1), so the unregularized loss is ~0.0.
@@ -712,7 +712,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       # For these datapoints, optimal weights are w_1~=0.0 and w_2~=1.0 which
       # gives an L2 loss of ~0.25.
       self.assertAllClose([0.5, -0.5], predictions.eval(), rtol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+      self.assertAllEqual([1, 0], binary_predictions.eval())
       unregularized_loss = model.unregularized_loss(examples)
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.5, unregularized_loss.eval(), atol=0.02)
@@ -743,7 +743,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       # correct, but the boundary will be much closer to the 2nd point than the
       # first one.
       self.assertAllClose([1.0, -0.2], predictions.eval(), atol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval(), atol=0.05)
+      self.assertAllEqual([1, 0], binary_predictions.eval())
       unregularized_loss = model.unregularized_loss(examples)
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.2, unregularized_loss.eval(), atol=0.02)
