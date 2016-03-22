@@ -167,7 +167,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, size, linkstatic=0, tags=[], data=[]):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
   name = name.replace(".cc", "")
   native.cc_test(name="%s" % (name.replace("/", "_")),
                  size=size,
@@ -181,9 +181,9 @@ def tf_cc_test(name, deps, size, linkstatic=0, tags=[], data=[]):
 
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, size, linkstatic=0, tags=[]):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic=linkstatic, tags=tags, size=size)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
 
 # Build defs for TensorFlow kernels
 
@@ -460,7 +460,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 
-def tf_py_test(name, srcs, size, data=[], main=None, args=[],
+def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[]):
   native.py_test(
       name=name,
@@ -479,7 +479,7 @@ def tf_py_test(name, srcs, size, data=[], main=None, args=[],
       srcs_version="PY2AND3")
 
 
-def cuda_py_test(name, srcs, size, data=[], main=None, args=[],
+def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                  shard_count=1, additional_deps=[]):
   test_tags = tf_cuda_tests_tags()
   tf_py_test(name=name,
@@ -494,7 +494,7 @@ def cuda_py_test(name, srcs, size, data=[], main=None, args=[],
 
 def py_tests(name,
              srcs,
-             size,
+             size="medium",
              additional_deps=[],
              data=[],
              tags=[],
@@ -514,7 +514,7 @@ def py_tests(name,
                additional_deps=additional_deps)
 
 
-def cuda_py_tests(name, srcs, size, additional_deps=[], data=[], shard_count=1):
+def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
   py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
            data=data, tags=test_tags, shard_count=shard_count)

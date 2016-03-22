@@ -1158,7 +1158,6 @@ tf_cc_tests(
 
 # GPU-related tests
 tf_cc_tests(
-    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(
@@ -1191,7 +1190,6 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
-    size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],

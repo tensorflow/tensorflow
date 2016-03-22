@@ -1166,7 +1166,6 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "kernel_tests_with_sharding",
-    size = "medium",  # TODO(irving): Can we fit these in small?
     srcs = sharded_kernel_test_list,
     shard_count = 2,
 )
