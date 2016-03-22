@@ -1064,7 +1064,6 @@ medium_kernel_test_list = glob([
     "kernel_tests/transpose_op_test.py",
 ])
 
-# TODO(irving): Can these be shrunk down to size = "small" after sharding?
 sharded_kernel_test_list = glob([
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
@@ -1165,7 +1164,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "kernel_tests_with_sharding",
-    size = "medium",  # TODO(irving): Can we fit these in small?
+    size = "small",
     srcs = sharded_kernel_test_list,
     shard_count = 2,
 )
