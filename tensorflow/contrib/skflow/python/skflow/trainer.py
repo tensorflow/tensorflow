@@ -121,7 +121,7 @@ class TensorFlowTrainer(object):
         """
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
-            if summaries:
+            if summaries is not None:
                 global_step, loss, summ, _ = sess.run(
                     [self.global_step, self.loss, summaries, self.trainer],
                     feed_dict=feed_dict)
@@ -131,7 +131,7 @@ class TensorFlowTrainer(object):
                     feed_dict=feed_dict)
             monitor.update(step, global_step, loss, sess,
                            feed_params_fn, loss_expression_tensor=self.loss)
-            if summaries and summary_writer and summ is not None:
+            if summaries is not None and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
             if monitor.monitor_inducing_stop():
                 break
