@@ -14,7 +14,7 @@
 
 from sklearn import datasets, metrics, cross_validation
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 
 # Load dataset.
@@ -34,4 +34,3 @@ classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
-

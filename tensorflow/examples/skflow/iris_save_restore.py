@@ -15,7 +15,7 @@
 import shutil
 
 from sklearn import datasets, metrics, cross_validation
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,

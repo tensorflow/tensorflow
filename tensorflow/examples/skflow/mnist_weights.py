@@ -21,7 +21,7 @@ from sklearn import metrics
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 ### Download and load MNIST data.
 
@@ -47,12 +47,12 @@ def conv_model(X, y):
     X = tf.reshape(X, [-1, 28, 28, 1])
     # first conv layer will compute 32 features for each 5x5 patch
     with tf.variable_scope('conv_layer1'):
-        h_conv1 = skflow.ops.conv2d(X, n_filters=32, filter_shape=[5, 5], 
+        h_conv1 = skflow.ops.conv2d(X, n_filters=32, filter_shape=[5, 5],
                                     bias=True, activation=tf.nn.relu)
         h_pool1 = max_pool_2x2(h_conv1)
     # second conv layer will compute 64 features for each 5x5 patch
     with tf.variable_scope('conv_layer2'):
-        h_conv2 = skflow.ops.conv2d(h_pool1, n_filters=64, filter_shape=[5, 5], 
+        h_conv2 = skflow.ops.conv2d(h_pool1, n_filters=64, filter_shape=[5, 5],
                                     bias=True, activation=tf.nn.relu)
         h_pool2 = max_pool_2x2(h_conv2)
         # reshape tensor into a batch of vectors
@@ -73,7 +73,7 @@ print('Accuracy: {0:f}'.format(score))
 
 ## General usage is classifier.get_tensor_value('foo')
 ## 'foo' must be the variable scope of the desired tensor followed by the
-## graph path. 
+## graph path.
 
 ## To understand the mechanism and figure out the right scope and path, you can do logging.
 ## Then use TensorBoard or a text editor on the log file to look at available strings.

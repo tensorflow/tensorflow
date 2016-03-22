@@ -18,7 +18,7 @@ import pandas
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn, rnn_cell
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 ### Training data
 
@@ -82,4 +82,3 @@ while True:
     classifier.fit(X_train, y_train, logdir='/tmp/tf_examples/word_rnn')
     score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print('Accuracy: {0:f}'.format(score))
-
