@@ -30,6 +30,7 @@ def NHWCToNCHW(input_tensor):
 
   Args:
     input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+
   Returns:
     the converted tensor or a shape array
   """
@@ -44,6 +45,7 @@ def NCHWToNHWC(input_tensor):
 
   Args:
     input_tensor:  a 4-D tensor, or a 4-element array representing the same.
+
   Returns:
     the converted tensor or a shape array
   """
@@ -66,8 +68,11 @@ def GetTestConfigs():
   return test_configs
 
 
-def GetInceptionMaxPoolShapes():
+def GetShrunkInceptionMaxPoolShapes(shrink=30):
   """Iterator for some of the max pool ops in the Inception 2015 model.
+
+  Args:
+    shrink: Factor to shrink depth relative to Inception.
 
   Yields:
     Tuple (name, input_size, filter_size, out_size, strides, padding)
@@ -81,6 +86,11 @@ def GetInceptionMaxPoolShapes():
                   [32, 8, 8, 1248], [32, 8, 8, 2048]]
   strides = [[1, 2, 2, 1], [1, 2, 2, 1], [1, 2, 2, 1],
              [1, 1, 1, 1]]
+  # Shrink each depth value
+  for i in input_sizes:
+    i[3] //= shrink
+  for o in output_sizes:
+    o[3] //= shrink
   paddings = ["VALID", "VALID", "VALID", "SAME"]
   for n, i, f, o, s, p in zip(names, input_sizes, filter_sizes, output_sizes,
                               strides, paddings):
@@ -482,6 +492,8 @@ class PoolingTest(tf.test.TestCase):
       use_gpu: whether we are running on GPU
       x_init_value: Values to be passed to the gradient checker.
     """
+    assert input_sizes[0] == output_sizes[0]
+    assert input_sizes[3] == output_sizes[3]
     total_size = 1
     for s in input_sizes:
       total_size *= s
@@ -909,7 +921,7 @@ def GetMaxPoolGradTest(input_size, filter_size, output_size, strides, padding):
 
 if __name__ == "__main__":
   for (name_, input_size_, filter_size_, output_size_, stride_,
-       padding_) in GetInceptionMaxPoolShapes():
+       padding_) in GetShrunkInceptionMaxPoolShapes():
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
     setattr(PoolingTest, "testMaxPoolGrad_" + name_,

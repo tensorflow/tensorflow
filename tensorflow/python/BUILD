@@ -1067,7 +1067,6 @@ medium_kernel_test_list = glob([
 sharded_kernel_test_list = glob([
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
-    "kernel_tests/pooling_ops_test.py",
 ])
 
 cpu_only_kernel_test_list = glob([
