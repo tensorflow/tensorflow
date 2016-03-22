@@ -56,6 +56,8 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.client.server_lib import GrpcServer
+from tensorflow.python.client.server_lib import make_cluster_def
+
 
 from tensorflow.python.client.session import InteractiveSession
 from tensorflow.python.client.session import Session

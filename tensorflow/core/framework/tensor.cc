@@ -264,6 +264,23 @@ struct ProtoHelper<bfloat16> {
   }
 };
 
+template <>
+struct ProtoHelper<Eigen::half> {
+  typedef Helper<float>::RepeatedFieldType FieldType;
+  static const Eigen::half* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const Eigen::half*>(proto.int_val().data());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.int_val().size();
+  }
+  static void Fill(const Eigen::half* data, size_t n, TensorProto* proto) {
+    proto->mutable_int_val()->Reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_int_val()->AddAlreadyReserved(data[i].x);
+    }
+  }
+};
+
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
     : alloc_(a), data_(a->Allocate<T>(n)), elem_(n) {}
@@ -410,6 +427,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other,
     CASE(quint16, SINGLE_ARG(STMTS))                  \
     CASE(qint16, SINGLE_ARG(STMTS))                   \
     CASE(bfloat16, SINGLE_ARG(STMTS))                 \
+    CASE(Eigen::half, SINGLE_ARG(STMTS))              \
     case DT_INVALID:                                  \
       LOG(FATAL) << "Type not set";                   \
       break;                                          \

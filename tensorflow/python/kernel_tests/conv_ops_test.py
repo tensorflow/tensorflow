@@ -24,8 +24,13 @@ import tensorflow as tf
 from tensorflow.python.framework import test_util
 
 
-def GetInceptionShapes():
-  """Iterator for the convolution shapes used in the Inception 2015 model.
+def GetShrunkInceptionShapes(shrink=10):
+  """Iterator for smaller versions of convolution shapes in 2015 Inception.
+
+  Relative to inception, each depth value is `depth // shrink`.
+
+  Args:
+    shrink: Factor to shrink each depth value by relative to Inception.
 
   Yields:
     Tuple (input_size, filter_size, out_size, stride, padding), the convolution
@@ -91,6 +96,14 @@ def GetInceptionShapes():
   strides = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1,
              1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
              1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  # Shrink sizes to make the test faster
+  for i in input_sizes:
+    i[3] //= shrink
+  for f in filter_sizes:
+    f[2] //= shrink
+    f[3] //= shrink
+  for o in out_sizes:
+    o[3] //= shrink
   # pylint: disable=invalid-name
   VALID = "VALID"
   SAME = "SAME"
@@ -102,8 +115,8 @@ def GetInceptionShapes():
               SAME, SAME, SAME, SAME, SAME, SAME, SAME, SAME,
               SAME, VALID, VALID, SAME, SAME, SAME, SAME, SAME,
               SAME, SAME, SAME, SAME, VALID, VALID, VALID]
-  for i, f, o, s, p in zip(input_sizes, filter_sizes, out_sizes,
-                           strides, paddings):
+  for i, f, o, s, p in zip(input_sizes, filter_sizes, out_sizes, strides,
+                           paddings):
     yield i, f, o, s, p
 
 
@@ -1006,7 +1019,7 @@ def GetInceptionBackFilterTest(input_size, filter_size, output_size,
 
 if __name__ == "__main__":
   for index, (input_size_, filter_size_, output_size_, stride_,
-              padding_) in enumerate(GetInceptionShapes()):
+              padding_) in enumerate(GetShrunkInceptionShapes()):
     setattr(Conv2DTest, "testInceptionFwd_" + str(index),
             GetInceptionFwdTest(input_size_, filter_size_, stride_, padding_))
     setattr(Conv2DTest, "testInceptionBackInput_" + str(index),

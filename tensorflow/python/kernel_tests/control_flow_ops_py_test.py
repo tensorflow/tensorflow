@@ -1202,6 +1202,28 @@ class ControlFlowTest(tf.test.TestCase):
           lambda x: tf.mul(tf.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
+  def testScan_Simple(self):
+    with self.test_session():
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
+      v = tf.constant(2.0, name="v")
+
+      r = control_flow_ops.scan(lambda a, x: tf.mul(a, x), elems)
+      self.assertAllEqual([1., 2., 6., 24., 120., 720.], r.eval())
+
+      r = control_flow_ops.scan(
+          lambda a, x: tf.mul(a, x), elems, initializer=v)
+      self.assertAllEqual([2., 4., 12., 48., 240., 1440.], r.eval())
+
+  def testScan_Grad(self):
+    with self.test_session():
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
+      v = tf.constant(2.0, name="v")
+
+      r = control_flow_ops.scan(
+          lambda a, x: tf.mul(a, x), elems, initializer=v)
+      r = tf.gradients(r, v)[0]
+      self.assertAllEqual(873.0, r.eval())
+
   def testOneValueCond(self):
     with self.test_session():
       c = tf.placeholder(tf.int32, shape=[])

@@ -171,6 +171,11 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           value: TF.Urls.productionRouter(),
         },
       },
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
       _exists: function(run, tag, runToCompressedHistogramsChange) {
         var runToCompressedHistograms = runToCompressedHistogramsChange.base;
         return runToCompressedHistograms[run].indexOf(tag) !== -1;

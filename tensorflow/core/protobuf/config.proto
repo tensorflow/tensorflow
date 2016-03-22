@@ -155,7 +155,7 @@ message RunOptions {
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
-message RunOutputs {
+message RunMetadata {
   // Statistics traced for this step. Populated if tracing is turned on via the
   // "RunOptions" proto.
   // EXPERIMENTAL: The format and set of events may change in future versions.

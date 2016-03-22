@@ -40,6 +40,7 @@ dimension, and dense along all other dimensions.
 @@sparse_fill_empty_rows
 
 ## Math Operations
+@@sparse_add
 @@sparse_tensor_dense_matmul
 """
 from __future__ import absolute_import
@@ -139,6 +140,77 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
                                     name=name))
 
   return ops.SparseTensor(output_ind, output_val, output_shape)
+
+
+def sparse_add(sp_a, sp_b, thresh=0):
+  """Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+  The input `SparseTensor` objects' indices are assumed ordered in standard
+  lexicographic order.  If this is not the case, before this step run
+  `SparseReorder` to restore index ordering.
+
+  By default, if two values sum to zero at some index, the output `SparseTensor`
+  would still include that particular location in its index, storing a zero in
+  the corresponding value slot.  To override this, callers can specify `thresh`,
+  indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+  corresponding value and index would then not be included.  In particular,
+  `thresh == 0.0` (default) means everything is kept and actual thresholding
+  happens only for a positive value.
+
+  For example, suppose the logical sum is (densified):
+
+      [       2]
+      [.1      ]
+      [ 6   -.2]
+
+  Then,
+
+      - thresh == 0 (the default): all 4 index/value pairs will be returned.
+      - thresh == 0.11: only .1 will vanish, and the remaining three index/value
+                        pairs will be returned.
+      - thresh == 0.21: both .1 and -.2 will vanish.
+
+  Args:
+    sp_a: The first input `SparseTensor`.
+    sp_b: The second input `SparseTensor`.
+    thresh: A 0-D `Tensor`.  The magnitude threshold that determines if an
+    output value/index pair takes space.  Its dtype should match that of the
+    values if they are real; if the latter are complex64/complex128, then the
+    dtype should be float32/float64, correspondingly.
+
+  Returns:
+    A `SparseTensor` with the same shape, representing the sum.
+
+  Raises:
+    TypeError: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+  """
+  if not all(isinstance(sp_input, ops.SparseTensor) for sp_input in [sp_a,
+                                                                     sp_b]):
+    raise TypeError("All inputs must be SparseTensors")
+
+  thresh = ops.convert_to_tensor(thresh, dtype=sp_a.values.dtype.real_dtype,
+                                 name="thresh")
+  output_ind, output_val, output_shape = (
+      gen_sparse_ops._sparse_add(sp_a.indices,
+                                 sp_a.values,
+                                 sp_a.shape,
+                                 sp_b.indices,
+                                 sp_b.values,
+                                 sp_b.shape,
+                                 thresh))
+
+  return ops.SparseTensor(output_ind, output_val, output_shape)
+
+
+@ops.RegisterShape("SparseAdd")
+def _SparseAddShape(op):  # pylint: disable=invalid-name
+  input_shape_shape = op.inputs[2].get_shape()
+  dim = input_shape_shape.num_elements()
+  return [
+      tensor_shape.TensorShape([None, dim]),
+      tensor_shape.unknown_shape(1),
+      input_shape_shape
+  ]
 
 
 @ops.RegisterShape("SparseConcat")

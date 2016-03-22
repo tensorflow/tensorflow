@@ -20,6 +20,7 @@ py_library(
 
 cuda_py_tests(
     name = "ctc_decoder_ops_test",
+    size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
     additional_deps = [
         ":ctc_py",
@@ -30,6 +31,7 @@ cuda_py_tests(
 
 py_test(
     name = "ctc_loss_op_test",
+    size = "small",
     srcs = ["ctc_loss_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [

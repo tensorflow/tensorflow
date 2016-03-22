@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -365,16 +366,6 @@ class FunctionLibraryRuntime {
 // gradient function MatMul is instantiated.
 //
 // TODO(zhifengc): Better documentation somewhere.
-
-#ifdef SELECTIVE_REGISTRATION
-// Experimental selective registration support to reduce binary size.
-// If kRequiresSymbolicGradients is false, then no gradient ops are registered
-// and their code will be stripped out during the link phase.
-#include "ops_to_register.h"
-#define SHOULD_REGISTER_OP_GRADIENT kRequiresSymbolicGradients
-#else
-#define SHOULD_REGISTER_OP_GRADIENT true
-#endif
 
 // Macros to define a gradient function factory for a primitive
 // operation.
