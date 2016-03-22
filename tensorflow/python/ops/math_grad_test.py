@@ -64,6 +64,7 @@ class AbsOpTest(tf.test.TestCase):
     return value + np.sign(value) * bias
 
   def _testGrad(self, shape, dtype=None, max_error=None, bias=None, sigma=None):
+    np.random.seed(7)
     if dtype == tf.complex64:
       value = tf.complex(self._biasedRandN(shape, bias=bias, sigma=sigma),
                          self._biasedRandN(shape, bias=bias, sigma=sigma))
