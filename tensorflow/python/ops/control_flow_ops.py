@@ -1002,8 +1002,13 @@ class CondContext(ControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
-    result = val
-    if val.name not in self._values:
+    if val.name in self._values:
+      # Use the real value if it comes from outer context. This is needed in
+      # particular for nested conds.
+      result = self._external_values.get(val.name)
+      result = val if result is None else result
+    else:
+      result = val
       self._values.add(val.name)
       if self._outer_context:
         result = self._outer_context.AddValue(val)
