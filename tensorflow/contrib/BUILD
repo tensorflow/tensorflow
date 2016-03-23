@@ -15,6 +15,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/ctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",

@@ -1,11 +1,36 @@
+# Copyright 2015 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Module for constructing GridRNN cells"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from collections import namedtuple
 
-from tensorflow.python.ops import array_ops, variable_scope as vs
-from tensorflow.python.ops.rnn_cell import RNNCell, BasicRNNCell, BasicLSTMCell, LSTMCell, linear
-from tensorflow.python.ops.nn import relu
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import rnn_cell
 
 
-class GridRNNCell(RNNCell):
+# TODO: update docs
+
+class GridRNNCell(rnn_cell.RNNCell):
   """Grid Long short-term memory unit (GridLSTM) recurrent network cell.
 
   This implementation is based on:
@@ -36,20 +61,17 @@ class GridRNNCell(RNNCell):
     """
     if num_dims < 1:
       raise ValueError('dims must be >= 1: {}'.format(num_dims))
-    if input_size is not None and input_size != num_units:
-      raise ValueError('GridRNN requires input_size ({}) to be '
-                       'the same with num_units ({})'.format(input_size, num_units))
 
     self._config = _parse_rnn_config(num_dims, input_dims, output_dims, priority_dims,
-                                     non_recurrent_dims, non_recurrent_fn or relu, tied)
+                                     non_recurrent_dims, non_recurrent_fn or nn.relu, tied, num_units)
     self._input_size = input_size or num_units
 
-    cell_input_size = (self._config.num_dims - 1) * self._input_size
+    cell_input_size = (self._config.num_dims - 1) * num_units
     if cell_fn is None:
-      self._cell = LSTMCell(num_units=num_units, input_size=cell_input_size)
+      self._cell = rnn_cell.LSTMCell(num_units=num_units, input_size=cell_input_size)
     else:
-      self._cell = cell_fn(num_units=num_units, input_size=cell_input_size)
-      if not isinstance(self._cell, RNNCell):
+      self._cell = cell_fn(num_units, cell_input_size)
+      if not isinstance(self._cell, rnn_cell.RNNCell):
         raise ValueError('cell_fn must return an object of type RNNCell')
 
   @property
@@ -79,69 +101,105 @@ class GridRNNCell(RNNCell):
       - A 2D, batch x state_size, Tensor representing the new state of the cell
         after reading "inputs" when previous state was "state".
     """
-    # c_prev is `m`, and m_prev is `h` in the paper. Keep c and m here for consistency with the codebase
-    c_prev = []
-    m_prev = []
-    cell_units = self._cell.state_size - self._cell.output_size
-    for start_idx in range(0, self.state_size, self._cell.state_size):
-      c_prev.append(array_ops.slice(state, [0, start_idx], [-1, cell_units]))
-      m_prev.append(array_ops.slice(state, [0, start_idx + cell_units], [-1, self._cell.output_size]))
+    sz = inputs.get_shape().as_list()[1]
+    if self.input_size != sz:
+      raise ValueError('Actual input size not same as specified: {} vs {}.'.format(sz, self.input_size))
+    sz = state.get_shape().as_list()[1]
+    if self.state_size != sz:
+      raise ValueError('Actual state size not same as specified: {} vs {}.'.format(sz, self.state_size))
 
-    actual_input_size = inputs.get_shape().as_list()[1]
-    if self.input_size != actual_input_size:
-      raise ValueError('Actual input size not same as specified: {} vs {}.'.format(actual_input_size, self.input_size))
+    # c_prev is `m`, and m_prev is `h` in the paper. Keep c and m here for consistency with the codebase
+    c_prev = [None] * self._config.num_dims
+    m_prev = [None] * self._config.num_dims
+    cell_units = self._cell.state_size - self._cell.output_size
+
+    # for LSTM cell: state_size = num_units + output_size, because state = concat(cell_values + previous output)
+    # for GRU/RNN: state_size = output_size, because state = previous output
+    for recurrent_dim, start_idx in zip(self._config.recurrents, range(0, self.state_size, self._cell.state_size)):
+      c_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx], [-1, cell_units])
+      m_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx + cell_units], [-1, self._cell.output_size])
 
     conf = self._config
+
     # input dimensions
-    all_inputs = [None] * conf.num_dims
+    dtype = inputs.dtype
     input_splits = array_ops.split(1, len(conf.inputs), inputs)
-    for d, split in zip(conf.inputs, input_splits):
-      all_inputs[d] = split
 
     new_output = [None] * conf.num_dims
-    new_state = []
+    new_state = [None] * conf.num_dims
 
-    with vs.variable_scope(scope or type(self).__name__):   # GridRNNCell
-      _propagate(conf.non_priority, conf, self._cell, all_inputs, c_prev, m_prev, new_output, new_state)
-      _propagate(conf.priority, conf, self._cell, all_inputs, c_prev, m_prev, new_output, new_state)
+    with vs.variable_scope(scope or type(self).__name__) as grid_scope:  # GridRNNCell
+      for i, j in enumerate(conf.inputs):
+        input_project_c = vs.get_variable('project_c_{}'.format(j), [self._input_size, conf.num_units], dtype=dtype)
+        input_project_m = vs.get_variable('project_m_{}'.format(j), [self._input_size, conf.num_units], dtype=dtype)
+        c_prev[j] = math_ops.matmul(input_splits[i], input_project_c)
+        m_prev[j] = math_ops.matmul(input_splits[i], input_project_m)
 
-      output = array_ops.concat(1, new_output)
+      _propagate(conf.non_priority, conf, self._cell, c_prev, m_prev, new_output, new_state, True)
+      _propagate(conf.priority, conf, self._cell, c_prev, m_prev, new_output, new_state, False)
 
-    return output, array_ops.concat(1, new_state)
+      output_tensors = [new_output[i] for i in self._config.outputs]
+      output = array_ops.zeros([0, 0], inputs.dtype) if len(output_tensors) == 0 else array_ops.concat(1,
+                                                                                                       output_tensors)
+
+      state_tensors = [new_state[i] for i in self._config.recurrents]
+      states = array_ops.zeros([0, 0], inputs.dtype) if len(state_tensors) == 0 else array_ops.concat(1, state_tensors)
+
+      grid_scope.reuse_variables()
+
+    return output, states
+
 
 class Grid1BasicRNNCell(GridRNNCell):
   def __init__(self, num_units, tied=False):
     super(Grid1BasicRNNCell, self).__init__(num_units=num_units, num_dims=1, input_dims=0, output_dims=0,
                                             priority_dims=0, tied=tied,
-                                            cell_fn=lambda n, i: BasicRNNCell(num_units=n, input_size=i))
+                                            cell_fn=lambda n, i: rnn_cell.BasicRNNCell(num_units=n, input_size=i))
+
 
 class Grid2BasicRNNCell(GridRNNCell):
-  def __init__(self, num_units, tied=False):
+  def __init__(self, num_units, tied=False, non_recurrent_fn=None):
     super(Grid2BasicRNNCell, self).__init__(num_units=num_units, num_dims=2, input_dims=0, output_dims=0,
                                             priority_dims=0, tied=tied,
-                                            cell_fn=lambda n, i: BasicRNNCell(num_units=n, input_size=i))
+                                            non_recurrent_dims=None if non_recurrent_fn is None else 0,
+                                            cell_fn=lambda n, i: rnn_cell.BasicRNNCell(num_units=n, input_size=i),
+                                            non_recurrent_fn=non_recurrent_fn)
+
 
 class Grid1BasicLSTMCell(GridRNNCell):
-  def __init__(self, num_units, tied=False):
+  def __init__(self, num_units, forget_bias=1, tied=False):
     super(Grid1BasicLSTMCell, self).__init__(num_units=num_units, num_dims=1, input_dims=0, output_dims=0,
                                              priority_dims=0, tied=tied,
-                                             cell_fn=lambda n, i: BasicLSTMCell(num_units=n, input_size=i))
+                                             cell_fn=lambda n, i: rnn_cell.BasicLSTMCell(num_units=n,
+                                                                                forget_bias=forget_bias, input_size=i))
+
 
 class Grid2BasicLSTMCell(GridRNNCell):
-  def __init__(self, num_units, tied=False):
-    super(Grid2BasicLSTMCell, self).__init__(num_units=num_units, num_dims=2, input_dims=0, output_dims=0,
-                                             priority_dims=0, tied=tied,
-                                             cell_fn=lambda n, i: BasicLSTMCell(num_units=n, input_size=i))
+  def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None, forget_bias=1):
+    super(Grid2BasicLSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
+                                             input_dims=0, output_dims=0, priority_dims=0, tied=tied,
+                                             non_recurrent_dims=None if non_recurrent_fn is None else 0,
+                                             cell_fn=lambda n, i: rnn_cell.BasicLSTMCell(
+                                               num_units=n, forget_bias=forget_bias, input_size=i),
+                                             non_recurrent_fn=non_recurrent_fn)
+
 
 class Grid1LSTMCell(GridRNNCell):
   def __init__(self, num_units, tied=False):
     super(Grid1LSTMCell, self).__init__(num_units=num_units, num_dims=1, input_dims=0, output_dims=0, priority_dims=0,
-                                        tied=tied, cell_fn=lambda n, i: LSTMCell(num_units=n, input_size=i))
+                                        tied=tied, cell_fn=lambda n, i: rnn_cell.LSTMCell(num_units=n, input_size=i))
+
 
 class Grid2LSTMCell(GridRNNCell):
-  def __init__(self, num_units, tied=False):
-    super(Grid2LSTMCell, self).__init__(num_units=num_units, num_dims=2, input_dims=0, output_dims=0, priority_dims=0,
-                                        tied=tied, cell_fn=lambda n, i: LSTMCell(num_units=n, input_size=i))
+  def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None,
+               use_peepholes=False, forget_bias=1.0):
+    super(Grid2LSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
+                                        input_dims=0, output_dims=0, priority_dims=0, tied=tied,
+                                        non_recurrent_dims=None if non_recurrent_fn is None else 0,
+                                        cell_fn=lambda n, i: rnn_cell.LSTMCell(
+                                          num_units=n, input_size=i, forget_bias=forget_bias,
+                                          use_peepholes=use_peepholes),
+                                        non_recurrent_fn=non_recurrent_fn)
 
 
 """
@@ -152,17 +210,17 @@ _GridRNNDimension = namedtuple('_GridRNNDimension', ['idx', 'is_input', 'is_outp
 
 _GridRNNConfig = namedtuple('_GridRNNConfig', ['num_dims', 'dims',
                                                'inputs', 'outputs', 'recurrents',
-                                               'priority', 'non_priority', 'tied'])
+                                               'priority', 'non_priority', 'tied', 'num_units'])
+
 
 def _parse_rnn_config(num_dims, ls_input_dims, ls_output_dims, ls_priority_dims, ls_non_recurrent_dims,
-                      non_recurrent_fn, tied):
-
+                      non_recurrent_fn, tied, num_units):
   def check_dim_list(ls):
     if ls is None:
       ls = []
     if not isinstance(ls, (list, tuple)):
       ls = [ls]
-    ls = list(set(ls))
+    ls = sorted(set(ls))
     if any(_ < 0 or _ >= num_dims for _ in ls):
       raise ValueError('Invalid dims: {}. Must be in [0, {})'.format(ls, num_dims))
     return ls
@@ -181,9 +239,14 @@ def _parse_rnn_config(num_dims, ls_input_dims, ls_output_dims, ls_priority_dims,
                         recurrents=[x for x in range(num_dims) if x not in non_recurrent_dims],
                         priority=priority_dims,
                         non_priority=[x for x in range(num_dims) if x not in priority_dims],
-                        tied=tied)
+                        tied=tied, num_units=num_units)
 
-def _propagate(dim_indices, conf, cell, all_inputs, c_prev, m_prev, new_output, new_state):
+
+def _get_first(*args):
+  return next((i for i in args if i is not None), None)
+
+
+def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state, first_call):
   """
   """
   if len(dim_indices) == 0:
@@ -191,21 +254,29 @@ def _propagate(dim_indices, conf, cell, all_inputs, c_prev, m_prev, new_output, 
 
   ls_cell_inputs = [None] * (conf.num_dims - 1)
   for d in conf.dims[:-1]:
-    ls_cell_inputs[d.idx] = all_inputs[d.idx] or new_output[d.idx] or m_prev[d.idx]
+    ls_cell_inputs[d.idx] = _get_first(new_output[d.idx], m_prev[d.idx])
   cell_inputs = array_ops.concat(1, ls_cell_inputs)
-  last_dim_output = all_inputs[-1] or new_output[-1] or m_prev[-1]
+  last_dim_output = _get_first(new_output[-1], m_prev[-1])
 
   for i in dim_indices:
     d = conf.dims[i]
     if d.non_recurrent_fn:
-      new_output[d.idx] = d.non_recurrent_fn(linear(args=[cell_inputs, last_dim_output],
-                                                    output_size=cell.num_units,
-                                                    bias=True,
-                                                    scope='non_recurrent' if conf.tied else
-                                                    'non_recurrent/cell:{}'.format(i)))
+      if conf.tied:
+        with vs.variable_scope('non_recurrent', reuse=not(first_call and i == dim_indices[0])):
+          new_output[d.idx] = d.non_recurrent_fn(rnn_cell.linear(args=[cell_inputs, last_dim_output],
+                                                                 output_size=conf.num_units, bias=True))
+      else:
+          new_output[d.idx] = d.non_recurrent_fn(rnn_cell.linear(args=[cell_inputs, last_dim_output],
+                                                                 output_size=conf.num_units, bias=True,
+                                                                 scope='non_recurrent/cell_{}'.format(i)))
+      new_output[d.idx] = logging_ops.Print(new_output[d.idx], [new_output[d.idx], cell_inputs, last_dim_output])
     else:
       cell_state = array_ops.concat(1, [c_prev[i], last_dim_output])
-      cell_new_output, cell_new_state = cell(cell_inputs, cell_state,
-                                             scope='recurrent' if conf.tied else 'recurrent/cell:{}'.format(i))
-      new_output[d.idx] = cell_new_output
-      new_state.append(cell_new_state)
+      if conf.tied:
+        with vs.variable_scope('recurrent', reuse=not(first_call and i == dim_indices[0])):
+          a, b = cell(cell_inputs, cell_state)
+      else:
+        a, b = cell(cell_inputs, cell_state, scope='recurrent/cell_{}'.format(i))
+
+      a = logging_ops.Print(a, [cell_state, cell_inputs, a, b], message='tensor{} '.format(i), summarize=100)
+      new_output[d.idx], new_state[d.idx] = a, b
