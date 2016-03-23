@@ -224,14 +224,16 @@ class SdcaModel(object):
         fv = array_ops.reshape(st_i.values, [-1])
         # TODO(sibyl-Aix6ihai): This does not work if examples have empty features.
         result += math_ops.segment_sum(
-            math_ops.mul(
-                array_ops.gather(sv, fi), fv), array_ops.reshape(ei, [-1]))
+            math_ops.mul(array_ops.gather(sv, fi), fv), ei)
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
+
       for i in range(len(dense_variables)):
         result += dense_features[i] * dense_variables[i]
-    return result
+
+    # Reshaping to allow shape inference at graph construction time.
+    return array_ops.reshape(result, [-1])
 
   def predictions(self, examples):
     """Add operations to compute predictions by the model.
