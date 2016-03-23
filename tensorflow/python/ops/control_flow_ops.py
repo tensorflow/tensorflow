@@ -213,7 +213,7 @@ def switch(data, pred, dtype=None, name=None):
       val, ind, dense_shape = data.values, data.indices, data.dense_shape
       val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
       ind_f, ind_t = gen_control_flow_ops._switch(ind, pred, name="indices")
-      if dense_shape:
+      if dense_shape is not None:
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
             dense_shape, pred, name="dense_shape")
       else:
@@ -1002,8 +1002,13 @@ class CondContext(ControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
-    result = val
-    if val.name not in self._values:
+    if val.name in self._values:
+      # Use the real value if it comes from outer context. This is needed in
+      # particular for nested conds.
+      result = self._external_values.get(val.name)
+      result = val if result is None else result
+    else:
+      result = val
       self._values.add(val.name)
       if self._outer_context:
         result = self._outer_context.AddValue(val)

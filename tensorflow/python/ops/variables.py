@@ -143,7 +143,7 @@ class Variable(object):
 
   def __init__(self, initial_value=None, trainable=True, collections=None,
                validate_shape=True, caching_device=None, name=None,
-               variable_def=None):
+               variable_def=None, dtype=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -177,6 +177,9 @@ class Variable(object):
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
         the Variable object with its contents. `variable_def` and the other
         arguments are mutually exclusive.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
 
     Returns:
       A Variable.
@@ -199,11 +202,12 @@ class Variable(object):
                            collections=collections,
                            validate_shape=validate_shape,
                            caching_device=caching_device,
-                           name=name)
+                           name=name,
+                           dtype=dtype)
 
   def _init_from_args(self, initial_value=None, trainable=True,
                       collections=None, validate_shape=True,
-                      caching_device=None, name=None):
+                      caching_device=None, name=None, dtype=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -225,6 +229,10 @@ class Variable(object):
         deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If None, either the datatype will be kept (if initial_value is
+       a Tensor) or float32 will be used (if it is a Python object convertible
+       to a Tensor).
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -239,7 +247,8 @@ class Variable(object):
     with ops.control_dependencies(None):
       with ops.op_scope([initial_value], name, "Variable") as name:
         self._initial_value = ops.convert_to_tensor(initial_value,
-                                                    name="initial_value")
+                                                    name="initial_value",
+                                                    dtype=dtype)
         initial_value_shape = self._initial_value.get_shape()
         if validate_shape and not initial_value_shape.is_fully_defined():
           raise ValueError("initial_value must have a shape specified: %s"

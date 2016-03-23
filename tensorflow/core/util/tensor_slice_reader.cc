@@ -95,6 +95,10 @@ Status OpenTableTensorSliceReader(const string& fname,
   return s;
 }
 
+TensorSliceReader::TensorSliceReader(const string& filepattern)
+    : TensorSliceReader(filepattern, OpenTableTensorSliceReader,
+                        kLoadAllShards) {}
+
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function)
     : TensorSliceReader(filepattern, open_function, kLoadAllShards) {}
@@ -245,6 +249,28 @@ bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
   } else {
     return false;
   }
+}
+
+TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()
+    const {
+  VarToShapeMap name_to_shape;
+  if (status().ok()) {
+    for (auto e : Tensors()) {
+      name_to_shape[e.first] = e.second->shape();
+    }
+  }
+  return name_to_shape;
+}
+
+const string TensorSliceReader::DebugString() const {
+  string shape_str;
+  if (status().ok()) {
+    for (auto e : Tensors()) {
+      strings::StrAppend(&shape_str, e.first, " ",
+                         e.second->shape().DebugString(), "\n");
+    }
+  }
+  return shape_str;
 }
 
 }  // namespace checkpoint

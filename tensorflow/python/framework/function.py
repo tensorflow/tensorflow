@@ -273,7 +273,7 @@ def _get_func_name(func):
     raise ValueError("Argument must be a function")
 
 
-def define_function(func, input_types):
+def define_function(func, input_types, grad_func=None):
   """Creates a `FunctionDef` for a python function.
 
   `func` is a Python function that receives zero or more tensors and returns at
@@ -324,6 +324,9 @@ def define_function(func, input_types):
     input_types: if a dict, keys are the names of the arguments of
       `func`, values are their expected `tf.DType`. Otherwise,
       a list of `tf.DType`s.
+    grad_func: If not None, specifies the gradient function's name. The
+               gradient function must satisify the criterion defined in
+               function.proto:GradientDef.
 
   Returns:
     A FunctionDef protocol buffer.
@@ -391,7 +394,7 @@ def define_function(func, input_types):
   # Build the FunctionDef
   func_def = graph_to_function_def(temp_graph, func_name, inputs, outputs)
   g = ops.get_default_graph()
-  g._add_function(func_def)  # pylint: disable=protected-access
+  g._add_function(func_def, grad_func)  # pylint: disable=protected-access
   return func_def
 
 
@@ -440,6 +443,7 @@ class Defun(object):
       **input_types: Dict mapping string with `tf.DType`
         One key for each argument of the function to decorate.
     """
+    self._grad_func = input_types.pop("grad_func", None)
     assert not input_type_list or not input_types, (
         "Can't specify both *input_type_list and **input_types")
     self._input_types = input_types
@@ -447,7 +451,7 @@ class Defun(object):
 
   def __call__(self, f):
     if self._input_types:
-      func_def = define_function(f, self._input_types)
+      func_def = define_function(f, self._input_types, self._grad_func)
     else:
-      func_def = define_function(f, self._input_type_list)
+      func_def = define_function(f, self._input_type_list, self._grad_func)
     return lambda *args, **kwargs: call_function(func_def, *args, **kwargs)

@@ -37,6 +37,8 @@ from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver as saver_module
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 def _TestDir(test_name):
@@ -1156,6 +1158,38 @@ class MetaGraphTest(tf.test.TestCase):
     # The stripped op list should contain just Const.
     op_list = tf.contrib.util.stripped_op_list_for_graph(graph)
     self.assertEquals(["Const"], [op.name for op in op_list.op])
+
+
+class CheckpointReaderTest(tf.test.TestCase):
+
+  def testDebugString(self):
+    save_path = os.path.join(self.get_temp_dir(), "ckpt_for_debug_string")
+    with self.test_session() as sess:
+      # Builds a graph.
+      v0 = tf.Variable(tf.zeros([2, 3]), name="v0")
+      v1 = tf.Variable(tf.zeros([3, 2, 1]), name="v1")
+      save = tf.train.Saver({"v0": v0, "v1": v1})
+      tf.initialize_all_variables().run()
+      # Saves a checkpoint.
+      save.save(sess, save_path)
+      # Creates a reader.
+      reader = tf.train.NewCheckpointReader(save_path)
+      # Verifies that the tensors exist.
+      self.assertTrue(reader.HasTensor("v0"))
+      self.assertTrue(reader.HasTensor("v1"))
+      debug_string = reader.DebugString()
+      # Verifies that debug string contains the right strings.
+      self.assertTrue(compat.as_bytes("v1 [3,2,1]") in debug_string)
+      self.assertTrue(compat.as_bytes("v0 [2,3]") in debug_string)
+      # Verifies GetVariableToShapeMap() returns the correct information.
+      var_map = reader.GetVariableToShapeMap()
+      self.assertEquals([3, 2, 1], var_map["v1"])
+      self.assertEquals([2, 3], var_map["v0"])
+
+  def testNonexistentPath(self):
+    with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
+                                 "Unsuccessful TensorSliceReader"):
+      tf.train.NewCheckpointReader("non-existent")
 
 
 if __name__ == "__main__":
