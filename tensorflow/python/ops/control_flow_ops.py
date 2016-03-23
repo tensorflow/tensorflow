@@ -213,7 +213,7 @@ def switch(data, pred, dtype=None, name=None):
       val, ind, dense_shape = data.values, data.indices, data.dense_shape
       val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
       ind_f, ind_t = gen_control_flow_ops._switch(ind, pred, name="indices")
-      if dense_shape:
+      if dense_shape is not None:
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
             dense_shape, pred, name="dense_shape")
       else:
