@@ -23,7 +23,9 @@ This model is similar to one described in this paper:
 and is somewhat alternative to the Lua code from here:
    https://github.com/zhangxiangxiao/Crepe
 """
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import numpy as np
 from sklearn import metrics
