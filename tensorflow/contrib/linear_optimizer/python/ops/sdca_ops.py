@@ -23,6 +23,7 @@ import uuid
 
 from six.moves import range  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.linear_optimizer.ops import gen_sdca_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
