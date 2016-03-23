@@ -36,11 +36,13 @@ __global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
     Index indices_slice_i = i - indices_i * slice_size;
     Index params_first_index = ldg(indices + indices_i);
     if (!(params_first_index >= 0 && params_first_index < first_dim_size)) {
-      // Ignore indices that are out of range.
-      continue;
+      // Set indices out of range to zero
+      // TODO(fpmc): Log an error for transfer back to host.
+      out[i] = T(0);
+    } else {
+      Index params_i = params_first_index * slice_size + indices_slice_i;
+      out[i] = ldg(params + params_i);
     }
-    Index params_i = params_first_index * slice_size + indices_slice_i;
-    out[i] = ldg(params + params_i);
   }
 }
 

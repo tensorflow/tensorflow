@@ -193,6 +193,7 @@ class Allocator {
   template <typename T>
   struct is_simple {
     static const bool value = std::is_trivial<T>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, complex64>::value ||
                               std::is_same<T, complex128>::value ||
                               is_quantized<T>::value;

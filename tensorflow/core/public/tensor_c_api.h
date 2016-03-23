@@ -269,17 +269,17 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // implementation will eventually call TF_DeleteTensor on each input).
 //
 // Any NULL and non-NULL value combinations for (`run_options`,
-// `run_outputs`) are valid.
+// `run_metadata`) are valid.
 //
 //    - `run_options` may be NULL, in which case it will be ignored; or
 //      non-NULL, in which case it must point to a `TF_Buffer` containing the
 //      serialized representation of a `RunOptions` protocol buffer.
-//    - `run_output` may be NULL, in which case it will be ignored; or non-NULL,
-//      in which case it must point to an empty, freshly allocated `TF_Buffer`
-//      that may be updated to contain the serialized representation of a
-//      `RunOutput` protocol buffer.
+//    - `run_metadata` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to an empty, freshly allocated
+//      `TF_Buffer` that may be updated to contain the serialized representation
+//      of a `RunMetadata` protocol buffer.
 //
-// The caller retains the ownership of `run_options` and/or `run_outputs` (when
+// The caller retains the ownership of `run_options` and/or `run_metadata` (when
 // not NULL) and should manually call TF_DeleteBuffer on them.
 //
 // On success, the tensors corresponding to output_names[0,noutputs-1]
@@ -298,8 +298,8 @@ extern void TF_Run(TF_Session*,
                    int noutputs,
                    // Target nodes
                    const char** target_node_names, int ntargets,
-                   // RunOutputs
-                   TF_Buffer* run_outputs,
+                   // RunMetadata
+                   TF_Buffer* run_metadata,
                    // Output status
                    TF_Status*);
 

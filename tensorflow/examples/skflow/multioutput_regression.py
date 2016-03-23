@@ -1,4 +1,4 @@
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ This example uses the same data as one here:
 
 Instead of DecisionTree a 2-layer Deep Neural Network with RELU activations is used.
 """
+from __future__ import division, print_function, absolute_import
+
 
 import numpy as np
 import matplotlib.pyplot as plt

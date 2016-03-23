@@ -73,7 +73,10 @@ class GrpcChannelCache {
   virtual string TranslateTask(const string& task) = 0;
 };
 
-GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& p);
+typedef std::function<SharedGrpcChannelPtr(string)> ChannelCreationFunction;
+
+GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& p,
+                                      ChannelCreationFunction channel_func);
 
 // Below here are internal-only functions.
 
@@ -87,7 +90,7 @@ SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target);
 // The caller takes ownership of the returned object.
 GrpcChannelCache* NewHostPortsGrpcChannelCache(
     const string& job_id, const std::vector<string>& host_ports,
-    int tasks_per_replica);
+    int tasks_per_replica, ChannelCreationFunction channel_func);
 
 // Returns a ChannelCache that is the union of a number of other ChannelCaches.
 GrpcChannelCache* NewMultiGrpcChannelCache(

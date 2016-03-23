@@ -170,7 +170,7 @@ or negative weight. Softmax then normalizes these weights, so that they add up
 to one, forming a valid probability distribution. (To get more intuition about
 the softmax function, check out the
 [section](http://neuralnetworksanddeeplearning.com/chap3.html#softmax)
-on it in Michael Nieslen's book, complete with an interactive visualization.)
+on it in Michael Nielsen's book, complete with an interactive visualization.)
 
 
 You can picture our softmax regression as looking something like the following,

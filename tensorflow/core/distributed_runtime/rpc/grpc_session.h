@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -44,9 +46,12 @@ class MasterInterface;
 // Multiple threads must synchronize their accesses to a single
 // session.
 class GrpcSession : public Session {
- public:
-  // Do not use; just present for easier swig wrapping.
+ protected:
   explicit GrpcSession(const SessionOptions& options);
+
+ public:
+  static Status Create(const SessionOptions& options,
+                       std::unique_ptr<GrpcSession>* out_session);
 
   ~GrpcSession() override;
 
@@ -65,7 +70,7 @@ class GrpcSession : public Session {
              const std::vector<std::pair<string, Tensor> >& inputs,
              const std::vector<string>& output_tensor_names,
              const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs, RunOutputs* run_outputs);
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
   Status Extend(const GraphDef& graph) override;
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
@@ -86,6 +91,10 @@ class GrpcSession : public Session {
       std::vector<Tensor>* outputs) override;
 
   std::vector<DeviceAttributes> ListDevices();
+
+ protected:
+  // Takes ownership of `*master`.
+  void SetRemoteMaster(MasterInterface* master);
 
  private:
   SessionOptions options_;

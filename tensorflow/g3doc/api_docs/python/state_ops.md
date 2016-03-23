@@ -1227,7 +1227,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name, default_name, initializer=None, regularizer=None, caching_device=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name, initializer=None, regularizer=None, caching_device=None, reuse=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -1235,10 +1235,10 @@ This context manager validates that the given `values` are from the
 same graph, ensures that that graph is the default graph, and pushes a
 name scope and a variable scope.
 
-If `name` is not None, it is used as is in the variable scope. If `name`
-is None, then `default_name` is used.  In that case, if the same name has been
-previously used in the same scope, it will made unique be appending `_N` to
-it.
+If `name_or_scope` is not None, it is used as is in the variable scope. If
+`scope` is None, then `default_name` is used.  In that case, if the same name
+has been previously used in the same scope, it will made unique be appending
+`_N` to it.
 
 This is intended to be used when defining generic ops and so reuse is always
 inherited.
@@ -1246,8 +1246,8 @@ inherited.
 For example, to define a new Python op called `my_op_with_vars`:
 
 ```python
-def my_op_with_vars(a, b, name=None):
-  with tf.variable_op_scope([a, b], name, "MyOp") as scope:
+def my_op_with_vars(a, b, scope=None):
+  with tf.variable_op_scope([a, b], scope, "MyOp") as scope:
     a = tf.convert_to_tensor(a, name="a")
     b = tf.convert_to_tensor(b, name="b")
     c = tf.get_variable('c')
@@ -1259,13 +1259,15 @@ def my_op_with_vars(a, b, name=None):
 
 
 *  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
-*  <b>`name`</b>: The name argument that is passed to the op function, this name is not
-    uniquified in the variable scope.
-*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`, this
-    name will be uniquified.
+*  <b>`name_or_scope`</b>: The name argument that is passed to the op function,
+    this name_or_scope is not uniquified in the variable scope.
+*  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
+    `None`, this name will be uniquified.
 *  <b>`initializer`</b>: The  default initializer to pass to variable scope.
 *  <b>`regularizer`</b>: The default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: The default caching device for variables within this scope.
+*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
+    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 
 
 ##### Returns:
@@ -1658,7 +1660,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.
@@ -1705,7 +1707,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
     Should be from a `Variable` node.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A tensor of indices into the first dimension of `ref`.

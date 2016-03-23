@@ -50,9 +50,9 @@ TEST(LogisticLoss, ComputeDualLoss) {
               1e-3);
 }
 
-// TODO(rohananil): Add tests for dual update.
-// TODO(dbaylor): Add tests for squared loss.
-// TODO(pmol): Add tests for hinge loss.
+// TODO(sibyl-Aix6ihai): Add tests for dual update.
+// TODO(sibyl-toe9oF2e): Add tests for squared loss.
+// TODO(sibyl-vie3Poto): Add tests for hinge loss.
 
 }  // namespace
 }  // namespace tensorflow

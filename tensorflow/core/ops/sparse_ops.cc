@@ -17,6 +17,46 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("SparseAdd")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Input("thresh: Treal")
+    .Output("sum_indices: int64")
+    .Output("sum_values: T")
+    .Output("sum_shape: int64")
+    .Attr("T: numbertype")
+    .Attr("Treal: realnumbertype")
+    .Doc(R"doc(
+Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in the
+corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0` (default) means everything is kept and actual thresholding happens
+only for a positive value.
+
+In the following shapes, `nnz` is the count after taking `thresh` into account.
+
+a_indices: 2-D.  The `indices` of the first `SparseTensor`, size `[nnz, 2]` Matrix.
+a_values: 1-D.  The `values` of the first `SparseTensor`, size `[nnz]` Vector.
+a_shape: 1-D.  The `shape` of the first `SparseTensor`, size `[2]` Vector.
+b_indices: 2-D.  The `indices` of the second `SparseTensor`, size `[nnz, 2]` Matrix.
+b_values: 1-D.  The `values` of the second `SparseTensor`, size `[nnz]` Vector.
+b_shape: 1-D.  The `shape` of the second `SparseTensor`, size `[2]` Vector.
+thresh: 0-D.  The magnitude threshold that determines if an output value/index
+pair takes space.
+)doc");
+
 REGISTER_OP("SparseTensorDenseMatMul")
     .Input("a_indices: int64")
     .Input("a_values: T")
@@ -39,9 +79,9 @@ if adjoint_a == true:
   A should be sorted in order of increasing dimension 1 (i.e., "column major"
   order instead of "row major" order).
 
-a_indices: 2-D.  The `indices` of the `SparseTensor`, size [nnz x 2] Matrix.
-a_values: 1-D.  The `values` of the `SparseTensor`, size [nnz] Vector.
-a_shape: 1-D.  The `shape` of the `SparseTensor`, size [2] Vector.
+a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.
+a_values: 1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.
+a_shape: 1-D.  The `shape` of the `SparseTensor`, size `[2]` Vector.
 b: 2-D.  A dense Matrix.
 adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex, this
   is transpose(conj(A)).  Otherwise it's transpose(A).

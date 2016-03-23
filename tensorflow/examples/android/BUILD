@@ -95,3 +95,23 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+filegroup(
+    name = "java_files",
+    srcs = glob(["src/**/*.java"]),
+)
+
+filegroup(
+    name = "jni_files",
+    srcs = glob([
+        "jni/**/*.cc",
+        "jni/**/*.h",
+    ]),
+)
+
+filegroup(
+    name = "resource_files",
+    srcs = glob(["res/**"]),
+)
+
+exports_files(["AndroidManifest.xml"])

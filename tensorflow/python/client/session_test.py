@@ -913,45 +913,45 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_outputs = config_pb2.RunOutputs()
+    run_metadata = config_pb2.RunMetadata()
 
     with ops.device('/cpu:0'):
       with session.Session() as sess:
         sess.run(constant_op.constant(1.0))
-        self.assertTrue(not run_outputs.HasField('step_stats'))
+        self.assertTrue(not run_metadata.HasField('step_stats'))
 
-        sess.run(constant_op.constant(1.0), run_outputs=run_outputs)
-        self.assertTrue(not run_outputs.HasField('step_stats'))
+        sess.run(constant_op.constant(1.0), run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
 
         sess.run(constant_op.constant(1.0),
                  options=run_options,
-                 run_outputs=run_outputs)
+                 run_metadata=run_metadata)
 
-        self.assertTrue(run_outputs.HasField('step_stats'))
-        self.assertEquals(len(run_outputs.step_stats.dev_stats), 1)
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
-  def testRunOptionsRunOutputs(self):
+  def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_outputs = config_pb2.RunOutputs()
+    run_metadata = config_pb2.RunMetadata()
 
     with ops.device('/cpu:0'):
       with session.Session() as sess:
         # all combinations are valid
-        sess.run(constant_op.constant(1.0), options=None, run_outputs=None)
+        sess.run(constant_op.constant(1.0), options=None, run_metadata=None)
         sess.run(constant_op.constant(1.0), options=None,
-                 run_outputs=run_outputs)
-        self.assertTrue(not run_outputs.HasField('step_stats'))
+                 run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
 
         sess.run(constant_op.constant(1.0), options=run_options,
-                 run_outputs=None)
-        self.assertTrue(not run_outputs.HasField('step_stats'))
+                 run_metadata=None)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
 
         sess.run(constant_op.constant(1.0), options=run_options,
-                 run_outputs=run_outputs)
+                 run_metadata=run_metadata)
 
-        self.assertTrue(run_outputs.HasField('step_stats'))
-        self.assertEquals(len(run_outputs.step_stats.dev_stats), 1)
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:

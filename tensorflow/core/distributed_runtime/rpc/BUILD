@@ -208,9 +208,8 @@ cc_library(
 
 cc_library(
     name = "grpc_server_lib",
-    srcs = [
-        "grpc_server_lib.cc",
-    ],
+    srcs = ["grpc_server_lib.cc"],
+    hdrs = ["grpc_server_lib.h"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         "@grpc//:grpc++_unsecure",
@@ -325,12 +324,38 @@ cc_library(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["exclusive"],
     tests = [
         "grpc_channel_test.cc",
-        "grpc_session_test.cc",
         "rpc_rendezvous_mgr_test.cc",
+    ],
+    deps = [
+        ":grpc_channel",
+        ":grpc_server_lib",
+        ":grpc_session",
+        ":grpc_testlib",
+        ":rpc_rendezvous_mgr",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime:process_util",
+        "//tensorflow/core/distributed_runtime:server_lib",
+    ],
+)
+
+tf_cc_tests(
+    size = "medium",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["exclusive"],
+    tests = [
+        "grpc_session_test.cc",
     ],
     deps = [
         ":grpc_channel",

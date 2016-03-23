@@ -267,14 +267,14 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
   std::vector<string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
 
-  // Prepares RunOptions and RunOutputs
+  // Prepares RunOptions and RunMetadata
   RunOptions run_options;
   run_options.set_trace_level(RunOptions::FULL_TRACE);
-  RunOutputs run_outputs;
-  EXPECT_EQ(run_outputs.step_stats().dev_stats_size(), 0);
+  RunMetadata run_metadata;
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
 
   Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, &run_outputs);
+                          &outputs, &run_metadata);
   TF_ASSERT_OK(s);
 
   ASSERT_EQ(1, outputs.size());
@@ -284,9 +284,9 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
   ASSERT_TRUE(outputs[0].IsInitialized());
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 
-  // Checks RunOutputs is well-formed
-  ASSERT_TRUE(run_outputs.has_step_stats());
-  EXPECT_EQ(run_outputs.step_stats().dev_stats_size(), 2);
+  // Checks RunMetadata is well-formed
+  ASSERT_TRUE(run_metadata.has_step_stats());
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
 }
 
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
