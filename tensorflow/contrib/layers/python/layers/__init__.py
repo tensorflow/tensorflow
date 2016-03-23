@@ -21,5 +21,6 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.layers.python.layers.initializers import *
 from tensorflow.contrib.layers.python.layers.layers import *
+from tensorflow.contrib.layers.python.layers.optimizers import *
 from tensorflow.contrib.layers.python.layers.regularizers import *
 from tensorflow.contrib.layers.python.layers.summaries import *

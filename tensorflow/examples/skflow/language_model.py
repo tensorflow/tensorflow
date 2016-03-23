@@ -1,6 +1,6 @@
 # encoding: utf-8
 
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -98,4 +98,3 @@ estimator = skflow.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE),
                                        steps=1000, batch_size=64, continue_training=True)
 
 estimator.fit(X, y)
-

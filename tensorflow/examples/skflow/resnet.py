@@ -1,4 +1,4 @@
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -20,12 +20,13 @@ Note that this is still a work-in-progress. Feel free to submit a PR
 to make this better. 
 """
 
+from __future__ import division, print_function, absolute_import
+
 import os
 from collections import namedtuple
 from math import sqrt
 
 from sklearn import metrics
-
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.contrib import skflow
@@ -154,4 +155,3 @@ while True:
 
     # Save model graph and checkpoints.
     classifier.save("models/resnet/")
-
