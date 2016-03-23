@@ -36,7 +36,7 @@ class Env;
 // [0, range)
 class RangeSampler {
  public:
-  explicit RangeSampler(int range) : range_(range) { CHECK_GT(range_, 0); }
+  explicit RangeSampler(int64 range) : range_(range) { CHECK_GT(range_, 0); }
   virtual ~RangeSampler();
 
   // Sample a single value
