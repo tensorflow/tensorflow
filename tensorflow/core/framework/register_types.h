@@ -94,7 +94,35 @@ limitations under the License.
   m(quint8);                       \
   m(qint32)
 
-#else  // defined(__ANDROID__)
+#elif defined(__ANDROID_TYPES_FULL__)
+
+#define TF_CALL_REAL_NUMBER_TYPES(m) \
+  m(float);                          \
+  m(int32);                          \
+  m(int64)
+
+#define TF_CALL_NUMBER_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
+
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
+  m(float);                                   \
+  m(int64)
+
+#define TF_CALL_NUMBER_TYPES_NO_INT32(m) TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)
+
+#define TF_CALL_POD_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
+
+#define TF_CALL_ALL_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
+
+// Maybe we could put an empty macro here for Android?
+#define TF_CALL_GPU_NUMBER_TYPES(m) m(float)
+
+// Call "m" on all quantized types.
+#define TF_CALL_QUANTIZED_TYPES(m) \
+  m(qint8);                        \
+  m(quint8);                       \
+  m(qint32)
+
+#else  // defined(__ANDROID__) && !defined(__ANDROID_TYPES_FULL__)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   m(float);                          \
@@ -113,19 +141,7 @@ limitations under the License.
 // Maybe we could put an empty macro here for Android?
 #define TF_CALL_GPU_NUMBER_TYPES(m) m(float)
 
-#if defined(__ANDROID_TYPES_FULL__)
-
-// Call "m" on all quantized types.
-#define TF_CALL_QUANTIZED_TYPES(m) \
-  m(qint8);                        \
-  m(quint8);                       \
-  m(qint32)
-
-#else
-
 #define TF_CALL_QUANTIZED_TYPES(m)
-
-#endif  // defined(__ANDROID_TYPES_FULL__)
 
 #endif  // defined(__ANDROID__)
 

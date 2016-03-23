@@ -117,6 +117,7 @@ cc_library(
 
 tf_cc_test(
     name = "ops_util_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",
@@ -280,6 +281,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "concat_op_test",
@@ -345,6 +347,7 @@ cc_library(
 
 tf_cc_test(
     name = "range_sampler_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":range_sampler",
@@ -380,6 +383,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "control_flow_ops_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":control_flow_ops",
@@ -429,6 +433,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "dynamic_partition_op_test",
@@ -520,6 +525,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "restore_op_test",
@@ -570,6 +576,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "adjust_contrast_op_benchmark_test",
@@ -653,6 +660,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "logging_ops_test",
@@ -704,6 +712,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "cast_op_test",
@@ -790,6 +799,7 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "lrn_op_test",
@@ -899,6 +909,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "random_op_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":random_ops",
@@ -927,6 +938,7 @@ tf_kernel_libraries(
 tf_kernel_libraries(
     name = "sparse",
     prefixes = [
+        "sparse_add_op",
         "sparse_concat_op",
         "sparse_reorder_op",
         "sparse_split_op",
@@ -945,8 +957,10 @@ tf_kernel_libraries(
 )
 
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
+        "sparse_add_op_test",
         "sparse_tensor_dense_matmul_op_test",
         "sparse_to_dense_op_test",
         "sparse_xent_op_test",
@@ -986,6 +1000,7 @@ tf_kernel_libraries(
 
 tf_cc_test(
     name = "scatter_op_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_testutil",
@@ -1026,6 +1041,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "training_ops_test",
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",

@@ -18,6 +18,7 @@ py_library(
 
 py_test(
     name = "lookup_ops_test",
+    size = "small",
     srcs = ["lookup_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -24,6 +24,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
 
+ops.NoGradient("SparseAdd")
+
+
 ops.NoGradient("SparseToDense")
 
 

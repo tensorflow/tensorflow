@@ -67,9 +67,9 @@ REQUIRES: The name of each Tensor of the input or output must match a "Tensor en
 
 REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
 
-#### `virtual Status tensorflow::Session::RunWithOpts(const RunOptions &run_options, const std::vector< std::pair< string, Tensor > > &inputs, const std::vector< string > &output_tensor_names, const std::vector< string > &target_node_names, std::vector< Tensor > *outputs, RunOutputs *run_outputs)` {#virtual_Status_tensorflow_Session_RunWithOpts}
+#### `virtual Status tensorflow::Session::RunWithOpts(const RunOptions &run_options, const std::vector< std::pair< string, Tensor > > &inputs, const std::vector< string > &output_tensor_names, const std::vector< string > &target_node_names, std::vector< Tensor > *outputs, RunMetadata *run_metadata)` {#virtual_Status_tensorflow_Session_RunWithOpts}
 
-Like `Run`, but allows users to pass in a `RunOptions` proto and to retrieve non-Tensor metadata output via a `RunOutputs` proto for this step. NOTE: This API is still experimental and may change.
+Like `Run`, but allows users to pass in a `RunOptions` proto and to retrieve non-Tensor metadata output via a `RunMetadata` proto for this step. NOTE: This API is still experimental and may change.
 
 
 

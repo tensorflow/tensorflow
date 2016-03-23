@@ -66,7 +66,7 @@ class DirectSession : public Session {
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
                            std::vector<Tensor>* outputs,
-                           RunOutputs* run_outputs) override;
+                           RunMetadata* run_metadata) override;
 
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.

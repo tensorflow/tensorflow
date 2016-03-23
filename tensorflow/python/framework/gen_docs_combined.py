@@ -124,7 +124,7 @@ def all_libraries(module_to_name, members, documented):
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
-                   "GPUOptions", "GraphOptions", "RunOptions", "RunOutputs",
+                   "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
                    "SessionInterface", "BaseSession", "NameAttrList",
                    "AttrValue", "TensorArray", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",

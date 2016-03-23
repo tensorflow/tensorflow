@@ -65,7 +65,7 @@ class GrpcSession : public Session {
              const std::vector<std::pair<string, Tensor> >& inputs,
              const std::vector<string>& output_tensor_names,
              const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs, RunOutputs* run_outputs);
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
   Status Extend(const GraphDef& graph) override;
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override;

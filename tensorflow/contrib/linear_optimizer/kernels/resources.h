@@ -86,13 +86,13 @@ class DataByExample : public ResourceBase {
   // So on average we use ~47.5 (28 + 19.5) bytes per entry in this table.
   using DataByKey = std::unordered_map<Key, Data, KeyHash>;
 
-  // TODO(katsiapis): Benchmark and/or optimize this.
+  // TODO(sibyl-Mooth6ku): Benchmark and/or optimize this.
   static const size_t kVisitChunkSize = 100;
 
   const string container_;
   const string solver_uuid_;
 
-  // TODO(katsiapis): Come up with a more efficient locking scheme.
+  // TODO(sibyl-Mooth6ku): Come up with a more efficient locking scheme.
   mutable mutex mu_;
   DataByKey data_by_key_ GUARDED_BY(mu_);
 

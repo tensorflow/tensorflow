@@ -28,6 +28,7 @@ class DType(object):
 
   The following `DType` objects are defined:
 
+  * `tf.float16`: 16-bit half-precision floating-point.
   * `tf.float32`: 32-bit single-precision floating-point.
   * `tf.float64`: 64-bit double-precision floating-point.
   * `tf.bfloat16`: 16-bit truncated floating-point.
@@ -270,6 +271,8 @@ class DType(object):
 
 
 # Define standard wrappers for the types_pb2.DataType enum.
+float16 = DType(types_pb2.DT_HALF)
+half = float16
 float32 = DType(types_pb2.DT_FLOAT)
 float64 = DType(types_pb2.DT_DOUBLE)
 double = float64
@@ -289,6 +292,8 @@ qint16 = DType(types_pb2.DT_QINT16)
 quint16 = DType(types_pb2.DT_QUINT16)
 qint32 = DType(types_pb2.DT_QINT32)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
+float16_ref = DType(types_pb2.DT_HALF_REF)
+half_ref = float16_ref
 float32_ref = DType(types_pb2.DT_FLOAT_REF)
 float64_ref = DType(types_pb2.DT_DOUBLE_REF)
 double_ref = float64_ref
@@ -313,6 +318,7 @@ bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
 _INTERN_TABLE = {
+    types_pb2.DT_HALF: float16,
     types_pb2.DT_FLOAT: float32,
     types_pb2.DT_DOUBLE: float64,
     types_pb2.DT_INT32: int32,
@@ -331,6 +337,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16: quint16,
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
+    types_pb2.DT_HALF_REF: float16_ref,
     types_pb2.DT_FLOAT_REF: float32_ref,
     types_pb2.DT_DOUBLE_REF: float64_ref,
     types_pb2.DT_INT32_REF: int32_ref,
@@ -354,6 +361,7 @@ _INTERN_TABLE = {
 
 # Standard mappings between types_pb2.DataType values and string names.
 _TYPE_TO_STRING = {
+    types_pb2.DT_HALF: "float16",
     types_pb2.DT_FLOAT: "float32",
     types_pb2.DT_DOUBLE: "float64",
     types_pb2.DT_INT32: "int32",
@@ -372,6 +380,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16: "quint16",
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
+    types_pb2.DT_HALF_REF: "float16_ref",
     types_pb2.DT_FLOAT_REF: "float32_ref",
     types_pb2.DT_DOUBLE_REF: "float64_ref",
     types_pb2.DT_INT32_REF: "int32_ref",
@@ -394,6 +403,8 @@ _TYPE_TO_STRING = {
 _STRING_TO_TF = {value: _INTERN_TABLE[key]
                  for key, value in _TYPE_TO_STRING.items()}
 # Add non-canonical aliases.
+_STRING_TO_TF["half"] = float16
+_STRING_TO_TF["half_ref"] = float16_ref
 _STRING_TO_TF["float"] = float32
 _STRING_TO_TF["float_ref"] = float32_ref
 _STRING_TO_TF["double"] = float64
@@ -414,6 +425,7 @@ _np_qint32 = np.dtype([("qint32", np.int32, 1)])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = frozenset([
+    (np.float16, float16),
     (np.float32, float32),
     (np.float64, float64),
     (np.int32, int32),
@@ -434,6 +446,7 @@ _NP_TO_TF = frozenset([
     # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
 ])
 _TF_TO_NP = {
+    types_pb2.DT_HALF: np.float16,
     types_pb2.DT_FLOAT: np.float32,
     types_pb2.DT_DOUBLE: np.float64,
     types_pb2.DT_INT32: np.int32,
@@ -456,6 +469,7 @@ _TF_TO_NP = {
     types_pb2.DT_BFLOAT16: np.uint16,
 
     # Ref types
+    types_pb2.DT_HALF_REF: np.float16,
     types_pb2.DT_FLOAT_REF: np.float32,
     types_pb2.DT_DOUBLE_REF: np.float64,
     types_pb2.DT_INT32_REF: np.int32,

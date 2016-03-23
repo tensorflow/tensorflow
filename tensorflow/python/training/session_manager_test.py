@@ -72,7 +72,7 @@ class SessionManagerTest(tf.test.TestCase):
       v = tf.Variable([6.0, 7.0, 8.0], name="v")
       tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       saver = tf.train.Saver({"v": v})
-      # This should fail as there's no checkpoint withint 2 seconds.
+      # This should fail as there's no checkpoint within 2 seconds.
       with self.assertRaisesRegexp(RuntimeError, "no init_op was given"):
         sess = sm.prepare_session("", init_op=None, saver=saver,
                                   checkpoint_dir=checkpoint_dir,

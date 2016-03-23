@@ -176,9 +176,10 @@ const OpDef* OpListOpRegistry::LookUp(const string& op_type_name,
 // Other registration ---------------------------------------------------------
 
 namespace register_op {
-OpDefBuilderReceiver::OpDefBuilderReceiver(const OpDefBuilder& builder) {
+OpDefBuilderReceiver::OpDefBuilderReceiver(
+    const OpDefBuilderWrapper<true>& wrapper) {
   OpDef op_def;
-  builder.Finalize(&op_def);
+  wrapper.builder().Finalize(&op_def);
   OpRegistry::Global()->Register(op_def);
 }
 }  // namespace register_op

@@ -588,6 +588,15 @@ def _ConjGrad(_, grad):
   return math_ops.conj(grad)
 
 
+@ops.RegisterGradient("ComplexAbs")
+def _ComplexAbsGrad(op, grad):
+  """Returns the gradient of ComplexAbs."""
+  # TODO(b/27786104): The cast to complex could be removed once arithmetic
+  # supports mixtures of complex64 and real values.
+  return (math_ops.complex(grad, array_ops.zeros_like(grad)) *
+          math_ops.sign(op.inputs[0]))
+
+
 @ops.RegisterGradient("Cast")
 def _CastGrad(op, grad):
   t = [dtypes.float32, dtypes.float64, dtypes.bfloat16]
