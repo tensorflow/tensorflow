@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/examples/android/jni/jni_utils.h"
 
 using namespace tensorflow;
@@ -50,19 +49,10 @@ static bool g_compute_graph_initialized = false;
 
 static int g_tensorflow_input_size;  // The image size for the mognet input.
 static int g_image_mean;  // The image mean.
-static StatSummarizer g_stats;
 
 // For basic benchmarking.
 static int g_num_runs = 0;
 static int64 g_timing_total_us = 0;
-static Stat<int64> g_frequency_start;
-static Stat<int64> g_frequency_end;
-
-#ifdef LOG_DETAILED_STATS
-static const bool kLogDetailedStats = true;
-#else
-static const bool kLogDetailedStats = false;
-#endif
 
 // Improve benchmarking by limiting runs to predefined amount.
 // 0 (default) denotes infinite runs.
@@ -89,9 +79,6 @@ TENSORFLOW_METHOD(initializeTensorflow)(
     jint num_classes, jint mognet_input_size, jint image_mean) {
   g_num_runs = 0;
   g_timing_total_us = 0;
-  g_stats.Reset();
-  g_frequency_start.Reset();
-  g_frequency_end.Reset();
 
   //MutexLock input_lock(&g_compute_graph_mutex);
   if (g_compute_graph_initialized) {
@@ -192,17 +179,6 @@ static void GetTopN(
   std::reverse(top_results->begin(), top_results->end());
 }
 
-static int64 GetCpuSpeed() {
-  string scaling_contents;
-  ReadFileToString(nullptr,
-                   "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-                   &scaling_contents);
-  std::stringstream ss(scaling_contents);
-  int64 result;
-  ss >> result;
-  return result;
-}
-
 static std::string ClassifyImage(const RGBA* const bitmap_src,
                                  const int in_stride,
                                  const int width, const int height) {
@@ -251,33 +227,22 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   tensorflow::Status s;
   int64 start_time, end_time;
 
-  if (kLogDetailedStats || kSaveStepStats) {
+  if (kSaveStepStats) {
     RunOptions run_options;
     run_options.set_trace_level(RunOptions::FULL_TRACE);
     RunMetadata run_metadata;
-    g_frequency_start.UpdateStat(GetCpuSpeed());
     start_time = CurrentThreadTimeUs();
     s = session->Run(run_options, input_tensors, output_names, {},
                      &output_tensors, &run_metadata);
     end_time = CurrentThreadTimeUs();
-    g_frequency_end.UpdateStat(GetCpuSpeed());
     assert(run_metadata.has_step_stats());
 
     const StepStats& stats = run_metadata.step_stats();
 
-    if (kLogDetailedStats) {
-      LOG(INFO) << "CPU frequency start: " << g_frequency_start;
-      LOG(INFO) << "CPU frequency end:   " << g_frequency_end;
-      g_stats.ProcessStepStats(stats);
-      g_stats.PrintStepStats();
-    }
-
-    if (kSaveStepStats) {
-      mkdir("/sdcard/tf/", 0755);
-      const string filename =
-          strings::Printf("/sdcard/tf/stepstats%05d.pb", g_num_runs);
-      WriteProtoToFile(filename.c_str(), stats);
-    }
+    mkdir("/sdcard/tf/", 0755);
+    const string filename =
+        strings::Printf("/sdcard/tf/stepstats%05d.pb", g_num_runs);
+    WriteProtoToFile(filename.c_str(), stats);
   } else {
     start_time = CurrentThreadTimeUs();
     s = session->Run(input_tensors, output_names, {}, &output_tensors);
