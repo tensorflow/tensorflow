@@ -16,6 +16,11 @@
 
 set -e
 
+# Install FFmpeg from an alternate repository.
+apt-get install -y software-properties-common
+add-apt-repository -y ppa:mc3man/trusty-media
+apt-get update
+
 # Install dependencies from ubuntu deb repository.
 apt-get update
 apt-get install -y \
@@ -23,6 +28,7 @@ apt-get install -y \
     build-essential \
     cmake \
     curl \
+    ffmpeg \
     git \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
