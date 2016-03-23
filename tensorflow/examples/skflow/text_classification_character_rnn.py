@@ -1,4 +1,4 @@
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ This model is similar to one described in this paper:
 and is somewhat alternative to the Lua code from here:
    https://github.com/zhangxiangxiao/Crepe
 """
+from __future__ import division, print_function, absolute_import
 
 import numpy as np
 from sklearn import metrics
@@ -70,4 +71,3 @@ while True:
     classifier.fit(X_train, y_train)
     score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print("Accuracy: %f" % score)
-

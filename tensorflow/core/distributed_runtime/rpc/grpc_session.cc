@@ -28,15 +28,27 @@ limitations under the License.
 
 namespace tensorflow {
 
-const size_t kSchemePrefix = sizeof("grpc://") - 1;
-
 GrpcSession::GrpcSession(const SessionOptions& options)
     : options_(options),
-      master_(NewGrpcMaster(
-          NewHostPortGrpcChannel(options.target.substr(kSchemePrefix)))),
       current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
+
+namespace {
+const char* kSchemePrefix = "grpc://";
+const size_t kSchemePrefixLength = strlen(kSchemePrefix);
+}  // namespace
+
+/* static */
+Status GrpcSession::Create(const SessionOptions& options,
+                           std::unique_ptr<GrpcSession>* out_session) {
+  std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
+  SharedGrpcChannelPtr master_channel =
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+  ret->SetRemoteMaster(NewGrpcMaster(master_channel));
+  *out_session = std::move(ret);
+  return Status::OK();
+}
 
 namespace {
 // Re-encodes constant represented in tensor proto into
@@ -259,14 +271,25 @@ std::vector<DeviceAttributes> GrpcSession::ListDevices() {
   return devices;
 }
 
+void GrpcSession::SetRemoteMaster(MasterInterface* master) {
+  master_.reset(master);
+}
+
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return StringPiece(options.target).starts_with("grpc://");
+    return StringPiece(options.target).starts_with(kSchemePrefix);
   }
 
   Session* NewSession(const SessionOptions& options) override {
-    return new GrpcSession(options);
+    std::unique_ptr<GrpcSession> ret;
+    Status s = GrpcSession::Create(options, &ret);
+    if (s.ok()) {
+      return ret.release();
+    } else {
+      LOG(ERROR) << "Error during session construction: " << s.ToString();
+      return nullptr;
+    }
   }
 };
 

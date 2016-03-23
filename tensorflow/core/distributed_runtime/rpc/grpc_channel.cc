@@ -76,7 +76,8 @@ Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
   return Status::OK();
 }
 
-GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec) {
+GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
+                                      ChannelCreationFunction channel_func) {
   const int num_jobs = spec.host_ports_jobs().size();
   if (!num_jobs) {
     LOG(ERROR) << "Empty channel spec.";
@@ -85,8 +86,8 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec) {
   std::vector<GrpcChannelCache*> caches;
   caches.reserve(num_jobs);
   for (const GrpcChannelSpec::HostPortsJob& job : spec.host_ports_jobs()) {
-    caches.push_back(NewHostPortsGrpcChannelCache(job.job_id, job.host_ports,
-                                                  job.tasks_per_replica));
+    caches.push_back(NewHostPortsGrpcChannelCache(
+        job.job_id, job.host_ports, job.tasks_per_replica, channel_func));
   }
   return caches.size() == 1 ? caches[0] : NewMultiGrpcChannelCache(caches);
 }
@@ -196,10 +197,12 @@ class HostPortsGrpcChannelCache : public CachingGrpcChannelCache {
  public:
   HostPortsGrpcChannelCache(const string& job_id,
                             const std::vector<string>& host_ports,
-                            int tasks_per_replica)
+                            int tasks_per_replica,
+                            ChannelCreationFunction channel_func)
       : job_id_(job_id),
         host_ports_(BuildDenseHostPortsList(host_ports, tasks_per_replica)),
-        tasks_per_replica_(tasks_per_replica) {
+        tasks_per_replica_(tasks_per_replica),
+        channel_func_(channel_func) {
     LOG(INFO) << "Initialize HostPortsGrpcChannelCache for job " << job_id
               << " -> {" << str_util::Join(host_ports, ", ") << "}";
   }
@@ -299,20 +302,22 @@ class HostPortsGrpcChannelCache : public CachingGrpcChannelCache {
       LOG(WARNING) << "Could not find channel for target: " << target;
       return nullptr;
     }
-    return NewHostPortGrpcChannel(host_port);
+    return channel_func_(host_port);
   }
 
  private:
   const string job_id_;
   const std::vector<string> host_ports_;
   const int tasks_per_replica_;
+  const ChannelCreationFunction channel_func_;
   TF_DISALLOW_COPY_AND_ASSIGN(HostPortsGrpcChannelCache);
 };
 
 GrpcChannelCache* NewHostPortsGrpcChannelCache(
     const string& job_id, const std::vector<string>& host_ports,
-    int tasks_per_replica) {
-  return new HostPortsGrpcChannelCache(job_id, host_ports, tasks_per_replica);
+    int tasks_per_replica, ChannelCreationFunction channel_func) {
+  return new HostPortsGrpcChannelCache(job_id, host_ports, tasks_per_replica,
+                                       channel_func);
 }
 
 }  // end namespace tensorflow

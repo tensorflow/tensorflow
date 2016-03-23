@@ -13,9 +13,7 @@ py_library(
         "python/skflow/**/*.py",
     ]),
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:framework",
-    ],
+    deps = ["//tensorflow/python:framework"],
 )
 
 py_test(
@@ -26,7 +24,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -37,7 +35,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -48,7 +46,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -59,7 +57,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -70,7 +68,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -81,7 +79,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -92,7 +90,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -103,7 +101,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -114,7 +112,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -125,7 +123,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -136,7 +134,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -147,7 +145,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -158,7 +156,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -169,7 +167,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -180,7 +178,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 py_test(
@@ -191,7 +189,7 @@ py_test(
         ":skflow",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
-    ]
+    ],
 )
 
 filegroup(
@@ -205,4 +203,3 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
-

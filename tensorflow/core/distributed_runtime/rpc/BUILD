@@ -208,9 +208,8 @@ cc_library(
 
 cc_library(
     name = "grpc_server_lib",
-    srcs = [
-        "grpc_server_lib.cc",
-    ],
+    srcs = ["grpc_server_lib.cc"],
+    hdrs = ["grpc_server_lib.h"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         "@grpc//:grpc++_unsecure",

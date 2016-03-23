@@ -798,7 +798,7 @@ class Supervisor(object):
     """
     if not self._logdir:
       raise RuntimeError("summary_computed() requires a logdir")
-    if global_step is None and self.global_step:
+    if global_step is None and self.global_step is not None:
       global_step = training_util.global_step(sess, self.global_step)
     if self._summary_writer:
       self._summary_writer.add_summary(summary, global_step)
